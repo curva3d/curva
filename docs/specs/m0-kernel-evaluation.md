@@ -55,6 +55,14 @@ doesn't matter to you?*
 24. **Display mesh** of result 16: triangle count and time taken.
 25. **STEP export** of results 15 and 19, opened in Rhino: does it open cleanly, as a closed solid?
 
+### Everyday operations added from Serpentine3D's command list
+26. **Intersect** a doubly curved surface with a cylinder; report the intersection curves (Rhino: Intersect).
+27. **Join and Cap:** join four extruded wall surfaces into one open polysurface, then cap it into a closed solid (Rhino: Join, Cap).
+28. **Section and Contour** of result 15: one section plane, then contours at a fixed spacing (Rhino: Section, Contour).
+29. **Merge coplanar faces** on result 14: the shared flat faces become one face; report the face count (Rhino: MergeAllCoplanarFaces).
+30. **Pipe** along a 3D freeform curve with a tight bend, with a radius close to the bend's own radius (Rhino: Pipe).
+31. **Boolean that splits a solid in two:** a box minus a slab that passes right through its middle; the result must be two separate closed solids (Rhino: BooleanDifference).
+
 ## 4. What is recorded for each operation and kernel
 
 - **Outcome:** works · wrong result · refuses (says it can't) · crashes or hangs.
@@ -68,7 +76,7 @@ doesn't matter to you?*
 
 Rhino results are captured once on the Windows machine through Rhino MCP and stored as reference
 files. **Before automating Rhino, check its licence terms for scripted use** (architecture open
-decision 7). If automation isn't allowed, the owner builds the 25 references by hand once,
+decision 7). If automation isn't allowed, the owner builds the 31 references by hand once,
 from a script of exact steps the agent writes.
 
 ## 6. Deliverables
