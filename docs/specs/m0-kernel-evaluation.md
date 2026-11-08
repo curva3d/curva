@@ -1,6 +1,6 @@
 # Spec — Milestone 0: geometry kernel evaluation
 
-**Status:** Draft · waiting for the owner's approval of section 3
+**Status:** Approved by the owner · 8 November 2026
 **Decision behind it:** `docs/decisions/0004-milestone-0-kernel-evaluation.md`
 
 ## 1. What this is for
