@@ -18,6 +18,7 @@
 - The owner confirmed the 31-operation list is final and approved; #8 is released.
 - Dev Drive and Rust toolchain set up (#2). The repository is at `V:\curva`.
 - Rust workspace skeleton (#3).
+- Automated checks on Linux, Windows and macOS, required on `main` (#4).
 
 **In progress**
 - Nothing.
