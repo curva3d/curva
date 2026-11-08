@@ -1,0 +1,10 @@
+/target
+/bin
+**/*.rs.bk
+*.pdb
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+# Local scratch output from kernel evaluation runs (results that matter are committed under reports/)
+/scratch/
