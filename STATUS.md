@@ -26,6 +26,7 @@
 - Nothing.
 
 **Waiting for the owner**
+- Two library decisions in `docs/decisions/0008-supporting-libraries.md`: IFC and mesh booleans.
 - The Rhino licence question (#7).
 
 **Handoff notes**
