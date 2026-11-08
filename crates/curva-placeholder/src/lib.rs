@@ -2,7 +2,7 @@
 //! checks can be proven before any real Curva code is written.
 
 /// Returns the name of the project.
-pub fn project_name() -> &'static str {
+pub   fn project_name( ) -> &'static str {
     "curva"
 }
 
