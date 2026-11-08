@@ -1,6 +1,6 @@
 # 0005 — How the GitHub project is set up
 
-**Status:** Accepted · 8 November 2026
+**Status:** Accepted · 8 November 2026 · The approval label part is replaced by decision 0007
 
 **Decision:**
 - The project lives in its own **GitHub organisation**, not the owner's personal account, so the
