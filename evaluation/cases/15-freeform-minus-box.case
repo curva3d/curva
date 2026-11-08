@@ -1,0 +1,14 @@
+id: 15
+name: Lofted freeform solid minus a box
+group: solids
+operation: boolean-difference
+rhino: BooleanDifference
+input: s1 rounded-rectangle centre=(0,0,0) width=30 depth=20 radius=5
+input: s2 ellipse centre=(2,1,15) rx=14 ry=8
+input: s3 rounded-rectangle centre=(0,0,30) width=24 depth=16 radius=4
+option: cap=true
+input: cutter box min=(-5,-20,10) max=(25,0,40)
+measure: volume
+measure: area
+measure: centre-of-mass
+measure: closed-or-open

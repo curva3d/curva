@@ -1,0 +1,10 @@
+id: 31
+name: Boolean that splits a solid in two
+group: everyday
+operation: boolean-difference
+rhino: BooleanDifference
+input: a box min=(0,0,0) max=(30,20,20)
+input: b box min=(13,-5,-5) max=(17,25,25)
+measure: solid-count
+measure: volume
+measure: closed-or-open

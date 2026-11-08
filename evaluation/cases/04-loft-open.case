@@ -1,0 +1,12 @@
+id: 4
+name: Loft through 4 open freeform curves, normal style
+group: surfaces
+operation: loft
+rhino: Loft
+input: c1 interp-curve (0,0,0) (10,4,0) (20,-2,0) (30,0,0)
+input: c2 interp-curve (0,0,10) (10,-3,12) (20,3,9) (30,0,10)
+input: c3 interp-curve (0,0,20) (10,5,18) (20,-4,21) (30,0,20)
+input: c4 interp-curve (0,0,30) (10,-2,30) (20,2,30) (30,0,30)
+option: style=normal
+measure: area
+measure: passes-through-inputs

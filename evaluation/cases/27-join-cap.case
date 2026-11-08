@@ -1,0 +1,12 @@
+id: 27
+name: Join four extruded walls, then cap into a solid
+group: everyday
+operation: join-and-cap
+rhino: Join, Cap
+input: wall1 extruded-line (0,0,0) (30,0,0) height=10
+input: wall2 extruded-line (30,0,0) (30,20,0) height=10
+input: wall3 extruded-line (30,20,0) (0,20,0) height=10
+input: wall4 extruded-line (0,20,0) (0,0,0) height=10
+measure: closed-or-open
+measure: volume
+measure: face-count

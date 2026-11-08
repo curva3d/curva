@@ -1,0 +1,11 @@
+id: 17
+name: Split a freeform surface with a curve projected onto it
+group: solids
+operation: split
+rhino: Split
+input: surface grid-surface size=4x4 degree=3
+input-points: surface (0,0,0) (10,0,3) (20,0,3) (30,0,0) (0,10,3) (10,10,8) (20,10,8) (30,10,3) (0,20,3) (10,20,8) (20,20,8) (30,20,3) (0,30,0) (10,30,3) (20,30,3) (30,30,0)
+input: cutter interp-curve (5,15,20) (15,5,20) (25,15,20)
+option: project=(0,0,-1)
+measure: surface-count
+measure: area

@@ -1,0 +1,13 @@
+id: 9
+name: Network surface from 3 x 3 crossing curves
+group: surfaces
+operation: network-surface
+rhino: NetworkSrf
+input: u1 interp-curve (0,0,0) (15,0,4) (30,0,0)
+input: u2 interp-curve (0,15,4) (15,15,9) (30,15,4)
+input: u3 interp-curve (0,30,0) (15,30,4) (30,30,0)
+input: v1 interp-curve (0,0,0) (0,15,4) (0,30,0)
+input: v2 interp-curve (15,0,4) (15,15,9) (15,30,4)
+input: v3 interp-curve (30,0,0) (30,15,4) (30,30,0)
+measure: area
+measure: distance-to-curves

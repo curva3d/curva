@@ -1,0 +1,9 @@
+id: 30
+name: Pipe along a 3D curve with a tight bend
+group: everyday
+operation: pipe
+rhino: Pipe
+input: rail interp-curve (0,0,0) (20,0,0) (22,4,1) (20,8,2) (0,8,3)
+option: radius=2.5
+measure: volume
+measure: closed-or-open

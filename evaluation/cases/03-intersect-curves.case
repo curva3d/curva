@@ -1,0 +1,9 @@
+id: 3
+name: Intersect two freeform curves
+group: curves
+operation: intersect-curves
+rhino: Intersect
+input: a interp-curve (0,0,0) (10,10,0) (20,-10,0) (30,10,0) (40,0,0)
+input: b interp-curve (0,3,0) (40,3,0)
+measure: point-count
+measure: point-positions
