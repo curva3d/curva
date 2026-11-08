@@ -24,11 +24,13 @@
   check, so a change the owner has agreed to can still be merged.
 
 **In progress**
-- Nothing.
+- #16 is paused, waiting for that permission.
 
 **Waiting for the owner**
 - Two library decisions in `docs/decisions/0008-supporting-libraries.md`: IFC and mesh booleans.
-- The Rhino licence question (#7).
+- The Rhino licence question (#7): options are posted in the issue.
+- Permission to build and run downloaded code, which #16 and #9 to #12 need. The agent safety check
+  stopped it. #16 has read-only findings in the issue and a draft pull request (#28).
 
 **Handoff notes**
 - `V:` is a file-based Dev Drive (`C:\DevDrives\curva.vhdx`), reconnected at startup by the
