@@ -12,12 +12,15 @@
 - Starter repository prepared: rules, decision notes, M0 kernel evaluation spec, issue list.
 - One-time GitHub setup finished: https://github.com/curva3d/curva, with `main` protected and the
   17 M0 tasks in https://github.com/curva3d/curva/milestone/1.
+- The kernel test list grew from 25 to 31 operations, chosen by the owner after comparing it with
+  Serpentine3D's commands (#19). The owner merged that change himself, but without the
+  `owner-approved` label, because the label had not been created yet.
 
 **In progress**
 - Nothing. Agents wait for the owner's go-ahead before starting on the tasks.
 
 **Waiting for the owner**
-- Review the list of test operations in `docs/specs/m0-kernel-evaluation.md` (section 3).
+- Say whether the 31-operation list is final, so that #8 can be released.
 - Dev Drive and Rust setup (#2) and the Rhino licence question (#7).
 
 **Handoff notes**
