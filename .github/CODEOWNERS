@@ -3,9 +3,9 @@
 # This file is the list that check reads. Only changes to or deletions of existing files here
 # need approval; new files don't (except in docs/specs/, where everything does).
 # OWNER_USERNAME is replaced during setup (setup/KICKOFF.md, step 5).
-/tests/        @OWNER_USERNAME
-**/tests/      @OWNER_USERNAME
-/references/   @OWNER_USERNAME
-/goldens/      @OWNER_USERNAME
-/docs/specs/   @OWNER_USERNAME
-/.github/CODEOWNERS @OWNER_USERNAME
+/tests/        @lourencovp
+**/tests/      @lourencovp
+/references/   @lourencovp
+/goldens/      @lourencovp
+/docs/specs/   @lourencovp
+/.github/CODEOWNERS @lourencovp
