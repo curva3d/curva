@@ -18,6 +18,8 @@
 - Dev Drive and Rust toolchain set up (#2). The repository is at `V:\curva`.
 - Rust workspace skeleton (#3).
 - Automated checks on Linux, Windows and macOS, required on `main` (#4).
+- A check that flags weakened tests on every pull request (#6). It is deliberately not a required
+  check, so a change the owner has agreed to can still be merged.
 
 **In progress**
 - Nothing.
