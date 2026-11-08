@@ -1,0 +1,2 @@
+# Shell scripts break if Windows line endings get into them.
+*.sh text eol=lf
