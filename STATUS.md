@@ -15,16 +15,21 @@
 - The kernel test list grew from 25 to 31 operations, chosen by the owner after comparing it with
   Serpentine3D's commands (#19). The owner merged that change himself, but without the
   `owner-approved` label, because the label had not been created yet.
+- The owner confirmed the 31-operation list is final and approved; #8 is released.
+- Dev Drive and Rust toolchain set up (#2). The repository is at `V:\curva`.
+- Rust workspace skeleton (#3).
 
 **In progress**
-- Nothing. Agents wait for the owner's go-ahead before starting on the tasks.
+- Nothing.
 
 **Waiting for the owner**
-- Say whether the 31-operation list is final, so that #8 can be released.
-- Dev Drive and Rust setup (#2) and the Rhino licence question (#7).
+- The Rhino licence question (#7).
 
 **Handoff notes**
-- The working copy is in `C:\Projects\curva` until it moves to the Dev Drive (#2).
+- `V:` is a file-based Dev Drive (`C:\DevDrives\curva.vhdx`), reconnected at startup by the
+  scheduled task "Attach Curva Dev Drive". Reconnecting after a restart has not been tested yet.
+- The old copy in `C:\Projects\curva` is out of date and no longer used.
+- The owner merges pull requests himself, about once per finished task; group small changes.
 
 **Known problems / risks**
 - Serpentine3D's geometry is done by OpenCascade (C++), so its geometric logic cannot be ported
