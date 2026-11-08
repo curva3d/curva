@@ -6,3 +6,12 @@ pub fn project_name() -> &'static str {
     "curva"
 }
 
+#[cfg(test)]
+mod tests {
+    use super::project_name;
+
+    #[test]
+    fn names_the_project() {
+        assert_eq!(project_name(), "curva");
+    }
+}
