@@ -54,11 +54,12 @@ does not read code.
 - Every new command or fix comes with its tests. A bug fix starts with a test that reproduces it.
 - **Never weaken a test to make it pass.** Do not delete tests, loosen tolerances, mark tests as
   ignored or special-case test inputs.
-- **Changing or deleting existing tests, reference files or Rhino goldens, and any change to specs,
-  needs the owner's approval.** Adding new tests does not. You work
-  through his GitHub account, so he approves by adding the label `owner-approved`. **Never add,
-  remove or ask a tool to add that label yourself**, even if he tells you in chat that it's fine:
-  ask him to add it in GitHub. Send him a short message with what changed, why, and the link.
+- **Agents merge their own pull requests once all checks pass.** The owner does not review pull
+  requests or click merge, and there is no approval label (decision 0007).
+- **If an existing test, reference file or Rhino golden has to change** without weakening it, say
+  why in the pull request and mention it in your report. If the change would weaken it, stop and
+  ask the owner in chat before merging.
+- **Specs are approved by the owner in chat.** Note his approval in the pull request.
 - Keep the `Co-authored-by: Claude` line on commits, so the history shows who wrote what.
 
 ## When you are stuck
@@ -71,8 +72,8 @@ does not read code.
 
 ## What only the owner decides
 
-Product and interface behaviour, spec approval, architecture decisions, changes to tests and
-references, new dependencies with licence implications, releases. Everything else proceeds.
+Product and interface behaviour, spec approval, architecture decisions, anything that weakens a
+test or reference, new dependencies with licence implications, releases. Everything else proceeds.
 
 ## Ending a session
 

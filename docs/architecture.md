@@ -527,7 +527,7 @@ How a project this size runs smoothly with AI agents, with the user making decis
 AI agents under pressure sometimes "fix" a failing test by weakening the test instead of the code. Forbidden, and checked automatically:
 
 - **Tests, reference files and Rhino goldens are protected:**
-  - Changes to them need the user's approval (GitHub CODEOWNERS on those folders).
+  - Changes that weaken them need the user's say-so, in conversation (decision 0007).
   - CI flags any pull request that deletes tests, loosens tolerances or marks tests as ignored.
 - **No special-casing:** code must never detect test inputs to return expected answers. The reviewer agent checks for this explicitly.
 - **Mutation testing** (`cargo-mutants`), run nightly, deliberately breaks the code in small ways and checks that the tests notice. Tests that don't notice anything are weak, and get flagged for improvement.
@@ -617,7 +617,7 @@ Everything else proceeds automatically.
 ### What he provides
 
 - **Command and tool concepts,** written as specs: how a command should work, its options, how it should feel. These are the source of truth for behaviour.
-- **Approval** of specs, interface direction, changes to tests and references, and releases.
+- **Approval** of specs, interface direction, anything that weakens a test or reference, and releases.
 - **Spot checks** of the comparison gallery and hands-on use, with findings turned into test cases by agents.
 - **Real project files and workflows** to test against (heavy Rhino models, typical drawings).
 
