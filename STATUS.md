@@ -19,6 +19,7 @@
 - Rust workspace skeleton (#3).
 - Automated checks on Linux, Windows and macOS, required on `main` (#4).
 - Claude Code hooks: format and lint after edits, tests before finishing, risky commands blocked (#5).
+- The 31 kernel test cases as neutral files, and a harness to run them (#8), in `evaluation/`.
 - A check that flags weakened tests on every pull request (#6). It is deliberately not a required
   check, so a change the owner has agreed to can still be merged.
 

@@ -1,0 +1,8 @@
+id: 24
+name: Display mesh: triangle count and time taken
+group: output
+operation: display-mesh
+rhino: Mesh
+uses: 16
+measure: triangle-count
+measure: time

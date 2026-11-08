@@ -1,0 +1,11 @@
+id: 23
+name: Volume, area and centre of mass, against Rhino
+group: output
+operation: mass-properties
+rhino: Volume, Area, VolumeCentroid
+uses: 13
+uses: 15
+uses: 19
+measure: volume
+measure: area
+measure: centre-of-mass

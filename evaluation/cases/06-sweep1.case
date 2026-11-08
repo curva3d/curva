@@ -1,0 +1,9 @@
+id: 6
+name: Sweep1: a closed profile along a 3D freeform rail
+group: surfaces
+operation: sweep1
+rhino: Sweep1
+input: rail interp-curve (0,0,0) (20,10,5) (40,-5,12) (60,5,20)
+input: profile circle centre=(0,0,0) radius=2 normal=(1,0.5,0.25)
+measure: area
+measure: follows-rail

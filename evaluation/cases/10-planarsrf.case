@@ -1,0 +1,11 @@
+id: 10
+name: Planar surface from a closed curve with two holes
+group: surfaces
+operation: planar-surface
+rhino: PlanarSrf
+input: outer rectangle min=(0,0,0) max=(40,20,0)
+input: hole1 circle centre=(10,10,0) radius=4
+input: hole2 circle centre=(30,10,0) radius=4
+measure: area
+measure: face-count
+measure: loop-count

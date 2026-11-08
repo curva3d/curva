@@ -1,0 +1,11 @@
+id: 2
+name: Offset a planar freeform curve both sides, with a self-intersection
+group: curves
+operation: offset-curve
+rhino: Offset
+input: curve interp-curve (0,0,0) (10,12,0) (14,2,0) (18,12,0) (30,0,0)
+option: distance=3
+option: sides=both
+measure: curve-count
+measure: length
+measure: distance-to-source
