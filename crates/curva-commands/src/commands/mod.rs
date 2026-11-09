@@ -4,6 +4,7 @@ mod arc;
 mod array;
 mod array_crv;
 mod array_polar;
+mod bounding_box;
 mod chamfer;
 mod circle;
 mod close_crv;
@@ -45,7 +46,9 @@ mod scale;
 mod scale1d;
 mod scale2d;
 mod sel_all;
+mod sel_crv;
 mod sel_none;
+mod sel_pt;
 mod show;
 mod split;
 mod top;
@@ -83,7 +86,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 52] = [
+pub static COMMANDS: [CommandDef; 55] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -113,6 +116,15 @@ pub static COMMANDS: [CommandDef; 52] = [
     listed!("Show", [], true, true, show::Show),
     listed!("SelAll", ["sa"], false, false, sel_all::SelAll),
     listed!("SelNone", ["sn"], false, false, sel_none::SelNone),
+    listed!("SelCrv", [], false, false, sel_crv::SelCrv),
+    listed!("SelPt", [], false, false, sel_pt::SelPt),
+    listed!(
+        "BoundingBox",
+        ["bb"],
+        true,
+        false,
+        bounding_box::BoundingBox
+    ),
     listed!("Invert", [], false, false, invert::Invert),
     listed!("Distance", ["dist"], true, false, distance::Distance),
     listed!("Length", ["len"], true, false, length::Length),

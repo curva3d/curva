@@ -192,3 +192,5 @@ ui.agent = Agent access
 ui.agent.approve = An AI agent wants to run: {0}
 ui.agent.allow = Allow
 ui.agent.decline = Decline
+prompt.boundingbox.objects = Select objects to measure, then press Enter
+done.boundingbox = Bounding box: {0} x {1} x {2}
