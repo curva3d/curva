@@ -120,6 +120,11 @@ impl Processor {
             .map_or_else(Vec::new, |active| active.command.preview(doc, &live))
     }
 
+    /// Adds a line to the log, for reports from outside the command line.
+    pub fn note(&mut self, line: String) {
+        self.log.push(line);
+    }
+
     /// The change of view a command asked for, if one is waiting to be carried out.
     pub fn take_view_request(&mut self) -> Option<ViewRequest> {
         self.view_request.take()
