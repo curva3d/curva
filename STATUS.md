@@ -24,12 +24,15 @@
   check, so a change the owner has agreed to can still be merged.
 
 **In progress**
-- #16 is paused, waiting for that permission.
+- Nothing being worked on right now.
 
 **Waiting for the owner**
-- Connecting Rhino through its MCP on this machine, so agents can make the reference results (#13).
-- The owner has agreed to building and running downloaded code (#16, #9 to #12), but the agent safety check
-  still refuses it, so a permission change is needed. #16 has read-only findings in the issue and a draft pull request (#28).
+- Nothing yet. The owner chose solidcore as the engine, with Serpentine3D's commands as the base (decision 0010).
+  SolidCraft reuse is parked (0009). Next: run the 31 cases on solidcore (#9) and write the Milestone 1 spec.
+
+**Rhino connection (#13)**
+- Rhino is connected, but importing a STEP file through it timed out after 5 minutes and a script wrote
+  nothing. Find out why before making the reference results.
 
 **Handoff notes**
 - `V:` is a file-based Dev Drive (`C:\DevDrives\curva.vhdx`), reconnected at startup by the
