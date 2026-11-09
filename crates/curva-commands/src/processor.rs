@@ -181,6 +181,10 @@ impl Processor {
                 .map_err(|_| Message::with("error.bad_number", vec![typed.to_owned()])),
             Kind::Path => Ok(Answer::Path(typed.to_owned())),
             Kind::Objects => Err(Message::new("error.pick_objects")),
+            Kind::Choice => Err(Message::with(
+                "error.bad_choice",
+                vec![request.options.join(", ")],
+            )),
         };
         match answer {
             Ok(answer) => self.advance(doc, Some(answer)),

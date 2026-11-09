@@ -45,6 +45,8 @@ pub enum Kind {
     Objects,
     /// A file location.
     Path,
+    /// One of the request's option words, and nothing else.
+    Choice,
 }
 
 /// One question a command asks.

@@ -13,5 +13,6 @@ workspace = true
 [dependencies]
 curva-commands = { path = "../curva-commands" }
 curva-document = { path = "../curva-document" }
+curva-kernel = { path = "../curva-kernel" }
 curva-viewport = { path = "../curva-viewport" }
 eframe = { version = "0.37", default-features = false, features = ["default_fonts", "wgpu", "wayland", "x11"] }
