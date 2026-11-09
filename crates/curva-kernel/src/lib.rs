@@ -11,8 +11,10 @@ use solidcore::{Kernel, Point3};
 use std::f64::consts::TAU;
 
 mod cut;
+mod fillet;
 mod offset;
 pub use cut::{closest_between, crossings};
+pub use fillet::fillet_curves;
 pub use offset::{Filleted, fillet_lines};
 use std::fmt;
 

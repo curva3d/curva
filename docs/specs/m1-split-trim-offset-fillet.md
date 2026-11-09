@@ -10,12 +10,12 @@
 | `Split` | | Curves, then cutters | Cuts curves where they cross the cutters, keeping every piece |
 | `Trim` | `tr` | Cutters, then clicks | Removes the clicked part of a curve, until Enter |
 | `Offset` | | Curves, then a side, or a number for the distance | Copies curves at the distance, on the side clicked. The distance is remembered |
-| `Fillet` | | First line, second line, or a number for the radius | Rounds the corner, keeping the sides clicked. Radius 0 makes a sharp corner. The radius is remembered |
+| `Fillet` | | First curve, second curve, or a number for the radius | Rounds the corner, keeping the sides clicked. Radius 0 makes a sharp corner. The radius is remembered |
 
 ## 2. Limits of this piece of work
 
 - Offset of smooth curves fits a curve through offset points, staying within 0.01 mm in the tested case. Offset refuses joined curves, which can be exploded first, and sharp mitres only for polylines.
-- Fillet works between lines only so far, not arcs, smooth curves or polyline segments.
+- Fillet works on lines, arcs and polyline segments, not smooth curves. A middle polyline segment can only round to its neighbour.
 - Trim and Split need curves to really cross or touch; they do not extend cutters.
 
 ## 3. How it is checked
