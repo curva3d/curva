@@ -27,8 +27,8 @@
 - Nothing being worked on right now.
 
 **Waiting for the owner**
-- #16: choose how to use SolidCraft (`docs/decisions/0009-solidcraft-reuse-parts.md`). SolidCraft built and
-  a sample part worked, but its own tests were stopped before running and there is no check in Rhino.
+- Nothing yet. The owner chose solidcore as the engine, with Serpentine3D's commands as the base (decision 0010).
+  SolidCraft reuse is parked (0009). Next: run the 31 cases on solidcore (#9) and write the Milestone 1 spec.
 
 **Rhino connection (#13)**
 - Rhino is connected, but importing a STEP file through it timed out after 5 minutes and a script wrote

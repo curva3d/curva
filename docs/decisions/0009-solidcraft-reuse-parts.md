@@ -1,6 +1,7 @@
 # 0009: SolidCraft: build on it, or start fresh?
 
-**Status:** recommendation, waiting for the owner's decision. The test was cut short, as listed below.
+**Status:** parked, undecided. Reusing code is a later step (see 0010). This does not affect the choice of
+engine. The test was cut short, as listed below.
 
 **The question:** should Curva take SolidCraft as its starting point, or start fresh and reuse parts of it?
 
