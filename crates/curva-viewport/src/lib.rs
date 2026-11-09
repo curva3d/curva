@@ -85,6 +85,69 @@ impl Outlines {
         }
         best.map(|(_, id)| id)
     }
+
+    /// The objects chosen by a box dragged on screen from `from` to `to`, as in Rhino.
+    ///
+    /// Dragged rightwards it is a window, taking objects wholly inside. Dragged leftwards it is
+    /// a crossing box, also taking objects it touches. Parts behind the camera are off screen,
+    /// so they stop an object counting as wholly inside and cannot be touched.
+    #[must_use]
+    pub fn in_box(
+        &self,
+        camera: &Camera,
+        from: [f64; 2],
+        to: [f64; 2],
+        size: [f64; 2],
+    ) -> Vec<u64> {
+        let low = [from[0].min(to[0]), from[1].min(to[1])];
+        let high = [from[0].max(to[0]), from[1].max(to[1])];
+        let window = to[0] >= from[0];
+        self.objects
+            .iter()
+            .filter(|(_, points)| {
+                let projected: Vec<Option<[f64; 2]>> =
+                    points.iter().map(|p| camera.project(*p, size)).collect();
+                if window {
+                    !projected.is_empty()
+                        && projected
+                            .iter()
+                            .all(|p| p.is_some_and(|p| inside_box(p, low, high)))
+                } else {
+                    projected.windows(2).any(|pair| match pair {
+                        [Some(a), Some(b)] => touches_box(*a, *b, low, high),
+                        _ => false,
+                    })
+                }
+            })
+            .map(|(id, _)| *id)
+            .collect()
+    }
+}
+
+fn inside_box(p: [f64; 2], low: [f64; 2], high: [f64; 2]) -> bool {
+    (0..2).all(|axis| low[axis] <= p[axis] && p[axis] <= high[axis])
+}
+
+/// Whether a segment reaches a box, by clipping it to the box one axis at a time
+/// (the Liang-Barsky method).
+fn touches_box(a: [f64; 2], b: [f64; 2], low: [f64; 2], high: [f64; 2]) -> bool {
+    let (mut start, mut end) = (0.0_f64, 1.0_f64);
+    for axis in 0..2 {
+        let step = b[axis] - a[axis];
+        if step.abs() < 1e-12 {
+            if a[axis] < low[axis] || a[axis] > high[axis] {
+                return false;
+            }
+            continue;
+        }
+        let (t0, t1) = ((low[axis] - a[axis]) / step, (high[axis] - a[axis]) / step);
+        start = start.max(t0.min(t1));
+        end = end.min(t0.max(t1));
+        if start > end {
+            return false;
+        }
+    }
+    true
 }
 
 fn to_segment(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> f64 {
@@ -195,6 +258,64 @@ mod tests {
         let camera = Camera::default();
         let empty = camera.project([60.0, -60.0, 0.0], SIZE).unwrap();
         assert_eq!(outlines.pick(&camera, empty, SIZE, 6.0), None);
+    }
+
+    /// Screen corners a margin outside two model points, left corner first.
+    fn around(camera: &Camera, a: Point, b: Point, margin: f64) -> ([f64; 2], [f64; 2]) {
+        let (a, b) = (
+            camera.project(a, SIZE).unwrap(),
+            camera.project(b, SIZE).unwrap(),
+        );
+        (
+            [a[0].min(b[0]) - margin, a[1].min(b[1]) - margin],
+            [a[0].max(b[0]) + margin, a[1].max(b[1]) + margin],
+        )
+    }
+
+    #[test]
+    fn a_window_takes_an_object_wholly_inside() {
+        let (outlines, line, _) = scene();
+        let camera = Camera::default();
+        let (left, right) = around(&camera, [-20.0, 0.0, 0.0], [20.0, 0.0, 0.0], 3.0);
+        assert!(outlines.in_box(&camera, left, right, SIZE).contains(&line));
+    }
+
+    #[test]
+    fn a_window_leaves_an_object_partly_outside() {
+        let (outlines, line, _) = scene();
+        let camera = Camera::default();
+        let (left, right) = around(&camera, [-20.0, 0.0, 0.0], [0.0, 0.0, 0.0], 3.0);
+        assert!(!outlines.in_box(&camera, left, right, SIZE).contains(&line));
+    }
+
+    #[test]
+    fn the_same_box_dragged_leftwards_takes_the_partly_inside_object() {
+        let (outlines, line, _) = scene();
+        let camera = Camera::default();
+        let (left, right) = around(&camera, [-20.0, 0.0, 0.0], [0.0, 0.0, 0.0], 3.0);
+        assert!(outlines.in_box(&camera, right, left, SIZE).contains(&line));
+    }
+
+    #[test]
+    fn a_crossing_box_catches_a_segment_with_no_sample_inside() {
+        let (outlines, line, _) = scene();
+        let camera = Camera::default();
+        let middle = camera.project([0.0, 0.0, 0.0], SIZE).unwrap();
+        let (low, high) = (
+            [middle[0] - 2.0, middle[1] - 2.0],
+            [middle[0] + 2.0, middle[1] + 2.0],
+        );
+        assert_eq!(outlines.in_box(&camera, high, low, SIZE), [line]);
+    }
+
+    #[test]
+    fn a_box_over_empty_space_takes_nothing_in_either_direction() {
+        let (outlines, _, _) = scene();
+        let camera = Camera::default();
+        let at = camera.project([60.0, -60.0, 0.0], SIZE).unwrap();
+        let (low, high) = ([at[0] - 5.0, at[1] - 5.0], [at[0] + 5.0, at[1] + 5.0]);
+        assert!(outlines.in_box(&camera, low, high, SIZE).is_empty());
+        assert!(outlines.in_box(&camera, high, low, SIZE).is_empty());
     }
 
     #[test]
