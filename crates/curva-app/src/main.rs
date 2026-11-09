@@ -45,6 +45,7 @@ const GUMBALL_AXES: [egui::Color32; 3] = [
     egui::Color32::from_rgb(90, 200, 100),
     egui::Color32::from_rgb(90, 130, 240),
 ];
+const POINT_MARKER_SIZE: f32 = 6.0;
 const LOG_LINES: usize = 5;
 const PICTURE_SIZE: [u32; 2] = [1200, 800];
 const BENCHMARK_FRAMES: usize = 240;
@@ -289,6 +290,7 @@ fn benchmark_scene(doc: &mut Document, count: usize) -> Result<(), String> {
 
 fn curve_kind(curve: &Curve) -> &'static str {
     match curve {
+        Curve::Point { .. } => "ui.kind.point",
         Curve::Line { .. } => "ui.kind.line",
         Curve::Polyline { .. } => "ui.kind.polyline",
         Curve::Circle { .. } => "ui.kind.circle",
@@ -902,6 +904,40 @@ impl Curva {
         }
     }
 
+    /// Point objects and point previews, which have no lines to draw.
+    fn paint_points(
+        &self,
+        ui: &egui::Ui,
+        pane: usize,
+        rect: egui::Rect,
+        size: [f64; 2],
+        previewed: &[Curve],
+    ) {
+        let painter = ui.painter_at(rect);
+        let camera = &self.panes[pane].camera;
+        let mark = |at: Point, colour: [f32; 3]| {
+            if let Some(p) = camera.project(at, size) {
+                let [r, g, b] = colour.map(|c| (c * 255.0) as u8);
+                painter.rect_filled(
+                    egui::Rect::from_center_size(
+                        rect.min + egui::vec2(p[0] as f32, p[1] as f32),
+                        egui::Vec2::splat(POINT_MARKER_SIZE),
+                    ),
+                    0.0,
+                    egui::Color32::from_rgb(r, g, b),
+                );
+            }
+        };
+        for (at, colour) in self.outlines.point_markers(&self.doc.selection()) {
+            mark(at, colour);
+        }
+        for curve in previewed {
+            if let Curve::Point { at } = curve {
+                mark(*at, curva_viewport::PREVIEW_COLOUR);
+            }
+        }
+    }
+
     /// Tells the document which plane flat objects go on: the last-used viewport's.
     fn share_work_plane(&mut self) {
         let plane = self.panes[self.active].plane;
@@ -1119,6 +1155,7 @@ impl Curva {
             };
             ui.painter().add(egui_wgpu_callback(*rect, drawing));
             self.paint_frame(ui, *pane, *rect);
+            self.paint_points(ui, *pane, *rect, size, &previewed);
             self.paint_gumball(ui, *pane, *rect, size);
             if let Some((hover_pane, ..)) = hovered
                 && hover_pane == *pane

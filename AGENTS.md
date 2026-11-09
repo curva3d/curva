@@ -69,7 +69,7 @@ does not read code.
   is a command with no result to show, such as Delete, whose targets are already highlighted.
 - **All previews look the same.** A command returns the curves to preview from
   `Command::preview`, and the viewport draws every one of them the same way, with
-  `curva_viewport::ghost_lines`. No command chooses its own colour or line style, or draws for itself.
+  `curva_viewport::ghost_lines`. No command chooses its own colour or line style, or draws for itself. Point previews are the same colour, drawn as markers because they have no lines.
 - **The rule is tested.** A new command that changes geometry must be listed in `PREVIEW_STEPS` in
   `crates/curva-commands/src/commands/mod.rs`, or the tests fail.
 

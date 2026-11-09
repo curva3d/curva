@@ -272,6 +272,7 @@ impl Curve {
     /// The point on this curve closest to `p`.
     pub fn closest_point(&self, p: Point) -> Result<Point, KernelError> {
         Ok(match self {
+            Self::Point { at } => *at,
             Self::Line { start, end } => along(*start, *end, fraction_on(p, *start, *end)),
             Self::Polyline { .. } => {
                 let path = self.sample()?;
@@ -334,6 +335,7 @@ impl Curve {
     /// really cut comes back whole, as a single piece.
     pub fn cut_at(&self, points: &[Point]) -> Result<Vec<Self>, KernelError> {
         match self {
+            Self::Point { .. } => Ok(vec![self.clone()]),
             Self::Line { .. } | Self::Polyline { closed: false, .. } => {
                 let path = self.sample()?;
                 let pieces = cut_path(&path, points, false)?;

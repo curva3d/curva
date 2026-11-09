@@ -132,6 +132,7 @@ fn half_way(points: &[Point]) -> Option<Point> {
 /// The fixed snap places on a curve, given the points it is drawn through.
 pub(crate) fn sites_of(curve: &Curve, points: &[Point]) -> Vec<Site> {
     match curve {
+        Curve::Point { at } => vec![site(SnapKind::End, *at)],
         Curve::Line { .. } | Curve::Polyline { .. } => points
             .iter()
             .map(|p| site(SnapKind::End, *p))

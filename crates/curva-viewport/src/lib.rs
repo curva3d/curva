@@ -21,7 +21,8 @@ const GRID_COLOUR: [f32; 3] = [0.30, 0.31, 0.34];
 const CURVE_COLOUR: [f32; 3] = [0.92, 0.92, 0.95];
 const SELECTED_COLOUR: [f32; 3] = [1.0, 0.85, 0.2];
 const LOCKED_COLOUR: [f32; 3] = [0.45, 0.45, 0.48];
-const PREVIEW_COLOUR: [f32; 3] = [0.45, 0.75, 1.0];
+/// The colour every preview is drawn in.
+pub const PREVIEW_COLOUR: [f32; 3] = [0.45, 0.75, 1.0];
 const X_AXIS_COLOUR: [f32; 3] = [0.85, 0.3, 0.3];
 const Y_AXIS_COLOUR: [f32; 3] = [0.35, 0.8, 0.4];
 
@@ -164,6 +165,28 @@ impl Outlines {
             .map(|(_, object)| object)
     }
 
+    /// Point objects with the colour to mark them in.
+    #[must_use]
+    pub fn point_markers(&self, selected: &[u64]) -> Vec<(Point, [f32; 3])> {
+        self.objects
+            .iter()
+            .enumerate()
+            .filter_map(|(index, (id, points))| match points.as_slice() {
+                [only] => {
+                    let colour = if selected.contains(id) {
+                        SELECTED_COLOUR
+                    } else if self.locked.get(index).copied().unwrap_or(false) {
+                        LOCKED_COLOUR
+                    } else {
+                        self.colours.get(index).copied().unwrap_or(CURVE_COLOUR)
+                    };
+                    Some((*only, colour))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
     /// The object nearest a screen position, if one is within `reach` pixels.
     #[must_use]
     pub fn pick(
@@ -177,6 +200,12 @@ impl Outlines {
         for (id, points) in self.selectable() {
             let projected: Vec<Option<[f64; 2]>> =
                 points.iter().map(|p| camera.project(*p, size)).collect();
+            if let [Some(only)] = projected.as_slice() {
+                let distance = (only[0] - screen[0]).hypot(only[1] - screen[1]);
+                if distance <= reach && best.is_none_or(|(d, _)| distance < d) {
+                    best = Some((distance, *id));
+                }
+            }
             for pair in projected.windows(2) {
                 if let [Some(a), Some(b)] = pair {
                     let distance = to_segment(screen, *a, *b);
@@ -215,10 +244,11 @@ impl Outlines {
                             .iter()
                             .all(|p| p.is_some_and(|p| inside_box(p, low, high)))
                 } else {
-                    projected.windows(2).any(|pair| match pair {
-                        [Some(a), Some(b)] => touches_box(*a, *b, low, high),
-                        _ => false,
-                    })
+                    matches!(projected.as_slice(), [Some(p)] if inside_box(*p, low, high))
+                        || projected.windows(2).any(|pair| match pair {
+                            [Some(a), Some(b)] => touches_box(*a, *b, low, high),
+                            _ => false,
+                        })
                 }
             })
             .map(|(id, _)| *id)
@@ -468,6 +498,48 @@ mod tests {
         doc.move_to_layer(&[line], layer);
         let lines = object_lines(&Outlines::of(doc.state()), &[line]);
         assert!(lines.iter().all(|v| v.colour == SELECTED_COLOUR));
+    }
+
+    fn one_point() -> (Outlines, u64) {
+        let mut doc = Document::default();
+        let id = doc.add(Curve::Point {
+            at: [5.0, 5.0, 0.0],
+        });
+        (Outlines::of(doc.state()), id)
+    }
+
+    #[test]
+    fn a_point_can_be_clicked() {
+        let (outlines, id) = one_point();
+        let camera = Camera::default();
+        let at = camera.project([5.0, 5.0, 0.0], SIZE).unwrap();
+        assert_eq!(outlines.pick(&camera, at, SIZE, 6.0), Some(id));
+    }
+
+    #[test]
+    fn a_point_is_caught_by_a_box_either_way() {
+        let (outlines, id) = one_point();
+        let camera = Camera::default();
+        let at = camera.project([5.0, 5.0, 0.0], SIZE).unwrap();
+        let (low, high) = ([at[0] - 5.0, at[1] - 5.0], [at[0] + 5.0, at[1] + 5.0]);
+        assert_eq!(outlines.in_box(&camera, low, high, SIZE), [id]);
+        assert_eq!(outlines.in_box(&camera, high, low, SIZE), [id]);
+    }
+
+    #[test]
+    fn a_box_elsewhere_misses_a_point() {
+        let (outlines, _) = one_point();
+        let camera = Camera::default();
+        let at = camera.project([60.0, -60.0, 0.0], SIZE).unwrap();
+        let (low, high) = ([at[0] - 5.0, at[1] - 5.0], [at[0] + 5.0, at[1] + 5.0]);
+        assert!(outlines.in_box(&camera, high, low, SIZE).is_empty());
+    }
+
+    #[test]
+    fn a_selected_point_is_marked_as_selected() {
+        let (outlines, id) = one_point();
+        assert_eq!(outlines.point_markers(&[id])[0].1, SELECTED_COLOUR);
+        assert_eq!(outlines.point_markers(&[])[0].1, CURVE_COLOUR);
     }
     #[test]
     fn clicking_on_nothing_picks_nothing() {

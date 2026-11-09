@@ -63,6 +63,7 @@ impl Curve {
             [vector[0] * radius, vector[1] * radius, vector[2] * radius]
         };
         match self {
+            Self::Point { at } => Ok(Self::Point { at: map(*at) }),
             Self::Line { start, end } => Self::line(map(*start), map(*end)),
             Self::Polyline { points, closed } => Self::polyline(many(points), *closed),
             Self::Circle {
