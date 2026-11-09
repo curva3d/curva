@@ -1,6 +1,6 @@
 # Spec: Milestone 1, first slice: a small working Curva
 
-**Status:** Draft, waiting for the owner's approval in chat
+**Status:** Approved by the owner in chat · 9 November 2026
 **Decisions behind it:** 0003, 0010 and 0011. Scope comes from architecture sections 9 and 10.
 
 ## 1. What this is for
