@@ -21,6 +21,9 @@ pub struct Object {
     /// The layer it is on. Files from before layers put everything on the first.
     #[serde(default)]
     pub layer: u64,
+    /// Whether it is out of sight until `Show`.
+    #[serde(default)]
+    pub hidden: bool,
 }
 
 /// The colour of a new layer, red, green and blue from 0 to 1.
@@ -175,6 +178,7 @@ impl Document {
             id,
             curve,
             layer: self.state.current_layer,
+            hidden: false,
         });
         id
     }
@@ -186,6 +190,53 @@ impl Document {
             object.layer = layer;
         }
         id
+    }
+
+    /// Replaces an object's curve, keeping its id and layer.
+    pub fn replace(&mut self, id: u64, curve: Curve) {
+        if let Some(object) = self.state.objects.iter_mut().find(|o| o.id == id) {
+            object.curve = curve;
+        }
+    }
+
+    /// The objects that can be selected: not hidden, and not on a hidden or locked layer.
+    #[must_use]
+    pub fn selectable(&self) -> Vec<u64> {
+        let open = |layer: u64| {
+            self.state
+                .layers
+                .iter()
+                .find(|l| l.id == layer)
+                .is_none_or(|l| l.visible && !l.locked)
+        };
+        self.state
+            .objects
+            .iter()
+            .filter(|object| !object.hidden && open(object.layer))
+            .map(|object| object.id)
+            .collect()
+    }
+
+    /// Takes objects out of sight and out of the selection.
+    pub fn hide(&mut self, ids: &[u64]) {
+        for object in &mut self.state.objects {
+            if ids.contains(&object.id) {
+                object.hidden = true;
+            }
+        }
+        self.selection.retain(|id| !ids.contains(id));
+    }
+
+    /// Brings back every hidden object and returns how many there were.
+    pub fn show_all(&mut self) -> usize {
+        let mut shown = 0;
+        for object in &mut self.state.objects {
+            if object.hidden {
+                object.hidden = false;
+                shown += 1;
+            }
+        }
+        shown
     }
 
     /// Removes objects by id.
