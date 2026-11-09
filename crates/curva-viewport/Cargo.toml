@@ -1,0 +1,19 @@
+[package]
+name = "curva-viewport"
+description = "Curva's 3D viewport."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+curva-document = { path = "../curva-document" }
+curva-kernel = { path = "../curva-kernel" }
+egui-wgpu = "0.37"
+epaint = "0.37"
+png = "0.18"
+pollster = "0.4"

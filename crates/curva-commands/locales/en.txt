@@ -39,3 +39,5 @@ error.pick_objects = Click objects in the viewport, then press Enter.
 error.geometry = That could not be made: {0}
 error.file = The file could not be used: {0}
 error.unexpected = That answer does not fit this step.
+ui.command = Command
+ui.matches = Matches: {0}
