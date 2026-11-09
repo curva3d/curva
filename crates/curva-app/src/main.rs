@@ -531,7 +531,8 @@ impl Curva {
 
     fn takes_position(&self) -> bool {
         self.processor.current_request().is_some_and(|request| {
-            request.kind == Kind::Point || (request.kind == Kind::Number && request.from.is_some())
+            matches!(request.kind, Kind::Point | Kind::PointOrNumber)
+                || (request.kind == Kind::Number && request.from.is_some())
         })
     }
 

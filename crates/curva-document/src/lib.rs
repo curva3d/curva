@@ -1,6 +1,6 @@
 //! The model: objects, selection, undo and redo, and saving.
 
-use curva_kernel::{Curve, Point};
+use curva_kernel::{Curve, Point, Similarity};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fmt;
@@ -105,6 +105,27 @@ impl Document {
                 object.curve = object.curve.translated(by);
             }
         }
+    }
+
+    /// Turns, mirrors or resizes objects.
+    pub fn transform(&mut self, ids: &[u64], change: &Similarity) {
+        for object in &mut self.state.objects {
+            if ids.contains(&object.id) {
+                object.curve = object.curve.mapped(change);
+            }
+        }
+    }
+
+    /// Adds turned, mirrored or resized copies of objects and returns the new ids.
+    pub fn copy_transformed(&mut self, ids: &[u64], change: &Similarity) -> Vec<u64> {
+        let copies: Vec<Curve> = self
+            .state
+            .objects
+            .iter()
+            .filter(|object| ids.contains(&object.id))
+            .map(|object| object.curve.mapped(change))
+            .collect();
+        copies.into_iter().map(|curve| self.add(curve)).collect()
     }
 
     /// Adds moved copies of objects and returns the new ids.

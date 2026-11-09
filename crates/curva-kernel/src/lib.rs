@@ -17,6 +17,8 @@ pub type Point = [f64; 3];
 const LENGTH_ACCURACY: f64 = 1e-6;
 /// How far plane directions may be from length 1 and a right angle.
 const PLANE_TOLERANCE: f64 = 1e-9;
+/// Smallest angle treated as a real turn, in radians.
+const ANGLE_TOLERANCE: f64 = 1e-9;
 /// Shortest length treated as a real size, in millimetres.
 const SMALLEST: f64 = 1e-9;
 /// Display points per input point of an interpolated curve.
@@ -65,6 +67,19 @@ pub enum Curve {
         /// The plane's Y direction, of length 1, at a right angle to `x`.
         #[serde(default = "world_y")]
         y: Point,
+    },
+    /// Part of a circle, starting along `x` and turning towards `y`.
+    Arc {
+        /// The centre.
+        centre: Point,
+        /// The radius.
+        radius: f64,
+        /// The direction of its start, of length 1.
+        x: Point,
+        /// A quarter turn on from `x`, of length 1.
+        y: Point,
+        /// How far it turns, in radians, between 0 and a full turn.
+        sweep: f64,
     },
     /// A smooth curve through points.
     Interpolated {
@@ -118,6 +133,127 @@ fn spline(points: &[Point], closed: bool) -> Result<CoreCurve, KernelError> {
     .map_err(engine_error)
 }
 
+/// `a` minus `b`.
+#[must_use]
+pub fn sub(a: Point, b: Point) -> Point {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+
+/// The dot product of two vectors.
+#[must_use]
+pub fn dot(a: Point, b: Point) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+/// The cross product of two vectors.
+#[must_use]
+pub fn cross(a: Point, b: Point) -> Point {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+
+/// A vector made length 1, or `None` if it has no real length.
+#[must_use]
+pub fn unit(a: Point) -> Option<Point> {
+    let length = dot(a, a).sqrt();
+    (length >= SMALLEST).then(|| [a[0] / length, a[1] / length, a[2] / length])
+}
+
+/// A vector with its part along a unit `normal` removed.
+#[must_use]
+pub fn flattened(a: Point, normal: Point) -> Point {
+    let along = dot(a, normal);
+    [
+        a[0] - normal[0] * along,
+        a[1] - normal[1] * along,
+        a[2] - normal[2] * along,
+    ]
+}
+
+/// A change that keeps shapes the same: a turn, a mirror image or an even change of size, about a
+/// point. Circles stay circles under all of these.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Similarity {
+    origin: Point,
+    rows: [Point; 3],
+    scale: f64,
+}
+
+impl Similarity {
+    /// A turn by `angle` radians about a line through `origin` along the unit vector `axis`,
+    /// by the Rodrigues rotation formula.
+    #[must_use]
+    pub fn rotation(origin: Point, axis: Point, angle: f64) -> Self {
+        let (sin, cos) = angle.sin_cos();
+        let [x, y, z] = axis;
+        let rest = 1.0 - cos;
+        Self {
+            origin,
+            rows: [
+                [
+                    cos + x * x * rest,
+                    x * y * rest - z * sin,
+                    x * z * rest + y * sin,
+                ],
+                [
+                    y * x * rest + z * sin,
+                    cos + y * y * rest,
+                    y * z * rest - x * sin,
+                ],
+                [
+                    z * x * rest - y * sin,
+                    z * y * rest + x * sin,
+                    cos + z * z * rest,
+                ],
+            ],
+            scale: 1.0,
+        }
+    }
+
+    /// An even change of size about `origin`.
+    #[must_use]
+    pub fn scaling(origin: Point, factor: f64) -> Self {
+        Self {
+            origin,
+            rows: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+            scale: factor,
+        }
+    }
+
+    /// A mirror image in the plane through `origin` facing along the unit vector `normal`.
+    #[must_use]
+    pub fn mirror(origin: Point, normal: Point) -> Self {
+        let row = |i: usize| {
+            let across = |j: usize| f64::from(u8::from(i == j)) - 2.0 * normal[i] * normal[j];
+            [across(0), across(1), across(2)]
+        };
+        Self {
+            origin,
+            rows: [row(0), row(1), row(2)],
+            scale: 1.0,
+        }
+    }
+
+    /// Where a direction goes. Its length does not change.
+    fn direction(&self, v: Point) -> Point {
+        self.rows.map(|row| dot(row, v))
+    }
+
+    /// Where a point goes.
+    #[must_use]
+    pub fn point(&self, p: Point) -> Point {
+        let turned = self.direction(sub(p, self.origin));
+        [
+            self.origin[0] + turned[0] * self.scale,
+            self.origin[1] + turned[1] * self.scale,
+            self.origin[2] + turned[2] * self.scale,
+        ]
+    }
+}
+
 impl Curve {
     /// A line between two different points.
     pub fn line(start: Point, end: Point) -> Result<Self, KernelError> {
@@ -163,6 +299,81 @@ impl Curve {
         })
     }
 
+    /// An arc about `centre` on the plane of two directions, from `start` counterclockwise to
+    /// the direction of `end`. Its radius comes from `start`.
+    pub fn arc(
+        centre: Point,
+        start: Point,
+        end: Point,
+        plane_x: Point,
+        plane_y: Point,
+    ) -> Result<Self, KernelError> {
+        let bad = || KernelError("those points do not make an arc".to_owned());
+        let normal = unit(cross(plane_x, plane_y)).ok_or_else(bad)?;
+        let from_centre = flattened(sub(start, centre), normal);
+        let x = unit(from_centre).ok_or_else(bad)?;
+        let y = cross(normal, x);
+        let to_end = unit(flattened(sub(end, centre), normal)).ok_or_else(bad)?;
+        let mut sweep = dot(to_end, y).atan2(dot(to_end, x));
+        if sweep < 0.0 {
+            sweep += TAU;
+        }
+        if !(ANGLE_TOLERANCE..=TAU - ANGLE_TOLERANCE).contains(&sweep) {
+            return Err(bad());
+        }
+        Ok(Self::Arc {
+            centre,
+            radius: dot(from_centre, from_centre).sqrt(),
+            x,
+            y,
+            sweep,
+        })
+    }
+
+    /// The same curve turned, mirrored or resized.
+    #[must_use]
+    pub fn mapped(&self, change: &Similarity) -> Self {
+        let many = |list: &[Point]| list.iter().map(|p| change.point(*p)).collect();
+        match self {
+            Self::Line { start, end } => Self::Line {
+                start: change.point(*start),
+                end: change.point(*end),
+            },
+            Self::Polyline { points, closed } => Self::Polyline {
+                points: many(points),
+                closed: *closed,
+            },
+            Self::Circle {
+                centre,
+                radius,
+                x,
+                y,
+            } => Self::Circle {
+                centre: change.point(*centre),
+                radius: radius * change.scale,
+                x: change.direction(*x),
+                y: change.direction(*y),
+            },
+            Self::Arc {
+                centre,
+                radius,
+                x,
+                y,
+                sweep,
+            } => Self::Arc {
+                centre: change.point(*centre),
+                radius: radius * change.scale,
+                x: change.direction(*x),
+                y: change.direction(*y),
+                sweep: *sweep,
+            },
+            Self::Interpolated { points, closed } => Self::Interpolated {
+                points: many(points),
+                closed: *closed,
+            },
+        }
+    }
+
     /// A smooth curve through the points, checked by building it now.
     pub fn interpolated(points: Vec<Point>, closed: bool) -> Result<Self, KernelError> {
         if points.len() < 2 {
@@ -182,6 +393,7 @@ impl Curve {
                 .map(|pair| gap(pair[0], pair[1]))
                 .sum(),
             Self::Circle { radius, .. } => TAU * radius,
+            Self::Arc { radius, sweep, .. } => radius * sweep,
             Self::Interpolated { points, closed } => {
                 let kernel = Kernel::default();
                 let curve = spline(points, *closed)?;
@@ -216,6 +428,23 @@ impl Curve {
                     [around(0), around(1), around(2)]
                 })
                 .collect(),
+            Self::Arc {
+                centre,
+                radius,
+                x,
+                y,
+                sweep,
+            } => {
+                let steps = ((CIRCLE_SAMPLES as f64 * sweep / TAU).ceil() as usize).max(2);
+                (0..=steps)
+                    .map(|step| {
+                        let angle = sweep * step as f64 / steps as f64;
+                        let (cos, sin) = (angle.cos() * radius, angle.sin() * radius);
+                        let around = |axis: usize| centre[axis] + x[axis] * cos + y[axis] * sin;
+                        [around(0), around(1), around(2)]
+                    })
+                    .collect()
+            }
             Self::Interpolated { points, closed } => {
                 let kernel = Kernel::default();
                 let curve = spline(points, *closed)?;
@@ -269,6 +498,19 @@ impl Curve {
                 radius: *radius,
                 x: *x,
                 y: *y,
+            },
+            Self::Arc {
+                centre,
+                radius,
+                x,
+                y,
+                sweep,
+            } => Self::Arc {
+                centre: shifted(*centre, by),
+                radius: *radius,
+                x: *x,
+                y: *y,
+                sweep: *sweep,
             },
             Self::Interpolated { points, closed } => Self::Interpolated {
                 points: moved(points),
@@ -328,6 +570,108 @@ mod tests {
         let text = r#"{"Circle":{"centre":[1.0,2.0,0.0],"radius":4.0}}"#;
         let circle: Curve = serde_json::from_str(text).unwrap();
         assert_eq!(circle, Curve::circle([1.0, 2.0, 0.0], 4.0).unwrap());
+    }
+
+    fn points_near(a: Point, b: Point) -> bool {
+        gap(a, b) < CLOSE
+    }
+
+    const X: Point = [1.0, 0.0, 0.0];
+    const Y: Point = [0.0, 1.0, 0.0];
+    const Z: Point = [0.0, 0.0, 1.0];
+
+    #[test]
+    fn a_rotation_turns_counterclockwise() {
+        let turn = Similarity::rotation([0.0; 3], Z, std::f64::consts::FRAC_PI_2);
+        assert!(points_near(turn.point([1.0, 0.0, 5.0]), [0.0, 1.0, 5.0]));
+    }
+
+    #[test]
+    fn a_rotation_is_about_its_origin() {
+        let turn = Similarity::rotation([2.0, 0.0, 0.0], Z, std::f64::consts::PI);
+        assert!(points_near(turn.point([3.0, 0.0, 0.0]), [1.0, 0.0, 0.0]));
+    }
+
+    #[test]
+    fn scaling_is_about_its_origin() {
+        let bigger = Similarity::scaling([1.0, 1.0, 1.0], 3.0);
+        assert!(points_near(bigger.point([2.0, 1.0, 1.0]), [4.0, 1.0, 1.0]));
+    }
+
+    #[test]
+    fn a_mirror_reflects_across_its_plane() {
+        let mirror = Similarity::mirror([5.0, 0.0, 0.0], X);
+        assert!(points_near(mirror.point([3.0, 7.0, 1.0]), [7.0, 7.0, 1.0]));
+    }
+
+    #[test]
+    fn scaling_a_circle_scales_its_radius_only() {
+        let circle = Curve::circle([2.0, 0.0, 0.0], 3.0).unwrap();
+        let bigger = circle.mapped(&Similarity::scaling([0.0; 3], 2.0));
+        assert_eq!(bigger, Curve::circle([4.0, 0.0, 0.0], 6.0).unwrap());
+    }
+
+    #[test]
+    fn turning_a_flat_circle_on_edge_keeps_it_a_circle() {
+        let circle = Curve::circle([0.0; 3], 3.0).unwrap();
+        let turned = circle.mapped(&Similarity::rotation(
+            [0.0; 3],
+            X,
+            std::f64::consts::FRAC_PI_2,
+        ));
+        for point in turned.sample().unwrap() {
+            assert!(point[1].abs() < CLOSE);
+            assert!(near(point[0].hypot(point[2]), 3.0));
+        }
+    }
+
+    #[test]
+    fn an_arc_goes_counterclockwise_from_start_to_end() {
+        let arc = Curve::arc([0.0; 3], [5.0, 0.0, 0.0], [0.0, 9.0, 0.0], X, Y).unwrap();
+        assert!(near(
+            arc.length().unwrap(),
+            5.0 * std::f64::consts::FRAC_PI_2
+        ));
+        let points = arc.sample().unwrap();
+        assert!(points_near(points[0], [5.0, 0.0, 0.0]));
+        assert!(points_near(*points.last().unwrap(), [0.0, 5.0, 0.0]));
+    }
+
+    #[test]
+    fn an_arc_can_turn_past_half_way() {
+        let arc = Curve::arc([0.0; 3], [5.0, 0.0, 0.0], [0.0, -1.0, 0.0], X, Y).unwrap();
+        assert!(near(
+            arc.length().unwrap(),
+            5.0 * 3.0 * std::f64::consts::FRAC_PI_2
+        ));
+    }
+
+    #[test]
+    fn an_arc_lies_on_its_plane() {
+        let arc = Curve::arc([0.0; 3], [5.0, 0.0, 0.0], [0.0, 0.0, 5.0], X, Z).unwrap();
+        assert!(arc.sample().unwrap().iter().all(|p| p[1].abs() < CLOSE));
+    }
+
+    #[test]
+    fn an_arc_needs_a_real_radius_and_turn() {
+        assert!(Curve::arc([0.0; 3], [0.0; 3], [1.0, 0.0, 0.0], X, Y).is_err());
+        assert!(Curve::arc([0.0; 3], [5.0, 0.0, 0.0], [9.0, 0.0, 0.0], X, Y).is_err());
+    }
+
+    #[test]
+    fn mirroring_an_arc_keeps_its_ends_mirrored() {
+        let arc = Curve::arc([0.0; 3], [5.0, 0.0, 0.0], [0.0, 5.0, 0.0], X, Y).unwrap();
+        let mirrored = arc.mapped(&Similarity::mirror([0.0; 3], X));
+        let points = mirrored.sample().unwrap();
+        assert!(points_near(points[0], [-5.0, 0.0, 0.0]));
+        assert!(points_near(*points.last().unwrap(), [0.0, 5.0, 0.0]));
+    }
+
+    #[test]
+    fn moving_an_arc_keeps_its_shape() {
+        let arc = Curve::arc([0.0; 3], [5.0, 0.0, 0.0], [0.0, 5.0, 0.0], X, Y).unwrap();
+        let moved = arc.translated([1.0, 0.0, 0.0]);
+        assert!(points_near(moved.sample().unwrap()[0], [6.0, 0.0, 0.0]));
     }
     #[test]
     fn line_length_is_exact() {

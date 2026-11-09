@@ -1,5 +1,6 @@
 //! The list of commands, and the steps several of them share. One command per file.
 
+mod arc;
 mod circle;
 mod copy;
 mod delete;
@@ -7,14 +8,18 @@ mod four_view;
 mod front;
 mod interpcrv;
 mod line;
+mod mirror;
 mod move_objects;
 mod new;
 mod open;
 mod perspective;
 mod polyline;
+mod rectangle;
 mod redo;
 mod right;
+mod rotate;
 mod save;
+mod scale;
 mod top;
 mod undo;
 mod zoom_extents;
@@ -49,7 +54,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 18] = [
+pub static COMMANDS: [CommandDef; 23] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -62,6 +67,11 @@ pub static COMMANDS: [CommandDef; 18] = [
     listed!("Circle", ["c", "ci"], true, true, circle::Circle),
     listed!("Move", ["m"], true, true, move_objects::MoveObjects),
     listed!("Copy", ["co", "cp"], true, true, copy::CopyObjects),
+    listed!("Rotate", ["ro"], true, true, rotate::Rotate),
+    listed!("Scale", ["sc"], true, true, scale::Scale),
+    listed!("Mirror", ["mi"], true, true, mirror::Mirror),
+    listed!("Arc", ["a"], true, true, arc::Arc),
+    listed!("Rectangle", ["rec"], true, true, rectangle::Rectangle),
     listed!("Delete", ["del", "erase"], false, true, delete::Delete),
     listed!("Undo", [], false, false, undo::Undo),
     listed!("Redo", [], false, false, redo::Redo),
@@ -137,6 +147,19 @@ fn ask_point(key: &'static str, preview: Vec<Point>) -> Step {
         preview,
         ..Request::new(key, Kind::Point)
     })
+}
+
+fn ask_point_or_number(key: &'static str, preview: Vec<Point>) -> Step {
+    Step::Ask(Request {
+        preview,
+        ..Request::new(key, Kind::PointOrNumber)
+    })
+}
+
+/// The direction straight out of the plane being drawn on.
+fn plane_normal(doc: &curva_document::Document) -> Point {
+    let [x, y] = doc.work_plane();
+    curva_kernel::cross(x, y)
 }
 
 fn ask_objects(key: &'static str) -> Step {

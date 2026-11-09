@@ -142,6 +142,14 @@ pub(crate) fn sites_of(curve: &Curve, points: &[Point]) -> Vec<Site> {
             )
             .collect(),
         Curve::Circle { centre, .. } => vec![site(SnapKind::Center, *centre)],
+        Curve::Arc { centre, .. } => points
+            .first()
+            .into_iter()
+            .chain(points.last())
+            .map(|p| site(SnapKind::End, *p))
+            .chain(half_way(points).map(|p| site(SnapKind::Mid, p)))
+            .chain(std::iter::once(site(SnapKind::Center, *centre)))
+            .collect(),
         Curve::Interpolated { closed, .. } => {
             let ends = points
                 .first()
@@ -593,6 +601,29 @@ mod tests {
         assert_eq!(hit.point, centre);
     }
 
+    fn quarter_arc() -> Outlines {
+        let x = [1.0, 0.0, 0.0];
+        let y = [0.0, 1.0, 0.0];
+        outlines(vec![
+            Curve::arc([0.0; 3], [20.0, 0.0, 0.0], [0.0, 20.0, 0.0], x, y).unwrap(),
+        ])
+    }
+
+    #[test]
+    fn an_arc_can_be_snapped_to_at_its_end_centre_and_middle() {
+        let shapes = quarter_arc();
+        let end = snap_by(&shapes, [0.0, 20.0, 0.0], only(SnapKind::End), None).unwrap();
+        assert!(close(end.point, [0.0, 20.0, 0.0]), "{:?}", end.point);
+        let centre = snap_by(&shapes, [0.0; 3], only(SnapKind::Center), None).unwrap();
+        assert_eq!(centre.point, [0.0; 3]);
+        let half = 20.0 * std::f64::consts::FRAC_PI_4.cos();
+        let middle = snap_by(&shapes, [half, half, 0.0], only(SnapKind::Mid), None).unwrap();
+        assert!(
+            length(sub(middle.point, [half, half, 0.0])) < 1e-3,
+            "{:?}",
+            middle.point
+        );
+    }
     #[test]
     fn intersection_finds_where_two_lines_cross() {
         let shapes = outlines(vec![
