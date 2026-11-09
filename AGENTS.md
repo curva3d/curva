@@ -81,6 +81,14 @@ does not read code.
 - **Flaky tests are quarantined, not retried:** move them to the quarantine list and open an issue.
 - When a session's time or budget runs out, hand over with notes in `STATUS.md`.
 
+## Keep going (owner's rule, 9 November 2026)
+
+- **Do not ask the owner whether to continue.** When a piece of work is merged and the next one is
+  already planned, say what happened in a line or two and start it.
+- **Stop only for a real decision** (see "What only the owner decides"), or when blocked. Ask then,
+  with a recommendation.
+- Owner feedback can arrive at any time. Fix it first if it is small, then carry on.
+
 ## What only the owner decides
 
 Product and interface behaviour, spec approval, architecture decisions, anything that weakens a

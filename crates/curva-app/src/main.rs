@@ -531,8 +531,10 @@ impl Curva {
 
     fn takes_position(&self) -> bool {
         self.processor.current_request().is_some_and(|request| {
-            matches!(request.kind, Kind::Point | Kind::PointOrNumber)
-                || (request.kind == Kind::Number && request.from.is_some())
+            matches!(
+                request.kind,
+                Kind::Point | Kind::PointOrNumber | Kind::PickPart
+            ) || (request.kind == Kind::Number && request.from.is_some())
         })
     }
 
@@ -548,6 +550,11 @@ impl Curva {
     ) -> Option<(Point, Option<SnapHit>)> {
         let (shift, alt) = ui.input(|input| (input.modifiers.shift, input.modifiers.alt));
         let request = self.processor.current_request()?;
+        if request.kind == Kind::PickPart {
+            let camera = &self.panes[pane].camera;
+            let on = self.outlines.pick_point(camera, screen, size, PICK_REACH)?;
+            return Some((on, None));
+        }
         let base = request.preview.last().copied().or(request.from);
         let camera = &self.panes[pane].camera;
         if !alt

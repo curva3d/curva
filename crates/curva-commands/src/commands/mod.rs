@@ -23,7 +23,9 @@ mod right;
 mod rotate;
 mod save;
 mod scale;
+mod split;
 mod top;
+mod trim;
 mod undo;
 mod zoom_extents;
 
@@ -57,7 +59,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 26] = [
+pub static COMMANDS: [CommandDef; 28] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -76,6 +78,8 @@ pub static COMMANDS: [CommandDef; 26] = [
     listed!("Array", ["ar"], true, true, array::Array),
     listed!("Join", ["j"], true, true, join::Join),
     listed!("Explode", ["x"], true, true, explode::Explode),
+    listed!("Split", [], true, true, split::Split),
+    listed!("Trim", ["tr"], true, true, trim::Trim),
     listed!("Arc", ["a"], true, true, arc::Arc),
     listed!("Rectangle", ["rec"], true, true, rectangle::Rectangle),
     listed!("Delete", ["del", "erase"], false, true, delete::Delete),
@@ -192,6 +196,28 @@ fn ghosts(
         .collect()
 }
 
+/// The curves of chosen objects, with their ids.
+fn curves_of(doc: &curva_document::Document, ids: &[u64]) -> Vec<(u64, curva_kernel::Curve)> {
+    doc.state()
+        .objects
+        .iter()
+        .filter(|object| ids.contains(&object.id))
+        .map(|object| (object.id, object.curve.clone()))
+        .collect()
+}
+
+/// A curve in pieces, cut wherever it crosses the cutters.
+fn cut_by(
+    curve: &curva_kernel::Curve,
+    cutters: &[curva_kernel::Curve],
+) -> Result<Vec<curva_kernel::Curve>, KernelError> {
+    let mut points = Vec::new();
+    for cutter in cutters {
+        points.extend(curva_kernel::crossings(curve, cutter)?);
+    }
+    curve.cut_at(&points)
+}
+
 fn ask_objects(key: &'static str) -> Step {
     Step::Ask(Request::new(key, Kind::Objects))
 }
@@ -289,15 +315,19 @@ mod tests {
         ("Array", &["3", "1", "1"]),
     ];
 
-    /// Delete, Join and Explode have nothing to preview: their targets are already highlighted, and these
+    /// Delete, Join, Explode and Split have nothing to preview: their targets are already highlighted, and these
     /// leave the shape unchanged. They also finish at once when objects are selected.
-    const NOTHING_TO_PREVIEW: [&str; 3] = ["Delete", "Join", "Explode"];
+    const NOTHING_TO_PREVIEW: [&str; 4] = ["Delete", "Join", "Explode", "Split"];
+
+    /// Commands whose preview needs its own setup, tested in their own files.
+    const PREVIEW_TESTED_ELSEWHERE: [&str; 1] = ["Trim"];
 
     #[test]
     fn every_command_that_changes_geometry_is_listed_for_a_preview() {
         for def in COMMANDS.iter().filter(|def| def.records_undo) {
             assert!(
                 NOTHING_TO_PREVIEW.contains(&def.name)
+                    || PREVIEW_TESTED_ELSEWHERE.contains(&def.name)
                     || PREVIEW_STEPS.iter().any(|(name, _)| *name == def.name),
                 "{} changes geometry but has no preview listed",
                 def.name
