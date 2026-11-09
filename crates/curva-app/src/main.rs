@@ -2,13 +2,15 @@
 //!
 //! `curva --picture out.png --run "line;0,0;50,20"` runs commands without a window and saves a
 //! picture of the viewport, which is how automatic runs check the drawing.
-//! `curva --mcp` runs as an MCP server for AI agents, on standard input and output.
+//! `curva --mcp` runs as an MCP server for AI agents, on standard input and output, on a model of
+//! its own. `curva --mcp --connect` connects an agent to the window that is open instead.
 //! `curva --orbit-benchmark --curves 5000` opens the window on a scene of that many circles, spins
 //! the view and prints how fast it drew and snapped.
 
 use curva_commands::{Kind, Message, Processor, Translations, ViewName, ViewRequest};
 use curva_document::{Document, State};
 use curva_kernel::{Curve, Point};
+use curva_mcp::Session;
 use curva_viewport::{
     CPlane, Camera, Drawing, Gumball, GumballChange, Handle, LineRenderer, Outlines, SnapHit,
     SnapKind, SnapSet, StandardView, VIEW_SLOTS, constrained, ghost_lines, grid_lines,
@@ -66,6 +68,9 @@ struct Curva {
     maximised: Option<usize>,
     gumball_on: bool,
     naming_layer: bool,
+    agent_on: bool,
+    agent: Option<curva_mcp::Listener>,
+    waiting_approval: Option<(curva_mcp::AgentRequest, String)>,
     gumball_drag: Option<GumballDrag>,
     snaps: SnapSet,
     ortho: bool,
@@ -371,6 +376,9 @@ impl Curva {
             maximised: STARTING_LAYOUT,
             gumball_on: true,
             naming_layer: false,
+            agent_on: false,
+            agent: None,
+            waiting_approval: None,
             gumball_drag: None,
             snaps: SnapSet::default(),
             ortho: false,
@@ -489,6 +497,7 @@ impl Curva {
         let snaps = &mut self.snaps;
         let (ortho, grid_snap) = (&mut self.ortho, &mut self.grid_snap);
         let gumball_on = &mut self.gumball_on;
+        let agent_on = &mut self.agent_on;
         ui.horizontal(|ui| {
             tick(ui, &mut snaps.end, snap_label(SnapKind::End));
             tick(ui, &mut snaps.mid, snap_label(SnapKind::Mid));
@@ -508,6 +517,7 @@ impl Curva {
             tick(ui, ortho, "ui.ortho");
             tick(ui, grid_snap, "ui.grid_snap");
             tick(ui, gumball_on, "ui.gumball");
+            tick(ui, agent_on, "ui.agent");
         });
     }
 
@@ -940,6 +950,85 @@ impl Curva {
         }
     }
 
+    /// Starts or stops listening to match the checkbox.
+    fn keep_agent_link(&mut self, ctx: &egui::Context) {
+        if self.agent_on && self.agent.is_none() {
+            let waker = ctx.clone();
+            match curva_mcp::listen(move || waker.request_repaint()) {
+                Ok(listener) => self.agent = Some(listener),
+                Err(error) => {
+                    self.agent_on = false;
+                    self.processor.note(error.to_string());
+                }
+            }
+        } else if !self.agent_on {
+            self.agent = None;
+            self.waiting_approval = None;
+        }
+    }
+
+    fn answer_agent(&mut self, request: &curva_mcp::AgentRequest) {
+        let answer =
+            Session::new(&mut self.doc, &mut self.processor, mcp_picture).handle(&request.message);
+        // A client that has gone away no longer needs its answer.
+        let _ = request.answer.send(answer);
+    }
+
+    /// Answers what agents have asked, stopping at anything the user must approve first.
+    fn serve_agents(&mut self) {
+        while self.waiting_approval.is_none() {
+            let Some(request) = self
+                .agent
+                .as_ref()
+                .and_then(|agent| agent.requests.try_recv().ok())
+            else {
+                return;
+            };
+            if let Some(line) = curva_mcp::needs_approval(&request.message) {
+                self.waiting_approval = Some((request, line));
+            } else {
+                self.answer_agent(&request);
+            }
+        }
+    }
+
+    /// Asks the user about an action an agent wants to take.
+    fn approval_window(&mut self, ui: &egui::Ui) {
+        let Some((_, line)) = &self.waiting_approval else {
+            return;
+        };
+        let question = self
+            .text
+            .render(&Message::with("ui.agent.approve", vec![line.clone()]));
+        let (allow_text, decline_text) = (
+            self.text.render(&Message::new("ui.agent.allow")),
+            self.text.render(&Message::new("ui.agent.decline")),
+        );
+        let (mut allow, mut decline) = (false, false);
+        egui::Window::new(self.text.render(&Message::new("ui.agent")))
+            .collapsible(false)
+            .resizable(false)
+            .show(ui.ctx(), |ui| {
+                ui.label(question);
+                ui.horizontal(|ui| {
+                    allow = ui.button(allow_text).clicked();
+                    decline = ui.button(decline_text).clicked();
+                });
+            });
+        if (allow || decline)
+            && let Some((request, _)) = self.waiting_approval.take()
+        {
+            if allow {
+                self.answer_agent(&request);
+            } else {
+                // A client that has gone away no longer needs its answer.
+                let _ = request
+                    .answer
+                    .send(Some(curva_mcp::declined(&request.message)));
+            }
+        }
+    }
+
     /// Tells the document which plane flat objects go on: the last-used viewport's.
     fn share_work_plane(&mut self) {
         let plane = self.panes[self.active].plane;
@@ -1190,6 +1279,9 @@ impl eframe::App for Curva {
             ui.separator();
             self.properties_panel(ui);
         });
+        self.keep_agent_link(ui.ctx());
+        self.serve_agents();
+        self.approval_window(ui);
         self.apply_view_request();
         egui::CentralPanel::default().show(ui, |ui| self.viewports(ui));
         if let Some(benchmark) = &mut self.benchmark {
@@ -1274,6 +1366,9 @@ fn main() -> Result<(), String> {
             .and_then(|index| arguments.get(index + 1))
     };
     if arguments.iter().any(|argument| argument == "--mcp") {
+        if arguments.iter().any(|argument| argument == "--connect") {
+            return curva_mcp::bridge_to_window();
+        }
         let mut server = curva_mcp::Server::new(mcp_picture);
         return server
             .serve(std::io::stdin().lock(), std::io::stdout().lock())

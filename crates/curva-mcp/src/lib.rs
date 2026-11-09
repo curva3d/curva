@@ -4,10 +4,15 @@
 //! input or output of its own, so every tool can be checked without a real client.
 
 use curva_commands::Processor;
+use curva_commands::commands::resolve;
 use curva_document::Document;
 use curva_kernel::Curve;
 use serde_json::{Value, json};
 use std::io::{BufRead, Write};
+
+mod live;
+
+pub use live::{AgentRequest, Listener, bridge_to_window, listen};
 
 const PROTOCOL_VERSION: &str = "2025-06-18";
 const METHOD_NOT_FOUND: i64 = -32601;
@@ -16,6 +21,13 @@ const BASE64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz
 
 /// Draws the model and returns a PNG file's bytes.
 pub type Renderer = fn(&Document) -> Result<Vec<u8>, String>;
+
+/// A request working on a model lent to it.
+pub struct Session<'a> {
+    doc: &'a mut Document,
+    processor: &'a mut Processor,
+    renderer: Renderer,
+}
 
 /// A model being worked on by an agent.
 pub struct Server {
@@ -102,13 +114,12 @@ fn tools() -> Value {
     ])
 }
 
-impl Server {
-    /// A server on an empty model.
-    #[must_use]
-    pub fn new(renderer: Renderer) -> Self {
+impl<'a> Session<'a> {
+    /// Lends a model to an agent's request.
+    pub fn new(doc: &'a mut Document, processor: &'a mut Processor, renderer: Renderer) -> Self {
         Self {
-            doc: Document::default(),
-            processor: Processor::default(),
+            doc,
+            processor,
             renderer,
         }
     }
@@ -126,7 +137,7 @@ impl Server {
         let mark = self.doc.undo_mark();
         let before = self.doc.state().clone();
         for line in lines {
-            self.processor.submit(&mut self.doc, line);
+            self.processor.submit(self.doc, line);
         }
         self.doc.squash_undo(mark, before);
         let mut said = self.processor.log()[from..].join("\n");
@@ -196,7 +207,7 @@ impl Server {
     }
 
     fn render_view(&self) -> Result<Value, String> {
-        let png = (self.renderer)(&self.doc)?;
+        let png = (self.renderer)(self.doc)?;
         Ok(json!({
             "content": [{ "type": "image", "data": base64(&png), "mimeType": "image/png" }]
         }))
@@ -244,6 +255,61 @@ impl Server {
             }
         };
         Some(json!({ "jsonrpc": "2.0", "id": id, "result": result }))
+    }
+}
+
+/// The commands that an agent cannot run on the open window without the user's say-so.
+const NEEDS_APPROVAL: [&str; 4] = ["Delete", "New", "Open", "Save"];
+
+/// If this message would do something the user should approve first, the line that would do it.
+#[must_use]
+pub fn needs_approval(message: &Value) -> Option<String> {
+    if message.get("method").and_then(Value::as_str) != Some("tools/call") {
+        return None;
+    }
+    let params = message.get("params")?;
+    if params.get("name").and_then(Value::as_str) != Some("run_commands") {
+        return None;
+    }
+    params
+        .get("arguments")?
+        .get("lines")?
+        .as_array()?
+        .iter()
+        .filter_map(Value::as_str)
+        .find(|line| resolve(line.trim()).is_some_and(|def| NEEDS_APPROVAL.contains(&def.name)))
+        .map(str::to_owned)
+}
+
+/// The answer to a message the user declined.
+#[must_use]
+pub fn declined(message: &Value) -> Value {
+    json!({
+        "jsonrpc": "2.0",
+        "id": message.get("id").cloned().unwrap_or(Value::Null),
+        "result": tool_error("The user declined this action."),
+    })
+}
+
+impl Server {
+    /// A server on an empty model.
+    #[must_use]
+    pub fn new(renderer: Renderer) -> Self {
+        Self {
+            doc: Document::default(),
+            processor: Processor::default(),
+            renderer,
+        }
+    }
+
+    /// Answers one message. Notifications have no answer.
+    pub fn handle(&mut self, message: &Value) -> Option<Value> {
+        Session {
+            doc: &mut self.doc,
+            processor: &mut self.processor,
+            renderer: self.renderer,
+        }
+        .handle(message)
     }
 
     /// Answers messages from `input`, one per line, until it ends.
@@ -406,6 +472,57 @@ mod tests {
         assert_eq!(listed[0]["current"], true);
     }
 
+    fn run_message(lines: Value) -> Value {
+        json!({
+            "jsonrpc": "2.0", "id": 4, "method": "tools/call",
+            "params": { "name": "run_commands", "arguments": { "lines": lines } },
+        })
+    }
+
+    #[test]
+    fn destructive_commands_need_approval() {
+        for line in ["delete", "del", "NEW", "open", "save"] {
+            assert_eq!(
+                needs_approval(&run_message(json!([line]))).as_deref(),
+                Some(line)
+            );
+        }
+    }
+
+    #[test]
+    fn a_destructive_command_is_found_among_others() {
+        let message = run_message(json!(["line", "0,0", "1,0", "delete"]));
+        assert_eq!(needs_approval(&message).as_deref(), Some("delete"));
+    }
+
+    #[test]
+    fn ordinary_commands_and_reading_need_no_approval() {
+        assert_eq!(
+            needs_approval(&run_message(json!(["line", "0,0", "1,0"]))),
+            None
+        );
+        let listing = json!({
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": { "name": "list_objects", "arguments": {} },
+        });
+        assert_eq!(needs_approval(&listing), None);
+    }
+
+    #[test]
+    fn a_declined_action_is_reported_as_a_tool_error_with_its_id() {
+        let answer = declined(&run_message(json!(["delete"])));
+        assert_eq!(answer["id"], 4);
+        assert_eq!(answer["result"]["isError"], true);
+    }
+
+    #[test]
+    fn a_session_works_on_a_document_it_is_lent() {
+        let mut doc = Document::default();
+        let mut processor = Processor::default();
+        let mut session = Session::new(&mut doc, &mut processor, fake_picture);
+        session.handle(&run_message(json!(["line", "0,0", "1,0"])));
+        assert_eq!(doc.state().objects.len(), 1);
+    }
     #[test]
     fn base64_pads_correctly() {
         assert_eq!(base64(b"M"), "TQ==");
