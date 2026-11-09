@@ -1,9 +1,9 @@
 //! `Circle`: a circle from its centre and radius.
 
-use super::{ask_point, geometry_failed, unexpected};
-use crate::{Answer, Command, Kind, Message, Request, Step};
+use super::{ask_point, geometry_failed, guide, unexpected};
+use crate::{Answer, Command, Kind, Live, Message, Request, Step};
 use curva_document::Document;
-use curva_kernel::{Curve, Point};
+use curva_kernel::{Curve, Point, dot, sub};
 
 /// The running command.
 #[derive(Default)]
@@ -37,6 +37,23 @@ impl Command for Circle {
             }
             _ => unexpected(),
         }
+    }
+
+    fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
+        let Some(centre) = self.centre else {
+            return Vec::new();
+        };
+        let [x, y] = self.plane.unwrap_or_else(|| doc.work_plane());
+        let reach = |at: Point| dot(sub(at, centre), sub(at, centre)).sqrt();
+        let radius = live.number.or(live.cursor.map(reach));
+        let mut shown: Vec<Curve> = radius
+            .and_then(|radius| Curve::circle_on(centre, radius, x, y).ok())
+            .into_iter()
+            .collect();
+        if let Some(cursor) = live.cursor {
+            shown.extend(guide(centre, cursor));
+        }
+        shown
     }
 }
 

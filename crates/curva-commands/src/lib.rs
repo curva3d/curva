@@ -6,7 +6,7 @@ mod processor;
 mod text;
 
 use curva_document::Document;
-use curva_kernel::Point;
+use curva_kernel::{Curve, Point};
 
 pub use processor::Processor;
 pub use text::Translations;
@@ -137,8 +137,23 @@ pub enum ViewRequest {
     Show(ViewName),
 }
 
+/// What a preview can follow while a command waits for its next answer.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Live {
+    /// Where the next click would land, if the cursor is over a viewport.
+    pub cursor: Option<Point>,
+    /// The number typed so far on the command line, if it is one.
+    pub number: Option<f64>,
+}
+
 /// A running command.
 pub trait Command {
     /// Advances the command. The first call has no answer.
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step;
+
+    /// The curves to show while waiting for the next answer: the result so far and any
+    /// construction lines. It must not change anything.
+    fn preview(&self, _doc: &Document, _live: &Live) -> Vec<Curve> {
+        Vec::new()
+    }
 }

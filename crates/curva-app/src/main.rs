@@ -10,7 +10,7 @@ use curva_document::{Document, State};
 use curva_kernel::{Curve, Point};
 use curva_viewport::{
     Camera, Drawing, LineRenderer, Outlines, SnapHit, SnapKind, SnapSet, StandardView, VIEW_SLOTS,
-    constrained, grid_lines, object_lines, preview_lines, save_picture, scene_lines,
+    constrained, ghost_lines, grid_lines, object_lines, save_picture, scene_lines,
 };
 use eframe::egui;
 use std::sync::Arc;
@@ -755,11 +755,7 @@ impl Curva {
             }
         });
         let cursor = aimed.map(|(at, _)| at);
-        let preview = self
-            .processor
-            .current_request()
-            .map(|request| preview_lines(&request.preview, cursor))
-            .unwrap_or_default();
+        let preview = ghost_lines(&self.processor.preview(&self.doc, cursor, &self.typed));
         let overlay = Arc::new(preview);
         for (pane, rect, _) in &shown {
             let size = pane_size(*rect);

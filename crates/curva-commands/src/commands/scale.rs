@@ -1,9 +1,9 @@
 //! `Scale`: resizes objects evenly about a point.
 
-use super::{ask_objects, ask_point, ask_point_or_number, unexpected};
-use crate::{Answer, Command, Message, Step};
+use super::{ask_objects, ask_point, ask_point_or_number, ghosts, guide, unexpected};
+use crate::{Answer, Command, Live, Message, Step};
 use curva_document::Document;
-use curva_kernel::{Point, Similarity, dot, sub};
+use curva_kernel::{Curve, Point, Similarity, dot, sub};
 
 /// Smallest size change treated as real.
 const SMALLEST_FACTOR: f64 = 1e-9;
@@ -14,6 +14,15 @@ pub struct Scale {
     ids: Option<Vec<u64>>,
     origin: Option<Point>,
     first: Option<Point>,
+}
+
+/// How much further `second` is from `origin` than `first` is.
+fn ratio(origin: Point, first: Point, second: Point) -> f64 {
+    let reach = |p: Point| {
+        let offset = sub(p, origin);
+        dot(offset, offset).sqrt()
+    };
+    reach(second) / reach(first)
 }
 
 impl Scale {
@@ -55,14 +64,33 @@ impl Command for Scale {
                 ask_point("prompt.scale.second", vec![origin])
             }
             (Some(origin), Some(first), Some(Answer::Point(second))) => {
-                let reach = |p: Point| {
-                    let offset = sub(p, origin);
-                    dot(offset, offset).sqrt()
-                };
-                Self::finish(doc, &ids, origin, reach(second) / reach(first))
+                Self::finish(doc, &ids, origin, ratio(origin, first, second))
             }
             _ => unexpected(),
         }
+    }
+
+    fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
+        let (Some(ids), Some(origin)) = (&self.ids, self.origin) else {
+            return Vec::new();
+        };
+        let factor = match (self.first, live.number, live.cursor) {
+            (None, Some(typed), _) => Some(typed),
+            (Some(first), _, Some(cursor)) => Some(ratio(origin, first, cursor)),
+            _ => None,
+        };
+        let mut shown = Vec::new();
+        if let Some(factor) = factor.filter(|f| f.is_finite() && *f >= SMALLEST_FACTOR) {
+            let change = Similarity::scaling(origin, factor);
+            shown.extend(ghosts(doc, ids, |curve| curve.mapped(&change)));
+        }
+        if let Some(first) = self.first {
+            shown.extend(guide(origin, first));
+        }
+        if let Some(cursor) = live.cursor {
+            shown.extend(guide(origin, cursor));
+        }
+        shown
     }
 }
 

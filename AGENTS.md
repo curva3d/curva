@@ -62,6 +62,17 @@ does not read code.
 - **Specs are approved by the owner in chat.** Note his approval in the pull request.
 - Keep the `Co-authored-by: Claude` line on commits, so the history shows who wrote what.
 
+## Command rules (owner's rule, 9 November 2026)
+
+- **Every command that changes geometry shows a live preview before it commits.** That includes
+  drawing commands and transforms, and following the cursor and typed values. The only exception
+  is a command with no result to show, such as Delete, whose targets are already highlighted.
+- **All previews look the same.** A command returns the curves to preview from
+  `Command::preview`, and the viewport draws every one of them the same way, with
+  `curva_viewport::ghost_lines`. No command chooses its own colour or line style, or draws for itself.
+- **The rule is tested.** A new command that changes geometry must be listed in `PREVIEW_STEPS` in
+  `crates/curva-commands/src/commands/mod.rs`, or the tests fail.
+
 ## When you are stuck
 
 - **Three genuine attempts, then stop.** If the same test still fails, write up what you tried and
