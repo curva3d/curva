@@ -62,8 +62,12 @@ impl Command for Offset {
             Some(Answer::Point(toward)) => match offsets(doc, &ids, distance_of(doc), toward) {
                 Ok(made) => {
                     let count = made.len();
-                    for curve in made {
-                        doc.add(curve);
+                    let layers: Vec<Option<u64>> = curves_of(doc, &ids)
+                        .iter()
+                        .map(|(id, _)| doc.layer_of(*id))
+                        .collect();
+                    for (curve, layer) in made.into_iter().zip(layers) {
+                        doc.add_on(curve, layer);
                     }
                     Step::Done(Some(Message::with("done.offset", vec![count.to_string()])))
                 }

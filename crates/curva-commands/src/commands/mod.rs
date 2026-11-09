@@ -286,6 +286,8 @@ fn run(doc: &mut curva_document::Document, lines: &[&str]) -> crate::Processor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use curva_document::Document;
+    use curva_kernel::Curve;
 
     #[test]
     fn names_and_aliases_ignore_case() {
@@ -475,6 +477,95 @@ mod tests {
                 .preview(&doc, Some([1.0; 3]), "")
                 .is_empty()
         );
+    }
+
+    /// A selected line on a layer that is not the current one.
+    fn line_on_other_layer() -> (Document, u64, u64) {
+        let mut doc = Document::default();
+        let layer = doc.add_layer("Other".to_owned());
+        let id = doc.add(Curve::line([0.0; 3], [10.0, 0.0, 0.0]).unwrap());
+        doc.move_to_layer(&[id], layer);
+        doc.select(&[id]);
+        (doc, id, layer)
+    }
+
+    fn all_on(doc: &Document, layer: u64) -> bool {
+        doc.state()
+            .objects
+            .iter()
+            .all(|object| object.layer == layer)
+    }
+
+    #[test]
+    fn copies_stay_on_the_layer_of_the_original() {
+        let (mut doc, _, layer) = line_on_other_layer();
+        run(&mut doc, &["copy", "0,0", "0,5", ""]);
+        assert_eq!(doc.state().objects.len(), 2);
+        assert!(all_on(&doc, layer));
+    }
+
+    #[test]
+    fn mirrored_and_arrayed_copies_stay_on_the_layer_of_the_original() {
+        let (mut doc, _, layer) = line_on_other_layer();
+        run(&mut doc, &["mirror", "0,0", "10,0"]);
+        assert!(all_on(&doc, layer));
+        let (mut doc, _, layer) = line_on_other_layer();
+        run(&mut doc, &["array", "2", "1", "1", "20"]);
+        assert_eq!(doc.state().objects.len(), 2);
+        assert!(all_on(&doc, layer));
+    }
+
+    #[test]
+    fn offsets_exploded_parts_and_joins_stay_on_the_layer_of_the_original() {
+        let (mut doc, _, layer) = line_on_other_layer();
+        let mut processor = crate::Processor::default();
+        processor.submit(&mut doc, "offset");
+        processor.click(&mut doc, [5.0, 5.0, 0.0]);
+        assert_eq!(doc.state().objects.len(), 2);
+        assert!(all_on(&doc, layer));
+
+        let mut doc = Document::default();
+        let layer = doc.add_layer("Other".to_owned());
+        let path = vec![[0.0; 3], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]];
+        let id = doc.add(Curve::polyline(path, false).unwrap());
+        doc.move_to_layer(&[id], layer);
+        doc.select(&[id]);
+        run(&mut doc, &["explode"]);
+        assert_eq!(doc.state().objects.len(), 2);
+        assert!(all_on(&doc, layer));
+        let ids: Vec<u64> = doc.state().objects.iter().map(|o| o.id).collect();
+        doc.select(&ids);
+        run(&mut doc, &["join"]);
+        assert_eq!(doc.state().objects.len(), 1);
+        assert!(all_on(&doc, layer));
+    }
+
+    #[test]
+    fn cut_pieces_stay_on_the_layer_of_the_original() {
+        let (mut doc, id, layer) = line_on_other_layer();
+        let cutter = doc.add(Curve::line([3.0, -5.0, 0.0], [3.0, 5.0, 0.0]).unwrap());
+        let mut processor = crate::Processor::default();
+        processor.submit(&mut doc, "split");
+        doc.select(&[cutter]);
+        processor.submit(&mut doc, "");
+        let pieces = doc.state().objects.iter().filter(|o| o.id != cutter);
+        assert_eq!(pieces.clone().count(), 2);
+        assert!(pieces.into_iter().all(|o| o.id != id && o.layer == layer));
+    }
+
+    #[test]
+    fn a_fillet_stays_on_the_layer_of_the_first_curve() {
+        let mut doc = Document::default();
+        let layer = doc.add_layer("Other".to_owned());
+        let a = doc.add(Curve::line([0.0; 3], [10.0, 0.0, 0.0]).unwrap());
+        let b = doc.add(Curve::line([10.0, 0.0, 0.0], [10.0, 10.0, 0.0]).unwrap());
+        doc.move_to_layer(&[a, b], layer);
+        let mut processor = crate::Processor::default();
+        processor.submit(&mut doc, "fillet");
+        processor.click(&mut doc, [1.0, 0.0, 0.0]);
+        processor.click(&mut doc, [10.0, 9.0, 0.0]);
+        assert_eq!(doc.state().objects.len(), 3);
+        assert!(all_on(&doc, layer));
     }
     #[test]
     fn completion_offers_matching_names() {

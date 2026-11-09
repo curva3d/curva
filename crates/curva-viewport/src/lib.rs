@@ -20,6 +20,7 @@ const PICK_SEARCH_STEPS: usize = 48;
 const GRID_COLOUR: [f32; 3] = [0.30, 0.31, 0.34];
 const CURVE_COLOUR: [f32; 3] = [0.92, 0.92, 0.95];
 const SELECTED_COLOUR: [f32; 3] = [1.0, 0.85, 0.2];
+const LOCKED_COLOUR: [f32; 3] = [0.45, 0.45, 0.48];
 const PREVIEW_COLOUR: [f32; 3] = [0.45, 0.75, 1.0];
 const X_AXIS_COLOUR: [f32; 3] = [0.85, 0.3, 0.3];
 const Y_AXIS_COLOUR: [f32; 3] = [0.35, 0.8, 0.4];
@@ -40,6 +41,10 @@ pub struct Outlines {
     pub objects: Vec<(u64, Vec<Point>)>,
     /// The fixed places that can be snapped to.
     sites: Vec<snap::Site>,
+    /// The colour of each object, in the same order.
+    colours: Vec<[f32; 3]>,
+    /// Whether each object is locked, in the same order.
+    locked: Vec<bool>,
     /// The box around each object, in the same order, so snapping can skip far-off ones.
     boxes: Vec<(Point, Point)>,
 }
@@ -50,6 +55,10 @@ impl Outlines {
     pub fn of(state: &State) -> Self {
         let mut outlines = Self::default();
         for object in &state.objects {
+            let layer = state.layers.iter().find(|l| l.id == object.layer);
+            if layer.is_some_and(|l| !l.visible) {
+                continue;
+            }
             if let Ok(points) = object.curve.sample() {
                 outlines
                     .sites
@@ -57,6 +66,10 @@ impl Outlines {
                 let first = points.first().copied().unwrap_or_default();
                 let around = snap::box_around(&points).unwrap_or((first, first));
                 outlines.boxes.push(around);
+                outlines
+                    .colours
+                    .push(layer.map_or(CURVE_COLOUR, |l| l.colour));
+                outlines.locked.push(layer.is_some_and(|l| l.locked));
                 outlines.objects.push((object.id, points));
             }
         }
@@ -88,7 +101,7 @@ impl Outlines {
     ) -> Option<Point> {
         let view = camera.projector(size);
         let mut best: Option<(f64, Point, Point)> = None;
-        for (_, points) in &self.objects {
+        for (_, points) in self.selectable() {
             for pair in points.windows(2) {
                 if let (Some(a), Some(b)) = (view.project(pair[0]), view.project(pair[1])) {
                     let distance = to_segment(screen, a, b);
@@ -142,6 +155,15 @@ impl Outlines {
         around.map(|(low, high)| std::array::from_fn(|axis| (low[axis] + high[axis]) / 2.0))
     }
 
+    /// The objects that can be picked: those not on a locked layer.
+    fn selectable(&self) -> impl Iterator<Item = &(u64, Vec<Point>)> {
+        self.objects
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| !self.locked.get(*index).copied().unwrap_or(false))
+            .map(|(_, object)| object)
+    }
+
     /// The object nearest a screen position, if one is within `reach` pixels.
     #[must_use]
     pub fn pick(
@@ -152,7 +174,7 @@ impl Outlines {
         reach: f64,
     ) -> Option<u64> {
         let mut best: Option<(f64, u64)> = None;
-        for (id, points) in &self.objects {
+        for (id, points) in self.selectable() {
             let projected: Vec<Option<[f64; 2]>> =
                 points.iter().map(|p| camera.project(*p, size)).collect();
             for pair in projected.windows(2) {
@@ -183,8 +205,7 @@ impl Outlines {
         let low = [from[0].min(to[0]), from[1].min(to[1])];
         let high = [from[0].max(to[0]), from[1].max(to[1])];
         let window = to[0] >= from[0];
-        self.objects
-            .iter()
+        self.selectable()
             .filter(|(_, points)| {
                 let projected: Vec<Option<[f64; 2]>> =
                     points.iter().map(|p| camera.project(*p, size)).collect();
@@ -316,11 +337,15 @@ pub fn scene_lines(outlines: &Outlines, selected: &[u64]) -> Vec<Vertex> {
 #[must_use]
 pub fn object_lines(outlines: &Outlines, selected: &[u64]) -> Vec<Vertex> {
     let mut out = Vec::new();
-    for (id, points) in &outlines.objects {
+    for (index, (id, points)) in outlines.objects.iter().enumerate() {
         let colour = if selected.contains(id) {
             SELECTED_COLOUR
         } else {
-            CURVE_COLOUR
+            if outlines.locked.get(index).copied().unwrap_or(false) {
+                LOCKED_COLOUR
+            } else {
+                outlines.colours.get(index).copied().unwrap_or(CURVE_COLOUR)
+            }
         };
         polyline(&mut out, points, colour);
     }
@@ -391,6 +416,58 @@ mod tests {
         let camera = Camera::default();
         let at = camera.project([60.0, -60.0, 0.0], SIZE).unwrap();
         assert_eq!(outlines.pick_point(&camera, at, SIZE, 6.0), None);
+    }
+
+    #[test]
+    fn hidden_layers_are_not_drawn_or_picked() {
+        let mut doc = Document::default();
+        let layer = doc.add_layer("Hidden".to_owned());
+        let line = doc.add(Curve::line([-20.0, 0.0, 0.0], [20.0, 0.0, 0.0]).unwrap());
+        doc.move_to_layer(&[line], layer);
+        doc.set_layer_visible(layer, false);
+        let outlines = Outlines::of(doc.state());
+        assert!(outlines.objects.is_empty());
+    }
+
+    #[test]
+    fn locked_layers_are_drawn_grey_and_cannot_be_picked() {
+        let mut doc = Document::default();
+        let layer = doc.add_layer("Locked".to_owned());
+        let line = doc.add(Curve::line([-20.0, 0.0, 0.0], [20.0, 0.0, 0.0]).unwrap());
+        doc.move_to_layer(&[line], layer);
+        doc.set_layer_locked(layer, true);
+        let outlines = Outlines::of(doc.state());
+        let camera = Camera::default();
+        let at = camera.project([5.0, 0.0, 0.0], SIZE).unwrap();
+        assert_eq!(outlines.pick(&camera, at, SIZE, 6.0), None);
+        assert_eq!(outlines.pick_point(&camera, at, SIZE, 6.0), None);
+        assert!(
+            object_lines(&outlines, &[])
+                .iter()
+                .all(|v| v.colour == LOCKED_COLOUR)
+        );
+    }
+
+    #[test]
+    fn objects_take_the_colour_of_their_layer() {
+        let mut doc = Document::default();
+        let layer = doc.add_layer("Red".to_owned());
+        doc.set_layer_colour(layer, [1.0, 0.0, 0.0]);
+        let line = doc.add(Curve::line([0.0; 3], [1.0, 0.0, 0.0]).unwrap());
+        doc.move_to_layer(&[line], layer);
+        let lines = object_lines(&Outlines::of(doc.state()), &[]);
+        assert!(lines.iter().all(|v| v.colour == [1.0, 0.0, 0.0]));
+    }
+
+    #[test]
+    fn a_selected_object_is_highlighted_whatever_its_layer() {
+        let mut doc = Document::default();
+        let layer = doc.add_layer("Red".to_owned());
+        doc.set_layer_colour(layer, [1.0, 0.0, 0.0]);
+        let line = doc.add(Curve::line([0.0; 3], [1.0, 0.0, 0.0]).unwrap());
+        doc.move_to_layer(&[line], layer);
+        let lines = object_lines(&Outlines::of(doc.state()), &[line]);
+        assert!(lines.iter().all(|v| v.colour == SELECTED_COLOUR));
     }
     #[test]
     fn clicking_on_nothing_picks_nothing() {

@@ -94,9 +94,10 @@ impl Command for Fillet {
             },
             Some(Answer::Point(at)) => match self.result(doc, at, radius_of(doc)) {
                 Ok(Some((first, second, made))) => {
+                    let layer = doc.layer_of(first);
                     doc.remove(&[first, second]);
                     for curve in made {
-                        doc.add(curve);
+                        doc.add_on(curve, layer);
                     }
                     Step::Done(Some(Message::new("done.fillet")))
                 }

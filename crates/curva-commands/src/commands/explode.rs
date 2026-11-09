@@ -30,10 +30,11 @@ impl Command for Explode {
         }
         let mut made = 0;
         for (id, parts) in broken {
+            let layer = doc.layer_of(id);
             doc.remove(&[id]);
             made += parts.len();
             for part in parts {
-                doc.add(part);
+                doc.add_on(part, layer);
             }
         }
         Step::Done(Some(Message::with("done.explode", vec![made.to_string()])))
