@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use solidcore::curve::curve::Curve as CoreCurve;
 use solidcore::nurbs::b_spline_curve::BSplineCurve;
 use solidcore::nurbs::crv_fit::p1::ParamMethod;
+use solidcore::nurbs::math::{CPoint, NOW};
 use solidcore::query::api_queries::curve_closest_point;
 use solidcore::{Kernel, Point3};
 use std::f64::consts::TAU;
@@ -81,6 +82,17 @@ pub enum Curve {
         /// How far it turns, in radians, between 0 and a full turn.
         sweep: f64,
     },
+    /// A NURBS curve, which can hold any piece of a smooth curve exactly.
+    Nurbs {
+        /// The polynomial degree.
+        degree: usize,
+        /// The knot vector, with `points.len() + degree + 1` values.
+        knots: Vec<f64>,
+        /// The control points.
+        points: Vec<Point>,
+        /// One weight per control point, or empty when every weight is 1.
+        weights: Vec<f64>,
+    },
     /// A smooth curve through points.
     Interpolated {
         /// The points it passes through.
@@ -109,8 +121,11 @@ fn shifted(p: Point, by: Point) -> Point {
 fn engine_error(error: impl fmt::Debug) -> KernelError {
     KernelError(format!("{error:?}"))
 }
-
 fn spline(points: &[Point], closed: bool) -> Result<CoreCurve, KernelError> {
+    spline_data(points, closed).map(CoreCurve::from)
+}
+
+fn spline_data(points: &[Point], closed: bool) -> Result<BSplineCurve, KernelError> {
     let mut through: Vec<Point3> = points
         .iter()
         .map(|p| Point3::new(p[0], p[1], p[2]))
@@ -129,8 +144,53 @@ fn spline(points: &[Point], closed: bool) -> Result<CoreCurve, KernelError> {
         closed,
         ParamMethod::ChordLength,
     )
+    .map_err(engine_error)
+}
+
+/// Builds the engine's curve from NURBS data. Rational control points go to it weighted.
+fn nurbs_engine_curve(
+    degree: usize,
+    knots: &[f64],
+    points: &[Point],
+    weights: &[f64],
+) -> Result<CoreCurve, KernelError> {
+    let control: Vec<CPoint> = points
+        .iter()
+        .enumerate()
+        .map(|(index, p)| {
+            let w = weights.get(index).copied();
+            let scale = w.unwrap_or(1.0);
+            CPoint {
+                x: p[0] * scale,
+                y: p[1] * scale,
+                z: p[2] * scale,
+                w: w.unwrap_or(NOW),
+            }
+        })
+        .collect();
+    BSplineCurve::from_data(
+        3,
+        points.len().saturating_sub(1),
+        knots.len().saturating_sub(1),
+        degree,
+        &control,
+        knots,
+    )
     .map(CoreCurve::from)
     .map_err(engine_error)
+}
+
+/// Evenly spaced points along an engine curve, by its parameter.
+fn sampled(curve: &CoreCurve, steps: usize) -> Result<Vec<Point>, KernelError> {
+    let kernel = Kernel::default();
+    let interval = curve.natural_interval();
+    let mut out = Vec::with_capacity(steps + 1);
+    for step in 0..=steps {
+        let t = interval.min() + interval.length() * step as f64 / steps as f64;
+        let at = curve.evaluate_point(&kernel, t).map_err(engine_error)?;
+        out.push([at.x, at.y, at.z]);
+    }
+    Ok(out)
 }
 
 /// `a` minus `b`.
@@ -367,10 +427,76 @@ impl Curve {
                 y: change.direction(*y),
                 sweep: *sweep,
             },
+            Self::Nurbs {
+                degree,
+                knots,
+                points,
+                weights,
+            } => Self::Nurbs {
+                degree: *degree,
+                knots: knots.clone(),
+                points: many(points),
+                weights: weights.clone(),
+            },
             Self::Interpolated { points, closed } => Self::Interpolated {
                 points: many(points),
                 closed: *closed,
             },
+        }
+    }
+
+    /// A NURBS curve, checked by building it now. Leave `weights` empty when every weight is 1.
+    pub fn nurbs(
+        degree: usize,
+        knots: Vec<f64>,
+        points: Vec<Point>,
+        weights: Vec<f64>,
+    ) -> Result<Self, KernelError> {
+        let bad = |why: &str| Err(KernelError(format!("not a valid NURBS curve: {why}")));
+        if degree == 0 || points.len() <= degree {
+            return bad("too few control points for its degree");
+        }
+        if knots.len() != points.len() + degree + 1 {
+            return bad("wrong number of knots");
+        }
+        if knots.iter().any(|k| !k.is_finite()) || knots.windows(2).any(|pair| pair[0] > pair[1]) {
+            return bad("the knots must not decrease");
+        }
+        if !weights.is_empty()
+            && (weights.len() != points.len()
+                || weights.iter().any(|w| !w.is_finite() || *w <= 0.0))
+        {
+            return bad("each control point needs one positive weight");
+        }
+        nurbs_engine_curve(degree, &knots, &points, &weights)?;
+        Ok(Self::Nurbs {
+            degree,
+            knots,
+            points,
+            weights,
+        })
+    }
+
+    /// The same shape as an exact NURBS curve, for the smooth kinds that can be cut.
+    pub fn to_nurbs(&self) -> Result<Self, KernelError> {
+        match self {
+            Self::Nurbs { .. } => Ok(self.clone()),
+            Self::Interpolated { points, closed } => {
+                let engine = spline_data(points, *closed)?;
+                let degree = engine.degree().map_err(engine_error)?;
+                let (values, counts) = engine.knots(None).map_err(engine_error)?;
+                let knots = values
+                    .iter()
+                    .zip(&counts)
+                    .flat_map(|(value, count)| std::iter::repeat_n(*value, *count))
+                    .collect();
+                let (polygon, weights) = engine.control_polygon().map_err(engine_error)?;
+                let points = polygon.iter().map(|p| [p.x, p.y, p.z]).collect();
+                Self::nurbs(degree, knots, points, weights)
+            }
+            _ => Err(KernelError(
+                "only smooth curves can be turned into NURBS for now".to_owned(),
+            )),
         }
     }
 
@@ -394,6 +520,18 @@ impl Curve {
                 .sum(),
             Self::Circle { radius, .. } => TAU * radius,
             Self::Arc { radius, sweep, .. } => radius * sweep,
+            Self::Nurbs {
+                degree,
+                knots,
+                points,
+                weights,
+            } => {
+                let kernel = Kernel::default();
+                let curve = nurbs_engine_curve(*degree, knots, points, weights)?;
+                curve
+                    .length(&kernel, &curve.natural_interval(), LENGTH_ACCURACY)
+                    .map_err(engine_error)?
+            }
             Self::Interpolated { points, closed } => {
                 let kernel = Kernel::default();
                 let curve = spline(points, *closed)?;
@@ -445,6 +583,15 @@ impl Curve {
                     })
                     .collect()
             }
+            Self::Nurbs {
+                degree,
+                knots,
+                points,
+                weights,
+            } => sampled(
+                &nurbs_engine_curve(*degree, knots, points, weights)?,
+                SAMPLES_PER_POINT * points.len(),
+            )?,
             Self::Interpolated { points, closed } => {
                 let kernel = Kernel::default();
                 let curve = spline(points, *closed)?;
@@ -511,6 +658,17 @@ impl Curve {
                 x: *x,
                 y: *y,
                 sweep: *sweep,
+            },
+            Self::Nurbs {
+                degree,
+                knots,
+                points,
+                weights,
+            } => Self::Nurbs {
+                degree: *degree,
+                knots: knots.clone(),
+                points: moved(points),
+                weights: weights.clone(),
             },
             Self::Interpolated { points, closed } => Self::Interpolated {
                 points: moved(points),
@@ -672,6 +830,123 @@ mod tests {
         let arc = Curve::arc([0.0; 3], [5.0, 0.0, 0.0], [0.0, 5.0, 0.0], X, Y).unwrap();
         let moved = arc.translated([1.0, 0.0, 0.0]);
         assert!(points_near(moved.sample().unwrap()[0], [6.0, 0.0, 0.0]));
+    }
+
+    fn quarter_circle() -> Curve {
+        let corner_weight = std::f64::consts::FRAC_1_SQRT_2;
+        Curve::nurbs(
+            2,
+            vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+            vec![[1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![1.0, corner_weight, 1.0],
+        )
+        .unwrap()
+    }
+
+    fn smooth_curve() -> Curve {
+        Curve::interpolated(
+            vec![
+                [0.0; 3],
+                [10.0, 5.0, 0.0],
+                [20.0, -3.0, 4.0],
+                [30.0, 0.0, 0.0],
+            ],
+            false,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_rational_nurbs_curve_can_be_an_exact_quarter_circle() {
+        let curve = quarter_circle();
+        for point in curve.sample().unwrap() {
+            assert!(near(point[0].hypot(point[1]), 1.0), "{point:?}");
+        }
+        assert!(near(curve.length().unwrap(), std::f64::consts::FRAC_PI_2));
+    }
+
+    #[test]
+    fn a_nurbs_curve_starts_and_ends_on_its_end_control_points() {
+        let points = quarter_circle().sample().unwrap();
+        assert!(points_near(points[0], X));
+        assert!(points_near(*points.last().unwrap(), Y));
+    }
+
+    #[test]
+    fn turning_a_smooth_curve_into_nurbs_keeps_its_shape() {
+        let original = smooth_curve();
+        let exact = original.to_nurbs().unwrap();
+        assert!(matches!(exact, Curve::Nurbs { .. }));
+        assert!(near(exact.length().unwrap(), original.length().unwrap()));
+        let points = exact.sample().unwrap();
+        assert!(points_near(points[0], [0.0; 3]));
+        assert!(points_near(*points.last().unwrap(), [30.0, 0.0, 0.0]));
+        let through = [10.0, 5.0, 0.0];
+        let closest = points;
+        assert!(closest.iter().any(|p| gap(*p, through) < 0.5));
+    }
+
+    #[test]
+    fn a_closed_smooth_curve_turns_into_nurbs_too() {
+        let points = vec![
+            [0.0; 3],
+            [10.0, 0.0, 0.0],
+            [10.0, 10.0, 0.0],
+            [0.0, 10.0, 0.0],
+        ];
+        let original = Curve::interpolated(points, true).unwrap();
+        let exact = original.to_nurbs().unwrap();
+        assert!(near(exact.length().unwrap(), original.length().unwrap()));
+    }
+
+    #[test]
+    fn lines_do_not_turn_into_nurbs_yet() {
+        assert!(Curve::line([0.0; 3], X).unwrap().to_nurbs().is_err());
+    }
+
+    #[test]
+    fn moving_a_nurbs_curve_moves_it_exactly() {
+        let moved = quarter_circle().translated([5.0, 0.0, 0.0]);
+        assert!(points_near(moved.sample().unwrap()[0], [6.0, 0.0, 0.0]));
+        assert!(near(moved.length().unwrap(), std::f64::consts::FRAC_PI_2));
+    }
+
+    #[test]
+    fn resizing_and_turning_a_nurbs_curve_keeps_its_weights() {
+        let bigger = quarter_circle().mapped(&Similarity::scaling([0.0; 3], 3.0));
+        assert!(near(
+            bigger.length().unwrap(),
+            3.0 * std::f64::consts::FRAC_PI_2
+        ));
+        let turned = quarter_circle().mapped(&Similarity::rotation(
+            [0.0; 3],
+            Z,
+            std::f64::consts::FRAC_PI_2,
+        ));
+        assert!(points_near(turned.sample().unwrap()[0], Y));
+        for point in turned.sample().unwrap() {
+            assert!(near(point[0].hypot(point[1]), 1.0));
+        }
+    }
+
+    #[test]
+    fn bad_nurbs_data_is_refused() {
+        let points = vec![[0.0; 3], X, Y];
+        let knots = vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0];
+        assert!(Curve::nurbs(0, knots.clone(), points.clone(), vec![]).is_err());
+        assert!(Curve::nurbs(2, vec![0.0, 1.0], points.clone(), vec![]).is_err());
+        let falling = vec![0.0, 0.0, 1.0, 0.5, 1.0, 1.0];
+        assert!(Curve::nurbs(2, falling, points.clone(), vec![]).is_err());
+        assert!(Curve::nurbs(2, knots.clone(), points.clone(), vec![1.0]).is_err());
+        assert!(Curve::nurbs(2, knots, points, vec![1.0, -1.0, 1.0]).is_err());
+    }
+
+    #[test]
+    fn a_nurbs_curve_survives_being_saved_as_text() {
+        let curve = quarter_circle();
+        let text = serde_json::to_string(&curve).unwrap();
+        let back: Curve = serde_json::from_str(&text).unwrap();
+        assert_eq!(back, curve);
     }
     #[test]
     fn line_length_is_exact() {

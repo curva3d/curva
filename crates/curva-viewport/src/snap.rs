@@ -150,6 +150,17 @@ pub(crate) fn sites_of(curve: &Curve, points: &[Point]) -> Vec<Site> {
             .chain(half_way(points).map(|p| site(SnapKind::Mid, p)))
             .chain(std::iter::once(site(SnapKind::Center, *centre)))
             .collect(),
+        Curve::Nurbs { .. } => {
+            let open = points.first() != points.last();
+            let ends = points
+                .first()
+                .into_iter()
+                .chain(points.last())
+                .filter(|_| open)
+                .map(|p| site(SnapKind::End, *p));
+            ends.chain(half_way(points).map(|p| site(SnapKind::Mid, p)))
+                .collect()
+        }
         Curve::Interpolated { closed, .. } => {
             let ends = points
                 .first()
@@ -623,6 +634,22 @@ mod tests {
             "{:?}",
             middle.point
         );
+    }
+
+    #[test]
+    fn a_nurbs_curve_can_be_snapped_to_at_its_ends_and_middle() {
+        let curve = Curve::nurbs(
+            1,
+            vec![0.0, 0.0, 1.0, 1.0],
+            vec![[0.0; 3], [40.0, 0.0, 0.0]],
+            vec![],
+        )
+        .unwrap();
+        let shapes = outlines(vec![curve]);
+        let end = snap_by(&shapes, [40.0, 0.0, 0.0], only(SnapKind::End), None).unwrap();
+        assert!(close(end.point, [40.0, 0.0, 0.0]), "{:?}", end.point);
+        let middle = snap_by(&shapes, [20.0, 0.0, 0.0], only(SnapKind::Mid), None).unwrap();
+        assert!(close(middle.point, [20.0, 0.0, 0.0]), "{:?}", middle.point);
     }
     #[test]
     fn intersection_finds_where_two_lines_cross() {
