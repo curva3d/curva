@@ -20,9 +20,11 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
+mod curves;
+
 /// The cases this runner can perform so far.
-const WIRED: [u32; 18] = [
-    4, 5, 6, 8, 10, 11, 13, 14, 15, 16, 18, 19, 20, 22, 23, 29, 30, 31,
+const WIRED: [u32; 21] = [
+    1, 2, 3, 4, 5, 6, 8, 10, 11, 13, 14, 15, 16, 18, 19, 20, 22, 23, 29, 30, 31,
 ];
 
 /// Accuracy asked of solidcore's volume and area integrals.
@@ -54,6 +56,9 @@ impl Kernel for Solidcore {
     }
 
     fn run(&self, case: &Case) -> Result<Attempt, String> {
+        if let Some(done) = curves::run(case) {
+            return done;
+        }
         // Case 29 starts from 14; case 23 measures 13, 15 and 19, reported under 15's result.
         let body = match case.id {
             23 => self.result_of(15)?,

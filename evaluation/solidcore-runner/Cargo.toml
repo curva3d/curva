@@ -14,6 +14,8 @@ kernel-eval = { path = "../harness" }
 # Pinned so that results can be reproduced; move the revision on purpose.
 solidcore-ops = { git = "https://github.com/tangency-labs/solidcore", rev = "c440e5f892452a9654aee8f3030de6095fdb1415" }
 
+solidcore = { git = "https://github.com/tangency-labs/solidcore", rev = "c440e5f892452a9654aee8f3030de6095fdb1415" }
+
 [lints.rust]
 unsafe_code = "forbid"
 missing_docs = "deny"

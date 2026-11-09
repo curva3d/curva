@@ -122,6 +122,7 @@ name = "solidcore-runner"
 version = "0.0.0"
 dependencies = [
  "kernel-eval",
+ "solidcore",
  "solidcore-ops",
 ]
 
