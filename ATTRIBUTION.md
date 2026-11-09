@@ -8,9 +8,32 @@ with its original copyright and licence notice.
 Curva's Freeform command list, names, aliases, prompts, options and interaction flows are based on
 Serpentine3D: https://github.com/chisomobanzi/Serpentine3D
 
-> MIT License — Copyright (c) 2026 Chisomo Banzi
-> (Full licence text to be copied here from the Serpentine3D repository when the first ported
-> command lands.)
+> MIT License
+>
+> Copyright (c) 2026 Chisomo Banzi
+>
+> Permission is hereby granted, free of charge, to any person obtaining a copy
+> of this software and associated documentation files (the "Software"), to deal
+> in the Software without restriction, including without limitation the rights
+> to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+> copies of the Software, and to permit persons to whom the Software is
+> furnished to do so, subject to the following conditions:
+>
+> The above copyright notice and this permission notice shall be included in all
+> copies or substantial portions of the Software.
+>
+> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+> IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+> FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+> AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+> LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+> OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+> SOFTWARE.
+
+## solidcore
+
+Curva calls solidcore (Apache-2.0) for its geometry: https://github.com/tangency-labs/solidcore
+Its licence and NOTICE ship with its source at the pinned revision in `Cargo.lock`.
 
 ## To add when used
 
