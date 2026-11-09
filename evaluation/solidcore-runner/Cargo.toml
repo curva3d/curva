@@ -1,0 +1,30 @@
+[package]
+name = "solidcore-runner"
+description = "Runs the kernel evaluation cases on solidcore. Not part of the Curva product."
+version = "0.0.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+# A workspace of its own, so solidcore's long build never touches Curva's build or checks.
+[workspace]
+
+[dependencies]
+kernel-eval = { path = "../harness" }
+# Pinned so that results can be reproduced; move the revision on purpose.
+solidcore-ops = { git = "https://github.com/tangency-labs/solidcore", rev = "c440e5f892452a9654aee8f3030de6095fdb1415" }
+
+solidcore = { git = "https://github.com/tangency-labs/solidcore", rev = "c440e5f892452a9654aee8f3030de6095fdb1415" }
+
+solidcore-tess = { git = "https://github.com/tangency-labs/solidcore", rev = "c440e5f892452a9654aee8f3030de6095fdb1415" }
+solidcore-convert = { git = "https://github.com/tangency-labs/solidcore", rev = "c440e5f892452a9654aee8f3030de6095fdb1415" }
+step-brep = { git = "https://github.com/tangency-labs/solidcore", rev = "c440e5f892452a9654aee8f3030de6095fdb1415" }
+step-export = { git = "https://github.com/tangency-labs/solidcore", rev = "c440e5f892452a9654aee8f3030de6095fdb1415" }
+step-import = { git = "https://github.com/tangency-labs/solidcore", rev = "c440e5f892452a9654aee8f3030de6095fdb1415" }
+
+solidcore-record = { git = "https://github.com/tangency-labs/solidcore", rev = "c440e5f892452a9654aee8f3030de6095fdb1415" }
+solidcore-ssi = { git = "https://github.com/tangency-labs/solidcore", rev = "c440e5f892452a9654aee8f3030de6095fdb1415" }
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
