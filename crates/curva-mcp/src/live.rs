@@ -30,13 +30,17 @@ pub struct Listener {
     /// Messages waiting for the window to answer them.
     pub requests: Receiver<AgentRequest>,
     stop: Arc<AtomicBool>,
-    file: Option<PathBuf>,
+    /// The connection file and what this listener wrote in it.
+    file: Option<(PathBuf, String)>,
 }
 
 impl Drop for Listener {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
-        if let Some(file) = &self.file {
+        // A newer window may have taken over the file, and then it is not ours to remove.
+        if let Some((file, written)) = &self.file
+            && std::fs::read_to_string(file).is_ok_and(|now| now == *written)
+        {
             // If this fails the next connection simply replaces the file.
             let _ = std::fs::remove_file(file);
         }
@@ -97,9 +101,14 @@ fn listen_with(
     socket.set_nonblocking(true)?;
     let port = socket.local_addr()?.port();
     let secret = new_secret();
-    if let Some(path) = &file {
-        std::fs::write(path, format!("{port} {secret}"))?;
-    }
+    let file = match file {
+        Some(path) => {
+            let written = format!("{port} {secret}");
+            std::fs::write(&path, &written)?;
+            Some((path, written))
+        }
+        None => None,
+    };
     let (sender, requests) = channel();
     let stop = Arc::new(AtomicBool::new(false));
     let (thread_stop, thread_secret) = (Arc::clone(&stop), secret.clone());
@@ -205,6 +214,23 @@ mod tests {
         assert!(waited.is_err());
     }
 
+    #[test]
+    fn a_listener_leaves_a_file_that_a_newer_window_has_taken_over() {
+        let path = std::env::temp_dir().join(format!("curva-test-{}", std::process::id()));
+        let (listener, ..) = listen_with(|| {}, Some(path.clone())).unwrap();
+        std::fs::write(&path, "newer window").unwrap();
+        drop(listener);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "newer window");
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn a_listener_removes_its_own_file() {
+        let path = std::env::temp_dir().join(format!("curva-own-{}", std::process::id()));
+        let (listener, ..) = listen_with(|| {}, Some(path.clone())).unwrap();
+        drop(listener);
+        assert!(!path.exists());
+    }
     #[test]
     fn secrets_are_different_each_time() {
         assert_ne!(new_secret(), new_secret());

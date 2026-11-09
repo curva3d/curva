@@ -31,6 +31,6 @@ No Rhino tests (decision 0011). Automatic checks cover the protocol messages, ea
 
 `curva --mcp --connect` connects an agent to the Curva window that is open, so the user sees what it does as it happens.
 
-- It only works while the **Agent access** checkbox under the command line is ticked. That starts off each time Curva opens.
+- It works while the **Agent access** checkbox under the command line is ticked. That starts on, at the owner's request on 9 November 2026, so changes can be tested without him. It can be unticked.
 - The window listens on this computer only, and a client must present a random secret from a file in the user's temporary folder.
 - `Delete`, `New`, `Open` and `Save` wait for the user to click Allow or Decline.
