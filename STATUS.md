@@ -45,7 +45,8 @@
 - Display modes wait for surfaces, as there is nothing to shade yet.
 - Ellipse, Chamfer, Rotate3D, Scale1D and Scale2D.
 - Point objects, Divide, ArrayCrv and Orient.
-- Next planned: Rebuild, then history on curves, the MCP server and Rhai scripting.
+- Rebuild.
+- Next planned: history on curves, the MCP server and Rhai scripting.
 
 **Waiting for the owner**
 - Nothing yet. The engine is solidcore, with Serpentine3D's commands as the base (decision 0010). SolidCraft

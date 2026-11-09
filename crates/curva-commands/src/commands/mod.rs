@@ -33,6 +33,7 @@ mod orient;
 mod perspective;
 mod point;
 mod polyline;
+mod rebuild;
 mod rectangle;
 mod redo;
 mod right;
@@ -81,7 +82,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 50] = [
+pub static COMMANDS: [CommandDef; 51] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -103,6 +104,7 @@ pub static COMMANDS: [CommandDef; 50] = [
     listed!("Point", ["pt"], true, true, point::PointObject),
     listed!("Divide", [], true, true, divide::Divide),
     listed!("Orient", [], true, true, orient::Orient),
+    listed!("Rebuild", [], true, true, rebuild::Rebuild),
     listed!("Flip", [], true, true, flip::Flip),
     listed!("CloseCrv", [], true, true, close_crv::CloseCrv),
     listed!("Hide", ["h"], true, true, hide::Hide),
@@ -383,7 +385,8 @@ mod tests {
     ];
 
     /// Commands whose preview needs its own setup, tested in their own files.
-    const PREVIEW_TESTED_ELSEWHERE: [&str; 5] = ["Trim", "Fillet", "Chamfer", "Divide", "ArrayCrv"];
+    const PREVIEW_TESTED_ELSEWHERE: [&str; 6] =
+        ["Trim", "Fillet", "Chamfer", "Divide", "ArrayCrv", "Rebuild"];
 
     #[test]
     fn every_command_that_changes_geometry_is_listed_for_a_preview() {
