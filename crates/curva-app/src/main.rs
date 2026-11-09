@@ -33,6 +33,8 @@ const TITLE_HEIGHT: f32 = 22.0;
 const PANE_GAP: f32 = 2.0;
 const TITLE_COLOUR: egui::Color32 = egui::Color32::from_rgb(190, 190, 200);
 const ACTIVE_EDGE: egui::Color32 = egui::Color32::from_rgb(120, 150, 210);
+/// Which viewport fills the window when Curva opens.
+const STARTING_LAYOUT: Option<usize> = Some(PERSPECTIVE);
 const LOG_LINES: usize = 5;
 const PICTURE_SIZE: [u32; 2] = [1200, 800];
 const BENCHMARK_FRAMES: usize = 240;
@@ -322,7 +324,7 @@ impl Curva {
             highlight: 0,
             panes,
             active: PERSPECTIVE,
-            maximised: None,
+            maximised: STARTING_LAYOUT,
             snaps: SnapSet::default(),
             ortho: false,
             grid_snap: false,
@@ -547,7 +549,16 @@ impl Curva {
         let request = self.processor.current_request()?;
         let base = request.preview.last().copied().or(request.from);
         let camera = &self.panes[pane].camera;
-        if !alt && let Some(hit) = self.outlines.snap(camera, screen, size, &self.snaps, base) {
+        if !alt
+            && let Some(hit) = self.outlines.snap_while_drawing(
+                camera,
+                screen,
+                size,
+                &self.snaps,
+                base,
+                &request.preview,
+            )
+        {
             return Some((hit.point, Some(hit)));
         }
         let plane = self.panes[pane].view.plane();
@@ -556,6 +567,12 @@ impl Curva {
             constrained(&plane, cursor, base, self.ortho != shift, self.grid_snap),
             None,
         ))
+    }
+
+    /// Tells the document which plane flat objects go on: the last-used viewport's.
+    fn share_work_plane(&mut self) {
+        let plane = self.panes[self.active].view.plane();
+        self.doc.set_work_plane([plane.x, plane.y]);
     }
 
     /// Carries out a change of view asked for by a command.
@@ -642,6 +659,8 @@ impl Curva {
                 }
                 // Where it was pressed, as that is where the user aimed.
                 if let Some((at, _)) = self.aim(ui, pane, local(pressed), size) {
+                    self.active = pane;
+                    self.share_work_plane();
                     self.processor.click(&mut self.doc, at);
                 }
             }
@@ -776,6 +795,7 @@ fn egui_wgpu_callback(rect: egui::Rect, drawing: Drawing) -> egui::Shape {
 
 impl eframe::App for Curva {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        self.share_work_plane();
         egui::Panel::bottom("command line").show(ui, |ui| self.command_line(ui));
         self.apply_view_request();
         egui::CentralPanel::default().show(ui, |ui| self.viewports(ui));
@@ -1028,6 +1048,14 @@ mod tests {
     fn a_viewport_size_is_never_zero() {
         let squashed = egui::Rect::from_min_size(pos2(0.0, 0.0), vec2(0.0, 0.0));
         assert_eq!(pane_size(squashed), [1.0, 1.0]);
+    }
+
+    #[test]
+    fn curva_opens_on_the_perspective_viewport_alone() {
+        let rects = pane_rects(area(), STARTING_LAYOUT);
+        assert_eq!(rects.len(), 1);
+        assert_eq!(standard_panes()[rects[0].0].view, StandardView::Perspective);
+        assert_eq!(rects[0].1, area());
     }
 
     fn messages(count: usize) -> Vec<String> {

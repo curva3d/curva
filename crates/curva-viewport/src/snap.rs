@@ -174,6 +174,34 @@ fn screen_gap(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> f64 {
     (p[0] - a[0] - t * dx).hypot(p[1] - a[1] - t * dy)
 }
 
+/// Adds the segments of a run of points that are within reach of the cursor on screen.
+fn collect_near(
+    found: &mut Vec<NearbySegment>,
+    view: &Projector,
+    cursor: [f64; 2],
+    object: usize,
+    points: &[Point],
+) {
+    let mut previous: Option<(Point, Option<[f64; 2]>)> = None;
+    for point in points {
+        let screen = view.project(*point);
+        if let Some((a, Some(from))) = previous
+            && let Some(to) = screen
+        {
+            let gap = screen_gap(cursor, from, to);
+            if gap <= SNAP_REACH {
+                found.push(NearbySegment {
+                    object,
+                    a,
+                    b: *point,
+                    gap,
+                });
+            }
+        }
+        previous = Some((*point, screen));
+    }
+}
+
 /// Where segments of different objects meet. Segments are sorted along X and only those that
 /// overlap there are compared, as comparing every pair is far too slow when zoomed out.
 fn meeting_points(segments: &[NearbySegment]) -> Vec<Point> {
@@ -290,35 +318,23 @@ fn closest_between(a: (Point, Point), b: (Point, Point)) -> (f64, f64) {
 }
 
 impl Outlines {
-    fn segments_near(&self, view: &Projector, cursor: [f64; 2]) -> Vec<NearbySegment> {
+    fn segments_near(
+        &self,
+        view: &Projector,
+        cursor: [f64; 2],
+        drawing: &[Point],
+    ) -> Vec<NearbySegment> {
         let mut found = Vec::new();
         for (object, (_, points)) in self.objects.iter().enumerate() {
-            if self
+            if !self
                 .boxes
                 .get(object)
                 .is_some_and(|around| box_out_of_reach(view, *around, cursor))
             {
-                continue;
-            }
-            let mut previous: Option<(Point, Option<[f64; 2]>)> = None;
-            for point in points {
-                let screen = view.project(*point);
-                if let Some((a, Some(from))) = previous
-                    && let Some(to) = screen
-                {
-                    let gap = screen_gap(cursor, from, to);
-                    if gap <= SNAP_REACH {
-                        found.push(NearbySegment {
-                            object,
-                            a,
-                            b: *point,
-                            gap,
-                        });
-                    }
-                }
-                previous = Some((*point, screen));
+                collect_near(&mut found, view, cursor, object, points);
             }
         }
+        collect_near(&mut found, view, cursor, usize::MAX, drawing);
         found
     }
 
@@ -332,6 +348,22 @@ impl Outlines {
         size: [f64; 2],
         set: &SnapSet,
         from: Option<Point>,
+    ) -> Option<SnapHit> {
+        self.snap_while_drawing(camera, cursor, size, set, from, &[])
+    }
+
+    /// As [`Self::snap`], also snapping to the points of the curve still being drawn, so that a
+    /// polyline can snap to itself. The newest point is left out, as a curve cannot go from a
+    /// point to that same point.
+    #[must_use]
+    pub fn snap_while_drawing(
+        &self,
+        camera: &Camera,
+        cursor: [f64; 2],
+        size: [f64; 2],
+        set: &SnapSet,
+        from: Option<Point>,
+        drawing: &[Point],
     ) -> Option<SnapHit> {
         let view = camera.projector(size);
         let gap = |point: Point| {
@@ -350,8 +382,18 @@ impl Outlines {
         for place in self.sites.iter().filter(|place| set.has(place.kind)) {
             offer(place.kind, place.point);
         }
+        if set.end {
+            for point in &drawing[..drawing.len().saturating_sub(1)] {
+                offer(SnapKind::End, *point);
+            }
+        }
+        if set.mid {
+            for pair in drawing.windows(2) {
+                offer(SnapKind::Mid, along(pair[0], pair[1], 0.5));
+            }
+        }
         let segments = if set.intersection || set.perpendicular || set.near {
-            self.segments_near(&view, cursor)
+            self.segments_near(&view, cursor, drawing)
         } else {
             Vec::new()
         };
@@ -642,6 +684,69 @@ mod tests {
         let shapes = outlines(vec![line([0.0; 3], [30.0, 0.0, 0.0])]);
         assert_eq!(
             snap_by(&shapes, [70.0, 60.0, 0.0], SnapSet::default(), None),
+            None
+        );
+    }
+
+    /// A snap found while a curve through `drawing` is still being drawn, in an empty model.
+    fn snap_to_self(aim: Point, set: SnapSet, drawing: &[Point]) -> Option<SnapHit> {
+        let camera = Camera::default();
+        let at = camera.project(aim, SIZE).unwrap();
+        Outlines::default().snap_while_drawing(
+            &camera,
+            [at[0] + 4.0, at[1] - 3.0],
+            SIZE,
+            &set,
+            drawing.last().copied(),
+            drawing,
+        )
+    }
+
+    const IN_PROGRESS: [Point; 3] = [[0.0; 3], [40.0, 0.0, 0.0], [40.0, 30.0, 0.0]];
+
+    #[test]
+    fn a_curve_can_snap_to_its_own_first_point() {
+        let hit = snap_to_self(IN_PROGRESS[0], only(SnapKind::End), &IN_PROGRESS).unwrap();
+        assert_eq!(hit.kind, SnapKind::End);
+        assert_eq!(hit.point, IN_PROGRESS[0]);
+    }
+
+    #[test]
+    fn a_curve_can_snap_to_the_middle_of_its_own_segment() {
+        let hit = snap_to_self([20.0, 0.0, 0.0], only(SnapKind::Mid), &IN_PROGRESS).unwrap();
+        assert_eq!(hit.point, [20.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn a_curve_can_snap_near_itself() {
+        let hit = snap_to_self([13.0, 0.0, 0.0], only(SnapKind::Near), &IN_PROGRESS).unwrap();
+        assert_eq!(hit.kind, SnapKind::Near);
+        assert!(hit.point[1].abs() < 1e-6);
+    }
+
+    #[test]
+    fn a_curve_can_snap_perpendicular_to_itself() {
+        let hit = snap_to_self(
+            [40.0, 0.0, 0.0],
+            only(SnapKind::Perpendicular),
+            &[[0.0; 3], [80.0, 0.0, 0.0], [40.0, 30.0, 0.0]],
+        )
+        .unwrap();
+        assert!(close(hit.point, [40.0, 0.0, 0.0]), "{:?}", hit.point);
+    }
+
+    #[test]
+    fn the_newest_point_is_not_snapped_to() {
+        assert_eq!(
+            snap_to_self(IN_PROGRESS[2], only(SnapKind::End), &IN_PROGRESS),
+            None
+        );
+    }
+
+    #[test]
+    fn a_curve_with_only_one_point_has_nothing_to_snap_to() {
+        assert_eq!(
+            snap_to_self([0.0; 3], SnapSet::default(), &[[0.0; 3]]),
             None
         );
     }

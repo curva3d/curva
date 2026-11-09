@@ -15,6 +15,8 @@ pub type Point = [f64; 3];
 
 /// Accuracy asked of curve lengths.
 const LENGTH_ACCURACY: f64 = 1e-6;
+/// How far plane directions may be from length 1 and a right angle.
+const PLANE_TOLERANCE: f64 = 1e-9;
 /// Shortest length treated as a real size, in millimetres.
 const SMALLEST: f64 = 1e-9;
 /// Display points per input point of an interpolated curve.
@@ -51,12 +53,18 @@ pub enum Curve {
         /// Whether a last segment returns to the first point.
         closed: bool,
     },
-    /// A circle lying flat in the XY direction.
+    /// A circle on a plane given by two directions.
     Circle {
         /// The centre.
         centre: Point,
         /// The radius.
         radius: f64,
+        /// The plane's X direction, of length 1. Files from before circles had planes lack it.
+        #[serde(default = "world_x")]
+        x: Point,
+        /// The plane's Y direction, of length 1, at a right angle to `x`.
+        #[serde(default = "world_y")]
+        y: Point,
     },
     /// A smooth curve through points.
     Interpolated {
@@ -65,6 +73,14 @@ pub enum Curve {
         /// Whether it joins back to its start.
         closed: bool,
     },
+}
+
+fn world_x() -> Point {
+    [1.0, 0.0, 0.0]
+}
+
+fn world_y() -> Point {
+    [0.0, 1.0, 0.0]
 }
 
 fn gap(a: Point, b: Point) -> f64 {
@@ -119,12 +135,32 @@ impl Curve {
         Ok(Self::Polyline { points, closed })
     }
 
-    /// A flat circle with a positive radius.
+    /// A circle flat on the ground, with a positive radius.
     pub fn circle(centre: Point, radius: f64) -> Result<Self, KernelError> {
+        Self::circle_on(centre, radius, world_x(), world_y())
+    }
+
+    /// A circle with a positive radius on the plane of two directions at a right angle.
+    pub fn circle_on(centre: Point, radius: f64, x: Point, y: Point) -> Result<Self, KernelError> {
         if !radius.is_finite() || radius < SMALLEST {
             return Err(KernelError("the radius must be positive".to_owned()));
         }
-        Ok(Self::Circle { centre, radius })
+        let dot = |a: Point, b: Point| (0..3).map(|i| a[i] * b[i]).sum::<f64>();
+        let square = 1.0 - PLANE_TOLERANCE..=1.0 + PLANE_TOLERANCE;
+        if !square.contains(&dot(x, x))
+            || !square.contains(&dot(y, y))
+            || dot(x, y).abs() > PLANE_TOLERANCE
+        {
+            return Err(KernelError(
+                "the plane directions must be at a right angle".to_owned(),
+            ));
+        }
+        Ok(Self::Circle {
+            centre,
+            radius,
+            x,
+            y,
+        })
     }
 
     /// A smooth curve through the points, checked by building it now.
@@ -167,14 +203,17 @@ impl Curve {
                 }
                 out
             }
-            Self::Circle { centre, radius } => (0..=CIRCLE_SAMPLES)
+            Self::Circle {
+                centre,
+                radius,
+                x,
+                y,
+            } => (0..=CIRCLE_SAMPLES)
                 .map(|step| {
                     let angle = TAU * step as f64 / CIRCLE_SAMPLES as f64;
-                    [
-                        centre[0] + radius * angle.cos(),
-                        centre[1] + radius * angle.sin(),
-                        centre[2],
-                    ]
+                    let (cos, sin) = (angle.cos() * radius, angle.sin() * radius);
+                    let around = |axis: usize| centre[axis] + x[axis] * cos + y[axis] * sin;
+                    [around(0), around(1), around(2)]
                 })
                 .collect(),
             Self::Interpolated { points, closed } => {
@@ -220,9 +259,16 @@ impl Curve {
                 points: moved(points),
                 closed: *closed,
             },
-            Self::Circle { centre, radius } => Self::Circle {
+            Self::Circle {
+                centre,
+                radius,
+                x,
+                y,
+            } => Self::Circle {
                 centre: shifted(*centre, by),
                 radius: *radius,
+                x: *x,
+                y: *y,
             },
             Self::Interpolated { points, closed } => Self::Interpolated {
                 points: moved(points),
@@ -242,6 +288,47 @@ mod tests {
         (a - b).abs() < CLOSE
     }
 
+    #[test]
+    fn a_circle_lies_on_its_plane() {
+        let x = [1.0, 0.0, 0.0];
+        let z = [0.0, 0.0, 1.0];
+        let circle = Curve::circle_on([2.0, 3.0, 4.0], 5.0, x, z).unwrap();
+        for point in circle.sample().unwrap() {
+            assert!(near(point[1], 3.0));
+            let reach = (point[0] - 2.0).hypot(point[2] - 4.0);
+            assert!(near(reach, 5.0));
+        }
+    }
+
+    #[test]
+    fn a_circle_on_a_plane_has_the_same_length() {
+        let plane = Curve::circle_on([0.0; 3], 3.0, [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]).unwrap();
+        let flat = Curve::circle([0.0; 3], 3.0).unwrap();
+        assert!(near(plane.length().unwrap(), flat.length().unwrap()));
+    }
+
+    #[test]
+    fn a_circle_needs_directions_at_a_right_angle() {
+        let tilted = [1.0, 1.0, 0.0];
+        assert!(Curve::circle_on([0.0; 3], 3.0, [1.0, 0.0, 0.0], tilted).is_err());
+        assert!(Curve::circle_on([0.0; 3], 3.0, [2.0, 0.0, 0.0], [0.0, 1.0, 0.0]).is_err());
+    }
+
+    #[test]
+    fn moving_a_circle_keeps_its_plane() {
+        let circle = Curve::circle_on([0.0; 3], 3.0, [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]).unwrap();
+        assert_eq!(
+            circle.translated([1.0, 2.0, 3.0]),
+            Curve::circle_on([1.0, 2.0, 3.0], 3.0, [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_circle_stored_without_a_plane_lies_flat() {
+        let text = r#"{"Circle":{"centre":[1.0,2.0,0.0],"radius":4.0}}"#;
+        let circle: Curve = serde_json::from_str(text).unwrap();
+        assert_eq!(circle, Curve::circle([1.0, 2.0, 0.0], 4.0).unwrap());
+    }
     #[test]
     fn line_length_is_exact() {
         let line = Curve::line([0.0; 3], [3.0, 4.0, 0.0]).unwrap();
