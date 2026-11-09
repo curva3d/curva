@@ -161,6 +161,11 @@ pub(crate) fn sites_of(curve: &Curve, points: &[Point]) -> Vec<Site> {
             ends.chain(half_way(points).map(|p| site(SnapKind::Mid, p)))
                 .collect()
         }
+        Curve::Compound { segments } => segments
+            .iter()
+            .filter_map(|part| Some(sites_of(part, &part.sample().ok()?)))
+            .flatten()
+            .collect(),
         Curve::Interpolated { closed, .. } => {
             let ends = points
                 .first()
@@ -650,6 +655,24 @@ mod tests {
         assert!(close(end.point, [40.0, 0.0, 0.0]), "{:?}", end.point);
         let middle = snap_by(&shapes, [20.0, 0.0, 0.0], only(SnapKind::Mid), None).unwrap();
         assert!(close(middle.point, [20.0, 0.0, 0.0]), "{:?}", middle.point);
+    }
+
+    #[test]
+    fn a_joined_curve_can_be_snapped_to_at_its_joints_and_parts() {
+        let line = line([0.0; 3], [30.0, 0.0, 0.0]);
+        let arc = Curve::arc(
+            [30.0, 20.0, 0.0],
+            [30.0, 0.0, 0.0],
+            [50.0, 20.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+        )
+        .unwrap();
+        let shapes = outlines(vec![Curve::compound(vec![line, arc]).unwrap()]);
+        let joint = snap_by(&shapes, [30.0, 0.0, 0.0], only(SnapKind::End), None).unwrap();
+        assert!(close(joint.point, [30.0, 0.0, 0.0]), "{:?}", joint.point);
+        let centre = snap_by(&shapes, [30.0, 20.0, 0.0], only(SnapKind::Center), None).unwrap();
+        assert_eq!(centre.point, [30.0, 20.0, 0.0]);
     }
     #[test]
     fn intersection_finds_where_two_lines_cross() {

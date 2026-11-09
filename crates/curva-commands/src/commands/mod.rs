@@ -5,6 +5,7 @@ mod array;
 mod circle;
 mod copy;
 mod delete;
+mod explode;
 mod four_view;
 mod front;
 mod interpcrv;
@@ -56,7 +57,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 25] = [
+pub static COMMANDS: [CommandDef; 26] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -74,6 +75,7 @@ pub static COMMANDS: [CommandDef; 25] = [
     listed!("Mirror", ["mi"], true, true, mirror::Mirror),
     listed!("Array", ["ar"], true, true, array::Array),
     listed!("Join", ["j"], true, true, join::Join),
+    listed!("Explode", ["x"], true, true, explode::Explode),
     listed!("Arc", ["a"], true, true, arc::Arc),
     listed!("Rectangle", ["rec"], true, true, rectangle::Rectangle),
     listed!("Delete", ["del", "erase"], false, true, delete::Delete),
@@ -287,9 +289,9 @@ mod tests {
         ("Array", &["3", "1", "1"]),
     ];
 
-    /// Delete and Join have nothing to preview: their targets are already highlighted, and a
-    /// join leaves the shape unchanged. They also finish at once when objects are selected.
-    const NOTHING_TO_PREVIEW: [&str; 2] = ["Delete", "Join"];
+    /// Delete, Join and Explode have nothing to preview: their targets are already highlighted, and these
+    /// leave the shape unchanged. They also finish at once when objects are selected.
+    const NOTHING_TO_PREVIEW: [&str; 3] = ["Delete", "Join", "Explode"];
 
     #[test]
     fn every_command_that_changes_geometry_is_listed_for_a_preview() {
