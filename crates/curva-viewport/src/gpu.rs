@@ -64,11 +64,20 @@ fn upload(device: &wgpu::Device, queue: &wgpu::Queue, source: &Arc<Vec<Vertex>>)
     }
 }
 
+/// How many views can be drawn at once.
+pub const VIEW_SLOTS: usize = 4;
+
+/// What each view keeps for itself on the graphics card.
+struct ViewSlot {
+    uniforms: wgpu::Buffer,
+    bind_group: wgpu::BindGroup,
+    grid: Option<Lines>,
+}
+
 /// The graphics card's side of the viewport.
 pub struct LineRenderer {
     pipeline: wgpu::RenderPipeline,
-    uniforms: wgpu::Buffer,
-    bind_group: wgpu::BindGroup,
+    slots: Vec<ViewSlot>,
     scene: Option<Lines>,
     overlay: Option<Lines>,
 }
@@ -80,12 +89,6 @@ impl LineRenderer {
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("curva lines"),
             source: wgpu::ShaderSource::Wgsl(SHADER.into()),
-        });
-        let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("curva camera"),
-            size: 64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
         });
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("curva camera"),
@@ -100,14 +103,29 @@ impl LineRenderer {
                 count: None,
             }],
         });
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("curva camera"),
-            layout: &layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniforms.as_entire_binding(),
-            }],
-        });
+        let slots = (0..VIEW_SLOTS)
+            .map(|_| {
+                let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("curva camera"),
+                    size: 64,
+                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                });
+                let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("curva camera"),
+                    layout: &layout,
+                    entries: &[wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: uniforms.as_entire_binding(),
+                    }],
+                });
+                ViewSlot {
+                    uniforms,
+                    bind_group,
+                    grid: None,
+                }
+            })
+            .collect();
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("curva lines"),
             bind_group_layouts: &[Some(&layout)],
@@ -147,39 +165,44 @@ impl LineRenderer {
         });
         Self {
             pipeline,
-            uniforms,
-            bind_group,
+            slots,
             scene: None,
             overlay: None,
         }
     }
 
-    /// Sends the camera, and any lines that changed, to the graphics card.
-    fn update(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        scene: &Arc<Vec<Vertex>>,
-        overlay: &Arc<Vec<Vertex>>,
-        matrix: &[[f32; 4]; 4],
-    ) {
-        queue.write_buffer(&self.uniforms, 0, &matrix_bytes(matrix));
+    /// Sends one view's camera and grid, and any lines that changed, to the graphics card.
+    fn update(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, drawing: &Drawing) {
         let stale = |held: &Option<Lines>, wanted: &Arc<Vec<Vertex>>| {
             held.as_ref()
                 .is_none_or(|lines| !Arc::ptr_eq(&lines.source, wanted))
         };
-        if stale(&self.scene, scene) {
-            self.scene = Some(upload(device, queue, scene));
+        let Some(slot) = self.slots.get_mut(drawing.slot) else {
+            return;
+        };
+        queue.write_buffer(&slot.uniforms, 0, &matrix_bytes(&drawing.matrix));
+        if stale(&slot.grid, &drawing.grid) {
+            slot.grid = Some(upload(device, queue, &drawing.grid));
         }
-        if stale(&self.overlay, overlay) {
-            self.overlay = Some(upload(device, queue, overlay));
+        // The views of one frame share these, so only the first of them uploads.
+        if stale(&self.scene, &drawing.scene) {
+            self.scene = Some(upload(device, queue, &drawing.scene));
+        }
+        if stale(&self.overlay, &drawing.overlay) {
+            self.overlay = Some(upload(device, queue, &drawing.overlay));
         }
     }
 
-    fn draw(&self, pass: &mut wgpu::RenderPass<'_>) {
+    fn draw(&self, pass: &mut wgpu::RenderPass<'_>, slot: usize) {
+        let Some(slot) = self.slots.get(slot) else {
+            return;
+        };
         pass.set_pipeline(&self.pipeline);
-        pass.set_bind_group(0, &self.bind_group, &[]);
-        for lines in [&self.scene, &self.overlay].into_iter().flatten() {
+        pass.set_bind_group(0, &slot.bind_group, &[]);
+        for lines in [&slot.grid, &self.scene, &self.overlay]
+            .into_iter()
+            .flatten()
+        {
             if lines.count > 0 {
                 pass.set_vertex_buffer(0, lines.buffer.slice(..));
                 pass.draw(0..lines.count, 0..1);
@@ -190,7 +213,11 @@ impl LineRenderer {
 
 /// One frame of the viewport, handed to the window's drawing.
 pub struct Drawing {
-    /// The grid, axes and objects.
+    /// Which view this is, below [`VIEW_SLOTS`].
+    pub slot: usize,
+    /// This view's grid and axes.
+    pub grid: Arc<Vec<Vertex>>,
+    /// The objects.
     pub scene: Arc<Vec<Vertex>>,
     /// The live preview.
     pub overlay: Arc<Vec<Vertex>>,
@@ -208,7 +235,7 @@ impl egui_wgpu::CallbackTrait for Drawing {
         resources: &mut egui_wgpu::CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
         if let Some(renderer) = resources.get_mut::<LineRenderer>() {
-            renderer.update(device, queue, &self.scene, &self.overlay, &self.matrix);
+            renderer.update(device, queue, self);
         }
         Vec::new()
     }
@@ -220,7 +247,7 @@ impl egui_wgpu::CallbackTrait for Drawing {
         resources: &egui_wgpu::CallbackResources,
     ) {
         if let Some(renderer) = resources.get::<LineRenderer>() {
-            renderer.draw(pass);
+            renderer.draw(pass, self.slot);
         }
     }
 }
@@ -259,7 +286,14 @@ pub fn save_picture(
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
     let mut renderer = LineRenderer::new(&device, format);
     let empty = Arc::new(Vec::new());
-    renderer.update(&device, &queue, &Arc::new(lines), &empty, matrix);
+    let drawing = Drawing {
+        slot: 0,
+        grid: Arc::clone(&empty),
+        scene: Arc::new(lines),
+        overlay: empty,
+        matrix: *matrix,
+    };
+    renderer.update(&device, &queue, &drawing);
     let row = (width * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
     let readback = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("curva picture"),
@@ -285,7 +319,7 @@ pub fn save_picture(
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        renderer.draw(&mut pass);
+        renderer.draw(&mut pass, 0);
     }
     encoder.copy_texture_to_buffer(
         texture.as_image_copy(),

@@ -7,8 +7,8 @@ mod snap;
 use curva_document::State;
 use curva_kernel::Point;
 
-pub use camera::Camera;
-pub use gpu::{Drawing, LineRenderer, save_picture};
+pub use camera::{CPlane, Camera, StandardView};
+pub use gpu::{Drawing, LineRenderer, VIEW_SLOTS, save_picture};
 pub use snap::{SnapHit, SnapKind, SnapSet, constrained};
 
 const GRID_HALF_SIZE: i32 = 100;
@@ -194,30 +194,59 @@ fn polyline(out: &mut Vec<Vertex>, points: &[Point], colour: [f32; 3]) {
     }
 }
 
-/// The grid, axes and objects as line segments.
+/// The grid and axes of a plane as line segments.
 #[must_use]
-pub fn scene_lines(outlines: &Outlines, selected: &[u64]) -> Vec<Vertex> {
+pub fn grid_lines(plane: &CPlane) -> Vec<Vertex> {
+    let on_plane = |u: f64, v: f64| {
+        let along = |axis: usize| plane.origin[axis] + plane.x[axis] * u + plane.y[axis] * v;
+        narrow([along(0), along(1), along(2)])
+    };
     let mut out = Vec::new();
-    let reach = GRID_HALF_SIZE as f32;
+    let reach = f64::from(GRID_HALF_SIZE);
     for step in (-GRID_HALF_SIZE..=GRID_HALF_SIZE).step_by(GRID_STEP as usize) {
-        let at = step as f32;
+        let at = f64::from(step);
         if step != 0 {
-            segment(&mut out, [at, -reach, 0.0], [at, reach, 0.0], GRID_COLOUR);
-            segment(&mut out, [-reach, at, 0.0], [reach, at, 0.0], GRID_COLOUR);
+            segment(
+                &mut out,
+                on_plane(at, -reach),
+                on_plane(at, reach),
+                GRID_COLOUR,
+            );
+            segment(
+                &mut out,
+                on_plane(-reach, at),
+                on_plane(reach, at),
+                GRID_COLOUR,
+            );
         }
     }
     segment(
         &mut out,
-        [-reach, 0.0, 0.0],
-        [reach, 0.0, 0.0],
+        on_plane(-reach, 0.0),
+        on_plane(reach, 0.0),
         X_AXIS_COLOUR,
     );
     segment(
         &mut out,
-        [0.0, -reach, 0.0],
-        [0.0, reach, 0.0],
+        on_plane(0.0, -reach),
+        on_plane(0.0, reach),
         Y_AXIS_COLOUR,
     );
+    out
+}
+
+/// The grid, axes and objects as line segments, for a single view.
+#[must_use]
+pub fn scene_lines(outlines: &Outlines, selected: &[u64]) -> Vec<Vertex> {
+    let mut out = grid_lines(&CPlane::WORLD_XY);
+    out.extend(object_lines(outlines, selected));
+    out
+}
+
+/// The objects as line segments.
+#[must_use]
+pub fn object_lines(outlines: &Outlines, selected: &[u64]) -> Vec<Vertex> {
+    let mut out = Vec::new();
     for (id, points) in &outlines.objects {
         let colour = if selected.contains(id) {
             SELECTED_COLOUR

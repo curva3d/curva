@@ -5,12 +5,12 @@
 //! `curva --orbit-benchmark --curves 5000` opens the window on a scene of that many circles, spins
 //! the view and prints how fast it drew and snapped.
 
-use curva_commands::{Kind, Message, Processor, Translations};
+use curva_commands::{Kind, Message, Processor, Translations, ViewName, ViewRequest};
 use curva_document::{Document, State};
 use curva_kernel::{Curve, Point};
 use curva_viewport::{
-    Camera, Drawing, LineRenderer, Outlines, SnapHit, SnapKind, SnapSet, constrained,
-    preview_lines, save_picture, scene_lines,
+    Camera, Drawing, LineRenderer, Outlines, SnapHit, SnapKind, SnapSet, StandardView, VIEW_SLOTS,
+    constrained, grid_lines, object_lines, preview_lines, save_picture, scene_lines,
 };
 use eframe::egui;
 use std::sync::Arc;
@@ -26,6 +26,13 @@ const SNAP_MARKER_SIZE: f32 = 10.0;
 /// Spacing and size of the circles in a benchmark scene, in millimetres.
 const BENCHMARK_SPACING: f64 = 12.0;
 const BENCHMARK_RADIUS: f64 = 5.0;
+/// The Perspective viewport's place in the list of viewports.
+const PERSPECTIVE: usize = 1;
+/// The band at the top of a viewport that holds its title, in points.
+const TITLE_HEIGHT: f32 = 22.0;
+const PANE_GAP: f32 = 2.0;
+const TITLE_COLOUR: egui::Color32 = egui::Color32::from_rgb(190, 190, 200);
+const ACTIVE_EDGE: egui::Color32 = egui::Color32::from_rgb(120, 150, 210);
 const LOG_LINES: usize = 5;
 const PICTURE_SIZE: [u32; 2] = [1200, 800];
 const BENCHMARK_FRAMES: usize = 240;
@@ -40,11 +47,12 @@ struct Curva {
     text: Translations,
     typed: String,
     highlight: usize,
-    left_gestures: LeftGestures,
+    panes: [Pane; VIEW_SLOTS],
+    active: usize,
+    maximised: Option<usize>,
     snaps: SnapSet,
     ortho: bool,
     grid_snap: bool,
-    camera: Camera,
     outlines: Outlines,
     scene: Arc<Vec<curva_viewport::Vertex>>,
     drawn: Option<(State, Vec<u64>)>,
@@ -139,6 +147,95 @@ fn paint_selection_box(ui: &egui::Ui, viewport: egui::Rect, from: egui::Pos2, to
     }
 }
 
+/// One viewport: what it looks at and what it is tracking.
+struct Pane {
+    view: StandardView,
+    camera: Camera,
+    grid: Arc<Vec<curva_viewport::Vertex>>,
+    gestures: LeftGestures,
+}
+
+impl Pane {
+    fn new(view: StandardView) -> Self {
+        Self {
+            view,
+            camera: view.camera(),
+            grid: Arc::new(grid_lines(&view.plane())),
+            gestures: LeftGestures::default(),
+        }
+    }
+}
+
+/// The four viewports, in the order of [`pane_rects`].
+fn standard_panes() -> [Pane; VIEW_SLOTS] {
+    [
+        Pane::new(StandardView::Top),
+        Pane::new(StandardView::Perspective),
+        Pane::new(StandardView::Front),
+        Pane::new(StandardView::Right),
+    ]
+}
+
+fn standard_view(name: ViewName) -> StandardView {
+    match name {
+        ViewName::Top => StandardView::Top,
+        ViewName::Front => StandardView::Front,
+        ViewName::Right => StandardView::Right,
+        ViewName::Perspective => StandardView::Perspective,
+    }
+}
+
+fn view_label(view: StandardView) -> &'static str {
+    match view {
+        StandardView::Top => "ui.view.top",
+        StandardView::Front => "ui.view.front",
+        StandardView::Right => "ui.view.right",
+        StandardView::Perspective => "ui.view.perspective",
+    }
+}
+
+/// Where each viewport goes: Top and Perspective above Front and Right, as in Rhino, or just the
+/// maximised one filling the whole area.
+fn pane_rects(area: egui::Rect, maximised: Option<usize>) -> Vec<(usize, egui::Rect)> {
+    if let Some(pane) = maximised {
+        return vec![(pane, area)];
+    }
+    let half = PANE_GAP / 2.0;
+    let centre = area.center();
+    vec![
+        (
+            0,
+            egui::Rect::from_min_max(area.min, centre - egui::Vec2::splat(half)),
+        ),
+        (
+            1,
+            egui::Rect::from_min_max(
+                egui::pos2(centre.x + half, area.top()),
+                egui::pos2(area.right(), centre.y - half),
+            ),
+        ),
+        (
+            2,
+            egui::Rect::from_min_max(
+                egui::pos2(area.left(), centre.y + half),
+                egui::pos2(centre.x - half, area.bottom()),
+            ),
+        ),
+        (
+            3,
+            egui::Rect::from_min_max(centre + egui::Vec2::splat(half), area.max),
+        ),
+    ]
+}
+
+/// A viewport's size for the camera, never zero even while the window is being squashed.
+fn pane_size(rect: egui::Rect) -> [f64; 2] {
+    [
+        f64::from(rect.width()).max(1.0),
+        f64::from(rect.height()).max(1.0),
+    ]
+}
+
 /// Spins the view for a fixed number of frames and reports how fast the window drew them.
 #[derive(Default)]
 struct Benchmark {
@@ -208,12 +305,14 @@ impl Curva {
             state.renderer.write().callback_resources.insert(renderer);
         }
         let mut doc = Document::default();
-        let mut camera = Camera::default();
+        let mut panes = standard_panes();
         if let Some(count) = benchmark
             && benchmark_scene(&mut doc, count).is_ok()
             && let Some((low, high)) = Outlines::of(doc.state()).bounds()
         {
-            camera.frame(low, high);
+            for pane in &mut panes {
+                pane.camera.frame(low, high);
+            }
         }
         Self {
             doc,
@@ -221,11 +320,12 @@ impl Curva {
             text: Translations::english(),
             typed: String::new(),
             highlight: 0,
-            left_gestures: LeftGestures::default(),
+            panes,
+            active: PERSPECTIVE,
+            maximised: None,
             snaps: SnapSet::default(),
             ortho: false,
             grid_snap: false,
-            camera,
             outlines: Outlines::default(),
             scene: Arc::new(Vec::new()),
             drawn: None,
@@ -242,7 +342,7 @@ impl Curva {
             .is_some_and(|(state, chosen)| state == self.doc.state() && chosen == &selection);
         if !current {
             self.outlines = Outlines::of(self.doc.state());
-            self.scene = Arc::new(scene_lines(&self.outlines, &selection));
+            self.scene = Arc::new(object_lines(&self.outlines, &selection));
             self.drawn = Some((self.doc.state().clone(), selection));
         }
     }
@@ -433,33 +533,60 @@ impl Curva {
         })
     }
 
-    /// Where a cursor position lands for the point being asked for: an object snap if one is in
-    /// reach, otherwise the ground with ortho and grid snap applied. Shift flips ortho for the
-    /// moment and Alt turns object snaps off for the moment, as in Rhino.
+    /// Where a cursor position in a viewport lands for the point being asked for: an object snap
+    /// if one is in reach, otherwise the viewport's plane with ortho and grid snap applied. Shift
+    /// flips ortho for the moment and Alt turns object snaps off for the moment, as in Rhino.
     fn aim(
         &self,
         ui: &egui::Ui,
+        pane: usize,
         screen: [f64; 2],
         size: [f64; 2],
     ) -> Option<(Point, Option<SnapHit>)> {
         let (shift, alt) = ui.input(|input| (input.modifiers.shift, input.modifiers.alt));
         let request = self.processor.current_request()?;
         let base = request.preview.last().copied().or(request.from);
-        if !alt
-            && let Some(hit) = self
-                .outlines
-                .snap(&self.camera, screen, size, &self.snaps, base)
-        {
+        let camera = &self.panes[pane].camera;
+        if !alt && let Some(hit) = self.outlines.snap(camera, screen, size, &self.snaps, base) {
             return Some((hit.point, Some(hit)));
         }
-        let ground = self.camera.ground_point(screen, size)?;
+        let plane = self.panes[pane].view.plane();
+        let cursor = camera.plane_point(screen, size, &plane)?;
         Some((
-            constrained(ground, base, self.ortho != shift, self.grid_snap),
+            constrained(&plane, cursor, base, self.ortho != shift, self.grid_snap),
             None,
         ))
     }
 
-    fn handle_mouse(&mut self, ui: &egui::Ui, response: &egui::Response, size: [f64; 2]) {
+    /// Carries out a change of view asked for by a command.
+    fn apply_view_request(&mut self) {
+        match self.processor.take_view_request() {
+            Some(ViewRequest::ZoomExtents) => {
+                self.refresh_scene();
+                if let Some((low, high)) = self.outlines.bounds() {
+                    for pane in &mut self.panes {
+                        pane.camera.frame(low, high);
+                    }
+                }
+            }
+            Some(ViewRequest::FourViews) => {
+                self.panes = standard_panes();
+                self.maximised = None;
+            }
+            Some(ViewRequest::Show(name)) => {
+                self.panes[self.active] = Pane::new(standard_view(name));
+            }
+            None => {}
+        }
+    }
+
+    fn handle_mouse(
+        &mut self,
+        ui: &egui::Ui,
+        pane: usize,
+        response: &egui::Response,
+        size: [f64; 2],
+    ) {
         // Not `drag_delta`: egui holds that back for the first 6 points to tell a click from a
         // drag, and only the left button clicks here. The view must move from the first pixel.
         let (delta, shift, middle, right) = ui.input(|input| {
@@ -472,24 +599,35 @@ impl Curva {
         });
         let (dx, dy) = (f64::from(delta.x), f64::from(delta.y));
         if response.is_pointer_button_down_on() {
-            if middle || (right && shift) {
-                self.camera.pan(dx, dy, size[1]);
+            self.active = pane;
+            let camera = &mut self.panes[pane].camera;
+            if middle || (right && (shift || camera.is_parallel())) {
+                camera.pan(dx, dy, size[1]);
             } else if right {
-                self.camera.orbit(dx, dy);
+                camera.orbit(dx, dy);
             }
         }
         if response.hovered() {
             let scroll = f64::from(ui.input(|input| input.smooth_scroll_delta.y));
             if scroll != 0.0 {
-                self.camera.zoom((-scroll * 0.002).exp());
+                self.panes[pane].camera.zoom((-scroll * 0.002).exp());
             }
+        }
+        let in_title = |position: egui::Pos2| position.y < response.rect.top() + TITLE_HEIGHT;
+        if response.double_clicked() && response.interact_pointer_pos().is_some_and(in_title) {
+            self.maximised = if self.maximised.is_some() {
+                None
+            } else {
+                Some(pane)
+            };
         }
         let events = ui.input(|input| input.events.clone());
         let on_viewport = |position: egui::Pos2| {
             response.rect.contains(position)
+                && !in_title(position)
                 && ui.ctx().layer_id_at(position) == Some(response.layer_id)
         };
-        let gestures = self.left_gestures.take(&events, on_viewport);
+        let gestures = self.panes[pane].gestures.take(&events, on_viewport);
         let remove = ui.input(|input| input.modifiers.command);
         let origin = response.rect.min;
         let local = |position: egui::Pos2| {
@@ -503,20 +641,18 @@ impl Curva {
                     break;
                 }
                 // Where it was pressed, as that is where the user aimed.
-                if let Some((at, _)) = self.aim(ui, local(pressed), size) {
+                if let Some((at, _)) = self.aim(ui, pane, local(pressed), size) {
                     self.processor.click(&mut self.doc, at);
                 }
             }
             return;
         }
+        let camera = self.panes[pane].camera;
         for (from, to) in gestures {
             let hits = if is_box_drag(from, to) {
-                self.outlines
-                    .in_box(&self.camera, local(from), local(to), size)
+                self.outlines.in_box(&camera, local(from), local(to), size)
             } else {
-                let hit = self
-                    .outlines
-                    .pick(&self.camera, local(from), size, PICK_REACH);
+                let hit = self.outlines.pick(&camera, local(from), size, PICK_REACH);
                 hit.into_iter().collect()
             };
             let chosen = combined_selection(self.doc.selection(), hits, shift, remove);
@@ -524,8 +660,15 @@ impl Curva {
         }
     }
 
-    fn paint_snap_marker(&self, ui: &egui::Ui, viewport: egui::Rect, size: [f64; 2], hit: SnapHit) {
-        let Some(at) = self.camera.project(hit.point, size) else {
+    fn paint_snap_marker(
+        &self,
+        ui: &egui::Ui,
+        pane: usize,
+        viewport: egui::Rect,
+        size: [f64; 2],
+        hit: SnapHit,
+    ) {
+        let Some(at) = self.panes[pane].camera.project(hit.point, size) else {
             return;
         };
         let centre = viewport.min + egui::vec2(at[0] as f32, at[1] as f32);
@@ -545,44 +688,84 @@ impl Curva {
         );
     }
 
-    fn viewport(&mut self, ui: &mut egui::Ui) {
-        let (rect, response) =
-            ui.allocate_exact_size(ui.available_size(), egui::Sense::click_and_drag());
-        let size = [f64::from(rect.width()), f64::from(rect.height())];
-        self.handle_mouse(ui, &response, size);
+    /// One viewport's title, and an outline if it is the one view commands act on.
+    fn paint_frame(&self, ui: &egui::Ui, pane: usize, rect: egui::Rect) {
+        let painter = ui.painter_at(rect);
+        painter.text(
+            rect.left_top() + egui::vec2(6.0, 3.0),
+            egui::Align2::LEFT_TOP,
+            self.text
+                .render(&Message::new(view_label(self.panes[pane].view))),
+            egui::TextStyle::Body.resolve(ui.style()),
+            TITLE_COLOUR,
+        );
+        if pane == self.active && self.maximised.is_none() {
+            painter.rect_stroke(
+                rect,
+                0.0,
+                egui::Stroke::new(1.0, ACTIVE_EDGE),
+                egui::StrokeKind::Inside,
+            );
+        }
+    }
+
+    fn viewports(&mut self, ui: &mut egui::Ui) {
+        let mut shown = Vec::new();
+        for (pane, rect) in pane_rects(ui.available_rect_before_wrap(), self.maximised) {
+            let response = ui.allocate_rect(rect, egui::Sense::click_and_drag());
+            self.handle_mouse(ui, pane, &response, pane_size(rect));
+            shown.push((pane, rect, response));
+        }
         self.refresh_scene();
-        let aimed = response.hover_pos().and_then(|position| {
+        let hovered = shown
+            .iter()
+            .find_map(|(pane, rect, response)| response.hover_pos().map(|at| (*pane, *rect, at)));
+        let aimed = hovered.and_then(|(pane, rect, position)| {
             let local = position - rect.min;
             let screen = [f64::from(local.x), f64::from(local.y)];
+            let size = pane_size(rect);
             if self.takes_position() {
-                self.aim(ui, screen, size)
+                self.aim(ui, pane, screen, size)
             } else {
-                self.camera.ground_point(screen, size).map(|at| (at, None))
+                let plane = self.panes[pane].view.plane();
+                let camera = &self.panes[pane].camera;
+                camera
+                    .plane_point(screen, size, &plane)
+                    .map(|at| (at, None))
             }
         });
         let cursor = aimed.map(|(at, _)| at);
-        let hit = aimed.and_then(|(_, hit)| hit);
         let preview = self
             .processor
             .current_request()
             .map(|request| preview_lines(&request.preview, cursor))
             .unwrap_or_default();
-        let drawing = Drawing {
-            scene: Arc::clone(&self.scene),
-            overlay: Arc::new(preview),
-            matrix: self.camera.matrix(size[0] / size[1].max(1.0)),
-        };
-        ui.painter().add(egui_wgpu_callback(rect, drawing));
-        if let Some(hit) = hit {
-            self.paint_snap_marker(ui, rect, size, hit);
-        }
-        let dragging = self
-            .left_gestures
-            .pressed_at
-            .zip(ui.input(|input| input.pointer.latest_pos()))
-            .filter(|(from, to)| !self.takes_position() && is_box_drag(*from, *to));
-        if let Some((from, to)) = dragging {
-            paint_selection_box(ui, rect, from, to);
+        let overlay = Arc::new(preview);
+        for (pane, rect, _) in &shown {
+            let size = pane_size(*rect);
+            let drawing = Drawing {
+                slot: *pane,
+                grid: Arc::clone(&self.panes[*pane].grid),
+                scene: Arc::clone(&self.scene),
+                overlay: Arc::clone(&overlay),
+                matrix: self.panes[*pane].camera.matrix(size[0] / size[1]),
+            };
+            ui.painter().add(egui_wgpu_callback(*rect, drawing));
+            self.paint_frame(ui, *pane, *rect);
+            if let Some((hover_pane, ..)) = hovered
+                && hover_pane == *pane
+                && let Some(hit) = aimed.and_then(|(_, hit)| hit)
+            {
+                self.paint_snap_marker(ui, *pane, *rect, size, hit);
+            }
+            let dragging = self.panes[*pane]
+                .gestures
+                .pressed_at
+                .zip(ui.input(|input| input.pointer.latest_pos()))
+                .filter(|(from, to)| !self.takes_position() && is_box_drag(*from, *to));
+            if let Some((from, to)) = dragging {
+                paint_selection_box(ui, *rect, from, to);
+            }
         }
     }
 }
@@ -594,9 +777,10 @@ fn egui_wgpu_callback(rect: egui::Rect, drawing: Drawing) -> egui::Shape {
 impl eframe::App for Curva {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         egui::Panel::bottom("command line").show(ui, |ui| self.command_line(ui));
-        egui::CentralPanel::default().show(ui, |ui| self.viewport(ui));
+        self.apply_view_request();
+        egui::CentralPanel::default().show(ui, |ui| self.viewports(ui));
         if let Some(benchmark) = &mut self.benchmark {
-            self.camera.orbit(BENCHMARK_DRAG, 0.0);
+            self.panes[PERSPECTIVE].camera.orbit(BENCHMARK_DRAG, 0.0);
             // Snapping is measured with every snap on, the slowest case.
             let every_snap = SnapSet {
                 near: true,
@@ -604,7 +788,7 @@ impl eframe::App for Curva {
             };
             let started = std::time::Instant::now();
             let _ = self.outlines.snap(
-                &self.camera,
+                &self.panes[PERSPECTIVE].camera,
                 [400.0, 300.0],
                 [800.0, 600.0],
                 &every_snap,
@@ -797,6 +981,53 @@ mod tests {
     #[test]
     fn ctrl_wins_over_shift() {
         assert_eq!(combined_selection(vec![1, 2], vec![2], true, true), [1]);
+    }
+
+    fn area() -> egui::Rect {
+        egui::Rect::from_min_size(pos2(10.0, 20.0), vec2(800.0, 600.0))
+    }
+
+    #[test]
+    fn four_viewports_fill_the_area_without_overlapping() {
+        let rects = pane_rects(area(), None);
+        assert_eq!(rects.len(), VIEW_SLOTS);
+        for (index, (_, one)) in rects.iter().enumerate() {
+            assert!(area().contains_rect(*one));
+            for (_, other) in &rects[index + 1..] {
+                assert!(!one.intersects(*other));
+            }
+        }
+    }
+
+    #[test]
+    fn viewports_are_arranged_as_in_rhino() {
+        let panes = standard_panes();
+        let rects = pane_rects(area(), None);
+        let at = |view: StandardView| {
+            let index = panes.iter().position(|pane| pane.view == view).unwrap();
+            rects
+                .iter()
+                .find(|(pane, _)| *pane == index)
+                .unwrap()
+                .1
+                .center()
+        };
+        let (top, perspective) = (at(StandardView::Top), at(StandardView::Perspective));
+        let (front, right) = (at(StandardView::Front), at(StandardView::Right));
+        assert!(top.x < perspective.x && top.y < front.y);
+        assert!(front.x < right.x && perspective.y < right.y);
+        assert_eq!(panes[PERSPECTIVE].view, StandardView::Perspective);
+    }
+
+    #[test]
+    fn a_maximised_viewport_fills_the_area_alone() {
+        assert_eq!(pane_rects(area(), Some(2)), [(2, area())]);
+    }
+
+    #[test]
+    fn a_viewport_size_is_never_zero() {
+        let squashed = egui::Rect::from_min_size(pos2(0.0, 0.0), vec2(0.0, 0.0));
+        assert_eq!(pane_size(squashed), [1.0, 1.0]);
     }
 
     fn messages(count: usize) -> Vec<String> {
