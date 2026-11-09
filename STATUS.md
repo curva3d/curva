@@ -32,7 +32,8 @@
 - Four viewports with Top, Front, Right and Perspective views, each on its own plane (`docs/specs/m1-four-viewports.md`). The owner is trying it by hand.
 - Rotate, Scale, Mirror, Arc and Rectangle (`docs/specs/m1-transforms-arc-rectangle.md`). A curve can snap to itself while being drawn, circles sit on any plane, and Curva opens on Perspective.
 - Live previews for every command that changes geometry, drawn one way (rule in `AGENTS.md`).
-- Next planned: real NURBS curve storage (chosen by the owner, 9 November 2026), then Array, Join, Split, Trim, Offset and Fillet, then custom construction planes.
+- NURBS curve storage (decision 0012).
+- Next planned: Array, Join, Split, Trim, Offset and Fillet, then custom construction planes.
 
 **Waiting for the owner**
 - Nothing yet. The engine is solidcore, with Serpentine3D's commands as the base (decision 0010). SolidCraft
