@@ -3,12 +3,14 @@
 mod arc;
 mod array;
 mod array_polar;
+mod chamfer;
 mod circle;
 mod close_crv;
 mod copy;
 mod cplane;
 mod delete;
 mod distance;
+mod ellipse;
 mod explode;
 mod fillet;
 mod flip;
@@ -31,8 +33,11 @@ mod rectangle;
 mod redo;
 mod right;
 mod rotate;
+mod rotate3d;
 mod save;
 mod scale;
+mod scale1d;
+mod scale2d;
 mod sel_all;
 mod sel_none;
 mod show;
@@ -72,7 +77,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 41] = [
+pub static COMMANDS: [CommandDef; 46] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -105,6 +110,11 @@ pub static COMMANDS: [CommandDef; 41] = [
     listed!("Trim", ["tr"], true, true, trim::Trim),
     listed!("Offset", [], true, true, offset::Offset),
     listed!("Fillet", [], true, true, fillet::Fillet),
+    listed!("Chamfer", [], true, true, chamfer::Chamfer),
+    listed!("Ellipse", ["el"], true, true, ellipse::Ellipse),
+    listed!("Rotate3D", [], true, true, rotate3d::Rotate3D),
+    listed!("Scale1D", [], true, true, scale1d::Scale1D),
+    listed!("Scale2D", [], true, true, scale2d::Scale2D),
     listed!("Arc", ["a"], true, true, arc::Arc),
     listed!("Rectangle", ["rec"], true, true, rectangle::Rectangle),
     listed!("Delete", ["del", "erase"], false, true, delete::Delete),
@@ -244,6 +254,14 @@ fn cut_by(
     curve.cut_at(&points)
 }
 
+/// Curves worked out for a preview, without the ids they would replace.
+fn ghost_results(made: Vec<(u64, curva_kernel::Curve)>) -> Vec<curva_kernel::Curve> {
+    made.into_iter()
+        .take(MOST_PREVIEW_OBJECTS)
+        .map(|(_, curve)| curve)
+        .collect()
+}
+
 fn ask_objects(key: &'static str) -> Step {
     Step::Ask(Request::new(key, Kind::Objects))
 }
@@ -328,7 +346,7 @@ mod tests {
 
     /// For each command that changes geometry, the typed steps that reach its live preview.
     /// A new command must be added here, which is how the preview rule in AGENTS.md is enforced.
-    const PREVIEW_STEPS: [(&str, &[&str]); 14] = [
+    const PREVIEW_STEPS: [(&str, &[&str]); 18] = [
         ("Line", &["0,0"]),
         ("Polyline", &["0,0", "9,0"]),
         ("InterpCrv", &["0,0", "9,0"]),
@@ -343,6 +361,10 @@ mod tests {
         ("Array", &["3", "1", "1"]),
         ("Offset", &[]),
         ("ArrayPolar", &["0,0", "4"]),
+        ("Ellipse", &["0,0", "5,0"]),
+        ("Rotate3D", &["0,0,0"]),
+        ("Scale1D", &["0,0", "2"]),
+        ("Scale2D", &["0,0", "5,0"]),
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
@@ -351,7 +373,7 @@ mod tests {
     ];
 
     /// Commands whose preview needs its own setup, tested in their own files.
-    const PREVIEW_TESTED_ELSEWHERE: [&str; 2] = ["Trim", "Fillet"];
+    const PREVIEW_TESTED_ELSEWHERE: [&str; 3] = ["Trim", "Fillet", "Chamfer"];
 
     #[test]
     fn every_command_that_changes_geometry_is_listed_for_a_preview() {
@@ -662,7 +684,10 @@ mod tests {
     #[test]
     fn completion_finds_aliases_and_puts_an_exact_match_first() {
         assert_eq!(completions("pl"), ["Polyline"]);
-        assert_eq!(completions("c"), ["Circle", "Copy", "CloseCrv", "CPlane"]);
+        assert_eq!(
+            completions("c"),
+            ["Circle", "Copy", "CloseCrv", "Chamfer", "CPlane"]
+        );
         assert_eq!(completions("co"), ["Copy"]);
     }
 

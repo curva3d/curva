@@ -10,9 +10,11 @@ use solidcore::query::api_queries::curve_closest_point;
 use solidcore::{Kernel, Point3};
 use std::f64::consts::TAU;
 
+mod conic;
 mod cut;
 mod fillet;
 mod offset;
+pub use conic::{Chamfered, chamfer_lines};
 pub use cut::{closest_between, crossings};
 pub use fillet::fillet_curves;
 pub use offset::{Filleted, fillet_lines};
