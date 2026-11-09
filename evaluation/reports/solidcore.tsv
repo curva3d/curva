@@ -1,32 +1,32 @@
 kernel	case	outcome	seconds	measurements	image	detail
-solidcore	4	works	0.020	volume=0.000000;area=1220.683440;centre=(14.8893,0.2632,15.2608);topology=1F/4E/4V;closed=false;solids=0;valid=false;failed-checks=[5]		
-solidcore	5	works	0.076	volume=0.000000;area=1859.371192;centre=(-0.0582,-0.0000,14.7546);topology=12F/36E/24V;closed=false;solids=0;valid=true;failed-checks=[]		
-solidcore	6	works	0.649	volume=0.000000;area=910.159006;centre=(30.3254,2.3640,9.0490);topology=1F/3E/2V;closed=false;solids=0;valid=true;failed-checks=[]		
-solidcore	8	works	0.046	volume=0.000000;area=2076.030806;centre=(-0.0000,0.0000,10.9536);topology=1F/3E/2V;closed=false;solids=0;valid=true;failed-checks=[];area-at-270=1557.023082		
-solidcore	13	works	0.056	volume=6429.203675;area=2871.238899;centre=(10.0000,10.0000,10.0000);topology=7F/15E/10V;closed=true;solids=1;valid=true;failed-checks=[];exact-volume=6429.203673;difference-percent=0.000000		
-solidcore	14	works	0.020	volume=2000.000000;area=1000.000000;centre=(10.0000,5.0000,5.0000);topology=6F/12E/8V;closed=true;solids=1;valid=true;failed-checks=[];exact-volume=2000.000000;difference-percent=0.000000		
-solidcore	15	works	0.893	volume=9287.017938;area=3260.222853;centre=(0.5076,1.6670,12.0910);topology=18F/47E/31V;closed=true;solids=1;valid=true;failed-checks=[];volume-balance-percent=0.000000		
-solidcore	16	works	3.304	volume=5187.283891;area=1732.731087;centre=(-0.1573,1.4132,14.8380);topology=3F/3E/2V;closed=true;solids=1;valid=true;failed-checks=[];volume-balance-percent=0.000000		
-solidcore	18	works	0.062	volume=3392.000000;area=3552.000000;centre=(10.0000,10.0000,8.6415);topology=11F/24E/16V;closed=true;solids=1;valid=true;failed-checks=[];exact-volume=3392.000000;difference-percent=0.000000		
-solidcore	19	works	0.332	volume=7804.696126;area=2189.451272;centre=(10.0000,10.0000,10.0000);topology=26F/48E/24V;closed=true;solids=1;valid=true;failed-checks=[];exact-volume=7804.696111;difference-percent=0.000000		
-solidcore	20	works	0.095	volume=6231.659471;area=1829.240963;centre=(-0.0000,0.0000,9.9211);topology=4F/5E/3V;closed=true;solids=1;valid=true;failed-checks=[];exact-volume=6231.659467;difference-percent=0.000000		
-solidcore	22	works	0.130	volume=7568.000000;area=2112.999133;centre=(10.0000,10.0000,10.0000);topology=18F/48E/32V;closed=true;solids=1;valid=true;failed-checks=[]		
+solidcore	4	works	0.019	volume=0.000000;area=1220.683440;centre=(14.8893,0.2632,15.2608);topology=1F/4E/4V;closed=false;solids=0;valid=false;failed-checks=SmBSplineSurface::Test #5 Bad NonMonotonic CPts: SmBSplineSurface Control Net doubles back on itself probably making a self intersecting surface [owner SmBSplineSurface] 		
+solidcore	5	works	0.075	volume=0.000000;area=1859.371192;centre=(-0.0582,-0.0000,14.7546);topology=12F/36E/24V;closed=false;solids=0;valid=true;failed-checks=		
+solidcore	6	works	0.635	volume=0.000000;area=910.159006;centre=(30.3254,2.3640,9.0490);topology=1F/3E/2V;closed=false;solids=0;valid=true;failed-checks=		
+solidcore	8	works	0.044	volume=0.000000;area=2076.030806;centre=(-0.0000,0.0000,10.9536);topology=1F/3E/2V;closed=false;solids=0;valid=true;failed-checks=;area-at-270=1557.023082		
+solidcore	10	works	0.006	volume=0.000000;area=699.469035;centre=(20.0000,10.0000,0.0000);topology=1F/6E/6V;closed=false;solids=0;valid=true;failed-checks=;exact-area=699.469035		
+solidcore	11	works	0.048	volume=10812.743157;area=5765.309649;centre=(20.0000,20.0000,6.0000);topology=13F/27E/18V;closed=true;solids=2;valid=true;failed-checks=;exact-volume=10812.743158;difference-percent=0.000000		
+solidcore	13	works	0.052	volume=6429.203675;area=2871.238899;centre=(10.0000,10.0000,10.0000);topology=7F/15E/10V;closed=true;solids=1;valid=true;failed-checks=;exact-volume=6429.203673;difference-percent=0.000000		
+solidcore	14	works	0.021	volume=2000.000000;area=1000.000000;centre=(10.0000,5.0000,5.0000);topology=6F/12E/8V;closed=true;solids=1;valid=true;failed-checks=;exact-volume=2000.000000;difference-percent=0.000000		
+solidcore	15	works	0.884	volume=9287.017938;area=3260.222853;centre=(0.5076,1.6670,12.0910);topology=18F/47E/31V;closed=true;solids=1;valid=true;failed-checks=;volume-balance-percent=0.000000		
+solidcore	16	works	3.295	volume=5187.283891;area=1732.731087;centre=(-0.1573,1.4132,14.8380);topology=3F/3E/2V;closed=true;solids=1;valid=true;failed-checks=;volume-balance-percent=0.000000		
+solidcore	18	works	0.061	volume=3392.000000;area=3552.000000;centre=(10.0000,10.0000,8.6415);topology=11F/24E/16V;closed=true;solids=1;valid=true;failed-checks=;exact-volume=3392.000000;difference-percent=0.000000		
+solidcore	19	works	0.329	volume=7804.696126;area=2189.451272;centre=(10.0000,10.0000,10.0000);topology=26F/48E/24V;closed=true;solids=1;valid=true;failed-checks=;exact-volume=7804.696111;difference-percent=0.000000		
+solidcore	20	works	0.094	volume=6231.659471;area=1829.240963;centre=(-0.0000,0.0000,9.9211);topology=4F/5E/3V;closed=true;solids=1;valid=true;failed-checks=;exact-volume=6231.659467;difference-percent=0.000000		
+solidcore	22	works	0.127	volume=7568.000000;area=2112.999133;centre=(10.0000,10.0000,10.0000);topology=18F/48E/32V;closed=true;solids=1;valid=true;failed-checks=		
+solidcore	23	works	0.630	volume=9287.017938;area=3260.222853;centre=(0.5076,1.6670,12.0910);topology=18F/47E/31V;closed=true;solids=1;valid=true;failed-checks=;volume-of-13=6429.203675;area-of-13=2871.238899;volume-of-19=7804.696126;area-of-19=2189.451272		
+solidcore	29	works	0.020	volume=2000.000000;area=1000.000000;centre=(10.0000,5.0000,5.0000);topology=6F/12E/8V;closed=true;solids=1;valid=true;failed-checks=;exact-volume=2000.000000;difference-percent=0.000000		
+solidcore	30	works	2.147	volume=1150.821541;area=959.927183;centre=(11.1285,3.9969,1.1057);topology=3F/3E/2V;closed=true;solids=1;valid=true;failed-checks=		
+solidcore	31	works	0.028	volume=10400.000000;area=3680.000000;centre=(15.0000,10.0000,10.0000);topology=12F/24E/16V;closed=true;solids=2;valid=true;failed-checks=;exact-volume=10400.000000;difference-percent=0.000000		
 solidcore	1	not-wired				
 solidcore	2	not-wired				
 solidcore	3	not-wired				
 solidcore	7	not-wired				
 solidcore	9	not-wired				
-solidcore	10	not-wired				
-solidcore	11	not-wired				
 solidcore	12	not-wired				
 solidcore	17	not-wired				
 solidcore	21	not-wired				
-solidcore	23	not-wired				
 solidcore	24	not-wired				
 solidcore	25	not-wired				
 solidcore	26	not-wired				
 solidcore	27	not-wired				
 solidcore	28	not-wired				
-solidcore	29	not-wired				
-solidcore	30	not-wired				
-solidcore	31	not-wired				

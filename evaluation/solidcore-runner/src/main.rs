@@ -7,7 +7,9 @@
 
 use kernel_eval::{Attempt, Case, Kernel, Outcome, Record, load_cases, report, run_case};
 use solidcore_ops::boolean::boolean;
-use solidcore_ops::sweep::{Curve, SweepFrame, loft, revolve, sweep_placed};
+use solidcore_ops::sweep::{
+    Curve, DraftCorner, SweepFrame, extrude, loft, planar_faces, revolve, sweep_placed,
+};
 use solidcore_ops::{
     Blend, Body, BooleanOp, CheckLevel, Corners, Turn, blend, blend_ordered, make_box,
     make_cylinder, shell,
@@ -19,7 +21,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 /// The cases this runner can perform so far.
-const WIRED: [u32; 12] = [4, 5, 6, 8, 13, 14, 15, 16, 18, 19, 20, 22];
+const WIRED: [u32; 18] = [
+    4, 5, 6, 8, 10, 11, 13, 14, 15, 16, 18, 19, 20, 22, 23, 29, 30, 31,
+];
 
 /// Accuracy asked of solidcore's volume and area integrals.
 const ACCURACY: f64 = 1e-6;
@@ -27,7 +31,22 @@ const ACCURACY: f64 = 1e-6;
 /// How close, relatively, a position must be to count as on a given height.
 const HEIGHT_TOLERANCE: f64 = 1e-6;
 
-struct Solidcore;
+struct Solidcore {
+    /// Every case, because some start from the result of an earlier one.
+    cases: Vec<Case>,
+}
+
+impl Solidcore {
+    /// Remakes the result of an earlier case.
+    fn result_of(&self, id: u32) -> Result<Body, String> {
+        let used = self
+            .cases
+            .iter()
+            .find(|case| case.id == id)
+            .ok_or_else(|| format!("harness: no case {id}"))?;
+        perform(used)
+    }
+}
 
 impl Kernel for Solidcore {
     fn name(&self) -> &str {
@@ -35,9 +54,28 @@ impl Kernel for Solidcore {
     }
 
     fn run(&self, case: &Case) -> Result<Attempt, String> {
-        let body = perform(case)?;
+        // Case 29 starts from 14; case 23 measures 13, 15 and 19, reported under 15's result.
+        let body = match case.id {
+            23 => self.result_of(15)?,
+            29 => self.result_of(14)?,
+            _ => perform(case)?,
+        };
         let mut attempt = measure(case, &body)?;
         attempt.measurements.extend(extra(case));
+        if case.id == 23 {
+            for id in [13, 19] {
+                let mass = self
+                    .result_of(id)?
+                    .mass_properties(ACCURACY)
+                    .map_err(fail)?;
+                attempt
+                    .measurements
+                    .push((format!("volume-of-{id}"), format!("{:.6}", mass.volume)));
+                attempt
+                    .measurements
+                    .push((format!("area-of-{id}"), format!("{:.6}", mass.area)));
+            }
+        }
         Ok(attempt)
     }
 }
@@ -186,6 +224,24 @@ fn straight(from: [f64; 2], to: [f64; 2]) -> Span {
 }
 
 fn section(text: &str) -> Result<Curve, String> {
+    if text.split_whitespace().nth(1) == Some("rectangle") {
+        let (min, max) = (point(field(text, "min")?)?, point(field(text, "max")?)?);
+        let corners = [
+            [min[0], min[1]],
+            [max[0], min[1]],
+            [max[0], max[1]],
+            [min[0], max[1]],
+        ];
+        let spans: Vec<Span> = (0..4)
+            .map(|i| straight(corners[i], corners[(i + 1) % 4]))
+            .collect();
+        return Ok(planar_loop(
+            [0.0, 0.0, min[2]],
+            [0.0, 0.0, 1.0],
+            corners[0],
+            &spans,
+        ));
+    }
     let number = |key: &str| -> Result<f64, String> { field(text, key)?.parse().map_err(fail) };
     let centre = point(field(text, "centre")?)?;
     let normal = field(text, "normal").map_or(Ok([0.0, 0.0, 1.0]), point)?;
@@ -327,6 +383,10 @@ fn extra(case: &Case) -> Vec<(String, String)> {
                 );
             vec![("area-at-270".to_owned(), area)]
         }
+        10 => vec![(
+            "exact-area".to_owned(),
+            format!("{:.6}", 800.0 - 2.0 * PI * 16.0),
+        )],
         15 | 16 => {
             let balance = volume_balance(case).map_or_else(
                 |error| format!("failed: {error}"),
@@ -415,6 +475,75 @@ fn perform(case: &Case) -> Result<Body, String> {
                 .map_err(fail)
         }
         8 => revolved(case, 360.0),
+        10 => {
+            let outer = case
+                .inputs
+                .iter()
+                .find(|entry| entry.starts_with("outer "))
+                .ok_or("harness: no input `outer`")?;
+            let (min, max) = (point(field(outer, "min")?)?, point(field(outer, "max")?)?);
+            let corners = [
+                [min[0], min[1], min[2]],
+                [max[0], min[1], min[2]],
+                [max[0], max[1], min[2]],
+                [min[0], max[1], min[2]],
+            ];
+            // Four lines, not one curve: a single spline with sharp corners is a modelling fault.
+            let mut loops: Vec<Curve> = (0..4)
+                .map(|i| Curve::Line {
+                    start: corners[i],
+                    end: corners[(i + 1) % 4],
+                })
+                .collect();
+            loops.push(curve(case, "hole1")?);
+            loops.push(curve(case, "hole2")?);
+            planar_faces(&loops).map_err(fail)
+        }
+        11 => {
+            let direction = case
+                .options
+                .iter()
+                .find_map(|entry| entry.strip_prefix("direction="))
+                .ok_or("harness: option `direction` missing")
+                .map_err(str::to_owned)
+                .and_then(point)?;
+            let length = dot(direction, direction).sqrt();
+            let profile = [
+                curve(case, "outer")?,
+                curve(case, "hole")?,
+                curve(case, "island")?,
+            ];
+            extrude(
+                &profile,
+                unit(direction),
+                length,
+                0.0,
+                DraftCorner::default(),
+                true,
+            )
+            .map_err(fail)
+        }
+        30 => {
+            let rail = curve(case, "rail")?;
+            let Curve::Nurbs { points, .. } = &rail else {
+                return Err("harness: the rail should be a spline".to_owned());
+            };
+            let (first, second) = (points[0], points[1]);
+            let tangent = [
+                second[0] - first[0],
+                second[1] - first[1],
+                second[2] - first[2],
+            ];
+            let radius = option(case, "radius")?;
+            let circle = section(&format!(
+                "profile circle centre=({},{},{}) radius={radius} normal=({},{},{})",
+                first[0], first[1], first[2], tangent[0], tangent[1], tangent[2]
+            ))?;
+            sweep_placed(&[circle], &[rail], SweepFrame::Follow, true)
+                .map(|(body, _, _)| body)
+                .map_err(fail)
+        }
+        31 => combine(case, BooleanOp::Subtract),
         15 => boolean(lofted_a(case)?, second_solid(case)?, BooleanOp::Subtract)
             .map_err(fail)?
             .ok_or_else(|| "the result is empty".to_owned()),
@@ -473,7 +602,11 @@ fn exact_volume(id: u32) -> Option<f64> {
     match id {
         // Box less the part of the cylinder inside it.
         13 => Some(side.powi(3) - PI * 25.0 * side),
-        14 => Some(2000.0),
+        // Outer square, less the hole, plus the island standing inside it, 12 tall.
+        11 => Some((1600.0 - 900.0 + PI * 64.0) * 12.0),
+        14 | 29 => Some(2000.0),
+        // The slot removes 4 by 20 by 20 from the 30 by 20 by 20 box.
+        31 => Some(10_400.0),
         // The cavity is 16 by 16 and 18 deep, the floor staying 2 thick.
         18 => Some(8000.0 - 16.0 * 16.0 * 18.0),
         // Core, six slabs, twelve quarter-cylinders and eight eighth-spheres.
@@ -520,7 +653,11 @@ fn measure(case: &Case, body: &Body) -> Result<Attempt, String> {
         ("valid".to_owned(), check.is_valid().to_string()),
         (
             "failed-checks".to_owned(),
-            format!("{:?}", check.failed_tests()),
+            if check.is_valid() {
+                String::new()
+            } else {
+                check.text.replace(['\t', '\n', ';'], " ")
+            },
         ),
     ];
     if let Some(exact) = exact_volume(case.id) {
@@ -540,7 +677,9 @@ fn main() -> Result<(), String> {
     let folder = arguments.next().ok_or(usage)?;
     let output = arguments.next().ok_or(usage)?;
     let cases = load_cases(Path::new(&folder)).map_err(|error| error.to_string())?;
-    let kernel: Arc<dyn Kernel> = Arc::new(Solidcore);
+    let kernel: Arc<dyn Kernel> = Arc::new(Solidcore {
+        cases: cases.clone(),
+    });
     let limit = Duration::from_secs(120);
     let records: Vec<Record> = cases
         .iter()
