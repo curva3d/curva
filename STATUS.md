@@ -33,7 +33,8 @@
 - Rotate, Scale, Mirror, Arc and Rectangle (`docs/specs/m1-transforms-arc-rectangle.md`). A curve can snap to itself while being drawn, circles sit on any plane, and Curva opens on Perspective.
 - Live previews for every command that changes geometry, drawn one way (rule in `AGENTS.md`).
 - NURBS curve storage (decision 0012).
-- Next planned: Array, Join, Split, Trim, Offset and Fillet, then custom construction planes.
+- Array and Join (`docs/specs/m1-array-join.md`).
+- Next planned: Split, Trim, Offset and Fillet, then custom construction planes.
 
 **Waiting for the owner**
 - Nothing yet. The engine is solidcore, with Serpentine3D's commands as the base (decision 0010). SolidCraft
