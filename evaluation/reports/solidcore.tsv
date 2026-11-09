@@ -2,31 +2,31 @@ kernel	case	outcome	seconds	measurements	image	detail
 solidcore	1	works	0.001	length=67.622746;furthest-input-point=0.000000000		
 solidcore	2	works	0.027	curve-count=5;length=137.435350;nearest-to-source=2.999777;furthest-from-source=3.000239;asked-distance=3.000000		
 solidcore	3	works	0.001	point-count=4;point-positions=(1.1084,3.0000,0.0000) (13.7139,3.0000,0.0000) (26.2861,3.0000,0.0000) (38.8916,3.0000,0.0000);furthest-from-either-curve=0.000000000		
-solidcore	4	works	0.083	volume=0.000000;area=1220.683440;centre=(14.8893,0.2632,15.2608);topology=1F/4E/4V;closed=false;solids=0;valid=false;failed-checks=SmBSplineSurface::Test #5 Bad NonMonotonic CPts: SmBSplineSurface Control Net doubles back on itself probably making a self intersecting surface [owner SmBSplineSurface] 	V:/research/out/images\case-4.png	
-solidcore	5	works	0.111	volume=0.000000;area=1859.371192;centre=(-0.0582,-0.0000,14.7546);topology=12F/36E/24V;closed=false;solids=0;valid=true;failed-checks=	V:/research/out/images\case-5.png	
-solidcore	6	works	1.882	volume=0.000000;area=910.159006;centre=(30.3254,2.3640,9.0490);topology=1F/3E/2V;closed=false;solids=0;valid=true;failed-checks=	V:/research/out/images\case-6.png	
-solidcore	8	works	0.143	volume=0.000000;area=2076.030806;centre=(-0.0000,0.0000,10.9536);topology=1F/3E/2V;closed=false;solids=0;valid=true;failed-checks=;area-at-270=1557.023082	V:/research/out/images\case-8.png	
+solidcore	4	works	0.082	volume=0.000000;area=1220.683440;centre=(14.8893,0.2632,15.2608);topology=1F/4E/4V;closed=false;solids=0;valid=false;failed-checks=SmBSplineSurface::Test #5 Bad NonMonotonic CPts: SmBSplineSurface Control Net doubles back on itself probably making a self intersecting surface [owner SmBSplineSurface] 	V:/research/out/images\case-4.png	
+solidcore	5	works	0.112	volume=0.000000;area=1859.371192;centre=(-0.0582,-0.0000,14.7546);topology=12F/36E/24V;closed=false;solids=0;valid=true;failed-checks=	V:/research/out/images\case-5.png	
+solidcore	6	works	1.913	volume=0.000000;area=910.159006;centre=(30.3254,2.3640,9.0490);topology=1F/3E/2V;closed=false;solids=0;valid=true;failed-checks=	V:/research/out/images\case-6.png	
+solidcore	8	works	0.142	volume=0.000000;area=2076.030806;centre=(-0.0000,0.0000,10.9536);topology=1F/3E/2V;closed=false;solids=0;valid=true;failed-checks=;area-at-270=1557.023082	V:/research/out/images\case-8.png	
 solidcore	10	works	0.021	volume=0.000000;area=699.469035;centre=(20.0000,10.0000,0.0000);topology=1F/6E/6V;closed=false;solids=0;valid=true;failed-checks=;exact-area=699.469035	V:/research/out/images\case-10.png	
 solidcore	11	works	0.075	volume=10812.743157;area=5765.309649;centre=(20.0000,20.0000,6.0000);topology=13F/27E/18V;closed=true;solids=2;valid=true;failed-checks=;exact-volume=10812.743158;difference-percent=0.000000	V:/research/out/images\case-11.png	
+solidcore	12	works	0.182	volume=0.000000;area=856.934730;centre=(15.0000,15.0000,1.5543);topology=1F/4E/4V;closed=false;solids=0;valid=true;failed-checks=;mesh-and-distance=failed: Unsupported("a face surface with no NURBS form has no exact record")		
 solidcore	13	works	0.087	volume=6429.203675;area=2871.238899;centre=(10.0000,10.0000,10.0000);topology=7F/15E/10V;closed=true;solids=1;valid=true;failed-checks=;exact-volume=6429.203673;difference-percent=0.000000	V:/research/out/images\case-13.png	
 solidcore	14	works	0.038	volume=2000.000000;area=1000.000000;centre=(10.0000,5.0000,5.0000);topology=6F/12E/8V;closed=true;solids=1;valid=true;failed-checks=;exact-volume=2000.000000;difference-percent=0.000000	V:/research/out/images\case-14.png	
-solidcore	15	works	0.926	volume=9287.017938;area=3260.222853;centre=(0.5076,1.6670,12.0910);topology=18F/47E/31V;closed=true;solids=1;valid=true;failed-checks=;volume-balance-percent=0.000000	V:/research/out/images\case-15.png	
-solidcore	16	works	3.388	volume=5187.283891;area=1732.731087;centre=(-0.1573,1.4132,14.8380);topology=3F/3E/2V;closed=true;solids=1;valid=true;failed-checks=;volume-balance-percent=0.000000	V:/research/out/images\case-16.png	
-solidcore	18	works	0.086	volume=3392.000000;area=3552.000000;centre=(10.0000,10.0000,8.6415);topology=11F/24E/16V;closed=true;solids=1;valid=true;failed-checks=;exact-volume=3392.000000;difference-percent=0.000000	V:/research/out/images\case-18.png	
-solidcore	19	works	0.378	volume=7804.696126;area=2189.451272;centre=(10.0000,10.0000,10.0000);topology=26F/48E/24V;closed=true;solids=1;valid=true;failed-checks=;exact-volume=7804.696111;difference-percent=0.000000	V:/research/out/images\case-19.png	
+solidcore	15	works	0.940	volume=9287.017938;area=3260.222853;centre=(0.5076,1.6670,12.0910);topology=18F/47E/31V;closed=true;solids=1;valid=true;failed-checks=;volume-balance-percent=0.000000	V:/research/out/images\case-15.png	
+solidcore	16	works	3.425	volume=5187.283891;area=1732.731087;centre=(-0.1573,1.4132,14.8380);topology=3F/3E/2V;closed=true;solids=1;valid=true;failed-checks=;volume-balance-percent=0.000000	V:/research/out/images\case-16.png	
+solidcore	17	works	0.030	volume=0.000000;area=947.049607;centre=(15.0000,15.0000,3.4693);topology=1F/4E/4V;closed=false;solids=0;valid=true;failed-checks=;uncut-area=947.049604	V:/research/out/images\case-17.png	
+solidcore	18	works	0.084	volume=3392.000000;area=3552.000000;centre=(10.0000,10.0000,8.6415);topology=11F/24E/16V;closed=true;solids=1;valid=true;failed-checks=;exact-volume=3392.000000;difference-percent=0.000000	V:/research/out/images\case-18.png	
+solidcore	19	works	0.377	volume=7804.696126;area=2189.451272;centre=(10.0000,10.0000,10.0000);topology=26F/48E/24V;closed=true;solids=1;valid=true;failed-checks=;exact-volume=7804.696111;difference-percent=0.000000	V:/research/out/images\case-19.png	
 solidcore	20	works	0.150	volume=6231.659471;area=1829.240963;centre=(-0.0000,0.0000,9.9211);topology=4F/5E/3V;closed=true;solids=1;valid=true;failed-checks=;exact-volume=6231.659467;difference-percent=0.000000	V:/research/out/images\case-20.png	
-solidcore	22	works	0.155	volume=7568.000000;area=2112.999133;centre=(10.0000,10.0000,10.0000);topology=18F/48E/32V;closed=true;solids=1;valid=true;failed-checks=	V:/research/out/images\case-22.png	
-solidcore	23	works	0.685	volume=9287.017938;area=3260.222853;centre=(0.5076,1.6670,12.0910);topology=18F/47E/31V;closed=true;solids=1;valid=true;failed-checks=;volume-of-13=6429.203675;area-of-13=2871.238899;volume-of-19=7804.696126;area-of-19=2189.451272	V:/research/out/images\case-23.png	
-solidcore	24	works	1.082	volume=5187.283891;area=1732.731087;centre=(-0.1573,1.4132,14.8380);topology=3F/3E/2V;closed=true;solids=1;valid=true;failed-checks=;triangle-count=2648;mesh-seconds=0.062;faces-not-meshed=0	V:/research/out/images\case-24.png	
-solidcore	25	works	0.823	volume=9287.017938;area=3260.222853;centre=(0.5076,1.6670,12.0910);topology=18F/47E/31V;closed=true;solids=1;valid=true;failed-checks=;step-bytes-15=311046;step-bodies-read-back-15=1;step-bytes-19=375407;step-bodies-read-back-19=1	V:/research/out/images\case-25.png	
-solidcore	29	works	0.040	volume=2000.000000;area=1000.000000;centre=(10.0000,5.0000,5.0000);topology=6F/12E/8V;closed=true;solids=1;valid=true;failed-checks=;exact-volume=2000.000000;difference-percent=0.000000	V:/research/out/images\case-29.png	
-solidcore	30	works	5.009	volume=1150.821541;area=959.927183;centre=(11.1285,3.9969,1.1057);topology=3F/3E/2V;closed=true;solids=1;valid=true;failed-checks=	V:/research/out/images\case-30.png	
-solidcore	31	works	0.049	volume=10400.000000;area=3680.000000;centre=(15.0000,10.0000,10.0000);topology=12F/24E/16V;closed=true;solids=2;valid=true;failed-checks=;exact-volume=10400.000000;difference-percent=0.000000	V:/research/out/images\case-31.png	
+solidcore	22	works	0.154	volume=7568.000000;area=2112.999133;centre=(10.0000,10.0000,10.0000);topology=18F/48E/32V;closed=true;solids=1;valid=true;failed-checks=	V:/research/out/images\case-22.png	
+solidcore	23	works	0.687	volume=9287.017938;area=3260.222853;centre=(0.5076,1.6670,12.0910);topology=18F/47E/31V;closed=true;solids=1;valid=true;failed-checks=;volume-of-13=6429.203675;area-of-13=2871.238899;volume-of-19=7804.696126;area-of-19=2189.451272	V:/research/out/images\case-23.png	
+solidcore	24	works	1.086	volume=5187.283891;area=1732.731087;centre=(-0.1573,1.4132,14.8380);topology=3F/3E/2V;closed=true;solids=1;valid=true;failed-checks=;triangle-count=2648;mesh-seconds=0.061;faces-not-meshed=0	V:/research/out/images\case-24.png	
+solidcore	25	works	0.827	volume=9287.017938;area=3260.222853;centre=(0.5076,1.6670,12.0910);topology=18F/47E/31V;closed=true;solids=1;valid=true;failed-checks=;step-bytes-15=311046;step-bodies-read-back-15=1;step-bytes-19=375407;step-bodies-read-back-19=1	V:/research/out/images\case-25.png	
+solidcore	26	works	0.006	curve-count=1;length=37.697362		
+solidcore	27	works	0.007	volume=0.000000;area=2200.000000;centre=(15.0000,10.0000,5.0000);topology=6F/12E/8V;closed=true;solids=0;valid=true;failed-checks=;exact-volume=6000.000000;difference-percent=100.000000		
+solidcore	28	works	1.641	volume=9287.017938;area=3260.222853;centre=(0.5076,1.6670,12.0910);topology=18F/47E/31V;closed=true;solids=1;valid=true;failed-checks=;section-curve-count=11;section-length=73.520079;contour-levels=5;contour-curve-count=67	V:/research/out/images\case-28.png	
+solidcore	29	works	0.037	volume=2000.000000;area=1000.000000;centre=(10.0000,5.0000,5.0000);topology=6F/12E/8V;closed=true;solids=1;valid=true;failed-checks=;exact-volume=2000.000000;difference-percent=0.000000	V:/research/out/images\case-29.png	
+solidcore	30	works	5.040	volume=1150.821541;area=959.927183;centre=(11.1285,3.9969,1.1057);topology=3F/3E/2V;closed=true;solids=1;valid=true;failed-checks=	V:/research/out/images\case-30.png	
+solidcore	31	works	0.048	volume=10400.000000;area=3680.000000;centre=(15.0000,10.0000,10.0000);topology=12F/24E/16V;closed=true;solids=2;valid=true;failed-checks=;exact-volume=10400.000000;difference-percent=0.000000	V:/research/out/images\case-31.png	
 solidcore	7	not-wired				
 solidcore	9	not-wired				
-solidcore	12	not-wired				
-solidcore	17	not-wired				
 solidcore	21	not-wired				
-solidcore	26	not-wired				
-solidcore	27	not-wired				
-solidcore	28	not-wired				

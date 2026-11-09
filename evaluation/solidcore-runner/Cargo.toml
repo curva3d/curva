@@ -22,6 +22,9 @@ step-brep = { git = "https://github.com/tangency-labs/solidcore", rev = "c440e5f
 step-export = { git = "https://github.com/tangency-labs/solidcore", rev = "c440e5f892452a9654aee8f3030de6095fdb1415" }
 step-import = { git = "https://github.com/tangency-labs/solidcore", rev = "c440e5f892452a9654aee8f3030de6095fdb1415" }
 
+solidcore-record = { git = "https://github.com/tangency-labs/solidcore", rev = "c440e5f892452a9654aee8f3030de6095fdb1415" }
+solidcore-ssi = { git = "https://github.com/tangency-labs/solidcore", rev = "c440e5f892452a9654aee8f3030de6095fdb1415" }
+
 [lints.rust]
 unsafe_code = "forbid"
 missing_docs = "deny"

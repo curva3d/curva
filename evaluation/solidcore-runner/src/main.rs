@@ -22,10 +22,12 @@ use std::time::Duration;
 
 mod curves;
 mod output;
+mod surfaces;
 
 /// The cases this runner can perform so far.
-const WIRED: [u32; 23] = [
-    1, 2, 3, 4, 5, 6, 8, 10, 11, 13, 14, 15, 16, 18, 19, 20, 22, 23, 24, 25, 29, 30, 31,
+const WIRED: [u32; 28] = [
+    1, 2, 3, 4, 5, 6, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 23, 24, 25, 26, 27, 28,
+    29, 30, 31,
 ];
 
 /// Accuracy asked of solidcore's volume and area integrals.
@@ -59,12 +61,15 @@ impl Kernel for Solidcore {
     }
 
     fn run(&self, case: &Case) -> Result<Attempt, String> {
+        if case.id == 26 {
+            return surfaces::intersection(case);
+        }
         if let Some(done) = curves::run(case) {
             return done;
         }
         // Case 29 starts from 14; case 23 measures 13, 15 and 19, reported under 15's result.
         let body = match case.id {
-            23 | 25 => self.result_of(15)?,
+            23 | 25 | 28 => self.result_of(15)?,
             24 => self.result_of(16)?,
             29 => self.result_of(14)?,
             _ => perform(case)?,
@@ -72,6 +77,26 @@ impl Kernel for Solidcore {
         let mut attempt = measure(case, &body)?;
         attempt.measurements.extend(extra(case));
         attempt.image = output::picture(&body, &self.images, case.id);
+        if case.id == 12 {
+            // The offset can succeed while its result cannot be converted for meshing.
+            match surfaces::offset_gap(case, &body) {
+                Ok(list) => attempt.measurements.extend(list),
+                Err(error) => attempt
+                    .measurements
+                    .push(("mesh-and-distance".to_owned(), format!("failed: {error}"))),
+            }
+        }
+        if case.id == 17 {
+            let whole = surfaces::source_area(case)?;
+            attempt
+                .measurements
+                .push(("uncut-area".to_owned(), format!("{whole:.6}")));
+        }
+        if case.id == 28 {
+            attempt
+                .measurements
+                .extend(surfaces::section_measures(case, &body)?);
+        }
         if case.id == 24 {
             attempt.measurements.extend(output::mesh_measures(&body)?);
         }
@@ -496,6 +521,9 @@ fn perform(case: &Case) -> Result<Body, String> {
                 .map_err(fail)
         }
         8 => revolved(case, 360.0),
+        12 => surfaces::offset(case),
+        17 => surfaces::split(case),
+        27 => surfaces::join(case),
         10 => {
             let outer = case
                 .inputs
@@ -626,6 +654,8 @@ fn exact_volume(id: u32) -> Option<f64> {
         // Outer square, less the hole, plus the island standing inside it, 12 tall.
         11 => Some((1600.0 - 900.0 + PI * 64.0) * 12.0),
         14 | 29 => Some(2000.0),
+        // The walls and two caps close a 30 by 20 by 10 box.
+        27 => Some(6000.0),
         // The slot removes 4 by 20 by 20 from the 30 by 20 by 20 box.
         31 => Some(10_400.0),
         // The cavity is 16 by 16 and 18 deep, the floor staying 2 thick.

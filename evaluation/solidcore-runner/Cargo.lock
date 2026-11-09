@@ -232,10 +232,21 @@ dependencies = [
  "solidcore",
  "solidcore-convert",
  "solidcore-ops",
+ "solidcore-record",
+ "solidcore-ssi",
  "solidcore-tess",
  "step-brep",
  "step-export",
  "step-import",
+]
+
+[[package]]
+name = "solidcore-ssi"
+version = "0.1.0"
+source = "git+https://github.com/tangency-labs/solidcore?rev=c440e5f892452a9654aee8f3030de6095fdb1415#c440e5f892452a9654aee8f3030de6095fdb1415"
+dependencies = [
+ "solidcore",
+ "ssi",
 ]
 
 [[package]]
@@ -263,6 +274,11 @@ dependencies = [
  "robust",
  "smallvec",
 ]
+
+[[package]]
+name = "ssi"
+version = "0.1.0"
+source = "git+https://github.com/tangency-labs/solidcore?rev=c440e5f892452a9654aee8f3030de6095fdb1415#c440e5f892452a9654aee8f3030de6095fdb1415"
 
 [[package]]
 name = "step-brep"

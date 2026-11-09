@@ -19,7 +19,7 @@ fn entry(name: &str, value: String) -> (String, String) {
 }
 
 /// The body's display mesh and how many faces could not be meshed.
-fn mesh_of(body: &Body) -> Result<(Mesh, usize), String> {
+pub(crate) fn mesh_of(body: &Body) -> Result<(Mesh, usize), String> {
     let (record, _) = body.to_record().map_err(fail)?;
     let (low, high) = body.bounds().map_err(fail)?;
     let size = (0..3)
