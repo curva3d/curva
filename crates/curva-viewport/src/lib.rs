@@ -2,6 +2,7 @@
 
 mod camera;
 mod gpu;
+mod gumball;
 mod snap;
 
 use curva_document::State;
@@ -9,6 +10,7 @@ use curva_kernel::{Curve, Point};
 
 pub use camera::{CPlane, Camera, StandardView};
 pub use gpu::{Drawing, LineRenderer, VIEW_SLOTS, save_picture};
+pub use gumball::{Gumball, GumballChange, Handle};
 pub use snap::{SnapHit, SnapKind, SnapSet, constrained};
 
 const GRID_HALF_SIZE: i32 = 100;
@@ -119,6 +121,25 @@ impl Outlines {
             }
         }
         Some(at((low + high) / 2.0))
+    }
+
+    /// The middle of the box around chosen objects, if any of them can be drawn.
+    #[must_use]
+    pub fn centre_of(&self, ids: &[u64]) -> Option<Point> {
+        let mut around: Option<(Point, Point)> = None;
+        for (index, (id, _)) in self.objects.iter().enumerate() {
+            if ids.binary_search(id).is_err() {
+                continue;
+            }
+            let (low, high) = *self.boxes.get(index)?;
+            around = Some(around.map_or((low, high), |(held_low, held_high)| {
+                (
+                    std::array::from_fn(|axis| held_low[axis].min(low[axis])),
+                    std::array::from_fn(|axis| held_high[axis].max(high[axis])),
+                )
+            }));
+        }
+        around.map(|(low, high)| std::array::from_fn(|axis| (low[axis] + high[axis]) / 2.0))
     }
 
     /// The object nearest a screen position, if one is within `reach` pixels.

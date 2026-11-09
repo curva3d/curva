@@ -173,6 +173,11 @@ impl Projector {
 }
 
 impl Camera {
+    /// The direction the view looks along.
+    pub(crate) fn forward(&self) -> Point {
+        self.axes().0
+    }
+
     /// Whether the view is flat, with no perspective.
     #[must_use]
     pub fn is_parallel(&self) -> bool {
