@@ -1,12 +1,14 @@
 //! The list of commands, and the steps several of them share. One command per file.
 
 mod arc;
+mod array;
 mod circle;
 mod copy;
 mod delete;
 mod four_view;
 mod front;
 mod interpcrv;
+mod join;
 mod line;
 mod mirror;
 mod move_objects;
@@ -54,7 +56,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 23] = [
+pub static COMMANDS: [CommandDef; 25] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -70,6 +72,8 @@ pub static COMMANDS: [CommandDef; 23] = [
     listed!("Rotate", ["ro"], true, true, rotate::Rotate),
     listed!("Scale", ["sc"], true, true, scale::Scale),
     listed!("Mirror", ["mi"], true, true, mirror::Mirror),
+    listed!("Array", ["ar"], true, true, array::Array),
+    listed!("Join", ["j"], true, true, join::Join),
     listed!("Arc", ["a"], true, true, arc::Arc),
     listed!("Rectangle", ["rec"], true, true, rectangle::Rectangle),
     listed!("Delete", ["del", "erase"], false, true, delete::Delete),
@@ -268,7 +272,7 @@ mod tests {
 
     /// For each command that changes geometry, the typed steps that reach its live preview.
     /// A new command must be added here, which is how the preview rule in AGENTS.md is enforced.
-    const PREVIEW_STEPS: [(&str, &[&str]); 11] = [
+    const PREVIEW_STEPS: [(&str, &[&str]); 12] = [
         ("Line", &["0,0"]),
         ("Polyline", &["0,0", "9,0"]),
         ("InterpCrv", &["0,0", "9,0"]),
@@ -280,10 +284,12 @@ mod tests {
         ("Mirror", &["0,0"]),
         ("Arc", &["0,0", "5,0"]),
         ("Rectangle", &["0,0"]),
+        ("Array", &["3", "1", "1"]),
     ];
 
-    /// Delete has nothing to preview: what it will remove is already highlighted.
-    const NOTHING_TO_PREVIEW: [&str; 1] = ["Delete"];
+    /// Delete and Join have nothing to preview: their targets are already highlighted, and a
+    /// join leaves the shape unchanged. They also finish at once when objects are selected.
+    const NOTHING_TO_PREVIEW: [&str; 2] = ["Delete", "Join"];
 
     #[test]
     fn every_command_that_changes_geometry_is_listed_for_a_preview() {

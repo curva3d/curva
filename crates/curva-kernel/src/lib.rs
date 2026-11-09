@@ -148,12 +148,12 @@ fn spline_data(points: &[Point], closed: bool) -> Result<BSplineCurve, KernelErr
 }
 
 /// Builds the engine's curve from NURBS data. Rational control points go to it weighted.
-fn nurbs_engine_curve(
+fn nurbs_data(
     degree: usize,
     knots: &[f64],
     points: &[Point],
     weights: &[f64],
-) -> Result<CoreCurve, KernelError> {
+) -> Result<BSplineCurve, KernelError> {
     let control: Vec<CPoint> = points
         .iter()
         .enumerate()
@@ -176,8 +176,29 @@ fn nurbs_engine_curve(
         &control,
         knots,
     )
-    .map(CoreCurve::from)
     .map_err(engine_error)
+}
+
+/// The engine curve as Curva NURBS data.
+fn curve_from_engine(engine: &BSplineCurve) -> Result<Curve, KernelError> {
+    let degree = engine.degree().map_err(engine_error)?;
+    let (values, counts) = engine.knots(None).map_err(engine_error)?;
+    let knots = values
+        .iter()
+        .zip(&counts)
+        .flat_map(|(value, count)| std::iter::repeat_n(*value, *count))
+        .collect();
+    let (polygon, weights) = engine.control_polygon().map_err(engine_error)?;
+    let points = polygon.iter().map(|p| [p.x, p.y, p.z]).collect();
+    Curve::nurbs(degree, knots, points, weights)
+}
+fn nurbs_engine_curve(
+    degree: usize,
+    knots: &[f64],
+    points: &[Point],
+    weights: &[f64],
+) -> Result<CoreCurve, KernelError> {
+    nurbs_data(degree, knots, points, weights).map(CoreCurve::from)
 }
 
 /// Evenly spaced points along an engine curve, by its parameter.
@@ -191,6 +212,174 @@ fn sampled(curve: &CoreCurve, steps: usize) -> Result<Vec<Point>, KernelError> {
         out.push([at.x, at.y, at.z]);
     }
     Ok(out)
+}
+
+/// How close two curve ends must be to join, in millimetres.
+const JOIN_TOLERANCE: f64 = 1e-3;
+
+/// One curve ready to be chained to others.
+#[derive(Clone)]
+struct JoinPiece {
+    index: usize,
+    /// Whether it is a straight kind, as straight and smooth kinds only join with their own.
+    straight: bool,
+    points: Vec<Point>,
+    exact: Option<Curve>,
+}
+
+impl JoinPiece {
+    fn of(index: usize, curve: &Curve) -> Option<Self> {
+        match curve {
+            Curve::Line { start, end } => Some(Self {
+                index,
+                straight: true,
+                points: vec![*start, *end],
+                exact: None,
+            }),
+            Curve::Polyline {
+                points,
+                closed: false,
+            } => Some(Self {
+                index,
+                straight: true,
+                points: points.clone(),
+                exact: None,
+            }),
+            Curve::Interpolated { closed: false, .. } | Curve::Nurbs { .. } => {
+                let exact = curve.to_nurbs().ok()?;
+                let Curve::Nurbs { points, .. } = &exact else {
+                    return None;
+                };
+                Some(Self {
+                    index,
+                    straight: false,
+                    points: points.clone(),
+                    exact: Some(exact.clone()),
+                })
+            }
+            _ => None,
+        }
+    }
+
+    fn end(&self, reversed: bool) -> Point {
+        let last = self.points.len() - 1;
+        self.points[if reversed { 0 } else { last }]
+    }
+
+    fn start(&self, reversed: bool) -> Point {
+        self.end(!reversed)
+    }
+}
+
+/// Grows a chain of pieces from its end, returning each piece used and whether it is reversed.
+fn chain_from(pieces: &[JoinPiece], used: &mut [bool], seed: usize) -> Vec<(usize, bool)> {
+    let mut chain = vec![(seed, false)];
+    used[seed] = true;
+    for grow_tail in [true, false] {
+        loop {
+            let &(at, flipped) = if grow_tail {
+                chain.last()
+            } else {
+                chain.first()
+            }
+            .unwrap_or(&(seed, false));
+            let open = if grow_tail {
+                pieces[at].end(flipped)
+            } else {
+                pieces[at].start(flipped)
+            };
+            let next = (0..pieces.len()).find_map(|candidate| {
+                let piece = &pieces[candidate];
+                if used[candidate] || piece.straight != pieces[seed].straight {
+                    return None;
+                }
+                [false, true].into_iter().find_map(|reversed| {
+                    let meeting = if grow_tail {
+                        piece.start(reversed)
+                    } else {
+                        piece.end(reversed)
+                    };
+                    (gap(open, meeting) <= JOIN_TOLERANCE).then_some((candidate, reversed))
+                })
+            });
+            let Some(link) = next else {
+                break;
+            };
+            used[link.0] = true;
+            if grow_tail {
+                chain.push(link);
+            } else {
+                chain.insert(0, link);
+            }
+        }
+    }
+    chain
+}
+
+fn joined_straight(pieces: &[JoinPiece], chain: &[(usize, bool)]) -> Result<Curve, KernelError> {
+    let mut points: Vec<Point> = Vec::new();
+    for &(at, reversed) in chain {
+        let mut run = pieces[at].points.clone();
+        if reversed {
+            run.reverse();
+        }
+        let skip = usize::from(!points.is_empty());
+        points.extend(run.into_iter().skip(skip));
+    }
+    let closed = points.len() > 3 && gap(points[0], points[points.len() - 1]) <= JOIN_TOLERANCE;
+    if closed {
+        points.pop();
+    }
+    Curve::polyline(points, closed)
+}
+
+fn joined_smooth(pieces: &[JoinPiece], chain: &[(usize, bool)]) -> Result<Curve, KernelError> {
+    let mut segments = chain
+        .iter()
+        .map(|&(at, _)| match &pieces[at].exact {
+            Some(Curve::Nurbs {
+                degree,
+                knots,
+                points,
+                weights,
+            }) => nurbs_data(*degree, knots, points, weights),
+            _ => Err(KernelError("that curve cannot be joined".to_owned())),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let senses: Vec<bool> = chain.iter().map(|&(_, reversed)| !reversed).collect();
+    let engine =
+        BSplineCurve::create_by_joining(&mut segments, Some(&senses)).map_err(engine_error)?;
+    curve_from_engine(&engine)
+}
+
+/// Joins curves that meet end to end. Returns each new curve with the indexes of the curves it
+/// replaces; curves that meet nothing are left out. Straight curves join into polylines, and
+/// smooth curves into NURBS curves.
+pub fn join(curves: &[Curve]) -> Result<Vec<(Vec<usize>, Curve)>, KernelError> {
+    let pieces: Vec<JoinPiece> = curves
+        .iter()
+        .enumerate()
+        .filter_map(|(index, curve)| JoinPiece::of(index, curve))
+        .collect();
+    let mut used = vec![false; pieces.len()];
+    let mut made = Vec::new();
+    for seed in 0..pieces.len() {
+        if used[seed] {
+            continue;
+        }
+        let chain = chain_from(&pieces, &mut used, seed);
+        if chain.len() < 2 {
+            continue;
+        }
+        let curve = if pieces[seed].straight {
+            joined_straight(&pieces, &chain)?
+        } else {
+            joined_smooth(&pieces, &chain)?
+        };
+        let replaced = chain.iter().map(|&(at, _)| pieces[at].index).collect();
+        made.push((replaced, curve));
+    }
+    Ok(made)
 }
 
 /// `a` minus `b`.
@@ -483,16 +672,7 @@ impl Curve {
             Self::Nurbs { .. } => Ok(self.clone()),
             Self::Interpolated { points, closed } => {
                 let engine = spline_data(points, *closed)?;
-                let degree = engine.degree().map_err(engine_error)?;
-                let (values, counts) = engine.knots(None).map_err(engine_error)?;
-                let knots = values
-                    .iter()
-                    .zip(&counts)
-                    .flat_map(|(value, count)| std::iter::repeat_n(*value, *count))
-                    .collect();
-                let (polygon, weights) = engine.control_polygon().map_err(engine_error)?;
-                let points = polygon.iter().map(|p| [p.x, p.y, p.z]).collect();
-                Self::nurbs(degree, knots, points, weights)
+                curve_from_engine(&engine)
             }
             _ => Err(KernelError(
                 "only smooth curves can be turned into NURBS for now".to_owned(),
@@ -947,6 +1127,85 @@ mod tests {
         let text = serde_json::to_string(&curve).unwrap();
         let back: Curve = serde_json::from_str(&text).unwrap();
         assert_eq!(back, curve);
+    }
+
+    #[test]
+    fn lines_meeting_end_to_end_join_into_one_polyline() {
+        let a = Curve::line([0.0; 3], [1.0, 0.0, 0.0]).unwrap();
+        let b = Curve::line([1.0, 0.0, 0.0], [1.0, 1.0, 0.0]).unwrap();
+        let made = join(&[a, b]).unwrap();
+        assert_eq!(made.len(), 1);
+        assert_eq!(made[0].0, [0, 1]);
+        assert_eq!(
+            made[0].1,
+            Curve::polyline(vec![[0.0; 3], X, [1.0, 1.0, 0.0]], false).unwrap()
+        );
+    }
+
+    #[test]
+    fn join_flips_pieces_and_finds_them_in_any_order() {
+        let a = Curve::line([1.0, 0.0, 0.0], [2.0, 0.0, 0.0]).unwrap();
+        let b = Curve::line([3.0, 0.0, 0.0], [2.0, 0.0, 0.0]).unwrap();
+        let c = Curve::line([1.0, 0.0, 0.0], [0.0, 0.0, 0.0]).unwrap();
+        let made = join(&[a, b, c]).unwrap();
+        assert_eq!(made.len(), 1);
+        assert!(near(made[0].1.length().unwrap(), 3.0));
+    }
+
+    #[test]
+    fn lines_forming_a_loop_join_closed() {
+        let a = Curve::line([0.0; 3], X).unwrap();
+        let b = Curve::line(X, Y).unwrap();
+        let c = Curve::line(Y, [0.0; 3]).unwrap();
+        let made = join(&[a, b, c]).unwrap();
+        assert!(matches!(made[0].1, Curve::Polyline { closed: true, .. }));
+        assert!(near(made[0].1.length().unwrap(), 2.0 + 2.0_f64.sqrt()));
+    }
+
+    #[test]
+    fn curves_that_do_not_meet_are_left_alone() {
+        let a = Curve::line([0.0; 3], X).unwrap();
+        let b = Curve::line([5.0, 0.0, 0.0], [6.0, 0.0, 0.0]).unwrap();
+        assert!(join(&[a, b]).unwrap().is_empty());
+    }
+
+    #[test]
+    fn smooth_curves_join_with_their_lengths_adding_up() {
+        let a =
+            Curve::interpolated(vec![[0.0; 3], [5.0, 3.0, 0.0], [10.0, 0.0, 0.0]], false).unwrap();
+        let b = Curve::interpolated(
+            vec![[10.0, 0.0, 0.0], [15.0, -3.0, 0.0], [20.0, 0.0, 0.0]],
+            false,
+        )
+        .unwrap();
+        let total = a.length().unwrap() + b.length().unwrap();
+        let made = join(&[a, b]).unwrap();
+        assert!(matches!(made[0].1, Curve::Nurbs { .. }));
+        assert!((made[0].1.length().unwrap() - total).abs() < 1e-4);
+        let points = made[0].1.sample().unwrap();
+        assert!(points_near(points[0], [0.0; 3]));
+        assert!(points_near(*points.last().unwrap(), [20.0, 0.0, 0.0]));
+    }
+
+    #[test]
+    fn a_reversed_smooth_curve_joins_the_right_way_round() {
+        let a =
+            Curve::interpolated(vec![[0.0; 3], [5.0, 3.0, 0.0], [10.0, 0.0, 0.0]], false).unwrap();
+        let b = Curve::interpolated(
+            vec![[20.0, 0.0, 0.0], [15.0, -3.0, 0.0], [10.0, 0.0, 0.0]],
+            false,
+        )
+        .unwrap();
+        let total = a.length().unwrap() + b.length().unwrap();
+        let made = join(&[a, b]).unwrap();
+        assert!((made[0].1.length().unwrap() - total).abs() < 1e-4);
+    }
+
+    #[test]
+    fn a_line_and_a_smooth_curve_do_not_join_yet() {
+        let a = Curve::line([0.0; 3], X).unwrap();
+        let b = Curve::interpolated(vec![X, [5.0, 3.0, 0.0], [10.0, 0.0, 0.0]], false).unwrap();
+        assert!(join(&[a, b]).unwrap().is_empty());
     }
     #[test]
     fn line_length_is_exact() {
