@@ -6,6 +6,7 @@ mod circle;
 mod copy;
 mod delete;
 mod explode;
+mod fillet;
 mod four_view;
 mod front;
 mod interpcrv;
@@ -14,6 +15,7 @@ mod line;
 mod mirror;
 mod move_objects;
 mod new;
+mod offset;
 mod open;
 mod perspective;
 mod polyline;
@@ -59,7 +61,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 28] = [
+pub static COMMANDS: [CommandDef; 30] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -80,6 +82,8 @@ pub static COMMANDS: [CommandDef; 28] = [
     listed!("Explode", ["x"], true, true, explode::Explode),
     listed!("Split", [], true, true, split::Split),
     listed!("Trim", ["tr"], true, true, trim::Trim),
+    listed!("Offset", [], true, true, offset::Offset),
+    listed!("Fillet", [], true, true, fillet::Fillet),
     listed!("Arc", ["a"], true, true, arc::Arc),
     listed!("Rectangle", ["rec"], true, true, rectangle::Rectangle),
     listed!("Delete", ["del", "erase"], false, true, delete::Delete),
@@ -300,7 +304,7 @@ mod tests {
 
     /// For each command that changes geometry, the typed steps that reach its live preview.
     /// A new command must be added here, which is how the preview rule in AGENTS.md is enforced.
-    const PREVIEW_STEPS: [(&str, &[&str]); 12] = [
+    const PREVIEW_STEPS: [(&str, &[&str]); 13] = [
         ("Line", &["0,0"]),
         ("Polyline", &["0,0", "9,0"]),
         ("InterpCrv", &["0,0", "9,0"]),
@@ -313,6 +317,7 @@ mod tests {
         ("Arc", &["0,0", "5,0"]),
         ("Rectangle", &["0,0"]),
         ("Array", &["3", "1", "1"]),
+        ("Offset", &[]),
     ];
 
     /// Delete, Join, Explode and Split have nothing to preview: their targets are already highlighted, and these
@@ -320,7 +325,7 @@ mod tests {
     const NOTHING_TO_PREVIEW: [&str; 4] = ["Delete", "Join", "Explode", "Split"];
 
     /// Commands whose preview needs its own setup, tested in their own files.
-    const PREVIEW_TESTED_ELSEWHERE: [&str; 1] = ["Trim"];
+    const PREVIEW_TESTED_ELSEWHERE: [&str; 2] = ["Trim", "Fillet"];
 
     #[test]
     fn every_command_that_changes_geometry_is_listed_for_a_preview() {

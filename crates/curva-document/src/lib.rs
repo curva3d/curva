@@ -55,6 +55,8 @@ pub struct Document {
     path: Option<PathBuf>,
     /// The X and Y directions of the plane being drawn on. Not saved, and not part of undo.
     work_plane: Option<[Point; 2]>,
+    /// Values commands keep between runs, such as the last offset distance. Not saved.
+    remembered: std::collections::BTreeMap<&'static str, f64>,
 }
 
 impl Document {
@@ -63,6 +65,17 @@ impl Document {
     pub fn work_plane(&self) -> [Point; 2] {
         self.work_plane
             .unwrap_or([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+    }
+
+    /// A value a command kept from an earlier run.
+    #[must_use]
+    pub fn remembered(&self, key: &str) -> Option<f64> {
+        self.remembered.get(key).copied()
+    }
+
+    /// Keeps a value for later runs of a command.
+    pub fn remember(&mut self, key: &'static str, value: f64) {
+        self.remembered.insert(key, value);
     }
 
     /// Sets the plane new flat objects go on.

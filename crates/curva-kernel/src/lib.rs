@@ -11,7 +11,9 @@ use solidcore::{Kernel, Point3};
 use std::f64::consts::TAU;
 
 mod cut;
+mod offset;
 pub use cut::{closest_between, crossings};
+pub use offset::{Filleted, fillet_lines};
 use std::fmt;
 
 /// A position in model space, in millimetres.

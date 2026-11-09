@@ -206,7 +206,10 @@ impl Processor {
                 .map_err(|_| Message::with("error.bad_number", vec![typed.to_owned()])),
             Kind::Path => Ok(Answer::Path(typed.to_owned())),
             Kind::Objects => Err(Message::new("error.pick_objects")),
-            Kind::PickPart => Err(Message::new("error.pick_part")),
+            Kind::PickPart => typed
+                .parse::<f64>()
+                .map(Answer::Number)
+                .map_err(|_| Message::new("error.pick_part")),
             Kind::Choice => Err(Message::with(
                 "error.bad_choice",
                 vec![request.options.join(", ")],
