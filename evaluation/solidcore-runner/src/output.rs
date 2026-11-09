@@ -90,7 +90,7 @@ fn unit(a: [f64; 3]) -> [f64; 3] {
     [a[0] / length, a[1] / length, a[2] / length]
 }
 
-/// A plain shaded view from above and to the front right, with a depth buffer.
+/// A smooth-shaded view from above and to the front right, using the mesh's vertex normals.
 fn draw(mesh: &Mesh) -> Vec<u8> {
     let view = unit([1.0, -1.2, 0.9]);
     let right = unit(cross([0.0, 0.0, 1.0], view));
@@ -114,18 +114,10 @@ fn draw(mesh: &Mesh) -> Vec<u8> {
     let mut depth = vec![f64::MIN; WIDTH * HEIGHT];
     for triangle in &mesh.triangles {
         let corners = triangle.map(at);
-        let edge_a = [
-            corners[1][0] - corners[0][0],
-            corners[1][1] - corners[0][1],
-            corners[1][2] - corners[0][2],
-        ];
-        let edge_b = [
-            corners[2][0] - corners[0][0],
-            corners[2][1] - corners[0][1],
-            corners[2][2] - corners[0][2],
-        ];
-        let light = dot(unit(cross(edge_a, edge_b)), unit([0.5, -0.4, 1.0])).abs();
-        let shade = (70.0 + 160.0 * light) as u8;
+        let shades = triangle.map(|index| {
+            let n = mesh.normals[index as usize];
+            70.0 + 160.0 * dot([n.x, n.y, n.z], unit([0.5, -0.4, 1.0])).abs()
+        });
         let screen = corners.map(|p| {
             [
                 WIDTH as f64 / 2.0 + (dot(p, right) - centre[0]) * scale,
@@ -133,12 +125,12 @@ fn draw(mesh: &Mesh) -> Vec<u8> {
                 dot(p, view),
             ]
         });
-        fill(&screen, shade, &mut pixels, &mut depth);
+        fill(&screen, shades, &mut pixels, &mut depth);
     }
     pixels
 }
 
-fn fill(s: &[[f64; 3]; 3], shade: u8, pixels: &mut [u8], depth: &mut [f64]) {
+fn fill(s: &[[f64; 3]; 3], shades: [f64; 3], pixels: &mut [u8], depth: &mut [f64]) {
     let area =
         (s[1][0] - s[0][0]) * (s[2][1] - s[0][1]) - (s[2][0] - s[0][0]) * (s[1][1] - s[0][1]);
     if area.abs() < 1e-9 {
@@ -177,7 +169,8 @@ fn fill(s: &[[f64; 3]; 3], shade: u8, pixels: &mut [u8], depth: &mut [f64]) {
             let index = y * WIDTH + x;
             if z > depth[index] {
                 depth[index] = z;
-                pixels[index * 3..index * 3 + 3].fill(shade);
+                let shade = w0 * shades[0] + w1 * shades[1] + w2 * shades[2];
+                pixels[index * 3..index * 3 + 3].fill(shade as u8);
             }
         }
     }
