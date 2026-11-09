@@ -249,6 +249,23 @@ impl Document {
         shown
     }
 
+    /// Where the undo history stands, for [`Self::squash_undo`].
+    #[must_use]
+    pub fn undo_mark(&self) -> usize {
+        self.undo.len()
+    }
+
+    /// Makes everything undoable since `mark` a single undo step back to `before`, so that a
+    /// group of commands can be undone as one. Does nothing if the model did not change.
+    pub fn squash_undo(&mut self, mark: usize, before: State) {
+        if self.state == before {
+            self.undo.truncate(mark);
+            return;
+        }
+        self.undo.truncate(mark);
+        self.undo.push(before);
+    }
+
     /// Removes objects by id.
     pub fn remove(&mut self, ids: &[u64]) {
         self.state

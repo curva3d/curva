@@ -2,6 +2,7 @@
 //!
 //! `curva --picture out.png --run "line;0,0;50,20"` runs commands without a window and saves a
 //! picture of the viewport, which is how automatic runs check the drawing.
+//! `curva --mcp` runs as an MCP server for AI agents, on standard input and output.
 //! `curva --orbit-benchmark --curves 5000` opens the window on a scene of that many circles, spins
 //! the view and prints how fast it drew and snapped.
 
@@ -1218,6 +1219,27 @@ impl eframe::App for Curva {
     }
 }
 
+/// A picture of the model for an MCP agent, as the bytes of a PNG file.
+fn mcp_picture(doc: &Document) -> Result<Vec<u8>, String> {
+    let outlines = Outlines::of(doc.state());
+    let mut camera = Camera::default();
+    if let Some((low, high)) = outlines.bounds() {
+        camera.frame(low, high);
+    }
+    let aspect = f64::from(PICTURE_SIZE[0]) / f64::from(PICTURE_SIZE[1]);
+    let path = std::env::temp_dir().join(format!("curva-mcp-{}.png", std::process::id()));
+    save_picture(
+        scene_lines(&outlines, &doc.selection()),
+        &camera.matrix(aspect),
+        PICTURE_SIZE,
+        &path,
+    )?;
+    let bytes = std::fs::read(&path).map_err(|error| error.to_string())?;
+    // The picture has been read; a leftover temporary file would do no harm.
+    let _ = std::fs::remove_file(&path);
+    Ok(bytes)
+}
+
 /// Runs semicolon-separated command lines and saves a picture of the result.
 fn picture(path: &str, script: &str) -> Result<(), String> {
     let mut doc = Document::default();
@@ -1251,6 +1273,12 @@ fn main() -> Result<(), String> {
             .position(|argument| argument == flag)
             .and_then(|index| arguments.get(index + 1))
     };
+    if arguments.iter().any(|argument| argument == "--mcp") {
+        let mut server = curva_mcp::Server::new(mcp_picture);
+        return server
+            .serve(std::io::stdin().lock(), std::io::stdout().lock())
+            .map_err(|error| error.to_string());
+    }
     if let Some(path) = value("--picture") {
         let script = value("--run").map_or("", String::as_str);
         return picture(path, script);

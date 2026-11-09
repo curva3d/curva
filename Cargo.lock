@@ -388,6 +388,7 @@ dependencies = [
  "curva-commands",
  "curva-document",
  "curva-kernel",
+ "curva-mcp",
  "curva-viewport",
  "eframe",
 ]
@@ -416,6 +417,16 @@ dependencies = [
  "serde",
  "serde_json",
  "solidcore",
+]
+
+[[package]]
+name = "curva-mcp"
+version = "0.0.0"
+dependencies = [
+ "curva-commands",
+ "curva-document",
+ "curva-kernel",
+ "serde_json",
 ]
 
 [[package]]

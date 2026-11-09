@@ -1,0 +1,17 @@
+[package]
+name = "curva-mcp"
+description = "Curva's MCP server, for AI agents."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+curva-commands = { path = "../curva-commands" }
+curva-document = { path = "../curva-document" }
+curva-kernel = { path = "../curva-kernel" }
+serde_json = "1"
