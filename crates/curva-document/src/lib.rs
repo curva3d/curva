@@ -55,6 +55,8 @@ pub struct Document {
     path: Option<PathBuf>,
     /// The X and Y directions of the plane being drawn on. Not saved, and not part of undo.
     work_plane: Option<[Point; 2]>,
+    /// The origin of that plane. Not saved, and not part of undo.
+    work_origin: Point,
     /// Values commands keep between runs, such as the last offset distance. Not saved.
     remembered: std::collections::BTreeMap<&'static str, f64>,
 }
@@ -76,6 +78,17 @@ impl Document {
     /// Keeps a value for later runs of a command.
     pub fn remember(&mut self, key: &'static str, value: f64) {
         self.remembered.insert(key, value);
+    }
+
+    /// The origin and the X and Y directions that typed coordinates are measured on.
+    #[must_use]
+    pub fn work_frame(&self) -> (Point, [Point; 2]) {
+        (self.work_origin, self.work_plane())
+    }
+
+    /// Sets the origin typed coordinates are measured from.
+    pub fn set_work_origin(&mut self, origin: Point) {
+        self.work_origin = origin;
     }
 
     /// Sets the plane new flat objects go on.

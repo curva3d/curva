@@ -112,3 +112,7 @@ prompt.fillet.first = Select first line (radius {0}; type a number to change it)
 prompt.fillet.second = Select second line (radius {0}; type a number to change it)
 done.fillet = Rounded the corner.
 error.bad_radius = The radius cannot be negative.
+prompt.cplane.origin = Plane origin, or type World
+prompt.cplane.x = Point along the X direction
+prompt.cplane.y = Point towards the Y direction
+error.bad_plane = Those points do not make a plane.

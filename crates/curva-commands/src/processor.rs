@@ -3,7 +3,7 @@
 use crate::commands::{CommandDef, autofilled, completions, resolve};
 use crate::{Answer, Command, Kind, Live, Message, Request, Step, Translations, ViewRequest};
 use curva_document::{Document, State};
-use curva_kernel::{Curve, Point};
+use curva_kernel::{Curve, Point, cross};
 
 struct Active {
     def: &'static CommandDef,
@@ -35,32 +35,43 @@ impl Default for Processor {
     }
 }
 
-/// Reads `x,y`, `x,y,z`, or the same with `r` or `@` for relative to the last point, as in Rhino.
-fn parse_point(text: &str, last: Option<Point>) -> Option<Point> {
+/// Where typed coordinates are measured: the origin and the X and Y directions of a plane.
+type Frame = (Point, [Point; 2]);
+
+/// Reads `x,y` or `x,y,z` on the plane, as in Rhino. `r` or `@` in front means relative to the
+/// last point, and `w` means world coordinates whatever the plane.
+fn parse_point(text: &str, last: Option<Point>, (origin, [x, y]): Frame) -> Option<Point> {
     let lowered = text.trim().to_lowercase();
-    let (relative, body) = match lowered.strip_prefix(['r', '@']) {
+    let (world, rest) = match lowered.strip_prefix('w') {
         Some(rest) => (true, rest),
         None => (false, lowered.as_str()),
+    };
+    let (relative, body) = match rest.strip_prefix(['r', '@']) {
+        Some(rest) => (true, rest),
+        None => (false, rest),
     };
     let values: Vec<f64> = body
         .split(',')
         .map(|part| part.trim().parse::<f64>().ok().filter(|v| v.is_finite()))
         .collect::<Option<_>>()?;
     let offset = match values.as_slice() {
-        [x, y] => [*x, *y, 0.0],
-        [x, y, z] => [*x, *y, *z],
+        [a, b] => [*a, *b, 0.0],
+        [a, b, c] => [*a, *b, *c],
         _ => return None,
     };
-    if relative {
-        let base = last.unwrap_or([0.0; 3]);
-        Some([
-            base[0] + offset[0],
-            base[1] + offset[1],
-            base[2] + offset[2],
-        ])
+    let along = if world {
+        offset
     } else {
-        Some(offset)
-    }
+        let normal = cross(x, y);
+        let axis = |i: usize| x[i] * offset[0] + y[i] * offset[1] + normal[i] * offset[2];
+        [axis(0), axis(1), axis(2)]
+    };
+    let base = match (relative, world) {
+        (true, _) => last.unwrap_or([0.0; 3]),
+        (false, true) => [0.0; 3],
+        (false, false) => origin,
+    };
+    Some([base[0] + along[0], base[1] + along[1], base[2] + along[2]])
 }
 
 impl Processor {
@@ -191,14 +202,16 @@ impl Processor {
             return;
         }
         let answer = match request.kind {
-            Kind::Point => parse_point(typed, self.last_point)
+            Kind::Point => parse_point(typed, self.last_point, doc.work_frame())
                 .map(Answer::Point)
                 .ok_or_else(|| Message::with("error.bad_point", vec![typed.to_owned()])),
             Kind::PointOrNumber => typed
                 .parse::<f64>()
                 .map(Answer::Number)
                 .ok()
-                .or_else(|| parse_point(typed, self.last_point).map(Answer::Point))
+                .or_else(|| {
+                    parse_point(typed, self.last_point, doc.work_frame()).map(Answer::Point)
+                })
                 .ok_or_else(|| Message::with("error.bad_point", vec![typed.to_owned()])),
             Kind::Number => typed
                 .parse::<f64>()
@@ -291,15 +304,50 @@ impl Processor {
 mod tests {
     use super::*;
 
+    const WORLD: Frame = ([0.0; 3], [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
+
+    const FRONT: Frame = ([0.0; 3], [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
+    const RAISED: Frame = ([5.0, 5.0, 5.0], [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
+
+    #[test]
+    fn typed_points_follow_the_plane() {
+        assert_eq!(parse_point("3,2", None, FRONT), Some([3.0, 0.0, 2.0]));
+        assert_eq!(parse_point("1,1", None, RAISED), Some([6.0, 6.0, 5.0]));
+        assert_eq!(parse_point("0,0,2", None, RAISED), Some([5.0, 5.0, 7.0]));
+    }
+
+    #[test]
+    fn relative_points_follow_the_plane_from_the_last_point() {
+        let last = Some([1.0, 1.0, 1.0]);
+        assert_eq!(parse_point("r3,2", last, FRONT), Some([4.0, 1.0, 3.0]));
+    }
+
+    #[test]
+    fn w_means_world_coordinates_whatever_the_plane() {
+        assert_eq!(parse_point("w3,2", None, RAISED), Some([3.0, 2.0, 0.0]));
+        assert_eq!(parse_point("w1,2,3", None, FRONT), Some([1.0, 2.0, 3.0]));
+    }
+
+    #[test]
+    fn a_typed_point_uses_the_plane_being_drawn_on() {
+        let mut doc = Document::default();
+        doc.set_work_origin([0.0, 0.0, 10.0]);
+        let mut processor = Processor::default();
+        for typed in ["line", "0,0", "1,0"] {
+            processor.submit(&mut doc, typed);
+        }
+        let points = doc.state().objects[0].curve.sample().unwrap();
+        assert_eq!(points[0], [0.0, 0.0, 10.0]);
+    }
     #[test]
     fn points_read_like_rhino() {
-        assert_eq!(parse_point("1,2", None), Some([1.0, 2.0, 0.0]));
-        assert_eq!(parse_point("1,2,3", None), Some([1.0, 2.0, 3.0]));
+        assert_eq!(parse_point("1,2", None, WORLD), Some([1.0, 2.0, 0.0]));
+        assert_eq!(parse_point("1,2,3", None, WORLD), Some([1.0, 2.0, 3.0]));
         let last = Some([10.0, 10.0, 10.0]);
-        assert_eq!(parse_point("r1,2", last), Some([11.0, 12.0, 10.0]));
-        assert_eq!(parse_point("@1,2,3", last), Some([11.0, 12.0, 13.0]));
-        assert_eq!(parse_point("abc", None), None);
-        assert_eq!(parse_point("1,2,3,4", None), None);
+        assert_eq!(parse_point("r1,2", last, WORLD), Some([11.0, 12.0, 10.0]));
+        assert_eq!(parse_point("@1,2,3", last, WORLD), Some([11.0, 12.0, 13.0]));
+        assert_eq!(parse_point("abc", None, WORLD), None);
+        assert_eq!(parse_point("1,2,3,4", None, WORLD), None);
     }
 
     #[test]

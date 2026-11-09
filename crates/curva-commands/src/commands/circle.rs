@@ -75,7 +75,7 @@ mod tests {
     fn a_circle_goes_on_the_plane_being_drawn_on() {
         let mut doc = Document::default();
         doc.set_work_plane([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
-        run(&mut doc, &["circle", "0,0,10", "5"]);
+        run(&mut doc, &["circle", "0,10", "5"]);
         let points = doc.state().objects[0].curve.sample().unwrap();
         assert!(points.iter().all(|p| p[1].abs() < 1e-9));
         assert!(points.iter().any(|p| (p[2] - 15.0).abs() < 1e-6));
