@@ -186,3 +186,5 @@ prompt.rebuild.points = Number of points
 error.bad_points = The number of points must be a whole number of at least 2.
 error.nothing_to_rebuild = Only smooth curves can be rebuilt.
 done.rebuild = Rebuilt {0} curves.
+done.history_on = History is on. New mirrors and offsets will follow the curves they came from.
+done.history_off = History is off.

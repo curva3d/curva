@@ -46,7 +46,8 @@
 - Ellipse, Chamfer, Rotate3D, Scale1D and Scale2D.
 - Point objects, Divide, ArrayCrv and Orient.
 - Rebuild.
-- Next planned: history on curves, the MCP server and Rhai scripting.
+- History on Mirror and Offset (`docs/specs/m1-history.md`).
+- Next planned: Rhai scripting, then the MCP server.
 
 **Waiting for the owner**
 - Nothing yet. The engine is solidcore, with Serpentine3D's commands as the base (decision 0010). SolidCraft

@@ -726,6 +726,7 @@ impl Curva {
             GumballChange::Move(by) => self.doc.translate(&selection, by),
             GumballChange::Turn(turn) => self.doc.transform(&selection, &turn),
         }
+        self.doc.refresh_history();
         self.doc.record_change(before);
     }
 

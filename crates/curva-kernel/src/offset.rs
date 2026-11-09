@@ -197,6 +197,36 @@ impl Curve {
     }
 }
 
+/// How far beside a curve a point is put to stand for a side, in millimetres.
+const SIDE_MARKER: f64 = 1e-4;
+
+impl Curve {
+    /// Which side of the curve `toward` is on, seen from `normal`: `1.0` for the left.
+    pub fn side_of_point(&self, normal: Point, toward: Point) -> Result<f64, KernelError> {
+        let path = self.sample()?;
+        Ok(side_of(&path, normal, toward))
+    }
+
+    /// A copy at a distance on a side given by [`Self::side_of_point`], which stays the same side
+    /// when the curve moves or changes.
+    pub fn offset_on_side(
+        &self,
+        normal: Point,
+        distance: f64,
+        side: f64,
+    ) -> Result<Self, KernelError> {
+        let path = self.sample()?;
+        let along = unit(sub(path[1], path[0])).ok_or_else(too_far)?;
+        let left = cross(normal, along);
+        let start = [
+            (path[0][0] + path[1][0]) / 2.0,
+            (path[0][1] + path[1][1]) / 2.0,
+            (path[0][2] + path[1][2]) / 2.0,
+        ];
+        self.offset(normal, distance, plus(start, left, side * SIDE_MARKER))
+    }
+}
+
 fn changed_radius(
     radius: f64,
     centre: Point,

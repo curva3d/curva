@@ -442,7 +442,7 @@ pub fn flattened(a: Point, normal: Point) -> Point {
 
 /// A change that keeps shapes the same: a turn, a mirror image or an even change of size, about a
 /// point. Circles stay circles under all of these.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Similarity {
     origin: Point,
     rows: [Point; 3],

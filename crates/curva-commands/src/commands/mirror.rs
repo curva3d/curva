@@ -2,7 +2,7 @@
 
 use super::{ask_objects, ask_point, ghosts, guide, plane_normal, unexpected};
 use crate::{Answer, Command, Live, Message, Step};
-use curva_document::Document;
+use curva_document::{Document, Recipe};
 use curva_kernel::{Curve, Point, Similarity, cross, sub, unit};
 
 /// The running command.
@@ -45,6 +45,13 @@ impl Command for Mirror {
                     return Step::Failed(Message::new("error.reference_point"));
                 };
                 let made = doc.copy_transformed(&ids, &change);
+                let sources: Vec<u64> = super::curves_of(doc, &ids)
+                    .iter()
+                    .map(|(id, _)| *id)
+                    .collect();
+                for (source, child) in sources.into_iter().zip(&made) {
+                    doc.record_recipe(*child, Recipe::Mirror { source, change });
+                }
                 Step::Done(Some(Message::with(
                     "done.mirror",
                     vec![made.len().to_string()],

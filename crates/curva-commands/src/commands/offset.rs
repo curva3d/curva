@@ -2,7 +2,7 @@
 
 use super::{ask_objects, curves_of, geometry_failed, plane_normal, unexpected};
 use crate::{Answer, Command, Kind, Live, Message, Request, Step};
-use curva_document::Document;
+use curva_document::{Document, Recipe};
 use curva_kernel::{Curve, Point};
 
 /// The distance used until another is typed, in millimetres.
@@ -62,12 +62,22 @@ impl Command for Offset {
             Some(Answer::Point(toward)) => match offsets(doc, &ids, distance_of(doc), toward) {
                 Ok(made) => {
                     let count = made.len();
-                    let layers: Vec<Option<u64>> = curves_of(doc, &ids)
-                        .iter()
-                        .map(|(id, _)| doc.layer_of(*id))
-                        .collect();
-                    for (curve, layer) in made.into_iter().zip(layers) {
-                        doc.add_on(curve, layer);
+                    let normal = plane_normal(doc);
+                    let distance = distance_of(doc);
+                    let sources = curves_of(doc, &ids);
+                    for (curve, (source, original)) in made.into_iter().zip(sources) {
+                        let child = doc.add_on(curve, doc.layer_of(source));
+                        if let Ok(side) = original.side_of_point(normal, toward) {
+                            doc.record_recipe(
+                                child,
+                                Recipe::Offset {
+                                    source,
+                                    normal,
+                                    distance,
+                                    side,
+                                },
+                            );
+                        }
                     }
                     Step::Done(Some(Message::with("done.offset", vec![count.to_string()])))
                 }
