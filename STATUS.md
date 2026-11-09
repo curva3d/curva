@@ -41,7 +41,9 @@
 - Fillet now works on arcs and polyline segments as well as lines.
 - Gumball with move and turn handles (`docs/specs/m1-gumball.md`).
 - Layers and properties panels (`docs/specs/m1-layers-properties.md`).
-- Next planned: display modes, history on curves, the MCP server and Rhai scripting.
+- Selection, hide and show, measuring, Flip, CloseCrv and ArrayPolar.
+- Display modes wait for surfaces, as there is nothing to shade yet.
+- Next planned: more curve commands (Ellipse, Point, Divide, Scale1D, Scale2D, Rotate3D, Rebuild, Chamfer), then history on curves, the MCP server and Rhai scripting.
 
 **Waiting for the owner**
 - Nothing yet. The engine is solidcore, with Serpentine3D's commands as the base (decision 0010). SolidCraft

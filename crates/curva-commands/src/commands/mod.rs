@@ -2,16 +2,23 @@
 
 mod arc;
 mod array;
+mod array_polar;
 mod circle;
+mod close_crv;
 mod copy;
 mod cplane;
 mod delete;
+mod distance;
 mod explode;
 mod fillet;
+mod flip;
 mod four_view;
 mod front;
+mod hide;
 mod interpcrv;
+mod invert;
 mod join;
+mod length;
 mod line;
 mod mirror;
 mod move_objects;
@@ -26,6 +33,9 @@ mod right;
 mod rotate;
 mod save;
 mod scale;
+mod sel_all;
+mod sel_none;
+mod show;
 mod split;
 mod top;
 mod trim;
@@ -62,7 +72,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 31] = [
+pub static COMMANDS: [CommandDef; 41] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -79,6 +89,16 @@ pub static COMMANDS: [CommandDef; 31] = [
     listed!("Scale", ["sc"], true, true, scale::Scale),
     listed!("Mirror", ["mi"], true, true, mirror::Mirror),
     listed!("Array", ["ar"], true, true, array::Array),
+    listed!("ArrayPolar", ["arp"], true, true, array_polar::ArrayPolar),
+    listed!("Flip", [], true, true, flip::Flip),
+    listed!("CloseCrv", [], true, true, close_crv::CloseCrv),
+    listed!("Hide", ["h"], true, true, hide::Hide),
+    listed!("Show", [], true, true, show::Show),
+    listed!("SelAll", ["sa"], false, false, sel_all::SelAll),
+    listed!("SelNone", ["sn"], false, false, sel_none::SelNone),
+    listed!("Invert", [], false, false, invert::Invert),
+    listed!("Distance", ["dist"], true, false, distance::Distance),
+    listed!("Length", ["len"], true, false, length::Length),
     listed!("Join", ["j"], true, true, join::Join),
     listed!("Explode", ["x"], true, true, explode::Explode),
     listed!("Split", [], true, true, split::Split),
@@ -308,7 +328,7 @@ mod tests {
 
     /// For each command that changes geometry, the typed steps that reach its live preview.
     /// A new command must be added here, which is how the preview rule in AGENTS.md is enforced.
-    const PREVIEW_STEPS: [(&str, &[&str]); 13] = [
+    const PREVIEW_STEPS: [(&str, &[&str]); 14] = [
         ("Line", &["0,0"]),
         ("Polyline", &["0,0", "9,0"]),
         ("InterpCrv", &["0,0", "9,0"]),
@@ -322,11 +342,13 @@ mod tests {
         ("Rectangle", &["0,0"]),
         ("Array", &["3", "1", "1"]),
         ("Offset", &[]),
+        ("ArrayPolar", &["0,0", "4"]),
     ];
 
-    /// Delete, Join, Explode and Split have nothing to preview: their targets are already highlighted, and these
-    /// leave the shape unchanged. They also finish at once when objects are selected.
-    const NOTHING_TO_PREVIEW: [&str; 4] = ["Delete", "Join", "Explode", "Split"];
+    /// These finish at once when objects are selected, so there is no moment to show a preview.
+    const NOTHING_TO_PREVIEW: [&str; 8] = [
+        "Delete", "Join", "Explode", "Split", "Flip", "CloseCrv", "Hide", "Show",
+    ];
 
     /// Commands whose preview needs its own setup, tested in their own files.
     const PREVIEW_TESTED_ELSEWHERE: [&str; 2] = ["Trim", "Fillet"];
@@ -567,6 +589,70 @@ mod tests {
         assert_eq!(doc.state().objects.len(), 3);
         assert!(all_on(&doc, layer));
     }
+
+    fn three_lines() -> (Document, Vec<u64>) {
+        let mut doc = Document::default();
+        let ids = (0..3)
+            .map(|i| {
+                let y = f64::from(i);
+                doc.add(Curve::line([0.0, y, 0.0], [1.0, y, 0.0]).unwrap())
+            })
+            .collect();
+        (doc, ids)
+    }
+
+    #[test]
+    fn sel_all_takes_everything_that_can_be_selected() {
+        let (mut doc, ids) = three_lines();
+        run(&mut doc, &["selall"]);
+        assert_eq!(doc.selection(), ids);
+    }
+
+    #[test]
+    fn sel_none_clears_the_selection() {
+        let (mut doc, ids) = three_lines();
+        doc.select(&ids);
+        run(&mut doc, &["selnone"]);
+        assert!(doc.selection().is_empty());
+    }
+
+    #[test]
+    fn invert_swaps_what_is_selected() {
+        let (mut doc, ids) = three_lines();
+        doc.select(&ids[..1]);
+        run(&mut doc, &["invert"]);
+        assert_eq!(doc.selection(), ids[1..]);
+    }
+
+    #[test]
+    fn sel_all_leaves_out_hidden_objects_and_locked_layers() {
+        let (mut doc, ids) = three_lines();
+        doc.hide(&ids[..1]);
+        let layer = doc.add_layer("Locked".to_owned());
+        doc.move_to_layer(&ids[1..2], layer);
+        doc.set_layer_locked(layer, true);
+        run(&mut doc, &["selall"]);
+        assert_eq!(doc.selection(), ids[2..]);
+    }
+
+    #[test]
+    fn hidden_objects_come_back_with_show() {
+        let (mut doc, ids) = three_lines();
+        doc.select(&ids[..2]);
+        run(&mut doc, &["hide"]);
+        assert!(doc.selection().is_empty());
+        assert_eq!(doc.selectable(), ids[2..]);
+        run(&mut doc, &["show"]);
+        assert_eq!(doc.selectable(), ids);
+    }
+
+    #[test]
+    fn hiding_can_be_undone() {
+        let (mut doc, ids) = three_lines();
+        doc.select(&ids);
+        run(&mut doc, &["hide", "undo"]);
+        assert_eq!(doc.selectable(), ids);
+    }
     #[test]
     fn completion_offers_matching_names() {
         assert_eq!(completions("po"), ["Polyline"]);
@@ -576,7 +662,7 @@ mod tests {
     #[test]
     fn completion_finds_aliases_and_puts_an_exact_match_first() {
         assert_eq!(completions("pl"), ["Polyline"]);
-        assert_eq!(completions("c"), ["Circle", "Copy", "CPlane"]);
+        assert_eq!(completions("c"), ["Circle", "Copy", "CloseCrv", "CPlane"]);
         assert_eq!(completions("co"), ["Copy"]);
     }
 

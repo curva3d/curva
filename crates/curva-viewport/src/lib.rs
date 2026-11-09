@@ -56,7 +56,7 @@ impl Outlines {
         let mut outlines = Self::default();
         for object in &state.objects {
             let layer = state.layers.iter().find(|l| l.id == object.layer);
-            if layer.is_some_and(|l| !l.visible) {
+            if object.hidden || layer.is_some_and(|l| !l.visible) {
                 continue;
             }
             if let Ok(points) = object.curve.sample() {
