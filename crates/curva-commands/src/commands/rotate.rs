@@ -1,9 +1,9 @@
 //! `Rotate`: turns objects about a point, on the plane being drawn on.
 
-use super::{ask_objects, ask_point, ask_point_or_number, plane_normal, unexpected};
-use crate::{Answer, Command, Message, Step};
+use super::{ask_objects, ask_point, ask_point_or_number, ghosts, guide, plane_normal, unexpected};
+use crate::{Answer, Command, Live, Message, Step};
 use curva_document::Document;
-use curva_kernel::{Point, Similarity, cross, dot, flattened, sub, unit};
+use curva_kernel::{Curve, Point, Similarity, cross, dot, flattened, sub, unit};
 
 /// The running command.
 #[derive(Default)]
@@ -51,15 +51,47 @@ impl Command for Rotate {
                 ask_point("prompt.rotate.second", vec![centre])
             }
             (Some(centre), Some(first), Some(Answer::Point(second))) => {
-                let across = |p: Point| unit(flattened(sub(p, centre), self.axis));
-                let (Some(from), Some(to)) = (across(first), across(second)) else {
+                let Some(angle) = self.turn(centre, first, second) else {
                     return Step::Failed(Message::new("error.reference_point"));
                 };
-                let angle = dot(self.axis, cross(from, to)).atan2(dot(from, to));
                 Self::finish(doc, &ids, centre, self.axis, angle)
             }
             _ => unexpected(),
         }
+    }
+
+    fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
+        let (Some(ids), Some(centre)) = (&self.ids, self.centre) else {
+            return Vec::new();
+        };
+        let turned = |angle: f64| {
+            let change = Similarity::rotation(centre, self.axis, angle);
+            ghosts(doc, ids, |curve| curve.mapped(&change))
+        };
+        let mut shown = Vec::new();
+        match (self.first, live.number, live.cursor) {
+            (None, Some(degrees), _) => shown.extend(turned(degrees.to_radians())),
+            (Some(first), _, Some(cursor)) => {
+                if let Some(angle) = self.turn(centre, first, cursor) {
+                    shown.extend(turned(angle));
+                }
+                shown.extend(guide(centre, first));
+            }
+            _ => {}
+        }
+        if let Some(cursor) = live.cursor {
+            shown.extend(guide(centre, cursor));
+        }
+        shown
+    }
+}
+
+impl Rotate {
+    /// The signed turn from one reference point to another, seen along the axis.
+    fn turn(&self, centre: Point, first: Point, second: Point) -> Option<f64> {
+        let across = |p: Point| unit(flattened(sub(p, centre), self.axis));
+        let (from, to) = (across(first)?, across(second)?);
+        Some(dot(self.axis, cross(from, to)).atan2(dot(from, to)))
     }
 }
 

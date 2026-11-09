@@ -1,9 +1,9 @@
 //! Runs commands: turns typed text and clicks into answers, and makes each command one undo step.
 
 use crate::commands::{CommandDef, autofilled, completions, resolve};
-use crate::{Answer, Command, Kind, Message, Request, Step, Translations, ViewRequest};
+use crate::{Answer, Command, Kind, Live, Message, Request, Step, Translations, ViewRequest};
 use curva_document::{Document, State};
-use curva_kernel::Point;
+use curva_kernel::{Curve, Point};
 
 struct Active {
     def: &'static CommandDef,
@@ -95,6 +95,18 @@ impl Processor {
     #[must_use]
     pub fn log(&self) -> &[String] {
         &self.log
+    }
+
+    /// The curves the running command would make or move, for the viewport to draw.
+    #[must_use]
+    pub fn preview(&self, doc: &Document, cursor: Option<Point>, typed: &str) -> Vec<Curve> {
+        let live = Live {
+            cursor,
+            number: typed.trim().parse().ok().filter(|n: &f64| n.is_finite()),
+        };
+        self.active
+            .as_ref()
+            .map_or_else(Vec::new, |active| active.command.preview(doc, &live))
     }
 
     /// The change of view a command asked for, if one is waiting to be carried out.

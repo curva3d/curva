@@ -5,7 +5,7 @@ mod gpu;
 mod snap;
 
 use curva_document::State;
-use curva_kernel::Point;
+use curva_kernel::{Curve, Point};
 
 pub use camera::{CPlane, Camera, StandardView};
 pub use gpu::{Drawing, LineRenderer, VIEW_SLOTS, save_picture};
@@ -258,6 +258,17 @@ pub fn object_lines(outlines: &Outlines, selected: &[u64]) -> Vec<Vertex> {
     out
 }
 
+/// How a command's preview is drawn. Every preview in Curva comes through here, so that they
+/// all look the same.
+#[must_use]
+pub fn ghost_lines(curves: &[Curve]) -> Vec<Vertex> {
+    curves
+        .iter()
+        .filter_map(|curve| curve.sample().ok())
+        .flat_map(|points| preview_lines(&points, None))
+        .collect()
+}
+
 /// The live preview through a command's points, ending at the cursor.
 #[must_use]
 pub fn preview_lines(points: &[Point], cursor: Option<Point>) -> Vec<Vertex> {
@@ -274,7 +285,6 @@ pub fn preview_lines(points: &[Point], cursor: Option<Point>) -> Vec<Vertex> {
 mod tests {
     use super::*;
     use curva_document::Document;
-    use curva_kernel::Curve;
 
     const SIZE: [f64; 2] = [800.0, 600.0];
 

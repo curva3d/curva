@@ -1,9 +1,9 @@
 //! `Move`: moves objects from one point to another.
 
-use super::{ask_objects, ask_point, unexpected};
-use crate::{Answer, Command, Message, Step};
+use super::{ask_objects, ask_point, ghosts, guide, unexpected};
+use crate::{Answer, Command, Live, Message, Step};
 use curva_document::Document;
-use curva_kernel::Point;
+use curva_kernel::{Curve, Point, sub};
 
 /// The running command.
 #[derive(Default)]
@@ -39,6 +39,16 @@ impl Command for MoveObjects {
             }
             _ => unexpected(),
         }
+    }
+
+    fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
+        let (Some(ids), Some(from), Some(cursor)) = (&self.ids, self.from, live.cursor) else {
+            return Vec::new();
+        };
+        let by = sub(cursor, from);
+        let mut shown = guide(from, cursor);
+        shown.extend(ghosts(doc, ids, |curve| curve.translated(by)));
+        shown
     }
 }
 

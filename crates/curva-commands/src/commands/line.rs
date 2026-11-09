@@ -1,7 +1,7 @@
 //! `Line`: a straight line between two points.
 
-use super::{ask_point, geometry_failed, unexpected};
-use crate::{Answer, Command, Message, Step};
+use super::{ask_point, geometry_failed, guide, unexpected};
+use crate::{Answer, Command, Live, Message, Step};
 use curva_document::Document;
 use curva_kernel::{Curve, Point};
 
@@ -27,6 +27,13 @@ impl Command for Line {
                 Err(error) => geometry_failed(&error),
             },
             _ => unexpected(),
+        }
+    }
+
+    fn preview(&self, _doc: &Document, live: &Live) -> Vec<Curve> {
+        match (self.start, live.cursor) {
+            (Some(start), Some(cursor)) => guide(start, cursor),
+            _ => Vec::new(),
         }
     }
 }

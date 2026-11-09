@@ -162,6 +162,30 @@ fn plane_normal(doc: &curva_document::Document) -> Point {
     curva_kernel::cross(x, y)
 }
 
+/// Most objects shown moving at once, so that a huge selection does not stall the window.
+const MOST_PREVIEW_OBJECTS: usize = 2000;
+
+/// A straight construction line for a preview, or nothing if its ends are in the same place.
+fn guide(a: Point, b: Point) -> Vec<curva_kernel::Curve> {
+    curva_kernel::Curve::line(a, b).into_iter().collect()
+}
+
+/// How chosen objects would look after a change, for a preview.
+fn ghosts(
+    doc: &curva_document::Document,
+    ids: &[u64],
+    change: impl Fn(&curva_kernel::Curve) -> curva_kernel::Curve,
+) -> Vec<curva_kernel::Curve> {
+    let chosen: std::collections::HashSet<u64> = ids.iter().copied().collect();
+    doc.state()
+        .objects
+        .iter()
+        .filter(|object| chosen.contains(&object.id))
+        .take(MOST_PREVIEW_OBJECTS)
+        .map(|object| change(&object.curve))
+        .collect()
+}
+
 fn ask_objects(key: &'static str) -> Step {
     Step::Ask(Request::new(key, Kind::Objects))
 }
@@ -179,6 +203,11 @@ enum RunState {
 }
 
 impl PointRun {
+    /// The points placed so far, then the cursor.
+    fn through(&self, cursor: Option<Point>) -> Vec<Point> {
+        self.points.iter().copied().chain(cursor).collect()
+    }
+
     fn feed(
         &mut self,
         answer: Option<Answer>,
@@ -237,6 +266,171 @@ mod tests {
         }
     }
 
+    /// For each command that changes geometry, the typed steps that reach its live preview.
+    /// A new command must be added here, which is how the preview rule in AGENTS.md is enforced.
+    const PREVIEW_STEPS: [(&str, &[&str]); 11] = [
+        ("Line", &["0,0"]),
+        ("Polyline", &["0,0", "9,0"]),
+        ("InterpCrv", &["0,0", "9,0"]),
+        ("Circle", &["0,0"]),
+        ("Move", &["0,0"]),
+        ("Copy", &["0,0"]),
+        ("Rotate", &["0,0", "5,0"]),
+        ("Scale", &["0,0", "5,0"]),
+        ("Mirror", &["0,0"]),
+        ("Arc", &["0,0", "5,0"]),
+        ("Rectangle", &["0,0"]),
+    ];
+
+    /// Delete has nothing to preview: what it will remove is already highlighted.
+    const NOTHING_TO_PREVIEW: [&str; 1] = ["Delete"];
+
+    #[test]
+    fn every_command_that_changes_geometry_is_listed_for_a_preview() {
+        for def in COMMANDS.iter().filter(|def| def.records_undo) {
+            assert!(
+                NOTHING_TO_PREVIEW.contains(&def.name)
+                    || PREVIEW_STEPS.iter().any(|(name, _)| *name == def.name),
+                "{} changes geometry but has no preview listed",
+                def.name
+            );
+        }
+    }
+
+    #[test]
+    fn every_command_that_changes_geometry_shows_a_preview() {
+        for (name, steps) in PREVIEW_STEPS {
+            let mut doc = curva_document::Document::default();
+            let id = doc.add(curva_kernel::Curve::line([1.0, 1.0, 0.0], [4.0, 1.0, 0.0]).unwrap());
+            doc.select(&[id]);
+            let mut processor = crate::Processor::default();
+            processor.submit(&mut doc, name);
+            for step in steps {
+                processor.submit(&mut doc, step);
+            }
+            let shown = processor.preview(&doc, Some([3.0, 7.0, 0.0]), "");
+            assert!(!shown.is_empty(), "{name} shows no preview");
+            assert_eq!(doc.state().objects.len(), 1, "{name} changed the model");
+        }
+    }
+
+    fn shown_points(
+        processor: &crate::Processor,
+        doc: &curva_document::Document,
+        typed: &str,
+    ) -> Vec<Point> {
+        processor
+            .preview(doc, Some([0.0, 5.0, 0.0]), typed)
+            .iter()
+            .flat_map(|curve| curve.sample().unwrap())
+            .collect()
+    }
+
+    fn with_selected_line() -> curva_document::Document {
+        let mut doc = curva_document::Document::default();
+        let id = doc.add(curva_kernel::Curve::line([2.0, 0.0, 0.0], [4.0, 0.0, 0.0]).unwrap());
+        doc.select(&[id]);
+        doc
+    }
+
+    fn shows(points: &[Point], wanted: Point) -> bool {
+        points
+            .iter()
+            .any(|p| (0..3).all(|axis| (p[axis] - wanted[axis]).abs() < 1e-9))
+    }
+
+    #[test]
+    fn rotate_previews_the_result_of_a_typed_angle() {
+        let mut doc = with_selected_line();
+        let mut processor = crate::Processor::default();
+        for typed in ["rotate", "0,0"] {
+            processor.submit(&mut doc, typed);
+        }
+        assert!(shows(
+            &shown_points(&processor, &doc, "90"),
+            [0.0, 2.0, 0.0]
+        ));
+        assert_eq!(
+            doc.state().objects[0].curve.sample().unwrap()[0],
+            [2.0, 0.0, 0.0]
+        );
+    }
+
+    #[test]
+    fn rotate_previews_the_turn_to_the_cursor() {
+        let mut doc = with_selected_line();
+        let mut processor = crate::Processor::default();
+        for typed in ["rotate", "0,0", "9,0"] {
+            processor.submit(&mut doc, typed);
+        }
+        assert!(shows(&shown_points(&processor, &doc, ""), [0.0, 4.0, 0.0]));
+    }
+
+    #[test]
+    fn scale_previews_the_result_of_a_typed_factor() {
+        let mut doc = with_selected_line();
+        let mut processor = crate::Processor::default();
+        for typed in ["scale", "0,0"] {
+            processor.submit(&mut doc, typed);
+        }
+        assert!(shows(
+            &shown_points(&processor, &doc, "3"),
+            [12.0, 0.0, 0.0]
+        ));
+    }
+
+    #[test]
+    fn scale_previews_the_ratio_to_the_cursor() {
+        let mut doc = with_selected_line();
+        let mut processor = crate::Processor::default();
+        for typed in ["scale", "0,0", "1,0"] {
+            processor.submit(&mut doc, typed);
+        }
+        assert!(shows(&shown_points(&processor, &doc, ""), [20.0, 0.0, 0.0]));
+    }
+
+    #[test]
+    fn a_bad_scale_factor_previews_no_result() {
+        let mut doc = with_selected_line();
+        let mut processor = crate::Processor::default();
+        for typed in ["scale", "0,0"] {
+            processor.submit(&mut doc, typed);
+        }
+        assert!(!shows(
+            &shown_points(&processor, &doc, "-2"),
+            [-4.0, 0.0, 0.0]
+        ));
+    }
+
+    #[test]
+    fn move_previews_where_objects_would_land() {
+        let mut doc = with_selected_line();
+        let mut processor = crate::Processor::default();
+        for typed in ["move", "2,0"] {
+            processor.submit(&mut doc, typed);
+        }
+        assert!(shows(&shown_points(&processor, &doc, ""), [0.0, 5.0, 0.0]));
+    }
+
+    #[test]
+    fn mirror_previews_the_mirror_image() {
+        let mut doc = with_selected_line();
+        let mut processor = crate::Processor::default();
+        for typed in ["mirror", "0,0"] {
+            processor.submit(&mut doc, typed);
+        }
+        assert!(shows(&shown_points(&processor, &doc, ""), [-2.0, 0.0, 0.0]));
+    }
+
+    #[test]
+    fn with_no_command_running_there_is_no_preview() {
+        let doc = with_selected_line();
+        assert!(
+            crate::Processor::default()
+                .preview(&doc, Some([1.0; 3]), "")
+                .is_empty()
+        );
+    }
     #[test]
     fn completion_offers_matching_names() {
         assert_eq!(completions("po"), ["Polyline"]);

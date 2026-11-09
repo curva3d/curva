@@ -1,7 +1,7 @@
 //! `Rectangle`: a closed polyline from two opposite corners, on the plane being drawn on.
 
 use super::{ask_point, geometry_failed, unexpected};
-use crate::{Answer, Command, Message, Step};
+use crate::{Answer, Command, Live, Message, Step};
 use curva_document::Document;
 use curva_kernel::{Curve, Point, dot, sub};
 
@@ -23,6 +23,17 @@ fn plus(p: Point, direction: Point, amount: f64) -> Point {
     ]
 }
 
+/// The four corners on a plane from two opposite ones, or `None` if they are in line.
+fn corners(first: Point, other: Point, x: Point, y: Point) -> Option<Vec<Point>> {
+    let across = sub(other, first);
+    let (wide, high) = (dot(across, x), dot(across, y));
+    if wide.abs() < SMALLEST_SIDE || high.abs() < SMALLEST_SIDE {
+        return None;
+    }
+    let side = plus(first, x, wide);
+    Some(vec![first, side, plus(side, y, high), plus(first, y, high)])
+}
+
 impl Command for Rectangle {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
         match (self.first, answer) {
@@ -34,13 +45,9 @@ impl Command for Rectangle {
             }
             (Some(first), Some(Answer::Point(other))) => {
                 let [x, y] = self.plane.unwrap_or_else(|| doc.work_plane());
-                let across = sub(other, first);
-                let (wide, high) = (dot(across, x), dot(across, y));
-                if wide.abs() < SMALLEST_SIDE || high.abs() < SMALLEST_SIDE {
+                let Some(corners) = corners(first, other, x, y) else {
                     return Step::Failed(Message::new("error.flat_rectangle"));
-                }
-                let side = plus(first, x, wide);
-                let corners = vec![first, side, plus(side, y, high), plus(first, y, high)];
+                };
                 match Curve::polyline(corners, true) {
                     Ok(curve) => {
                         doc.add(curve);
@@ -51,6 +58,17 @@ impl Command for Rectangle {
             }
             _ => unexpected(),
         }
+    }
+
+    fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
+        let (Some(first), Some(cursor)) = (self.first, live.cursor) else {
+            return Vec::new();
+        };
+        let [x, y] = self.plane.unwrap_or_else(|| doc.work_plane());
+        corners(first, cursor, x, y)
+            .and_then(|corners| Curve::polyline(corners, true).ok())
+            .into_iter()
+            .collect()
     }
 }
 

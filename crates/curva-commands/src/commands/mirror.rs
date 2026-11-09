@@ -1,9 +1,9 @@
 //! `Mirror`: adds a mirror image of objects across a line, keeping the originals as Rhino does.
 
-use super::{ask_objects, ask_point, plane_normal, unexpected};
-use crate::{Answer, Command, Message, Step};
+use super::{ask_objects, ask_point, ghosts, guide, plane_normal, unexpected};
+use crate::{Answer, Command, Live, Message, Step};
 use curva_document::Document;
-use curva_kernel::{Point, Similarity, cross, sub, unit};
+use curva_kernel::{Curve, Point, Similarity, cross, sub, unit};
 
 /// The running command.
 #[derive(Default)]
@@ -11,6 +11,14 @@ pub struct Mirror {
     ids: Option<Vec<u64>>,
     start: Option<Point>,
     axis: Point,
+}
+
+impl Mirror {
+    /// The mirror image across a line on the plane, or `None` if the line has no length.
+    fn reflection(&self, start: Point, end: Point) -> Option<Similarity> {
+        let normal = unit(cross(sub(end, start), self.axis))?;
+        Some(Similarity::mirror(start, normal))
+    }
 }
 
 impl Command for Mirror {
@@ -33,10 +41,10 @@ impl Command for Mirror {
                 ask_point("prompt.mirror.end", vec![start])
             }
             (Some(start), Some(Answer::Point(end))) => {
-                let Some(normal) = unit(cross(sub(end, start), self.axis)) else {
+                let Some(change) = self.reflection(start, end) else {
                     return Step::Failed(Message::new("error.reference_point"));
                 };
-                let made = doc.copy_transformed(&ids, &Similarity::mirror(start, normal));
+                let made = doc.copy_transformed(&ids, &change);
                 Step::Done(Some(Message::with(
                     "done.mirror",
                     vec![made.len().to_string()],
@@ -44,6 +52,17 @@ impl Command for Mirror {
             }
             _ => unexpected(),
         }
+    }
+
+    fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
+        let (Some(ids), Some(start), Some(cursor)) = (&self.ids, self.start, live.cursor) else {
+            return Vec::new();
+        };
+        let mut shown = guide(start, cursor);
+        if let Some(change) = self.reflection(start, cursor) {
+            shown.extend(ghosts(doc, ids, |curve| curve.mapped(&change)));
+        }
+        shown
     }
 }
 

@@ -1,7 +1,7 @@
 //! `InterpCrv`: a smooth curve through points, ended by Enter or `Close`.
 
 use super::{PointRun, RunState, geometry_failed};
-use crate::{Answer, Command, Message, Step};
+use crate::{Answer, Command, Live, Message, Step};
 use curva_document::Document;
 use curva_kernel::Curve;
 
@@ -32,6 +32,12 @@ impl Command for InterpCrv {
                 }
             }
         }
+    }
+
+    fn preview(&self, _doc: &Document, live: &Live) -> Vec<Curve> {
+        Curve::interpolated(self.run.through(live.cursor), false)
+            .into_iter()
+            .collect()
     }
 }
 

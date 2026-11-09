@@ -1,7 +1,7 @@
 //! `Arc`: an arc from its centre, start and end, on the plane being drawn on.
 
-use super::{ask_point, geometry_failed, unexpected};
-use crate::{Answer, Command, Message, Step};
+use super::{ask_point, geometry_failed, guide, unexpected};
+use crate::{Answer, Command, Live, Message, Step};
 use curva_document::Document;
 use curva_kernel::{Curve, Point};
 
@@ -38,6 +38,22 @@ impl Command for Arc {
             }
             _ => unexpected(),
         }
+    }
+
+    fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
+        let (Some(centre), Some(cursor)) = (self.centre, live.cursor) else {
+            return Vec::new();
+        };
+        let Some(start) = self.start else {
+            return guide(centre, cursor);
+        };
+        let [x, y] = self.plane.unwrap_or_else(|| doc.work_plane());
+        let mut shown: Vec<Curve> = Curve::arc(centre, start, cursor, x, y)
+            .into_iter()
+            .collect();
+        shown.extend(guide(centre, start));
+        shown.extend(guide(centre, cursor));
+        shown
     }
 }
 

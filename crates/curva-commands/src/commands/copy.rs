@@ -1,9 +1,9 @@
 //! `Copy`: places copies of objects at each point given, until Enter.
 
-use super::{ask_objects, ask_point, unexpected};
-use crate::{Answer, Command, Kind, Message, Request, Step};
+use super::{ask_objects, ask_point, ghosts, guide, unexpected};
+use crate::{Answer, Command, Kind, Live, Message, Request, Step};
 use curva_document::Document;
-use curva_kernel::Point;
+use curva_kernel::{Curve, Point, sub};
 
 /// The running command.
 #[derive(Default)]
@@ -51,6 +51,16 @@ impl Command for CopyObjects {
             ))),
             _ => unexpected(),
         }
+    }
+
+    fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
+        let (Some(ids), Some(from), Some(cursor)) = (&self.ids, self.from, live.cursor) else {
+            return Vec::new();
+        };
+        let by = sub(cursor, from);
+        let mut shown = guide(from, cursor);
+        shown.extend(ghosts(doc, ids, |curve| curve.translated(by)));
+        shown
     }
 }
 
