@@ -1,6 +1,6 @@
 //! Runs commands: turns typed text and clicks into answers, and makes each command one undo step.
 
-use crate::commands::{CommandDef, completions, resolve};
+use crate::commands::{CommandDef, autofilled, completions, resolve};
 use crate::{Answer, Command, Kind, Message, Request, Step, Translations};
 use curva_document::{Document, State};
 use curva_kernel::Point;
@@ -95,10 +95,20 @@ impl Processor {
         &self.log
     }
 
-    /// Command names starting with the typed text.
+    /// Commands the typed text could be, best first.
     #[must_use]
     pub fn completions(&self, prefix: &str) -> Vec<&'static str> {
         completions(prefix)
+    }
+
+    /// What Enter or Space should submit for the typed text and highlighted completion.
+    #[must_use]
+    pub fn autofilled(&self, typed: &str, highlighted: usize) -> String {
+        if self.is_running() {
+            typed.to_owned()
+        } else {
+            autofilled(typed, highlighted)
+        }
     }
 
     fn say(&mut self, message: &Message) {

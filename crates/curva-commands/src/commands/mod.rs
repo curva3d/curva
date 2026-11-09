@@ -73,15 +73,37 @@ pub fn resolve(typed: &str) -> Option<&'static CommandDef> {
     })
 }
 
-/// Command names starting with the typed text, ignoring case.
+/// Commands whose name or alias starts with the typed text, ignoring case.
+///
+/// An exact name or alias comes first, so `c` offers `Circle` ahead of `Copy`.
 #[must_use]
 pub fn completions(prefix: &str) -> Vec<&'static str> {
     let lowered = prefix.to_lowercase();
-    COMMANDS
+    if lowered.is_empty() {
+        return Vec::new();
+    }
+    let exact = resolve(prefix).map(|def| def.name);
+    let others = COMMANDS
         .iter()
-        .map(|def| def.name)
-        .filter(|name| !lowered.is_empty() && name.to_lowercase().starts_with(&lowered))
-        .collect()
+        .filter(|def| {
+            Some(def.name) != exact
+                && std::iter::once(&def.name)
+                    .chain(def.aliases)
+                    .any(|name| name.to_lowercase().starts_with(&lowered))
+        })
+        .map(|def| def.name);
+    exact.into_iter().chain(others).collect()
+}
+
+/// What Enter or Space should run for the typed text and the highlighted completion.
+///
+/// `New` discards the model and cannot be undone, so a partial name never reaches it.
+#[must_use]
+pub fn autofilled(typed: &str, highlighted: usize) -> String {
+    match completions(typed).get(highlighted) {
+        Some(&name) if name != "New" || name.eq_ignore_ascii_case(typed.trim()) => name.to_owned(),
+        _ => typed.to_owned(),
+    }
 }
 
 fn unexpected() -> Step {
@@ -178,5 +200,32 @@ mod tests {
     fn completion_offers_matching_names() {
         assert_eq!(completions("po"), ["Polyline"]);
         assert!(completions("").is_empty());
+    }
+
+    #[test]
+    fn completion_finds_aliases_and_puts_an_exact_match_first() {
+        assert_eq!(completions("pl"), ["Polyline"]);
+        assert_eq!(completions("c"), ["Circle", "Copy"]);
+        assert_eq!(completions("co"), ["Copy"]);
+    }
+
+    #[test]
+    fn autofill_runs_the_highlighted_command() {
+        assert_eq!(autofilled("pol", 0), "Polyline");
+        assert_eq!(autofilled("c", 0), "Circle");
+        assert_eq!(autofilled("c", 1), "Copy");
+    }
+
+    #[test]
+    fn autofill_leaves_text_with_no_match_alone() {
+        assert_eq!(autofilled("zzz", 0), "zzz");
+        assert_eq!(autofilled("pol", 5), "pol");
+    }
+
+    #[test]
+    fn a_partial_name_never_runs_new() {
+        assert_eq!(autofilled("n", 0), "n");
+        assert_eq!(autofilled("ne", 0), "ne");
+        assert_eq!(autofilled("NEW", 0), "New");
     }
 }

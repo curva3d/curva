@@ -26,6 +26,8 @@
 **In progress**
 - Milestone 1, first slice (`docs/specs/m1-first-slice.md`, approved by the owner): 12 commands, viewport and window built. The owner is trying it by hand.
 
+- First hand-testing round (9 November 2026): command autofill, quick clicks no longer lost, window and crossing box selection, Shift adds and Ctrl removes. Orbit no longer waits for the display (31 ms to 2 ms between frames); it may still feel laggy over Remote Desktop, whose display runs at 32 Hz. Whether that is the connection is not settled: the owner can compare with Rhino over the same link or use Parsec.
+
 **Waiting for the owner**
 - Nothing yet. The engine is solidcore, with Serpentine3D's commands as the base (decision 0010). SolidCraft
   reuse is parked (0009).
