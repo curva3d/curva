@@ -9,8 +9,9 @@ use curva_commands::{Kind, Message, Processor, Translations, ViewName, ViewReque
 use curva_document::{Document, State};
 use curva_kernel::{Curve, Point};
 use curva_viewport::{
-    CPlane, Camera, Drawing, LineRenderer, Outlines, SnapHit, SnapKind, SnapSet, StandardView,
-    VIEW_SLOTS, constrained, ghost_lines, grid_lines, object_lines, save_picture, scene_lines,
+    CPlane, Camera, Drawing, Gumball, GumballChange, Handle, LineRenderer, Outlines, SnapHit,
+    SnapKind, SnapSet, StandardView, VIEW_SLOTS, constrained, ghost_lines, grid_lines,
+    object_lines, save_picture, scene_lines,
 };
 use eframe::egui;
 use std::sync::Arc;
@@ -35,6 +36,15 @@ const TITLE_COLOUR: egui::Color32 = egui::Color32::from_rgb(190, 190, 200);
 const ACTIVE_EDGE: egui::Color32 = egui::Color32::from_rgb(120, 150, 210);
 /// Which viewport fills the window when Curva opens.
 const STARTING_LAYOUT: Option<usize> = Some(PERSPECTIVE);
+/// Most objects shown moving during a gumball drag.
+const MOST_GUMBALL_PREVIEW: usize = 2000;
+const GUMBALL_TIP: f32 = 5.0;
+const GUMBALL_ACTIVE: egui::Color32 = egui::Color32::from_rgb(255, 230, 90);
+const GUMBALL_AXES: [egui::Color32; 3] = [
+    egui::Color32::from_rgb(230, 80, 80),
+    egui::Color32::from_rgb(90, 200, 100),
+    egui::Color32::from_rgb(90, 130, 240),
+];
 const LOG_LINES: usize = 5;
 const PICTURE_SIZE: [u32; 2] = [1200, 800];
 const BENCHMARK_FRAMES: usize = 240;
@@ -52,6 +62,8 @@ struct Curva {
     panes: [Pane; VIEW_SLOTS],
     active: usize,
     maximised: Option<usize>,
+    gumball_on: bool,
+    gumball_drag: Option<GumballDrag>,
     snaps: SnapSet,
     ortho: bool,
     grid_snap: bool,
@@ -147,6 +159,16 @@ fn paint_selection_box(ui: &egui::Ui, viewport: egui::Rect, from: egui::Pos2, to
     } else {
         painter.add(egui::Shape::dashed_line(&edge, stroke, 6.0, 4.0));
     }
+}
+
+/// A drag on the gumball under way, in the pixels of its viewport.
+#[derive(Clone, Copy)]
+struct GumballDrag {
+    pane: usize,
+    handle: Handle,
+    size: [f64; 2],
+    from: [f64; 2],
+    now: [f64; 2],
 }
 
 /// One viewport: what it looks at and what it is tracking.
@@ -332,6 +354,8 @@ impl Curva {
             panes,
             active: PERSPECTIVE,
             maximised: STARTING_LAYOUT,
+            gumball_on: true,
+            gumball_drag: None,
             snaps: SnapSet::default(),
             ortho: false,
             grid_snap: false,
@@ -448,6 +472,7 @@ impl Curva {
         };
         let snaps = &mut self.snaps;
         let (ortho, grid_snap) = (&mut self.ortho, &mut self.grid_snap);
+        let gumball_on = &mut self.gumball_on;
         ui.horizontal(|ui| {
             tick(ui, &mut snaps.end, snap_label(SnapKind::End));
             tick(ui, &mut snaps.mid, snap_label(SnapKind::Mid));
@@ -466,6 +491,7 @@ impl Curva {
             ui.separator();
             tick(ui, ortho, "ui.ortho");
             tick(ui, grid_snap, "ui.grid_snap");
+            tick(ui, gumball_on, "ui.gumball");
         });
     }
 
@@ -584,6 +610,161 @@ impl Curva {
         ))
     }
 
+    /// The gumball for the current selection, if it should show.
+    fn gumball(&self) -> Option<Gumball> {
+        if !self.gumball_on || self.processor.is_running() {
+            return None;
+        }
+        let centre = self.outlines.centre_of(&self.doc.selection())?;
+        Some(Gumball { centre })
+    }
+
+    /// What the drag under way would do.
+    fn gumball_change(&self, drag: &GumballDrag) -> Option<GumballChange> {
+        self.gumball()?.change(
+            &self.panes[drag.pane].camera,
+            drag.size,
+            drag.handle,
+            drag.from,
+            drag.now,
+        )
+    }
+
+    /// Runs the gumball for one viewport. Returns whether it took the mouse.
+    fn gumball_mouse(
+        &mut self,
+        ui: &egui::Ui,
+        pane: usize,
+        response: &egui::Response,
+        size: [f64; 2],
+        events: &[egui::Event],
+    ) -> bool {
+        let origin = response.rect.min;
+        let local = |position: egui::Pos2| {
+            let offset = position - origin;
+            [f64::from(offset.x), f64::from(offset.y)]
+        };
+        if let Some(mut drag) = self.gumball_drag {
+            if drag.pane != pane {
+                return false;
+            }
+            if let Some(now) = ui.input(|input| input.pointer.latest_pos()) {
+                drag.now = local(now);
+                self.gumball_drag = Some(drag);
+            }
+            let released = events.iter().any(|event| {
+                matches!(
+                    event,
+                    egui::Event::PointerButton {
+                        button: egui::PointerButton::Primary,
+                        pressed: false,
+                        ..
+                    }
+                )
+            });
+            if released {
+                self.finish_gumball(&drag);
+                self.gumball_drag = None;
+            }
+            return true;
+        }
+        let Some(gumball) = self.gumball() else {
+            return false;
+        };
+        for event in events {
+            if let egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                ..
+            } = event
+                && response.rect.contains(*pos)
+                && let Some(handle) = gumball.handle_at(&self.panes[pane].camera, local(*pos), size)
+            {
+                self.active = pane;
+                self.gumball_drag = Some(GumballDrag {
+                    pane,
+                    handle,
+                    size,
+                    from: local(*pos),
+                    now: local(*pos),
+                });
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Applies a finished drag as one undo step.
+    fn finish_gumball(&mut self, drag: &GumballDrag) {
+        let Some(change) = self.gumball_change(drag) else {
+            return;
+        };
+        if drag.from == drag.now {
+            return;
+        }
+        let before = self.doc.state().clone();
+        let selection = self.doc.selection();
+        match change {
+            GumballChange::Move(by) => self.doc.translate(&selection, by),
+            GumballChange::Turn(turn) => self.doc.transform(&selection, &turn),
+        }
+        self.doc.record_change(before);
+    }
+
+    /// The selected objects as the drag under way would leave them.
+    fn gumball_preview(&self) -> Vec<Curve> {
+        let Some(change) = self
+            .gumball_drag
+            .and_then(|drag| self.gumball_change(&drag))
+        else {
+            return Vec::new();
+        };
+        let selection = self.doc.selection();
+        self.doc
+            .state()
+            .objects
+            .iter()
+            .filter(|object| selection.binary_search(&object.id).is_ok())
+            .take(MOST_GUMBALL_PREVIEW)
+            .map(|object| change.applied(&object.curve))
+            .collect()
+    }
+
+    fn paint_gumball(&self, ui: &egui::Ui, pane: usize, rect: egui::Rect, size: [f64; 2]) {
+        let Some(gumball) = self.gumball() else {
+            return;
+        };
+        let camera = &self.panes[pane].camera;
+        let hovered = ui
+            .input(|input| input.pointer.latest_pos())
+            .filter(|position| rect.contains(*position))
+            .and_then(|position| {
+                let offset = position - rect.min;
+                gumball.handle_at(camera, [f64::from(offset.x), f64::from(offset.y)], size)
+            });
+        let dragged = self
+            .gumball_drag
+            .filter(|drag| drag.pane == pane)
+            .map(|d| d.handle);
+        let painter = ui.painter_at(rect);
+        for (handle, run) in gumball.outlines(camera, size) {
+            let colour = if Some(handle) == hovered || Some(handle) == dragged {
+                GUMBALL_ACTIVE
+            } else {
+                GUMBALL_AXES[handle.axis()]
+            };
+            let points: Vec<egui::Pos2> = run
+                .iter()
+                .map(|p| rect.min + egui::vec2(p[0] as f32, p[1] as f32))
+                .collect();
+            if let (Handle::Move(_), Some(tip)) = (handle, points.last()) {
+                painter.circle_filled(*tip, GUMBALL_TIP, colour);
+            }
+            painter.add(egui::Shape::line(points, egui::Stroke::new(2.0, colour)));
+        }
+    }
+
     /// Tells the document which plane flat objects go on: the last-used viewport's.
     fn share_work_plane(&mut self) {
         let plane = self.panes[self.active].plane;
@@ -673,6 +854,9 @@ impl Curva {
                 && !in_title(position)
                 && ui.ctx().layer_id_at(position) == Some(response.layer_id)
         };
+        if self.gumball_mouse(ui, pane, response, size, &events) {
+            return;
+        }
         let gestures = self.panes[pane].gestures.take(&events, on_viewport);
         let remove = ui.input(|input| input.modifiers.command);
         let origin = response.rect.min;
@@ -783,7 +967,9 @@ impl Curva {
             }
         });
         let cursor = aimed.map(|(at, _)| at);
-        let preview = ghost_lines(&self.processor.preview(&self.doc, cursor, &self.typed));
+        let mut previewed = self.processor.preview(&self.doc, cursor, &self.typed);
+        previewed.extend(self.gumball_preview());
+        let preview = ghost_lines(&previewed);
         let overlay = Arc::new(preview);
         for (pane, rect, _) in &shown {
             let size = pane_size(*rect);
@@ -796,6 +982,7 @@ impl Curva {
             };
             ui.painter().add(egui_wgpu_callback(*rect, drawing));
             self.paint_frame(ui, *pane, *rect);
+            self.paint_gumball(ui, *pane, *rect, size);
             if let Some((hover_pane, ..)) = hovered
                 && hover_pane == *pane
                 && let Some(hit) = aimed.and_then(|(_, hit)| hit)

@@ -39,7 +39,8 @@
 - Offset and Fillet (`docs/specs/m1-split-trim-offset-fillet.md`).
 - `CPlane` for custom construction planes; typed coordinates now follow the plane, and `w` means world.
 - Fillet now works on arcs and polyline segments as well as lines.
-- Next planned: gumball, then layers and properties panels.
+- Gumball with move and turn handles (`docs/specs/m1-gumball.md`).
+- Next planned: layers panel and properties panel, then display modes, history on curves, the MCP server and Rhai scripting.
 
 **Waiting for the owner**
 - Nothing yet. The engine is solidcore, with Serpentine3D's commands as the base (decision 0010). SolidCraft
