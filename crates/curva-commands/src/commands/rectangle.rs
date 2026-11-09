@@ -93,7 +93,7 @@ mod tests {
     fn it_goes_on_the_plane_being_drawn_on() {
         let mut doc = Document::default();
         doc.set_work_plane([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
-        run(&mut doc, &["rectangle", "0,0,0", "3,0,2"]);
+        run(&mut doc, &["rectangle", "0,0,0", "3,2,0"]);
         let points = doc.state().objects[0].curve.sample().unwrap();
         assert_eq!(points[2], [3.0, 0.0, 2.0]);
         assert!(points.iter().all(|p| p[1] == 0.0));

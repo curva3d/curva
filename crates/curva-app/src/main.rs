@@ -9,8 +9,8 @@ use curva_commands::{Kind, Message, Processor, Translations, ViewName, ViewReque
 use curva_document::{Document, State};
 use curva_kernel::{Curve, Point};
 use curva_viewport::{
-    Camera, Drawing, LineRenderer, Outlines, SnapHit, SnapKind, SnapSet, StandardView, VIEW_SLOTS,
-    constrained, ghost_lines, grid_lines, object_lines, save_picture, scene_lines,
+    CPlane, Camera, Drawing, LineRenderer, Outlines, SnapHit, SnapKind, SnapSet, StandardView,
+    VIEW_SLOTS, constrained, ghost_lines, grid_lines, object_lines, save_picture, scene_lines,
 };
 use eframe::egui;
 use std::sync::Arc;
@@ -152,16 +152,23 @@ fn paint_selection_box(ui: &egui::Ui, viewport: egui::Rect, from: egui::Pos2, to
 /// One viewport: what it looks at and what it is tracking.
 struct Pane {
     view: StandardView,
+    plane: CPlane,
     camera: Camera,
     grid: Arc<Vec<curva_viewport::Vertex>>,
     gestures: LeftGestures,
 }
 
 impl Pane {
+    fn set_plane(&mut self, plane: CPlane) {
+        self.plane = plane;
+        self.grid = Arc::new(grid_lines(&plane));
+    }
+
     fn new(view: StandardView) -> Self {
         Self {
             view,
             camera: view.camera(),
+            plane: view.plane(),
             grid: Arc::new(grid_lines(&view.plane())),
             gestures: LeftGestures::default(),
         }
@@ -569,7 +576,7 @@ impl Curva {
         {
             return Some((hit.point, Some(hit)));
         }
-        let plane = self.panes[pane].view.plane();
+        let plane = self.panes[pane].plane;
         let cursor = camera.plane_point(screen, size, &plane)?;
         Some((
             constrained(&plane, cursor, base, self.ortho != shift, self.grid_snap),
@@ -579,8 +586,9 @@ impl Curva {
 
     /// Tells the document which plane flat objects go on: the last-used viewport's.
     fn share_work_plane(&mut self) {
-        let plane = self.panes[self.active].view.plane();
+        let plane = self.panes[self.active].plane;
         self.doc.set_work_plane([plane.x, plane.y]);
+        self.doc.set_work_origin(plane.origin);
     }
 
     /// Carries out a change of view asked for by a command.
@@ -597,6 +605,19 @@ impl Curva {
             Some(ViewRequest::FourViews) => {
                 self.panes = standard_panes();
                 self.maximised = None;
+            }
+            Some(ViewRequest::SetCPlane { origin, x, y }) => {
+                let normal = curva_kernel::cross(x, y);
+                self.panes[self.active].set_plane(CPlane {
+                    origin,
+                    x,
+                    y,
+                    normal,
+                });
+            }
+            Some(ViewRequest::ResetCPlane) => {
+                let pane = &mut self.panes[self.active];
+                pane.set_plane(pane.view.plane());
             }
             Some(ViewRequest::Show(name)) => {
                 self.panes[self.active] = Pane::new(standard_view(name));
@@ -754,7 +775,7 @@ impl Curva {
             if self.takes_position() {
                 self.aim(ui, pane, screen, size)
             } else {
-                let plane = self.panes[pane].view.plane();
+                let plane = self.panes[pane].plane;
                 let camera = &self.panes[pane].camera;
                 camera
                     .plane_point(screen, size, &plane)
@@ -1054,6 +1075,20 @@ mod tests {
         assert_eq!(pane_size(squashed), [1.0, 1.0]);
     }
 
+    #[test]
+    fn a_viewport_can_take_a_plane_of_its_own_and_lose_it_again() {
+        let mut pane = Pane::new(StandardView::Top);
+        let raised = CPlane {
+            origin: [0.0, 0.0, 5.0],
+            ..CPlane::WORLD_XY
+        };
+        pane.set_plane(raised);
+        assert_eq!(pane.plane, raised);
+        assert_eq!(pane.grid.len(), grid_lines(&raised).len());
+        assert!(pane.grid.iter().all(|v| v.position[2] == 5.0));
+        pane.set_plane(pane.view.plane());
+        assert_eq!(pane.plane, CPlane::WORLD_XY);
+    }
     #[test]
     fn curva_opens_on_the_perspective_viewport_alone() {
         let rects = pane_rects(area(), STARTING_LAYOUT);

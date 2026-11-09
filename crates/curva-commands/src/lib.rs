@@ -129,12 +129,23 @@ pub enum ViewName {
 }
 
 /// A change of view, which the interface carries out as the document knows nothing of views.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ViewRequest {
     /// Fit the model in every viewport.
     ZoomExtents,
     /// Go back to four viewports in their standard arrangement.
     FourViews,
+    /// Give the last-used viewport a construction plane of its own.
+    SetCPlane {
+        /// Where the plane starts.
+        origin: Point,
+        /// Its X direction, of length 1.
+        x: Point,
+        /// Its Y direction, of length 1.
+        y: Point,
+    },
+    /// Put the last-used viewport back on its standard plane.
+    ResetCPlane,
     /// Turn the last-used viewport into this view.
     Show(ViewName),
 }

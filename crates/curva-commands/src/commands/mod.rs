@@ -4,6 +4,7 @@ mod arc;
 mod array;
 mod circle;
 mod copy;
+mod cplane;
 mod delete;
 mod explode;
 mod fillet;
@@ -61,7 +62,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 30] = [
+pub static COMMANDS: [CommandDef; 31] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -104,6 +105,7 @@ pub static COMMANDS: [CommandDef; 30] = [
     listed!("Front", [], false, false, front::Front),
     listed!("Right", [], false, false, right::Right),
     listed!("Perspective", [], false, false, perspective::Perspective),
+    listed!("CPlane", [], false, false, cplane::SetCPlane),
 ];
 
 /// Finds a command by name or alias, ignoring case.
@@ -483,7 +485,7 @@ mod tests {
     #[test]
     fn completion_finds_aliases_and_puts_an_exact_match_first() {
         assert_eq!(completions("pl"), ["Polyline"]);
-        assert_eq!(completions("c"), ["Circle", "Copy"]);
+        assert_eq!(completions("c"), ["Circle", "Copy", "CPlane"]);
         assert_eq!(completions("co"), ["Copy"]);
     }
 
