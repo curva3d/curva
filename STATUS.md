@@ -48,7 +48,8 @@
 - Rebuild.
 - History on Mirror and Offset (`docs/specs/m1-history.md`).
 - MCP server, first part (`docs/specs/m1-mcp-server.md`): `curva --mcp`.
-- Rhai scripting is built on the local branch `m1-rhai-scripting` and waits for the owner: Rhai brings in `smartstring` (MPL-2.0, unmaintained) and `tiny-keccak` (CC0).
+- Rhai scripting is finished but held on the local branch `m1-rhai-scripting` (decision 0014), because Rhai 1.27.0 still requires `smartstring`.
+- Next planned: connect the MCP server to the open Curva window, with approval of destructive actions.
 
 **Waiting for the owner**
 - Nothing yet. The engine is solidcore, with Serpentine3D's commands as the base (decision 0010). SolidCraft
