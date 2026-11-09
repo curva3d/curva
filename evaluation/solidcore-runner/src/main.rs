@@ -1,6 +1,6 @@
 //! Runs the evaluation cases on solidcore and writes the results as tab-separated text.
 //!
-//! Usage: `solidcore-runner <cases folder> <output file>`
+//! Usage: `solidcore-runner <cases folder> <output file> <images folder>`
 //!
 //! Cases not connected yet are listed as `not-wired`, so they cannot be mistaken for solidcore
 //! refusing them. Where a case has an exact answer, it is recorded beside the measured value.
@@ -16,15 +16,16 @@ use solidcore_ops::{
 };
 use std::f64::consts::{FRAC_1_SQRT_2, PI};
 use std::fmt::Write as _;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
 mod curves;
+mod output;
 
 /// The cases this runner can perform so far.
-const WIRED: [u32; 21] = [
-    1, 2, 3, 4, 5, 6, 8, 10, 11, 13, 14, 15, 16, 18, 19, 20, 22, 23, 29, 30, 31,
+const WIRED: [u32; 23] = [
+    1, 2, 3, 4, 5, 6, 8, 10, 11, 13, 14, 15, 16, 18, 19, 20, 22, 23, 24, 25, 29, 30, 31,
 ];
 
 /// Accuracy asked of solidcore's volume and area integrals.
@@ -36,6 +37,8 @@ const HEIGHT_TOLERANCE: f64 = 1e-6;
 struct Solidcore {
     /// Every case, because some start from the result of an earlier one.
     cases: Vec<Case>,
+    /// Where pictures and STEP files go.
+    images: PathBuf,
 }
 
 impl Solidcore {
@@ -61,12 +64,25 @@ impl Kernel for Solidcore {
         }
         // Case 29 starts from 14; case 23 measures 13, 15 and 19, reported under 15's result.
         let body = match case.id {
-            23 => self.result_of(15)?,
+            23 | 25 => self.result_of(15)?,
+            24 => self.result_of(16)?,
             29 => self.result_of(14)?,
             _ => perform(case)?,
         };
         let mut attempt = measure(case, &body)?;
         attempt.measurements.extend(extra(case));
+        attempt.image = output::picture(&body, &self.images, case.id);
+        if case.id == 24 {
+            attempt.measurements.extend(output::mesh_measures(&body)?);
+        }
+        if case.id == 25 {
+            for id in [15, 19] {
+                let made = self.result_of(id)?;
+                attempt
+                    .measurements
+                    .extend(output::step_measures(&made, &self.images, id)?);
+            }
+        }
         if case.id == 23 {
             for id in [13, 19] {
                 let mass = self
@@ -678,12 +694,15 @@ fn measure(case: &Case, body: &Body) -> Result<Attempt, String> {
 
 fn main() -> Result<(), String> {
     let mut arguments = std::env::args().skip(1);
-    let usage = "usage: solidcore-runner <cases folder> <output file>";
+    let usage = "usage: solidcore-runner <cases folder> <output file> <images folder>";
     let folder = arguments.next().ok_or(usage)?;
     let output = arguments.next().ok_or(usage)?;
+    let images = arguments.next().ok_or(usage)?;
+    std::fs::create_dir_all(&images).map_err(|error| error.to_string())?;
     let cases = load_cases(Path::new(&folder)).map_err(|error| error.to_string())?;
     let kernel: Arc<dyn Kernel> = Arc::new(Solidcore {
         cases: cases.clone(),
+        images: PathBuf::from(&images),
     });
     let limit = Duration::from_secs(120);
     let records: Vec<Record> = cases
