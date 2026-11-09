@@ -106,6 +106,14 @@ fn combined_selection(current: Vec<u64>, hits: Vec<u64>, add: bool, remove: bool
     chosen
 }
 
+/// The rows of the log to show, newest last. Always the same number, one line each, so that a
+/// new message never changes the height of the panel and moves the viewport.
+fn log_rows(log: &[String]) -> Vec<&str> {
+    let shown = &log[log.len().saturating_sub(LOG_LINES)..];
+    let blanks = std::iter::repeat_n(" ", LOG_LINES - shown.len());
+    blanks.chain(shown.iter().map(String::as_str)).collect()
+}
+
 /// Whether a press that moved from one place to another counts as a drag, not a click.
 fn is_box_drag(from: egui::Pos2, to: egui::Pos2) -> bool {
     (to - from).abs().max_elem() >= BOX_MIN_DRAG
@@ -353,9 +361,8 @@ impl Curva {
     }
 
     fn command_line(&mut self, ui: &mut egui::Ui) {
-        let log = self.processor.log();
-        for line in &log[log.len().saturating_sub(LOG_LINES)..] {
-            ui.label(line.as_str());
+        for row in log_rows(self.processor.log()) {
+            ui.add(egui::Label::new(row).truncate());
         }
         let prompt = self
             .processor
@@ -790,6 +797,33 @@ mod tests {
     #[test]
     fn ctrl_wins_over_shift() {
         assert_eq!(combined_selection(vec![1, 2], vec![2], true, true), [1]);
+    }
+
+    fn messages(count: usize) -> Vec<String> {
+        (0..count).map(|index| format!("message {index}")).collect()
+    }
+
+    #[test]
+    fn the_log_takes_the_same_space_however_long_it_is() {
+        for count in [0, 1, LOG_LINES, LOG_LINES + 7] {
+            assert_eq!(log_rows(&messages(count)).len(), LOG_LINES);
+        }
+    }
+
+    #[test]
+    fn the_log_shows_the_newest_messages_last() {
+        let log = messages(LOG_LINES + 2);
+        let rows = log_rows(&log);
+        assert_eq!(rows[LOG_LINES - 1], log[LOG_LINES + 1]);
+        assert_eq!(rows[0], log[2]);
+    }
+
+    #[test]
+    fn a_short_log_is_padded_above_its_messages() {
+        let log = messages(1);
+        let rows = log_rows(&log);
+        assert_eq!(rows[LOG_LINES - 1], "message 0");
+        assert_eq!(rows[0], " ");
     }
 
     #[test]

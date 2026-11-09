@@ -37,7 +37,7 @@ mod tests {
     use curva_document::Document;
 
     #[test]
-    fn empties_the_model_once_confirmed() {
+    fn empties_the_model() {
         let mut doc = Document::default();
         run(&mut doc, &["line", "0,0", "1,0", "new", "yes"]);
         assert!(doc.state().objects.is_empty());
