@@ -6,7 +6,10 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+mod history;
 mod layers;
+
+pub use history::Recipe;
 
 /// Marks files of this early format, so a later Curva can recognise and convert them.
 const FORMAT: &str = "curva-first-slice";
@@ -24,6 +27,9 @@ pub struct Object {
     /// Whether it is out of sight until `Show`.
     #[serde(default)]
     pub hidden: bool,
+    /// How it was made from another object, if it follows one.
+    #[serde(default)]
+    pub recipe: Option<Recipe>,
 }
 
 /// The colour of a new layer, red, green and blue from 0 to 1.
@@ -119,6 +125,8 @@ pub struct Document {
     work_plane: Option<[Point; 2]>,
     /// The origin of that plane. Not saved, and not part of undo.
     work_origin: Point,
+    /// Whether new results remember how they were made. Not saved, and not part of undo.
+    recording_history: bool,
     /// Values commands keep between runs, such as the last offset distance. Not saved.
     remembered: std::collections::BTreeMap<&'static str, f64>,
 }
@@ -179,6 +187,7 @@ impl Document {
             curve,
             layer: self.state.current_layer,
             hidden: false,
+            recipe: None,
         });
         id
     }
@@ -196,6 +205,7 @@ impl Document {
     pub fn replace(&mut self, id: u64, curve: Curve) {
         if let Some(object) = self.state.objects.iter_mut().find(|o| o.id == id) {
             object.curve = curve;
+            object.recipe = None;
         }
     }
 
@@ -252,6 +262,7 @@ impl Document {
         for object in &mut self.state.objects {
             if ids.contains(&object.id) {
                 object.curve = object.curve.translated(by);
+                object.recipe = None;
             }
         }
     }
@@ -261,6 +272,7 @@ impl Document {
         for object in &mut self.state.objects {
             if ids.contains(&object.id) {
                 object.curve = object.curve.mapped(change);
+                object.recipe = None;
             }
         }
     }

@@ -274,6 +274,7 @@ impl Processor {
         match active.command.step(doc, answer) {
             Step::Ask(request) => active.request = Some(request),
             Step::Done(message) => {
+                doc.refresh_history();
                 if let Some(active) = self.active.take()
                     && active.def.records_undo
                     && doc.state() != &active.before

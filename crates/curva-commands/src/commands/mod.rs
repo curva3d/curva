@@ -19,6 +19,7 @@ mod flip;
 mod four_view;
 mod front;
 mod hide;
+mod history;
 mod interpcrv;
 mod invert;
 mod join;
@@ -82,7 +83,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 51] = [
+pub static COMMANDS: [CommandDef; 52] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -105,6 +106,7 @@ pub static COMMANDS: [CommandDef; 51] = [
     listed!("Divide", [], true, true, divide::Divide),
     listed!("Orient", [], true, true, orient::Orient),
     listed!("Rebuild", [], true, true, rebuild::Rebuild),
+    listed!("History", [], false, false, history::History),
     listed!("Flip", [], true, true, flip::Flip),
     listed!("CloseCrv", [], true, true, close_crv::CloseCrv),
     listed!("Hide", ["h"], true, true, hide::Hide),
