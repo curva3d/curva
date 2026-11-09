@@ -35,6 +35,18 @@ Serpentine3D: https://github.com/chisomobanzi/Serpentine3D
 Curva calls solidcore (Apache-2.0) for its geometry: https://github.com/tangency-labs/solidcore
 Its licence and NOTICE ship with its source at the pinned revision in `Cargo.lock`.
 
+## Fonts bundled by egui
+
+The Curva window uses the default fonts in `epaint_default_fonts` 0.37.0, part of egui. They are
+compiled into the program, so these notices must ship with any distributed copy of Curva. The full
+texts are in `licenses/fonts/`:
+
+- `OFL.txt`: SIL Open Font License 1.1
+- `UFL.txt`: Ubuntu Font Licence 1.0
+- `Hack-Regular.txt`, `egui-icons.txt`, `emoji-icon-font-mit-license.txt`: the other bundled fonts
+
+These licences cover only the font files, not Curva's code.
+
 ## To add when used
 
 - SolidCraft (MIT / Apache-2.0)
