@@ -7,6 +7,7 @@ use curva_kernel::{Curve, Point};
 
 /// Most copies an array may make, so that a slip of the keyboard cannot freeze Curva.
 const MOST_COPIES: usize = 10_000;
+/// Zero copies in a direction means nothing is arrayed that way, the same as one.
 /// Most places previewed, so that a large array does not stall the window.
 const MOST_PREVIEWED: usize = 200;
 
@@ -45,7 +46,8 @@ fn offsets(counts: [usize; 3], spacing: [f64; 3]) -> impl Iterator<Item = Point>
 }
 
 fn valid_count(typed: f64) -> Option<usize> {
-    (typed >= 1.0 && typed.fract() == 0.0 && typed <= MOST_COPIES as f64).then_some(typed as usize)
+    (typed >= 0.0 && typed.fract() == 0.0 && typed <= MOST_COPIES as f64)
+        .then_some((typed as usize).max(1))
 }
 
 impl Array {
@@ -191,8 +193,24 @@ mod tests {
     }
 
     #[test]
+    fn zero_copies_in_a_direction_arrays_only_the_others() {
+        let mut doc = selected_line();
+        run(&mut doc, &["array", "0", "3", "0", "5"]);
+        let found = starts(&doc);
+        assert_eq!(found.len(), 3);
+        assert!(found.contains(&[0.0, 10.0, 0.0]));
+    }
+
+    #[test]
+    fn zero_copies_everywhere_adds_nothing() {
+        let mut doc = selected_line();
+        let processor = run(&mut doc, &["array", "0", "0", "0"]);
+        assert_eq!(doc.state().objects.len(), 1);
+        assert!(!processor.is_running());
+    }
+    #[test]
     fn a_bad_count_makes_nothing() {
-        for count in ["0", "2.5", "-1"] {
+        for count in ["2.5", "-1"] {
             let mut doc = selected_line();
             let processor = run(&mut doc, &["array", count]);
             assert_eq!(doc.state().objects.len(), 1);

@@ -34,7 +34,8 @@
 - Live previews for every command that changes geometry, drawn one way (rule in `AGENTS.md`).
 - NURBS curve storage (decision 0012).
 - Array and Join (`docs/specs/m1-array-join.md`).
-- Next planned: Split, Trim, Offset and Fillet, then custom construction planes.
+- Mixed curves (decision 0013), Explode, and 0 allowed as an Array count.
+- Next planned: Split, Trim (cutters, then click the part to remove, as Serpentine3D and Rhino do), Offset and Fillet, then custom construction planes.
 
 **Waiting for the owner**
 - Nothing yet. The engine is solidcore, with Serpentine3D's commands as the base (decision 0010). SolidCraft
