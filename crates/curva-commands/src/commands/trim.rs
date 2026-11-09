@@ -91,13 +91,14 @@ impl Command for Trim {
                     return ask_part("prompt.trim.not_crossed");
                 };
                 let was_cutter = self.cutters.as_ref().is_some_and(|c| c.contains(&cut.id));
+                let layer = doc.layer_of(cut.id);
                 doc.remove(&[cut.id]);
                 let kept: Vec<u64> = cut
                     .pieces
                     .into_iter()
                     .enumerate()
                     .filter(|(index, _)| *index != cut.doomed)
-                    .map(|(_, piece)| doc.add(piece))
+                    .map(|(_, piece)| doc.add_on(piece, layer))
                     .collect();
                 // A trimmed cutter goes on cutting with whatever is left of it.
                 if was_cutter && let Some(cutters) = self.cutters.as_mut() {

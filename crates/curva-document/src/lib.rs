@@ -6,6 +6,8 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+mod layers;
+
 /// Marks files of this early format, so a later Curva can recognise and convert them.
 const FORMAT: &str = "curva-first-slice";
 
@@ -16,15 +18,72 @@ pub struct Object {
     pub id: u64,
     /// Its geometry.
     pub curve: Curve,
+    /// The layer it is on. Files from before layers put everything on the first.
+    #[serde(default)]
+    pub layer: u64,
+}
+
+/// The colour of a new layer, red, green and blue from 0 to 1.
+pub const STANDARD_COLOUR: [f32; 3] = [0.92, 0.92, 0.95];
+
+/// A named group of objects.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Layer {
+    /// Identifies the layer.
+    pub id: u64,
+    /// Its name.
+    pub name: String,
+    /// The colour of its objects, red, green and blue from 0 to 1.
+    pub colour: [f32; 3],
+    /// Whether its objects are shown.
+    pub visible: bool,
+    /// Whether its objects can be selected.
+    pub locked: bool,
+}
+
+/// The layer every model starts with. Files from before layers put everything on it.
+fn standard_layers() -> Vec<Layer> {
+    vec![Layer {
+        id: 0,
+        name: "Default".to_owned(),
+        colour: STANDARD_COLOUR,
+        visible: true,
+        locked: false,
+    }]
+}
+
+fn first_new_layer() -> u64 {
+    1
 }
 
 /// Everything undo restores and a file stores.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct State {
     /// The objects, oldest first.
     pub objects: Vec<Object>,
     /// The id the next object receives. Kept so ids are not reused after an undo.
     pub next_id: u64,
+    /// The layers, oldest first.
+    #[serde(default = "standard_layers")]
+    pub layers: Vec<Layer>,
+    /// The layer new objects go on.
+    #[serde(default)]
+    pub current_layer: u64,
+    /// The id the next layer receives.
+    #[serde(default = "first_new_layer")]
+    pub next_layer: u64,
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            objects: Vec::new(),
+            next_id: 0,
+            layers: standard_layers(),
+            current_layer: 0,
+            next_layer: first_new_layer(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -112,7 +171,20 @@ impl Document {
     pub fn add(&mut self, curve: Curve) -> u64 {
         let id = self.state.next_id;
         self.state.next_id += 1;
-        self.state.objects.push(Object { id, curve });
+        self.state.objects.push(Object {
+            id,
+            curve,
+            layer: self.state.current_layer,
+        });
+        id
+    }
+
+    /// Adds a curve on a given layer, or the current one if `None`, and returns its id.
+    pub fn add_on(&mut self, curve: Curve, layer: Option<u64>) -> u64 {
+        let id = self.add(curve);
+        if let (Some(layer), Some(object)) = (layer, self.state.objects.last_mut()) {
+            object.layer = layer;
+        }
         id
     }
 
@@ -144,26 +216,32 @@ impl Document {
 
     /// Adds turned, mirrored or resized copies of objects and returns the new ids.
     pub fn copy_transformed(&mut self, ids: &[u64], change: &Similarity) -> Vec<u64> {
-        let copies: Vec<Curve> = self
+        let copies: Vec<(Curve, u64)> = self
             .state
             .objects
             .iter()
             .filter(|object| ids.contains(&object.id))
-            .map(|object| object.curve.mapped(change))
+            .map(|object| (object.curve.mapped(change), object.layer))
             .collect();
-        copies.into_iter().map(|curve| self.add(curve)).collect()
+        copies
+            .into_iter()
+            .map(|(curve, layer)| self.add_on(curve, Some(layer)))
+            .collect()
     }
 
     /// Adds moved copies of objects and returns the new ids.
     pub fn copy(&mut self, ids: &[u64], by: Point) -> Vec<u64> {
-        let copies: Vec<Curve> = self
+        let copies: Vec<(Curve, u64)> = self
             .state
             .objects
             .iter()
             .filter(|object| ids.contains(&object.id))
-            .map(|object| object.curve.translated(by))
+            .map(|object| (object.curve.translated(by), object.layer))
             .collect();
-        copies.into_iter().map(|curve| self.add(curve)).collect()
+        copies
+            .into_iter()
+            .map(|(curve, layer)| self.add_on(curve, Some(layer)))
+            .collect()
     }
 
     /// The selected ids, in order.

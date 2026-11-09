@@ -36,8 +36,9 @@ impl Command for Join {
         for (replaced, curve) in made {
             let gone: Vec<u64> = replaced.iter().map(|index| ids[*index]).collect();
             joined += gone.len();
+            let layer = gone.first().and_then(|id| doc.layer_of(*id));
             doc.remove(&gone);
-            doc.add(curve);
+            doc.add_on(curve, layer);
         }
         Step::Done(Some(Message::with("done.join", vec![joined.to_string()])))
     }

@@ -40,10 +40,11 @@ impl Command for Split {
                 Err(error) => return geometry_failed(&error),
             };
             if pieces.len() >= 2 {
+                let layer = doc.layer_of(id);
                 doc.remove(&[id]);
                 made += pieces.len();
                 for piece in pieces {
-                    doc.add(piece);
+                    doc.add_on(piece, layer);
                 }
             }
         }

@@ -63,6 +63,7 @@ struct Curva {
     active: usize,
     maximised: Option<usize>,
     gumball_on: bool,
+    naming_layer: bool,
     gumball_drag: Option<GumballDrag>,
     snaps: SnapSet,
     ortho: bool,
@@ -286,6 +287,17 @@ fn benchmark_scene(doc: &mut Document, count: usize) -> Result<(), String> {
     Ok(())
 }
 
+fn curve_kind(curve: &Curve) -> &'static str {
+    match curve {
+        Curve::Line { .. } => "ui.kind.line",
+        Curve::Polyline { .. } => "ui.kind.polyline",
+        Curve::Circle { .. } => "ui.kind.circle",
+        Curve::Arc { .. } => "ui.kind.arc",
+        Curve::Interpolated { .. } | Curve::Nurbs { .. } => "ui.kind.smooth",
+        Curve::Compound { .. } => "ui.kind.joined",
+    }
+}
+
 fn snap_label(kind: SnapKind) -> &'static str {
     match kind {
         SnapKind::End => "ui.snap.end",
@@ -355,6 +367,7 @@ impl Curva {
             active: PERSPECTIVE,
             maximised: STARTING_LAYOUT,
             gumball_on: true,
+            naming_layer: false,
             gumball_drag: None,
             snaps: SnapSet::default(),
             ortho: false,
@@ -513,7 +526,9 @@ impl Curva {
             let output = egui::TextEdit::singleline(&mut self.typed)
                 .desired_width(f32::INFINITY)
                 .show(ui);
-            output.response.request_focus();
+            if !self.naming_layer {
+                output.response.request_focus();
+            }
             changed = output.response.changed();
             if filled {
                 // Without this the cursor stays mid-word and the next key lands there.
@@ -526,7 +541,7 @@ impl Curva {
             }
             self.paint_remainder(ui, &output);
             clicked = self.match_list(ui, output.response.rect.left_top());
-            submit = ui.input(|input| input.key_pressed(egui::Key::Enter));
+            submit = !self.naming_layer && ui.input(|input| input.key_pressed(egui::Key::Enter));
         });
         self.drawing_aids_bar(ui);
         let wants_path = self
@@ -556,7 +571,7 @@ impl Curva {
             self.highlight = 0;
             self.processor.cancel(&mut self.doc);
         }
-        let delete = ui.input(|input| input.key_pressed(egui::Key::Delete));
+        let delete = !self.naming_layer && ui.input(|input| input.key_pressed(egui::Key::Delete));
         if delete && self.typed.is_empty() && !self.processor.is_running() {
             self.processor.submit(&mut self.doc, "delete");
         }
@@ -762,6 +777,128 @@ impl Curva {
                 painter.circle_filled(*tip, GUMBALL_TIP, colour);
             }
             painter.add(egui::Shape::line(points, egui::Stroke::new(2.0, colour)));
+        }
+    }
+
+    /// Runs an edit of the model from a panel as one undo step, if it changed anything.
+    fn undoable(&mut self, edit: impl FnOnce(&mut Document)) {
+        let before = self.doc.state().clone();
+        edit(&mut self.doc);
+        if self.doc.state() != &before {
+            self.doc.record_change(before);
+        }
+    }
+
+    fn layers_panel(&mut self, ui: &mut egui::Ui) {
+        ui.heading(self.text.render(&Message::new("ui.layers")));
+        let layers = self.doc.layers().to_vec();
+        let current = self.doc.current_layer();
+        let mut naming = false;
+        egui::Grid::new(ui.scope_id().with("layers")).show(ui, |ui| {
+            for layer in &layers {
+                if ui.radio(layer.id == current, "").clicked() {
+                    self.undoable(|doc| doc.set_current_layer(layer.id));
+                }
+                let mut name = layer.name.clone();
+                let edit = ui.add(egui::TextEdit::singleline(&mut name).desired_width(90.0));
+                naming |= edit.has_focus();
+                if edit.changed() {
+                    self.doc.rename_layer(layer.id, name);
+                }
+                let mut colour = layer.colour;
+                if ui.color_edit_button_rgb(&mut colour).changed() {
+                    self.doc.set_layer_colour(layer.id, colour);
+                }
+                let mut visible = layer.visible;
+                let shown =
+                    ui.checkbox(&mut visible, self.text.render(&Message::new("ui.layer.on")));
+                if shown.changed() {
+                    self.undoable(|doc| doc.set_layer_visible(layer.id, visible));
+                }
+                let mut locked = layer.locked;
+                let lock = ui.checkbox(
+                    &mut locked,
+                    self.text.render(&Message::new("ui.layer.lock")),
+                );
+                if lock.changed() {
+                    self.undoable(|doc| doc.set_layer_locked(layer.id, locked));
+                }
+                if ui
+                    .button(self.text.render(&Message::new("ui.layer.delete")))
+                    .clicked()
+                {
+                    self.undoable(|doc| {
+                        doc.delete_layer(layer.id);
+                    });
+                }
+                ui.end_row();
+            }
+        });
+        self.naming_layer = naming;
+        if ui
+            .button(self.text.render(&Message::new("ui.layer.new")))
+            .clicked()
+        {
+            let number = layers.iter().map(|layer| layer.id).max().unwrap_or(0) + 1;
+            let name = self.text.render(&Message::with(
+                "ui.layer.new_name",
+                vec![number.to_string()],
+            ));
+            self.undoable(|doc| {
+                doc.add_layer(name);
+            });
+        }
+    }
+
+    fn properties_panel(&mut self, ui: &mut egui::Ui) {
+        ui.heading(self.text.render(&Message::new("ui.properties")));
+        let selection = self.doc.selection();
+        if selection.is_empty() {
+            ui.label(self.text.render(&Message::new("ui.properties.none")));
+            return;
+        }
+        ui.label(self.text.render(&Message::with(
+            "ui.properties.count",
+            vec![selection.len().to_string()],
+        )));
+        if let [only] = selection.as_slice()
+            && let Some(object) = self.doc.state().objects.iter().find(|o| o.id == *only)
+        {
+            ui.label(self.text.render(&Message::new(curve_kind(&object.curve))));
+            if let Ok(length) = object.curve.length() {
+                ui.label(self.text.render(&Message::with(
+                    "ui.properties.length",
+                    vec![format!("{length:.3}")],
+                )));
+            }
+        }
+        let layers = self.doc.layers().to_vec();
+        let shared = self.doc.layer_of(selection[0]).filter(|first| {
+            selection
+                .iter()
+                .all(|id| self.doc.layer_of(*id) == Some(*first))
+        });
+        let shown = shared
+            .and_then(|id| layers.iter().find(|layer| layer.id == id))
+            .map_or_else(
+                || self.text.render(&Message::new("ui.properties.mixed")),
+                |layer| layer.name.clone(),
+            );
+        let mut chosen = None;
+        egui::ComboBox::from_label(self.text.render(&Message::new("ui.properties.layer")))
+            .selected_text(shown)
+            .show_ui(ui, |ui| {
+                for layer in &layers {
+                    if ui
+                        .selectable_label(shared == Some(layer.id), &layer.name)
+                        .clicked()
+                    {
+                        chosen = Some(layer.id);
+                    }
+                }
+            });
+        if let Some(layer) = chosen {
+            self.undoable(|doc| doc.move_to_layer(&selection, layer));
         }
     }
 
@@ -1009,6 +1146,11 @@ impl eframe::App for Curva {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.share_work_plane();
         egui::Panel::bottom("command line").show(ui, |ui| self.command_line(ui));
+        egui::Panel::right("layers and properties").show(ui, |ui| {
+            self.layers_panel(ui);
+            ui.separator();
+            self.properties_panel(ui);
+        });
         self.apply_view_request();
         egui::CentralPanel::default().show(ui, |ui| self.viewports(ui));
         if let Some(benchmark) = &mut self.benchmark {
