@@ -51,6 +51,11 @@ impl std::error::Error for KernelError {}
 /// A curve, stored by what defines it so files stay small and readable.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Curve {
+    /// A single point in space.
+    Point {
+        /// Where it is.
+        at: Point,
+    },
     /// A straight segment.
     Line {
         /// Where it starts.
@@ -597,6 +602,9 @@ impl Curve {
     pub fn mapped(&self, change: &Similarity) -> Self {
         let many = |list: &[Point]| list.iter().map(|p| change.point(*p)).collect();
         match self {
+            Self::Point { at } => Self::Point {
+                at: change.point(*at),
+            },
             Self::Line { start, end } => Self::Line {
                 start: change.point(*start),
                 end: change.point(*end),
@@ -727,6 +735,7 @@ impl Curve {
     #[must_use]
     pub fn reversed(&self) -> Self {
         match self {
+            Self::Point { .. } => self.clone(),
             Self::Line { start, end } => Self::Line {
                 start: *end,
                 end: *start,
@@ -781,6 +790,37 @@ impl Curve {
         }
     }
 
+    /// Points at equal distances along the curve, exactly on it. A closed curve does not repeat
+    /// its start.
+    pub fn divided(&self, segments: usize) -> Result<Vec<Point>, KernelError> {
+        let path = self.sample()?;
+        let lengths: Vec<f64> = path.windows(2).map(|p| gap(p[0], p[1])).collect();
+        let total: f64 = lengths.iter().sum();
+        if total <= 0.0 || segments == 0 {
+            return Err(KernelError("that curve cannot be divided".to_owned()));
+        }
+        let closed = gap(path[0], path[path.len() - 1]) <= JOIN_TOLERANCE;
+        let count = if closed { segments } else { segments + 1 };
+        let mut found = Vec::with_capacity(count);
+        let (mut index, mut before) = (0, 0.0);
+        for step in 0..count {
+            let wanted = total * step as f64 / segments as f64;
+            while index + 1 < lengths.len() && before + lengths[index] < wanted {
+                before += lengths[index];
+                index += 1;
+            }
+            let t = ((wanted - before) / lengths[index].max(1e-24)).clamp(0.0, 1.0);
+            let a = path[index];
+            let b = path[index + 1];
+            let on = [
+                a[0] + (b[0] - a[0]) * t,
+                a[1] + (b[1] - a[1]) * t,
+                a[2] + (b[2] - a[2]) * t,
+            ];
+            found.push(self.closest_point(on)?);
+        }
+        Ok(found)
+    }
     /// The separate curves this one is made of, or `None` if it is a single piece.
     #[must_use]
     pub fn exploded(&self) -> Option<Vec<Self>> {
@@ -810,6 +850,7 @@ impl Curve {
     /// The curve's length in millimetres.
     pub fn length(&self) -> Result<f64, KernelError> {
         Ok(match self {
+            Self::Point { .. } => 0.0,
             Self::Line { start, end } => gap(*start, *end),
             Self::Polyline { .. } => self
                 .sample()?
@@ -850,6 +891,7 @@ impl Curve {
     /// Points along the curve for drawing. Corners of lines and polylines are kept exactly.
     pub fn sample(&self) -> Result<Vec<Point>, KernelError> {
         Ok(match self {
+            Self::Point { at } => vec![*at],
             Self::Line { start, end } => vec![*start, *end],
             Self::Polyline { points, closed } => {
                 let mut out = points.clone();
@@ -940,6 +982,9 @@ impl Curve {
     pub fn translated(&self, by: Point) -> Self {
         let moved = |list: &[Point]| list.iter().map(|p| shifted(*p, by)).collect();
         match self {
+            Self::Point { at } => Self::Point {
+                at: shifted(*at, by),
+            },
             Self::Line { start, end } => Self::Line {
                 start: shifted(*start, by),
                 end: shifted(*end, by),
@@ -1448,6 +1493,48 @@ mod tests {
     fn a_single_curve_does_not_explode() {
         assert!(Curve::line([0.0; 3], X).unwrap().exploded().is_none());
         assert!(smooth_curve().exploded().is_none());
+    }
+
+    #[test]
+    fn a_point_moves_turns_and_has_no_length() {
+        let point = Curve::Point { at: X };
+        assert_eq!(point.length().unwrap(), 0.0);
+        assert_eq!(point.sample().unwrap(), [X]);
+        assert_eq!(
+            point.translated(Y),
+            Curve::Point {
+                at: [1.0, 1.0, 0.0]
+            }
+        );
+        let bigger = point.mapped(&Similarity::scaling([0.0; 3], 3.0));
+        assert_eq!(
+            bigger,
+            Curve::Point {
+                at: [3.0, 0.0, 0.0]
+            }
+        );
+    }
+
+    #[test]
+    fn a_circle_divides_exactly_on_itself() {
+        let circle = Curve::circle([0.0; 3], 5.0).unwrap();
+        let found = circle.divided(4).unwrap();
+        assert_eq!(found.len(), 4);
+        assert!(points_near(found[1], [0.0, 5.0, 0.0]), "{:?}", found[1]);
+        assert!(found.iter().all(|p| near(p[0].hypot(p[1]), 5.0)));
+    }
+
+    #[test]
+    fn a_polyline_divides_by_distance_along_it() {
+        let path = vec![[0.0; 3], [10.0, 0.0, 0.0], [10.0, 10.0, 0.0]];
+        let found = Curve::polyline(path, false).unwrap().divided(2).unwrap();
+        assert!(points_near(found[1], [10.0, 0.0, 0.0]));
+        assert!(points_near(found[2], [10.0, 10.0, 0.0]));
+    }
+
+    #[test]
+    fn a_point_cannot_be_divided() {
+        assert!(Curve::Point { at: X }.divided(2).is_err());
     }
     #[test]
     fn line_length_is_exact() {

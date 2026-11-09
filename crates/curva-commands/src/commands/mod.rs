@@ -2,6 +2,7 @@
 
 mod arc;
 mod array;
+mod array_crv;
 mod array_polar;
 mod chamfer;
 mod circle;
@@ -10,6 +11,7 @@ mod copy;
 mod cplane;
 mod delete;
 mod distance;
+mod divide;
 mod ellipse;
 mod explode;
 mod fillet;
@@ -27,7 +29,9 @@ mod move_objects;
 mod new;
 mod offset;
 mod open;
+mod orient;
 mod perspective;
+mod point;
 mod polyline;
 mod rectangle;
 mod redo;
@@ -77,7 +81,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 46] = [
+pub static COMMANDS: [CommandDef; 50] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -95,6 +99,10 @@ pub static COMMANDS: [CommandDef; 46] = [
     listed!("Mirror", ["mi"], true, true, mirror::Mirror),
     listed!("Array", ["ar"], true, true, array::Array),
     listed!("ArrayPolar", ["arp"], true, true, array_polar::ArrayPolar),
+    listed!("ArrayCrv", [], true, true, array_crv::ArrayCrv),
+    listed!("Point", ["pt"], true, true, point::PointObject),
+    listed!("Divide", [], true, true, divide::Divide),
+    listed!("Orient", [], true, true, orient::Orient),
     listed!("Flip", [], true, true, flip::Flip),
     listed!("CloseCrv", [], true, true, close_crv::CloseCrv),
     listed!("Hide", ["h"], true, true, hide::Hide),
@@ -346,7 +354,7 @@ mod tests {
 
     /// For each command that changes geometry, the typed steps that reach its live preview.
     /// A new command must be added here, which is how the preview rule in AGENTS.md is enforced.
-    const PREVIEW_STEPS: [(&str, &[&str]); 18] = [
+    const PREVIEW_STEPS: [(&str, &[&str]); 20] = [
         ("Line", &["0,0"]),
         ("Polyline", &["0,0", "9,0"]),
         ("InterpCrv", &["0,0", "9,0"]),
@@ -365,6 +373,8 @@ mod tests {
         ("Rotate3D", &["0,0,0"]),
         ("Scale1D", &["0,0", "2"]),
         ("Scale2D", &["0,0", "5,0"]),
+        ("Point", &[]),
+        ("Orient", &["0,0"]),
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
@@ -373,7 +383,7 @@ mod tests {
     ];
 
     /// Commands whose preview needs its own setup, tested in their own files.
-    const PREVIEW_TESTED_ELSEWHERE: [&str; 3] = ["Trim", "Fillet", "Chamfer"];
+    const PREVIEW_TESTED_ELSEWHERE: [&str; 5] = ["Trim", "Fillet", "Chamfer", "Divide", "ArrayCrv"];
 
     #[test]
     fn every_command_that_changes_geometry_is_listed_for_a_preview() {
@@ -677,7 +687,7 @@ mod tests {
     }
     #[test]
     fn completion_offers_matching_names() {
-        assert_eq!(completions("po"), ["Polyline"]);
+        assert_eq!(completions("po"), ["Polyline", "Point"]);
         assert!(completions("").is_empty());
     }
 

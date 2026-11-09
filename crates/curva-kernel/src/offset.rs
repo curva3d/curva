@@ -147,6 +147,7 @@ impl Curve {
         let path = self.sample()?;
         let amount = side_of(&path, normal, toward) * distance;
         match self {
+            Self::Point { .. } => Err(KernelError("a point cannot be offset".to_owned())),
             Self::Line { start, end } => {
                 let moved = offset_corners(&[*start, *end], false, normal, amount)?;
                 Self::line(moved[0], moved[1])
