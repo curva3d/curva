@@ -53,6 +53,33 @@ impl Default for Camera {
     }
 }
 
+/// A camera's values worked out once, as snapping projects many points on every frame.
+pub(crate) struct Projector {
+    eye: Point,
+    forward: Point,
+    right: Point,
+    up: Point,
+    focal: f64,
+    size: [f64; 2],
+}
+
+impl Projector {
+    /// Where a model point lands on screen, or `None` behind the camera.
+    pub(crate) fn project(&self, p: Point) -> Option<[f64; 2]> {
+        let offset = sub(p, self.eye);
+        let depth = dot(offset, self.forward);
+        if depth <= 1e-9 {
+            return None;
+        }
+        let x = dot(offset, self.right) / depth * self.focal / (self.size[0] / self.size[1]);
+        let y = dot(offset, self.up) / depth * self.focal;
+        Some([
+            (x + 1.0) / 2.0 * self.size[0],
+            (1.0 - y) / 2.0 * self.size[1],
+        ])
+    }
+}
+
 impl Camera {
     fn eye(&self) -> Point {
         let (cp, sp) = (self.pitch.cos(), self.pitch.sin());
@@ -111,15 +138,21 @@ impl Camera {
     /// Where a model point lands on screen, or `None` behind the camera.
     #[must_use]
     pub fn project(&self, p: Point, size: [f64; 2]) -> Option<[f64; 2]> {
-        let (f, r, u) = self.axes();
-        let offset = sub(p, self.eye());
-        let depth = dot(offset, f);
-        if depth <= 1e-9 {
-            return None;
+        self.projector(size).project(p)
+    }
+
+    /// The camera's working values, ready for projecting many points quickly.
+    #[must_use]
+    pub(crate) fn projector(&self, size: [f64; 2]) -> Projector {
+        let (forward, right, up) = self.axes();
+        Projector {
+            eye: self.eye(),
+            forward,
+            right,
+            up,
+            focal: self.focal(),
+            size,
         }
-        let x = dot(offset, r) / depth * self.focal() / (size[0] / size[1]);
-        let y = dot(offset, u) / depth * self.focal();
-        Some([(x + 1.0) / 2.0 * size[0], (1.0 - y) / 2.0 * size[1]])
     }
 
     /// The point on the ground plane (Z = 0) under a screen position.

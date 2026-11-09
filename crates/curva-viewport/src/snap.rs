@@ -1,0 +1,677 @@
+//! Object snaps, ortho and grid snap: turning a cursor position into an exact point.
+
+use crate::camera::Projector;
+use crate::{Camera, Outlines};
+use curva_kernel::{Curve, Point};
+
+/// How close to something the cursor must be to snap to it, in pixels.
+const SNAP_REACH: f64 = 12.0;
+/// How close two curves must come, in millimetres, to count as meeting.
+const MEETING_TOLERANCE: f64 = 1e-3;
+/// The spacing grid snap rounds to, in millimetres.
+const GRID_SNAP: f64 = 1.0;
+/// Steps of the search along a segment; each keeps two thirds of what is left.
+const NEAR_SEARCH_STEPS: usize = 48;
+
+/// What a point snapped to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SnapKind {
+    /// An end of a curve or a corner.
+    End,
+    /// The middle of a segment or smooth curve.
+    Mid,
+    /// The centre of a circle.
+    Center,
+    /// Where two curves meet.
+    Intersection,
+    /// The foot of a right angle from the last point.
+    Perpendicular,
+    /// The closest point on a curve.
+    Near,
+}
+
+/// Which object snaps are on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)] // One switch per checkbox is what this is.
+pub struct SnapSet {
+    /// Ends and corners.
+    pub end: bool,
+    /// Middles.
+    pub mid: bool,
+    /// Centres.
+    pub center: bool,
+    /// Where curves meet.
+    pub intersection: bool,
+    /// Right angles from the last point.
+    pub perpendicular: bool,
+    /// The closest point on a curve.
+    pub near: bool,
+}
+
+impl Default for SnapSet {
+    /// Everything but Near, which would otherwise hide the others.
+    fn default() -> Self {
+        Self {
+            end: true,
+            mid: true,
+            center: true,
+            intersection: true,
+            perpendicular: true,
+            near: false,
+        }
+    }
+}
+
+impl SnapSet {
+    fn has(&self, kind: SnapKind) -> bool {
+        match kind {
+            SnapKind::End => self.end,
+            SnapKind::Mid => self.mid,
+            SnapKind::Center => self.center,
+            SnapKind::Intersection => self.intersection,
+            SnapKind::Perpendicular => self.perpendicular,
+            SnapKind::Near => self.near,
+        }
+    }
+}
+
+/// A point the cursor snapped to.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SnapHit {
+    /// What it snapped to.
+    pub kind: SnapKind,
+    /// The exact point.
+    pub point: Point,
+}
+
+/// A fixed place on an object that can be snapped to.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Site {
+    kind: SnapKind,
+    point: Point,
+}
+
+fn along(a: Point, b: Point, t: f64) -> Point {
+    [
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t,
+    ]
+}
+
+fn sub(a: Point, b: Point) -> Point {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+
+fn dot(a: Point, b: Point) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+fn length(a: Point) -> f64 {
+    dot(a, a).sqrt()
+}
+
+fn site(kind: SnapKind, point: Point) -> Site {
+    Site { kind, point }
+}
+
+/// The point half way along a run of points, by distance.
+fn half_way(points: &[Point]) -> Option<Point> {
+    let total: f64 = points.windows(2).map(|p| length(sub(p[1], p[0]))).sum();
+    let mut left = total / 2.0;
+    for pair in points.windows(2) {
+        let step = length(sub(pair[1], pair[0]));
+        if step >= left && step > 0.0 {
+            return Some(along(pair[0], pair[1], left / step));
+        }
+        left -= step;
+    }
+    None
+}
+
+/// The fixed snap places on a curve, given the points it is drawn through.
+pub(crate) fn sites_of(curve: &Curve, points: &[Point]) -> Vec<Site> {
+    match curve {
+        Curve::Line { .. } | Curve::Polyline { .. } => points
+            .iter()
+            .map(|p| site(SnapKind::End, *p))
+            .chain(
+                points
+                    .windows(2)
+                    .map(|p| site(SnapKind::Mid, along(p[0], p[1], 0.5))),
+            )
+            .collect(),
+        Curve::Circle { centre, .. } => vec![site(SnapKind::Center, *centre)],
+        Curve::Interpolated { closed, .. } => {
+            let ends = points
+                .first()
+                .into_iter()
+                .chain(points.last())
+                .filter(|_| !closed)
+                .map(|p| site(SnapKind::End, *p));
+            ends.chain(half_way(points).map(|p| site(SnapKind::Mid, p)))
+                .collect()
+        }
+    }
+}
+
+struct NearbySegment {
+    object: usize,
+    a: Point,
+    b: Point,
+    /// How far from the cursor it is on screen, in pixels.
+    gap: f64,
+}
+
+fn screen_gap(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> f64 {
+    let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+    let square = dx * dx + dy * dy;
+    let t = if square < 1e-12 {
+        0.0
+    } else {
+        (((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / square).clamp(0.0, 1.0)
+    };
+    (p[0] - a[0] - t * dx).hypot(p[1] - a[1] - t * dy)
+}
+
+/// Where segments of different objects meet. Segments are sorted along X and only those that
+/// overlap there are compared, as comparing every pair is far too slow when zoomed out.
+fn meeting_points(segments: &[NearbySegment]) -> Vec<Point> {
+    let spans = |segment: &NearbySegment| {
+        let span = |axis: usize| {
+            (
+                segment.a[axis].min(segment.b[axis]) - MEETING_TOLERANCE,
+                segment.a[axis].max(segment.b[axis]) + MEETING_TOLERANCE,
+            )
+        };
+        [span(0), span(1), span(2)]
+    };
+    let mut sorted: Vec<(&NearbySegment, [(f64, f64); 3])> =
+        segments.iter().map(|s| (s, spans(s))).collect();
+    sorted.sort_by(|a, b| a.1[0].0.total_cmp(&b.1[0].0));
+    let mut found = Vec::new();
+    for (index, (one, one_spans)) in sorted.iter().enumerate() {
+        for (other, other_spans) in sorted[index + 1..]
+            .iter()
+            .take_while(|(_, spans)| spans[0].0 <= one_spans[0].1)
+        {
+            let overlap = (1..3).all(|axis| {
+                one_spans[axis].0 <= other_spans[axis].1 && other_spans[axis].0 <= one_spans[axis].1
+            });
+            if overlap && other.object != one.object {
+                let (s, t) = closest_between((one.a, one.b), (other.a, other.b));
+                let point = along(one.a, one.b, s);
+                if length(sub(point, along(other.a, other.b, t))) <= MEETING_TOLERANCE {
+                    found.push(point);
+                }
+            }
+        }
+    }
+    found
+}
+
+/// The lowest and highest corners around a run of points.
+pub(crate) fn box_around(points: &[Point]) -> Option<(Point, Point)> {
+    let first = *points.first()?;
+    Some(
+        points
+            .iter()
+            .fold((first, first), |(mut low, mut high), p| {
+                for axis in 0..3 {
+                    low[axis] = low[axis].min(p[axis]);
+                    high[axis] = high[axis].max(p[axis]);
+                }
+                (low, high)
+            }),
+    )
+}
+
+/// Whether a whole box is too far from the cursor on screen to matter, which skips most curves
+/// without looking at their points. A box partly behind the camera is never skipped.
+fn box_out_of_reach(view: &Projector, (low, high): (Point, Point), cursor: [f64; 2]) -> bool {
+    let (mut left, mut right) = (f64::INFINITY, f64::NEG_INFINITY);
+    let (mut top, mut bottom) = (f64::INFINITY, f64::NEG_INFINITY);
+    for corner in 0..8 {
+        let pick = |axis: usize| {
+            if corner & (1 << axis) == 0 {
+                low[axis]
+            } else {
+                high[axis]
+            }
+        };
+        let Some(at) = view.project([pick(0), pick(1), pick(2)]) else {
+            return false;
+        };
+        left = left.min(at[0]);
+        right = right.max(at[0]);
+        top = top.min(at[1]);
+        bottom = bottom.max(at[1]);
+    }
+    cursor[0] < left - SNAP_REACH
+        || cursor[0] > right + SNAP_REACH
+        || cursor[1] < top - SNAP_REACH
+        || cursor[1] > bottom + SNAP_REACH
+}
+
+/// The closest points of two 3D segments, as a distance along each from 0 to 1
+/// (Ericson, *Real-Time Collision Detection*, section 5.1.9).
+fn closest_between(a: (Point, Point), b: (Point, Point)) -> (f64, f64) {
+    let (d1, d2, r) = (sub(a.1, a.0), sub(b.1, b.0), sub(a.0, b.0));
+    let (e1, e2, f) = (dot(d1, d1), dot(d2, d2), dot(d2, r));
+    let c = dot(d1, r);
+    let shared = dot(d1, d2);
+    let denominator = e1 * e2 - shared * shared;
+    let mut s = if denominator > 1e-12 {
+        ((shared * f - c * e2) / denominator).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let mut t = if e2 > 1e-12 {
+        (shared * s + f) / e2
+    } else {
+        0.0
+    };
+    if t < 0.0 {
+        t = 0.0;
+        s = if e1 > 1e-12 {
+            (-c / e1).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+    } else if t > 1.0 {
+        t = 1.0;
+        s = if e1 > 1e-12 {
+            ((shared - c) / e1).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+    }
+    (s, t)
+}
+
+impl Outlines {
+    fn segments_near(&self, view: &Projector, cursor: [f64; 2]) -> Vec<NearbySegment> {
+        let mut found = Vec::new();
+        for (object, (_, points)) in self.objects.iter().enumerate() {
+            if self
+                .boxes
+                .get(object)
+                .is_some_and(|around| box_out_of_reach(view, *around, cursor))
+            {
+                continue;
+            }
+            let mut previous: Option<(Point, Option<[f64; 2]>)> = None;
+            for point in points {
+                let screen = view.project(*point);
+                if let Some((a, Some(from))) = previous
+                    && let Some(to) = screen
+                {
+                    let gap = screen_gap(cursor, from, to);
+                    if gap <= SNAP_REACH {
+                        found.push(NearbySegment {
+                            object,
+                            a,
+                            b: *point,
+                            gap,
+                        });
+                    }
+                }
+                previous = Some((*point, screen));
+            }
+        }
+        found
+    }
+
+    /// The object snap for a cursor position, if one is in reach. `from` is the last point,
+    /// which Perpendicular measures from.
+    #[must_use]
+    pub fn snap(
+        &self,
+        camera: &Camera,
+        cursor: [f64; 2],
+        size: [f64; 2],
+        set: &SnapSet,
+        from: Option<Point>,
+    ) -> Option<SnapHit> {
+        let view = camera.projector(size);
+        let gap = |point: Point| {
+            view.project(point)
+                .map(|at| (at[0] - cursor[0]).hypot(at[1] - cursor[1]))
+        };
+        let mut best: Option<(f64, SnapHit)> = None;
+        let mut offer = |kind: SnapKind, point: Point| {
+            if let Some(distance) = gap(point)
+                && distance <= SNAP_REACH
+                && best.is_none_or(|(held, _)| distance < held)
+            {
+                best = Some((distance, SnapHit { kind, point }));
+            }
+        };
+        for place in self.sites.iter().filter(|place| set.has(place.kind)) {
+            offer(place.kind, place.point);
+        }
+        let segments = if set.intersection || set.perpendicular || set.near {
+            self.segments_near(&view, cursor)
+        } else {
+            Vec::new()
+        };
+        if set.intersection {
+            for point in meeting_points(&segments) {
+                offer(SnapKind::Intersection, point);
+            }
+        }
+        if set.perpendicular
+            && let Some(from) = from
+        {
+            for segment in &segments {
+                let direction = sub(segment.b, segment.a);
+                let square = dot(direction, direction);
+                let t = dot(sub(from, segment.a), direction) / square.max(1e-12);
+                let foot = along(segment.a, segment.b, t);
+                // At the last point itself there is no right angle to draw.
+                if t > 0.0 && t < 1.0 && length(sub(foot, from)) > 1e-9 {
+                    offer(SnapKind::Perpendicular, foot);
+                }
+            }
+        }
+        if let Some((_, hit)) = best {
+            return Some(hit);
+        }
+        if !set.near {
+            return None;
+        }
+        // The closest segment on screen holds the closest point, so only that one needs searching.
+        segments
+            .iter()
+            .min_by(|a, b| a.gap.total_cmp(&b.gap))
+            .map(|segment| SnapHit {
+                kind: SnapKind::Near,
+                point: along(segment.a, segment.b, nearest_along(segment, &gap)),
+            })
+    }
+}
+
+/// Where along a segment is closest to the cursor on screen. A search in 3D, as perspective
+/// means a fraction along the segment on screen is not the same fraction in the model.
+fn nearest_along(segment: &NearbySegment, gap: &impl Fn(Point) -> Option<f64>) -> f64 {
+    let at = |t: f64| gap(along(segment.a, segment.b, t)).unwrap_or(f64::INFINITY);
+    let (mut low, mut high) = (0.0_f64, 1.0_f64);
+    for _ in 0..NEAR_SEARCH_STEPS {
+        let third = (high - low) / 3.0;
+        if at(low + third) <= at(high - third) {
+            high -= third;
+        } else {
+            low += third;
+        }
+    }
+    (low + high) / 2.0
+}
+
+/// A position on the ground with grid snap and ortho applied. Ortho keeps to X or Y from
+/// `base`, at the height of `base`, whichever axis the cursor has moved furthest along.
+#[must_use]
+pub fn constrained(ground: Point, base: Option<Point>, ortho: bool, grid: bool) -> Point {
+    let rounded = |value: f64| {
+        if grid {
+            (value / GRID_SNAP).round() * GRID_SNAP
+        } else {
+            value
+        }
+    };
+    let (x, y) = (rounded(ground[0]), rounded(ground[1]));
+    match base {
+        Some(base) if ortho => {
+            if (ground[0] - base[0]).abs() >= (ground[1] - base[1]).abs() {
+                [x, base[1], base[2]]
+            } else {
+                [base[0], y, base[2]]
+            }
+        }
+        _ => [x, y, ground[2]],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use curva_document::Document;
+
+    const SIZE: [f64; 2] = [800.0, 600.0];
+
+    fn outlines(curves: Vec<Curve>) -> Outlines {
+        let mut doc = Document::default();
+        for curve in curves {
+            doc.add(curve);
+        }
+        Outlines::of(doc.state())
+    }
+
+    fn line(a: Point, b: Point) -> Curve {
+        Curve::line(a, b).unwrap()
+    }
+
+    fn only(kind: SnapKind) -> SnapSet {
+        SnapSet {
+            end: kind == SnapKind::End,
+            mid: kind == SnapKind::Mid,
+            center: kind == SnapKind::Center,
+            intersection: kind == SnapKind::Intersection,
+            perpendicular: kind == SnapKind::Perpendicular,
+            near: kind == SnapKind::Near,
+        }
+    }
+
+    fn close(a: Point, b: Point) -> bool {
+        length(sub(a, b)) < 1e-6
+    }
+
+    /// The snap found with the cursor a few pixels off a model point.
+    fn snap_by(
+        shapes: &Outlines,
+        aim: Point,
+        set: SnapSet,
+        from: Option<Point>,
+    ) -> Option<SnapHit> {
+        let camera = Camera::default();
+        let at = camera.project(aim, SIZE).unwrap();
+        shapes.snap(&camera, [at[0] + 4.0, at[1] - 3.0], SIZE, &set, from)
+    }
+
+    #[test]
+    fn end_finds_the_exact_end_of_a_line() {
+        let shapes = outlines(vec![line([0.0; 3], [30.0, 0.0, 0.0])]);
+        let hit = snap_by(&shapes, [30.0, 0.0, 0.0], only(SnapKind::End), None).unwrap();
+        assert_eq!(hit.kind, SnapKind::End);
+        assert_eq!(hit.point, [30.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn end_finds_a_corner_above_the_ground() {
+        let corner = [10.0, 10.0, 25.0];
+        let polyline = Curve::polyline(vec![[0.0; 3], corner, [20.0, 0.0, 0.0]], false).unwrap();
+        let hit = snap_by(&outlines(vec![polyline]), corner, only(SnapKind::End), None).unwrap();
+        assert_eq!(hit.point, corner);
+    }
+
+    #[test]
+    fn mid_finds_the_middle_of_each_segment() {
+        let polyline =
+            Curve::polyline(vec![[0.0; 3], [20.0, 0.0, 0.0], [20.0, 40.0, 0.0]], false).unwrap();
+        let shapes = outlines(vec![polyline]);
+        let first = snap_by(&shapes, [10.0, 0.0, 0.0], only(SnapKind::Mid), None).unwrap();
+        let second = snap_by(&shapes, [20.0, 20.0, 0.0], only(SnapKind::Mid), None).unwrap();
+        assert_eq!(first.point, [10.0, 0.0, 0.0]);
+        assert_eq!(second.point, [20.0, 20.0, 0.0]);
+    }
+
+    #[test]
+    fn mid_of_a_smooth_curve_is_half_way_along_it() {
+        let points = vec![[0.0; 3], [20.0, 0.0, 0.0], [40.0, 0.0, 0.0]];
+        let curve = Curve::interpolated(points, false).unwrap();
+        let hit = snap_by(
+            &outlines(vec![curve]),
+            [20.0, 0.0, 0.0],
+            only(SnapKind::Mid),
+            None,
+        )
+        .unwrap();
+        assert!(close(hit.point, [20.0, 0.0, 0.0]), "{:?}", hit.point);
+    }
+
+    #[test]
+    fn center_finds_the_centre_of_a_circle() {
+        let centre = [15.0, -5.0, 0.0];
+        let circle = Curve::circle(centre, 8.0).unwrap();
+        let hit = snap_by(
+            &outlines(vec![circle]),
+            centre,
+            only(SnapKind::Center),
+            None,
+        )
+        .unwrap();
+        assert_eq!(hit.point, centre);
+    }
+
+    #[test]
+    fn intersection_finds_where_two_lines_cross() {
+        let shapes = outlines(vec![
+            line([-20.0, 7.0, 0.0], [20.0, 7.0, 0.0]),
+            line([3.0, -20.0, 0.0], [3.0, 20.0, 0.0]),
+        ]);
+        let hit = snap_by(&shapes, [3.0, 7.0, 0.0], only(SnapKind::Intersection), None).unwrap();
+        assert_eq!(hit.kind, SnapKind::Intersection);
+        assert!(close(hit.point, [3.0, 7.0, 0.0]), "{:?}", hit.point);
+    }
+
+    #[test]
+    fn lines_that_only_look_crossed_do_not_intersect() {
+        let shapes = outlines(vec![
+            line([-20.0, 0.0, 0.0], [20.0, 0.0, 0.0]),
+            line([0.0, -20.0, 30.0], [0.0, 20.0, 30.0]),
+        ]);
+        let camera = Camera {
+            pitch: 1.5,
+            ..Camera::default()
+        };
+        let at = camera.project([0.0; 3], SIZE).unwrap();
+        let set = only(SnapKind::Intersection);
+        assert_eq!(shapes.snap(&camera, at, SIZE, &set, None), None);
+    }
+
+    #[test]
+    fn perpendicular_finds_the_foot_of_a_right_angle() {
+        let shapes = outlines(vec![line([0.0; 3], [40.0, 0.0, 0.0])]);
+        let set = only(SnapKind::Perpendicular);
+        let hit = snap_by(&shapes, [12.0, 0.0, 0.0], set, Some([12.0, 30.0, 0.0])).unwrap();
+        assert_eq!(hit.kind, SnapKind::Perpendicular);
+        assert!(close(hit.point, [12.0, 0.0, 0.0]), "{:?}", hit.point);
+    }
+
+    #[test]
+    fn perpendicular_needs_a_last_point() {
+        let shapes = outlines(vec![line([0.0; 3], [40.0, 0.0, 0.0])]);
+        let set = only(SnapKind::Perpendicular);
+        assert_eq!(snap_by(&shapes, [12.0, 0.0, 0.0], set, None), None);
+    }
+
+    #[test]
+    fn near_lands_on_the_curve_under_the_cursor() {
+        let shapes = outlines(vec![line([0.0; 3], [40.0, 0.0, 0.0])]);
+        let camera = Camera::default();
+        let aim = [13.0, 0.0, 0.0];
+        let at = camera.project(aim, SIZE).unwrap();
+        let hit = shapes
+            .snap(&camera, at, SIZE, &only(SnapKind::Near), None)
+            .unwrap();
+        assert_eq!(hit.kind, SnapKind::Near);
+        assert!(length(sub(hit.point, aim)) < 1e-3, "{:?}", hit.point);
+    }
+
+    #[test]
+    fn an_exact_snap_beats_near() {
+        let shapes = outlines(vec![line([0.0; 3], [40.0, 0.0, 0.0])]);
+        let set = SnapSet {
+            near: true,
+            ..SnapSet::default()
+        };
+        let hit = snap_by(&shapes, [40.0, 0.0, 0.0], set, None).unwrap();
+        assert_eq!(hit.kind, SnapKind::End);
+    }
+
+    #[test]
+    fn the_closest_exact_snap_wins() {
+        let shapes = outlines(vec![line([0.0; 3], [2.0, 0.0, 0.0])]);
+        let camera = Camera::default();
+        let end = camera.project([2.0, 0.0, 0.0], SIZE).unwrap();
+        let hit = shapes
+            .snap(&camera, end, SIZE, &SnapSet::default(), None)
+            .unwrap();
+        assert_eq!(hit.point, [2.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn a_snap_that_is_off_is_ignored() {
+        let shapes = outlines(vec![line([0.0; 3], [30.0, 0.0, 0.0])]);
+        assert_eq!(
+            snap_by(&shapes, [30.0, 0.0, 0.0], only(SnapKind::Mid), None),
+            None
+        );
+    }
+
+    #[test]
+    fn nothing_in_reach_means_no_snap() {
+        let shapes = outlines(vec![line([0.0; 3], [30.0, 0.0, 0.0])]);
+        assert_eq!(
+            snap_by(&shapes, [70.0, 60.0, 0.0], SnapSet::default(), None),
+            None
+        );
+    }
+
+    #[test]
+    fn near_is_off_at_the_start() {
+        assert!(!SnapSet::default().near);
+        assert!(SnapSet::default().end);
+    }
+
+    #[test]
+    fn ortho_keeps_to_the_axis_moved_furthest() {
+        let base = Some([5.0, 5.0, 2.0]);
+        assert_eq!(
+            constrained([20.0, 8.0, 0.0], base, true, false),
+            [20.0, 5.0, 2.0]
+        );
+        assert_eq!(
+            constrained([7.0, -30.0, 0.0], base, true, false),
+            [5.0, -30.0, 2.0]
+        );
+    }
+
+    #[test]
+    fn ortho_needs_a_last_point() {
+        let ground = [20.0, 8.0, 0.0];
+        assert_eq!(constrained(ground, None, true, false), ground);
+    }
+
+    #[test]
+    fn grid_snap_rounds_to_whole_units() {
+        assert_eq!(
+            constrained([1.4, -2.6, 0.0], None, false, true),
+            [1.0, -3.0, 0.0]
+        );
+    }
+
+    #[test]
+    fn grid_snap_applies_along_the_ortho_axis() {
+        let base = Some([0.5, 0.5, 0.0]);
+        assert_eq!(
+            constrained([9.7, 1.0, 0.0], base, true, true),
+            [10.0, 0.5, 0.0]
+        );
+    }
+
+    #[test]
+    fn with_nothing_on_the_point_is_unchanged() {
+        let ground = [1.4, -2.6, 0.0];
+        assert_eq!(constrained(ground, Some([0.0; 3]), false, false), ground);
+    }
+}

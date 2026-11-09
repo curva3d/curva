@@ -387,6 +387,7 @@ version = "0.0.0"
 dependencies = [
  "curva-commands",
  "curva-document",
+ "curva-kernel",
  "curva-viewport",
  "eframe",
 ]

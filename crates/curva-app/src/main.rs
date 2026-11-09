@@ -2,12 +2,15 @@
 //!
 //! `curva --picture out.png --run "line;0,0;50,20"` runs commands without a window and saves a
 //! picture of the viewport, which is how automatic runs check the drawing.
-//! `curva --orbit-benchmark` opens the window, spins the view and prints how fast it drew.
+//! `curva --orbit-benchmark --curves 5000` opens the window on a scene of that many circles, spins
+//! the view and prints how fast it drew and snapped.
 
 use curva_commands::{Kind, Message, Processor, Translations};
 use curva_document::{Document, State};
+use curva_kernel::{Curve, Point};
 use curva_viewport::{
-    Camera, Drawing, LineRenderer, Outlines, preview_lines, save_picture, scene_lines,
+    Camera, Drawing, LineRenderer, Outlines, SnapHit, SnapKind, SnapSet, constrained,
+    preview_lines, save_picture, scene_lines,
 };
 use eframe::egui;
 use std::sync::Arc;
@@ -18,6 +21,11 @@ const PICK_REACH: f64 = 6.0;
 const BOX_MIN_DRAG: f32 = 6.0;
 const BOX_EDGE: egui::Color32 = egui::Color32::from_rgb(230, 230, 235);
 const BOX_FILL: egui::Color32 = egui::Color32::from_rgba_premultiplied(30, 40, 60, 40);
+const SNAP_MARKER: egui::Color32 = egui::Color32::from_rgb(255, 170, 40);
+const SNAP_MARKER_SIZE: f32 = 10.0;
+/// Spacing and size of the circles in a benchmark scene, in millimetres.
+const BENCHMARK_SPACING: f64 = 12.0;
+const BENCHMARK_RADIUS: f64 = 5.0;
 const LOG_LINES: usize = 5;
 const PICTURE_SIZE: [u32; 2] = [1200, 800];
 const BENCHMARK_FRAMES: usize = 240;
@@ -33,6 +41,9 @@ struct Curva {
     typed: String,
     highlight: usize,
     left_gestures: LeftGestures,
+    snaps: SnapSet,
+    ortho: bool,
+    grid_snap: bool,
     camera: Camera,
     outlines: Outlines,
     scene: Arc<Vec<curva_viewport::Vertex>>,
@@ -125,6 +136,29 @@ fn paint_selection_box(ui: &egui::Ui, viewport: egui::Rect, from: egui::Pos2, to
 struct Benchmark {
     times: Vec<f64>,
     work: Vec<f32>,
+    snapping: Vec<f64>,
+}
+
+/// A square grid of `count` circles.
+fn benchmark_scene(doc: &mut Document, count: usize) -> Result<(), String> {
+    let side = (count as f64).sqrt().ceil() as usize;
+    for index in 0..count {
+        let (column, row) = ((index % side.max(1)) as f64, (index / side.max(1)) as f64);
+        let centre = [column * BENCHMARK_SPACING, row * BENCHMARK_SPACING, 0.0];
+        doc.add(Curve::circle(centre, BENCHMARK_RADIUS).map_err(|error| error.to_string())?);
+    }
+    Ok(())
+}
+
+fn snap_label(kind: SnapKind) -> &'static str {
+    match kind {
+        SnapKind::End => "ui.snap.end",
+        SnapKind::Mid => "ui.snap.mid",
+        SnapKind::Center => "ui.snap.center",
+        SnapKind::Intersection => "ui.snap.intersection",
+        SnapKind::Perpendicular => "ui.snap.perpendicular",
+        SnapKind::Near => "ui.snap.near",
+    }
 }
 
 impl Benchmark {
@@ -151,6 +185,8 @@ impl Benchmark {
         gaps.sort_by(f64::total_cmp);
         let middle = gaps[gaps.len() / 2];
         let worst = gaps[gaps.len() * 99 / 100];
+        let snapping = self.snapping.iter().sum::<f64>() / self.snapping.len().max(1) as f64;
+        println!("snapping per frame: {snapping:.2} ms");
         let work = self.work.iter().sum::<f32>() * 1000.0 / self.work.len().max(1) as f32;
         println!("frame gap: median {middle:.1} ms, 99th percentile {worst:.1} ms");
         println!("work per frame: {work:.2} ms");
@@ -158,23 +194,34 @@ impl Benchmark {
 }
 
 impl Curva {
-    fn new(context: &eframe::CreationContext<'_>, benchmark: bool) -> Self {
+    fn new(context: &eframe::CreationContext<'_>, benchmark: Option<usize>) -> Self {
         if let Some(state) = context.wgpu_render_state.as_ref() {
             let renderer = LineRenderer::new(&state.device, state.target_format);
             state.renderer.write().callback_resources.insert(renderer);
         }
+        let mut doc = Document::default();
+        let mut camera = Camera::default();
+        if let Some(count) = benchmark
+            && benchmark_scene(&mut doc, count).is_ok()
+            && let Some((low, high)) = Outlines::of(doc.state()).bounds()
+        {
+            camera.frame(low, high);
+        }
         Self {
-            doc: Document::default(),
+            doc,
             processor: Processor::default(),
             text: Translations::english(),
             typed: String::new(),
             highlight: 0,
             left_gestures: LeftGestures::default(),
-            camera: Camera::default(),
+            snaps: SnapSet::default(),
+            ortho: false,
+            grid_snap: false,
+            camera,
             outlines: Outlines::default(),
             scene: Arc::new(Vec::new()),
             drawn: None,
-            benchmark: benchmark.then(Benchmark::default),
+            benchmark: benchmark.map(|_| Benchmark::default()),
         }
     }
 
@@ -270,6 +317,41 @@ impl Curva {
         clicked
     }
 
+    /// The row of snap checkboxes, with the keys for ortho and grid snap.
+    fn drawing_aids_bar(&mut self, ui: &mut egui::Ui) {
+        if ui.input(|input| input.key_pressed(egui::Key::F8)) {
+            self.ortho = !self.ortho;
+        }
+        if ui.input(|input| input.key_pressed(egui::Key::F9)) {
+            self.grid_snap = !self.grid_snap;
+        }
+        let text = &self.text;
+        let tick = |ui: &mut egui::Ui, value: &mut bool, key: &'static str| {
+            ui.checkbox(value, text.render(&Message::new(key)));
+        };
+        let snaps = &mut self.snaps;
+        let (ortho, grid_snap) = (&mut self.ortho, &mut self.grid_snap);
+        ui.horizontal(|ui| {
+            tick(ui, &mut snaps.end, snap_label(SnapKind::End));
+            tick(ui, &mut snaps.mid, snap_label(SnapKind::Mid));
+            tick(ui, &mut snaps.center, snap_label(SnapKind::Center));
+            tick(
+                ui,
+                &mut snaps.intersection,
+                snap_label(SnapKind::Intersection),
+            );
+            tick(
+                ui,
+                &mut snaps.perpendicular,
+                snap_label(SnapKind::Perpendicular),
+            );
+            tick(ui, &mut snaps.near, snap_label(SnapKind::Near));
+            ui.separator();
+            tick(ui, ortho, "ui.ortho");
+            tick(ui, grid_snap, "ui.grid_snap");
+        });
+    }
+
     fn command_line(&mut self, ui: &mut egui::Ui) {
         let log = self.processor.log();
         for line in &log[log.len().saturating_sub(LOG_LINES)..] {
@@ -304,6 +386,7 @@ impl Curva {
             clicked = self.match_list(ui, output.response.rect.left_top());
             submit = ui.input(|input| input.key_pressed(egui::Key::Enter));
         });
+        self.drawing_aids_bar(ui);
         let wants_path = self
             .processor
             .current_request()
@@ -341,6 +424,32 @@ impl Curva {
         self.processor.current_request().is_some_and(|request| {
             request.kind == Kind::Point || (request.kind == Kind::Number && request.from.is_some())
         })
+    }
+
+    /// Where a cursor position lands for the point being asked for: an object snap if one is in
+    /// reach, otherwise the ground with ortho and grid snap applied. Shift flips ortho for the
+    /// moment and Alt turns object snaps off for the moment, as in Rhino.
+    fn aim(
+        &self,
+        ui: &egui::Ui,
+        screen: [f64; 2],
+        size: [f64; 2],
+    ) -> Option<(Point, Option<SnapHit>)> {
+        let (shift, alt) = ui.input(|input| (input.modifiers.shift, input.modifiers.alt));
+        let request = self.processor.current_request()?;
+        let base = request.preview.last().copied().or(request.from);
+        if !alt
+            && let Some(hit) = self
+                .outlines
+                .snap(&self.camera, screen, size, &self.snaps, base)
+        {
+            return Some((hit.point, Some(hit)));
+        }
+        let ground = self.camera.ground_point(screen, size)?;
+        Some((
+            constrained(ground, base, self.ortho != shift, self.grid_snap),
+            None,
+        ))
     }
 
     fn handle_mouse(&mut self, ui: &egui::Ui, response: &egui::Response, size: [f64; 2]) {
@@ -387,7 +496,7 @@ impl Curva {
                     break;
                 }
                 // Where it was pressed, as that is where the user aimed.
-                if let Some(at) = self.camera.ground_point(local(pressed), size) {
+                if let Some((at, _)) = self.aim(ui, local(pressed), size) {
                     self.processor.click(&mut self.doc, at);
                 }
             }
@@ -408,17 +517,44 @@ impl Curva {
         }
     }
 
+    fn paint_snap_marker(&self, ui: &egui::Ui, viewport: egui::Rect, size: [f64; 2], hit: SnapHit) {
+        let Some(at) = self.camera.project(hit.point, size) else {
+            return;
+        };
+        let centre = viewport.min + egui::vec2(at[0] as f32, at[1] as f32);
+        let painter = ui.painter_at(viewport);
+        painter.rect_stroke(
+            egui::Rect::from_center_size(centre, egui::Vec2::splat(SNAP_MARKER_SIZE)),
+            0.0,
+            egui::Stroke::new(2.0, SNAP_MARKER),
+            egui::StrokeKind::Middle,
+        );
+        painter.text(
+            centre + egui::vec2(SNAP_MARKER_SIZE, -SNAP_MARKER_SIZE),
+            egui::Align2::LEFT_BOTTOM,
+            self.text.render(&Message::new(snap_label(hit.kind))),
+            egui::TextStyle::Body.resolve(ui.style()),
+            SNAP_MARKER,
+        );
+    }
+
     fn viewport(&mut self, ui: &mut egui::Ui) {
         let (rect, response) =
             ui.allocate_exact_size(ui.available_size(), egui::Sense::click_and_drag());
         let size = [f64::from(rect.width()), f64::from(rect.height())];
         self.handle_mouse(ui, &response, size);
         self.refresh_scene();
-        let cursor = response.hover_pos().and_then(|position| {
+        let aimed = response.hover_pos().and_then(|position| {
             let local = position - rect.min;
-            self.camera
-                .ground_point([f64::from(local.x), f64::from(local.y)], size)
+            let screen = [f64::from(local.x), f64::from(local.y)];
+            if self.takes_position() {
+                self.aim(ui, screen, size)
+            } else {
+                self.camera.ground_point(screen, size).map(|at| (at, None))
+            }
         });
+        let cursor = aimed.map(|(at, _)| at);
+        let hit = aimed.and_then(|(_, hit)| hit);
         let preview = self
             .processor
             .current_request()
@@ -430,6 +566,9 @@ impl Curva {
             matrix: self.camera.matrix(size[0] / size[1].max(1.0)),
         };
         ui.painter().add(egui_wgpu_callback(rect, drawing));
+        if let Some(hit) = hit {
+            self.paint_snap_marker(ui, rect, size, hit);
+        }
         let dragging = self
             .left_gestures
             .pressed_at
@@ -451,6 +590,22 @@ impl eframe::App for Curva {
         egui::CentralPanel::default().show(ui, |ui| self.viewport(ui));
         if let Some(benchmark) = &mut self.benchmark {
             self.camera.orbit(BENCHMARK_DRAG, 0.0);
+            // Snapping is measured with every snap on, the slowest case.
+            let every_snap = SnapSet {
+                near: true,
+                ..self.snaps
+            };
+            let started = std::time::Instant::now();
+            let _ = self.outlines.snap(
+                &self.camera,
+                [400.0, 300.0],
+                [800.0, 600.0],
+                &every_snap,
+                Some([0.0; 3]),
+            );
+            benchmark
+                .snapping
+                .push(started.elapsed().as_secs_f64() * 1000.0);
             if benchmark.record(ui, frame) {
                 benchmark.report(frame);
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
@@ -499,7 +654,12 @@ fn main() -> Result<(), String> {
     }
     let benchmark = arguments
         .iter()
-        .any(|argument| argument == "--orbit-benchmark");
+        .any(|argument| argument == "--orbit-benchmark")
+        .then(|| {
+            value("--curves")
+                .and_then(|count| count.parse().ok())
+                .unwrap_or(0)
+        });
     eframe::run_native(
         "Curva",
         eframe::NativeOptions {

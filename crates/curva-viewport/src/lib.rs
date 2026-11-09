@@ -2,12 +2,14 @@
 
 mod camera;
 mod gpu;
+mod snap;
 
 use curva_document::State;
 use curva_kernel::Point;
 
 pub use camera::Camera;
 pub use gpu::{Drawing, LineRenderer, save_picture};
+pub use snap::{SnapHit, SnapKind, SnapSet, constrained};
 
 const GRID_HALF_SIZE: i32 = 100;
 const GRID_STEP: i32 = 10;
@@ -32,19 +34,29 @@ pub struct Vertex {
 pub struct Outlines {
     /// Object id and points along it.
     pub objects: Vec<(u64, Vec<Point>)>,
+    /// The fixed places that can be snapped to.
+    sites: Vec<snap::Site>,
+    /// The box around each object, in the same order, so snapping can skip far-off ones.
+    boxes: Vec<(Point, Point)>,
 }
 
 impl Outlines {
     /// Samples every object. An object that cannot be sampled is left out, not fatal to drawing.
     #[must_use]
     pub fn of(state: &State) -> Self {
-        Self {
-            objects: state
-                .objects
-                .iter()
-                .filter_map(|object| Some((object.id, object.curve.sample().ok()?)))
-                .collect(),
+        let mut outlines = Self::default();
+        for object in &state.objects {
+            if let Ok(points) = object.curve.sample() {
+                outlines
+                    .sites
+                    .extend(snap::sites_of(&object.curve, &points));
+                let first = points.first().copied().unwrap_or_default();
+                let around = snap::box_around(&points).unwrap_or((first, first));
+                outlines.boxes.push(around);
+                outlines.objects.push((object.id, points));
+            }
         }
+        outlines
     }
 
     /// The lowest and highest corners around everything, if there is anything.
