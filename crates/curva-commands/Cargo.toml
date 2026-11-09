@@ -1,0 +1,15 @@
+[package]
+name = "curva-commands"
+description = "Curva's command framework and commands."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+curva-document = { path = "../curva-document" }
+curva-kernel = { path = "../curva-kernel" }

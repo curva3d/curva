@@ -24,7 +24,7 @@
   check, so a change the owner has agreed to can still be merged.
 
 **In progress**
-- Writing the Milestone 1 spec for the owner to approve.
+- Milestone 1, first slice (`docs/specs/m1-first-slice.md`, approved by the owner): 12 commands, viewport and window built. The owner is trying it by hand.
 
 **Waiting for the owner**
 - Nothing yet. The engine is solidcore, with Serpentine3D's commands as the base (decision 0010). SolidCraft

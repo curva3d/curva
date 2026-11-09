@@ -1,0 +1,17 @@
+[package]
+name = "curva-app"
+description = "The Curva application."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+curva-commands = { path = "../curva-commands" }
+curva-document = { path = "../curva-document" }
+curva-viewport = { path = "../curva-viewport" }
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "wgpu", "wayland", "x11"] }

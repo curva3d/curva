@@ -19,10 +19,18 @@ allow = [
     "Unicode-DFS-2016",
 ]
 
+# Owner approved 9 November 2026 (PR #33): font licences, for egui's bundled fonts only.
+[[licenses.exceptions]]
+crate = "epaint_default_fonts"
+allow = ["OFL-1.1", "Ubuntu-font-1.0"]
+
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# Only for links between Curva's own unpublished crates; outside libraries stay strict.
+allow-wildcard-paths = true
 
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
+allow-git = ["https://github.com/tangency-labs/solidcore"]

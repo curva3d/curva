@@ -1,0 +1,15 @@
+[package]
+name = "curva-kernel"
+description = "Curva's interface to the geometry engine."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+solidcore = { git = "https://github.com/tangency-labs/solidcore", rev = "c440e5f892452a9654aee8f3030de6095fdb1415" }

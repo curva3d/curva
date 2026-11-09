@@ -1,0 +1,278 @@
+//! The model: objects, selection, undo and redo, and saving.
+
+use curva_kernel::{Curve, Point};
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
+use std::fmt;
+use std::path::{Path, PathBuf};
+
+/// Marks files of this early format, so a later Curva can recognise and convert them.
+const FORMAT: &str = "curva-first-slice";
+
+/// One object in the model.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Object {
+    /// Identifies the object for as long as the document lasts.
+    pub id: u64,
+    /// Its geometry.
+    pub curve: Curve,
+}
+
+/// Everything undo restores and a file stores.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct State {
+    /// The objects, oldest first.
+    pub objects: Vec<Object>,
+    /// The id the next object receives. Kept so ids are not reused after an undo.
+    pub next_id: u64,
+}
+
+#[derive(Serialize, Deserialize)]
+struct FileContents {
+    format: String,
+    state: State,
+}
+
+/// Why a file could not be saved or opened.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FileError(pub String);
+
+impl fmt::Display for FileError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for FileError {}
+
+/// An open model.
+#[derive(Debug, Default)]
+pub struct Document {
+    state: State,
+    selection: BTreeSet<u64>,
+    undo: Vec<State>,
+    redo: Vec<State>,
+    path: Option<PathBuf>,
+}
+
+impl Document {
+    /// The objects and counters, for reading.
+    #[must_use]
+    pub fn state(&self) -> &State {
+        &self.state
+    }
+
+    /// Where the document was last saved or opened from.
+    #[must_use]
+    pub fn path(&self) -> Option<&Path> {
+        self.path.as_deref()
+    }
+
+    /// Adds an object and returns its id.
+    pub fn add(&mut self, curve: Curve) -> u64 {
+        let id = self.state.next_id;
+        self.state.next_id += 1;
+        self.state.objects.push(Object { id, curve });
+        id
+    }
+
+    /// Removes objects by id.
+    pub fn remove(&mut self, ids: &[u64]) {
+        self.state
+            .objects
+            .retain(|object| !ids.contains(&object.id));
+        self.selection.retain(|id| !ids.contains(id));
+    }
+
+    /// Moves objects by a vector.
+    pub fn translate(&mut self, ids: &[u64], by: Point) {
+        for object in &mut self.state.objects {
+            if ids.contains(&object.id) {
+                object.curve = object.curve.translated(by);
+            }
+        }
+    }
+
+    /// Adds moved copies of objects and returns the new ids.
+    pub fn copy(&mut self, ids: &[u64], by: Point) -> Vec<u64> {
+        let copies: Vec<Curve> = self
+            .state
+            .objects
+            .iter()
+            .filter(|object| ids.contains(&object.id))
+            .map(|object| object.curve.translated(by))
+            .collect();
+        copies.into_iter().map(|curve| self.add(curve)).collect()
+    }
+
+    /// The selected ids, in order.
+    #[must_use]
+    pub fn selection(&self) -> Vec<u64> {
+        self.selection.iter().copied().collect()
+    }
+
+    /// Replaces the selection, ignoring ids that do not exist.
+    pub fn select(&mut self, ids: &[u64]) {
+        self.selection = ids
+            .iter()
+            .copied()
+            .filter(|id| self.state.objects.iter().any(|object| object.id == *id))
+            .collect();
+    }
+
+    /// Records `before` as one undo step, and clears anything that could be redone.
+    pub fn record_change(&mut self, before: State) {
+        self.undo.push(before);
+        self.redo.clear();
+    }
+
+    /// Puts the state back to `state` without touching undo, as when a command is cancelled.
+    pub fn restore(&mut self, state: State) {
+        self.state = state;
+        self.drop_missing_selection();
+    }
+
+    fn drop_missing_selection(&mut self) {
+        let existing: BTreeSet<u64> = self.state.objects.iter().map(|o| o.id).collect();
+        self.selection.retain(|id| existing.contains(id));
+    }
+
+    /// Steps back one change. Returns false when there is nothing to undo.
+    pub fn undo(&mut self) -> bool {
+        let Some(previous) = self.undo.pop() else {
+            return false;
+        };
+        self.redo.push(std::mem::replace(&mut self.state, previous));
+        self.drop_missing_selection();
+        true
+    }
+
+    /// Repeats one undone change. Returns false when there is nothing to redo.
+    pub fn redo(&mut self) -> bool {
+        let Some(next) = self.redo.pop() else {
+            return false;
+        };
+        self.undo.push(std::mem::replace(&mut self.state, next));
+        self.drop_missing_selection();
+        true
+    }
+
+    /// Writes the document to a file and remembers the location.
+    pub fn save(&mut self, path: &Path) -> Result<(), FileError> {
+        let contents = FileContents {
+            format: FORMAT.to_owned(),
+            state: self.state.clone(),
+        };
+        let text = serde_json::to_string_pretty(&contents).map_err(|e| FileError(e.to_string()))?;
+        std::fs::write(path, text).map_err(|e| FileError(e.to_string()))?;
+        self.path = Some(path.to_owned());
+        Ok(())
+    }
+
+    /// Reads a document from a file. The undo history starts empty.
+    pub fn open(path: &Path) -> Result<Self, FileError> {
+        let text = std::fs::read_to_string(path).map_err(|e| FileError(e.to_string()))?;
+        let contents: FileContents =
+            serde_json::from_str(&text).map_err(|e| FileError(e.to_string()))?;
+        if contents.format != FORMAT {
+            return Err(FileError(format!("unknown format {}", contents.format)));
+        }
+        Ok(Self {
+            state: contents.state,
+            path: Some(path.to_owned()),
+            ..Self::default()
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn line(x: f64) -> Curve {
+        Curve::line([0.0; 3], [x, 0.0, 0.0]).unwrap()
+    }
+
+    /// Adds an object as one undoable change, the way the command layer does.
+    fn add_undoably(doc: &mut Document, curve: Curve) -> u64 {
+        let before = doc.state().clone();
+        let id = doc.add(curve);
+        doc.record_change(before);
+        id
+    }
+
+    #[test]
+    fn undo_restores_exactly_and_redo_repeats() {
+        let mut doc = Document::default();
+        add_undoably(&mut doc, line(1.0));
+        let one = doc.state().clone();
+        add_undoably(&mut doc, line(2.0));
+        let two = doc.state().clone();
+        assert!(doc.undo());
+        assert_eq!(doc.state(), &one);
+        assert!(doc.redo());
+        assert_eq!(doc.state(), &two);
+    }
+
+    #[test]
+    fn nothing_to_undo_or_redo_says_so() {
+        let mut doc = Document::default();
+        assert!(!doc.undo());
+        assert!(!doc.redo());
+    }
+
+    #[test]
+    fn a_new_change_clears_redo() {
+        let mut doc = Document::default();
+        add_undoably(&mut doc, line(1.0));
+        doc.undo();
+        add_undoably(&mut doc, line(2.0));
+        assert!(!doc.redo());
+    }
+
+    #[test]
+    fn ids_are_not_reused_after_a_removal() {
+        let mut doc = Document::default();
+        let first = doc.add(line(1.0));
+        doc.remove(&[first]);
+        assert_ne!(doc.add(line(2.0)), first);
+    }
+
+    #[test]
+    fn selection_loses_objects_that_undo_removes() {
+        let mut doc = Document::default();
+        let id = add_undoably(&mut doc, line(1.0));
+        doc.select(&[id]);
+        doc.undo();
+        assert!(doc.selection().is_empty());
+    }
+
+    #[test]
+    fn saved_files_reopen_with_the_same_objects() {
+        let folder = std::env::temp_dir().join(format!("curva-doc-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let path = folder.join("model.curva");
+        let mut doc = Document::default();
+        doc.add(line(7.0));
+        doc.add(Curve::circle([1.0, 2.0, 3.0], 4.0).unwrap());
+        doc.save(&path).unwrap();
+        let opened = Document::open(&path).unwrap();
+        assert_eq!(opened.state(), doc.state());
+        assert_eq!(opened.path(), Some(path.as_path()));
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn a_file_in_another_format_is_refused() {
+        let folder = std::env::temp_dir().join(format!("curva-bad-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let path = folder.join("other.curva");
+        std::fs::write(
+            &path,
+            r#"{"format":"other","state":{"objects":[],"next_id":0}}"#,
+        )
+        .unwrap();
+        assert!(Document::open(&path).is_err());
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+}
