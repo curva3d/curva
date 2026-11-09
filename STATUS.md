@@ -24,15 +24,15 @@
   check, so a change the owner has agreed to can still be merged.
 
 **In progress**
-- Nothing being worked on right now.
+- Writing the Milestone 1 spec for the owner to approve.
 
 **Waiting for the owner**
-- Nothing yet. The owner chose solidcore as the engine, with Serpentine3D's commands as the base (decision 0010).
-  SolidCraft reuse is parked (0009). Next: run the 31 cases on solidcore (#9) and write the Milestone 1 spec.
+- Nothing yet. The engine is solidcore, with Serpentine3D's commands as the base (decision 0010). SolidCraft
+  reuse is parked (0009).
 
-**Rhino connection (#13)**
-- Rhino is connected, but importing a STEP file through it timed out after 5 minutes and a script wrote
-  nothing. Find out why before making the reference results.
+**Testing**
+- Agents do not run tests through Rhino (decision 0011). Curva is verified by its own checks.
+- solidcore ran 28 of the 31 cases; results and known gaps are in 0011 and `evaluation/reports/solidcore.tsv`.
 
 **Handoff notes**
 - `V:` is a file-based Dev Drive (`C:\DevDrives\curva.vhdx`), reconnected at startup by the
