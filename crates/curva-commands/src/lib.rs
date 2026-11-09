@@ -107,6 +107,32 @@ pub enum Step {
     Done(Option<Message>),
     /// It could not continue; its changes are discarded.
     Failed(Message),
+    /// It finished by asking the interface to change a view.
+    View(ViewRequest),
+}
+
+/// A named view a command can ask for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ViewName {
+    /// From above.
+    Top,
+    /// From the front.
+    Front,
+    /// From the right.
+    Right,
+    /// The orbiting perspective view.
+    Perspective,
+}
+
+/// A change of view, which the interface carries out as the document knows nothing of views.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ViewRequest {
+    /// Fit the model in every viewport.
+    ZoomExtents,
+    /// Go back to four viewports in their standard arrangement.
+    FourViews,
+    /// Turn the last-used viewport into this view.
+    Show(ViewName),
 }
 
 /// A running command.

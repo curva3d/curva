@@ -1,6 +1,6 @@
 //! Object snaps, ortho and grid snap: turning a cursor position into an exact point.
 
-use crate::camera::Projector;
+use crate::camera::{CPlane, Projector};
 use crate::{Camera, Outlines};
 use curva_kernel::{Curve, Point};
 
@@ -407,10 +407,24 @@ fn nearest_along(segment: &NearbySegment, gap: &impl Fn(Point) -> Option<f64>) -
     (low + high) / 2.0
 }
 
-/// A position on the ground with grid snap and ortho applied. Ortho keeps to X or Y from
+/// A position on a plane with grid snap and ortho applied. Ortho keeps to the plane's X or Y from
 /// `base`, at the height of `base`, whichever axis the cursor has moved furthest along.
 #[must_use]
-pub fn constrained(ground: Point, base: Option<Point>, ortho: bool, grid: bool) -> Point {
+pub fn constrained(
+    plane: &CPlane,
+    cursor: Point,
+    base: Option<Point>,
+    ortho: bool,
+    grid: bool,
+) -> Point {
+    let local = |p: Point| {
+        let offset = sub(p, plane.origin);
+        [
+            dot(offset, plane.x),
+            dot(offset, plane.y),
+            dot(offset, plane.normal),
+        ]
+    };
     let rounded = |value: f64| {
         if grid {
             (value / GRID_SNAP).round() * GRID_SNAP
@@ -418,17 +432,22 @@ pub fn constrained(ground: Point, base: Option<Point>, ortho: bool, grid: bool) 
             value
         }
     };
-    let (x, y) = (rounded(ground[0]), rounded(ground[1]));
-    match base {
+    let at = local(cursor);
+    let (x, y) = (rounded(at[0]), rounded(at[1]));
+    let [u, v, height] = match base.map(local) {
         Some(base) if ortho => {
-            if (ground[0] - base[0]).abs() >= (ground[1] - base[1]).abs() {
+            if (at[0] - base[0]).abs() >= (at[1] - base[1]).abs() {
                 [x, base[1], base[2]]
             } else {
                 [base[0], y, base[2]]
             }
         }
-        _ => [x, y, ground[2]],
-    }
+        _ => [x, y, at[2]],
+    };
+    let world = |axis: usize| {
+        plane.origin[axis] + plane.x[axis] * u + plane.y[axis] * v + plane.normal[axis] * height
+    };
+    [world(0), world(1), world(2)]
 }
 
 #[cfg(test)]
@@ -637,11 +656,11 @@ mod tests {
     fn ortho_keeps_to_the_axis_moved_furthest() {
         let base = Some([5.0, 5.0, 2.0]);
         assert_eq!(
-            constrained([20.0, 8.0, 0.0], base, true, false),
+            constrained(&CPlane::WORLD_XY, [20.0, 8.0, 0.0], base, true, false),
             [20.0, 5.0, 2.0]
         );
         assert_eq!(
-            constrained([7.0, -30.0, 0.0], base, true, false),
+            constrained(&CPlane::WORLD_XY, [7.0, -30.0, 0.0], base, true, false),
             [5.0, -30.0, 2.0]
         );
     }
@@ -649,13 +668,16 @@ mod tests {
     #[test]
     fn ortho_needs_a_last_point() {
         let ground = [20.0, 8.0, 0.0];
-        assert_eq!(constrained(ground, None, true, false), ground);
+        assert_eq!(
+            constrained(&CPlane::WORLD_XY, ground, None, true, false),
+            ground
+        );
     }
 
     #[test]
     fn grid_snap_rounds_to_whole_units() {
         assert_eq!(
-            constrained([1.4, -2.6, 0.0], None, false, true),
+            constrained(&CPlane::WORLD_XY, [1.4, -2.6, 0.0], None, false, true),
             [1.0, -3.0, 0.0]
         );
     }
@@ -664,14 +686,42 @@ mod tests {
     fn grid_snap_applies_along_the_ortho_axis() {
         let base = Some([0.5, 0.5, 0.0]);
         assert_eq!(
-            constrained([9.7, 1.0, 0.0], base, true, true),
+            constrained(&CPlane::WORLD_XY, [9.7, 1.0, 0.0], base, true, true),
             [10.0, 0.5, 0.0]
         );
     }
 
     #[test]
+    fn grid_snap_rounds_within_the_front_plane() {
+        assert_eq!(
+            constrained(&CPlane::WORLD_XZ, [1.4, 0.0, 7.6], None, false, true),
+            [1.0, 0.0, 8.0]
+        );
+    }
+
+    #[test]
+    fn ortho_goes_straight_up_in_the_front_plane() {
+        let base = Some([5.0, 0.0, 5.0]);
+        assert_eq!(
+            constrained(&CPlane::WORLD_XZ, [7.0, 0.0, 30.0], base, true, false),
+            [5.0, 0.0, 30.0]
+        );
+    }
+
+    #[test]
+    fn ortho_follows_the_right_plane() {
+        let base = Some([0.0, 2.0, 2.0]);
+        assert_eq!(
+            constrained(&CPlane::WORLD_YZ, [0.0, 40.0, 3.0], base, true, false),
+            [0.0, 40.0, 2.0]
+        );
+    }
+    #[test]
     fn with_nothing_on_the_point_is_unchanged() {
         let ground = [1.4, -2.6, 0.0];
-        assert_eq!(constrained(ground, Some([0.0; 3]), false, false), ground);
+        assert_eq!(
+            constrained(&CPlane::WORLD_XY, ground, Some([0.0; 3]), false, false),
+            ground
+        );
     }
 }

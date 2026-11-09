@@ -51,3 +51,7 @@ error.geometry = That could not be made: {0}
 error.file = The file could not be used: {0}
 error.unexpected = That answer does not fit this step.
 ui.command = Command
+ui.view.top = Top
+ui.view.front = Front
+ui.view.right = Right
+ui.view.perspective = Perspective

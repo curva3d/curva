@@ -1,7 +1,7 @@
 //! Runs commands: turns typed text and clicks into answers, and makes each command one undo step.
 
 use crate::commands::{CommandDef, autofilled, completions, resolve};
-use crate::{Answer, Command, Kind, Message, Request, Step, Translations};
+use crate::{Answer, Command, Kind, Message, Request, Step, Translations, ViewRequest};
 use curva_document::{Document, State};
 use curva_kernel::Point;
 
@@ -19,6 +19,7 @@ pub struct Processor {
     last_point: Option<Point>,
     log: Vec<String>,
     text: Translations,
+    view_request: Option<ViewRequest>,
 }
 
 impl Default for Processor {
@@ -29,6 +30,7 @@ impl Default for Processor {
             last_point: None,
             log: Vec::new(),
             text: Translations::english(),
+            view_request: None,
         }
     }
 }
@@ -93,6 +95,11 @@ impl Processor {
     #[must_use]
     pub fn log(&self) -> &[String] {
         &self.log
+    }
+
+    /// The change of view a command asked for, if one is waiting to be carried out.
+    pub fn take_view_request(&mut self) -> Option<ViewRequest> {
+        self.view_request.take()
     }
 
     /// Commands the typed text could be, best first.
@@ -239,6 +246,10 @@ impl Processor {
                 if let Some(message) = message {
                     self.say(&message);
                 }
+            }
+            Step::View(request) => {
+                self.active = None;
+                self.view_request = Some(request);
             }
             Step::Failed(message) => {
                 if let Some(active) = self.active.take()

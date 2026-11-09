@@ -3,15 +3,21 @@
 mod circle;
 mod copy;
 mod delete;
+mod four_view;
+mod front;
 mod interpcrv;
 mod line;
 mod move_objects;
 mod new;
 mod open;
+mod perspective;
 mod polyline;
 mod redo;
+mod right;
 mod save;
+mod top;
 mod undo;
+mod zoom_extents;
 
 use crate::{Answer, Command, Kind, Message, Request, Step};
 use curva_kernel::{KernelError, Point};
@@ -43,7 +49,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 12] = [
+pub static COMMANDS: [CommandDef; 18] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -62,6 +68,18 @@ pub static COMMANDS: [CommandDef; 12] = [
     listed!("Save", [], false, false, save::Save),
     listed!("Open", [], false, false, open::Open),
     listed!("New", [], false, false, new::New),
+    listed!(
+        "ZoomExtents",
+        ["ze", "zea"],
+        false,
+        false,
+        zoom_extents::ZoomExtents
+    ),
+    listed!("4View", [], false, false, four_view::FourView),
+    listed!("Top", [], false, false, top::Top),
+    listed!("Front", [], false, false, front::Front),
+    listed!("Right", [], false, false, right::Right),
+    listed!("Perspective", [], false, false, perspective::Perspective),
 ];
 
 /// Finds a command by name or alias, ignoring case.
