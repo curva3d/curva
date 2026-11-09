@@ -23,6 +23,7 @@ mod hide;
 mod history;
 mod interpcrv;
 mod invert;
+mod isolate;
 mod join;
 mod length;
 mod line;
@@ -38,6 +39,7 @@ mod polyline;
 mod rebuild;
 mod rectangle;
 mod redo;
+mod rename;
 mod right;
 mod rotate;
 mod rotate3d;
@@ -47,6 +49,9 @@ mod scale1d;
 mod scale2d;
 mod sel_all;
 mod sel_crv;
+mod sel_dup;
+mod sel_layer;
+mod sel_name;
 mod sel_none;
 mod sel_pt;
 mod show;
@@ -55,6 +60,7 @@ mod top;
 mod trim;
 mod undo;
 mod zoom_extents;
+mod zoom_selected;
 
 use crate::{Answer, Command, Kind, Message, Request, Step};
 use curva_kernel::{KernelError, Point};
@@ -86,7 +92,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 55] = [
+pub static COMMANDS: [CommandDef; 61] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -113,11 +119,23 @@ pub static COMMANDS: [CommandDef; 55] = [
     listed!("Flip", [], true, true, flip::Flip),
     listed!("CloseCrv", [], true, true, close_crv::CloseCrv),
     listed!("Hide", ["h"], true, true, hide::Hide),
-    listed!("Show", [], true, true, show::Show),
+    listed!("Show", ["unisolate"], true, true, show::Show),
     listed!("SelAll", ["sa"], false, false, sel_all::SelAll),
     listed!("SelNone", ["sn"], false, false, sel_none::SelNone),
     listed!("SelCrv", [], false, false, sel_crv::SelCrv),
     listed!("SelPt", [], false, false, sel_pt::SelPt),
+    listed!("SelName", [], false, false, sel_name::SelName),
+    listed!("SelLayer", [], false, false, sel_layer::SelLayer),
+    listed!("SelDup", [], false, false, sel_dup::SelDup),
+    listed!("Rename", [], true, true, rename::Rename),
+    listed!("Isolate", [], true, true, isolate::Isolate),
+    listed!(
+        "ZoomSelected",
+        ["zs"],
+        false,
+        false,
+        zoom_selected::ZoomSelected
+    ),
     listed!(
         "BoundingBox",
         ["bb"],
@@ -394,8 +412,9 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 8] = [
-        "Delete", "Join", "Explode", "Split", "Flip", "CloseCrv", "Hide", "Show",
+    const NOTHING_TO_PREVIEW: [&str; 10] = [
+        "Delete", "Join", "Explode", "Split", "Flip", "CloseCrv", "Hide", "Show", "Rename",
+        "Isolate",
     ];
 
     /// Commands whose preview needs its own setup, tested in their own files.

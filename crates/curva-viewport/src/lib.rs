@@ -187,6 +187,25 @@ impl Outlines {
             .collect()
     }
 
+    /// The lowest and highest corners around chosen objects, if any of them can be drawn.
+    #[must_use]
+    pub fn bounds_of(&self, ids: &[u64]) -> Option<(Point, Point)> {
+        let mut around: Option<(Point, Point)> = None;
+        for (index, (id, _)) in self.objects.iter().enumerate() {
+            if !ids.contains(id) {
+                continue;
+            }
+            let (low, high) = *self.boxes.get(index)?;
+            around = Some(around.map_or((low, high), |(held_low, held_high)| {
+                (
+                    std::array::from_fn(|axis| held_low[axis].min(low[axis])),
+                    std::array::from_fn(|axis| held_high[axis].max(high[axis])),
+                )
+            }));
+        }
+        around
+    }
+
     /// The object nearest a screen position, if one is within `reach` pixels.
     #[must_use]
     pub fn pick(

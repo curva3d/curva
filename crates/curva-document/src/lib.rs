@@ -27,6 +27,9 @@ pub struct Object {
     /// Whether it is out of sight until `Show`.
     #[serde(default)]
     pub hidden: bool,
+    /// Its name, empty if it has none.
+    #[serde(default)]
+    pub name: String,
     /// How it was made from another object, if it follows one.
     #[serde(default)]
     pub recipe: Option<Recipe>,
@@ -187,6 +190,7 @@ impl Document {
             curve,
             layer: self.state.current_layer,
             hidden: false,
+            name: String::new(),
             recipe: None,
         });
         id
@@ -264,6 +268,15 @@ impl Document {
         }
         self.undo.truncate(mark);
         self.undo.push(before);
+    }
+
+    /// Names objects.
+    pub fn rename(&mut self, ids: &[u64], name: &str) {
+        for object in &mut self.state.objects {
+            if ids.contains(&object.id) {
+                name.clone_into(&mut object.name);
+            }
+        }
     }
 
     /// Removes objects by id.

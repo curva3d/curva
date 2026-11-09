@@ -133,6 +133,8 @@ pub enum ViewName {
 pub enum ViewRequest {
     /// Fit the model in every viewport.
     ZoomExtents,
+    /// Fit the selection in every viewport.
+    ZoomSelected,
     /// Go back to four viewports in their standard arrangement.
     FourViews,
     /// Give the last-used viewport a construction plane of its own.

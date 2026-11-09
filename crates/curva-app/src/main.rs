@@ -376,7 +376,8 @@ impl Curva {
             maximised: STARTING_LAYOUT,
             gumball_on: true,
             naming_layer: false,
-            agent_on: false,
+            // A benchmark must not take over the connection of a window that is in use.
+            agent_on: benchmark.is_none(),
             agent: None,
             waiting_approval: None,
             gumball_drag: None,
@@ -1042,6 +1043,14 @@ impl Curva {
             Some(ViewRequest::ZoomExtents) => {
                 self.refresh_scene();
                 if let Some((low, high)) = self.outlines.bounds() {
+                    for pane in &mut self.panes {
+                        pane.camera.frame(low, high);
+                    }
+                }
+            }
+            Some(ViewRequest::ZoomSelected) => {
+                self.refresh_scene();
+                if let Some((low, high)) = self.outlines.bounds_of(&self.doc.selection()) {
                     for pane in &mut self.panes {
                         pane.camera.frame(low, high);
                     }
