@@ -3,7 +3,7 @@
 use super::{geometry_failed, unexpected};
 use crate::{Answer, Command, Kind, Live, Message, Request, Step};
 use curva_document::Document;
-use curva_kernel::{Curve, Filleted, KernelError, Point, fillet_lines, gap};
+use curva_kernel::{Curve, KernelError, Point, fillet_curves, gap};
 
 /// How far from a curve a picked point may be, in millimetres, to mean that curve.
 const ON_CURVE: f64 = 1e-3;
@@ -53,7 +53,7 @@ impl Fillet {
         doc: &Document,
         at: Point,
         radius: f64,
-    ) -> Result<Option<(u64, u64, Filleted)>, KernelError> {
+    ) -> Result<Option<(u64, u64, Vec<Curve>)>, KernelError> {
         let Some((first_id, first_pick)) = self.first else {
             return Ok(None);
         };
@@ -61,11 +61,12 @@ impl Fillet {
         else {
             return Ok(None);
         };
-        if second_id == first_id {
+        let same = second_id == first_id;
+        if same && gap(first_pick, at) <= ON_CURVE {
             return Ok(None);
         }
-        fillet_lines(&first, first_pick, &second, at, radius)
-            .map(|done| Some((first_id, second_id, done)))
+        fillet_curves(&first, first_pick, &second, at, radius, same)
+            .map(|made| Some((first_id, second_id, made)))
     }
 }
 
@@ -92,12 +93,10 @@ impl Command for Fillet {
                 Err(error) => geometry_failed(&error),
             },
             Some(Answer::Point(at)) => match self.result(doc, at, radius_of(doc)) {
-                Ok(Some((first, second, done))) => {
+                Ok(Some((first, second, made))) => {
                     doc.remove(&[first, second]);
-                    doc.add(done.first);
-                    doc.add(done.second);
-                    if let Some(arc) = done.arc {
-                        doc.add(arc);
+                    for curve in made {
+                        doc.add(curve);
                     }
                     Step::Done(Some(Message::new("done.fillet")))
                 }
@@ -117,10 +116,7 @@ impl Command for Fillet {
             .filter(|n| *n >= 0.0)
             .unwrap_or_else(|| radius_of(doc));
         match self.result(doc, at, radius) {
-            Ok(Some((_, _, done))) => [Some(done.first), Some(done.second), done.arc]
-                .into_iter()
-                .flatten()
-                .collect(),
+            Ok(Some((_, _, made))) => made,
             _ => Vec::new(),
         }
     }
@@ -180,6 +176,32 @@ mod tests {
         assert_eq!(doc.state().objects.len(), 2);
     }
 
+    #[test]
+    fn two_segments_of_one_polyline_round_into_one_curve() {
+        let mut doc = Document::default();
+        let path = vec![[0.0; 3], [10.0, 0.0, 0.0], [10.0, 10.0, 0.0]];
+        doc.add(Curve::polyline(path, false).unwrap());
+        let mut processor = Processor::default();
+        processor.submit(&mut doc, "fillet");
+        processor.click(&mut doc, [1.0, 0.0, 0.0]);
+        processor.click(&mut doc, [10.0, 9.0, 0.0]);
+        assert_eq!(doc.state().objects.len(), 1);
+        let expected = 18.0 + std::f64::consts::FRAC_PI_2;
+        assert!((total(&doc) - expected).abs() < 1e-6);
+    }
+
+    #[test]
+    fn a_line_and_an_arc_round_together() {
+        let mut doc = Document::default();
+        doc.add(Curve::line([30.0, 0.0, 0.0], [10.0, 0.0, 0.0]).unwrap());
+        let (x, y) = ([1.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        doc.add(Curve::arc([0.0; 3], [10.0, 0.0, 0.0], [0.0, 10.0, 0.0], x, y).unwrap());
+        let mut processor = Processor::default();
+        processor.submit(&mut doc, "fillet");
+        processor.click(&mut doc, [28.0, 0.0, 0.0]);
+        processor.click(&mut doc, [10.0 * 0.5_f64.cos(), 10.0 * 0.5_f64.sin(), 0.0]);
+        assert_eq!(doc.state().objects.len(), 3);
+    }
     #[test]
     fn a_click_on_nothing_keeps_asking() {
         let (mut doc, mut processor) = start();
