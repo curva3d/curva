@@ -53,9 +53,23 @@ pub struct Document {
     undo: Vec<State>,
     redo: Vec<State>,
     path: Option<PathBuf>,
+    /// The X and Y directions of the plane being drawn on. Not saved, and not part of undo.
+    work_plane: Option<[Point; 2]>,
 }
 
 impl Document {
+    /// The X and Y directions of the plane new flat objects go on, the ground unless set.
+    #[must_use]
+    pub fn work_plane(&self) -> [Point; 2] {
+        self.work_plane
+            .unwrap_or([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+    }
+
+    /// Sets the plane new flat objects go on.
+    pub fn set_work_plane(&mut self, axes: [Point; 2]) {
+        self.work_plane = Some(axes);
+    }
+
     /// The objects and counters, for reading.
     #[must_use]
     pub fn state(&self) -> &State {
