@@ -9,6 +9,9 @@ use solidcore::nurbs::math::{CPoint, NOW};
 use solidcore::query::api_queries::curve_closest_point;
 use solidcore::{Kernel, Point3};
 use std::f64::consts::TAU;
+
+mod cut;
+pub use cut::{closest_between, crossings};
 use std::fmt;
 
 /// A position in model space, in millimetres.
@@ -115,7 +118,9 @@ fn world_y() -> Point {
     [0.0, 1.0, 0.0]
 }
 
-fn gap(a: Point, b: Point) -> f64 {
+/// The distance between two points.
+#[must_use]
+pub fn gap(a: Point, b: Point) -> f64 {
     (0..3).map(|i| (a[i] - b[i]).powi(2)).sum::<f64>().sqrt()
 }
 

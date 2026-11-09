@@ -206,6 +206,7 @@ impl Processor {
                 .map_err(|_| Message::with("error.bad_number", vec![typed.to_owned()])),
             Kind::Path => Ok(Answer::Path(typed.to_owned())),
             Kind::Objects => Err(Message::new("error.pick_objects")),
+            Kind::PickPart => Err(Message::new("error.pick_part")),
             Kind::Choice => Err(Message::with(
                 "error.bad_choice",
                 vec![request.options.join(", ")],
@@ -223,7 +224,7 @@ impl Processor {
             return;
         };
         match (request.kind, request.from) {
-            (Kind::Point | Kind::PointOrNumber, _) => {
+            (Kind::Point | Kind::PointOrNumber | Kind::PickPart, _) => {
                 self.advance(doc, Some(Answer::Point(at)));
             }
             (Kind::Number, Some(from)) => {

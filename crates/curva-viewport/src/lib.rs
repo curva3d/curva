@@ -13,6 +13,8 @@ pub use snap::{SnapHit, SnapKind, SnapSet, constrained};
 
 const GRID_HALF_SIZE: i32 = 100;
 const GRID_STEP: i32 = 10;
+/// Steps of the search along a segment for a picked point.
+const PICK_SEARCH_STEPS: usize = 48;
 const GRID_COLOUR: [f32; 3] = [0.30, 0.31, 0.34];
 const CURVE_COLOUR: [f32; 3] = [0.92, 0.92, 0.95];
 const SELECTED_COLOUR: [f32; 3] = [1.0, 0.85, 0.2];
@@ -71,6 +73,52 @@ impl Outlines {
             }
             (low, high)
         }))
+    }
+
+    /// The exact point on the curve under a screen position, if one is within `reach` pixels.
+    #[must_use]
+    pub fn pick_point(
+        &self,
+        camera: &Camera,
+        screen: [f64; 2],
+        size: [f64; 2],
+        reach: f64,
+    ) -> Option<Point> {
+        let view = camera.projector(size);
+        let mut best: Option<(f64, Point, Point)> = None;
+        for (_, points) in &self.objects {
+            for pair in points.windows(2) {
+                if let (Some(a), Some(b)) = (view.project(pair[0]), view.project(pair[1])) {
+                    let distance = to_segment(screen, a, b);
+                    if distance <= reach && best.is_none_or(|(held, ..)| distance < held) {
+                        best = Some((distance, pair[0], pair[1]));
+                    }
+                }
+            }
+        }
+        let (_, a, b) = best?;
+        let at = |t: f64| {
+            [
+                a[0] + (b[0] - a[0]) * t,
+                a[1] + (b[1] - a[1]) * t,
+                a[2] + (b[2] - a[2]) * t,
+            ]
+        };
+        let gap = |t: f64| {
+            view.project(at(t)).map_or(f64::INFINITY, |p| {
+                (p[0] - screen[0]).hypot(p[1] - screen[1])
+            })
+        };
+        let (mut low, mut high) = (0.0_f64, 1.0_f64);
+        for _ in 0..PICK_SEARCH_STEPS {
+            let third = (high - low) / 3.0;
+            if gap(low + third) <= gap(high - third) {
+                high -= third;
+            } else {
+                low += third;
+            }
+        }
+        Some(at((low + high) / 2.0))
     }
 
     /// The object nearest a screen position, if one is within `reach` pixels.
@@ -303,6 +351,26 @@ mod tests {
         assert_eq!(outlines.pick(&camera, on_line, SIZE, 6.0), Some(line));
     }
 
+    #[test]
+    fn a_pick_finds_the_exact_point_on_the_curve() {
+        let (outlines, _, _) = scene();
+        let camera = Camera::default();
+        let aim = [7.0, 0.0, 0.0];
+        let at = camera.project(aim, SIZE).unwrap();
+        let picked = outlines.pick_point(&camera, at, SIZE, 6.0).unwrap();
+        assert!(
+            picked[1].abs() < 1e-9 && (picked[0] - 7.0).abs() < 1e-3,
+            "{picked:?}"
+        );
+    }
+
+    #[test]
+    fn a_pick_over_nothing_finds_nothing() {
+        let (outlines, _, _) = scene();
+        let camera = Camera::default();
+        let at = camera.project([60.0, -60.0, 0.0], SIZE).unwrap();
+        assert_eq!(outlines.pick_point(&camera, at, SIZE, 6.0), None);
+    }
     #[test]
     fn clicking_on_nothing_picks_nothing() {
         let (outlines, _, _) = scene();

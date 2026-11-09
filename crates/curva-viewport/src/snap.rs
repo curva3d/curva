@@ -2,7 +2,7 @@
 
 use crate::camera::{CPlane, Projector};
 use crate::{Camera, Outlines};
-use curva_kernel::{Curve, Point};
+use curva_kernel::{Curve, Point, closest_between};
 
 /// How close to something the cursor must be to snap to it, in pixels.
 const SNAP_REACH: f64 = 12.0;
@@ -303,42 +303,6 @@ fn box_out_of_reach(view: &Projector, (low, high): (Point, Point), cursor: [f64;
         || cursor[0] > right + SNAP_REACH
         || cursor[1] < top - SNAP_REACH
         || cursor[1] > bottom + SNAP_REACH
-}
-
-/// The closest points of two 3D segments, as a distance along each from 0 to 1
-/// (Ericson, *Real-Time Collision Detection*, section 5.1.9).
-fn closest_between(a: (Point, Point), b: (Point, Point)) -> (f64, f64) {
-    let (d1, d2, r) = (sub(a.1, a.0), sub(b.1, b.0), sub(a.0, b.0));
-    let (e1, e2, f) = (dot(d1, d1), dot(d2, d2), dot(d2, r));
-    let c = dot(d1, r);
-    let shared = dot(d1, d2);
-    let denominator = e1 * e2 - shared * shared;
-    let mut s = if denominator > 1e-12 {
-        ((shared * f - c * e2) / denominator).clamp(0.0, 1.0)
-    } else {
-        0.0
-    };
-    let mut t = if e2 > 1e-12 {
-        (shared * s + f) / e2
-    } else {
-        0.0
-    };
-    if t < 0.0 {
-        t = 0.0;
-        s = if e1 > 1e-12 {
-            (-c / e1).clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
-    } else if t > 1.0 {
-        t = 1.0;
-        s = if e1 > 1e-12 {
-            ((shared - c) / e1).clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
-    }
-    (s, t)
 }
 
 impl Outlines {

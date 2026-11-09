@@ -47,6 +47,8 @@ pub enum Kind {
     Path,
     /// A position, or a typed number instead.
     PointOrNumber,
+    /// A clicked part of a curve; the answer is the exact point on it.
+    PickPart,
     /// One of the request's option words, and nothing else.
     Choice,
 }
