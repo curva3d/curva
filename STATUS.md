@@ -30,7 +30,8 @@
 
 - Object snaps (End, Mid, Cen, Int, Perp, Near), ortho and grid snap (`docs/specs/m1-snaps-and-ortho.md`). `New` now asks before discarding a model. With 5,000 circles a frame takes about 2.4 ms and snapping about 1 ms (`--orbit-benchmark --curves 5000`). The owner is trying it by hand.
 - Four viewports with Top, Front, Right and Perspective views, each on its own plane (`docs/specs/m1-four-viewports.md`). The owner is trying it by hand.
-- Next planned: more commands (Rotate, Scale, Mirror, Array, Trim, Split, Join, Offset, Fillet, Arc, Rectangle), then custom construction planes.
+- Rotate, Scale, Mirror, Arc and Rectangle (`docs/specs/m1-transforms-arc-rectangle.md`). A curve can snap to itself while being drawn, circles sit on any plane, and Curva opens on Perspective.
+- Next planned: Trim, Split, Join, Offset, Fillet and Array, which depend most on what solidcore can do, then custom construction planes.
 
 **Waiting for the owner**
 - Nothing yet. The engine is solidcore, with Serpentine3D's commands as the base (decision 0010). SolidCraft

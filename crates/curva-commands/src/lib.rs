@@ -45,6 +45,8 @@ pub enum Kind {
     Objects,
     /// A file location.
     Path,
+    /// A position, or a typed number instead.
+    PointOrNumber,
     /// One of the request's option words, and nothing else.
     Choice,
 }

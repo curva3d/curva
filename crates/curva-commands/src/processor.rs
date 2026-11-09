@@ -182,6 +182,12 @@ impl Processor {
             Kind::Point => parse_point(typed, self.last_point)
                 .map(Answer::Point)
                 .ok_or_else(|| Message::with("error.bad_point", vec![typed.to_owned()])),
+            Kind::PointOrNumber => typed
+                .parse::<f64>()
+                .map(Answer::Number)
+                .ok()
+                .or_else(|| parse_point(typed, self.last_point).map(Answer::Point))
+                .ok_or_else(|| Message::with("error.bad_point", vec![typed.to_owned()])),
             Kind::Number => typed
                 .parse::<f64>()
                 .map(Answer::Number)
@@ -205,7 +211,9 @@ impl Processor {
             return;
         };
         match (request.kind, request.from) {
-            (Kind::Point, _) => self.advance(doc, Some(Answer::Point(at))),
+            (Kind::Point | Kind::PointOrNumber, _) => {
+                self.advance(doc, Some(Answer::Point(at)));
+            }
             (Kind::Number, Some(from)) => {
                 let distance = (0..3)
                     .map(|axis| (at[axis] - from[axis]).powi(2))
