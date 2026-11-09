@@ -50,7 +50,8 @@
 - MCP server, first part (`docs/specs/m1-mcp-server.md`): `curva --mcp`.
 - Rhai scripting is finished but held on the local branch `m1-rhai-scripting` (decision 0014), because Rhai 1.27.0 still requires `smartstring`.
 - MCP connected to the open window, behind the Agent access checkbox, with approval of destructive actions.
-- Next planned: the rest of the F1 list (Rename, BoundingBox, SelLayer and similar, more view commands), then the built-in assistant panel.
+- SelCrv, SelPt and BoundingBox.
+- Next planned: the rest of the F1 list (Rename, SelLayer and similar, more view commands), then the built-in assistant panel.
 
 **Waiting for the owner**
 - Nothing yet. The engine is solidcore, with Serpentine3D's commands as the base (decision 0010). SolidCraft
