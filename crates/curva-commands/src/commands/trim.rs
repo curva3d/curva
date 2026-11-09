@@ -81,6 +81,7 @@ impl Command for Trim {
                 "done.trim",
                 vec![self.trimmed.to_string()],
             ))),
+            Some(Answer::Number(_)) => ask_part("prompt.trim.part"),
             Some(Answer::Point(at)) => {
                 let cut = match self.cut_under(doc, at) {
                     Ok(cut) => cut,

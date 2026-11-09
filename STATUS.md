@@ -36,7 +36,8 @@
 - Array and Join (`docs/specs/m1-array-join.md`).
 - Mixed curves (decision 0013), Explode, and 0 allowed as an Array count.
 - Split and Trim: cutters, then click the part to remove, as Serpentine3D and Rhino do.
-- Next planned: Offset and Fillet, then custom construction planes.
+- Offset and Fillet (`docs/specs/m1-split-trim-offset-fillet.md`).
+- Next planned: custom construction planes, then fillets on arcs and polylines.
 
 **Waiting for the owner**
 - Nothing yet. The engine is solidcore, with Serpentine3D's commands as the base (decision 0010). SolidCraft
