@@ -1,0 +1,10 @@
+id: 26
+name: Intersect a doubly curved surface with a cylinder
+group: everyday
+operation: intersect
+rhino: Intersect
+input: surface grid-surface size=4x4 degree=3
+input-points: surface (0,0,0) (10,0,3) (20,0,3) (30,0,0) (0,10,3) (10,10,8) (20,10,8) (30,10,3) (0,20,3) (10,20,8) (20,20,8) (30,20,3) (0,30,0) (10,30,3) (20,30,3) (30,30,0)
+input: cylinder cylinder base=(15,15,-5) top=(15,15,20) radius=6
+measure: curve-count
+measure: length

@@ -1,0 +1,13 @@
+id: 21
+name: Fillet an edge between two freeform faces
+group: fillets
+operation: fillet-edges
+rhino: FilletEdge
+input: a interp-curve (0,0,0) (15,3,8) (30,0,0)
+input: b interp-curve (0,0,0) (15,-4,-6) (30,0,0)
+input: path line (0,0,0) (0,20,0)
+option: build=extrude-a-and-b-along-path-and-close
+option: radius=1
+option: edges=the-two-curved-seams
+measure: closed-or-open
+measure: area

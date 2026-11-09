@@ -1,0 +1,12 @@
+id: 5
+name: Loft through 3 closed sections of different shapes
+group: surfaces
+operation: loft
+rhino: Loft
+input: s1 circle centre=(0,0,0) radius=10
+input: s2 rounded-rectangle centre=(0,0,15) width=20 depth=14 radius=3
+input: s3 ellipse centre=(0,0,30) rx=12 ry=6
+option: style=normal
+measure: area
+measure: closed-sections
+measure: twist-free

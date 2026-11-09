@@ -1,0 +1,12 @@
+id: 13
+name: Box minus cylinder
+group: solids
+operation: boolean-difference
+rhino: BooleanDifference
+input: a box min=(0,0,0) max=(20,20,20)
+input: b cylinder base=(10,10,-5) top=(10,10,25) radius=5
+measure: volume
+measure: area
+measure: centre-of-mass
+measure: face-count
+measure: closed-or-open

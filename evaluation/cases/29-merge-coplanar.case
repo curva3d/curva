@@ -1,0 +1,8 @@
+id: 29
+name: Merge coplanar faces on result 14
+group: everyday
+operation: merge-coplanar-faces
+rhino: MergeAllCoplanarFaces
+uses: 14
+measure: face-count
+measure: volume

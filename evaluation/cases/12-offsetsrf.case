@@ -1,0 +1,10 @@
+id: 12
+name: Offset surface of a doubly curved surface
+group: surfaces
+operation: offset-surface
+rhino: OffsetSrf
+input: surface grid-surface size=4x4 degree=3
+input-points: surface (0,0,0) (10,0,3) (20,0,3) (30,0,0) (0,10,3) (10,10,8) (20,10,8) (30,10,3) (0,20,3) (10,20,8) (20,20,8) (30,20,3) (0,30,0) (10,30,3) (20,30,3) (30,30,0)
+option: distance=2
+measure: area
+measure: distance-to-source

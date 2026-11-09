@@ -1,0 +1,12 @@
+id: 19
+name: Fillet all edges of a box
+group: fillets
+operation: fillet-edges
+rhino: FilletEdge
+input: box box min=(0,0,0) max=(20,20,20)
+option: radius=2
+option: edges=all
+measure: volume
+measure: area
+measure: centre-of-mass
+measure: closed-or-open

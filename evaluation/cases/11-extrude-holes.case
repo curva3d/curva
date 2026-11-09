@@ -1,0 +1,13 @@
+id: 11
+name: Extrude a closed curve with nested holes into a solid
+group: surfaces
+operation: extrude
+rhino: Extrude
+input: outer rectangle min=(0,0,0) max=(40,40,0)
+input: hole rectangle min=(5,5,0) max=(35,35,0)
+input: island circle centre=(20,20,0) radius=8
+option: direction=(0,0,12)
+option: cap=true
+measure: volume
+measure: closed-or-open
+measure: solid-count

@@ -1,0 +1,9 @@
+id: 1
+name: Interpolated curve through 6 points in 3D
+group: curves
+operation: interpolate-curve
+rhino: InterpCrv
+input: points points (0,0,0) (10,5,2) (20,-3,6) (30,4,1) (40,-2,5) (50,0,0)
+option: degree=3
+measure: length
+measure: passes-through-inputs

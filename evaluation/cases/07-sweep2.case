@@ -1,0 +1,10 @@
+id: 7
+name: Sweep2: a profile along two rails
+group: surfaces
+operation: sweep2
+rhino: Sweep2
+input: rail1 interp-curve (0,0,0) (20,3,0) (40,-3,0) (60,0,0)
+input: rail2 interp-curve (0,20,0) (20,25,2) (40,18,4) (60,20,0)
+input: profile interp-curve (0,0,0) (0,10,6) (0,20,0)
+measure: area
+measure: touches-both-rails

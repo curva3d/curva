@@ -1,0 +1,9 @@
+id: 25
+name: STEP export, opened in Rhino
+group: output
+operation: step-export
+rhino: Export
+uses: 15
+uses: 19
+measure: opens-in-rhino
+measure: closed-or-open

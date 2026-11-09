@@ -19,15 +19,17 @@
 - Rust workspace skeleton (#3).
 - Automated checks on Linux, Windows and macOS, required on `main` (#4).
 - Claude Code hooks: format and lint after edits, tests before finishing, risky commands blocked (#5).
+- The 31 kernel test cases as neutral files, and a harness to run them (#8), in `evaluation/`.
 - A check that flags weakened tests on every pull request (#6). It is deliberately not a required
   check, so a change the owner has agreed to can still be merged.
 
 **In progress**
-- Nothing.
+- #16 is paused, waiting for that permission.
 
 **Waiting for the owner**
-- Two library decisions in `docs/decisions/0008-supporting-libraries.md`: IFC and mesh booleans.
-- The Rhino licence question (#7).
+- Connecting Rhino through its MCP on this machine, so agents can make the reference results (#13).
+- The owner has agreed to building and running downloaded code (#16, #9 to #12), but the agent safety check
+  still refuses it, so a permission change is needed. #16 has read-only findings in the issue and a draft pull request (#28).
 
 **Handoff notes**
 - `V:` is a file-based Dev Drive (`C:\DevDrives\curva.vhdx`), reconnected at startup by the

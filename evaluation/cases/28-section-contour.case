@@ -1,0 +1,11 @@
+id: 28
+name: Section and Contour of result 15
+group: everyday
+operation: section-and-contour
+rhino: Section, Contour
+uses: 15
+option: section-plane=origin:(0,0,15),normal:(0,0,1)
+option: contour-direction=(0,0,1)
+option: contour-spacing=5
+measure: curve-count
+measure: length

@@ -1,0 +1,11 @@
+[package]
+name = "kernel-eval"
+description = "Runs the kernel evaluation cases on any kernel. Not part of the Curva product."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

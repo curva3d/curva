@@ -1,6 +1,6 @@
 # 0008 — Licence and health check of supporting libraries
 
-**Status:** Proposed, waiting for the owner's decision on the two points below · 8 November 2026
+**Status:** Accepted · 8 November 2026 · The owner chose the recommended option for both decisions
 **Answers:** architecture open decisions 4 and 5 · task M0-17
 
 **What we checked:** each library's licence, latest release and recent activity, on 8 November 2026.
