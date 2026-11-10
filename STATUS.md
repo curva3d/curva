@@ -67,7 +67,9 @@
 - Shaded display: faces lit from the camera with a little light from above, dark edges on solids, depth in every view (flat views included). Pictures made with `--picture` and for agents are shaded too. Solids are meshed once and kept until they change.
 - `ExtrudeCrv` (options Solid and BothSides, distance remembered) and `PlanarSrf`. As in Rhino, an outline and the closed curves inside it become one solid or surface with holes, and separate outlines make separate objects.
 - `Revolve` (axis by two points, any angle up to a full turn; a closed curve turned part way is closed at its ends), `Loft` (through the curves in the order they were made, ends left open) and `Sweep1` (rail first, then cross sections; one curve selected beforehand is taken as the rail).
-- Next planned: the booleans (BooleanUnion, BooleanDifference, BooleanIntersection).
+- `BooleanUnion`, `BooleanDifference` (solids to cut from, then solids to cut with) and `BooleanIntersection` (two sets). As in Rhino, the solids used are replaced by the result. Combining turned and moved solids works, and the result can be moved and combined again.
+- The commands of `docs/specs/m2-first-surfaces.md` are all in. The owner is trying them by hand.
+- Next planned: a speed check with 500 surfaces (part of the spec's checks), then Cap and the rest of the F2 surface list, or the remaining Milestone 1 items (autosave and crash recovery), whichever the owner prefers.
 
 **Waiting for the owner**
 - Nothing yet. The engine is solidcore, with Serpentine3D's commands as the base (decision 0010). SolidCraft

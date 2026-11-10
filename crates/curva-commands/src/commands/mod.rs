@@ -5,6 +5,9 @@ mod area;
 mod array;
 mod array_crv;
 mod array_polar;
+mod boolean_difference;
+mod boolean_intersection;
+mod boolean_union;
 mod bounding_box;
 mod box_solid;
 mod chamfer;
@@ -116,7 +119,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 85] = [
+pub static COMMANDS: [CommandDef; 88] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -228,6 +231,21 @@ pub static COMMANDS: [CommandDef; 85] = [
     listed!("Revolve", [], true, true, revolve::Revolve),
     listed!("Loft", [], true, true, loft::Loft),
     listed!("Sweep1", [], true, true, sweep1::Sweep1),
+    listed!("BooleanUnion", [], true, true, boolean_union::BooleanUnion),
+    listed!(
+        "BooleanDifference",
+        [],
+        true,
+        true,
+        boolean_difference::BooleanDifference
+    ),
+    listed!(
+        "BooleanIntersection",
+        [],
+        true,
+        true,
+        boolean_intersection::BooleanIntersection
+    ),
     listed!("Delete", ["del", "erase"], false, true, delete::Delete),
     listed!("Undo", [], false, false, undo::Undo),
     listed!("Redo", [], false, false, redo::Redo),
@@ -350,6 +368,16 @@ fn ghosts(
         .take(MOST_PREVIEW_OBJECTS)
         .flat_map(|object| object.shape.outlines())
         .map(|curve| change(&curve))
+        .collect()
+}
+
+/// The surfaces and solids among chosen objects, with their ids.
+fn bodies_of(doc: &curva_document::Document, ids: &[u64]) -> Vec<(u64, curva_kernel::Body)> {
+    doc.state()
+        .objects
+        .iter()
+        .filter(|object| ids.contains(&object.id))
+        .filter_map(|object| Some((object.id, object.shape.body()?.clone())))
         .collect()
 }
 
@@ -514,7 +542,7 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 13] = [
+    const NOTHING_TO_PREVIEW: [&str; 14] = [
         "Delete",
         "Join",
         "Explode",
@@ -528,10 +556,11 @@ mod tests {
         "ProjectToCPlane",
         "PlanarSrf",
         "Loft",
+        "BooleanUnion",
     ];
 
     /// Commands whose preview needs its own setup, tested in their own files.
-    const PREVIEW_TESTED_ELSEWHERE: [&str; 12] = [
+    const PREVIEW_TESTED_ELSEWHERE: [&str; 14] = [
         "Trim",
         "Fillet",
         "Chamfer",
@@ -544,6 +573,8 @@ mod tests {
         "RemoveKnot",
         "RemoveControlPoint",
         "Sweep1",
+        "BooleanDifference",
+        "BooleanIntersection",
     ];
 
     #[test]

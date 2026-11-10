@@ -83,6 +83,11 @@ impl Body {
         Ok(Self::from_record(record))
     }
 
+    /// The body as the engine holds it, in its place, for operations elsewhere in the kernel.
+    pub(crate) fn engine_body(&self) -> Result<EngineBody, KernelError> {
+        self.engine()
+    }
+
     /// The faces as made, without the placement.
     fn unplaced(&self) -> Self {
         Self::from_record(self.record.clone())
