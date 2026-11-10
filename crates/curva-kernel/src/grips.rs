@@ -20,7 +20,7 @@ fn repeats_first(points: &[Point]) -> bool {
 impl Curve {
     /// The form a curve takes once its points are edited: circles and arcs become NURBS, as
     /// their own description has no points to move. Compound curves must be exploded first.
-    fn editable(&self) -> Result<Self, KernelError> {
+    pub(crate) fn editable(&self) -> Result<Self, KernelError> {
         match self {
             Self::Circle {
                 centre,

@@ -97,6 +97,77 @@ impl Document {
             })
             .collect()
     }
+
+    /// The control points of each object among `grips`, by object.
+    fn by_owner(grips: &[Grip]) -> Vec<(u64, Vec<usize>)> {
+        let mut owners: Vec<(u64, Vec<usize>)> = Vec::new();
+        for &(id, index) in grips {
+            match owners.iter_mut().find(|(owner, _)| *owner == id) {
+                Some((_, indices)) => indices.push(index),
+                None => owners.push((id, vec![index])),
+            }
+        }
+        owners
+    }
+
+    /// The curves as they would be with each picked control point evened out by `factor`.
+    pub fn grips_smoothed(
+        &self,
+        grips: &[Grip],
+        factor: f64,
+    ) -> Result<Vec<(u64, Curve)>, KernelError> {
+        Self::by_owner(grips)
+            .into_iter()
+            .filter_map(|(id, indices)| self.curve(id).map(|curve| (id, curve, indices)))
+            .map(|(id, curve, indices)| Ok((id, curve.smoothed(&indices, factor)?)))
+            .collect()
+    }
+
+    /// The curves as they would be without the picked control points.
+    pub fn grips_removed(&self, grips: &[Grip]) -> Result<Vec<(u64, Curve)>, KernelError> {
+        Self::by_owner(grips)
+            .into_iter()
+            .filter_map(|(id, indices)| self.curve(id).map(|curve| (id, curve, indices)))
+            .map(|(id, mut curve, mut indices)| {
+                // From the last, so that the places of those still to go do not shift.
+                indices.sort_unstable();
+                indices.dedup();
+                for index in indices.into_iter().rev() {
+                    curve = curve.without_control_point(index)?;
+                }
+                Ok((id, curve))
+            })
+            .collect()
+    }
+
+    fn curve(&self, id: u64) -> Option<Curve> {
+        self.state
+            .objects
+            .iter()
+            .find(|o| o.id == id)
+            .map(|o| o.curve.clone())
+    }
+
+    /// The editable curve passing within `reach` of `at`, preferring one that shows its
+    /// control points, for commands that pick a place on a curve.
+    #[must_use]
+    pub fn editable_curve_at(&self, at: Point, reach: f64) -> Option<(u64, Curve)> {
+        let near: Vec<&crate::Object> = self
+            .state
+            .objects
+            .iter()
+            .filter(|o| !o.hidden && o.curve.control_points().is_ok())
+            .filter(|o| {
+                o.curve
+                    .closest_point(at)
+                    .is_ok_and(|p| curva_kernel::gap(p, at) <= reach)
+            })
+            .collect();
+        near.iter()
+            .find(|o| self.showing_points.contains(&o.id))
+            .or_else(|| near.first())
+            .map(|o| (o.id, o.curve.clone()))
+    }
 }
 
 #[cfg(test)]

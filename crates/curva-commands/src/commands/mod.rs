@@ -23,6 +23,7 @@ mod four_view;
 mod front;
 mod hide;
 mod history;
+mod insert_knot;
 mod interpcrv;
 mod invert;
 mod isolate;
@@ -46,6 +47,8 @@ mod project_to_cplane;
 mod rebuild;
 mod rectangle;
 mod redo;
+mod remove_control_point;
+mod remove_knot;
 mod rename;
 mod right;
 mod rotate;
@@ -65,6 +68,7 @@ mod sel_prev;
 mod sel_pt;
 mod set_pt;
 mod show;
+mod smooth;
 mod split;
 mod top;
 mod trim;
@@ -104,7 +108,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 73] = [
+pub static COMMANDS: [CommandDef; 77] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -129,6 +133,22 @@ pub static COMMANDS: [CommandDef; 73] = [
     listed!("Rebuild", [], true, true, rebuild::Rebuild),
     listed!("PointsOn", [], false, false, points_on::PointsOn),
     listed!("PointsOff", [], false, false, points_off::PointsOff),
+    listed!(
+        "InsertKnot",
+        ["insertcontrolpoint"],
+        true,
+        true,
+        insert_knot::InsertKnot
+    ),
+    listed!("RemoveKnot", [], true, true, remove_knot::RemoveKnot),
+    listed!(
+        "RemoveControlPoint",
+        [],
+        true,
+        true,
+        remove_control_point::RemoveControlPoint
+    ),
+    listed!("Smooth", [], true, true, smooth::Smooth),
     listed!("History", [], false, false, history::History),
     listed!("Flip", [], true, true, flip::Flip),
     listed!("CloseCrv", [], true, true, close_crv::CloseCrv),
@@ -424,7 +444,7 @@ mod tests {
 
     /// For each command that changes geometry, the typed steps that reach its live preview.
     /// A new command must be added here, which is how the preview rule in AGENTS.md is enforced.
-    const PREVIEW_STEPS: [(&str, &[&str]); 22] = [
+    const PREVIEW_STEPS: [(&str, &[&str]); 23] = [
         ("Line", &["0,0"]),
         ("Polyline", &["0,0", "9,0"]),
         ("InterpCrv", &["0,0", "9,0"]),
@@ -447,6 +467,7 @@ mod tests {
         ("Orient", &["0,0"]),
         ("SetPt", &["SetX", "SetZ"]),
         ("Orient3Pt", &["0,0", "2,0", "0,2", "5,0,0", "5,2,0"]),
+        ("Smooth", &[]),
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
@@ -465,7 +486,7 @@ mod tests {
     ];
 
     /// Commands whose preview needs its own setup, tested in their own files.
-    const PREVIEW_TESTED_ELSEWHERE: [&str; 8] = [
+    const PREVIEW_TESTED_ELSEWHERE: [&str; 11] = [
         "Trim",
         "Fillet",
         "Chamfer",
@@ -474,6 +495,9 @@ mod tests {
         "Rebuild",
         "FilletCorners",
         "TweenCurves",
+        "InsertKnot",
+        "RemoveKnot",
+        "RemoveControlPoint",
     ];
 
     #[test]

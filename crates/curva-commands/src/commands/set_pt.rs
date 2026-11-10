@@ -3,8 +3,8 @@
 use super::project_to_cplane::flattened_onto;
 use super::{ask_objects, curves_of, geometry_failed, ghost_results, unexpected};
 use crate::{Answer, Command, Kind, Live, Message, Request, Step};
-use curva_document::Document;
-use curva_kernel::{Curve, KernelError, Point, cross, unit};
+use curva_document::{Document, Grip};
+use curva_kernel::{Curve, KernelError, Point, cross, dot, sub, unit};
 
 const SET_X: &str = "SetX";
 const SET_Y: &str = "SetY";
@@ -14,6 +14,8 @@ const AXIS_NAMES: [&str; 3] = ["X", "Y", "Z"];
 /// The running command.
 pub struct SetPt {
     ids: Option<Vec<u64>>,
+    /// Picked control points, which are lined up instead of whole objects, as in Rhino.
+    grips: Vec<Grip>,
     /// Which coordinates are set, along the plane's X, Y and normal.
     setting: [bool; 3],
 }
@@ -22,6 +24,7 @@ impl Default for SetPt {
     fn default() -> Self {
         Self {
             ids: None,
+            grips: Vec::new(),
             setting: [true; 3],
         }
     }
@@ -51,6 +54,19 @@ impl SetPt {
         let (_, [x, y]) = doc.work_frame();
         let normal = unit(cross(x, y)).unwrap_or([0.0, 0.0, 1.0]);
         let axes = [x, y, normal];
+        if !self.grips.is_empty() {
+            let setting = self.setting;
+            return doc.grips_changed(&self.grips, |p| {
+                let mut moved = p;
+                for (axis, on) in axes.iter().zip(setting) {
+                    if on {
+                        let by = dot(sub(target, p), *axis);
+                        moved = [0, 1, 2].map(|k| moved[k] + axis[k] * by);
+                    }
+                }
+                moved
+            });
+        }
         curves_of(doc, ids)
             .into_iter()
             .map(|(id, mut curve)| {
@@ -68,6 +84,12 @@ impl SetPt {
 impl Command for SetPt {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
         let Some(ids) = self.ids.clone() else {
+            let grips = doc.grip_selection();
+            if answer.is_none() && !grips.is_empty() {
+                self.ids = Some(grips.iter().map(|(id, _)| *id).collect());
+                self.grips = grips;
+                return self.ask();
+            }
             let chosen = match answer {
                 Some(Answer::Objects(list)) => list,
                 _ => doc.selection(),
@@ -145,6 +167,20 @@ mod tests {
         let mut doc = selected_line();
         let processor = run(&mut doc, &["setpt", "SetX", "SetY", "SetZ"]);
         assert!(processor.prompt().unwrap().contains('Z'));
+    }
+
+    #[test]
+    fn picked_control_points_are_lined_up_instead_of_the_object() {
+        let mut doc = Document::default();
+        let id = doc
+            .add(Curve::polyline(vec![[0.0; 3], [2.0, 1.0, 0.0], [4.0, 3.0, 0.0]], false).unwrap());
+        doc.points_on(&[id]);
+        doc.select_grips(&[(id, 1), (id, 2)]);
+        run(&mut doc, &["setpt", "SetX", "SetZ", "9,0,0"]);
+        assert_eq!(
+            doc.state().objects[0].curve.control_points().unwrap(),
+            [[0.0; 3], [2.0, 0.0, 0.0], [4.0, 0.0, 0.0]]
+        );
     }
 
     #[test]

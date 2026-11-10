@@ -23,7 +23,7 @@
 
 ## 3. Not in this piece of work
 
-Weights, edit points on NURBS curves, and dragging control points directly with the mouse; for now they move with `Move` and the gumball.
+Weights, edit points on NURBS curves, and dragging control points directly with the mouse; for now they move with `Move` and the gumball. Taking a point away from a NURBS curve respaces its knots, so the curve moves more than Rhino's RemoveKnot, which keeps the shape as close as it can; a closer match can come later.
 
 ## 4. How it is checked
 

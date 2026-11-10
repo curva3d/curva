@@ -8,7 +8,7 @@
 //! the view and prints how fast it drew and snapped.
 
 use curva_commands::{Kind, Message, Processor, Translations, ViewName, ViewRequest};
-use curva_document::{Document, State};
+use curva_document::{Document, Grip, State};
 use curva_kernel::{Curve, Point};
 use curva_mcp::Session;
 use curva_viewport::{
@@ -49,6 +49,14 @@ const GUMBALL_AXES: [egui::Color32; 3] = [
     egui::Color32::from_rgb(90, 130, 240),
 ];
 const POINT_MARKER_SIZE: f32 = 6.0;
+/// Size of a control point's square on screen.
+const GRIP_SIZE: f32 = 7.0;
+/// A control point that is not picked.
+const GRIP_COLOUR: egui::Color32 = egui::Color32::from_rgb(235, 235, 245);
+/// A picked control point, yellow like selected objects.
+const GRIP_PICKED: egui::Color32 = egui::Color32::from_rgb(255, 220, 60);
+/// The lines between a smooth curve's control points.
+const CONTROL_POLYGON: egui::Color32 = egui::Color32::from_rgb(150, 150, 165);
 const LOG_LINES: usize = 5;
 const PICTURE_SIZE: [u32; 2] = [1200, 800];
 const BENCHMARK_FRAMES: usize = 240;
@@ -120,7 +128,12 @@ impl LeftGestures {
 
 /// The selection after a click or box, as in Rhino: Ctrl removes what was hit, Shift adds it,
 /// and with neither it replaces the selection. Ctrl wins if both are held, as it loses nothing.
-fn combined_selection(current: Vec<u64>, hits: Vec<u64>, add: bool, remove: bool) -> Vec<u64> {
+fn combined_selection<T: PartialEq>(
+    current: Vec<T>,
+    hits: Vec<T>,
+    add: bool,
+    remove: bool,
+) -> Vec<T> {
     if remove {
         return current
             .into_iter()
@@ -589,7 +602,23 @@ impl Curva {
             self.processor.cancel(&mut self.doc);
         }
         let delete = !self.naming_layer && ui.input(|input| input.key_pressed(egui::Key::Delete));
-        if delete && self.typed.is_empty() && !self.processor.is_running() {
+        let idle = self.typed.is_empty() && !self.processor.is_running();
+        // F10 and F11 show and hide control points, as in Rhino.
+        let (points_on, points_off) = ui.input(|input| {
+            (
+                input.key_pressed(egui::Key::F10),
+                input.key_pressed(egui::Key::F11),
+            )
+        });
+        if idle && points_on {
+            self.processor.submit(&mut self.doc, "pointson");
+        } else if idle && points_off {
+            self.processor.submit(&mut self.doc, "pointsoff");
+        }
+        // With control points picked, Delete takes them away rather than whole curves.
+        if delete && idle && !self.doc.grip_selection().is_empty() {
+            self.processor.submit(&mut self.doc, "removecontrolpoint");
+        } else if delete && idle {
             self.processor.submit(&mut self.doc, "delete");
         }
     }
@@ -647,8 +676,33 @@ impl Curva {
         if !self.gumball_on || self.processor.is_running() {
             return None;
         }
+        // Picked control points take the gumball, as in Rhino; it sits at their middle.
+        let grips = self.picked_grip_points();
+        if !grips.is_empty() {
+            let count = grips.len() as f64;
+            let sum = grips.iter().fold([0.0; 3], |total, p| {
+                [total[0] + p[0], total[1] + p[1], total[2] + p[2]]
+            });
+            return Some(Gumball {
+                centre: sum.map(|value| value / count),
+            });
+        }
         let centre = self.outlines.centre_of(&self.doc.selection())?;
         Some(Gumball { centre })
+    }
+
+    /// Where the picked control points are.
+    fn picked_grip_points(&self) -> Vec<Point> {
+        let picked = self.doc.grip_selection();
+        if picked.is_empty() {
+            return Vec::new();
+        }
+        self.doc
+            .shown_grips()
+            .into_iter()
+            .filter(|(grip, _)| picked.contains(grip))
+            .map(|(_, at)| at)
+            .collect()
     }
 
     /// What the drag under way would do.
@@ -736,6 +790,20 @@ impl Curva {
             return;
         }
         let before = self.doc.state().clone();
+        let grips = self.doc.grip_selection();
+        if !grips.is_empty() {
+            match self.doc.grips_changed(&grips, |p| change.moved_point(p)) {
+                Ok(made) => {
+                    for (id, curve) in made {
+                        self.doc.replace(id, curve);
+                    }
+                    self.doc.refresh_history();
+                    self.doc.record_change(before);
+                }
+                Err(error) => self.processor.note(error.to_string()),
+            }
+            return;
+        }
         let selection = self.doc.selection();
         match change {
             GumballChange::Move(by) => self.doc.translate(&selection, by),
@@ -753,6 +821,14 @@ impl Curva {
         else {
             return Vec::new();
         };
+        let grips = self.doc.grip_selection();
+        if !grips.is_empty() {
+            return self
+                .doc
+                .grips_changed(&grips, |p| change.moved_point(p))
+                .map(|made| made.into_iter().map(|(_, curve)| curve).collect())
+                .unwrap_or_default();
+        }
         let selection = self.doc.selection();
         self.doc
             .state()
@@ -952,6 +1028,88 @@ impl Curva {
                 mark(*at, curva_viewport::PREVIEW_COLOUR);
             }
         }
+    }
+
+    /// Control points on show: the lines between a smooth curve's points, then the points,
+    /// picked ones in yellow.
+    fn paint_grips(&self, ui: &egui::Ui, pane: usize, rect: egui::Rect, size: [f64; 2]) {
+        let shown = self.doc.shown_grips();
+        if shown.is_empty() {
+            return;
+        }
+        let painter = ui.painter_at(rect);
+        let camera = &self.panes[pane].camera;
+        let screen = |at: Point| {
+            camera
+                .project(at, size)
+                .map(|p| rect.min + egui::vec2(p[0] as f32, p[1] as f32))
+        };
+        for object in &self.doc.state().objects {
+            let straight = matches!(object.curve, Curve::Line { .. } | Curve::Polyline { .. });
+            if straight || !shown.iter().any(|((id, _), _)| *id == object.id) {
+                continue;
+            }
+            let corners: Vec<egui::Pos2> = shown
+                .iter()
+                .filter(|((id, _), _)| *id == object.id)
+                .filter_map(|(_, at)| screen(*at))
+                .collect();
+            for pair in corners.windows(2) {
+                painter.line_segment([pair[0], pair[1]], egui::Stroke::new(1.0, CONTROL_POLYGON));
+            }
+        }
+        let picked = self.doc.grip_selection();
+        for (grip, at) in shown {
+            if let Some(centre) = screen(at) {
+                let square = egui::Rect::from_center_size(centre, egui::Vec2::splat(GRIP_SIZE));
+                let colour = if picked.contains(&grip) {
+                    GRIP_PICKED
+                } else {
+                    GRIP_COLOUR
+                };
+                painter.rect_filled(square, 0.0, colour);
+                painter.rect_stroke(
+                    square,
+                    0.0,
+                    egui::Stroke::new(1.0, egui::Color32::BLACK),
+                    egui::StrokeKind::Inside,
+                );
+            }
+        }
+    }
+
+    /// The control points a click or box hits, nearest first for a click.
+    fn grips_hit(
+        &self,
+        camera: &Camera,
+        (from, to): ([f64; 2], [f64; 2]),
+        boxed: bool,
+        size: [f64; 2],
+    ) -> Vec<Grip> {
+        let on_screen = self
+            .doc
+            .shown_grips()
+            .into_iter()
+            .filter_map(|(grip, at)| camera.project(at, size).map(|p| (grip, p)));
+        if boxed {
+            let (low, high) = (
+                [from[0].min(to[0]), from[1].min(to[1])],
+                [from[0].max(to[0]), from[1].max(to[1])],
+            );
+            return on_screen
+                .filter(|(_, p)| {
+                    (low[0]..=high[0]).contains(&p[0]) && (low[1]..=high[1]).contains(&p[1])
+                })
+                .map(|(grip, _)| grip)
+                .collect();
+        }
+        on_screen
+            .map(|(grip, p)| (grip, (p[0] - from[0]).hypot(p[1] - from[1])))
+            .filter(|(_, reach)| *reach <= PICK_REACH)
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(grip, _)| grip)
+            .into_iter()
+            .collect()
     }
 
     /// Starts or stops listening to match the checkbox.
@@ -1200,7 +1358,18 @@ impl Curva {
         }
         let camera = self.panes[pane].camera;
         for (from, to) in gestures {
-            let hits = if is_box_drag(from, to) {
+            let boxed = is_box_drag(from, to);
+            let grips = self.grips_hit(&camera, (local(from), local(to)), boxed, size);
+            if !grips.is_empty() {
+                // A control point was hit, so the points picked change and the objects do not.
+                let picked = combined_selection(self.doc.grip_selection(), grips, shift, remove);
+                self.doc.select_grips(&picked);
+                continue;
+            }
+            if !shift && !remove {
+                self.doc.select_grips(&[]);
+            }
+            let hits = if boxed {
                 self.outlines.in_box(&camera, local(from), local(to), size)
             } else {
                 let hit = self.outlines.pick(&camera, local(from), size, PICK_REACH);
@@ -1304,6 +1473,7 @@ impl Curva {
             ui.painter().add(egui_wgpu_callback(*rect, drawing));
             self.paint_frame(ui, *pane, *rect);
             self.paint_points(ui, *pane, *rect, size, &previewed);
+            self.paint_grips(ui, *pane, *rect, size);
             self.paint_gumball(ui, *pane, *rect, size);
             if let Some((hover_pane, ..)) = hovered
                 && hover_pane == *pane

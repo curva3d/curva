@@ -16,6 +16,7 @@ mod corners;
 mod cut;
 mod fillet;
 mod grips;
+mod knots;
 mod offset;
 mod tween;
 pub use conic::{Chamfered, chamfer_lines};
