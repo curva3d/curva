@@ -160,6 +160,17 @@ pub enum ViewRequest {
     ResetCPlane,
     /// Turn the last-used viewport into this view.
     Show(ViewName),
+    /// Draw the last-used viewport this way.
+    Display(DisplayMode),
+}
+
+/// How a viewport draws the model.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DisplayMode {
+    /// Lines only: curves, and the edges of surfaces and solids.
+    Wireframe,
+    /// Surfaces and solids filled in and lit, with their edges on top.
+    Shaded,
 }
 
 /// What a preview can follow while a command waits for its next answer.

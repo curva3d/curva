@@ -7,14 +7,15 @@
 //! `curva --orbit-benchmark --curves 5000` opens the window on a scene of that many circles, spins
 //! the view and prints how fast it drew and snapped.
 
-use curva_commands::{Kind, Message, Processor, Translations, ViewName, ViewRequest};
+use curva_commands::{DisplayMode, Kind, Message, Processor, Translations, ViewName, ViewRequest};
 use curva_document::{Document, Grip, Shape, State};
 use curva_kernel::{Curve, Point};
 use curva_mcp::Session;
 use curva_viewport::{
-    CPlane, Camera, Drawing, Gumball, GumballChange, Handle, LineRenderer, Outlines, SnapHit,
-    SnapKind, SnapSet, StandardView, VIEW_SLOTS, constrained, ghost_lines, grid_lines,
-    object_lines, save_picture, scene_lines,
+    CPlane, Camera, DEPTH_BITS, Drawing, Gumball, GumballChange, Handle, LineRenderer, MeshCache,
+    MeshVertex, Outlines, Picture, SnapHit, SnapKind, SnapSet, StandardView, VIEW_SLOTS,
+    constrained, face_vertices, ghost_lines, grid_lines, object_lines, save_picture, scene_lines,
+    shaded_object_lines, shaded_scene_lines,
 };
 use eframe::egui;
 use std::sync::Arc;
@@ -36,6 +37,8 @@ const PERSPECTIVE: usize = 1;
 const TITLE_HEIGHT: f32 = 22.0;
 const PANE_GAP: f32 = 2.0;
 const TITLE_COLOUR: egui::Color32 = egui::Color32::from_rgb(190, 190, 200);
+/// The part of a viewport's corner that opens its display menu when clicked.
+const TITLE_SIZE: egui::Vec2 = egui::vec2(120.0, 22.0);
 const ACTIVE_EDGE: egui::Color32 = egui::Color32::from_rgb(120, 150, 210);
 /// Which viewport fills the window when Curva opens.
 const STARTING_LAYOUT: Option<usize> = Some(PERSPECTIVE);
@@ -85,6 +88,12 @@ struct Curva {
     grid_snap: bool,
     outlines: Outlines,
     scene: Arc<Vec<curva_viewport::Vertex>>,
+    /// The objects' lines for shaded views, where edges on faces are dark.
+    shaded_scene: Arc<Vec<curva_viewport::Vertex>>,
+    /// The faces of surfaces and solids, for shaded views.
+    faces: Arc<Vec<MeshVertex>>,
+    /// Meshes of solids, kept until they change.
+    meshes: MeshCache,
     drawn: Option<(State, Vec<u64>)>,
     benchmark: Option<Benchmark>,
 }
@@ -201,6 +210,8 @@ struct Pane {
     gestures: LeftGestures,
     /// The saved view it shows, whose name becomes its title.
     named: Option<String>,
+    /// Whether surfaces and solids are filled in and lit, rather than drawn by their edges.
+    shaded: bool,
 }
 
 impl Pane {
@@ -217,6 +228,8 @@ impl Pane {
             grid: Arc::new(grid_lines(&view.plane())),
             gestures: LeftGestures::default(),
             named: None,
+            // As in Rhino, the perspective view starts shaded and the flat views in wireframe.
+            shaded: view == StandardView::Perspective,
         }
     }
 }
@@ -402,6 +415,9 @@ impl Curva {
             grid_snap: false,
             outlines: Outlines::default(),
             scene: Arc::new(Vec::new()),
+            shaded_scene: Arc::new(Vec::new()),
+            faces: Arc::new(Vec::new()),
+            meshes: MeshCache::default(),
             drawn: None,
             benchmark: benchmark.map(|_| Benchmark::default()),
         }
@@ -415,8 +431,10 @@ impl Curva {
             .as_ref()
             .is_some_and(|(state, chosen)| state == self.doc.state() && chosen == &selection);
         if !current {
-            self.outlines = Outlines::of(self.doc.state());
+            self.outlines = Outlines::of_cached(self.doc.state(), &mut self.meshes);
             self.scene = Arc::new(object_lines(&self.outlines, &selection));
+            self.shaded_scene = Arc::new(shaded_object_lines(&self.outlines, &selection));
+            self.faces = Arc::new(face_vertices(&self.outlines, &selection));
             self.drawn = Some((self.doc.state().clone(), selection));
         }
     }
@@ -1305,7 +1323,12 @@ impl Curva {
                 pane.set_plane(pane.view.plane());
             }
             ViewRequest::Show(name) => {
+                let shaded = self.panes[self.active].shaded;
                 self.panes[self.active] = Pane::new(standard_view(name));
+                self.panes[self.active].shaded = shaded;
+            }
+            ViewRequest::Display(mode) => {
+                self.panes[self.active].shaded = mode == DisplayMode::Shaded;
             }
         }
     }
@@ -1457,10 +1480,40 @@ impl Curva {
         }
     }
 
+    /// Clicking a viewport's title opens a menu of display modes, as in Rhino.
+    fn display_menu(&mut self, ui: &egui::Ui, pane: usize, rect: egui::Rect) {
+        let title = egui::Rect::from_min_size(rect.min, TITLE_SIZE);
+        let response = ui.interact(
+            title,
+            ui.scope_id().with(("display menu", pane)),
+            egui::Sense::click(),
+        );
+        let mut chosen = None;
+        egui::Popup::menu(&response).show(|ui| {
+            for (mode, key) in [
+                (DisplayMode::Wireframe, "ui.display.wireframe"),
+                (DisplayMode::Shaded, "ui.display.shaded"),
+            ] {
+                let current = self.panes[pane].shaded == (mode == DisplayMode::Shaded);
+                if ui
+                    .selectable_label(current, self.text.render(&Message::new(key)))
+                    .clicked()
+                {
+                    chosen = Some(mode);
+                }
+            }
+        });
+        if let Some(mode) = chosen {
+            self.panes[pane].shaded = mode == DisplayMode::Shaded;
+            self.active = pane;
+        }
+    }
+
     fn viewports(&mut self, ui: &mut egui::Ui) {
         let mut shown = Vec::new();
         for (pane, rect) in pane_rects(ui.available_rect_before_wrap(), self.maximised) {
             let response = ui.allocate_rect(rect, egui::Sense::click_and_drag());
+            self.display_menu(ui, pane, rect);
             self.handle_mouse(ui, pane, &response, pane_size(rect));
             shown.push((pane, rect, response));
         }
@@ -1489,12 +1542,20 @@ impl Curva {
         let overlay = Arc::new(preview);
         for (pane, rect, _) in &shown {
             let size = pane_size(*rect);
+            let camera = &self.panes[*pane].camera;
             let drawing = Drawing {
                 slot: *pane,
                 grid: Arc::clone(&self.panes[*pane].grid),
-                scene: Arc::clone(&self.scene),
+                scene: Arc::clone(if self.panes[*pane].shaded {
+                    &self.shaded_scene
+                } else {
+                    &self.scene
+                }),
+                faces: Arc::clone(&self.faces),
                 overlay: Arc::clone(&overlay),
-                matrix: self.panes[*pane].camera.matrix(size[0] / size[1]),
+                matrix: camera.matrix(size[0] / size[1]),
+                light: camera.forward().map(|value| value as f32),
+                shaded: self.panes[*pane].shaded,
             };
             ui.painter().add(egui_wgpu_callback(*rect, drawing));
             self.paint_frame(ui, *pane, *rect);
@@ -1564,6 +1625,22 @@ impl eframe::App for Curva {
     }
 }
 
+/// What a picture of the model shows: everything, shaded, seen by `camera`.
+fn picture_of(doc: &Document, outlines: &Outlines, camera: &Camera, aspect: f64) -> Picture {
+    let selection = doc.selection();
+    let faces = face_vertices(outlines, &selection);
+    Picture {
+        lines: if faces.is_empty() {
+            scene_lines(outlines, &selection)
+        } else {
+            shaded_scene_lines(outlines, &selection)
+        },
+        faces,
+        matrix: camera.matrix(aspect),
+        light: camera.forward().map(|value| value as f32),
+    }
+}
+
 /// A picture of the model for an MCP agent, as the bytes of a PNG file.
 fn mcp_picture(doc: &Document) -> Result<Vec<u8>, String> {
     let outlines = Outlines::of(doc.state());
@@ -1580,8 +1657,7 @@ fn picture_from(doc: &Document, camera: &Camera) -> Result<Vec<u8>, String> {
     let aspect = f64::from(PICTURE_SIZE[0]) / f64::from(PICTURE_SIZE[1]);
     let path = std::env::temp_dir().join(format!("curva-mcp-{}.png", std::process::id()));
     save_picture(
-        scene_lines(&outlines, &doc.selection()),
-        &camera.matrix(aspect),
+        picture_of(doc, &outlines, camera, aspect),
         PICTURE_SIZE,
         &path,
     )?;
@@ -1605,8 +1681,7 @@ fn picture(path: &str, script: &str) -> Result<(), String> {
     }
     let aspect = f64::from(PICTURE_SIZE[0]) / f64::from(PICTURE_SIZE[1]);
     save_picture(
-        scene_lines(&outlines, &doc.selection()),
-        &camera.matrix(aspect),
+        picture_of(&doc, &outlines, &camera, aspect),
         PICTURE_SIZE,
         std::path::Path::new(path),
     )?;
@@ -1658,6 +1733,8 @@ fn main() -> Result<(), String> {
                 },
                 ..eframe::egui_wgpu::WgpuConfiguration::default()
             },
+            // Shaded views need depth, so nearer faces hide farther ones.
+            depth_buffer: DEPTH_BITS,
             ..eframe::NativeOptions::default()
         },
         Box::new(move |context| Ok(Box::new(Curva::new(context, benchmark)))),

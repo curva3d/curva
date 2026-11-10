@@ -68,6 +68,7 @@ mod sel_name;
 mod sel_none;
 mod sel_prev;
 mod sel_pt;
+mod set_display_mode;
 mod set_pt;
 mod show;
 mod smooth;
@@ -110,7 +111,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 79] = [
+pub static COMMANDS: [CommandDef; 80] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -238,6 +239,13 @@ pub static COMMANDS: [CommandDef; 79] = [
     listed!("CPlane", [], false, false, cplane::SetCPlane),
     listed!("Zoom", [], false, false, zoom::Zoom),
     listed!("NamedView", ["nv"], false, false, named_view::NamedView),
+    listed!(
+        "SetDisplayMode",
+        [],
+        false,
+        false,
+        set_display_mode::SetDisplayMode
+    ),
 ];
 
 /// Finds a command by name or alias, ignoring case.
