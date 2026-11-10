@@ -18,6 +18,7 @@ mod distance;
 mod divide;
 mod ellipse;
 mod explode;
+mod extrude_crv;
 mod fillet;
 mod fillet_corners;
 mod flip;
@@ -41,6 +42,7 @@ mod open;
 mod orient;
 mod orient3pt;
 mod perspective;
+mod planar_srf;
 mod point;
 mod points_off;
 mod points_on;
@@ -111,7 +113,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 80] = [
+pub static COMMANDS: [CommandDef; 82] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -218,6 +220,8 @@ pub static COMMANDS: [CommandDef; 80] = [
     listed!("Arc", ["a"], true, true, arc::Arc),
     listed!("Rectangle", ["rec"], true, true, rectangle::Rectangle),
     listed!("Box", [], true, true, box_solid::BoxSolid),
+    listed!("ExtrudeCrv", [], true, true, extrude_crv::ExtrudeCrv),
+    listed!("PlanarSrf", [], true, true, planar_srf::PlanarSrf),
     listed!("Delete", ["del", "erase"], false, true, delete::Delete),
     listed!("Undo", [], false, false, undo::Undo),
     listed!("Redo", [], false, false, redo::Redo),
@@ -473,7 +477,7 @@ mod tests {
 
     /// For each command that changes geometry, the typed steps that reach its live preview.
     /// A new command must be added here, which is how the preview rule in AGENTS.md is enforced.
-    const PREVIEW_STEPS: [(&str, &[&str]); 25] = [
+    const PREVIEW_STEPS: [(&str, &[&str]); 26] = [
         ("Line", &["0,0"]),
         ("Polyline", &["0,0", "9,0"]),
         ("InterpCrv", &["0,0", "9,0"]),
@@ -499,10 +503,11 @@ mod tests {
         ("Smooth", &[]),
         ("Dir", &[]),
         ("Box", &["0,0", "5,5"]),
+        ("ExtrudeCrv", &[]),
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 11] = [
+    const NOTHING_TO_PREVIEW: [&str; 12] = [
         "Delete",
         "Join",
         "Explode",
@@ -514,6 +519,7 @@ mod tests {
         "Rename",
         "Isolate",
         "ProjectToCPlane",
+        "PlanarSrf",
     ];
 
     /// Commands whose preview needs its own setup, tested in their own files.
@@ -842,7 +848,7 @@ mod tests {
 
     #[test]
     fn completion_finds_aliases_and_puts_an_exact_match_first() {
-        assert_eq!(completions("pl"), ["Polyline"]);
+        assert_eq!(completions("pl"), ["Polyline", "PlanarSrf"]);
         assert_eq!(
             completions("c"),
             ["Circle", "Copy", "CloseCrv", "Chamfer", "CPlane"]
