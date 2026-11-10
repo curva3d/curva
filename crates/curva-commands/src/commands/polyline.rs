@@ -50,7 +50,7 @@ mod tests {
     fn enter_finishes_an_open_polyline() {
         let mut doc = Document::default();
         run(&mut doc, &["polyline", "0,0", "10,0", "10,10", ""]);
-        let length = doc.state().objects[0].curve.length().unwrap();
+        let length = doc.state().objects[0].curve().unwrap().length().unwrap();
         assert!((length - 20.0).abs() < 1e-9);
     }
 
@@ -58,7 +58,7 @@ mod tests {
     fn close_adds_the_last_segment() {
         let mut doc = Document::default();
         run(&mut doc, &["pl", "0,0", "10,0", "10,10", "0,10", "close"]);
-        let length = doc.state().objects[0].curve.length().unwrap();
+        let length = doc.state().objects[0].curve().unwrap().length().unwrap();
         assert!((length - 40.0).abs() < 1e-9);
     }
 

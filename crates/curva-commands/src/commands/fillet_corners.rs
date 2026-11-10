@@ -107,7 +107,7 @@ mod tests {
         let mut doc = selected_square();
         run(&mut doc, &["filletcorners", "2"]);
         assert!(matches!(
-            doc.state().objects[0].curve,
+            doc.state().objects[0].curve().unwrap(),
             Curve::Compound { .. }
         ));
         assert_eq!(doc.remembered("filletcorners.radius"), Some(2.0));
@@ -116,12 +116,12 @@ mod tests {
     #[test]
     fn enter_uses_the_last_radius_and_a_bad_one_changes_nothing() {
         let mut doc = selected_square();
-        let before = doc.state().objects[0].curve.clone();
+        let before = doc.state().objects[0].curve().unwrap().clone();
         run(&mut doc, &["filletcorners", "50"]);
-        assert_eq!(doc.state().objects[0].curve, before);
+        assert_eq!(*doc.state().objects[0].curve().unwrap(), before);
         run(&mut doc, &["filletcorners", ""]);
         assert!(matches!(
-            doc.state().objects[0].curve,
+            doc.state().objects[0].curve().unwrap(),
             Curve::Compound { .. }
         ));
     }

@@ -1,6 +1,6 @@
 //! `Fillet`: rounds the corner between two lines, keeping the sides clicked.
 
-use super::{geometry_failed, unexpected};
+use super::{curve_at, geometry_failed, unexpected};
 use crate::{Answer, Command, Kind, Live, Message, Request, Step};
 use curva_document::Document;
 use curva_kernel::{Curve, KernelError, Point, fillet_curves, gap};
@@ -31,12 +31,7 @@ fn ask(doc: &Document, key: &'static str) -> Step {
 
 /// The object under a picked point.
 fn under(doc: &Document, at: Point) -> Result<Option<(u64, Curve)>, KernelError> {
-    for object in &doc.state().objects {
-        if gap(object.curve.closest_point(at)?, at) <= ON_CURVE {
-            return Ok(Some((object.id, object.curve.clone())));
-        }
-    }
-    Ok(None)
+    curve_at(doc, at, ON_CURVE)
 }
 
 fn curve_of(doc: &Document, id: u64) -> Option<Curve> {
@@ -44,7 +39,7 @@ fn curve_of(doc: &Document, id: u64) -> Option<Curve> {
         .objects
         .iter()
         .find(|object| object.id == id)
-        .map(|object| object.curve.clone())
+        .and_then(|object| object.curve().cloned())
 }
 
 impl Fillet {
@@ -142,7 +137,7 @@ mod tests {
         doc.state()
             .objects
             .iter()
-            .map(|object| object.curve.length().unwrap())
+            .map(|object| object.curve().unwrap().length().unwrap())
             .sum()
     }
 

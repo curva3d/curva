@@ -84,7 +84,7 @@ mod tests {
     fn objects_turn_about_the_line_right_handed() {
         let mut doc = selected_line();
         run(&mut doc, &["rotate3d", "0,0,0", "1,0,0", "90"]);
-        let start = doc.state().objects[0].curve.sample().unwrap()[0];
+        let start = doc.state().objects[0].curve().unwrap().sample().unwrap()[0];
         assert!(
             start[1].abs() < 1e-9 && (start[2] - 1.0).abs() < 1e-9,
             "{start:?}"
@@ -97,7 +97,7 @@ mod tests {
         let processor = run(&mut doc, &["rotate3d", "1,1,1", "1,1,1"]);
         assert!(!processor.is_running());
         assert_eq!(
-            doc.state().objects[0].curve.sample().unwrap()[0],
+            doc.state().objects[0].curve().unwrap().sample().unwrap()[0],
             [0.0, 1.0, 0.0]
         );
     }

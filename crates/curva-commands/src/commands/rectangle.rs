@@ -81,7 +81,7 @@ mod tests {
     fn makes_a_closed_rectangle_of_the_right_size() {
         let mut doc = Document::default();
         run(&mut doc, &["rectangle", "1,1", "4,5"]);
-        let curve = &doc.state().objects[0].curve;
+        let curve = &doc.state().objects[0].curve().unwrap();
         assert!((curve.length().unwrap() - 14.0).abs() < 1e-9);
         let points = curve.sample().unwrap();
         assert_eq!(points.len(), 5);
@@ -94,7 +94,7 @@ mod tests {
         let mut doc = Document::default();
         doc.set_work_plane([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
         run(&mut doc, &["rectangle", "0,0,0", "3,2,0"]);
-        let points = doc.state().objects[0].curve.sample().unwrap();
+        let points = doc.state().objects[0].curve().unwrap().sample().unwrap();
         assert_eq!(points[2], [3.0, 0.0, 2.0]);
         assert!(points.iter().all(|p| p[1] == 0.0));
     }

@@ -64,7 +64,7 @@ mod tests {
         let path = vec![[0.0; 3], [3.0, 0.0, 0.0], [3.0, 4.0, 0.0]];
         let mut doc = selected(Curve::polyline(path, false).unwrap());
         run(&mut doc, &["closecrv"]);
-        assert!((doc.state().objects[0].curve.length().unwrap() - 12.0).abs() < 1e-9);
+        assert!((doc.state().objects[0].curve().unwrap().length().unwrap() - 12.0).abs() < 1e-9);
     }
 
     #[test]
@@ -73,7 +73,7 @@ mod tests {
         let mut doc = selected(Curve::interpolated(path, false).unwrap());
         run(&mut doc, &["closecrv"]);
         assert!(matches!(
-            doc.state().objects[0].curve,
+            doc.state().objects[0].curve().unwrap(),
             Curve::Interpolated { closed: true, .. }
         ));
     }
@@ -83,6 +83,9 @@ mod tests {
         let mut doc = selected(Curve::line([0.0; 3], [1.0, 0.0, 0.0]).unwrap());
         let processor = run(&mut doc, &["closecrv"]);
         assert!(!processor.is_running());
-        assert!(matches!(doc.state().objects[0].curve, Curve::Line { .. }));
+        assert!(matches!(
+            doc.state().objects[0].curve().unwrap(),
+            Curve::Line { .. }
+        ));
     }
 }

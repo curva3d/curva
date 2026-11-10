@@ -60,7 +60,11 @@
   Option words can be shortened to any start no other option shares, as in Rhino (`c` for Close).
 - Control points (`docs/specs/m1-control-points.md`): PointsOn (F10) and PointsOff (F11), clicking and boxing points, Move, the gumball and SetPt on picked points, InsertKnot (also InsertControlPoint), RemoveKnot, RemoveControlPoint (and Delete with points picked) and Smooth. The owner is trying it by hand. Known gap: pictures made with `--picture` do not show the point squares yet.
 - Dir: arrows show which way the chosen curves run; click a curve to flip it, or type Flip for all.
-- Next planned: the built-in assistant panel.
+- The built-in assistant panel is postponed by the owner (10 November 2026); its draft is in `docs/specs/m1-assistant-panel.md`.
+
+**Milestone 2 started early, at the owner's choice (10 November 2026):** first surfaces, `docs/specs/m2-first-surfaces.md`, approved with Sweep1 and the booleans added.
+- Surfaces and solids in the model and in files (older files still open), drawn by their edges, and moved, turned, scaled, mirrored, copied, hidden and put on layers like curves. `Box` makes the first solids. The properties panel shows a solid's volume or a surface's area.
+- Next planned: shaded display, then ExtrudeCrv, PlanarSrf, Revolve, Loft, Sweep1 and the booleans.
 
 **Waiting for the owner**
 - Nothing yet. The engine is solidcore, with Serpentine3D's commands as the base (decision 0010). SolidCraft
@@ -77,6 +81,8 @@
 - Agents merge their own pull requests once checks pass; the owner does not click merge.
 
 **Known problems / risks**
+- solidcore cannot read back its own record of a body that has been turned and then moved (status 1007, "invalid input"). Curva avoids it by keeping each body as made plus one placement (`crates/curva-kernel/src/body.rs`). The bug should be reported upstream with a small reproducible case; booleans on turned bodies may meet it again.
+- Bodies are re-meshed each time the drawing is rebuilt. Fine for a few solids; a cache comes with shaded display.
 - Serpentine3D's geometry is done by OpenCascade (C++), so its geometric logic cannot be ported
   directly; only commands, prompts, options and interaction flow port. See decision 0003.
 - The kernel choice is untested. M0 exists to test it before M1 starts. See decision 0004.

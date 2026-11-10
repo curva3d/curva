@@ -150,7 +150,7 @@ mod tests {
 
     fn start_of(doc: &Document, id: u64) -> [f64; 3] {
         let object = doc.state().objects.iter().find(|o| o.id == id).unwrap();
-        object.curve.sample().unwrap()[0]
+        object.curve().unwrap().sample().unwrap()[0]
     }
 
     #[test]

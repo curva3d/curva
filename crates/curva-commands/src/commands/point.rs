@@ -40,7 +40,7 @@ mod tests {
         let mut doc = Document::default();
         run(&mut doc, &["point", "1,2,3"]);
         assert_eq!(
-            doc.state().objects[0].curve,
+            *doc.state().objects[0].curve().unwrap(),
             Curve::Point {
                 at: [1.0, 2.0, 3.0]
             }

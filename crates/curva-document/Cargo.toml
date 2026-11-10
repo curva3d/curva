@@ -13,4 +13,5 @@ workspace = true
 [dependencies]
 curva-kernel = { path = "../curva-kernel" }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# Exact numbers in files: a body read back a hair off can differ from the one saved.
+serde_json = { version = "1", features = ["float_roundtrip"] }

@@ -11,6 +11,7 @@ use solidcore::{Kernel, Point3};
 use std::f64::consts::TAU;
 
 mod area;
+mod body;
 mod conic;
 mod corners;
 mod cut;
@@ -19,6 +20,7 @@ mod grips;
 mod knots;
 mod offset;
 mod tween;
+pub use body::{Body, BodyMesh};
 pub use conic::{Chamfered, chamfer_lines};
 pub use cut::{closest_between, crossings};
 pub use fillet::fillet_curves;

@@ -97,7 +97,11 @@ mod tests {
         processor.click(&mut doc, [3.9, 0.0, 0.0]);
         processor.submit(&mut doc, "");
         assert_eq!(
-            doc.state().objects[0].curve.control_points().unwrap(),
+            doc.state().objects[0]
+                .curve()
+                .unwrap()
+                .control_points()
+                .unwrap(),
             [[0.0; 3], [2.0, 0.0, 0.0], [6.0, 0.0, 0.0]]
         );
     }
@@ -110,7 +114,12 @@ mod tests {
         processor.click(&mut doc, [1.0, 0.0, 0.0]);
         assert!(processor.is_running());
         assert_eq!(
-            doc.state().objects[0].curve.control_points().unwrap().len(),
+            doc.state().objects[0]
+                .curve()
+                .unwrap()
+                .control_points()
+                .unwrap()
+                .len(),
             2
         );
     }

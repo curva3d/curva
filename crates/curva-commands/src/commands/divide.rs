@@ -97,7 +97,7 @@ mod tests {
         run(&mut doc, &["divide", "5"]);
         assert_eq!(doc.state().objects.len(), 7);
         assert_eq!(
-            doc.state().objects[3].curve,
+            *doc.state().objects[3].curve().unwrap(),
             Curve::Point {
                 at: [4.0, 0.0, 0.0]
             }

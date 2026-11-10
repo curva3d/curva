@@ -87,7 +87,11 @@ mod tests {
     }
 
     fn ends(doc: &Document, index: usize) -> Vec<Point> {
-        doc.state().objects[index].curve.sample().unwrap()
+        doc.state().objects[index]
+            .curve()
+            .unwrap()
+            .sample()
+            .unwrap()
     }
 
     fn close(a: Point, b: Point) -> bool {

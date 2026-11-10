@@ -109,7 +109,7 @@ mod tests {
     }
 
     fn start_of_first(doc: &Document) -> Point {
-        doc.state().objects[0].curve.sample().unwrap()[0]
+        doc.state().objects[0].curve().unwrap().sample().unwrap()[0]
     }
 
     fn close(a: Point, b: Point) -> bool {

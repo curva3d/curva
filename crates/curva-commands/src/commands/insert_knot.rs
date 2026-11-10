@@ -104,7 +104,7 @@ mod tests {
     fn a_click_on_a_curve_adds_a_point_and_shows_them() {
         let mut doc = Document::default();
         let id = wave(&mut doc);
-        let on = doc.state().objects[0].curve.sample().unwrap()[9];
+        let on = doc.state().objects[0].curve().unwrap().sample().unwrap()[9];
         let mut processor: Processor = run(&mut doc, &["insertknot"]);
         let preview = processor.preview(&doc, Some(on), "");
         assert_eq!(preview.len(), 2);
@@ -112,13 +112,23 @@ mod tests {
         processor.submit(&mut doc, "");
         assert!(!processor.is_running());
         assert_eq!(
-            doc.state().objects[0].curve.control_points().unwrap().len(),
+            doc.state().objects[0]
+                .curve()
+                .unwrap()
+                .control_points()
+                .unwrap()
+                .len(),
             6
         );
         assert_eq!(doc.showing_points(), [id]);
         processor.submit(&mut doc, "undo");
         assert_eq!(
-            doc.state().objects[0].curve.control_points().unwrap().len(),
+            doc.state().objects[0]
+                .curve()
+                .unwrap()
+                .control_points()
+                .unwrap()
+                .len(),
             5
         );
     }
@@ -131,7 +141,12 @@ mod tests {
         processor.click(&mut doc, [1.0, 0.0, 0.0]);
         processor.submit(&mut doc, "");
         assert_eq!(
-            doc.state().objects[0].curve.control_points().unwrap().len(),
+            doc.state().objects[0]
+                .curve()
+                .unwrap()
+                .control_points()
+                .unwrap()
+                .len(),
             3
         );
     }
@@ -144,7 +159,12 @@ mod tests {
         processor.click(&mut doc, [50.0, 50.0, 0.0]);
         assert!(processor.is_running());
         assert_eq!(
-            doc.state().objects[0].curve.control_points().unwrap().len(),
+            doc.state().objects[0]
+                .curve()
+                .unwrap()
+                .control_points()
+                .unwrap()
+                .len(),
             5
         );
     }

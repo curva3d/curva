@@ -60,10 +60,12 @@ impl Outlines {
             if object.hidden || layer.is_some_and(|l| !l.visible) {
                 continue;
             }
-            if let Ok(points) = object.curve.sample() {
-                outlines
-                    .sites
-                    .extend(snap::sites_of(&object.curve, &points));
+            // A body is drawn by its edges, each listed under the body's id.
+            for outline in object.shape.outlines() {
+                let Ok(points) = outline.sample() else {
+                    continue;
+                };
+                outlines.sites.extend(snap::sites_of(&outline, &points));
                 let first = points.first().copied().unwrap_or_default();
                 let around = snap::box_around(&points).unwrap_or((first, first));
                 outlines.boxes.push(around);
@@ -253,11 +255,12 @@ impl Outlines {
         let low = [from[0].min(to[0]), from[1].min(to[1])];
         let high = [from[0].max(to[0]), from[1].max(to[1])];
         let window = to[0] >= from[0];
-        self.selectable()
-            .filter(|(_, points)| {
+        let passes: Vec<(u64, bool)> = self
+            .selectable()
+            .map(|(id, points)| {
                 let projected: Vec<Option<[f64; 2]>> =
                     points.iter().map(|p| camera.project(*p, size)).collect();
-                if window {
+                let pass = if window {
                     !projected.is_empty()
                         && projected
                             .iter()
@@ -268,10 +271,28 @@ impl Outlines {
                             [Some(a), Some(b)] => touches_box(*a, *b, low, high),
                             _ => false,
                         })
-                }
+                };
+                (*id, pass)
             })
-            .map(|(id, _)| *id)
-            .collect()
+            .collect();
+        // An object drawn in several pieces, such as a body's edges, is taken by a window only
+        // when every piece is inside, and by a crossing box when any piece is touched.
+        let mut chosen: Vec<u64> = Vec::new();
+        for (id, _) in &passes {
+            if chosen.contains(id) {
+                continue;
+            }
+            let mut pieces = passes.iter().filter(|(other, _)| other == id);
+            let taken = if window {
+                pieces.all(|(_, pass)| *pass)
+            } else {
+                pieces.any(|(_, pass)| *pass)
+            };
+            if taken {
+                chosen.push(*id);
+            }
+        }
+        chosen
     }
 }
 

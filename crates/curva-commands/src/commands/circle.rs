@@ -67,7 +67,7 @@ mod tests {
     fn makes_a_circle_of_the_right_size() {
         let mut doc = Document::default();
         run(&mut doc, &["circle", "1,2,3", "5"]);
-        let length = doc.state().objects[0].curve.length().unwrap();
+        let length = doc.state().objects[0].curve().unwrap().length().unwrap();
         assert!((length - TAU * 5.0).abs() < 1e-9);
     }
 
@@ -76,7 +76,7 @@ mod tests {
         let mut doc = Document::default();
         doc.set_work_plane([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
         run(&mut doc, &["circle", "0,10", "5"]);
-        let points = doc.state().objects[0].curve.sample().unwrap();
+        let points = doc.state().objects[0].curve().unwrap().sample().unwrap();
         assert!(points.iter().all(|p| p[1].abs() < 1e-9));
         assert!(points.iter().any(|p| (p[2] - 15.0).abs() < 1e-6));
     }
@@ -90,7 +90,7 @@ mod tests {
         processor.submit(&mut doc, "0,0,0");
         doc.set_work_plane([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
         processor.submit(&mut doc, "4");
-        let points = doc.state().objects[0].curve.sample().unwrap();
+        let points = doc.state().objects[0].curve().unwrap().sample().unwrap();
         assert!(points.iter().all(|p| p[0].abs() < 1e-9));
     }
     #[test]

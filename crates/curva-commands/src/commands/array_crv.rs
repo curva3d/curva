@@ -1,6 +1,6 @@
 //! `ArrayCrv`: copies objects at equal distances along a curve, keeping their direction.
 
-use super::{ask_objects, geometry_failed, ghosts, unexpected};
+use super::{ask_objects, curve_at, geometry_failed, ghosts, unexpected};
 use crate::{Answer, Command, Kind, Live, Message, Request, Step};
 use curva_document::Document;
 use curva_kernel::{Curve, KernelError, Point, gap, sub};
@@ -49,16 +49,11 @@ impl Command for ArrayCrv {
         };
         match (&self.path, answer) {
             (None, Some(Answer::Point(at))) => {
-                let on = doc.state().objects.iter().find(|object| {
-                    object
-                        .curve
-                        .closest_point(at)
-                        .is_ok_and(|p| gap(p, at) <= ON_CURVE)
-                });
-                let Some(object) = on else {
+                let on = curve_at(doc, at, ON_CURVE).ok().flatten();
+                let Some((_, path)) = on else {
                     return Step::Ask(Request::new("prompt.arraycrv.path", Kind::PickPart));
                 };
-                self.path = Some(object.curve.clone());
+                self.path = Some(path);
                 Step::Ask(Request::new("prompt.arraypolar.items", Kind::Number))
             }
             (Some(path), Some(Answer::Number(typed))) => {
@@ -116,7 +111,7 @@ mod tests {
         doc.state()
             .objects
             .iter()
-            .map(|object| object.curve.sample().unwrap()[0])
+            .map(|object| object.curve().unwrap().sample().unwrap()[0])
             .collect()
     }
 

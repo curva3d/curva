@@ -115,7 +115,14 @@ mod tests {
     }
 
     fn last_start(doc: &Document) -> [f64; 3] {
-        doc.state().objects.last().unwrap().curve.sample().unwrap()[0]
+        doc.state()
+            .objects
+            .last()
+            .unwrap()
+            .curve()
+            .unwrap()
+            .sample()
+            .unwrap()[0]
     }
 
     #[test]
