@@ -5,11 +5,11 @@ mod gpu;
 mod gumball;
 mod snap;
 
-use curva_document::State;
+use curva_document::{Shape, State};
 use curva_kernel::{Curve, Point};
 
 pub use camera::{CPlane, Camera, StandardView};
-pub use gpu::{Drawing, LineRenderer, VIEW_SLOTS, save_picture};
+pub use gpu::{DEPTH_BITS, Drawing, LineRenderer, Picture, VIEW_SLOTS, save_picture};
 pub use gumball::{Gumball, GumballChange, Handle};
 pub use snap::{SnapHit, SnapKind, SnapSet, constrained};
 
@@ -21,6 +21,8 @@ const GRID_COLOUR: [f32; 3] = [0.30, 0.31, 0.34];
 const CURVE_COLOUR: [f32; 3] = [0.92, 0.92, 0.95];
 const SELECTED_COLOUR: [f32; 3] = [1.0, 0.85, 0.2];
 const LOCKED_COLOUR: [f32; 3] = [0.45, 0.45, 0.48];
+/// Edges of surfaces and solids in shaded views.
+const EDGE_ON_FACES_COLOUR: [f32; 3] = [0.08, 0.08, 0.1];
 /// The colour every preview is drawn in.
 pub const PREVIEW_COLOUR: [f32; 3] = [0.45, 0.75, 1.0];
 const X_AXIS_COLOUR: [f32; 3] = [0.85, 0.3, 0.3];
@@ -35,9 +37,31 @@ pub struct Vertex {
     pub colour: [f32; 3],
 }
 
+/// One corner of a shaded triangle.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MeshVertex {
+    /// Position in model space.
+    pub position: [f32; 3],
+    /// Which way the surface faces here, of length 1.
+    pub normal: [f32; 3],
+    /// Colour, red, green and blue from 0 to 1.
+    pub colour: [f32; 3],
+}
+
+/// A body's triangles, ready to shade.
+#[derive(Clone, Debug, PartialEq)]
+struct Faces {
+    id: u64,
+    colour: [f32; 3],
+    locked: bool,
+    mesh: curva_kernel::BodyMesh,
+}
+
 /// The drawable outline of each object.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Outlines {
+    /// The triangles of each surface and solid, for shaded views.
+    faces: Vec<Faces>,
     /// Object id and points along it.
     pub objects: Vec<(u64, Vec<Point>)>,
     /// The fixed places that can be snapped to.
@@ -46,22 +70,83 @@ pub struct Outlines {
     colours: Vec<[f32; 3]>,
     /// Whether each object is locked, in the same order.
     locked: Vec<bool>,
+    /// Whether each entry is an edge of a surface or solid, in the same order.
+    on_faces: Vec<bool>,
     /// The box around each object, in the same order, so snapping can skip far-off ones.
     boxes: Vec<(Point, Point)>,
+}
+
+/// Meshes of bodies already worked out, so a body is meshed again only when it changes.
+#[derive(Debug, Default)]
+pub struct MeshCache {
+    held: std::collections::HashMap<u64, (curva_kernel::Body, curva_kernel::BodyMesh)>,
+}
+
+impl MeshCache {
+    fn mesh(&mut self, id: u64, body: &curva_kernel::Body) -> Option<curva_kernel::BodyMesh> {
+        if let Some((held, mesh)) = self.held.get(&id)
+            && held == body
+        {
+            return Some(mesh.clone());
+        }
+        let mesh = body.mesh().ok()?;
+        self.held.insert(id, (body.clone(), mesh.clone()));
+        Some(mesh)
+    }
+
+    /// Forgets bodies that are gone.
+    fn keep_only(&mut self, state: &State) {
+        self.held
+            .retain(|id, _| state.objects.iter().any(|object| object.id == *id));
+    }
 }
 
 impl Outlines {
     /// Samples every object. An object that cannot be sampled is left out, not fatal to drawing.
     #[must_use]
     pub fn of(state: &State) -> Self {
+        Self::of_cached(state, &mut MeshCache::default())
+    }
+
+    /// As [`Self::of`], reusing the meshes of bodies that have not changed.
+    #[must_use]
+    pub fn of_cached(state: &State, cache: &mut MeshCache) -> Self {
+        cache.keep_only(state);
         let mut outlines = Self::default();
         for object in &state.objects {
             let layer = state.layers.iter().find(|l| l.id == object.layer);
             if object.hidden || layer.is_some_and(|l| !l.visible) {
                 continue;
             }
-            // A body is drawn by its edges, each listed under the body's id.
-            for outline in object.shape.outlines() {
+            let colour = layer.map_or(CURVE_COLOUR, |l| l.colour);
+            let locked = layer.is_some_and(|l| l.locked);
+            // A body is meshed once: its triangles for shading, and its edges, each listed
+            // under the body's id, for wireframe, picking and snapping.
+            let pieces = match &object.shape {
+                Shape::Curve(curve) => vec![curve.clone()],
+                Shape::Body(body) => {
+                    let Some(mesh) = cache.mesh(object.id, body) else {
+                        continue;
+                    };
+                    let edges = mesh
+                        .edges
+                        .iter()
+                        .filter_map(|run| match run.len() {
+                            0 | 1 => None,
+                            2 => Curve::line(run[0], run[1]).ok(),
+                            _ => Curve::polyline(run.clone(), false).ok(),
+                        })
+                        .collect();
+                    outlines.faces.push(Faces {
+                        id: object.id,
+                        colour,
+                        locked,
+                        mesh,
+                    });
+                    edges
+                }
+            };
+            for outline in pieces {
                 let Ok(points) = outline.sample() else {
                     continue;
                 };
@@ -69,10 +154,9 @@ impl Outlines {
                 let first = points.first().copied().unwrap_or_default();
                 let around = snap::box_around(&points).unwrap_or((first, first));
                 outlines.boxes.push(around);
-                outlines
-                    .colours
-                    .push(layer.map_or(CURVE_COLOUR, |l| l.colour));
-                outlines.locked.push(layer.is_some_and(|l| l.locked));
+                outlines.colours.push(colour);
+                outlines.locked.push(locked);
+                outlines.on_faces.push(object.shape.body().is_some());
                 outlines.objects.push((object.id, points));
             }
         }
@@ -403,21 +487,73 @@ pub fn scene_lines(outlines: &Outlines, selected: &[u64]) -> Vec<Vertex> {
     out
 }
 
+/// The grid, axes and objects as line segments for a shaded view.
+#[must_use]
+pub fn shaded_scene_lines(outlines: &Outlines, selected: &[u64]) -> Vec<Vertex> {
+    let mut out = grid_lines(&CPlane::WORLD_XY);
+    out.extend(shaded_object_lines(outlines, selected));
+    out
+}
+
 /// The objects as line segments.
 #[must_use]
 pub fn object_lines(outlines: &Outlines, selected: &[u64]) -> Vec<Vertex> {
+    lines_of(outlines, selected, false)
+}
+
+/// The objects as line segments for a shaded view, where the edges of surfaces and solids
+/// are dark so they show against the faces, as in Rhino. Curves keep their layer's colour.
+#[must_use]
+pub fn shaded_object_lines(outlines: &Outlines, selected: &[u64]) -> Vec<Vertex> {
+    lines_of(outlines, selected, true)
+}
+
+fn lines_of(outlines: &Outlines, selected: &[u64], shaded: bool) -> Vec<Vertex> {
     let mut out = Vec::new();
     for (index, (id, points)) in outlines.objects.iter().enumerate() {
+        let on_faces = outlines.on_faces.get(index).copied().unwrap_or(false);
         let colour = if selected.contains(id) {
             SELECTED_COLOUR
+        } else if outlines.locked.get(index).copied().unwrap_or(false) {
+            LOCKED_COLOUR
+        } else if shaded && on_faces {
+            EDGE_ON_FACES_COLOUR
         } else {
-            if outlines.locked.get(index).copied().unwrap_or(false) {
-                LOCKED_COLOUR
-            } else {
-                outlines.colours.get(index).copied().unwrap_or(CURVE_COLOUR)
-            }
+            outlines.colours.get(index).copied().unwrap_or(CURVE_COLOUR)
         };
         polyline(&mut out, points, colour);
+    }
+    out
+}
+
+/// The surfaces and solids as shaded triangles, selected ones in the selection colour.
+#[must_use]
+pub fn face_vertices(outlines: &Outlines, selected: &[u64]) -> Vec<MeshVertex> {
+    let mut out = Vec::new();
+    for faces in &outlines.faces {
+        let colour = if selected.contains(&faces.id) {
+            SELECTED_COLOUR
+        } else if faces.locked {
+            LOCKED_COLOUR
+        } else {
+            faces.colour
+        };
+        let mesh = &faces.mesh;
+        for triangle in &mesh.triangles {
+            for &corner in triangle {
+                let index = corner as usize;
+                let (Some(position), Some(normal)) =
+                    (mesh.positions.get(index), mesh.normals.get(index))
+                else {
+                    continue;
+                };
+                out.push(MeshVertex {
+                    position: narrow(*position),
+                    normal: narrow(*normal),
+                    colour,
+                });
+            }
+        }
     }
     out
 }
@@ -516,6 +652,49 @@ mod tests {
                 .iter()
                 .all(|v| v.colour == LOCKED_COLOUR)
         );
+    }
+
+    #[test]
+    fn solids_give_faces_and_dark_edges_only_in_shaded_views() {
+        let mut doc = Document::default();
+        let solid = doc.add_body(curva_kernel::Body::cuboid([0.0; 3], [1.0, 1.0, 1.0]).unwrap());
+        doc.add(Curve::line([5.0, 0.0, 0.0], [6.0, 0.0, 0.0]).unwrap());
+        let outlines = Outlines::of(doc.state());
+        // Twelve box edges and the line, each its own entry.
+        assert_eq!(outlines.objects.len(), 13);
+        let faces = face_vertices(&outlines, &[]);
+        assert!(faces.len() >= 36 && faces.len().is_multiple_of(3));
+        assert!(faces.iter().all(|v| v.colour == CURVE_COLOUR));
+        assert!(
+            object_lines(&outlines, &[])
+                .iter()
+                .all(|v| v.colour == CURVE_COLOUR)
+        );
+        let shaded = shaded_object_lines(&outlines, &[]);
+        let dark = shaded
+            .iter()
+            .filter(|v| v.colour == EDGE_ON_FACES_COLOUR)
+            .count();
+        assert!(dark >= 24, "every piece of the box's twelve edges is dark");
+        assert_eq!(shaded.len() - dark, 2, "the line keeps its colour");
+        let picked = face_vertices(&outlines, &[solid]);
+        assert!(picked.iter().all(|v| v.colour == SELECTED_COLOUR));
+    }
+
+    #[test]
+    fn a_window_takes_a_solid_only_with_all_its_edges() {
+        let mut doc = Document::default();
+        let solid = doc.add_body(curva_kernel::Body::cuboid([0.0; 3], [4.0, 4.0, 4.0]).unwrap());
+        let outlines = Outlines::of(doc.state());
+        let camera = StandardView::Top.camera();
+        let corner = |p: Point| camera.project(p, SIZE).unwrap();
+        let (a, b) = (corner([-1.0, -1.0, 0.0]), corner([5.0, 5.0, 0.0]));
+        let window = |from: [f64; 2], to: [f64; 2]| outlines.in_box(&camera, from, to, SIZE);
+        assert_eq!(window([a[0], b[1]], [b[0], a[1]]), [solid]);
+        // A window over half the box takes nothing; a crossing box over it takes the solid.
+        let half = corner([2.0, 5.0, 0.0]);
+        assert!(window([a[0], half[1]], [half[0], a[1]]).is_empty());
+        assert_eq!(window([half[0], a[1]], [a[0], half[1]]), [solid]);
     }
 
     #[test]

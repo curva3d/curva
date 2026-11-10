@@ -10,6 +10,9 @@ const MOST_PITCH: f64 = 1.55;
 const ORBIT_SPEED: f64 = 0.008;
 /// How far out a flat view starts, which shows about the whole grid.
 const PARALLEL_DISTANCE: f64 = 330.0;
+/// How far, in multiples of the viewing distance, a flat view sees in front of and behind its
+/// target before depth runs out.
+const FLAT_DEPTH_RANGE: f64 = 1000.0;
 
 fn sub(a: Point, b: Point) -> Point {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
@@ -194,7 +197,7 @@ impl Projector {
 
 impl Camera {
     /// The direction the view looks along.
-    pub(crate) fn forward(&self) -> Point {
+    pub fn forward(&self) -> Point {
         self.axes().0
     }
 
@@ -253,8 +256,14 @@ impl Camera {
         let row = |i: usize| match i {
             0 if parallel => view[0].map(|v| v * fx * flat),
             1 if parallel => view[1].map(|v| v * fy * flat),
-            // A flat view shows everything along its depth, so nothing may be clipped.
-            2 if parallel => [0.0, 0.0, 0.0, 0.5],
+            // A flat view shows everything along its depth, so depth runs over a long range
+            // either side of the target: nearer points still hide farther ones in shaded views.
+            2 if parallel => {
+                let range = 2.0 * FLAT_DEPTH_RANGE * self.distance;
+                let mut row = view[2].map(|v| -v / range);
+                row[3] += 0.5 - self.distance / range;
+                row
+            }
             3 if parallel => [0.0, 0.0, 0.0, 1.0],
             0 => view[0].map(|v| v * fx),
             1 => view[1].map(|v| v * fy),
@@ -392,6 +401,24 @@ impl Camera {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn flat_views_keep_nearer_points_in_front() {
+        let camera = StandardView::Top.camera();
+        let depth = |p: Point| {
+            let m = camera.matrix(1.5);
+            let clip: Vec<f32> = (0..4)
+                .map(|r| (0..3).map(|c| m[c][r] * p[c] as f32).sum::<f32>() + m[3][r])
+                .collect();
+            clip[2] / clip[3]
+        };
+        let (high, low) = (depth([0.0, 0.0, 50.0]), depth([0.0, 0.0, -50.0]));
+        assert!(
+            high < low,
+            "seen from above, higher is nearer: {high} {low}"
+        );
+        assert!((0.0..=1.0).contains(&high) && (0.0..=1.0).contains(&low));
+    }
 
     #[test]
     fn a_saved_view_gives_back_the_same_camera() {

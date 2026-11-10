@@ -266,3 +266,6 @@ prompt.box.other = Other corner of the base
 prompt.box.height = Height
 error.flat_box = A box needs a height.
 done.box = Created a box.
+prompt.setdisplaymode.mode = Display mode
+ui.display.wireframe = Wireframe
+ui.display.shaded = Shaded
