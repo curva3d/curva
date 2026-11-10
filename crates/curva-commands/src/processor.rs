@@ -233,6 +233,18 @@ impl Processor {
                 vec![request.options.join(", ")],
             )),
         };
+        // As in Rhino, the start of an option's name is enough when no other option shares it.
+        let answer = answer.or_else(|message| {
+            let lowered = typed.to_lowercase();
+            let mut starting = request
+                .options
+                .iter()
+                .filter(|option| option.to_lowercase().starts_with(&lowered));
+            match (starting.next(), starting.next()) {
+                (Some(option), None) => Ok(Answer::Option(option)),
+                _ => Err(message),
+            }
+        });
         match answer {
             Ok(answer) => self.advance(doc, Some(answer)),
             Err(message) => self.say(&message),
@@ -367,6 +379,30 @@ mod tests {
             processor.submit(&mut doc, typed);
         }
         assert_eq!(doc.state().objects.len(), 2);
+    }
+
+    #[test]
+    fn the_start_of_an_option_is_enough_when_only_one_option_has_it() {
+        let mut doc = Document::default();
+        let mut processor = Processor::default();
+        for line in ["polyline", "0,0", "5,0", "5,5", "c"] {
+            processor.submit(&mut doc, line);
+        }
+        assert!(!processor.is_running());
+        assert!(matches!(
+            doc.state().objects[0].curve,
+            curva_kernel::Curve::Polyline { closed: true, .. }
+        ));
+        let id = doc.state().objects[0].id;
+        doc.select(&[id]);
+        for line in ["setpt", "SetX"] {
+            processor.submit(&mut doc, line);
+        }
+        let before = processor.log().len();
+        // `set` starts all three options, so it is not taken as any of them.
+        processor.submit(&mut doc, "set");
+        assert!(processor.is_running());
+        assert!(processor.log().len() > before);
     }
 
     #[test]

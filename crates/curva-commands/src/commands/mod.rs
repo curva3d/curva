@@ -17,11 +17,13 @@ mod divide;
 mod ellipse;
 mod explode;
 mod fillet;
+mod fillet_corners;
 mod flip;
 mod four_view;
 mod front;
 mod hide;
 mod history;
+mod insert_knot;
 mod interpcrv;
 mod invert;
 mod isolate;
@@ -35,13 +37,18 @@ mod new;
 mod offset;
 mod open;
 mod orient;
+mod orient3pt;
 mod perspective;
 mod point;
+mod points_off;
+mod points_on;
 mod polyline;
 mod project_to_cplane;
 mod rebuild;
 mod rectangle;
 mod redo;
+mod remove_control_point;
+mod remove_knot;
 mod rename;
 mod right;
 mod rotate;
@@ -61,9 +68,11 @@ mod sel_prev;
 mod sel_pt;
 mod set_pt;
 mod show;
+mod smooth;
 mod split;
 mod top;
 mod trim;
+mod tween_curves;
 mod undo;
 mod zoom;
 mod zoom_extents;
@@ -99,7 +108,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 68] = [
+pub static COMMANDS: [CommandDef; 77] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -122,6 +131,24 @@ pub static COMMANDS: [CommandDef; 68] = [
     listed!("Divide", [], true, true, divide::Divide),
     listed!("Orient", [], true, true, orient::Orient),
     listed!("Rebuild", [], true, true, rebuild::Rebuild),
+    listed!("PointsOn", [], false, false, points_on::PointsOn),
+    listed!("PointsOff", [], false, false, points_off::PointsOff),
+    listed!(
+        "InsertKnot",
+        ["insertcontrolpoint"],
+        true,
+        true,
+        insert_knot::InsertKnot
+    ),
+    listed!("RemoveKnot", [], true, true, remove_knot::RemoveKnot),
+    listed!(
+        "RemoveControlPoint",
+        [],
+        true,
+        true,
+        remove_control_point::RemoveControlPoint
+    ),
+    listed!("Smooth", [], true, true, smooth::Smooth),
     listed!("History", [], false, false, history::History),
     listed!("Flip", [], true, true, flip::Flip),
     listed!("CloseCrv", [], true, true, close_crv::CloseCrv),
@@ -170,6 +197,15 @@ pub static COMMANDS: [CommandDef; 68] = [
     listed!("Trim", ["tr"], true, true, trim::Trim),
     listed!("Offset", [], true, true, offset::Offset),
     listed!("Fillet", [], true, true, fillet::Fillet),
+    listed!(
+        "FilletCorners",
+        [],
+        true,
+        true,
+        fillet_corners::FilletCorners
+    ),
+    listed!("TweenCurves", [], true, true, tween_curves::TweenCurves),
+    listed!("Orient3Pt", [], true, true, orient3pt::Orient3Pt),
     listed!("Chamfer", [], true, true, chamfer::Chamfer),
     listed!("Ellipse", ["el"], true, true, ellipse::Ellipse),
     listed!("Rotate3D", [], true, true, rotate3d::Rotate3D),
@@ -408,7 +444,7 @@ mod tests {
 
     /// For each command that changes geometry, the typed steps that reach its live preview.
     /// A new command must be added here, which is how the preview rule in AGENTS.md is enforced.
-    const PREVIEW_STEPS: [(&str, &[&str]); 21] = [
+    const PREVIEW_STEPS: [(&str, &[&str]); 23] = [
         ("Line", &["0,0"]),
         ("Polyline", &["0,0", "9,0"]),
         ("InterpCrv", &["0,0", "9,0"]),
@@ -430,6 +466,8 @@ mod tests {
         ("Point", &[]),
         ("Orient", &["0,0"]),
         ("SetPt", &["SetX", "SetZ"]),
+        ("Orient3Pt", &["0,0", "2,0", "0,2", "5,0,0", "5,2,0"]),
+        ("Smooth", &[]),
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
@@ -448,8 +486,19 @@ mod tests {
     ];
 
     /// Commands whose preview needs its own setup, tested in their own files.
-    const PREVIEW_TESTED_ELSEWHERE: [&str; 6] =
-        ["Trim", "Fillet", "Chamfer", "Divide", "ArrayCrv", "Rebuild"];
+    const PREVIEW_TESTED_ELSEWHERE: [&str; 11] = [
+        "Trim",
+        "Fillet",
+        "Chamfer",
+        "Divide",
+        "ArrayCrv",
+        "Rebuild",
+        "FilletCorners",
+        "TweenCurves",
+        "InsertKnot",
+        "RemoveKnot",
+        "RemoveControlPoint",
+    ];
 
     #[test]
     fn every_command_that_changes_geometry_is_listed_for_a_preview() {
@@ -753,7 +802,10 @@ mod tests {
     }
     #[test]
     fn completion_offers_matching_names() {
-        assert_eq!(completions("po"), ["Polyline", "Point"]);
+        assert_eq!(
+            completions("po"),
+            ["Polyline", "Point", "PointsOn", "PointsOff"]
+        );
         assert!(completions("").is_empty());
     }
 

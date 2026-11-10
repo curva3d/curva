@@ -6,7 +6,9 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+mod grips;
 mod history;
+pub use grips::Grip;
 mod layers;
 mod views;
 pub use views::SavedView;
@@ -142,6 +144,10 @@ pub struct Document {
     previous_selection: Vec<u64>,
     /// Views saved under a name. Saved in the file, but not part of undo.
     views: Vec<SavedView>,
+    /// Objects showing their control points. Not saved, and not part of undo.
+    showing_points: BTreeSet<u64>,
+    /// The picked control points. Not saved, and not part of undo.
+    grip_selection: BTreeSet<Grip>,
 }
 
 impl Document {

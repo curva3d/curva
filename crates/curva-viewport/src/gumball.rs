@@ -53,6 +53,15 @@ impl GumballChange {
             Self::Turn(change) => curve.mapped(change),
         }
     }
+
+    /// A point after the change, for moving control points.
+    #[must_use]
+    pub fn moved_point(&self, p: Point) -> Point {
+        match self {
+            Self::Move(by) => plus(p, *by, 1.0),
+            Self::Turn(change) => change.point(p),
+        }
+    }
 }
 
 fn plus(p: Point, direction: Point, amount: f64) -> Point {
