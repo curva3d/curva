@@ -75,13 +75,18 @@ mod tests {
         run(&mut doc, steps).take_view_request()
     }
 
-
     #[test]
     fn several_view_changes_in_a_row_all_wait_their_turn() {
         let mut doc = Document::default();
         let mut processor = run(&mut doc, &["zoom", "in", "zoom", "out"]);
-        assert_eq!(processor.take_view_request(), Some(ViewRequest::ZoomBy(2.0)));
-        assert_eq!(processor.take_view_request(), Some(ViewRequest::ZoomBy(0.5)));
+        assert_eq!(
+            processor.take_view_request(),
+            Some(ViewRequest::ZoomBy(2.0))
+        );
+        assert_eq!(
+            processor.take_view_request(),
+            Some(ViewRequest::ZoomBy(0.5))
+        );
         assert_eq!(processor.take_view_request(), None);
     }
 
