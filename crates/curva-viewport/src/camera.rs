@@ -1,5 +1,6 @@
 //! The viewport camera: a perspective view orbiting a target, with Z up as in Rhino.
 
+use curva_document::SavedView;
 use curva_kernel::Point;
 
 const FIELD_OF_VIEW: f64 = 0.7;
@@ -138,6 +139,25 @@ impl StandardView {
             Self::Front => CPlane::WORLD_XZ,
             Self::Right => CPlane::WORLD_YZ,
         }
+    }
+
+    /// The word a saved view stores for this view.
+    #[must_use]
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Top => "Top",
+            Self::Front => "Front",
+            Self::Right => "Right",
+            Self::Perspective => "Perspective",
+        }
+    }
+
+    /// The view a saved view's word stands for.
+    #[must_use]
+    pub fn from_key(key: &str) -> Option<Self> {
+        [Self::Top, Self::Front, Self::Right, Self::Perspective]
+            .into_iter()
+            .find(|view| view.key() == key)
     }
 }
 
@@ -339,11 +359,51 @@ impl Camera {
         let diagonal = dot(sub(high, low), sub(high, low)).sqrt().max(1.0);
         self.distance = diagonal * self.focal() * 0.75;
     }
+
+    /// This camera saved under a name, as seen from the standard view `kind`.
+    #[must_use]
+    pub fn saved(&self, name: String, kind: StandardView) -> SavedView {
+        SavedView {
+            name,
+            kind: kind.key().to_owned(),
+            target: self.target,
+            yaw: self.yaw,
+            pitch: self.pitch,
+            distance: self.distance,
+            axes: self.fixed_axes,
+            parallel: self.parallel,
+        }
+    }
+
+    /// The camera a saved view holds.
+    #[must_use]
+    pub fn from_saved(view: &SavedView) -> Self {
+        Self {
+            target: view.target,
+            yaw: view.yaw,
+            pitch: view.pitch,
+            distance: view.distance,
+            fixed_axes: view.axes,
+            parallel: view.parallel,
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_saved_view_gives_back_the_same_camera() {
+        for view in [StandardView::Top, StandardView::Perspective] {
+            let mut camera = view.camera();
+            camera.zoom(0.5);
+            camera.target = [3.0, 4.0, 5.0];
+            let saved = camera.saved("Corner".to_owned(), view);
+            assert_eq!(StandardView::from_key(&saved.kind), Some(view));
+            assert_eq!(Camera::from_saved(&saved), camera);
+        }
+    }
 
     const SIZE: [f64; 2] = [800.0, 600.0];
 

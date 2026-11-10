@@ -440,7 +440,7 @@ impl Curve {
         }
     }
 
-    fn is_closed(&self) -> Result<bool, KernelError> {
+    pub(crate) fn is_closed(&self) -> Result<bool, KernelError> {
         let path = self.sample()?;
         Ok(match (path.first(), path.last()) {
             (Some(first), Some(last)) => path.len() > 2 && gap(*first, *last) <= JOIN_TOLERANCE,

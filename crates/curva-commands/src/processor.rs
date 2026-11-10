@@ -19,7 +19,7 @@ pub struct Processor {
     last_point: Option<Point>,
     log: Vec<String>,
     text: Translations,
-    view_request: Option<ViewRequest>,
+    view_requests: std::collections::VecDeque<ViewRequest>,
 }
 
 impl Default for Processor {
@@ -30,7 +30,7 @@ impl Default for Processor {
             last_point: None,
             log: Vec::new(),
             text: Translations::english(),
-            view_request: None,
+            view_requests: std::collections::VecDeque::new(),
         }
     }
 }
@@ -125,9 +125,9 @@ impl Processor {
         self.log.push(line);
     }
 
-    /// The change of view a command asked for, if one is waiting to be carried out.
+    /// The oldest change of view a command asked for that is still waiting to be carried out.
     pub fn take_view_request(&mut self) -> Option<ViewRequest> {
-        self.view_request.take()
+        self.view_requests.pop_front()
     }
 
     /// Commands the typed text could be, best first.
@@ -292,7 +292,7 @@ impl Processor {
             }
             Step::View(request) => {
                 self.active = None;
-                self.view_request = Some(request);
+                self.view_requests.push_back(request);
             }
             Step::Failed(message) => {
                 if let Some(active) = self.active.take()

@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 
 mod history;
 mod layers;
+mod views;
+pub use views::SavedView;
 
 pub use history::Recipe;
 
@@ -102,6 +104,8 @@ impl Default for State {
 struct FileContents {
     format: String,
     state: State,
+    #[serde(default)]
+    views: Vec<SavedView>,
 }
 
 /// Why a file could not be saved or opened.
@@ -132,6 +136,12 @@ pub struct Document {
     recording_history: bool,
     /// Values commands keep between runs, such as the last offset distance. Not saved.
     remembered: std::collections::BTreeMap<&'static str, f64>,
+    /// The objects the last recorded change made or altered, for `SelLast`. Not saved.
+    last_changed: Vec<u64>,
+    /// The selection before it was last replaced, for `SelPrev`. Not saved.
+    previous_selection: Vec<u64>,
+    /// Views saved under a name. Saved in the file, but not part of undo.
+    views: Vec<SavedView>,
 }
 
 impl Document {
@@ -345,15 +355,47 @@ impl Document {
 
     /// Replaces the selection, ignoring ids that do not exist.
     pub fn select(&mut self, ids: &[u64]) {
+        let old = std::mem::take(&mut self.selection);
         self.selection = ids
             .iter()
             .copied()
             .filter(|id| self.state.objects.iter().any(|object| object.id == *id))
             .collect();
+        if !old.is_empty() && old != self.selection {
+            self.previous_selection = old.into_iter().collect();
+        }
+    }
+
+    /// The objects the last recorded change made or altered that still exist.
+    #[must_use]
+    pub fn last_changed(&self) -> Vec<u64> {
+        self.existing(&self.last_changed)
+    }
+
+    /// The selection before it was last replaced, leaving out objects that are gone.
+    #[must_use]
+    pub fn previous_selection(&self) -> Vec<u64> {
+        self.existing(&self.previous_selection)
+    }
+
+    fn existing(&self, ids: &[u64]) -> Vec<u64> {
+        ids.iter()
+            .copied()
+            .filter(|id| self.state.objects.iter().any(|object| object.id == *id))
+            .collect()
     }
 
     /// Records `before` as one undo step, and clears anything that could be redone.
     pub fn record_change(&mut self, before: State) {
+        let earlier: std::collections::BTreeMap<u64, &Curve> =
+            before.objects.iter().map(|o| (o.id, &o.curve)).collect();
+        self.last_changed = self
+            .state
+            .objects
+            .iter()
+            .filter(|o| earlier.get(&o.id) != Some(&&o.curve))
+            .map(|o| o.id)
+            .collect();
         self.undo.push(before);
         self.redo.clear();
     }
@@ -394,6 +436,7 @@ impl Document {
         let contents = FileContents {
             format: FORMAT.to_owned(),
             state: self.state.clone(),
+            views: self.views.clone(),
         };
         let text = serde_json::to_string_pretty(&contents).map_err(|e| FileError(e.to_string()))?;
         std::fs::write(path, text).map_err(|e| FileError(e.to_string()))?;
@@ -411,6 +454,7 @@ impl Document {
         }
         Ok(Self {
             state: contents.state,
+            views: contents.views,
             path: Some(path.to_owned()),
             ..Self::default()
         })

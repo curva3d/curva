@@ -1,6 +1,7 @@
 //! The list of commands, and the steps several of them share. One command per file.
 
 mod arc;
+mod area;
 mod array;
 mod array_crv;
 mod array_polar;
@@ -29,6 +30,7 @@ mod length;
 mod line;
 mod mirror;
 mod move_objects;
+mod named_view;
 mod new;
 mod offset;
 mod open;
@@ -36,6 +38,7 @@ mod orient;
 mod perspective;
 mod point;
 mod polyline;
+mod project_to_cplane;
 mod rebuild;
 mod rectangle;
 mod redo;
@@ -50,15 +53,19 @@ mod scale2d;
 mod sel_all;
 mod sel_crv;
 mod sel_dup;
+mod sel_last;
 mod sel_layer;
 mod sel_name;
 mod sel_none;
+mod sel_prev;
 mod sel_pt;
+mod set_pt;
 mod show;
 mod split;
 mod top;
 mod trim;
 mod undo;
+mod zoom;
 mod zoom_extents;
 mod zoom_selected;
 
@@ -92,7 +99,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 61] = [
+pub static COMMANDS: [CommandDef; 68] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -127,6 +134,8 @@ pub static COMMANDS: [CommandDef; 61] = [
     listed!("SelName", [], false, false, sel_name::SelName),
     listed!("SelLayer", [], false, false, sel_layer::SelLayer),
     listed!("SelDup", [], false, false, sel_dup::SelDup),
+    listed!("SelLast", [], false, false, sel_last::SelLast),
+    listed!("SelPrev", [], false, false, sel_prev::SelPrev),
     listed!("Rename", [], true, true, rename::Rename),
     listed!("Isolate", [], true, true, isolate::Isolate),
     listed!(
@@ -146,6 +155,15 @@ pub static COMMANDS: [CommandDef; 61] = [
     listed!("Invert", [], false, false, invert::Invert),
     listed!("Distance", ["dist"], true, false, distance::Distance),
     listed!("Length", ["len"], true, false, length::Length),
+    listed!("Area", [], true, false, area::Area),
+    listed!("SetPt", [], true, true, set_pt::SetPt),
+    listed!(
+        "ProjectToCPlane",
+        [],
+        true,
+        true,
+        project_to_cplane::ProjectToCPlane
+    ),
     listed!("Join", ["j"], true, true, join::Join),
     listed!("Explode", ["x"], true, true, explode::Explode),
     listed!("Split", [], true, true, split::Split),
@@ -178,6 +196,8 @@ pub static COMMANDS: [CommandDef; 61] = [
     listed!("Right", [], false, false, right::Right),
     listed!("Perspective", [], false, false, perspective::Perspective),
     listed!("CPlane", [], false, false, cplane::SetCPlane),
+    listed!("Zoom", [], false, false, zoom::Zoom),
+    listed!("NamedView", ["nv"], false, false, named_view::NamedView),
 ];
 
 /// Finds a command by name or alias, ignoring case.
@@ -388,7 +408,7 @@ mod tests {
 
     /// For each command that changes geometry, the typed steps that reach its live preview.
     /// A new command must be added here, which is how the preview rule in AGENTS.md is enforced.
-    const PREVIEW_STEPS: [(&str, &[&str]); 20] = [
+    const PREVIEW_STEPS: [(&str, &[&str]); 21] = [
         ("Line", &["0,0"]),
         ("Polyline", &["0,0", "9,0"]),
         ("InterpCrv", &["0,0", "9,0"]),
@@ -409,12 +429,22 @@ mod tests {
         ("Scale2D", &["0,0", "5,0"]),
         ("Point", &[]),
         ("Orient", &["0,0"]),
+        ("SetPt", &["SetX", "SetZ"]),
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 10] = [
-        "Delete", "Join", "Explode", "Split", "Flip", "CloseCrv", "Hide", "Show", "Rename",
+    const NOTHING_TO_PREVIEW: [&str; 11] = [
+        "Delete",
+        "Join",
+        "Explode",
+        "Split",
+        "Flip",
+        "CloseCrv",
+        "Hide",
+        "Show",
+        "Rename",
         "Isolate",
+        "ProjectToCPlane",
     ];
 
     /// Commands whose preview needs its own setup, tested in their own files.

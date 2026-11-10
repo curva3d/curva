@@ -186,6 +186,8 @@ struct Pane {
     camera: Camera,
     grid: Arc<Vec<curva_viewport::Vertex>>,
     gestures: LeftGestures,
+    /// The saved view it shows, whose name becomes its title.
+    named: Option<String>,
 }
 
 impl Pane {
@@ -201,6 +203,7 @@ impl Pane {
             plane: view.plane(),
             grid: Arc::new(grid_lines(&view.plane())),
             gestures: LeftGestures::default(),
+            named: None,
         }
     }
 }
@@ -969,8 +972,13 @@ impl Curva {
     }
 
     fn answer_agent(&mut self, request: &curva_mcp::AgentRequest) {
+        // Earlier requests may have changed the view, and a picture shows what the window does.
+        self.apply_view_request();
+        let camera = self.panes[self.active].camera;
+        let draw = move |doc: &Document| picture_from(doc, &camera);
         let answer =
-            Session::new(&mut self.doc, &mut self.processor, mcp_picture).handle(&request.message);
+            Session::new(&mut self.doc, &mut self.processor, &draw).handle(&request.message);
+        self.apply_view_request();
         // A client that has gone away no longer needs its answer.
         let _ = request.answer.send(answer);
     }
@@ -1037,10 +1045,49 @@ impl Curva {
         self.doc.set_work_origin(plane.origin);
     }
 
-    /// Carries out a change of view asked for by a command.
+    /// Carries out the changes of view commands asked for, oldest first.
     fn apply_view_request(&mut self) {
-        match self.processor.take_view_request() {
-            Some(ViewRequest::ZoomExtents) => {
+        while let Some(request) = self.processor.take_view_request() {
+            self.apply_view(request);
+        }
+    }
+
+    /// Carries out one change of view.
+    fn apply_view(&mut self, request: ViewRequest) {
+        match request {
+            ViewRequest::ZoomBy(factor) => {
+                self.panes[self.active].camera.zoom(1.0 / factor);
+            }
+            ViewRequest::ZoomWindow(a, b) => {
+                let low = std::array::from_fn(|axis| a[axis].min(b[axis]));
+                let high = std::array::from_fn(|axis| a[axis].max(b[axis]));
+                self.panes[self.active].camera.frame(low, high);
+            }
+            ViewRequest::ZoomTarget(at) => {
+                self.panes[self.active].camera.target = at;
+            }
+            ViewRequest::SaveView(name) => {
+                let pane = &self.panes[self.active];
+                let view = pane.camera.saved(name.clone(), pane.view);
+                self.doc.save_view(view);
+                let said = self
+                    .text
+                    .render(&Message::with("done.namedview.save", vec![name]));
+                self.processor.note(said);
+            }
+            ViewRequest::RestoreView(name) => {
+                if let Some(saved) = self.doc.saved_view(&name).cloned() {
+                    let pane = &mut self.panes[self.active];
+                    if let Some(kind) = StandardView::from_key(&saved.kind)
+                        && kind != pane.view
+                    {
+                        *pane = Pane::new(kind);
+                    }
+                    pane.camera = Camera::from_saved(&saved);
+                    pane.named = Some(saved.name);
+                }
+            }
+            ViewRequest::ZoomExtents => {
                 self.refresh_scene();
                 if let Some((low, high)) = self.outlines.bounds() {
                     for pane in &mut self.panes {
@@ -1048,7 +1095,7 @@ impl Curva {
                     }
                 }
             }
-            Some(ViewRequest::ZoomSelected) => {
+            ViewRequest::ZoomSelected => {
                 self.refresh_scene();
                 if let Some((low, high)) = self.outlines.bounds_of(&self.doc.selection()) {
                     for pane in &mut self.panes {
@@ -1056,11 +1103,11 @@ impl Curva {
                     }
                 }
             }
-            Some(ViewRequest::FourViews) => {
+            ViewRequest::FourViews => {
                 self.panes = standard_panes();
                 self.maximised = None;
             }
-            Some(ViewRequest::SetCPlane { origin, x, y }) => {
+            ViewRequest::SetCPlane { origin, x, y } => {
                 let normal = curva_kernel::cross(x, y);
                 self.panes[self.active].set_plane(CPlane {
                     origin,
@@ -1069,14 +1116,13 @@ impl Curva {
                     normal,
                 });
             }
-            Some(ViewRequest::ResetCPlane) => {
+            ViewRequest::ResetCPlane => {
                 let pane = &mut self.panes[self.active];
                 pane.set_plane(pane.view.plane());
             }
-            Some(ViewRequest::Show(name)) => {
+            ViewRequest::Show(name) => {
                 self.panes[self.active] = Pane::new(standard_view(name));
             }
-            None => {}
         }
     }
 
@@ -1199,8 +1245,10 @@ impl Curva {
         painter.text(
             rect.left_top() + egui::vec2(6.0, 3.0),
             egui::Align2::LEFT_TOP,
-            self.text
-                .render(&Message::new(view_label(self.panes[pane].view))),
+            self.panes[pane].named.clone().unwrap_or_else(|| {
+                self.text
+                    .render(&Message::new(view_label(self.panes[pane].view)))
+            }),
             egui::TextStyle::Body.resolve(ui.style()),
             TITLE_COLOUR,
         );
@@ -1327,6 +1375,12 @@ fn mcp_picture(doc: &Document) -> Result<Vec<u8>, String> {
     if let Some((low, high)) = outlines.bounds() {
         camera.frame(low, high);
     }
+    picture_from(doc, &camera)
+}
+
+/// A picture of the model seen by `camera`, as the bytes of a PNG file.
+fn picture_from(doc: &Document, camera: &Camera) -> Result<Vec<u8>, String> {
+    let outlines = Outlines::of(doc.state());
     let aspect = f64::from(PICTURE_SIZE[0]) / f64::from(PICTURE_SIZE[1]);
     let path = std::env::temp_dir().join(format!("curva-mcp-{}.png", std::process::id()));
     save_picture(

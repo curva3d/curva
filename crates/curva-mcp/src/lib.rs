@@ -22,11 +22,14 @@ const BASE64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz
 /// Draws the model and returns a PNG file's bytes.
 pub type Renderer = fn(&Document) -> Result<Vec<u8>, String>;
 
+/// Draws the model for one request, perhaps as a window currently shows it.
+pub type Drawing<'a> = &'a dyn Fn(&Document) -> Result<Vec<u8>, String>;
+
 /// A request working on a model lent to it.
 pub struct Session<'a> {
     doc: &'a mut Document,
     processor: &'a mut Processor,
-    renderer: Renderer,
+    renderer: Drawing<'a>,
 }
 
 /// A model being worked on by an agent.
@@ -108,7 +111,7 @@ fn tools() -> Value {
         },
         {
             "name": "render_view",
-            "description": "Returns a picture of the model, so that an agent can check its own work.",
+            "description": "Returns a picture of the model, so that an agent can check its own work. In a Curva window it shows the last-used viewport as it is; otherwise the whole model is fitted in a perspective view.",
             "inputSchema": no_arguments
         }
     ])
@@ -116,7 +119,7 @@ fn tools() -> Value {
 
 impl<'a> Session<'a> {
     /// Lends a model to an agent's request.
-    pub fn new(doc: &'a mut Document, processor: &'a mut Processor, renderer: Renderer) -> Self {
+    pub fn new(doc: &'a mut Document, processor: &'a mut Processor, renderer: Drawing<'a>) -> Self {
         Self {
             doc,
             processor,
@@ -307,7 +310,7 @@ impl Server {
         Session {
             doc: &mut self.doc,
             processor: &mut self.processor,
-            renderer: self.renderer,
+            renderer: &self.renderer,
         }
         .handle(message)
     }
@@ -519,7 +522,7 @@ mod tests {
     fn a_session_works_on_a_document_it_is_lent() {
         let mut doc = Document::default();
         let mut processor = Processor::default();
-        let mut session = Session::new(&mut doc, &mut processor, fake_picture);
+        let mut session = Session::new(&mut doc, &mut processor, &fake_picture);
         session.handle(&run_message(json!(["line", "0,0", "1,0"])));
         assert_eq!(doc.state().objects.len(), 1);
     }

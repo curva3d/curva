@@ -129,8 +129,18 @@ pub enum ViewName {
 }
 
 /// A change of view, which the interface carries out as the document knows nothing of views.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ViewRequest {
+    /// Bring the last-used viewport closer by this factor; below 1 moves it away.
+    ZoomBy(f64),
+    /// Fit the box between two corners in the last-used viewport.
+    ZoomWindow(Point, Point),
+    /// Look at this point from the same distance in the last-used viewport.
+    ZoomTarget(Point),
+    /// Save the last-used viewport's camera under this name.
+    SaveView(String),
+    /// Show the view saved under this name in the last-used viewport.
+    RestoreView(String),
     /// Fit the model in every viewport.
     ZoomExtents,
     /// Fit the selection in every viewport.
