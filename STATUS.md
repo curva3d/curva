@@ -66,7 +66,8 @@
 - Surfaces and solids in the model and in files (older files still open), drawn by their edges, and moved, turned, scaled, mirrored, copied, hidden and put on layers like curves. `Box` makes the first solids. The properties panel shows a solid's volume or a surface's area.
 - Shaded display: faces lit from the camera with a little light from above, dark edges on solids, depth in every view (flat views included). Pictures made with `--picture` and for agents are shaded too. Solids are meshed once and kept until they change.
 - `ExtrudeCrv` (options Solid and BothSides, distance remembered) and `PlanarSrf`. As in Rhino, an outline and the closed curves inside it become one solid or surface with holes, and separate outlines make separate objects.
-- Next planned: Revolve, Loft, Sweep1, then the booleans.
+- `Revolve` (axis by two points, any angle up to a full turn; a closed curve turned part way is closed at its ends), `Loft` (through the curves in the order they were made, ends left open) and `Sweep1` (rail first, then cross sections; one curve selected beforehand is taken as the rail).
+- Next planned: the booleans (BooleanUnion, BooleanDifference, BooleanIntersection).
 
 **Waiting for the owner**
 - Nothing yet. The engine is solidcore, with Serpentine3D's commands as the base (decision 0010). SolidCraft
