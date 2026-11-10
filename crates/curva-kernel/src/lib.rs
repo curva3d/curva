@@ -10,6 +10,7 @@ use solidcore::query::api_queries::curve_closest_point;
 use solidcore::{Kernel, Point3};
 use std::f64::consts::TAU;
 
+mod area;
 mod conic;
 mod cut;
 mod fillet;

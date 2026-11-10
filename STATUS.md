@@ -52,7 +52,11 @@
 - MCP connected to the open window, behind the Agent access checkbox, with approval of destructive actions.
 - SelCrv, SelPt and BoundingBox.
 - Names, SelName, SelLayer, SelDup, Isolate and ZoomSelected. Agent access starts on.
-- Next planned: the rest of the F1 list (more view commands), then the built-in assistant panel.
+- SelLast, SelPrev, Area, SetPt, ProjectToCPlane, Zoom (window, in, out, target, extents, selected) and
+  NamedView (saved in the file, outside undo). Agent pictures now show the window's last-used viewport.
+- Agent approval errs on the safe side: an answer that reads like a guarded command (`save` in NamedView)
+  also asks the user.
+- Next planned: the rest of the F1 list (TweenCurves, Orient3Pt, FilletCorners, knot and point editing, Dir), then the built-in assistant panel.
 
 **Waiting for the owner**
 - Nothing yet. The engine is solidcore, with Serpentine3D's commands as the base (decision 0010). SolidCraft
