@@ -253,3 +253,7 @@ error.no_points_shown = No control points are on show. Turn them on with PointsO
 prompt.smooth.objects = Select curves to smooth, then press Enter
 prompt.smooth.factor = How far each point moves towards its neighbours, from 0 to 1 <{0}>
 done.smooth = Smoothed {0} control points.
+prompt.dir.objects = Select curves to show the direction of, then press Enter
+prompt.dir.click = Click a curve to flip it, Enter when done
+prompt.dir.flipped = Flipped. Click a curve to flip it, Enter when done
+done.dir = Flipped {0} curves.

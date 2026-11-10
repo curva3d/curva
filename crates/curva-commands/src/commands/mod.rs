@@ -12,6 +12,7 @@ mod close_crv;
 mod copy;
 mod cplane;
 mod delete;
+mod dir;
 mod distance;
 mod divide;
 mod ellipse;
@@ -108,7 +109,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 77] = [
+pub static COMMANDS: [CommandDef; 78] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -151,6 +152,7 @@ pub static COMMANDS: [CommandDef; 77] = [
     listed!("Smooth", [], true, true, smooth::Smooth),
     listed!("History", [], false, false, history::History),
     listed!("Flip", [], true, true, flip::Flip),
+    listed!("Dir", [], true, true, dir::Dir),
     listed!("CloseCrv", [], true, true, close_crv::CloseCrv),
     listed!("Hide", ["h"], true, true, hide::Hide),
     listed!("Show", ["unisolate"], true, true, show::Show),
@@ -444,7 +446,7 @@ mod tests {
 
     /// For each command that changes geometry, the typed steps that reach its live preview.
     /// A new command must be added here, which is how the preview rule in AGENTS.md is enforced.
-    const PREVIEW_STEPS: [(&str, &[&str]); 23] = [
+    const PREVIEW_STEPS: [(&str, &[&str]); 24] = [
         ("Line", &["0,0"]),
         ("Polyline", &["0,0", "9,0"]),
         ("InterpCrv", &["0,0", "9,0"]),
@@ -468,6 +470,7 @@ mod tests {
         ("SetPt", &["SetX", "SetZ"]),
         ("Orient3Pt", &["0,0", "2,0", "0,2", "5,0,0", "5,2,0"]),
         ("Smooth", &[]),
+        ("Dir", &[]),
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.

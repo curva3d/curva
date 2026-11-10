@@ -59,7 +59,8 @@
 - FilletCorners, TweenCurves (closed curves are lined up first so tweens do not twist) and Orient3Pt.
   Option words can be shortened to any start no other option shares, as in Rhino (`c` for Close).
 - Control points (`docs/specs/m1-control-points.md`): PointsOn (F10) and PointsOff (F11), clicking and boxing points, Move, the gumball and SetPt on picked points, InsertKnot (also InsertControlPoint), RemoveKnot, RemoveControlPoint (and Delete with points picked) and Smooth. The owner is trying it by hand. Known gap: pictures made with `--picture` do not show the point squares yet.
-- Next planned: Dir, then the built-in assistant panel.
+- Dir: arrows show which way the chosen curves run; click a curve to flip it, or type Flip for all.
+- Next planned: the built-in assistant panel.
 
 **Waiting for the owner**
 - Nothing yet. The engine is solidcore, with Serpentine3D's commands as the base (decision 0010). SolidCraft
