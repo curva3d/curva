@@ -17,7 +17,9 @@ impl Document {
             .state
             .objects
             .iter()
-            .filter(|o| ids.contains(&o.id) && o.curve.control_points().is_ok())
+            .filter(|o| {
+                ids.contains(&o.id) && o.curve().is_some_and(|c| c.control_points().is_ok())
+            })
             .map(|o| o.id)
             .collect();
         self.showing_points.extend(editable.iter().copied());
@@ -44,8 +46,8 @@ impl Document {
             .iter()
             .filter(|o| !o.hidden && self.showing_points.contains(&o.id))
             .flat_map(|o| {
-                o.curve
-                    .control_points()
+                o.curve()
+                    .and_then(|c| c.control_points().ok())
                     .unwrap_or_default()
                     .into_iter()
                     .enumerate()
@@ -86,14 +88,15 @@ impl Document {
             .objects
             .iter()
             .filter(|o| owners.contains(&o.id))
-            .map(|o| {
-                let mut points = o.curve.control_points()?;
+            .filter_map(|o| o.curve().map(|curve| (o.id, curve)))
+            .map(|(id, curve)| {
+                let mut points = curve.control_points()?;
                 for (index, point) in points.iter_mut().enumerate() {
-                    if grips.contains(&(o.id, index)) {
+                    if grips.contains(&(id, index)) {
                         *point = change(*point);
                     }
                 }
-                Ok((o.id, o.curve.with_control_points(points)?))
+                Ok((id, curve.with_control_points(points)?))
             })
             .collect()
     }
@@ -145,7 +148,7 @@ impl Document {
             .objects
             .iter()
             .find(|o| o.id == id)
-            .map(|o| o.curve.clone())
+            .and_then(|o| o.curve().cloned())
     }
 
     /// The editable curve passing within `reach` of `at`, preferring one that shows its
@@ -156,17 +159,18 @@ impl Document {
             .state
             .objects
             .iter()
-            .filter(|o| !o.hidden && o.curve.control_points().is_ok())
+            .filter(|o| !o.hidden && o.curve().is_some_and(|c| c.control_points().is_ok()))
             .filter(|o| {
-                o.curve
-                    .closest_point(at)
-                    .is_ok_and(|p| curva_kernel::gap(p, at) <= reach)
+                o.curve().is_some_and(|c| {
+                    c.closest_point(at)
+                        .is_ok_and(|p| curva_kernel::gap(p, at) <= reach)
+                })
             })
             .collect();
         near.iter()
             .find(|o| self.showing_points.contains(&o.id))
             .or_else(|| near.first())
-            .map(|o| (o.id, o.curve.clone()))
+            .and_then(|o| Some((o.id, o.curve()?.clone())))
     }
 }
 

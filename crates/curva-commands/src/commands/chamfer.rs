@@ -1,9 +1,9 @@
 //! `Chamfer`: cuts the corner between two lines with a straight line.
 
-use super::{geometry_failed, unexpected};
+use super::{curve_at, geometry_failed, unexpected};
 use crate::{Answer, Command, Kind, Live, Message, Request, Step};
 use curva_document::Document;
-use curva_kernel::{Chamfered, Curve, KernelError, Point, chamfer_lines, gap};
+use curva_kernel::{Chamfered, Curve, KernelError, Point, chamfer_lines};
 
 /// How far from a curve a picked point may be, in millimetres, to mean that curve.
 const ON_CURVE: f64 = 1e-3;
@@ -30,12 +30,7 @@ fn ask(doc: &Document, key: &'static str) -> Step {
 }
 
 fn under(doc: &Document, at: Point) -> Result<Option<(u64, Curve)>, KernelError> {
-    for object in &doc.state().objects {
-        if gap(object.curve.closest_point(at)?, at) <= ON_CURVE {
-            return Ok(Some((object.id, object.curve.clone())));
-        }
-    }
-    Ok(None)
+    curve_at(doc, at, ON_CURVE)
 }
 
 impl Chamfer {
@@ -53,7 +48,7 @@ impl Chamfer {
             .objects
             .iter()
             .find(|object| object.id == first_id)
-            .map(|object| object.curve.clone());
+            .and_then(|object| object.curve().cloned());
         let (Some((second_id, second)), Some(first)) = (under(doc, at)?, first) else {
             return Ok(None);
         };
@@ -137,7 +132,7 @@ mod tests {
         doc.state()
             .objects
             .iter()
-            .map(|object| object.curve.length().unwrap())
+            .map(|object| object.curve().unwrap().length().unwrap())
             .sum()
     }
 

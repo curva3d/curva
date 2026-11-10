@@ -157,7 +157,7 @@ mod tests {
         let mut doc = selected_line();
         run(&mut doc, &["setpt", "SetY", "SetZ", "5,9,9"]);
         assert_eq!(
-            doc.state().objects[0].curve.sample().unwrap(),
+            doc.state().objects[0].curve().unwrap().sample().unwrap(),
             [[5.0, 0.0, 0.0], [5.0, 3.0, 1.0]]
         );
     }
@@ -178,7 +178,11 @@ mod tests {
         doc.select_grips(&[(id, 1), (id, 2)]);
         run(&mut doc, &["setpt", "SetX", "SetZ", "9,0,0"]);
         assert_eq!(
-            doc.state().objects[0].curve.control_points().unwrap(),
+            doc.state().objects[0]
+                .curve()
+                .unwrap()
+                .control_points()
+                .unwrap(),
             [[0.0; 3], [2.0, 0.0, 0.0], [4.0, 0.0, 0.0]]
         );
     }
@@ -190,7 +194,7 @@ mod tests {
         doc.select(&[id]);
         run(&mut doc, &["setpt", "SetX", "SetY", "0,0,4"]);
         assert_eq!(
-            doc.state().objects[0].curve,
+            *doc.state().objects[0].curve().unwrap(),
             Curve::circle([0.0, 0.0, 4.0], 1.0).unwrap()
         );
     }

@@ -41,7 +41,7 @@ mod tests {
         run(&mut doc, &["flip"]);
         assert_eq!(doc.state().objects[0].id, id);
         assert_eq!(
-            doc.state().objects[0].curve.sample().unwrap()[0],
+            doc.state().objects[0].curve().unwrap().sample().unwrap()[0],
             [1.0, 0.0, 0.0]
         );
     }
@@ -52,6 +52,9 @@ mod tests {
         let id = doc.add(Curve::line([0.0; 3], [1.0, 0.0, 0.0]).unwrap());
         doc.select(&[id]);
         run(&mut doc, &["flip", "undo"]);
-        assert_eq!(doc.state().objects[0].curve.sample().unwrap()[0], [0.0; 3]);
+        assert_eq!(
+            doc.state().objects[0].curve().unwrap().sample().unwrap()[0],
+            [0.0; 3]
+        );
     }
 }

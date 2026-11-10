@@ -5,7 +5,7 @@
 
 use curva_commands::Processor;
 use curva_commands::commands::resolve;
-use curva_document::Document;
+use curva_document::{Document, Shape};
 use curva_kernel::Curve;
 use serde_json::{Value, json};
 use std::io::{BufRead, Write};
@@ -162,11 +162,17 @@ impl<'a> Session<'a> {
             .objects
             .iter()
             .map(|object| {
+                let (kind, length, volume) = match &object.shape {
+                    Shape::Curve(curve) => (kind_of(curve), curve.length().ok(), None),
+                    Shape::Body(body) if body.is_solid() => ("solid", None, body.volume().ok()),
+                    Shape::Body(_) => ("surface", None, None),
+                };
                 json!({
                     "id": object.id,
-                    "kind": kind_of(&object.curve),
+                    "kind": kind,
                     "layer": object.layer,
-                    "length": object.curve.length().ok(),
+                    "length": length,
+                    "volume": volume,
                     "hidden": object.hidden,
                     "selected": selected.contains(&object.id),
                 })

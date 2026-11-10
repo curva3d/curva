@@ -51,7 +51,10 @@ impl Command for Smooth {
                 .iter()
                 .filter(|o| chosen.contains(&o.id))
                 .flat_map(|o| {
-                    let count = o.curve.control_points().map_or(0, |p| p.len());
+                    let count = o
+                        .curve()
+                        .and_then(|c| c.control_points().ok())
+                        .map_or(0, |p| p.len());
                     (0..count).map(move |index| (o.id, index))
                 })
                 .collect();
@@ -118,7 +121,11 @@ mod tests {
         doc.select(&[id]);
         run(&mut doc, &["smooth", ""]);
         assert_eq!(
-            doc.state().objects[0].curve.control_points().unwrap(),
+            doc.state().objects[0]
+                .curve()
+                .unwrap()
+                .control_points()
+                .unwrap(),
             [[0.0; 3], [1.0, 1.0, 0.0], [2.0, 1.0, 0.0], [3.0, 2.0, 0.0]]
         );
     }
@@ -130,7 +137,11 @@ mod tests {
         doc.points_on(&[id]);
         doc.select_grips(&[(id, 1)]);
         run(&mut doc, &["smooth", "1"]);
-        let points = doc.state().objects[0].curve.control_points().unwrap();
+        let points = doc.state().objects[0]
+            .curve()
+            .unwrap()
+            .control_points()
+            .unwrap();
         assert_eq!(points[1], [1.0, 0.0, 0.0]);
         assert_eq!(points[2], [2.0, 0.0, 0.0]);
     }

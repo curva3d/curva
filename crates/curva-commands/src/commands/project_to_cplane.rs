@@ -72,7 +72,7 @@ mod tests {
         doc.select(&[id]);
         run(&mut doc, &["projecttocplane"]);
         assert_eq!(
-            doc.state().objects[0].curve.sample().unwrap(),
+            doc.state().objects[0].curve().unwrap().sample().unwrap(),
             [[0.0; 3], [3.0, 0.0, 0.0]]
         );
     }
@@ -84,7 +84,7 @@ mod tests {
         doc.select(&[id]);
         run(&mut doc, &["projecttocplane"]);
         assert_eq!(
-            doc.state().objects[0].curve,
+            *doc.state().objects[0].curve().unwrap(),
             Curve::circle([1.0, 1.0, 0.0], 2.0).unwrap()
         );
     }
@@ -96,7 +96,7 @@ mod tests {
         let id = doc.add(line.clone());
         doc.select(&[id]);
         let processor = run(&mut doc, &["projecttocplane"]);
-        assert_eq!(doc.state().objects[0].curve, line);
+        assert_eq!(*doc.state().objects[0].curve().unwrap(), line);
         assert_eq!(processor.log().len(), 1);
     }
 }

@@ -6,6 +6,7 @@ mod array;
 mod array_crv;
 mod array_polar;
 mod bounding_box;
+mod box_solid;
 mod chamfer;
 mod circle;
 mod close_crv;
@@ -109,7 +110,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 78] = [
+pub static COMMANDS: [CommandDef; 79] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -215,6 +216,7 @@ pub static COMMANDS: [CommandDef; 78] = [
     listed!("Scale2D", [], true, true, scale2d::Scale2D),
     listed!("Arc", ["a"], true, true, arc::Arc),
     listed!("Rectangle", ["rec"], true, true, rectangle::Rectangle),
+    listed!("Box", [], true, true, box_solid::BoxSolid),
     listed!("Delete", ["del", "erase"], false, true, delete::Delete),
     listed!("Undo", [], false, false, undo::Undo),
     listed!("Redo", [], false, false, redo::Redo),
@@ -328,18 +330,35 @@ fn ghosts(
         .iter()
         .filter(|object| chosen.contains(&object.id))
         .take(MOST_PREVIEW_OBJECTS)
-        .map(|object| change(&object.curve))
+        .flat_map(|object| object.shape.outlines())
+        .map(|curve| change(&curve))
         .collect()
 }
 
-/// The curves of chosen objects, with their ids.
+/// The curves of chosen objects, with their ids; surfaces and solids are left out.
 fn curves_of(doc: &curva_document::Document, ids: &[u64]) -> Vec<(u64, curva_kernel::Curve)> {
     doc.state()
         .objects
         .iter()
         .filter(|object| ids.contains(&object.id))
-        .map(|object| (object.id, object.curve.clone()))
+        .filter_map(|object| Some((object.id, object.curve()?.clone())))
         .collect()
+}
+
+/// The curve passing within `reach` of `at`, if any, for commands that pick a curve.
+fn curve_at(
+    doc: &curva_document::Document,
+    at: Point,
+    reach: f64,
+) -> Result<Option<(u64, curva_kernel::Curve)>, KernelError> {
+    for object in &doc.state().objects {
+        if let Some(curve) = object.curve()
+            && curva_kernel::gap(curve.closest_point(at)?, at) <= reach
+        {
+            return Ok(Some((object.id, curve.clone())));
+        }
+    }
+    Ok(None)
 }
 
 /// A curve in pieces, cut wherever it crosses the cutters.
@@ -446,7 +465,7 @@ mod tests {
 
     /// For each command that changes geometry, the typed steps that reach its live preview.
     /// A new command must be added here, which is how the preview rule in AGENTS.md is enforced.
-    const PREVIEW_STEPS: [(&str, &[&str]); 24] = [
+    const PREVIEW_STEPS: [(&str, &[&str]); 25] = [
         ("Line", &["0,0"]),
         ("Polyline", &["0,0", "9,0"]),
         ("InterpCrv", &["0,0", "9,0"]),
@@ -471,6 +490,7 @@ mod tests {
         ("Orient3Pt", &["0,0", "2,0", "0,2", "5,0,0", "5,2,0"]),
         ("Smooth", &[]),
         ("Dir", &[]),
+        ("Box", &["0,0", "5,5"]),
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
@@ -570,7 +590,7 @@ mod tests {
             [0.0, 2.0, 0.0]
         ));
         assert_eq!(
-            doc.state().objects[0].curve.sample().unwrap()[0],
+            doc.state().objects[0].curve().unwrap().sample().unwrap()[0],
             [2.0, 0.0, 0.0]
         );
     }

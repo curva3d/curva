@@ -1,6 +1,6 @@
 //! `Trim`: cuts curves with chosen cutters and removes the part clicked, as in Rhino.
 
-use super::{ask_objects, curves_of, cut_by, geometry_failed, unexpected};
+use super::{ask_objects, curve_at, curves_of, cut_by, geometry_failed, unexpected};
 use crate::{Answer, Command, Kind, Live, Message, Request, Step};
 use curva_document::Document;
 use curva_kernel::{Curve, KernelError, Point, gap};
@@ -33,13 +33,7 @@ impl Trim {
     /// The curve under a picked point cut by every cutter but itself, or `None` if no curve is there.
     fn cut_under(&self, doc: &Document, at: Point) -> Result<Option<Cut>, KernelError> {
         let cutter_ids = self.cutters.as_deref().unwrap_or_default();
-        let mut under = None;
-        for object in &doc.state().objects {
-            if gap(object.curve.closest_point(at)?, at) <= ON_CURVE {
-                under = Some((object.id, object.curve.clone()));
-                break;
-            }
-        }
+        let under = curve_at(doc, at, ON_CURVE)?;
         let Some((id, curve)) = under else {
             return Ok(None);
         };
@@ -144,7 +138,7 @@ mod tests {
         doc.state()
             .objects
             .iter()
-            .map(|object| object.curve.length().unwrap())
+            .map(|object| object.curve().unwrap().length().unwrap())
             .sum()
     }
 

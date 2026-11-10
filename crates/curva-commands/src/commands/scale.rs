@@ -108,7 +108,7 @@ mod tests {
     }
 
     fn ends(doc: &Document) -> Vec<Point> {
-        doc.state().objects[0].curve.sample().unwrap()
+        doc.state().objects[0].curve().unwrap().sample().unwrap()
     }
 
     #[test]
@@ -131,7 +131,7 @@ mod tests {
         let id = doc.add(Curve::circle([0.0; 3], 2.0).unwrap());
         doc.select(&[id]);
         run(&mut doc, &["scale", "0,0", "3"]);
-        let length = doc.state().objects[0].curve.length().unwrap();
+        let length = doc.state().objects[0].curve().unwrap().length().unwrap();
         assert!((length - std::f64::consts::TAU * 6.0).abs() < 1e-9);
     }
 

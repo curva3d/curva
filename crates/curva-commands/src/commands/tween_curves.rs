@@ -103,7 +103,7 @@ mod tests {
         let mut processor = run(&mut doc, &["tweencurves", "2"]);
         assert_eq!(doc.state().objects.len(), 4);
         assert_eq!(
-            doc.state().objects[2].curve,
+            *doc.state().objects[2].curve().unwrap(),
             Curve::line([0.0, 3.0, 0.0], [10.0, 3.0, 0.0]).unwrap()
         );
         processor.submit(&mut doc, "undo");

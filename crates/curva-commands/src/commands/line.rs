@@ -47,7 +47,7 @@ mod tests {
     fn makes_a_line_of_the_right_length() {
         let mut doc = Document::default();
         run(&mut doc, &["line", "0,0,0", "3,4,0"]);
-        let length = doc.state().objects[0].curve.length().unwrap();
+        let length = doc.state().objects[0].curve().unwrap().length().unwrap();
         assert!((length - 5.0).abs() < 1e-9);
     }
 

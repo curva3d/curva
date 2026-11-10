@@ -67,7 +67,7 @@ mod tests {
     fn makes_an_arc_of_the_right_length() {
         let mut doc = Document::default();
         run(&mut doc, &["arc", "0,0", "4,0", "0,9"]);
-        let length = doc.state().objects[0].curve.length().unwrap();
+        let length = doc.state().objects[0].curve().unwrap().length().unwrap();
         assert!((length - 4.0 * FRAC_PI_2).abs() < 1e-9);
     }
 
@@ -76,7 +76,7 @@ mod tests {
         let mut doc = Document::default();
         doc.set_work_plane([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
         run(&mut doc, &["arc", "0,0,0", "4,0,0", "0,4,0"]);
-        let points = doc.state().objects[0].curve.sample().unwrap();
+        let points = doc.state().objects[0].curve().unwrap().sample().unwrap();
         assert!(points.iter().all(|p| p[1].abs() < 1e-9));
     }
 

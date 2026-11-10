@@ -126,7 +126,7 @@ mod tests {
         let id = doc.add(Curve::line([1.0, 1.0, 5.0], [2.0, 1.0, 5.0]).unwrap());
         doc.select(&[id]);
         run(&mut doc, &["scale2d", "0,0", "2"]);
-        let points = doc.state().objects[0].curve.sample().unwrap();
+        let points = doc.state().objects[0].curve().unwrap().sample().unwrap();
         assert_eq!(points, [[2.0, 2.0, 5.0], [4.0, 2.0, 5.0]]);
     }
 
@@ -137,7 +137,7 @@ mod tests {
         doc.select(&[id]);
         doc.set_work_plane([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
         run(&mut doc, &["scale2d", "0,0", "2"]);
-        let points = doc.state().objects[0].curve.sample().unwrap();
+        let points = doc.state().objects[0].curve().unwrap().sample().unwrap();
         assert_eq!(points, [[2.0, 7.0, 2.0], [4.0, 7.0, 2.0]]);
     }
 
@@ -148,7 +148,7 @@ mod tests {
         doc.select(&[id]);
         run(&mut doc, &["scale2d", "0,0", "0"]);
         assert_eq!(
-            doc.state().objects[0].curve.sample().unwrap()[0],
+            doc.state().objects[0].curve().unwrap().sample().unwrap()[0],
             [1.0, 1.0, 0.0]
         );
     }

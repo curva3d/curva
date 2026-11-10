@@ -8,7 +8,7 @@
 //! the view and prints how fast it drew and snapped.
 
 use curva_commands::{Kind, Message, Processor, Translations, ViewName, ViewRequest};
-use curva_document::{Document, Grip, State};
+use curva_document::{Document, Grip, Shape, State};
 use curva_kernel::{Curve, Point};
 use curva_mcp::Session;
 use curva_viewport::{
@@ -836,7 +836,8 @@ impl Curva {
             .iter()
             .filter(|object| selection.binary_search(&object.id).is_ok())
             .take(MOST_GUMBALL_PREVIEW)
-            .map(|object| change.applied(&object.curve))
+            .flat_map(|object| object.shape.outlines())
+            .map(|curve| change.applied(&curve))
             .collect()
     }
 
@@ -958,12 +959,34 @@ impl Curva {
         if let [only] = selection.as_slice()
             && let Some(object) = self.doc.state().objects.iter().find(|o| o.id == *only)
         {
-            ui.label(self.text.render(&Message::new(curve_kind(&object.curve))));
-            if let Ok(length) = object.curve.length() {
-                ui.label(self.text.render(&Message::with(
-                    "ui.properties.length",
-                    vec![format!("{length:.3}")],
-                )));
+            match &object.shape {
+                Shape::Curve(curve) => {
+                    ui.label(self.text.render(&Message::new(curve_kind(curve))));
+                    if let Ok(length) = curve.length() {
+                        ui.label(self.text.render(&Message::with(
+                            "ui.properties.length",
+                            vec![format!("{length:.3}")],
+                        )));
+                    }
+                }
+                Shape::Body(body) if body.is_solid() => {
+                    ui.label(self.text.render(&Message::new("ui.kind.solid")));
+                    if let Ok(volume) = body.volume() {
+                        ui.label(self.text.render(&Message::with(
+                            "ui.properties.volume",
+                            vec![format!("{volume:.3}")],
+                        )));
+                    }
+                }
+                Shape::Body(body) => {
+                    ui.label(self.text.render(&Message::new("ui.kind.surface")));
+                    if let Ok(area) = body.area() {
+                        ui.label(self.text.render(&Message::with(
+                            "ui.properties.area",
+                            vec![format!("{area:.3}")],
+                        )));
+                    }
+                }
             }
         }
         let layers = self.doc.layers().to_vec();
@@ -1045,7 +1068,10 @@ impl Curva {
                 .map(|p| rect.min + egui::vec2(p[0] as f32, p[1] as f32))
         };
         for object in &self.doc.state().objects {
-            let straight = matches!(object.curve, Curve::Line { .. } | Curve::Polyline { .. });
+            let straight = matches!(
+                object.curve(),
+                Some(Curve::Line { .. } | Curve::Polyline { .. })
+            );
             if straight || !shown.iter().any(|((id, _), _)| *id == object.id) {
                 continue;
             }

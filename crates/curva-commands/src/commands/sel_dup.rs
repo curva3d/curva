@@ -16,7 +16,7 @@ impl Command for SelDup {
             .enumerate()
             .filter(|(index, object)| {
                 open.contains(&object.id)
-                    && objects[..*index].iter().any(|o| o.curve == object.curve)
+                    && objects[..*index].iter().any(|o| o.shape == object.shape)
             })
             .map(|(_, object)| object.id)
             .collect();

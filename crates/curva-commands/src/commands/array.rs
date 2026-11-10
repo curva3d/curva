@@ -155,7 +155,7 @@ mod tests {
         doc.state()
             .objects
             .iter()
-            .map(|object| object.curve.sample().unwrap()[0])
+            .map(|object| object.curve().unwrap().sample().unwrap()[0])
             .collect()
     }
 

@@ -104,12 +104,20 @@ mod tests {
         doc.select_grips(&[(id, 1)]);
         let mut processor = run(&mut doc, &["move", "0,0", "0,3"]);
         assert_eq!(
-            doc.state().objects[0].curve.control_points().unwrap(),
+            doc.state().objects[0]
+                .curve()
+                .unwrap()
+                .control_points()
+                .unwrap(),
             [[0.0; 3], [2.0, 3.0, 0.0], [4.0, 0.0, 0.0]]
         );
         processor.submit(&mut doc, "undo");
         assert_eq!(
-            doc.state().objects[0].curve.control_points().unwrap()[1],
+            doc.state().objects[0]
+                .curve()
+                .unwrap()
+                .control_points()
+                .unwrap()[1],
             [2.0, 0.0, 0.0]
         );
     }
@@ -119,7 +127,7 @@ mod tests {
         let mut doc = one_selected_line();
         run(&mut doc, &["move", "1,1,1", "4,5,6"]);
         let expected = Curve::line([3.0, 4.0, 5.0], [4.0, 4.0, 5.0]).unwrap();
-        assert_eq!(doc.state().objects[0].curve, expected);
+        assert_eq!(*doc.state().objects[0].curve().unwrap(), expected);
     }
 
     #[test]

@@ -110,11 +110,11 @@ mod tests {
             &mut doc,
             &["orient3pt", "0,0", "2,0", "0,2", "5,0,0", "5,2,0", "5,0,2"],
         );
-        let Curve::Circle { centre, .. } = doc.state().objects[0].curve else {
+        let Curve::Circle { centre, .. } = doc.state().objects[0].curve().unwrap() else {
             panic!("a circle stays a circle");
         };
-        assert!(gap(centre, [5.0, 1.0, 1.0]) < 1e-9, "{centre:?}");
-        for point in doc.state().objects[0].curve.sample().unwrap() {
+        assert!(gap(*centre, [5.0, 1.0, 1.0]) < 1e-9, "{centre:?}");
+        for point in doc.state().objects[0].curve().unwrap().sample().unwrap() {
             assert!((point[0] - 5.0).abs() < 1e-9, "{point:?}");
         }
     }
@@ -129,6 +129,6 @@ mod tests {
             &mut doc,
             &["orient3pt", "0,0", "1,0", "2,0", "5,5", "6,5", "5,6"],
         );
-        assert_eq!(doc.state().objects[0].curve, line);
+        assert_eq!(*doc.state().objects[0].curve().unwrap(), line);
     }
 }

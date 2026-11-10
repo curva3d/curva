@@ -27,7 +27,11 @@ mod tests {
     use curva_kernel::Curve;
 
     fn start_of(doc: &Document, index: usize) -> [f64; 3] {
-        doc.state().objects[index].curve.sample().unwrap()[0]
+        doc.state().objects[index]
+            .curve()
+            .unwrap()
+            .sample()
+            .unwrap()[0]
     }
 
     fn select_all(doc: &mut Document) {

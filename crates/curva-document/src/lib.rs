@@ -1,6 +1,6 @@
 //! The model: objects, selection, undo and redo, and saving.
 
-use curva_kernel::{Curve, Point, Similarity};
+use curva_kernel::{Body, Curve, Point, Similarity};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fmt;
@@ -10,6 +10,8 @@ mod grips;
 mod history;
 pub use grips::Grip;
 mod layers;
+mod shape;
+pub use shape::Shape;
 mod views;
 pub use views::SavedView;
 
@@ -20,11 +22,12 @@ const FORMAT: &str = "curva-first-slice";
 
 /// One object in the model.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "StoredObject", into = "StoredObject")]
 pub struct Object {
     /// Identifies the object for as long as the document lasts.
     pub id: u64,
     /// Its geometry.
-    pub curve: Curve,
+    pub shape: Shape,
     /// The layer it is on. Files from before layers put everything on the first.
     #[serde(default)]
     pub layer: u64,
@@ -37,6 +40,71 @@ pub struct Object {
     /// How it was made from another object, if it follows one.
     #[serde(default)]
     pub recipe: Option<Recipe>,
+}
+
+impl Object {
+    /// The curve, if this object is one.
+    #[must_use]
+    pub fn curve(&self) -> Option<&Curve> {
+        self.shape.curve()
+    }
+}
+
+/// An object as a file holds it: a curve or a body under its own name, so that files from
+/// before bodies, which have only `curve`, still open.
+#[derive(Serialize, Deserialize)]
+struct StoredObject {
+    id: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    curve: Option<Curve>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    body: Option<Body>,
+    #[serde(default)]
+    layer: u64,
+    #[serde(default)]
+    hidden: bool,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    recipe: Option<Recipe>,
+}
+
+impl TryFrom<StoredObject> for Object {
+    type Error = String;
+
+    fn try_from(stored: StoredObject) -> Result<Self, String> {
+        let shape = match (stored.curve, stored.body) {
+            (Some(curve), None) => Shape::Curve(curve),
+            (None, Some(body)) => Shape::Body(body),
+            _ => return Err(format!("object {} needs a curve or a body", stored.id)),
+        };
+        Ok(Self {
+            id: stored.id,
+            shape,
+            layer: stored.layer,
+            hidden: stored.hidden,
+            name: stored.name,
+            recipe: stored.recipe,
+        })
+    }
+}
+
+impl From<Object> for StoredObject {
+    fn from(object: Object) -> Self {
+        let (curve, body) = match object.shape {
+            Shape::Curve(curve) => (Some(curve), None),
+            Shape::Body(body) => (None, Some(body)),
+        };
+        Self {
+            id: object.id,
+            curve,
+            body,
+            layer: object.layer,
+            hidden: object.hidden,
+            name: object.name,
+            recipe: object.recipe,
+        }
+    }
 }
 
 /// The colour of a new layer, red, green and blue from 0 to 1.
@@ -197,13 +265,23 @@ impl Document {
         self.path.as_deref()
     }
 
-    /// Adds an object and returns its id.
+    /// Adds a curve and returns its id.
     pub fn add(&mut self, curve: Curve) -> u64 {
+        self.add_shape(Shape::Curve(curve))
+    }
+
+    /// Adds a surface or solid and returns its id.
+    pub fn add_body(&mut self, body: Body) -> u64 {
+        self.add_shape(Shape::Body(body))
+    }
+
+    /// Adds an object on the current layer and returns its id.
+    pub fn add_shape(&mut self, shape: Shape) -> u64 {
         let id = self.state.next_id;
         self.state.next_id += 1;
         self.state.objects.push(Object {
             id,
-            curve,
+            shape,
             layer: self.state.current_layer,
             hidden: false,
             name: String::new(),
@@ -214,7 +292,12 @@ impl Document {
 
     /// Adds a curve on a given layer, or the current one if `None`, and returns its id.
     pub fn add_on(&mut self, curve: Curve, layer: Option<u64>) -> u64 {
-        let id = self.add(curve);
+        self.add_shape_on(Shape::Curve(curve), layer)
+    }
+
+    /// Adds an object on a given layer, or the current one if `None`, and returns its id.
+    pub fn add_shape_on(&mut self, shape: Shape, layer: Option<u64>) -> u64 {
+        let id = self.add_shape(shape);
         if let (Some(layer), Some(object)) = (layer, self.state.objects.last_mut()) {
             object.layer = layer;
         }
@@ -224,7 +307,7 @@ impl Document {
     /// Replaces an object's curve, keeping its id and layer.
     pub fn replace(&mut self, id: u64, curve: Curve) {
         if let Some(object) = self.state.objects.iter_mut().find(|o| o.id == id) {
-            object.curve = curve;
+            object.shape = Shape::Curve(curve);
             object.recipe = None;
         }
     }
@@ -307,7 +390,7 @@ impl Document {
     pub fn translate(&mut self, ids: &[u64], by: Point) {
         for object in &mut self.state.objects {
             if ids.contains(&object.id) {
-                object.curve = object.curve.translated(by);
+                object.shape = object.shape.translated(by);
                 object.recipe = None;
             }
         }
@@ -317,7 +400,7 @@ impl Document {
     pub fn transform(&mut self, ids: &[u64], change: &Similarity) {
         for object in &mut self.state.objects {
             if ids.contains(&object.id) {
-                object.curve = object.curve.mapped(change);
+                object.shape = object.shape.mapped(change);
                 object.recipe = None;
             }
         }
@@ -325,31 +408,31 @@ impl Document {
 
     /// Adds turned, mirrored or resized copies of objects and returns the new ids.
     pub fn copy_transformed(&mut self, ids: &[u64], change: &Similarity) -> Vec<u64> {
-        let copies: Vec<(Curve, u64)> = self
+        let copies: Vec<(Shape, u64)> = self
             .state
             .objects
             .iter()
             .filter(|object| ids.contains(&object.id))
-            .map(|object| (object.curve.mapped(change), object.layer))
+            .map(|object| (object.shape.mapped(change), object.layer))
             .collect();
         copies
             .into_iter()
-            .map(|(curve, layer)| self.add_on(curve, Some(layer)))
+            .map(|(shape, layer)| self.add_shape_on(shape, Some(layer)))
             .collect()
     }
 
     /// Adds moved copies of objects and returns the new ids.
     pub fn copy(&mut self, ids: &[u64], by: Point) -> Vec<u64> {
-        let copies: Vec<(Curve, u64)> = self
+        let copies: Vec<(Shape, u64)> = self
             .state
             .objects
             .iter()
             .filter(|object| ids.contains(&object.id))
-            .map(|object| (object.curve.translated(by), object.layer))
+            .map(|object| (object.shape.translated(by), object.layer))
             .collect();
         copies
             .into_iter()
-            .map(|(curve, layer)| self.add_on(curve, Some(layer)))
+            .map(|(shape, layer)| self.add_shape_on(shape, Some(layer)))
             .collect()
     }
 
@@ -393,13 +476,13 @@ impl Document {
 
     /// Records `before` as one undo step, and clears anything that could be redone.
     pub fn record_change(&mut self, before: State) {
-        let earlier: std::collections::BTreeMap<u64, &Curve> =
-            before.objects.iter().map(|o| (o.id, &o.curve)).collect();
+        let earlier: std::collections::BTreeMap<u64, &Shape> =
+            before.objects.iter().map(|o| (o.id, &o.shape)).collect();
         self.last_changed = self
             .state
             .objects
             .iter()
-            .filter(|o| earlier.get(&o.id) != Some(&&o.curve))
+            .filter(|o| earlier.get(&o.id) != Some(&&o.shape))
             .map(|o| o.id)
             .collect();
         self.undo.push(before);
@@ -541,6 +624,36 @@ mod tests {
         let opened = Document::open(&path).unwrap();
         assert_eq!(opened.state(), doc.state());
         assert_eq!(opened.path(), Some(path.as_path()));
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn solids_save_and_reopen_exactly() {
+        let folder = std::env::temp_dir().join(format!("curva-body-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let path = folder.join("solids.curva");
+        let mut doc = Document::default();
+        let id = doc.add_body(Body::cuboid([1.0, 2.0, 3.0], [4.0, 5.0, 6.0]).unwrap());
+        doc.transform(&[id], &Similarity::rotation([0.0; 3], [0.0, 0.0, 1.0], 0.3));
+        doc.add(line(2.0));
+        doc.save(&path).unwrap();
+        let opened = Document::open(&path).unwrap();
+        assert_eq!(opened.state(), doc.state());
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn files_from_before_solids_still_open() {
+        let folder = std::env::temp_dir().join(format!("curva-old-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let path = folder.join("old.curva");
+        std::fs::write(
+            &path,
+            r#"{"format":"curva-first-slice","state":{"objects":[{"id":0,"curve":{"Line":{"start":[0,0,0],"end":[3,0,0]}}}],"next_id":1}}"#,
+        )
+        .unwrap();
+        let opened = Document::open(&path).unwrap();
+        assert_eq!(opened.state().objects[0].curve(), Some(&line(3.0)));
         std::fs::remove_dir_all(&folder).unwrap();
     }
 

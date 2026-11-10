@@ -92,12 +92,12 @@ impl Document {
                 .objects
                 .iter()
                 .find(|object| object.id == recipe.source())
-                .map(|object| object.curve.clone());
+                .and_then(|object| object.curve().cloned());
             match source {
                 None => self.state.objects[index].recipe = None,
                 Some(curve) => {
                     if let Some(made) = recipe.make(&curve) {
-                        self.state.objects[index].curve = made;
+                        self.state.objects[index].shape = crate::Shape::Curve(made);
                     }
                 }
             }
@@ -137,7 +137,7 @@ mod tests {
 
     fn start_of(doc: &Document, id: u64) -> Point {
         let object = doc.state().objects.iter().find(|o| o.id == id).unwrap();
-        object.curve.sample().unwrap()[0]
+        object.curve().unwrap().sample().unwrap()[0]
     }
 
     #[test]

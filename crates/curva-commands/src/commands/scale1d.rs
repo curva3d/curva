@@ -128,7 +128,7 @@ mod tests {
     }
 
     fn ends(doc: &Document) -> Vec<Point> {
-        doc.state().objects[0].curve.sample().unwrap()
+        doc.state().objects[0].curve().unwrap().sample().unwrap()
     }
 
     #[test]

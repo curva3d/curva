@@ -1,0 +1,348 @@
+//! Surfaces and solids: bodies made of faces, stored in the engine's portable record so that
+//! files keep them exactly.
+//!
+//! A body keeps its faces as they were made, plus one placement for every move, turn, scale
+//! and mirror since. The engine is given the faces and the placement each time it works on
+//! the body. Moving is then instant arithmetic, and the engine never has to read back a
+//! record it wrote for a turned body, which it refuses (status 1007, found 11 November 2026,
+//! to be reported upstream).
+
+use crate::{Curve, KernelError, Point, Similarity};
+use serde::{Deserialize, Serialize};
+use solidcore_ops::Body as EngineBody;
+use solidcore_record::brep::Brep as Record;
+use solidcore_tess::{MeshTolerance, plan};
+
+/// How closely volumes and areas are worked out, as a share of the answer.
+const MEASURE_ACCURACY: f64 = 1e-9;
+
+/// A placement as the engine takes it: a point is a row, `p' = p·A + t`, with rows 0 to 2
+/// where the axes go and row 3 the move.
+type Placement = [[f64; 4]; 4];
+
+const IN_PLACE: Placement = [
+    [1.0, 0.0, 0.0, 0.0],
+    [0.0, 1.0, 0.0, 0.0],
+    [0.0, 0.0, 1.0, 0.0],
+    [0.0, 0.0, 0.0, 1.0],
+];
+
+fn in_place() -> Placement {
+    IN_PLACE
+}
+
+fn is_in_place(placement: &Placement) -> bool {
+    *placement == IN_PLACE
+}
+
+fn failed(what: &str, error: impl std::fmt::Debug) -> KernelError {
+    KernelError(format!("{what} failed: {error:?}"))
+}
+
+/// `first` followed by `then`.
+fn followed_by(first: &Placement, then: &Placement) -> Placement {
+    std::array::from_fn(|i| std::array::from_fn(|j| (0..4).map(|k| first[i][k] * then[k][j]).sum()))
+}
+
+/// A surface or solid: one or more faces joined along their edges.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Body {
+    record: Record,
+    #[serde(default = "in_place", skip_serializing_if = "is_in_place")]
+    placement: Placement,
+}
+
+/// What a body looks like on screen: triangles to shade and edges to draw.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct BodyMesh {
+    /// Corner positions of the triangles.
+    pub positions: Vec<Point>,
+    /// One normal per position, pointing out of the body.
+    pub normals: Vec<Point>,
+    /// Triangles as three indices into `positions`.
+    pub triangles: Vec<[u32; 3]>,
+    /// The body's edges as runs of points; seams inside a smooth face are left out.
+    pub edges: Vec<Vec<Point>>,
+}
+
+impl Body {
+    fn from_record(record: Record) -> Self {
+        Self {
+            record,
+            placement: IN_PLACE,
+        }
+    }
+
+    fn from_engine(body: &EngineBody) -> Result<Self, KernelError> {
+        let (record, _) = body.to_record().map_err(|e| failed("storing a body", e))?;
+        Ok(Self::from_record(record))
+    }
+
+    /// The faces as made, without the placement.
+    fn unplaced(&self) -> Self {
+        Self::from_record(self.record.clone())
+    }
+
+    /// The body as the engine holds it, in its place.
+    fn engine(&self) -> Result<EngineBody, KernelError> {
+        let body = EngineBody::from_record(&self.record, true)
+            .map(|(body, _)| body)
+            .map_err(|e| failed("reading a body", e))?;
+        if !is_in_place(&self.placement) {
+            body.transform(&self.placement)
+                .map_err(|e| failed("placing a body", e))?;
+        }
+        Ok(body)
+    }
+
+    /// How much the placement enlarges lengths.
+    fn scale(&self) -> f64 {
+        self.placement[0][..3]
+            .iter()
+            .map(|v| v * v)
+            .sum::<f64>()
+            .sqrt()
+    }
+
+    fn placed_point(&self, p: Point) -> Point {
+        let m = &self.placement;
+        std::array::from_fn(|j| p[0] * m[0][j] + p[1] * m[1][j] + p[2] * m[2][j] + m[3][j])
+    }
+
+    fn placed_direction(&self, d: Point) -> Point {
+        let m = &self.placement;
+        let turned: Point =
+            std::array::from_fn(|j| d[0] * m[0][j] + d[1] * m[1][j] + d[2] * m[2][j]);
+        crate::unit(turned).unwrap_or(turned)
+    }
+
+    /// A solid box with one corner at `origin` and sides along the world axes. Negative sizes
+    /// run the other way, so any two opposite corners give the same box.
+    pub fn cuboid(origin: Point, size: Point) -> Result<Self, KernelError> {
+        let mut low = origin;
+        let mut extent = size;
+        for axis in 0..3 {
+            if extent[axis] < 0.0 {
+                low[axis] += extent[axis];
+                extent[axis] = -extent[axis];
+            }
+        }
+        let body = solidcore_ops::make_box(low, extent).map_err(|e| failed("a box", e))?;
+        Self::from_engine(&body)
+    }
+
+    /// A solid box with one corner at `corner`, its sides along the directions `x` and `y`
+    /// (at right angles, of length 1) and the direction straight out of them. `size` is how far
+    /// it reaches along each; negative values reach the other way.
+    pub fn cuboid_on(corner: Point, x: Point, y: Point, size: Point) -> Result<Self, KernelError> {
+        let upright = Self::cuboid(corner, size)?;
+        let plus = |direction: Point| [0, 1, 2].map(|k| corner[k] + direction[k]);
+        let world = [corner, plus([1.0, 0.0, 0.0]), plus([0.0, 1.0, 0.0])];
+        let on_plane = [corner, plus(x), plus(y)];
+        match Similarity::between_frames(corner, world, on_plane) {
+            Some(turn) => Ok(upright.mapped(&turn)),
+            None => Err(KernelError("the box's plane has no direction".to_owned())),
+        }
+    }
+
+    /// The body moved by `by`.
+    #[must_use]
+    pub fn translated(&self, by: Point) -> Self {
+        let mut moved = self.clone();
+        for (axis, amount) in by.iter().enumerate() {
+            moved.placement[3][axis] += amount;
+        }
+        moved
+    }
+
+    /// The body turned, scaled or mirrored.
+    #[must_use]
+    pub fn mapped(&self, change: &Similarity) -> Self {
+        let origin = change.point([0.0; 3]);
+        let row = |axis: Point| {
+            let p = change.point(axis);
+            [p[0] - origin[0], p[1] - origin[1], p[2] - origin[2], 0.0]
+        };
+        let then = [
+            row([1.0, 0.0, 0.0]),
+            row([0.0, 1.0, 0.0]),
+            row([0.0, 0.0, 1.0]),
+            [origin[0], origin[1], origin[2], 1.0],
+        ];
+        Self {
+            record: self.record.clone(),
+            placement: followed_by(&self.placement, &then),
+        }
+    }
+
+    /// Whether it closes in a volume, as a solid does, rather than being an open surface.
+    #[must_use]
+    pub fn is_solid(&self) -> bool {
+        self.volume().is_ok_and(|volume| volume > 0.0)
+    }
+
+    /// The enclosed volume; zero for an open surface. Worked out on the faces as made, then
+    /// scaled, which is exact.
+    pub fn volume(&self) -> Result<f64, KernelError> {
+        let volume = self
+            .unplaced()
+            .engine()?
+            .volume(MEASURE_ACCURACY)
+            .map_err(|e| failed("measuring volume", e))?;
+        Ok(volume * self.scale().powi(3))
+    }
+
+    /// The area of all its faces.
+    pub fn area(&self) -> Result<f64, KernelError> {
+        let area = self
+            .unplaced()
+            .engine()?
+            .area(MEASURE_ACCURACY)
+            .map_err(|e| failed("measuring area", e))?;
+        Ok(area * self.scale().powi(2))
+    }
+
+    /// The lowest and highest corners of a box around it.
+    pub fn bounds(&self) -> Result<(Point, Point), KernelError> {
+        self.engine()?
+            .bounds()
+            .map_err(|e| failed("measuring a body", e))
+    }
+
+    /// How many faces, edges and corners it has.
+    pub fn counts(&self) -> Result<[usize; 3], KernelError> {
+        self.unplaced()
+            .engine()?
+            .counts()
+            .map_err(|e| failed("counting faces", e))
+    }
+
+    /// Triangles and edges for drawing, fine enough to look smooth at the body's size. The
+    /// faces as made are meshed, then the mesh is placed.
+    pub fn mesh(&self) -> Result<BodyMesh, KernelError> {
+        let (low, high) = self.unplaced().bounds()?;
+        let size = (0..3)
+            .map(|axis| (high[axis] - low[axis]).powi(2))
+            .sum::<f64>()
+            .sqrt();
+        let (tess, _) = plan(&self.record, &MeshTolerance::display_of(size), size)
+            .map_err(|e| failed("meshing a body", e))?;
+        let (mesh, _) = tess.evaluate();
+        let point = |v: &solidcore_record::Vec3| self.placed_point([v.x, v.y, v.z]);
+        let direction = |v: &solidcore_record::Vec3| self.placed_direction([v.x, v.y, v.z]);
+        Ok(BodyMesh {
+            positions: mesh.positions.iter().map(point).collect(),
+            normals: mesh.normals.iter().map(direction).collect(),
+            triangles: mesh.triangles.clone(),
+            edges: mesh
+                .edges
+                .iter()
+                .enumerate()
+                .filter(|(index, _)| !mesh.seams.get(*index).copied().unwrap_or(false))
+                .map(|(_, run)| run.iter().map(point).collect())
+                .collect(),
+        })
+    }
+
+    /// The edges as curves, for drawing in wireframe, picking and snapping.
+    pub fn edge_curves(&self) -> Result<Vec<Curve>, KernelError> {
+        Ok(self
+            .mesh()?
+            .edges
+            .into_iter()
+            .filter_map(|run| match run.len() {
+                0 | 1 => None,
+                2 => Curve::line(run[0], run[1]).ok(),
+                _ => Curve::polyline(run, false).ok(),
+            })
+            .collect())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Body;
+    use crate::{Similarity, gap};
+
+    fn close(a: f64, b: f64) -> bool {
+        (a - b).abs() <= 1e-6 * b.abs().max(1.0)
+    }
+
+    #[test]
+    fn a_box_has_the_volume_and_area_of_its_sides() {
+        let body = Body::cuboid([0.0; 3], [10.0, 20.0, 5.0]).unwrap();
+        assert!(close(body.volume().unwrap(), 1000.0));
+        assert!(close(body.area().unwrap(), 2.0 * (200.0 + 50.0 + 100.0)));
+        assert_eq!(body.counts().unwrap(), [6, 12, 8]);
+    }
+
+    #[test]
+    fn a_box_on_a_turned_plane_keeps_its_size() {
+        let s = std::f64::consts::FRAC_1_SQRT_2;
+        let body =
+            Body::cuboid_on([1.0, 2.0, 3.0], [s, s, 0.0], [-s, s, 0.0], [2.0, 3.0, -4.0]).unwrap();
+        assert!(close(body.volume().unwrap(), 24.0));
+        let (low, high) = body.bounds().unwrap();
+        assert!(
+            close(high[2], 3.0) && close(low[2], -1.0),
+            "{low:?} {high:?}"
+        );
+    }
+
+    #[test]
+    fn opposite_corners_give_the_same_box() {
+        let a = Body::cuboid([0.0; 3], [2.0, 3.0, 4.0]).unwrap();
+        let b = Body::cuboid([2.0, 3.0, 4.0], [-2.0, -3.0, -4.0]).unwrap();
+        assert_eq!(a.bounds().unwrap(), b.bounds().unwrap());
+    }
+
+    #[test]
+    fn moving_and_turning_keep_the_volume() {
+        let body = Body::cuboid([0.0; 3], [2.0, 3.0, 4.0]).unwrap();
+        let moved = body.translated([10.0, 0.0, 0.0]);
+        let (low, _) = moved.bounds().unwrap();
+        assert!(close(low[0], 10.0));
+        let turn = Similarity::rotation([0.0; 3], [0.0, 0.0, 1.0], 0.7);
+        assert!(close(body.mapped(&turn).volume().unwrap(), 24.0));
+        let doubled = Similarity::scaling([0.0; 3], 2.0);
+        assert!(close(body.mapped(&doubled).volume().unwrap(), 192.0));
+    }
+
+    #[test]
+    fn a_turned_box_can_be_moved_and_turned_again() {
+        let body = Body::cuboid([1.0, 2.0, 3.0], [2.0, 3.0, 4.0]).unwrap();
+        let about_corner = Similarity::rotation([1.0, 2.0, 3.0], [0.0, 0.0, 1.0], 0.7);
+        let turned = body.mapped(&about_corner);
+        let moved = turned.translated([5.0, 1.0, 0.0]);
+        let again = moved.mapped(&Similarity::rotation([0.0; 3], [1.0, 0.0, 0.0], 0.3));
+        for b in [&turned, &moved, &again] {
+            assert!(close(b.volume().unwrap(), 24.0));
+            assert!(b.bounds().is_ok());
+            assert_eq!(b.edge_curves().unwrap().len(), 12);
+        }
+        // Turning about its corner leaves that corner where it was, and moving takes it along.
+        let (low, _) = turned.bounds().unwrap();
+        assert!(close(low[1], 2.0) && close(low[2], 3.0), "{low:?}");
+        let corners = moved.mesh().unwrap().positions;
+        assert!(corners.iter().any(|p| gap(*p, [6.0, 3.0, 3.0]) < 1e-9));
+    }
+
+    #[test]
+    fn a_box_shows_twelve_edges_and_shaded_faces() {
+        let body = Body::cuboid([0.0; 3], [1.0, 1.0, 1.0]).unwrap();
+        assert_eq!(body.edge_curves().unwrap().len(), 12);
+        let mesh = body.mesh().unwrap();
+        assert!(mesh.triangles.len() >= 12);
+        assert_eq!(mesh.positions.len(), mesh.normals.len());
+    }
+
+    #[test]
+    fn a_body_comes_back_exactly_from_a_file() {
+        let body = Body::cuboid([1.0, 2.0, 3.0], [4.0, 5.0, 6.0])
+            .unwrap()
+            .mapped(&Similarity::rotation([0.0; 3], [0.0, 0.0, 1.0], 0.4));
+        let text = serde_json::to_string(&body).unwrap();
+        let back: Body = serde_json::from_str(&text).unwrap();
+        assert_eq!(back, body);
+    }
+}

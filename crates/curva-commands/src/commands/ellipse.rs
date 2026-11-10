@@ -76,7 +76,7 @@ mod tests {
     fn makes_an_ellipse_with_the_axes_picked() {
         let mut doc = Document::default();
         run(&mut doc, &["ellipse", "0,0", "5,0", "9,3"]);
-        for point in doc.state().objects[0].curve.sample().unwrap() {
+        for point in doc.state().objects[0].curve().unwrap().sample().unwrap() {
             let value = (point[0] / 5.0).powi(2) + (point[1] / 3.0).powi(2);
             assert!((value - 1.0).abs() < 1e-6, "{point:?}");
         }
@@ -87,7 +87,7 @@ mod tests {
         let mut doc = Document::default();
         doc.set_work_plane([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
         run(&mut doc, &["ellipse", "0,0", "5,0", "0,3"]);
-        let points = doc.state().objects[0].curve.sample().unwrap();
+        let points = doc.state().objects[0].curve().unwrap().sample().unwrap();
         assert!(points.iter().all(|p| p[1].abs() < 1e-9));
     }
 

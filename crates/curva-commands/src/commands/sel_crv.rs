@@ -16,7 +16,10 @@ impl Command for SelCrv {
             .objects
             .iter()
             .filter(|object| {
-                open.contains(&object.id) && !matches!(object.curve, Curve::Point { .. })
+                open.contains(&object.id)
+                    && object
+                        .curve()
+                        .is_some_and(|c| !matches!(c, Curve::Point { .. }))
             })
             .map(|object| object.id)
             .collect();

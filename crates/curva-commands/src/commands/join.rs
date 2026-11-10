@@ -23,7 +23,7 @@ impl Command for Join {
             .objects
             .iter()
             .filter(|object| chosen.contains(&object.id))
-            .map(|object| (object.id, object.curve.clone()))
+            .filter_map(|object| Some((object.id, object.curve()?.clone())))
             .unzip();
         let made = match join(&curves) {
             Ok(made) => made,

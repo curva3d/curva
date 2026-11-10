@@ -123,12 +123,21 @@ mod tests {
         let mut processor = run(&mut doc, &["removecontrolpoint"]);
         assert!(!processor.is_running());
         assert_eq!(
-            doc.state().objects[0].curve.control_points().unwrap(),
+            doc.state().objects[0]
+                .curve()
+                .unwrap()
+                .control_points()
+                .unwrap(),
             [[0.0; 3], [3.0, 2.0, 0.0]]
         );
         processor.submit(&mut doc, "undo");
         assert_eq!(
-            doc.state().objects[0].curve.control_points().unwrap().len(),
+            doc.state().objects[0]
+                .curve()
+                .unwrap()
+                .control_points()
+                .unwrap()
+                .len(),
             4
         );
     }
@@ -143,7 +152,12 @@ mod tests {
         processor.submit(&mut doc, "1.1,1.9,0");
         processor.submit(&mut doc, "");
         assert_eq!(
-            doc.state().objects[0].curve.control_points().unwrap().len(),
+            doc.state().objects[0]
+                .curve()
+                .unwrap()
+                .control_points()
+                .unwrap()
+                .len(),
             3
         );
     }
@@ -155,7 +169,12 @@ mod tests {
         let processor = run(&mut doc, &["removecontrolpoint"]);
         assert!(!processor.is_running());
         assert_eq!(
-            doc.state().objects[0].curve.control_points().unwrap().len(),
+            doc.state().objects[0]
+                .curve()
+                .unwrap()
+                .control_points()
+                .unwrap()
+                .len(),
             4
         );
     }

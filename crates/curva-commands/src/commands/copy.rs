@@ -84,15 +84,15 @@ mod tests {
         let objects = &doc.state().objects;
         assert_eq!(objects.len(), 3);
         assert_eq!(
-            objects[0].curve,
+            *objects[0].curve().unwrap(),
             Curve::line([0.0; 3], [1.0, 0.0, 0.0]).unwrap()
         );
         assert_eq!(
-            objects[1].curve,
+            *objects[1].curve().unwrap(),
             Curve::line([5.0, 0.0, 0.0], [6.0, 0.0, 0.0]).unwrap()
         );
         assert_eq!(
-            objects[2].curve,
+            *objects[2].curve().unwrap(),
             Curve::line([0.0, 5.0, 0.0], [1.0, 5.0, 0.0]).unwrap()
         );
     }

@@ -105,7 +105,7 @@ mod tests {
     fn a_smooth_curve_gets_the_number_of_points_asked_for_and_keeps_its_ends() {
         let mut doc = selected_smooth();
         run(&mut doc, &["rebuild", "12"]);
-        let Curve::Interpolated { points, .. } = &doc.state().objects[0].curve else {
+        let Curve::Interpolated { points, .. } = &doc.state().objects[0].curve().unwrap() else {
             panic!("expected a smooth curve");
         };
         assert_eq!(points.len(), 12);
@@ -120,7 +120,10 @@ mod tests {
         doc.select(&[id]);
         let processor = run(&mut doc, &["rebuild", "5"]);
         assert!(!processor.is_running());
-        assert!(matches!(doc.state().objects[0].curve, Curve::Line { .. }));
+        assert!(matches!(
+            doc.state().objects[0].curve().unwrap(),
+            Curve::Line { .. }
+        ));
     }
 
     #[test]

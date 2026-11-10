@@ -354,7 +354,7 @@ mod tests {
         for typed in ["line", "0,0", "1,0"] {
             processor.submit(&mut doc, typed);
         }
-        let points = doc.state().objects[0].curve.sample().unwrap();
+        let points = doc.state().objects[0].curve().unwrap().sample().unwrap();
         assert_eq!(points[0], [0.0, 0.0, 10.0]);
     }
     #[test]
@@ -390,7 +390,7 @@ mod tests {
         }
         assert!(!processor.is_running());
         assert!(matches!(
-            doc.state().objects[0].curve,
+            doc.state().objects[0].curve().unwrap(),
             curva_kernel::Curve::Polyline { closed: true, .. }
         ));
         let id = doc.state().objects[0].id;
@@ -433,8 +433,8 @@ mod tests {
         processor.submit(&mut doc, "circle");
         processor.click(&mut doc, [1.0, 1.0, 0.0]);
         processor.click(&mut doc, [4.0, 5.0, 0.0]);
-        let radius = match doc.state().objects[0].curve {
-            curva_kernel::Curve::Circle { radius, .. } => radius,
+        let radius = match doc.state().objects[0].curve().unwrap() {
+            curva_kernel::Curve::Circle { radius, .. } => *radius,
             _ => 0.0,
         };
         assert!((radius - 5.0).abs() < 1e-12);

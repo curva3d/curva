@@ -23,7 +23,7 @@ impl Command for Explode {
             .objects
             .iter()
             .filter(|object| chosen.contains(&object.id))
-            .filter_map(|object| Some((object.id, object.curve.exploded()?)))
+            .filter_map(|object| Some((object.id, object.curve()?.exploded()?)))
             .collect();
         if broken.is_empty() {
             return Step::Failed(Message::new("error.nothing_to_explode"));

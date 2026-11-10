@@ -50,7 +50,7 @@ mod tests {
     fn makes_a_curve_from_its_first_to_its_last_point() {
         let mut doc = Document::default();
         run(&mut doc, &["interpcrv", "0,0", "10,5", "20,-3", "30,4", ""]);
-        let drawn = doc.state().objects[0].curve.sample().unwrap();
+        let drawn = doc.state().objects[0].curve().unwrap().sample().unwrap();
         assert!(drawn[0][0].abs() < 1e-6);
         assert!((drawn[drawn.len() - 1][0] - 30.0).abs() < 1e-6);
     }
@@ -59,7 +59,7 @@ mod tests {
     fn close_joins_it_back_to_its_start() {
         let mut doc = Document::default();
         run(&mut doc, &["interpcrv", "0,0", "10,0", "10,10", "close"]);
-        let drawn = doc.state().objects[0].curve.sample().unwrap();
+        let drawn = doc.state().objects[0].curve().unwrap().sample().unwrap();
         let last = drawn[drawn.len() - 1];
         assert!(last[0].abs() < 1e-6 && last[1].abs() < 1e-6);
     }
