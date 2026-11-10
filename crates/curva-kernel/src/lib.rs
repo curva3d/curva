@@ -12,14 +12,18 @@ use std::f64::consts::TAU;
 
 mod area;
 mod conic;
+mod corners;
 mod cut;
 mod fillet;
+mod grips;
 mod offset;
+mod tween;
 pub use conic::{Chamfered, chamfer_lines};
 pub use cut::{closest_between, crossings};
 pub use fillet::fillet_curves;
 pub use offset::{Filleted, fillet_lines};
 use std::fmt;
+pub use tween::tween_curves;
 
 /// A position in model space, in millimetres.
 pub type Point = [f64; 3];
@@ -489,6 +493,27 @@ impl Similarity {
             rows: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
             scale: factor,
         }
+    }
+
+    /// The turn about `origin` that takes the three points' frame `from` onto `to`: the first
+    /// point to the second sets X, and the third sets which way Y faces. `None` when either set
+    /// of points lies on one line.
+    #[must_use]
+    pub fn between_frames(origin: Point, from: [Point; 3], to: [Point; 3]) -> Option<Self> {
+        let axes = |[a, b, c]: [Point; 3]| -> Option<[Point; 3]> {
+            let x = unit(sub(b, a))?;
+            let z = unit(cross(x, sub(c, a)))?;
+            Some([x, cross(z, x), z])
+        };
+        let (from, to) = (axes(from)?, axes(to)?);
+        let rows = std::array::from_fn(|i| {
+            std::array::from_fn(|j| (0..3).map(|k| to[k][i] * from[k][j]).sum())
+        });
+        Some(Self {
+            origin,
+            rows,
+            scale: 1.0,
+        })
     }
 
     /// A mirror image in the plane through `origin` facing along the unit vector `normal`.

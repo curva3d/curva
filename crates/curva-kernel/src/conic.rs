@@ -12,7 +12,7 @@ fn at(centre: Point, a: Point, b: Point, across: f64, up: f64) -> Point {
 
 /// An exact rational curve for part of an ellipse with axis vectors `a` and `b`, turning `sweep`
 /// from `a` towards `b` (*The NURBS Book*, section 7.5).
-fn conic(centre: Point, a: Point, b: Point, sweep: f64) -> Result<Curve, KernelError> {
+pub(crate) fn conic(centre: Point, a: Point, b: Point, sweep: f64) -> Result<Curve, KernelError> {
     let pieces = (sweep / QUARTER - 1e-9).ceil().max(1.0) as usize;
     let step = sweep / pieces as f64;
     let shoulder = (step / 2.0).cos();
