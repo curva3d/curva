@@ -117,6 +117,8 @@ pub struct BodyMesh {
     pub triangles: Vec<[u32; 3]>,
     /// The body's edges as runs of points; seams inside a smooth face are left out.
     pub edges: Vec<Vec<Point>>,
+    /// For each of `edges`, its number among the body's edges, for picking it.
+    pub edge_ids: Vec<usize>,
 }
 
 impl Body {
@@ -300,19 +302,50 @@ impl Body {
         let (tess, _) = plan(&record, &MeshTolerance::display_of(size), size)
             .map_err(|e| failed("meshing a body", e))?;
         let (mesh, _) = tess.evaluate();
+        let kept: Vec<usize> = (0..mesh.edges.len())
+            .filter(|index| !mesh.seams.get(*index).copied().unwrap_or(false))
+            .collect();
         let point = |v: &solidcore_record::Vec3| self.placed_point([v.x, v.y, v.z]);
         let direction = |v: &solidcore_record::Vec3| self.placed_direction([v.x, v.y, v.z]);
         Ok(BodyMesh {
             positions: mesh.positions.iter().map(point).collect(),
             normals: mesh.normals.iter().map(direction).collect(),
             triangles: mesh.triangles.clone(),
-            edges: mesh
-                .edges
+            edges: kept
                 .iter()
-                .enumerate()
-                .filter(|(index, _)| !mesh.seams.get(*index).copied().unwrap_or(false))
-                .map(|(_, run)| run.iter().map(point).collect())
+                .map(|&index| mesh.edges[index].iter().map(point).collect())
                 .collect(),
+            edge_ids: kept,
+        })
+    }
+
+    /// The body with the edges numbered `edges` (as in [`BodyMesh::edge_ids`]) rounded to
+    /// `size`, or with `chamfer`, bevelled by it.
+    pub fn blended(&self, edges: &[usize], size: f64, chamfer: bool) -> Result<Self, KernelError> {
+        use solidcore_ops::{Blend, Corners, Turn, blend_ordered};
+        let unplaced = self.unplaced().engine()?;
+        let (_, order) = unplaced
+            .to_record()
+            .map_err(|e| failed("reading edges", e))?;
+        let kind = if chamfer {
+            Blend::Chamfer
+        } else {
+            Blend::Round
+        };
+        blend_ordered(
+            &unplaced,
+            &order,
+            kind,
+            edges,
+            &[size],
+            &[],
+            Corners::Filled,
+            Turn::Mitre,
+        )
+        .map_err(|e| failed(if chamfer { "chamfering" } else { "filleting" }, e))?;
+        Ok(Self {
+            native: native_of(&unplaced)?,
+            placement: self.placement,
         })
     }
 
@@ -397,6 +430,36 @@ mod tests {
         assert!(close(low[1], 2.0) && close(low[2], 3.0), "{low:?}");
         let corners = moved.mesh().unwrap().positions;
         assert!(corners.iter().any(|p| gap(*p, [6.0, 3.0, 3.0]) < 1e-9));
+    }
+
+    #[test]
+    fn a_fillet_on_one_edge_takes_off_the_corner_of_its_section() {
+        let body = Body::cuboid([0.0; 3], [10.0, 10.0, 10.0]).unwrap();
+        let edge = body.mesh().unwrap().edge_ids[0];
+        let round = body.blended(&[edge], 2.0, false).unwrap();
+        let lost = (1.0 - std::f64::consts::PI / 4.0) * 4.0 * 10.0;
+        assert!(
+            close(round.volume().unwrap(), 1000.0 - lost),
+            "{:?}",
+            round.volume()
+        );
+        let bevel = body.blended(&[edge], 2.0, true).unwrap();
+        assert!(close(bevel.volume().unwrap(), 1000.0 - 2.0 * 10.0));
+    }
+
+    #[test]
+    fn a_turned_box_is_filleted_in_place() {
+        let body = Body::cuboid([0.0; 3], [10.0, 10.0, 10.0])
+            .unwrap()
+            .mapped(&Similarity::rotation([0.0; 3], [0.0, 0.0, 1.0], 0.5))
+            .translated([20.0, 0.0, 0.0]);
+        let edge = body.mesh().unwrap().edge_ids[3];
+        let round = body.blended(&[edge], 1.0, false).unwrap();
+        assert!(close(
+            round.bounds().unwrap().0[2],
+            body.bounds().unwrap().0[2]
+        ));
+        assert!(round.volume().unwrap() < 1000.0);
     }
 
     #[test]

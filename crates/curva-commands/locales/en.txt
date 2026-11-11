@@ -301,3 +301,10 @@ done.pipe = Made {0} pipes.
 prompt.offsetsrf.objects = Select surfaces or solids to offset, then press Enter
 prompt.offsetsrf.distance = Offset distance <{0}> (Solid={1})
 done.offsetsrf = Offset {0} objects.
+prompt.filletedge.edges = Click edges to fillet, then press Enter
+prompt.filletedge.size = Fillet radius <{0}>
+done.filletedge = Filleted {0} edges.
+prompt.chamferedge.edges = Click edges to chamfer, then press Enter
+prompt.chamferedge.size = Chamfer distance <{0}>
+done.chamferedge = Chamfered {0} edges.
+error.pick_edges = Click edges in the viewport, then press Enter.

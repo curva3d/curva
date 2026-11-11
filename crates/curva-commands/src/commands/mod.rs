@@ -11,6 +11,7 @@ mod boolean_union;
 mod bounding_box;
 mod box_solid;
 mod chamfer;
+mod chamfer_edge;
 mod circle;
 mod close_crv;
 mod copy;
@@ -24,6 +25,7 @@ mod explode;
 mod extrude_crv;
 mod fillet;
 mod fillet_corners;
+mod fillet_edge;
 mod flip;
 mod four_view;
 mod front;
@@ -121,7 +123,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 90] = [
+pub static COMMANDS: [CommandDef; 92] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -235,6 +237,8 @@ pub static COMMANDS: [CommandDef; 90] = [
     listed!("Sweep1", [], true, true, sweep1::Sweep1),
     listed!("Pipe", [], true, true, pipe::Pipe),
     listed!("OffsetSrf", [], true, true, offset_srf::OffsetSrf),
+    listed!("FilletEdge", [], true, true, fillet_edge::FilletEdge),
+    listed!("ChamferEdge", [], true, true, chamfer_edge::ChamferEdge),
     listed!("BooleanUnion", [], true, true, boolean_union::BooleanUnion),
     listed!(
         "BooleanDifference",
@@ -565,7 +569,7 @@ mod tests {
     ];
 
     /// Commands whose preview needs its own setup, tested in their own files.
-    const PREVIEW_TESTED_ELSEWHERE: [&str; 15] = [
+    const PREVIEW_TESTED_ELSEWHERE: [&str; 17] = [
         "Trim",
         "Fillet",
         "Chamfer",
@@ -581,6 +585,8 @@ mod tests {
         "BooleanDifference",
         "BooleanIntersection",
         "OffsetSrf",
+        "FilletEdge",
+        "ChamferEdge",
     ];
 
     #[test]
@@ -897,7 +903,14 @@ mod tests {
         assert_eq!(completions("pl"), ["Polyline", "PlanarSrf"]);
         assert_eq!(
             completions("c"),
-            ["Circle", "Copy", "CloseCrv", "Chamfer", "CPlane"]
+            [
+                "Circle",
+                "Copy",
+                "CloseCrv",
+                "Chamfer",
+                "ChamferEdge",
+                "CPlane"
+            ]
         );
         assert_eq!(completions("co"), ["Copy"]);
     }

@@ -72,6 +72,8 @@ pub struct Outlines {
     locked: Vec<bool>,
     /// Whether each entry is an edge of a surface or solid, in the same order.
     on_faces: Vec<bool>,
+    /// For an edge of a surface or solid, its number among the body's edges, in the same order.
+    edge_of: Vec<Option<usize>>,
     /// The box around each object, in the same order, so snapping can skip far-off ones.
     boxes: Vec<(Point, Point)>,
 }
@@ -138,8 +140,8 @@ impl Outlines {
             let locked = layer.is_some_and(|l| l.locked);
             // A body is meshed once: its triangles for shading, and its edges, each listed
             // under the body's id, for wireframe, picking and snapping.
-            let pieces = match &object.shape {
-                Shape::Curve(curve) => vec![curve.clone()],
+            let pieces: Vec<(Curve, Option<usize>)> = match &object.shape {
+                Shape::Curve(curve) => vec![(curve.clone(), None)],
                 Shape::Body(body) => {
                     let Some(mesh) = cache.mesh(object.id, body) else {
                         continue;
@@ -147,10 +149,13 @@ impl Outlines {
                     let edges = mesh
                         .edges
                         .iter()
-                        .filter_map(|run| match run.len() {
+                        .zip(&mesh.edge_ids)
+                        .filter_map(|(run, id)| match run.len() {
                             0 | 1 => None,
-                            2 => Curve::line(run[0], run[1]).ok(),
-                            _ => Curve::polyline(run.clone(), false).ok(),
+                            2 => Curve::line(run[0], run[1]).ok().map(|c| (c, Some(*id))),
+                            _ => Curve::polyline(run.clone(), false)
+                                .ok()
+                                .map(|c| (c, Some(*id))),
                         })
                         .collect();
                     outlines.faces.push(Faces {
@@ -162,7 +167,7 @@ impl Outlines {
                     edges
                 }
             };
-            for outline in pieces {
+            for (outline, edge) in pieces {
                 let Ok(points) = outline.sample() else {
                     continue;
                 };
@@ -173,6 +178,7 @@ impl Outlines {
                 outlines.colours.push(colour);
                 outlines.locked.push(locked);
                 outlines.on_faces.push(object.shape.body().is_some());
+                outlines.edge_of.push(edge);
                 outlines.objects.push((object.id, points));
             }
         }
@@ -337,6 +343,84 @@ impl Outlines {
             }
         }
         best.map(|(_, id)| id)
+    }
+
+    /// The edge of a surface or solid nearest a screen position, if one is within `reach`
+    /// pixels, as the object and the edge's number.
+    #[must_use]
+    pub fn pick_edge(
+        &self,
+        camera: &Camera,
+        screen: [f64; 2],
+        size: [f64; 2],
+        reach: f64,
+    ) -> Option<(u64, usize)> {
+        let mut best: Option<(f64, (u64, usize))> = None;
+        for (index, (id, points)) in self.objects.iter().enumerate() {
+            let Some(Some(edge)) = self.edge_of.get(index) else {
+                continue;
+            };
+            if self.locked.get(index).copied().unwrap_or(false) {
+                continue;
+            }
+            let projected: Vec<Option<[f64; 2]>> =
+                points.iter().map(|p| camera.project(*p, size)).collect();
+            for pair in projected.windows(2) {
+                if let [Some(a), Some(b)] = pair {
+                    let distance = to_segment(screen, *a, *b);
+                    if distance <= reach && best.is_none_or(|(d, _)| distance < d) {
+                        best = Some((distance, (*id, *edge)));
+                    }
+                }
+            }
+        }
+        best.map(|(_, pick)| pick)
+    }
+
+    /// The edges of surfaces and solids a box takes: wholly inside for a window dragged
+    /// rightwards, touched for a crossing box dragged leftwards, as for objects.
+    #[must_use]
+    pub fn edges_in_box(
+        &self,
+        camera: &Camera,
+        from: [f64; 2],
+        to: [f64; 2],
+        size: [f64; 2],
+    ) -> Vec<(u64, usize)> {
+        let low = [from[0].min(to[0]), from[1].min(to[1])];
+        let high = [from[0].max(to[0]), from[1].max(to[1])];
+        let window = to[0] >= from[0];
+        self.objects
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| !self.locked.get(*index).copied().unwrap_or(false))
+            .filter_map(|(index, (id, points))| {
+                let edge = (*self.edge_of.get(index)?)?;
+                let projected: Vec<Option<[f64; 2]>> =
+                    points.iter().map(|p| camera.project(*p, size)).collect();
+                let taken = if window {
+                    projected
+                        .iter()
+                        .all(|p| p.is_some_and(|p| inside_box(p, low, high)))
+                } else {
+                    projected.windows(2).any(|pair| match pair {
+                        [Some(a), Some(b)] => touches_box(*a, *b, low, high),
+                        _ => false,
+                    })
+                };
+                taken.then_some((*id, edge))
+            })
+            .collect()
+    }
+
+    /// The points along a picked edge, for drawing it highlighted.
+    #[must_use]
+    pub fn edge_points(&self, pick: (u64, usize)) -> Option<&[Point]> {
+        self.objects
+            .iter()
+            .zip(&self.edge_of)
+            .find(|((id, _), edge)| *id == pick.0 && **edge == Some(pick.1))
+            .map(|((_, points), _)| points.as_slice())
     }
 
     /// The objects chosen by a box dragged on screen from `from` to `to`, as in Rhino.
@@ -695,6 +779,30 @@ mod tests {
         assert_eq!(shaded.len() - dark, 2, "the line keeps its colour");
         let picked = face_vertices(&outlines, &[solid]);
         assert!(picked.iter().all(|v| v.colour == SELECTED_COLOUR));
+    }
+
+    #[test]
+    fn edges_are_picked_by_click_and_by_box() {
+        let mut doc = Document::default();
+        let solid = doc.add_body(curva_kernel::Body::cuboid([0.0; 3], [4.0, 4.0, 4.0]).unwrap());
+        doc.add(Curve::line([10.0, 0.0, 0.0], [12.0, 0.0, 0.0]).unwrap());
+        let outlines = Outlines::of(doc.state());
+        let camera = StandardView::Top.camera();
+        let at = |p: Point| camera.project(p, SIZE).unwrap();
+        // A click on the box's edge along X at y = 0 picks a box edge; one on the line, nothing.
+        let picked = outlines.pick_edge(&camera, at([2.0, 0.0, 0.0]), SIZE, 6.0);
+        assert!(picked.is_some_and(|(id, _)| id == solid));
+        let points = outlines.edge_points(picked.unwrap()).unwrap();
+        assert!(points.iter().all(|p| p[1].abs() < 1e-9));
+        assert_eq!(
+            outlines.pick_edge(&camera, at([11.0, 0.0, 0.0]), SIZE, 6.0),
+            None
+        );
+        // A window round the whole box, seen from above, takes all twelve edges.
+        let (a, b) = (at([-1.0, -1.0, 0.0]), at([5.0, 5.0, 0.0]));
+        let all = outlines.edges_in_box(&camera, [a[0], b[1]], [b[0], a[1]], SIZE);
+        assert_eq!(all.len(), 12);
+        assert!(all.iter().all(|(id, _)| *id == solid));
     }
 
     #[test]

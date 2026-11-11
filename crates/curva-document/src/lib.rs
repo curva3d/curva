@@ -6,6 +6,8 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+mod edges;
+pub use edges::EdgePick;
 mod grips;
 mod history;
 pub use grips::Grip;
@@ -216,6 +218,8 @@ pub struct Document {
     showing_points: BTreeSet<u64>,
     /// The picked control points. Not saved, and not part of undo.
     grip_selection: BTreeSet<Grip>,
+    /// Edges of bodies picked for a command. Not saved, and not part of undo.
+    edge_selection: Vec<EdgePick>,
 }
 
 impl Document {
