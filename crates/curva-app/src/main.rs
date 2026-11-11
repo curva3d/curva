@@ -94,6 +94,9 @@ struct Curva {
     faces: Arc<Vec<MeshVertex>>,
     /// Meshes of solids, kept until they change.
     meshes: MeshCache,
+    /// The last solid or surface measured for the properties panel: its id, the body as it
+    /// was, and what it is, which measure, and the value.
+    measured: Option<(u64, curva_kernel::Body, (&'static str, &'static str, f64))>,
     drawn: Option<(State, Vec<u64>)>,
     benchmark: Option<Benchmark>,
 }
@@ -441,6 +444,7 @@ impl Curva {
             shaded_scene: Arc::new(Vec::new()),
             faces: Arc::new(Vec::new()),
             meshes: MeshCache::default(),
+            measured: None,
             drawn: None,
             benchmark: benchmark.map(|_| Benchmark::default()),
         }
@@ -1010,22 +1014,30 @@ impl Curva {
                         )));
                     }
                 }
-                Shape::Body(body) if body.is_solid() => {
-                    ui.label(self.text.render(&Message::new("ui.kind.solid")));
-                    if let Ok(volume) = body.volume() {
-                        ui.label(self.text.render(&Message::with(
-                            "ui.properties.volume",
-                            vec![format!("{volume:.3}")],
-                        )));
-                    }
-                }
                 Shape::Body(body) => {
-                    ui.label(self.text.render(&Message::new("ui.kind.surface")));
-                    if let Ok(area) = body.area() {
-                        ui.label(self.text.render(&Message::with(
-                            "ui.properties.area",
-                            vec![format!("{area:.3}")],
-                        )));
+                    // Measuring a curved solid takes a moment, so it is done once per change.
+                    let fresh = self
+                        .measured
+                        .as_ref()
+                        .is_some_and(|(id, held, _)| *id == object.id && held == body);
+                    if !fresh {
+                        let volume = body.volume().ok().filter(|v| *v > 0.0);
+                        let reading = match volume {
+                            Some(volume) => ("ui.kind.solid", "ui.properties.volume", volume),
+                            None => (
+                                "ui.kind.surface",
+                                "ui.properties.area",
+                                body.area().unwrap_or(0.0),
+                            ),
+                        };
+                        self.measured = Some((object.id, body.clone(), reading));
+                    }
+                    if let Some((_, _, (kind, key, value))) = &self.measured {
+                        ui.label(self.text.render(&Message::new(kind)));
+                        ui.label(
+                            self.text
+                                .render(&Message::with(key, vec![format!("{value:.3}")])),
+                        );
                     }
                 }
             }

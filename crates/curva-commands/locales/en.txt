@@ -294,3 +294,10 @@ prompt.booleanintersection.first = Select the first solids, then press Enter
 prompt.booleanintersection.second = Select the second solids, then press Enter
 done.booleanintersection = Kept where the solids overlap.
 error.boolean.empty = Nothing would be left, so nothing was changed.
+prompt.pipe.objects = Select curves for the pipe to follow, then press Enter
+prompt.pipe.radius = Pipe radius <{0}> (Cap={1} Thick={2})
+prompt.pipe.inner = Inner radius <{0}>
+done.pipe = Made {0} pipes.
+prompt.offsetsrf.objects = Select surfaces or solids to offset, then press Enter
+prompt.offsetsrf.distance = Offset distance <{0}> (Solid={1})
+done.offsetsrf = Offset {0} objects.

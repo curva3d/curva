@@ -18,6 +18,7 @@ mod conic;
 mod corners;
 mod cut;
 mod fillet;
+mod finishing;
 mod grips;
 mod knots;
 mod making;

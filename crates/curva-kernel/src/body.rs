@@ -1,11 +1,12 @@
-//! Surfaces and solids: bodies made of faces, stored in the engine's portable record so that
-//! files keep them exactly.
+//! Surfaces and solids: bodies made of faces, kept in the engine's own native body format so
+//! that files keep them exactly.
 //!
-//! A body keeps its faces as they were made, plus one placement for every move, turn, scale
-//! and mirror since. The engine is given the faces and the placement each time it works on
-//! the body. Moving is then instant arithmetic, and the engine never has to read back a
-//! record it wrote for a turned body, which it refuses (status 1007, found 11 November 2026,
-//! to be reported upstream).
+//! The native format (SMLib's `.smb`, written and read by the engine itself) is used rather
+//! than the engine's portable record because the engine cannot always read back a record it
+//! wrote: a thickened sheet, or a box turned and then moved, comes back with status 1007
+//! (found 11 November 2026, to be reported upstream). The native format reads all of them
+//! back. A body also keeps one placement for every move, turn, scale and mirror since it was
+//! made, so moving is instant arithmetic.
 
 use crate::{Curve, KernelError, Point, Similarity};
 use serde::{Deserialize, Serialize};
@@ -13,8 +14,11 @@ use solidcore_ops::Body as EngineBody;
 use solidcore_record::brep::Brep as Record;
 use solidcore_tess::{MeshTolerance, plan};
 
+/// The native format in its text form, which a `.curva` file can hold as it is.
+const TEXT_FORMAT: bool = true;
+
 /// How closely volumes and areas are worked out, as a share of the answer.
-const MEASURE_ACCURACY: f64 = 1e-9;
+const MEASURE_ACCURACY: f64 = 1e-6;
 
 /// A placement as the engine takes it: a point is a row, `p' = p·A + t`, with rows 0 to 2
 /// where the axes go and row 3 the move.
@@ -46,10 +50,60 @@ fn followed_by(first: &Placement, then: &Placement) -> Placement {
 
 /// A surface or solid: one or more faces joined along their edges.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "StoredBody", into = "StoredBody")]
 pub struct Body {
-    record: Record,
+    /// The faces as made, in the engine's native format.
+    native: String,
+    placement: Placement,
+}
+
+/// A body as a file holds it. Files from 10 and 11 November 2026 hold the portable record
+/// instead; those are read once through it and saved the new way.
+#[derive(Serialize, Deserialize)]
+struct StoredBody {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    native: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    record: Option<Record>,
     #[serde(default = "in_place", skip_serializing_if = "is_in_place")]
     placement: Placement,
+}
+
+impl TryFrom<StoredBody> for Body {
+    type Error = String;
+
+    fn try_from(stored: StoredBody) -> Result<Self, String> {
+        let native = match (stored.native, stored.record) {
+            (Some(native), _) => native,
+            (None, Some(record)) => {
+                let (body, _) =
+                    EngineBody::from_record(&record, true).map_err(|e| format!("{e:?}"))?;
+                native_of(&body).map_err(|e| e.0)?
+            }
+            (None, None) => return Err("a body without faces".to_owned()),
+        };
+        Ok(Self {
+            native,
+            placement: stored.placement,
+        })
+    }
+}
+
+impl From<Body> for StoredBody {
+    fn from(body: Body) -> Self {
+        Self {
+            native: Some(body.native),
+            record: None,
+            placement: body.placement,
+        }
+    }
+}
+
+fn native_of(body: &EngineBody) -> Result<String, KernelError> {
+    let bytes = body
+        .to_smb(TEXT_FORMAT)
+        .map_err(|e| failed("storing a body", e))?;
+    String::from_utf8(bytes).map_err(|e| failed("storing a body", e))
 }
 
 /// What a body looks like on screen: triangles to shade and edges to draw.
@@ -66,21 +120,16 @@ pub struct BodyMesh {
 }
 
 impl Body {
-    fn from_record(record: Record) -> Self {
-        Self {
-            record,
-            placement: IN_PLACE,
-        }
-    }
-
     /// A body the engine has just made.
     pub(crate) fn made(body: &EngineBody) -> Result<Self, KernelError> {
         Self::from_engine(body)
     }
 
     fn from_engine(body: &EngineBody) -> Result<Self, KernelError> {
-        let (record, _) = body.to_record().map_err(|e| failed("storing a body", e))?;
-        Ok(Self::from_record(record))
+        Ok(Self {
+            native: native_of(body)?,
+            placement: IN_PLACE,
+        })
     }
 
     /// The body as the engine holds it, in its place, for operations elsewhere in the kernel.
@@ -88,15 +137,26 @@ impl Body {
         self.engine()
     }
 
+    /// The faces in place, as the engine's portable record, for reading their edges.
+    pub(crate) fn record(&self) -> Result<Record, KernelError> {
+        let (record, _) = self
+            .engine()?
+            .to_record()
+            .map_err(|e| failed("describing a body", e))?;
+        Ok(record)
+    }
+
     /// The faces as made, without the placement.
     fn unplaced(&self) -> Self {
-        Self::from_record(self.record.clone())
+        Self {
+            native: self.native.clone(),
+            placement: IN_PLACE,
+        }
     }
 
     /// The body as the engine holds it, in its place.
     fn engine(&self) -> Result<EngineBody, KernelError> {
-        let body = EngineBody::from_record(&self.record, true)
-            .map(|(body, _)| body)
+        let body = EngineBody::from_smb(self.native.as_bytes().to_vec(), TEXT_FORMAT)
             .map_err(|e| failed("reading a body", e))?;
         if !is_in_place(&self.placement) {
             body.transform(&self.placement)
@@ -180,7 +240,7 @@ impl Body {
             [origin[0], origin[1], origin[2], 1.0],
         ];
         Self {
-            record: self.record.clone(),
+            native: self.native.clone(),
             placement: followed_by(&self.placement, &then),
         }
     }
@@ -230,12 +290,14 @@ impl Body {
     /// Triangles and edges for drawing, fine enough to look smooth at the body's size. The
     /// faces as made are meshed, then the mesh is placed.
     pub fn mesh(&self) -> Result<BodyMesh, KernelError> {
-        let (low, high) = self.unplaced().bounds()?;
+        let unplaced = self.unplaced();
+        let (low, high) = unplaced.bounds()?;
+        let record = unplaced.record()?;
         let size = (0..3)
             .map(|axis| (high[axis] - low[axis]).powi(2))
             .sum::<f64>()
             .sqrt();
-        let (tess, _) = plan(&self.record, &MeshTolerance::display_of(size), size)
+        let (tess, _) = plan(&record, &MeshTolerance::display_of(size), size)
             .map_err(|e| failed("meshing a body", e))?;
         let (mesh, _) = tess.evaluate();
         let point = |v: &solidcore_record::Vec3| self.placed_point([v.x, v.y, v.z]);
@@ -344,6 +406,14 @@ mod tests {
         let mesh = body.mesh().unwrap();
         assert!(mesh.triangles.len() >= 12);
         assert_eq!(mesh.positions.len(), mesh.normals.len());
+    }
+
+    #[test]
+    fn a_body_saved_as_a_portable_record_still_opens() {
+        let body = Body::cuboid([1.0, 2.0, 3.0], [4.0, 5.0, 6.0]).unwrap();
+        let old = serde_json::json!({ "record": body.record().unwrap() });
+        let back: Body = serde_json::from_value(old).unwrap();
+        assert!(close(back.volume().unwrap(), 120.0));
     }
 
     #[test]
