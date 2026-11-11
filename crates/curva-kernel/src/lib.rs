@@ -12,6 +12,8 @@ use std::f64::consts::TAU;
 
 mod area;
 mod body;
+mod boolean;
+pub use boolean::Combine;
 mod conic;
 mod corners;
 mod cut;

@@ -5,7 +5,7 @@
 //! `curva --mcp` runs as an MCP server for AI agents, on standard input and output, on a model of
 //! its own. `curva --mcp --connect` connects an agent to the window that is open instead.
 //! `curva --orbit-benchmark --curves 5000` opens the window on a scene of that many circles, spins
-//! the view and prints how fast it drew and snapped.
+//! the view and prints how fast it drew and snapped. `--solids 500` adds that many cylinders.
 
 use curva_commands::{DisplayMode, Kind, Message, Processor, Translations, ViewName, ViewRequest};
 use curva_document::{Document, Grip, Shape, State};
@@ -313,14 +313,37 @@ struct Benchmark {
 }
 
 /// A square grid of `count` circles.
-fn benchmark_scene(doc: &mut Document, count: usize) -> Result<(), String> {
-    let side = (count as f64).sqrt().ceil() as usize;
-    for index in 0..count {
-        let (column, row) = ((index % side.max(1)) as f64, (index / side.max(1)) as f64);
-        let centre = [column * BENCHMARK_SPACING, row * BENCHMARK_SPACING, 0.0];
+/// A grid of circles, then a grid of upright cylinders beside it.
+fn benchmark_scene(doc: &mut Document, scene: BenchmarkScene) -> Result<(), String> {
+    let place = |index: usize, count: usize, shift: f64| {
+        let side = (count as f64).sqrt().ceil().max(1.0) as usize;
+        let (column, row) = ((index % side) as f64, (index / side) as f64);
+        [
+            column * BENCHMARK_SPACING + shift,
+            row * BENCHMARK_SPACING,
+            0.0,
+        ]
+    };
+    for index in 0..scene.curves {
+        let centre = place(index, scene.curves, 0.0);
         doc.add(Curve::circle(centre, BENCHMARK_RADIUS).map_err(|error| error.to_string())?);
     }
+    let beside = (scene.curves as f64).sqrt().ceil() * BENCHMARK_SPACING + BENCHMARK_SPACING;
+    for index in 0..scene.solids {
+        let base = Curve::circle(place(index, scene.solids, beside), BENCHMARK_RADIUS)
+            .map_err(|error| error.to_string())?;
+        let up = curva_kernel::Body::extruded(&[base], [0.0, 0.0, 1.0], BENCHMARK_SPACING, true)
+            .map_err(|error| error.to_string())?;
+        doc.add_body(up);
+    }
     Ok(())
+}
+
+/// What a benchmark scene holds.
+#[derive(Clone, Copy, Debug, Default)]
+struct BenchmarkScene {
+    curves: usize,
+    solids: usize,
 }
 
 fn curve_kind(curve: &Curve) -> &'static str {
@@ -379,15 +402,15 @@ impl Benchmark {
 }
 
 impl Curva {
-    fn new(context: &eframe::CreationContext<'_>, benchmark: Option<usize>) -> Self {
+    fn new(context: &eframe::CreationContext<'_>, benchmark: Option<BenchmarkScene>) -> Self {
         if let Some(state) = context.wgpu_render_state.as_ref() {
             let renderer = LineRenderer::new(&state.device, state.target_format);
             state.renderer.write().callback_resources.insert(renderer);
         }
         let mut doc = Document::default();
         let mut panes = standard_panes();
-        if let Some(count) = benchmark
-            && benchmark_scene(&mut doc, count).is_ok()
+        if let Some(scene) = benchmark
+            && benchmark_scene(&mut doc, scene).is_ok()
             && let Some((low, high)) = Outlines::of(doc.state()).bounds()
         {
             for pane in &mut panes {
@@ -1716,9 +1739,11 @@ fn main() -> Result<(), String> {
         .iter()
         .any(|argument| argument == "--orbit-benchmark")
         .then(|| {
-            value("--curves")
-                .and_then(|count| count.parse().ok())
-                .unwrap_or(0)
+            let count = |flag: &str| value(flag).and_then(|n| n.parse().ok()).unwrap_or(0);
+            BenchmarkScene {
+                curves: count("--curves"),
+                solids: count("--solids"),
+            }
         });
     eframe::run_native(
         "Curva",

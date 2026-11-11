@@ -94,10 +94,26 @@ impl MeshCache {
         Some(mesh)
     }
 
-    /// Forgets bodies that are gone.
-    fn keep_only(&mut self, state: &State) {
+    /// Forgets bodies that are gone, and meshes new or changed ones all at once, on every
+    /// core, so that opening a model of many solids does not mesh them one by one.
+    fn refresh(&mut self, state: &State) {
+        use rayon::prelude::*;
         self.held
             .retain(|id, _| state.objects.iter().any(|object| object.id == *id));
+        let wanted: Vec<(u64, &curva_kernel::Body)> = state
+            .objects
+            .iter()
+            .filter(|object| !object.hidden)
+            .filter_map(|object| Some((object.id, object.shape.body()?)))
+            .filter(|(id, body)| self.held.get(id).is_none_or(|(held, _)| held != *body))
+            .collect();
+        let made: Vec<_> = wanted
+            .par_iter()
+            .filter_map(|(id, body)| Some((*id, (*body).clone(), body.mesh().ok()?)))
+            .collect();
+        for (id, body, mesh) in made {
+            self.held.insert(id, (body, mesh));
+        }
     }
 }
 
@@ -111,7 +127,7 @@ impl Outlines {
     /// As [`Self::of`], reusing the meshes of bodies that have not changed.
     #[must_use]
     pub fn of_cached(state: &State, cache: &mut MeshCache) -> Self {
-        cache.keep_only(state);
+        cache.refresh(state);
         let mut outlines = Self::default();
         for object in &state.objects {
             let layer = state.layers.iter().find(|l| l.id == object.layer);

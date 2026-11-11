@@ -67,7 +67,10 @@
 - Shaded display: faces lit from the camera with a little light from above, dark edges on solids, depth in every view (flat views included). Pictures made with `--picture` and for agents are shaded too. Solids are meshed once and kept until they change.
 - `ExtrudeCrv` (options Solid and BothSides, distance remembered) and `PlanarSrf`. As in Rhino, an outline and the closed curves inside it become one solid or surface with holes, and separate outlines make separate objects.
 - `Revolve` (axis by two points, any angle up to a full turn; a closed curve turned part way is closed at its ends), `Loft` (through the curves in the order they were made, ends left open) and `Sweep1` (rail first, then cross sections; one curve selected beforehand is taken as the rail).
-- Next planned: the booleans (BooleanUnion, BooleanDifference, BooleanIntersection).
+- `BooleanUnion`, `BooleanDifference` (solids to cut from, then solids to cut with) and `BooleanIntersection` (two sets). As in Rhino, the solids used are replaced by the result. Combining turned and moved solids works, and the result can be moved and combined again.
+- The commands of `docs/specs/m2-first-surfaces.md` are all in. The owner is trying them by hand.
+- Speed with solids (`--orbit-benchmark --solids 500`, RTX 3060): orbiting 500 cylinders takes 3.5 ms a frame (4.2 ms at worst); with 5,000 circles as well, 5.3 ms (7.3 ms). Meshing happens on all cores; opening a model of 500 cylinders spends about 3.5 seconds meshing them once.
+- Next planned: Cap and the rest of the F2 surface list, or the remaining Milestone 1 items (autosave and crash recovery), whichever the owner prefers.
 
 **Waiting for the owner**
 - Nothing yet. The engine is solidcore, with Serpentine3D's commands as the base (decision 0010). SolidCraft
@@ -84,6 +87,7 @@
 - Agents merge their own pull requests once checks pass; the owner does not click merge.
 
 **Known problems / risks**
+- solidcore runs one operation at a time behind a single lock, so meshing many solids gains only about 2.3 times from all cores. Faster opening of large models needs that looked at upstream.
 - solidcore cannot read back its own record of a body that has been turned and then moved (status 1007, "invalid input"). Curva avoids it by keeping each body as made plus one placement (`crates/curva-kernel/src/body.rs`). The bug should be reported upstream with a small reproducible case; booleans on turned bodies may meet it again.
 
 - Serpentine3D's geometry is done by OpenCascade (C++), so its geometric logic cannot be ported

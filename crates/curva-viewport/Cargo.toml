@@ -17,3 +17,6 @@ egui-wgpu = "0.37"
 epaint = "0.37"
 png = "0.18"
 pollster = "0.4"
+# Meshes many solids at once on all cores, as the architecture asks (section 7). Already in the
+# build through the engine.
+rayon = "1.12"
