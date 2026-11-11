@@ -18,6 +18,8 @@ mod cut;
 mod fillet;
 mod grips;
 mod knots;
+mod making;
+pub use making::nested_groups;
 mod offset;
 mod tween;
 pub use body::{Body, BodyMesh};

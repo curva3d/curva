@@ -73,6 +73,11 @@ impl Body {
         }
     }
 
+    /// A body the engine has just made.
+    pub(crate) fn made(body: &EngineBody) -> Result<Self, KernelError> {
+        Self::from_engine(body)
+    }
+
     fn from_engine(body: &EngineBody) -> Result<Self, KernelError> {
         let (record, _) = body.to_record().map_err(|e| failed("storing a body", e))?;
         Ok(Self::from_record(record))

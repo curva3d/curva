@@ -65,7 +65,8 @@
 **Milestone 2 started early, at the owner's choice (10 November 2026):** first surfaces, `docs/specs/m2-first-surfaces.md`, approved with Sweep1 and the booleans added.
 - Surfaces and solids in the model and in files (older files still open), drawn by their edges, and moved, turned, scaled, mirrored, copied, hidden and put on layers like curves. `Box` makes the first solids. The properties panel shows a solid's volume or a surface's area.
 - Shaded display: faces lit from the camera with a little light from above, dark edges on solids, depth in every view (flat views included). Pictures made with `--picture` and for agents are shaded too. Solids are meshed once and kept until they change.
-- Next planned: ExtrudeCrv, PlanarSrf, Revolve, Loft, Sweep1 and the booleans.
+- `ExtrudeCrv` (options Solid and BothSides, distance remembered) and `PlanarSrf`. As in Rhino, an outline and the closed curves inside it become one solid or surface with holes, and separate outlines make separate objects.
+- Next planned: Revolve, Loft, Sweep1, then the booleans.
 
 **Waiting for the owner**
 - Nothing yet. The engine is solidcore, with Serpentine3D's commands as the base (decision 0010). SolidCraft

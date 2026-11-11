@@ -269,3 +269,9 @@ done.box = Created a box.
 prompt.setdisplaymode.mode = Display mode
 ui.display.wireframe = Wireframe
 ui.display.shaded = Shaded
+prompt.extrudecrv.objects = Select curves to extrude, then press Enter
+prompt.extrudecrv.distance = Extrusion distance <{0}> (Solid={1} BothSides={2})
+done.extrudecrv = Extruded {0} curves.
+prompt.planarsrf.objects = Select closed flat curves, then press Enter
+error.planarsrf.none_closed = None of those curves is closed, so there is nothing to fill.
+done.planarsrf = Created {0} flat surfaces.
