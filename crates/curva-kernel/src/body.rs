@@ -18,7 +18,7 @@ use solidcore_tess::{MeshTolerance, plan};
 const TEXT_FORMAT: bool = true;
 
 /// How closely volumes and areas are worked out, as a share of the answer.
-const MEASURE_ACCURACY: f64 = 1e-9;
+const MEASURE_ACCURACY: f64 = 1e-6;
 
 /// A placement as the engine takes it: a point is a row, `p' = p·A + t`, with rows 0 to 2
 /// where the axes go and row 3 the move.

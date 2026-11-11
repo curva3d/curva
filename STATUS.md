@@ -70,7 +70,10 @@
 - `BooleanUnion`, `BooleanDifference` (solids to cut from, then solids to cut with) and `BooleanIntersection` (two sets). As in Rhino, the solids used are replaced by the result. Combining turned and moved solids works, and the result can be moved and combined again.
 - The commands of `docs/specs/m2-first-surfaces.md` are all in. The owner is trying them by hand.
 - Speed with solids (`--orbit-benchmark --solids 500`, RTX 3060): orbiting 500 cylinders takes 3.5 ms a frame (4.2 ms at worst); with 5,000 circles as well, 5.3 ms (7.3 ms). Meshing happens on all cores; opening a model of 500 cylinders spends about 3.5 seconds meshing them once.
-- Next planned: Cap and the rest of the F2 surface list, or the remaining Milestone 1 items (autosave and crash recovery), whichever the owner prefers.
+- Surface tools (`docs/specs/m2-surface-tools.md`, approved 11 November 2026): `Pipe` (Cap and Thick options) and `OffsetSrf` (Solid option). **Cap is blocked** (#67): the engine sews caps on but leaves the space inside empty; three approaches tried, written up in the issue.
+- Bodies are now stored in the engine's native format, which reads back every body tried, where the portable record failed for some (a thickened sheet; a box turned then moved).
+- Measuring a solid's volume aims for six significant figures, and the properties panel measures once per change, as a curved solid takes about half a second.
+- Next planned: picking edges, then FilletEdge and ChamferEdge; then picking faces and Shell.
 
 **Waiting for the owner**
 - Nothing yet. The engine is solidcore, with Serpentine3D's commands as the base (decision 0010). SolidCraft
@@ -87,6 +90,7 @@
 - Agents merge their own pull requests once checks pass; the owner does not click merge.
 
 **Known problems / risks**
+- A pipe along a rail with a sharp corner (a polyline) is refused by the engine; Rhino mitres the corner. Smooth rails work.
 - solidcore runs one operation at a time behind a single lock, so meshing many solids gains only about 2.3 times from all cores. Faster opening of large models needs that looked at upstream.
 - solidcore cannot read back its own record of a body that has been turned and then moved (status 1007, "invalid input"). Curva avoids it by keeping each body as made plus one placement (`crates/curva-kernel/src/body.rs`). The bug should be reported upstream with a small reproducible case; booleans on turned bodies may meet it again.
 

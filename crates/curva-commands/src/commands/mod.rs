@@ -42,10 +42,12 @@ mod move_objects;
 mod named_view;
 mod new;
 mod offset;
+mod offset_srf;
 mod open;
 mod orient;
 mod orient3pt;
 mod perspective;
+mod pipe;
 mod planar_srf;
 mod point;
 mod points_off;
@@ -119,7 +121,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 88] = [
+pub static COMMANDS: [CommandDef; 90] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -231,6 +233,8 @@ pub static COMMANDS: [CommandDef; 88] = [
     listed!("Revolve", [], true, true, revolve::Revolve),
     listed!("Loft", [], true, true, loft::Loft),
     listed!("Sweep1", [], true, true, sweep1::Sweep1),
+    listed!("Pipe", [], true, true, pipe::Pipe),
+    listed!("OffsetSrf", [], true, true, offset_srf::OffsetSrf),
     listed!("BooleanUnion", [], true, true, boolean_union::BooleanUnion),
     listed!(
         "BooleanDifference",
@@ -511,7 +515,7 @@ mod tests {
 
     /// For each command that changes geometry, the typed steps that reach its live preview.
     /// A new command must be added here, which is how the preview rule in AGENTS.md is enforced.
-    const PREVIEW_STEPS: [(&str, &[&str]); 27] = [
+    const PREVIEW_STEPS: [(&str, &[&str]); 28] = [
         ("Line", &["0,0"]),
         ("Polyline", &["0,0", "9,0"]),
         ("InterpCrv", &["0,0", "9,0"]),
@@ -539,6 +543,7 @@ mod tests {
         ("Box", &["0,0", "5,5"]),
         ("ExtrudeCrv", &[]),
         ("Revolve", &["0,0", "0,9"]),
+        ("Pipe", &[]),
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
@@ -560,7 +565,7 @@ mod tests {
     ];
 
     /// Commands whose preview needs its own setup, tested in their own files.
-    const PREVIEW_TESTED_ELSEWHERE: [&str; 14] = [
+    const PREVIEW_TESTED_ELSEWHERE: [&str; 15] = [
         "Trim",
         "Fillet",
         "Chamfer",
@@ -575,6 +580,7 @@ mod tests {
         "Sweep1",
         "BooleanDifference",
         "BooleanIntersection",
+        "OffsetSrf",
     ];
 
     #[test]
