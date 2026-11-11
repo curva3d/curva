@@ -74,7 +74,8 @@
 - Bodies are now stored in the engine's native format, which reads back every body tried, where the portable record failed for some (a thickened sheet; a box turned then moved).
 - Measuring a solid's volume aims for six significant figures, and the properties panel measures once per change, as a curved solid takes about half a second.
 - Picking edges: while a command asks for edges, clicking near an edge picks it (Shift adds, Ctrl removes, a window or crossing box picks many), and picked edges show thick and yellow. `FilletEdge` and `ChamferEdge` round or bevel them, with a live preview and the size remembered; the solid keeps its id, layer and name.
-- Next planned: picking faces, then Shell.
+- Picking faces works the same way (a picked face is tinted yellow). `Shell` hollows a solid to a wall thickness, opening the picked faces, with a live preview.
+- The surface tools spec is done apart from Cap (#67). The owner is trying them by hand.
 
 **Waiting for the owner**
 - Nothing yet. The engine is solidcore, with Serpentine3D's commands as the base (decision 0010). SolidCraft

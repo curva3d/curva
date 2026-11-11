@@ -413,6 +413,107 @@ impl Outlines {
             .collect()
     }
 
+    /// The face of a surface or solid under a screen position, the nearest if several are, as
+    /// the object and the face's number.
+    #[must_use]
+    pub fn pick_face(
+        &self,
+        camera: &Camera,
+        screen: [f64; 2],
+        size: [f64; 2],
+    ) -> Option<(u64, usize)> {
+        let forward = camera.forward();
+        let mut best: Option<(f64, (u64, usize))> = None;
+        for faces in self.faces.iter().filter(|faces| !faces.locked) {
+            let mesh = &faces.mesh;
+            for (triangle, face) in mesh.triangles.iter().zip(&mesh.triangle_faces) {
+                let corners: Vec<Point> = triangle
+                    .iter()
+                    .filter_map(|&c| mesh.positions.get(c as usize).copied())
+                    .collect();
+                let on_screen: Vec<[f64; 2]> = corners
+                    .iter()
+                    .filter_map(|p| camera.project(*p, size))
+                    .collect();
+                let [a, b, c] = on_screen.as_slice() else {
+                    continue;
+                };
+                if !inside_triangle(screen, *a, *b, *c) {
+                    continue;
+                }
+                // How far along the view the triangle's middle is, to keep the nearest.
+                let depth = corners
+                    .iter()
+                    .map(|p| p[0] * forward[0] + p[1] * forward[1] + p[2] * forward[2])
+                    .sum::<f64>()
+                    / 3.0;
+                if best.is_none_or(|(d, _)| depth < d) {
+                    best = Some((depth, (faces.id, *face)));
+                }
+            }
+        }
+        best.map(|(_, pick)| pick)
+    }
+
+    /// The faces of surfaces and solids a box takes: wholly inside for a window dragged
+    /// rightwards, partly inside for a crossing box dragged leftwards.
+    #[must_use]
+    pub fn faces_in_box(
+        &self,
+        camera: &Camera,
+        from: [f64; 2],
+        to: [f64; 2],
+        size: [f64; 2],
+    ) -> Vec<(u64, usize)> {
+        let low = [from[0].min(to[0]), from[1].min(to[1])];
+        let high = [from[0].max(to[0]), from[1].max(to[1])];
+        let window = to[0] >= from[0];
+        let mut taken = Vec::new();
+        for faces in self.faces.iter().filter(|faces| !faces.locked) {
+            let mesh = &faces.mesh;
+            let mut verdicts: std::collections::BTreeMap<usize, (bool, bool)> =
+                std::collections::BTreeMap::new();
+            for (triangle, face) in mesh.triangles.iter().zip(&mesh.triangle_faces) {
+                for &corner in triangle {
+                    let inside = mesh
+                        .positions
+                        .get(corner as usize)
+                        .and_then(|p| camera.project(*p, size))
+                        .is_some_and(|p| inside_box(p, low, high));
+                    let entry = verdicts.entry(*face).or_insert((true, false));
+                    entry.0 &= inside;
+                    entry.1 |= inside;
+                }
+            }
+            for (face, (all, any)) in verdicts {
+                if (window && all) || (!window && any) {
+                    taken.push((faces.id, face));
+                }
+            }
+        }
+        taken
+    }
+
+    /// The triangles of a picked face, for drawing it highlighted.
+    #[must_use]
+    pub fn face_triangles(&self, pick: (u64, usize)) -> Vec<[Point; 3]> {
+        self.faces
+            .iter()
+            .filter(|faces| faces.id == pick.0)
+            .flat_map(|faces| {
+                let mesh = &faces.mesh;
+                mesh.triangles
+                    .iter()
+                    .zip(&mesh.triangle_faces)
+                    .filter(move |(_, face)| **face == pick.1)
+                    .filter_map(move |(triangle, _)| {
+                        let corner = |i: usize| mesh.positions.get(triangle[i] as usize).copied();
+                        Some([corner(0)?, corner(1)?, corner(2)?])
+                    })
+            })
+            .collect()
+    }
+
     /// The points along a picked edge, for drawing it highlighted.
     #[must_use]
     pub fn edge_points(&self, pick: (u64, usize)) -> Option<&[Point]> {
@@ -478,6 +579,14 @@ impl Outlines {
         }
         chosen
     }
+}
+
+/// Whether `p` is inside the triangle `a`, `b`, `c` on screen, whichever way round it runs.
+fn inside_triangle(p: [f64; 2], a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> bool {
+    let side =
+        |u: [f64; 2], v: [f64; 2]| (v[0] - u[0]) * (p[1] - u[1]) - (v[1] - u[1]) * (p[0] - u[0]);
+    let (ab, bc, ca) = (side(a, b), side(b, c), side(c, a));
+    (ab >= 0.0 && bc >= 0.0 && ca >= 0.0) || (ab <= 0.0 && bc <= 0.0 && ca <= 0.0)
 }
 
 fn inside_box(p: [f64; 2], low: [f64; 2], high: [f64; 2]) -> bool {
@@ -803,6 +912,40 @@ mod tests {
         let all = outlines.edges_in_box(&camera, [a[0], b[1]], [b[0], a[1]], SIZE);
         assert_eq!(all.len(), 12);
         assert!(all.iter().all(|(id, _)| *id == solid));
+    }
+
+    #[test]
+    fn the_nearest_face_under_the_cursor_is_picked() {
+        let mut doc = Document::default();
+        let solid = doc.add_body(curva_kernel::Body::cuboid([0.0; 3], [4.0, 4.0, 4.0]).unwrap());
+        let outlines = Outlines::of(doc.state());
+        let camera = StandardView::Top.camera();
+        let at = |p: Point| camera.project(p, SIZE).unwrap();
+        // Seen from above, the middle of the box shows its top face, not its bottom.
+        let (id, face) = outlines
+            .pick_face(&camera, at([2.0, 2.0, 4.0]), SIZE)
+            .unwrap();
+        assert_eq!(id, solid);
+        let triangles = outlines.face_triangles((id, face));
+        assert!(!triangles.is_empty());
+        assert!(
+            triangles
+                .iter()
+                .flatten()
+                .all(|p| (p[2] - 4.0).abs() < 1e-9)
+        );
+        assert_eq!(
+            outlines.pick_face(&camera, at([20.0, 20.0, 0.0]), SIZE),
+            None
+        );
+        // A window round the whole box takes all six faces.
+        let (a, b) = (at([-1.0, -1.0, 0.0]), at([5.0, 5.0, 0.0]));
+        assert_eq!(
+            outlines
+                .faces_in_box(&camera, [a[0], b[1]], [b[0], a[1]], SIZE)
+                .len(),
+            6
+        );
     }
 
     #[test]

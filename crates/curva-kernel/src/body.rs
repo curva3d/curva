@@ -119,6 +119,8 @@ pub struct BodyMesh {
     pub edges: Vec<Vec<Point>>,
     /// For each of `edges`, its number among the body's edges, for picking it.
     pub edge_ids: Vec<usize>,
+    /// For each of `triangles`, the number of the face it is part of, for picking faces.
+    pub triangle_faces: Vec<usize>,
 }
 
 impl Body {
@@ -316,6 +318,7 @@ impl Body {
                 .map(|&index| mesh.edges[index].iter().map(point).collect())
                 .collect(),
             edge_ids: kept,
+            triangle_faces: mesh.tri_face.iter().map(|&face| face as usize).collect(),
         })
     }
 
@@ -343,6 +346,22 @@ impl Body {
             Turn::Mitre,
         )
         .map_err(|e| failed(if chamfer { "chamfering" } else { "filleting" }, e))?;
+        Ok(Self {
+            native: native_of(&unplaced)?,
+            placement: self.placement,
+        })
+    }
+
+    /// The solid hollowed to a wall `thickness` thick, inward, with the faces numbered `open`
+    /// (as in [`BodyMesh::triangle_faces`]) taken away to open it.
+    pub fn shelled(&self, open: &[usize], thickness: f64) -> Result<Self, KernelError> {
+        let unplaced = self.unplaced().engine()?;
+        let (_, order) = unplaced
+            .to_record()
+            .map_err(|e| failed("reading faces", e))?;
+        // The engine's wall is outward for a positive thickness; Rhino's Shell goes inward.
+        solidcore_ops::shell(&unplaced, &order, open, -thickness.abs())
+            .map_err(|e| failed("shelling", e))?;
         Ok(Self {
             native: native_of(&unplaced)?,
             placement: self.placement,
@@ -460,6 +479,23 @@ mod tests {
             body.bounds().unwrap().0[2]
         ));
         assert!(round.volume().unwrap() < 1000.0);
+    }
+
+    #[test]
+    fn a_cube_shelled_with_its_top_open_keeps_its_walls() {
+        let body = Body::cuboid([0.0; 3], [10.0, 10.0, 10.0]).unwrap();
+        let mesh = body.mesh().unwrap();
+        // The top face: the one whose triangles all lie at z = 10.
+        let top = (0..mesh.triangles.len())
+            .find(|&t| {
+                mesh.triangles[t]
+                    .iter()
+                    .all(|&c| (mesh.positions[c as usize][2] - 10.0).abs() < 1e-9)
+            })
+            .map(|t| mesh.triangle_faces[t])
+            .unwrap();
+        let shell = body.shelled(&[top], 1.0).unwrap();
+        assert!(close(shell.volume().unwrap(), 1000.0 - 8.0 * 8.0 * 9.0));
     }
 
     #[test]

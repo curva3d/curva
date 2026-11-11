@@ -308,3 +308,7 @@ prompt.chamferedge.edges = Click edges to chamfer, then press Enter
 prompt.chamferedge.size = Chamfer distance <{0}>
 done.chamferedge = Chamfered {0} edges.
 error.pick_edges = Click edges in the viewport, then press Enter.
+prompt.shell.faces = Click the faces to open, then press Enter
+prompt.shell.thickness = Wall thickness <{0}>
+done.shell = Shelled the solid.
+error.pick_faces = Click faces in the viewport, then press Enter.

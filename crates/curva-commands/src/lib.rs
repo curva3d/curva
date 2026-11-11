@@ -53,6 +53,8 @@ pub enum Kind {
     Choice,
     /// Edges of surfaces and solids, picked in the viewport.
     Edges,
+    /// Faces of surfaces and solids, picked in the viewport.
+    Faces,
 }
 
 /// One question a command asks.
@@ -98,6 +100,8 @@ pub enum Answer {
     Objects(Vec<u64>),
     /// Picked edges of surfaces and solids.
     Edges(Vec<curva_document::EdgePick>),
+    /// Picked faces of surfaces and solids.
+    Faces(Vec<curva_document::FacePick>),
     /// A file location.
     Path(String),
     /// One of the request's option words.

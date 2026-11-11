@@ -81,6 +81,7 @@ mod sel_prev;
 mod sel_pt;
 mod set_display_mode;
 mod set_pt;
+mod shell;
 mod show;
 mod smooth;
 mod split;
@@ -123,7 +124,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 92] = [
+pub static COMMANDS: [CommandDef; 93] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -239,6 +240,7 @@ pub static COMMANDS: [CommandDef; 92] = [
     listed!("OffsetSrf", [], true, true, offset_srf::OffsetSrf),
     listed!("FilletEdge", [], true, true, fillet_edge::FilletEdge),
     listed!("ChamferEdge", [], true, true, chamfer_edge::ChamferEdge),
+    listed!("Shell", [], true, true, shell::Shell),
     listed!("BooleanUnion", [], true, true, boolean_union::BooleanUnion),
     listed!(
         "BooleanDifference",
@@ -569,7 +571,7 @@ mod tests {
     ];
 
     /// Commands whose preview needs its own setup, tested in their own files.
-    const PREVIEW_TESTED_ELSEWHERE: [&str; 17] = [
+    const PREVIEW_TESTED_ELSEWHERE: [&str; 18] = [
         "Trim",
         "Fillet",
         "Chamfer",
@@ -587,6 +589,7 @@ mod tests {
         "OffsetSrf",
         "FilletEdge",
         "ChamferEdge",
+        "Shell",
     ];
 
     #[test]

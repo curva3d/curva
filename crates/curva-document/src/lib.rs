@@ -7,7 +7,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 
 mod edges;
-pub use edges::EdgePick;
+pub use edges::{EdgePick, FacePick};
 mod grips;
 mod history;
 pub use grips::Grip;
@@ -220,6 +220,8 @@ pub struct Document {
     grip_selection: BTreeSet<Grip>,
     /// Edges of bodies picked for a command. Not saved, and not part of undo.
     edge_selection: Vec<EdgePick>,
+    /// Faces of bodies picked for a command. Not saved, and not part of undo.
+    face_selection: Vec<FacePick>,
 }
 
 impl Document {
