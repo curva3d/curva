@@ -2,7 +2,10 @@
 //! engine's sweeps.
 
 use crate::{Body, Curve, KernelError, Point, cross};
-use solidcore_ops::sweep::{Curve as SweepCurve, DraftCorner, extrude, planar_faces};
+use solidcore_ops::sweep::{
+    Curve as SweepCurve, DraftCorner, SweepFrame, extrude, loft, planar_faces, revolve,
+    sweep_placed,
+};
 use std::f64::consts::TAU;
 
 fn failed(what: &str, error: impl std::fmt::Debug) -> KernelError {
@@ -189,6 +192,49 @@ impl Body {
         Self::made(&made)
     }
 
+    /// The curves spun about the line through `origin` along `axis`, by `angle` radians up to
+    /// a full turn, right-handed. With `cap`, a closed curve turned part of the way is closed
+    /// at both ends into a solid.
+    pub fn revolved(
+        curves: &[Curve],
+        origin: Point,
+        axis: Point,
+        angle: f64,
+        cap: bool,
+    ) -> Result<Self, KernelError> {
+        let axis =
+            crate::unit(axis).ok_or_else(|| KernelError("the axis has no length".to_owned()))?;
+        let made = revolve(&pieces_of(curves)?, origin, axis, angle.min(TAU), cap)
+            .map_err(|e| failed("revolving", e))?;
+        Self::made(&made)
+    }
+
+    /// A skin stretched through the curves in order, smooth across them (degree 3 where there
+    /// are enough curves). With `cap`, closed curves are closed at the first and last into a
+    /// solid.
+    pub fn lofted(curves: &[Curve], cap: bool) -> Result<Self, KernelError> {
+        let sections = curves
+            .iter()
+            .map(sweep_pieces)
+            .collect::<Result<Vec<_>, _>>()?;
+        let degree = u32::try_from(curves.len().saturating_sub(1).clamp(1, 3)).unwrap_or(3);
+        let made = loft(&sections, degree, cap).map_err(|e| failed("lofting", e))?;
+        Self::made(&made)
+    }
+
+    /// The cross-section curves swept along `rail`, turning with it. With `cap`, closed
+    /// sections are closed at both ends into a solid.
+    pub fn swept(sections: &[Curve], rail: &Curve, cap: bool) -> Result<Self, KernelError> {
+        let (made, ..) = sweep_placed(
+            &pieces_of(sections)?,
+            &sweep_pieces(rail)?,
+            SweepFrame::Follow,
+            cap,
+        )
+        .map_err(|e| failed("sweeping", e))?;
+        Self::made(&made)
+    }
+
     /// Flat surfaces filling closed flat curves; a curve inside another makes a hole.
     pub fn planar(curves: &[Curve]) -> Result<Self, KernelError> {
         let made = planar_faces(&pieces_of(curves)?).map_err(|e| failed("filling", e))?;
@@ -199,6 +245,7 @@ impl Body {
 #[cfg(test)]
 mod tests {
     use crate::{Body, Curve};
+    use std::f64::consts::{PI, TAU};
 
     fn close(a: f64, b: f64) -> bool {
         (a - b).abs() <= 1e-6 * b.abs().max(1.0)
@@ -258,6 +305,70 @@ mod tests {
             body.volume().unwrap(),
             100.0 - std::f64::consts::PI * 4.0
         ));
+    }
+
+    #[test]
+    fn a_rectangle_revolved_whole_is_a_ring() {
+        // A 1 by 2 rectangle from 3 to 4 out from the Z axis: a ring of volume pi (4^2 - 3^2) 2.
+        let profile = Curve::polyline(
+            vec![
+                [3.0, 0.0, 0.0],
+                [4.0, 0.0, 0.0],
+                [4.0, 0.0, 2.0],
+                [3.0, 0.0, 2.0],
+            ],
+            true,
+        )
+        .unwrap();
+        let ring = Body::revolved(
+            std::slice::from_ref(&profile),
+            [0.0; 3],
+            [0.0, 0.0, 1.0],
+            TAU,
+            true,
+        )
+        .unwrap();
+        assert!(close(ring.volume().unwrap(), PI * 7.0 * 2.0));
+        let quarter =
+            Body::revolved(&[profile], [0.0; 3], [0.0, 0.0, 1.0], PI / 2.0, true).unwrap();
+        assert!(close(quarter.volume().unwrap(), PI * 7.0 * 2.0 / 4.0));
+    }
+
+    #[test]
+    fn a_line_revolved_is_a_cylinder_wall() {
+        let line = Curve::line([2.0, 0.0, 0.0], [2.0, 0.0, 5.0]).unwrap();
+        let wall = Body::revolved(&[line], [0.0; 3], [0.0, 0.0, 1.0], TAU, false).unwrap();
+        assert!(close(wall.area().unwrap(), TAU * 2.0 * 5.0));
+    }
+
+    #[test]
+    fn two_equal_circles_loft_into_a_cylinder() {
+        let low = Curve::circle([0.0; 3], 2.0).unwrap();
+        let high = Curve::circle([0.0, 0.0, 3.0], 2.0).unwrap();
+        let tube = Body::lofted(&[low.clone(), high.clone()], true).unwrap();
+        assert!(close(tube.volume().unwrap(), PI * 4.0 * 3.0));
+        let open = Body::lofted(&[low, high], false).unwrap();
+        assert!(close(open.area().unwrap(), TAU * 2.0 * 3.0));
+    }
+
+    #[test]
+    fn three_sections_loft_smoothly_through_all_of_them() {
+        let sections: Vec<Curve> = [(0.0, 2.0), (2.0, 1.0), (4.0, 2.0)]
+            .iter()
+            .map(|(z, r)| Curve::circle([0.0, 0.0, *z], *r).unwrap())
+            .collect();
+        let body = Body::lofted(&sections, true).unwrap();
+        let (low, high) = body.bounds().unwrap();
+        assert!(close(low[2], 0.0) && close(high[2], 4.0));
+        assert!(body.volume().unwrap() > 0.0);
+    }
+
+    #[test]
+    fn a_circle_swept_along_a_line_is_a_cylinder() {
+        let section = Curve::circle([0.0; 3], 1.0).unwrap();
+        let rail = Curve::line([0.0; 3], [0.0, 0.0, 6.0]).unwrap();
+        let body = Body::swept(&[section], &rail, true).unwrap();
+        assert!((body.volume().unwrap() - PI * 6.0).abs() < 1e-3);
     }
 
     #[test]

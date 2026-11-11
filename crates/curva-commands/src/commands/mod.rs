@@ -33,6 +33,7 @@ mod isolate;
 mod join;
 mod length;
 mod line;
+mod loft;
 mod mirror;
 mod move_objects;
 mod named_view;
@@ -54,6 +55,7 @@ mod redo;
 mod remove_control_point;
 mod remove_knot;
 mod rename;
+mod revolve;
 mod right;
 mod rotate;
 mod rotate3d;
@@ -75,6 +77,7 @@ mod set_pt;
 mod show;
 mod smooth;
 mod split;
+mod sweep1;
 mod top;
 mod trim;
 mod tween_curves;
@@ -113,7 +116,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 82] = [
+pub static COMMANDS: [CommandDef; 85] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -222,6 +225,9 @@ pub static COMMANDS: [CommandDef; 82] = [
     listed!("Box", [], true, true, box_solid::BoxSolid),
     listed!("ExtrudeCrv", [], true, true, extrude_crv::ExtrudeCrv),
     listed!("PlanarSrf", [], true, true, planar_srf::PlanarSrf),
+    listed!("Revolve", [], true, true, revolve::Revolve),
+    listed!("Loft", [], true, true, loft::Loft),
+    listed!("Sweep1", [], true, true, sweep1::Sweep1),
     listed!("Delete", ["del", "erase"], false, true, delete::Delete),
     listed!("Undo", [], false, false, undo::Undo),
     listed!("Redo", [], false, false, redo::Redo),
@@ -477,7 +483,7 @@ mod tests {
 
     /// For each command that changes geometry, the typed steps that reach its live preview.
     /// A new command must be added here, which is how the preview rule in AGENTS.md is enforced.
-    const PREVIEW_STEPS: [(&str, &[&str]); 26] = [
+    const PREVIEW_STEPS: [(&str, &[&str]); 27] = [
         ("Line", &["0,0"]),
         ("Polyline", &["0,0", "9,0"]),
         ("InterpCrv", &["0,0", "9,0"]),
@@ -504,10 +510,11 @@ mod tests {
         ("Dir", &[]),
         ("Box", &["0,0", "5,5"]),
         ("ExtrudeCrv", &[]),
+        ("Revolve", &["0,0", "0,9"]),
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 12] = [
+    const NOTHING_TO_PREVIEW: [&str; 13] = [
         "Delete",
         "Join",
         "Explode",
@@ -520,10 +527,11 @@ mod tests {
         "Isolate",
         "ProjectToCPlane",
         "PlanarSrf",
+        "Loft",
     ];
 
     /// Commands whose preview needs its own setup, tested in their own files.
-    const PREVIEW_TESTED_ELSEWHERE: [&str; 11] = [
+    const PREVIEW_TESTED_ELSEWHERE: [&str; 12] = [
         "Trim",
         "Fillet",
         "Chamfer",
@@ -535,6 +543,7 @@ mod tests {
         "InsertKnot",
         "RemoveKnot",
         "RemoveControlPoint",
+        "Sweep1",
     ];
 
     #[test]
