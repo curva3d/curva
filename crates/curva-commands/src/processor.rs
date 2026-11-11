@@ -189,8 +189,16 @@ impl Processor {
         };
         if typed.is_empty() {
             let selection = doc.selection();
+            let edges = doc.edge_selection();
             if request.kind == Kind::Objects && !selection.is_empty() {
                 self.advance(doc, Some(Answer::Objects(selection)));
+            } else if request.kind == Kind::Edges && !edges.is_empty() {
+                doc.select_edges(&[]);
+                self.advance(doc, Some(Answer::Edges(edges)));
+            } else if request.kind == Kind::Faces && !doc.face_selection().is_empty() {
+                let faces = doc.face_selection();
+                doc.select_faces(&[]);
+                self.advance(doc, Some(Answer::Faces(faces)));
             } else if request.allow_empty {
                 self.advance(doc, Some(Answer::Empty));
             } else {
@@ -224,6 +232,8 @@ impl Processor {
                 .map_err(|_| Message::with("error.bad_number", vec![typed.to_owned()])),
             Kind::Path => Ok(Answer::Path(typed.to_owned())),
             Kind::Objects => Err(Message::new("error.pick_objects")),
+            Kind::Edges => Err(Message::new("error.pick_edges")),
+            Kind::Faces => Err(Message::new("error.pick_faces")),
             Kind::PickPart => typed
                 .parse::<f64>()
                 .map(Answer::Number)

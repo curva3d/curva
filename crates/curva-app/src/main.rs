@@ -1106,6 +1106,56 @@ impl Curva {
         }
     }
 
+    /// The faces of a solid picked for a command, tinted in the selection colour.
+    fn paint_picked_faces(&self, ui: &egui::Ui, pane: usize, rect: egui::Rect, size: [f64; 2]) {
+        let picked = self.doc.face_selection();
+        if picked.is_empty() {
+            return;
+        }
+        let painter = ui.painter_at(rect);
+        let camera = &self.panes[pane].camera;
+        let tint = egui::Color32::from_rgba_unmultiplied(255, 220, 60, 90);
+        for pick in picked {
+            for triangle in self.outlines.face_triangles(pick) {
+                let corners: Vec<egui::Pos2> = triangle
+                    .iter()
+                    .filter_map(|p| camera.project(*p, size))
+                    .map(|p| rect.min + egui::vec2(p[0] as f32, p[1] as f32))
+                    .collect();
+                if corners.len() == 3 {
+                    painter.add(egui::Shape::convex_polygon(
+                        corners,
+                        tint,
+                        egui::Stroke::NONE,
+                    ));
+                }
+            }
+        }
+    }
+
+    /// The edges of a solid picked for a command, drawn thick in the selection colour.
+    fn paint_picked_edges(&self, ui: &egui::Ui, pane: usize, rect: egui::Rect, size: [f64; 2]) {
+        let picked = self.doc.edge_selection();
+        if picked.is_empty() {
+            return;
+        }
+        let painter = ui.painter_at(rect);
+        let camera = &self.panes[pane].camera;
+        for pick in picked {
+            let Some(points) = self.outlines.edge_points(pick) else {
+                continue;
+            };
+            let screen: Vec<egui::Pos2> = points
+                .iter()
+                .filter_map(|p| camera.project(*p, size))
+                .map(|p| rect.min + egui::vec2(p[0] as f32, p[1] as f32))
+                .collect();
+            for pair in screen.windows(2) {
+                painter.line_segment([pair[0], pair[1]], egui::Stroke::new(3.0, GRIP_PICKED));
+            }
+        }
+    }
+
     /// Control points on show: the lines between a smooth curve's points, then the points,
     /// picked ones in yellow.
     fn paint_grips(&self, ui: &egui::Ui, pane: usize, rect: egui::Rect, size: [f64; 2]) {
@@ -1441,8 +1491,44 @@ impl Curva {
             return;
         }
         let camera = self.panes[pane].camera;
+        let wants = |kind: Kind| {
+            self.processor
+                .current_request()
+                .is_some_and(|request| request.kind == kind)
+        };
+        let (wants_edges, wants_faces) = (wants(Kind::Edges), wants(Kind::Faces));
         for (from, to) in gestures {
             let boxed = is_box_drag(from, to);
+            if wants_faces {
+                // A command is asking for faces, so clicks and boxes pick faces, not objects.
+                let hits = if boxed {
+                    self.outlines
+                        .faces_in_box(&camera, local(from), local(to), size)
+                } else {
+                    self.outlines
+                        .pick_face(&camera, local(from), size)
+                        .into_iter()
+                        .collect()
+                };
+                let picked = combined_selection(self.doc.face_selection(), hits, shift, remove);
+                self.doc.select_faces(&picked);
+                continue;
+            }
+            if wants_edges {
+                // A command is asking for edges, so clicks and boxes pick edges, not objects.
+                let hits = if boxed {
+                    self.outlines
+                        .edges_in_box(&camera, local(from), local(to), size)
+                } else {
+                    self.outlines
+                        .pick_edge(&camera, local(from), size, PICK_REACH)
+                        .into_iter()
+                        .collect()
+                };
+                let picked = combined_selection(self.doc.edge_selection(), hits, shift, remove);
+                self.doc.select_edges(&picked);
+                continue;
+            }
             let grips = self.grips_hit(&camera, (local(from), local(to)), boxed, size);
             if !grips.is_empty() {
                 // A control point was hit, so the points picked change and the objects do not.
@@ -1545,6 +1631,18 @@ impl Curva {
     }
 
     fn viewports(&mut self, ui: &mut egui::Ui) {
+        // Picked edges and faces only mean something while a command asks for them.
+        let wants = |kind: Kind| {
+            self.processor
+                .current_request()
+                .is_some_and(|request| request.kind == kind)
+        };
+        if !wants(Kind::Edges) && !self.doc.edge_selection().is_empty() {
+            self.doc.select_edges(&[]);
+        }
+        if !wants(Kind::Faces) && !self.doc.face_selection().is_empty() {
+            self.doc.select_faces(&[]);
+        }
         let mut shown = Vec::new();
         for (pane, rect) in pane_rects(ui.available_rect_before_wrap(), self.maximised) {
             let response = ui.allocate_rect(rect, egui::Sense::click_and_drag());
@@ -1596,6 +1694,8 @@ impl Curva {
             self.paint_frame(ui, *pane, *rect);
             self.paint_points(ui, *pane, *rect, size, &previewed);
             self.paint_grips(ui, *pane, *rect, size);
+            self.paint_picked_edges(ui, *pane, *rect, size);
+            self.paint_picked_faces(ui, *pane, *rect, size);
             self.paint_gumball(ui, *pane, *rect, size);
             if let Some((hover_pane, ..)) = hovered
                 && hover_pane == *pane
