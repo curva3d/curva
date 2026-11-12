@@ -1,37 +1,47 @@
 //! `Loft`: stretches a skin through curves in the order they were made, as in Rhino. The ends
-//! are left open; closing them is a job for `Cap`, which comes later.
+//! are left open. Rhino's seams, `Style`, `Closed`, tangents and `Rebuild` are still to come
+//! (`docs/commands/rhino-reference.md`).
 
-use super::{ask_objects, curves_of, geometry_failed};
-use crate::{Answer, Command, Message, Step};
-use curva_document::{Document, Shape};
+use super::curves_of;
+use crate::Message;
+use crate::recipe::{Context, Derived, Made, Recipe, StepDef, Value};
+use curva_document::Shape;
 use curva_kernel::{Body, Curve};
 
-/// The running command.
+/// The recipe.
 #[derive(Default)]
 pub struct Loft;
 
-impl Command for Loft {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let chosen = match answer {
-            Some(Answer::Objects(list)) => list,
-            _ => doc.selection(),
+impl Recipe for Loft {
+    const NAME: &'static str = "loft";
+
+    fn steps(&self, _cx: &Context<'_>) -> Vec<StepDef> {
+        vec![StepDef::objects("prompt.loft.objects").curves().at_least(2)]
+    }
+
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let Some(Value::Objects(chosen)) = cx.values.first() else {
+            return Ok(Made::default());
         };
-        let curves: Vec<(u64, Curve)> = curves_of(doc, &chosen)
+        let curves: Vec<(u64, Curve)> = curves_of(cx.doc, chosen)
             .into_iter()
             .filter(|(_, curve)| !matches!(curve, Curve::Point { .. }))
             .collect();
         if curves.len() < 2 {
-            return ask_objects("prompt.loft.objects");
+            return Err(Message::new("error.loft.two"));
         }
         let sections: Vec<Curve> = curves.iter().map(|(_, curve)| curve.clone()).collect();
-        match Body::lofted(&sections, false) {
-            Ok(body) => {
-                let layer = doc.layer_of(curves[0].0);
-                doc.add_shape_on(Shape::Body(body), layer);
-                Step::Done(Some(Message::new("done.loft")))
-            }
-            Err(error) => geometry_failed(&error),
-        }
+        let body = Body::lofted(&sections, false)
+            .map_err(|e| Message::with("error.geometry", vec![e.to_string()]))?;
+        Ok(Made {
+            derived: vec![Derived {
+                shape: Shape::Body(body),
+                from: curves[0].0,
+                history: None,
+            }],
+            message: Some(Message::new("done.loft")),
+            ..Made::default()
+        })
     }
 }
 

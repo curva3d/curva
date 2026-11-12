@@ -302,7 +302,7 @@ ui.display.wireframe = Wireframe
 ui.display.shaded = Shaded
 ui.display.ghosted = Ghosted
 prompt.extrudecrv.objects = Select curves to extrude, then press Enter
-prompt.extrudecrv.distance = Extrusion distance <{0}> (Solid={1} BothSides={2})
+prompt.extrudecrv.distance = Extrusion distance <{0}>
 done.extrudecrv = Extruded {0} curves.
 prompt.planarsrf.objects = Select closed flat curves, then press Enter
 error.planarsrf.none_closed = None of those curves is closed, so there is nothing to fill.
@@ -327,11 +327,11 @@ prompt.booleanintersection.second = Select the second solids, then press Enter
 done.booleanintersection = Kept where the solids overlap.
 error.boolean.empty = Nothing would be left, so nothing was changed.
 prompt.pipe.objects = Select curves for the pipe to follow, then press Enter
-prompt.pipe.radius = Pipe radius <{0}> (Cap={1} Thick={2})
-prompt.pipe.inner = Inner radius <{0}>
+prompt.pipe.radius = Radius <{0}>
+prompt.pipe.inner = Inner radius (Enter for half the outer)
 done.pipe = Made {0} pipes.
 prompt.offsetsrf.objects = Select surfaces or solids to offset, then press Enter
-prompt.offsetsrf.distance = Offset distance <{0}> (Solid={1})
+prompt.offsetsrf.distance = Offset distance <{0}>
 done.offsetsrf = Offset {0} objects.
 prompt.filletedge.edges = Click edges to fillet, then press Enter
 prompt.filletedge.size = Fillet radius <{0}>
@@ -372,3 +372,4 @@ error.option_whole = {0} must be a whole number from {1} to {2}.
 error.option_positive = {0} must be more than zero.
 error.option_negative = {0} cannot be less than zero.
 prompt.move.height = Height to move, straight out of the plane
+error.loft.two = A loft needs at least two curves.

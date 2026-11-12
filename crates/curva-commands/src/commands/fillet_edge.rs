@@ -1,168 +1,82 @@
-//! `FilletEdge`: rounds picked edges of solids by a radius, as in Rhino. `ChamferEdge` is the
-//! same command bevelling by a distance, so both live here.
+//! `FilletEdge`: rounds picked edges of solids by a radius, as in Rhino; Enter uses the last one.
+//! `ChamferEdge` is the same command bevelling by a distance, so both live here. Rhino's radius
+//! handles, `ChainEdges`, `FaceEdges`, `RailType` and the rest are still to come
+//! (`docs/commands/rhino-reference.md`).
 
-use super::{geometry_failed, unexpected};
-use crate::{Answer, Command, Kind, Live, Message, Request, Step};
-use curva_document::{Document, EdgePick, Shape};
-use curva_kernel::{Body, Curve, KernelError};
-use std::cell::RefCell;
+use crate::Message;
+use crate::recipe::{Context, Made, Recipe, StepDef, Value};
+use curva_document::Shape;
 
-/// The last preview worked out: the size it was for, the result's edges and the result.
-type Shown = RefCell<Option<(f64, Vec<Curve>, Vec<Body>)>>;
-
-/// The size used until another is typed, in millimetres.
-const STARTING_SIZE: f64 = 1.0;
-
-/// The running command: rounds, or with `CHAMFER`, bevels.
+/// The recipe: rounds, or with `CHAMFER`, bevels.
 #[derive(Default)]
-pub struct BlendEdges<const CHAMFER: bool> {
-    edges: Option<Vec<EdgePick>>,
-    /// The last preview worked out, for the size it was worked out for.
-    shown: Shown,
-}
+pub struct BlendEdges<const CHAMFER: bool>;
 
-impl<const CHAMFER: bool> BlendEdges<CHAMFER> {
-    fn memory() -> &'static str {
-        if CHAMFER {
-            "chamferedge.size"
+impl<const CHAMFER: bool> Recipe for BlendEdges<CHAMFER> {
+    const NAME: &'static str = if CHAMFER { "chamferedge" } else { "filletedge" };
+
+    fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
+        let (edges, size) = if CHAMFER {
+            ("prompt.chamferedge.edges", "prompt.chamferedge.size")
         } else {
-            "filletedge.size"
-        }
-    }
-
-    fn size_of(doc: &Document) -> f64 {
-        doc.remembered(Self::memory()).unwrap_or(STARTING_SIZE)
-    }
-
-    fn ask_edges() -> Step {
-        Step::Ask(Request::new(
-            if CHAMFER {
-                "prompt.chamferedge.edges"
-            } else {
-                "prompt.filletedge.edges"
-            },
-            Kind::Edges,
-        ))
-    }
-
-    fn ask_size(doc: &Document) -> Step {
-        let key = if CHAMFER {
-            "prompt.chamferedge.size"
-        } else {
-            "prompt.filletedge.size"
+            ("prompt.filletedge.edges", "prompt.filletedge.size")
         };
-        Step::Ask(Request {
-            prompt: Message::with(key, vec![Self::size_of(doc).to_string()]),
-            allow_empty: true,
-            ..Request::new(key, Kind::Number)
-        })
+        let mut steps = vec![StepDef::edges(edges)];
+        if !cx.values.is_empty() {
+            steps.push(StepDef::number(size).remembered("Size", 1.0));
+        }
+        steps
     }
 
-    /// Each solid with the picked edges blended.
-    fn blended(&self, doc: &Document, size: f64) -> Result<Vec<(u64, Body)>, KernelError> {
-        let edges = self.edges.as_deref().unwrap_or_default();
+    fn check(&self, cx: &Context<'_>) -> Result<(), Message> {
+        if let Some(size) = cx.values.get(1).and_then(Value::number)
+            && size <= 0.0
+        {
+            return Err(Message::new("error.bad_distance"));
+        }
+        Ok(())
+    }
+
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let (Some(Value::Edges(edges)), Some(size)) =
+            (cx.values.first(), cx.values.get(1).and_then(Value::number))
+        else {
+            return Ok(Made::default());
+        };
+        if size <= 0.0 {
+            return Ok(Made::default());
+        }
         let mut owners: Vec<u64> = edges.iter().map(|(id, _)| *id).collect();
         owners.sort_unstable();
         owners.dedup();
-        owners
-            .into_iter()
-            .filter_map(|id| {
-                let body = doc
-                    .state()
-                    .objects
-                    .iter()
-                    .find(|o| o.id == id)?
-                    .shape
-                    .body()?;
-                let mine: Vec<usize> = edges
-                    .iter()
-                    .filter(|(owner, _)| *owner == id)
-                    .map(|(_, edge)| *edge)
-                    .collect();
-                Some(body.blended(&mine, size, CHAMFER).map(|made| (id, made)))
-            })
-            .collect()
-    }
-
-    fn make(&self, doc: &mut Document, size: f64) -> Step {
-        match self.blended(doc, size) {
-            Ok(made) => {
-                let count = self.edges.as_ref().map_or(0, Vec::len);
-                for (id, body) in made {
-                    doc.replace_shape(id, Shape::Body(body));
-                }
-                let key = if CHAMFER {
-                    "done.chamferedge"
-                } else {
-                    "done.filletedge"
-                };
-                Step::Done(Some(Message::with(key, vec![count.to_string()])))
-            }
-            Err(error) => geometry_failed(&error),
-        }
-    }
-}
-
-impl<const CHAMFER: bool> Command for BlendEdges<CHAMFER> {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        if self.edges.is_none() {
-            return match answer {
-                Some(Answer::Edges(picked)) if !picked.is_empty() => {
-                    self.edges = Some(picked);
-                    Self::ask_size(doc)
-                }
-                _ => Self::ask_edges(),
+        let mut made = Made::default();
+        for id in owners {
+            let Some(body) = cx
+                .doc
+                .state()
+                .objects
+                .iter()
+                .find(|o| o.id == id)
+                .and_then(|o| o.shape.body())
+            else {
+                continue;
             };
+            let mine: Vec<usize> = edges
+                .iter()
+                .filter(|(owner, _)| *owner == id)
+                .map(|(_, edge)| *edge)
+                .collect();
+            let blended = body
+                .blended(&mine, size, CHAMFER)
+                .map_err(|e| Message::with("error.geometry", vec![e.to_string()]))?;
+            made.replace.push((id, Shape::Body(blended)));
         }
-        match answer {
-            Some(Answer::Empty) => {
-                let size = Self::size_of(doc);
-                self.make(doc, size)
-            }
-            Some(Answer::Number(size)) if size > 0.0 => {
-                doc.remember(Self::memory(), size);
-                self.make(doc, size)
-            }
-            Some(Answer::Number(_)) => Step::Failed(Message::new("error.bad_distance")),
-            _ => unexpected(),
-        }
-    }
-
-    fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
-        self.previewed(doc, live).0
-    }
-
-    fn preview_bodies(&self, doc: &Document, live: &Live) -> Vec<Body> {
-        self.previewed(doc, live).1
-    }
-}
-
-impl<const CHAMFER: bool> BlendEdges<CHAMFER> {
-    /// The rounded or bevelled solids for the size shown, and their edges, kept while the size
-    /// stays the same, as working them out takes the engine a while.
-    fn previewed(&self, doc: &Document, live: &Live) -> (Vec<Curve>, Vec<Body>) {
-        if self.edges.is_none() {
-            return (Vec::new(), Vec::new());
-        }
-        let size = live
-            .number
-            .filter(|n| *n > 0.0)
-            .unwrap_or_else(|| Self::size_of(doc));
-        if let Some((held, curves, bodies)) = &*self.shown.borrow()
-            && *held == size
-        {
-            return (curves.clone(), bodies.clone());
-        }
-        let bodies: Vec<Body> = self
-            .blended(doc, size)
-            .map(|made| made.into_iter().map(|(_, body)| body).collect())
-            .unwrap_or_default();
-        let curves: Vec<Curve> = bodies
-            .iter()
-            .flat_map(|body| body.edge_curves().unwrap_or_default())
-            .collect();
-        *self.shown.borrow_mut() = Some((size, curves.clone(), bodies.clone()));
-        (curves, bodies)
+        let key = if CHAMFER {
+            "done.chamferedge"
+        } else {
+            "done.filletedge"
+        };
+        made.message = Some(Message::with(key, vec![edges.len().to_string()]));
+        Ok(made)
     }
 }
 

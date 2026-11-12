@@ -1,138 +1,78 @@
-//! `OffsetSrf`: a copy of surfaces or solids at a distance, as in Rhino. Option `Solid`
-//! thickens an open surface into a solid between where it was and the copy.
+//! `OffsetSrf`, as in Rhino: a copy of surfaces or solids at a distance; Enter uses the last one.
+//! `Solid` thickens an open surface into a solid between where it was and the copy;
+//! `DeleteInput` takes the originals away. Rhino's `Corner`, `ThroughPoint`, `FlipAll`, `Loose`,
+//! `Tolerance` and `BothSides` are still to come (`docs/commands/rhino-reference.md`).
 
-use super::{ask_objects, bodies_of, geometry_failed, unexpected};
-use crate::{Answer, Command, Kind, Live, Message, Request, Step};
-use curva_document::{Document, Shape};
-use curva_kernel::{Body, Curve};
-use std::cell::RefCell;
+use super::bodies_of;
+use crate::Message;
+use crate::recipe::{Context, Derived, Made, OptionDef, Recipe, StepDef, Value};
+use curva_document::Shape;
 
-/// The distance used until another is typed, in millimetres.
-const STARTING_DISTANCE: f64 = 1.0;
-const DISTANCE: &str = "offsetsrf.distance";
-const SOLID: &str = "offsetsrf.solid";
-const SOLID_OPTION: &str = "Solid";
+/// Shortest offset treated as real, in millimetres.
+const SHORTEST: f64 = 1e-9;
+const SOLID: &str = "Solid";
+const DELETE_INPUT: &str = "DeleteInput";
 
-/// The running command.
+/// The recipe.
 #[derive(Default)]
-pub struct OffsetSrf {
-    ids: Option<Vec<u64>>,
-    /// The last preview worked out, with the distance and setting it was for, as working out an
-    /// offset takes a moment and the preview is asked for every frame.
-    shown: RefCell<Option<(f64, bool, Vec<Curve>)>>,
-}
+pub struct OffsetSrf;
 
-fn distance_of(doc: &Document) -> f64 {
-    doc.remembered(DISTANCE).unwrap_or(STARTING_DISTANCE)
-}
+impl Recipe for OffsetSrf {
+    const NAME: &'static str = "offsetsrf";
+    const OPTIONS: &'static [OptionDef] = &[
+        OptionDef::toggle(SOLID, false),
+        OptionDef::toggle(DELETE_INPUT, false),
+    ];
 
-fn solid_on(doc: &Document) -> bool {
-    doc.remembered(SOLID).is_some_and(|value| value != 0.0)
-}
-
-impl OffsetSrf {
-    fn ask(doc: &Document) -> Step {
-        let solid = if solid_on(doc) { "Yes" } else { "No" };
-        Step::Ask(Request {
-            prompt: Message::with(
-                "prompt.offsetsrf.distance",
-                vec![distance_of(doc).to_string(), solid.to_owned()],
-            ),
-            options: vec![SOLID_OPTION],
-            allow_empty: true,
-            ..Request::new("prompt.offsetsrf.distance", Kind::Number)
-        })
-    }
-
-    fn offsets(
-        doc: &Document,
-        ids: &[u64],
-        distance: f64,
-        solid: bool,
-    ) -> Result<Vec<(u64, Body)>, curva_kernel::KernelError> {
-        bodies_of(doc, ids)
-            .into_iter()
-            .map(|(id, body)| Ok((id, body.offset(distance, solid)?)))
-            .collect()
-    }
-
-    fn make(&self, doc: &mut Document, distance: f64) -> Step {
-        let Some(ids) = &self.ids else {
-            return unexpected();
-        };
-        let made = match Self::offsets(doc, ids, distance, solid_on(doc)) {
-            Ok(made) => made,
-            Err(error) => return geometry_failed(&error),
-        };
-        let count = made.len();
-        for (source, body) in made {
-            let layer = doc.layer_of(source);
-            doc.add_shape_on(Shape::Body(body), layer);
+    fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
+        let mut steps = vec![
+            StepDef::objects("prompt.offsetsrf.objects")
+                .bodies()
+                .offering(&[]),
+        ];
+        if !cx.values.is_empty() {
+            steps.push(StepDef::number("prompt.offsetsrf.distance").remembered("Distance", 1.0));
         }
-        Step::Done(Some(Message::with(
-            "done.offsetsrf",
-            vec![count.to_string()],
-        )))
-    }
-}
-
-impl Command for OffsetSrf {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        if self.ids.is_none() {
-            let chosen = match answer {
-                Some(Answer::Objects(list)) => list,
-                _ => doc.selection(),
-            };
-            let bodies: Vec<u64> = bodies_of(doc, &chosen).iter().map(|(id, _)| *id).collect();
-            if bodies.is_empty() {
-                return ask_objects("prompt.offsetsrf.objects");
-            }
-            self.ids = Some(bodies);
-            return Self::ask(doc);
-        }
-        match answer {
-            Some(Answer::Option(_)) => {
-                let flipped = !solid_on(doc);
-                doc.remember(SOLID, f64::from(u8::from(flipped)));
-                Self::ask(doc)
-            }
-            Some(Answer::Empty) => {
-                let distance = distance_of(doc);
-                self.make(doc, distance)
-            }
-            Some(Answer::Number(distance)) if distance.abs() > 1e-9 => {
-                doc.remember(DISTANCE, distance);
-                self.make(doc, distance)
-            }
-            Some(Answer::Number(_)) => Step::Failed(Message::new("error.bad_distance")),
-            _ => unexpected(),
-        }
+        steps
     }
 
-    fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
-        let Some(ids) = &self.ids else {
-            return Vec::new();
-        };
-        let distance = live
-            .number
-            .filter(|d| d.abs() > 1e-9)
-            .unwrap_or_else(|| distance_of(doc));
-        let solid = solid_on(doc);
-        if let Some((held, held_solid, curves)) = &*self.shown.borrow()
-            && *held == distance
-            && *held_solid == solid
+    fn check(&self, cx: &Context<'_>) -> Result<(), Message> {
+        if let Some(distance) = cx.values.get(1).and_then(Value::number)
+            && distance.abs() <= SHORTEST
         {
-            return curves.clone();
+            return Err(Message::new("error.bad_distance"));
         }
-        let curves: Vec<Curve> = Self::offsets(doc, ids, distance, solid)
-            .map(|made| {
-                made.iter()
-                    .flat_map(|(_, body)| body.edge_curves().unwrap_or_default())
-                    .collect()
-            })
-            .unwrap_or_default();
-        *self.shown.borrow_mut() = Some((distance, solid, curves.clone()));
-        curves
+        Ok(())
+    }
+
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let (Some(Value::Objects(ids)), Some(distance)) =
+            (cx.values.first(), cx.values.get(1).and_then(Value::number))
+        else {
+            return Ok(Made::default());
+        };
+        if distance.abs() <= SHORTEST {
+            return Ok(Made::default());
+        }
+        let mut made = Made::default();
+        for (id, body) in bodies_of(cx.doc, ids) {
+            let copy = body
+                .offset(distance, cx.toggle(SOLID))
+                .map_err(|e| Message::with("error.geometry", vec![e.to_string()]))?;
+            made.derived.push(Derived {
+                shape: Shape::Body(copy),
+                from: id,
+                history: None,
+            });
+            if cx.toggle(DELETE_INPUT) {
+                made.remove.push(id);
+            }
+        }
+        made.message = Some(Message::with(
+            "done.offsetsrf",
+            vec![made.derived.len().to_string()],
+        ));
+        Ok(made)
     }
 }
 
@@ -188,5 +128,13 @@ mod tests {
             .volume()
             .unwrap();
         assert!((volume - 200.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn delete_input_takes_the_original_away() {
+        let mut doc = Document::default();
+        selected_sheet(&mut doc);
+        run(&mut doc, &["offsetsrf", "deleteinput", "2"]);
+        assert_eq!(doc.state().objects.len(), 1);
     }
 }

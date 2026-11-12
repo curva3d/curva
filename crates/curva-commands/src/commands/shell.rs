@@ -1,139 +1,83 @@
-//! `Shell`: hollows a solid to a wall thickness, opening the picked faces, as in Rhino.
+//! `Shell`: hollows a solid to a wall thickness, opening the picked faces, as in Rhino; Enter uses
+//! the last thickness. The faces opened all belong to one solid, the first one picked. With
+//! `DeleteInput` off, the hollowed solid is added and the original kept. Rhino's `EditThickness`
+//! is still to come (`docs/commands/rhino-reference.md`).
 
-use super::{geometry_failed, unexpected};
-use crate::{Answer, Command, Kind, Live, Message, Request, Step};
-use curva_document::{Document, FacePick, Shape};
-use curva_kernel::{Body, Curve, KernelError};
-use std::cell::RefCell;
+use crate::Message;
+use crate::recipe::{Context, Derived, Made, OptionDef, Recipe, StepDef, Value};
+use curva_document::Shape;
 
-/// The last preview worked out: the size it was for, the result's edges and the result.
-type Shown = RefCell<Option<(f64, Vec<Curve>, Vec<Body>)>>;
+const DELETE_INPUT: &str = "DeleteInput";
 
-/// The thickness used until another is typed, in millimetres.
-const STARTING_THICKNESS: f64 = 1.0;
-const MEMORY: &str = "shell.thickness";
-
-/// The running command.
+/// The recipe.
 #[derive(Default)]
-pub struct Shell {
-    /// The solid and the faces of it to open.
-    open: Option<(u64, Vec<usize>)>,
-    /// The last preview worked out, for the thickness it was worked out for.
-    shown: Shown,
-}
+pub struct Shell;
 
-fn thickness_of(doc: &Document) -> f64 {
-    doc.remembered(MEMORY).unwrap_or(STARTING_THICKNESS)
-}
+impl Recipe for Shell {
+    const NAME: &'static str = "shell";
+    const OPTIONS: &'static [OptionDef] = &[OptionDef::toggle(DELETE_INPUT, true)];
 
-fn ask_thickness(doc: &Document) -> Step {
-    Step::Ask(Request {
-        prompt: Message::with(
-            "prompt.shell.thickness",
-            vec![thickness_of(doc).to_string()],
-        ),
-        allow_empty: true,
-        ..Request::new("prompt.shell.thickness", Kind::Number)
-    })
-}
+    fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
+        let mut steps = vec![StepDef::faces("prompt.shell.faces")];
+        if !cx.values.is_empty() {
+            steps.push(StepDef::number("prompt.shell.thickness").remembered("Thickness", 1.0));
+        }
+        steps
+    }
 
-impl Shell {
-    fn shelled(&self, doc: &Document, thickness: f64) -> Result<Option<(u64, Body)>, KernelError> {
-        let Some((id, faces)) = &self.open else {
-            return Ok(None);
+    fn check(&self, cx: &Context<'_>) -> Result<(), Message> {
+        if let Some(thickness) = cx.values.get(1).and_then(Value::number)
+            && thickness <= 0.0
+        {
+            return Err(Message::new("error.bad_distance"));
+        }
+        Ok(())
+    }
+
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let (Some(Value::Faces(picked)), Some(thickness)) =
+            (cx.values.first(), cx.values.get(1).and_then(Value::number))
+        else {
+            return Ok(Made::default());
         };
-        let Some(body) = doc
+        let Some(&(id, _)) = picked.first() else {
+            return Ok(Made::default());
+        };
+        if thickness <= 0.0 {
+            return Ok(Made::default());
+        }
+        let faces: Vec<usize> = picked
+            .iter()
+            .filter(|(owner, _)| *owner == id)
+            .map(|(_, face)| *face)
+            .collect();
+        let Some(body) = cx
+            .doc
             .state()
             .objects
             .iter()
-            .find(|o| o.id == *id)
+            .find(|o| o.id == id)
             .and_then(|o| o.shape.body())
         else {
-            return Ok(None);
+            return Ok(Made::default());
         };
-        body.shelled(faces, thickness).map(|made| Some((*id, made)))
-    }
-
-    fn make(&self, doc: &mut Document, thickness: f64) -> Step {
-        match self.shelled(doc, thickness) {
-            Ok(Some((id, body))) => {
-                doc.replace_shape(id, Shape::Body(body));
-                Step::Done(Some(Message::new("done.shell")))
-            }
-            Ok(None) => unexpected(),
-            Err(error) => geometry_failed(&error),
-        }
-    }
-}
-
-impl Command for Shell {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        if self.open.is_none() {
-            let picked: Vec<FacePick> = match answer {
-                Some(Answer::Faces(faces)) => faces,
-                _ => return Step::Ask(Request::new("prompt.shell.faces", Kind::Faces)),
-            };
-            // As in Rhino, the faces opened all belong to one solid: the first one picked.
-            let Some(&(id, _)) = picked.first() else {
-                return Step::Ask(Request::new("prompt.shell.faces", Kind::Faces));
-            };
-            let faces = picked
-                .iter()
-                .filter(|(owner, _)| *owner == id)
-                .map(|(_, face)| *face)
-                .collect();
-            self.open = Some((id, faces));
-            return ask_thickness(doc);
-        }
-        match answer {
-            Some(Answer::Empty) => {
-                let thickness = thickness_of(doc);
-                self.make(doc, thickness)
-            }
-            Some(Answer::Number(thickness)) if thickness > 0.0 => {
-                doc.remember(MEMORY, thickness);
-                self.make(doc, thickness)
-            }
-            Some(Answer::Number(_)) => Step::Failed(Message::new("error.bad_distance")),
-            _ => unexpected(),
-        }
-    }
-
-    fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
-        self.previewed(doc, live).0
-    }
-
-    fn preview_bodies(&self, doc: &Document, live: &Live) -> Vec<Body> {
-        self.previewed(doc, live).1
-    }
-}
-
-impl Shell {
-    /// The hollowed solid for the thickness shown, and its edges, kept while the thickness stays
-    /// the same.
-    fn previewed(&self, doc: &Document, live: &Live) -> (Vec<Curve>, Vec<Body>) {
-        if self.open.is_none() {
-            return (Vec::new(), Vec::new());
-        }
-        let thickness = live
-            .number
-            .filter(|n| *n > 0.0)
-            .unwrap_or_else(|| thickness_of(doc));
-        if let Some((held, curves, bodies)) = &*self.shown.borrow()
-            && *held == thickness
-        {
-            return (curves.clone(), bodies.clone());
-        }
-        let bodies: Vec<Body> = match self.shelled(doc, thickness) {
-            Ok(Some((_, body))) => vec![body],
-            _ => Vec::new(),
+        let hollow = body
+            .shelled(&faces, thickness)
+            .map_err(|e| Message::with("error.geometry", vec![e.to_string()]))?;
+        let mut made = Made {
+            message: Some(Message::new("done.shell")),
+            ..Made::default()
         };
-        let curves: Vec<Curve> = bodies
-            .iter()
-            .flat_map(|body| body.edge_curves().unwrap_or_default())
-            .collect();
-        *self.shown.borrow_mut() = Some((thickness, curves.clone(), bodies.clone()));
-        (curves, bodies)
+        if cx.toggle(DELETE_INPUT) {
+            made.replace.push((id, Shape::Body(hollow)));
+        } else {
+            made.derived.push(Derived {
+                shape: Shape::Body(hollow),
+                from: id,
+                history: None,
+            });
+        }
+        Ok(made)
     }
 }
 

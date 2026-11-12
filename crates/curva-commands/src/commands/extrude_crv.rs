@@ -1,91 +1,105 @@
-//! `ExtrudeCrv`: pulls curves straight out of the plane being drawn on into surfaces, or into
-//! solids from closed curves, as in Rhino.
+//! `ExtrudeCrv`, as in Rhino: pulls curves straight out of the plane being drawn on into
+//! surfaces, or into solids from closed curves (`Solid`). The distance follows the mouse, or is
+//! typed; Enter uses the last one. `BothSides` goes as far each way; `DeleteInput` takes the
+//! curves away. Rhino's `Direction`, `ToBoundary`, `SplitAtTangents` and `SetBasePoint` are still
+//! to come (`docs/commands/rhino-reference.md`).
 
-use super::{ask_objects, curves_of, geometry_failed, plane_normal, unexpected};
-use crate::{Answer, Command, Kind, Live, Message, Request, Step};
-use curva_document::Document;
-use curva_kernel::{Body, Curve, Point, gap, nested_groups, unit};
+use super::curves_of;
+use crate::Message;
+use crate::recipe::{Context, Derived, Made, OptionDef, Recipe, StepDef, Value};
+use curva_document::Shape;
+use curva_kernel::{Body, Curve, Point, cross, nested_groups, unit};
 
-/// The distance used until another is typed, in millimetres.
-const STARTING_DISTANCE: f64 = 10.0;
-/// Where the document remembers the last distance and options.
-const DISTANCE: &str = "extrudecrv.distance";
-const SOLID: &str = "extrudecrv.solid";
-const BOTH_SIDES: &str = "extrudecrv.bothsides";
-const SOLID_OPTION: &str = "Solid";
-const BOTH_SIDES_OPTION: &str = "BothSides";
-/// Lines drawn along the extrusion in the preview, spread over each curve.
-const PREVIEW_RUNGS: usize = 8;
+/// Shortest extrusion treated as real, in millimetres.
+const SHORTEST: f64 = 1e-9;
+const SOLID: &str = "Solid";
+const BOTH_SIDES: &str = "BothSides";
+const DELETE_INPUT: &str = "DeleteInput";
 
-/// The running command.
+/// The recipe.
 #[derive(Default)]
-pub struct ExtrudeCrv {
-    ids: Option<Vec<u64>>,
+pub struct ExtrudeCrv;
+
+/// The curves chosen, leaving out points.
+fn chosen(cx: &Context<'_>) -> Vec<(u64, Curve)> {
+    let Some(Value::Objects(ids)) = cx.values.first() else {
+        return Vec::new();
+    };
+    curves_of(cx.doc, ids)
+        .into_iter()
+        .filter(|(_, curve)| !matches!(curve, Curve::Point { .. }))
+        .collect()
 }
 
-fn on(doc: &Document, key: &str, starting: bool) -> bool {
-    doc.remembered(key).map_or(starting, |value| value != 0.0)
+/// Straight out of the plane being drawn on.
+fn up(cx: &Context<'_>) -> Point {
+    let [x, y] = cx.plane();
+    unit(cross(x, y)).unwrap_or([0.0, 0.0, 1.0])
 }
 
-fn yes_no(value: bool) -> String {
-    if value { "Yes" } else { "No" }.to_owned()
-}
+impl Recipe for ExtrudeCrv {
+    const NAME: &'static str = "extrudecrv";
+    const OPTIONS: &'static [OptionDef] = &[
+        OptionDef::toggle(SOLID, true),
+        OptionDef::toggle(BOTH_SIDES, false),
+        OptionDef::toggle(DELETE_INPUT, false),
+    ];
 
-/// What the current settings are: distance, solid, both sides.
-fn settings(doc: &Document) -> (f64, bool, bool) {
-    (
-        doc.remembered(DISTANCE).unwrap_or(STARTING_DISTANCE),
-        on(doc, SOLID, true),
-        on(doc, BOTH_SIDES, false),
-    )
-}
-
-impl ExtrudeCrv {
-    /// Where a clicked distance is measured from: the start of the first curve.
-    fn base(&self, doc: &Document) -> Option<Point> {
-        let ids = self.ids.as_ref()?;
-        curves_of(doc, ids)
+    fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
+        let mut steps = vec![
+            StepDef::objects("prompt.extrudecrv.objects")
+                .curves()
+                .offering(&[]),
+        ];
+        // Where the distance is measured from: the start of the first curve.
+        let base = chosen(cx)
             .first()
             .and_then(|(_, curve)| curve.sample().ok())
-            .and_then(|points| points.first().copied())
+            .and_then(|points| points.first().copied());
+        if let Some(base) = base {
+            steps.push(
+                StepDef::along("prompt.extrudecrv.distance", base, up(cx))
+                    .remembered("Distance", 10.0),
+            );
+        }
+        steps
     }
 
-    fn ask(&self, doc: &Document) -> Step {
-        let (distance, solid, both) = settings(doc);
-        Step::Ask(Request {
-            prompt: Message::with(
-                "prompt.extrudecrv.distance",
-                vec![distance.to_string(), yes_no(solid), yes_no(both)],
-            ),
-            options: vec![SOLID_OPTION, BOTH_SIDES_OPTION],
-            allow_empty: true,
-            from: self.base(doc),
-            // The distance follows the pointer along the extrusion, snaps included.
-            along: self.base(doc).zip(unit(plane_normal(doc))),
-            ..Request::new("prompt.extrudecrv.distance", Kind::Number)
-        })
+    fn check(&self, cx: &Context<'_>) -> Result<(), Message> {
+        if let Some(distance) = cx.values.get(1).and_then(Value::number)
+            && distance.abs() <= SHORTEST
+        {
+            return Err(Message::new("error.bad_distance"));
+        }
+        Ok(())
     }
 
-    fn make(&self, doc: &mut Document, distance: f64) -> Step {
-        let Some(ids) = self.ids.clone() else {
-            return unexpected();
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let Some(distance) = cx
+            .values
+            .get(1)
+            .and_then(Value::number)
+            .filter(|d| d.abs() > SHORTEST)
+        else {
+            return Ok(Made::default());
         };
-        let (_, solid, both) = settings(doc);
-        let up = unit(plane_normal(doc)).unwrap_or([0.0, 0.0, 1.0]);
+        let up = up(cx);
+        let solid = cx.toggle(SOLID);
         // Both sides: start as far below as the extrusion goes above.
-        let (lift, length) = if both {
+        let (lift, length) = if cx.toggle(BOTH_SIDES) {
             (-distance, 2.0 * distance)
         } else {
             (0.0, distance)
         };
-        let curves: Vec<(u64, Curve)> = curves_of(doc, &ids)
+        let curves: Vec<(u64, Curve)> = chosen(cx)
             .into_iter()
             .map(|(id, curve)| (id, curve.translated(up.map(|v| v * lift))))
             .collect();
         // As in Rhino, closed curves made solid are grouped: an outline and the curves inside
         // it become one solid with holes. Everything else is extruded on its own.
         let (closed, open): (Vec<_>, Vec<_>) = curves
-            .into_iter()
+            .iter()
+            .cloned()
             .partition(|(_, curve)| solid && curve.is_closed().unwrap_or(false));
         let mut groups: Vec<(u64, Vec<Curve>, bool)> = open
             .into_iter()
@@ -96,104 +110,24 @@ impl ExtrudeCrv {
             let members = group.iter().map(|&i| outlines[i].clone()).collect();
             groups.push((closed[group[0]].0, members, true));
         }
-        let mut made = Vec::new();
+        let mut made = Made::default();
         for (id, members, cap) in groups {
-            match Body::extruded(&members, up, length, cap) {
-                Ok(body) => made.push((id, body)),
-                Err(error) => return geometry_failed(&error),
-            }
+            let body = Body::extruded(&members, up, length, cap)
+                .map_err(|e| Message::with("error.geometry", vec![e.to_string()]))?;
+            made.derived.push(Derived {
+                shape: Shape::Body(body),
+                from: id,
+                history: None,
+            });
         }
-        let count = made.len();
-        for (source, body) in made {
-            let layer = doc.layer_of(source);
-            doc.add_shape_on(curva_document::Shape::Body(body), layer);
+        if cx.toggle(DELETE_INPUT) {
+            made.remove = curves.iter().map(|(id, _)| *id).collect();
         }
-        Step::Done(Some(Message::with(
+        made.message = Some(Message::with(
             "done.extrudecrv",
-            vec![count.to_string()],
-        )))
-    }
-}
-
-impl Command for ExtrudeCrv {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        if self.ids.is_none() {
-            let chosen = match answer {
-                Some(Answer::Objects(list)) => list,
-                _ => doc.selection(),
-            };
-            let curves: Vec<u64> = curves_of(doc, &chosen)
-                .into_iter()
-                .filter(|(_, curve)| !matches!(curve, Curve::Point { .. }))
-                .map(|(id, _)| id)
-                .collect();
-            if curves.is_empty() {
-                return ask_objects("prompt.extrudecrv.objects");
-            }
-            self.ids = Some(curves);
-            return self.ask(doc);
-        }
-        match answer {
-            Some(Answer::Option(SOLID_OPTION)) => {
-                let flipped = !on(doc, SOLID, true);
-                doc.remember(SOLID, f64::from(u8::from(flipped)));
-                self.ask(doc)
-            }
-            Some(Answer::Option(_)) => {
-                let flipped = !on(doc, BOTH_SIDES, false);
-                doc.remember(BOTH_SIDES, f64::from(u8::from(flipped)));
-                self.ask(doc)
-            }
-            Some(Answer::Empty) => {
-                let (distance, ..) = settings(doc);
-                self.make(doc, distance)
-            }
-            Some(Answer::Number(distance)) if distance.abs() > 1e-9 => {
-                doc.remember(DISTANCE, distance);
-                self.make(doc, distance)
-            }
-            Some(Answer::Number(_)) => Step::Failed(Message::new("error.bad_distance")),
-            _ => unexpected(),
-        }
-    }
-
-    fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
-        let Some(ids) = &self.ids else {
-            return Vec::new();
-        };
-        let (remembered, _, both) = settings(doc);
-        let distance = live
-            .number
-            .or_else(|| {
-                let base = self.base(doc)?;
-                live.cursor.map(|cursor| gap(cursor, base))
-            })
-            .filter(|d| d.abs() > 1e-9)
-            .unwrap_or(remembered);
-        let up = unit(plane_normal(doc)).unwrap_or([0.0, 0.0, 1.0]);
-        let shift = |by: f64| up.map(|v| v * by);
-        let (low, high) = if both {
-            (-distance, distance)
-        } else {
-            (0.0, distance)
-        };
-        let mut shown = Vec::new();
-        for (_, curve) in curves_of(doc, ids) {
-            shown.push(curve.translated(shift(high)));
-            if both {
-                shown.push(curve.translated(shift(low)));
-            }
-            let Ok(points) = curve.sample() else {
-                continue;
-            };
-            let step = (points.len() / PREVIEW_RUNGS).max(1);
-            for p in points.iter().step_by(step).chain(points.last()) {
-                let from = [0, 1, 2].map(|k| p[k] + up[k] * low);
-                let to = [0, 1, 2].map(|k| p[k] + up[k] * high);
-                shown.extend(Curve::line(from, to));
-            }
-        }
-        shown
+            vec![made.derived.len().to_string()],
+        ));
+        Ok(made)
     }
 }
 
@@ -304,5 +238,14 @@ mod tests {
         run(&mut doc, &["extrudecrv", "3"]);
         let body = doc.state().objects[1].shape.body().unwrap();
         assert!(close(body.area().unwrap(), 12.0));
+    }
+
+    #[test]
+    fn delete_input_takes_the_curve_away() {
+        let mut doc = Document::default();
+        selected_square(&mut doc);
+        run(&mut doc, &["extrudecrv", "deleteinput", "5"]);
+        assert_eq!(doc.state().objects.len(), 1);
+        assert!(doc.state().objects[0].shape.body().is_some());
     }
 }

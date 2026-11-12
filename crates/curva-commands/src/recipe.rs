@@ -164,10 +164,15 @@ pub struct StepDef {
     /// The number option a number typed at this step sets, as Rhino's Offset takes a distance at
     /// its side prompt; the step is then asked again.
     pub sets: Option<&'static str>,
+    /// A number step whose answer is remembered under this name: Enter then gives the last one
+    /// (or the starting value), shown in the prompt, as Rhino offers its defaults.
+    pub remembered: Option<(&'static str, f64)>,
     /// For objects: which sort it takes.
     pub only: Only,
     /// For objects: how many it needs; with fewer it asks again.
     pub least: usize,
+    /// For objects: how many it takes at most; with more it asks again.
+    pub most: usize,
     /// For objects: whether objects chosen at an earlier step are left out.
     pub apart: bool,
 }
@@ -194,8 +199,10 @@ impl StepDef {
             optional: false,
             options: None,
             sets: None,
+            remembered: None,
             only: Only::Any,
             least: 1,
+            most: usize::MAX,
             apart: false,
         }
     }
@@ -234,6 +241,18 @@ impl StepDef {
         }
     }
 
+    /// Asks for edges of surfaces and solids, picked in the viewport.
+    #[must_use]
+    pub fn edges(prompt: &'static str) -> Self {
+        Self::new(prompt, Kind::Edges)
+    }
+
+    /// Asks for faces of surfaces and solids, picked in the viewport.
+    #[must_use]
+    pub fn faces(prompt: &'static str) -> Self {
+        Self::new(prompt, Kind::Faces)
+    }
+
     /// Asks for objects; a selection made beforehand answers it.
     #[must_use]
     pub fn objects(prompt: &'static str) -> Self {
@@ -261,6 +280,14 @@ impl StepDef {
         self
     }
 
+    /// Remembers the number given under `name`; Enter gives it again, `starting` at first.
+    #[must_use]
+    pub fn remembered(mut self, name: &'static str, starting: f64) -> Self {
+        self.remembered = Some((name, starting));
+        self.optional = true;
+        self
+    }
+
     /// Takes only curves.
     #[must_use]
     pub fn curves(mut self) -> Self {
@@ -279,6 +306,14 @@ impl StepDef {
     #[must_use]
     pub fn at_least(mut self, count: usize) -> Self {
         self.least = count;
+        self
+    }
+
+    /// Takes exactly one object, as Sweep1's rail.
+    #[must_use]
+    pub fn one(mut self) -> Self {
+        self.least = 1;
+        self.most = 1;
         self
     }
 
@@ -306,6 +341,10 @@ pub enum Value {
     Number(f64),
     /// Chosen objects.
     Objects(Vec<u64>),
+    /// Picked edges of surfaces and solids.
+    Edges(Vec<curva_document::EdgePick>),
+    /// Picked faces of surfaces and solids.
+    Faces(Vec<curva_document::FacePick>),
     /// Enter on an optional step.
     Empty,
 }
@@ -423,6 +462,9 @@ pub struct Context<'a> {
     /// Whether this is for the preview rather than the result, so a recipe can show less of a
     /// heavy change.
     pub previewing: bool,
+    /// How many of `values` are real answers; for the preview, the rest stand in for the step
+    /// being asked.
+    pub answered: usize,
 }
 
 impl Context<'_> {
@@ -499,6 +541,13 @@ pub trait Recipe: Default + 'static {
         Ok(())
     }
 
+    /// Whether the answer just given can be taken. If not, it is dropped and the step asked
+    /// again, as Revolve asks again for an angle over a whole turn. Every answer is taken by
+    /// default.
+    fn accepts(&self, _cx: &Context<'_>) -> bool {
+        true
+    }
+
     /// What the answers make. For the preview, `cx.values` may stop short, with the pointer or
     /// typed number standing in for the step being asked; return what can be shown so far.
     ///
@@ -538,6 +587,7 @@ impl<R: Recipe> RecipeCommand<R> {
             plane: self.plane,
             held: None,
             previewing: false,
+            answered: values.len(),
         }
     }
 
@@ -586,7 +636,7 @@ impl<R: Recipe> RecipeCommand<R> {
                 // A selection made beforehand answers the first step asking for objects, as in
                 // Rhino, when it has enough of the right sort.
                 let chosen = self.chosen(doc, &step, doc.selection());
-                if chosen.len() >= step.least {
+                if (step.least..=step.most).contains(&chosen.len()) {
                     return self.step(doc, Some(Answer::Objects(chosen)));
                 }
             } else {
@@ -602,7 +652,19 @@ impl<R: Recipe> RecipeCommand<R> {
         } else {
             step.kind
         };
+        let prompt = match step.remembered {
+            Some((name, starting)) => Message::with(
+                step.prompt,
+                vec![
+                    doc.remembered(&key(R::NAME, name))
+                        .unwrap_or(starting)
+                        .to_string(),
+                ],
+            ),
+            None => Message::new(step.prompt),
+        };
         Step::Ask(Request {
+            prompt,
             allow_empty: step.optional,
             options,
             option_labels,
@@ -764,18 +826,45 @@ impl<R: Recipe> Command for RecipeCommand<R> {
                     return crate::commands::unexpected_step();
                 };
                 let chosen = self.chosen(doc, &step, ids);
-                if chosen.len() < step.least {
+                if !(step.least..=step.most).contains(&chosen.len()) {
                     return self.ask(doc);
                 }
                 Value::Objects(chosen)
             }
-            Some(Answer::Empty) => Value::Empty,
+            // Picking nothing asks again.
+            Some(Answer::Edges(picked) | Answer::Faces(picked)) if picked.is_empty() => {
+                return self.ask(doc);
+            }
+            Some(Answer::Edges(picked)) => Value::Edges(picked),
+            Some(Answer::Faces(picked)) => Value::Faces(picked),
+            Some(Answer::Empty) => match self
+                .steps(doc)
+                .get(self.values.len())
+                .and_then(|s| s.remembered)
+            {
+                Some((name, starting)) => {
+                    Value::Number(doc.remembered(&key(R::NAME, name)).unwrap_or(starting))
+                }
+                None => Value::Empty,
+            },
             Some(_) => return crate::commands::unexpected_step(),
         };
         if self.values.is_empty() {
             self.plane = Some(doc.work_plane());
         }
+        if let (Some(Value::Number(n)), Some((name, _))) = (
+            Some(&value),
+            self.steps(doc)
+                .get(self.values.len())
+                .and_then(|s| s.remembered),
+        ) {
+            doc.remember(&key(R::NAME, name), *n);
+        }
         self.values.push(value);
+        if !self.recipe.accepts(&self.context(doc, &self.values)) {
+            self.values.pop();
+            return self.ask(doc);
+        }
         if let Err(message) = self.recipe.check(&self.context(doc, &self.values)) {
             return Step::Failed(message);
         }
@@ -831,7 +920,22 @@ impl<R: Recipe> RecipeCommand<R> {
                 // as a click would give.
                 (Kind::Number, _, _) => values.extend(
                     live.number
-                        .or_else(|| Some(curva_kernel::gap(live.cursor?, step.from?)))
+                        .or_else(|| {
+                            let cursor = live.cursor?;
+                            // Along a direction the size is signed, as a click gives it.
+                            Some(match step.along {
+                                Some((origin, direction)) => {
+                                    curva_kernel::dot(curva_kernel::sub(cursor, origin), direction)
+                                }
+                                None => curva_kernel::gap(cursor, step.from?),
+                            })
+                        })
+                        // With nothing to measure yet, a remembered size shows, as Enter would give.
+                        .filter(|size| size.abs() > f64::EPSILON)
+                        .or_else(|| {
+                            let (name, starting) = step.remembered?;
+                            Some(doc.remembered(&key(R::NAME, name)).unwrap_or(starting))
+                        })
                         .map(Value::Number),
                 ),
                 (Kind::PointOrNumber, _, _) => values.extend(
@@ -845,6 +949,7 @@ impl<R: Recipe> RecipeCommand<R> {
         let mut cx = self.context(doc, &values);
         cx.held = held;
         cx.previewing = true;
+        cx.answered = self.values.len();
         let options: Vec<f64> = R::OPTIONS
             .iter()
             .map(|o| match o.kind {
