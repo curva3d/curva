@@ -1,45 +1,40 @@
-# Draft issue for solidcore: a turned box cannot be read back from its own record
+# Posted to solidcore: a turned box cannot be read back from its own record
 
-**Not posted yet.** Waiting for the owner's go-ahead (spec `docs/specs/m1-closing.md`, step 6).
-To be posted at https://github.com/tangency-labs/solidcore/issues.
+Posted on 12 November 2026 as https://github.com/tangency-labs/solidcore/issues/3265, after the
+owner approved it. Checked at solidcore main `2c92a4f` and at the revision Curva pins, `c440e5f`.
+The report does not mention Curva. Curva works around it by keeping each body as made plus one
+placement (`crates/curva-kernel/src/body.rs`).
+
+The text as posted:
 
 ---
 
-**Title:** `Body::from_record` refuses (status 1007) the record of a box turned about z, at some angles
+**Revision:** `2c92a4fceb1636c926f5120672ffb87d73c6ba11` (main, 12 November 2026). Also seen at `c440e5f`.
 
-**Revision:** `c440e5f892452a9654aee8f3030de6095fdb1415`
+### What happens
 
-**What happens**
+A box from `make_box`, away from the origin and turned about z with `Body::transform`, gives a record (`to_record`) that `Body::from_record` refuses with `Status(1007)` (`SM_ERR_INVALID_INPUT`), with `trusted` both `true` and `false`.
 
-A box made with `make_box` away from the origin, turned about the z axis with `Body::transform`, gives
-a record (`to_record`) that `Body::from_record` then refuses with `Status(1007)`. This happens with
-`trusted` true or false. It depends on the angle: for a unit box at `(1, 2, 3)`, 10 of the whole-degree
-angles from 1° to 89° fail (17°, 29°, 37°, 40°, 41°, 47°, 53°, 62° and two more). The same box at the
-origin reads back at every angle.
+It depends on the angle. For a unit box at `(1, 2, 3)`, these whole-degree angles from 1 to 89 fail: 17, 29, 37, 40, 41, 47, 53, 62, 67, 69. All others read back.
 
-**Smallest case**
+The same turns about z, for a unit box and a 2 × 1 × 1 box with a corner at the origin, read back at every whole-degree angle from 1 to 89.
+
+### Reproduction
 
 ```rust
 use solidcore_ops::{Body, make_box};
 
-let (c, s) = (37f64.to_radians().cos(), 37f64.to_radians().sin());
-let body = make_box([1.0, 2.0, 3.0], [1.0, 1.0, 1.0]).unwrap();
-body.transform(&[[c, s, 0.0, 0.0], [-s, c, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]])
-    .unwrap();
-let (record, _) = body.to_record().unwrap();
-assert!(Body::from_record(&record, true).is_ok()); // fails: Err(Status(1007))
+fn main() {
+    let (c, s) = (37f64.to_radians().cos(), 37f64.to_radians().sin());
+    let body = make_box([1.0, 2.0, 3.0], [1.0, 1.0, 1.0]).unwrap();
+    body.transform(&[[c, s, 0.0, 0.0], [-s, c, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]])
+        .unwrap();
+    let (record, _) = body.to_record().unwrap();
+    println!("{:?}", Body::from_record(&record, true).map(|_| ()));  // Err(Status(1007))
+    println!("{:?}", Body::from_record(&record, false).map(|_| ())); // Err(Status(1007))
+}
 ```
 
-**Expected**
+### Expected
 
-A body's own record reads back, whatever rigid motion it has been through.
-
-**Guess**
-
-The turn leaves vertex positions and the planes or edge lines through them a rounding error apart, and
-reading the record checks them more tightly than the kernel's own tolerance.
-
-**How Curva works around it today**
-
-Curva keeps each body as made, plus a placement it applies when needed, so it never reads back the
-record of a moved body (`crates/curva-kernel/src/body.rs`).
+A body's own record reads back after a rigid turn, as it does for the same box at the origin.

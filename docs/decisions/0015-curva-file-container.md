@@ -1,6 +1,6 @@
 # 0015: How a `.curva` file is stored
 
-**Status:** Proposed · waiting for the owner's choice · 12 November 2026
+**Status:** Decided by the owner in chat · 12 November 2026: the zip package, with the `zip` library approved. Files keep the `.curva` name; only what is inside changes, as a `.docx` is a zip under its own name.
 
 **The question:** the architecture (section 8, Container) asks for two ways of storing a `.curva`
 file to be measured in Milestone 1 before one is chosen: **redb**, a small embedded database, and a
@@ -40,5 +40,4 @@ larger for no gain.
 **What would make us revisit it:** models so large that saving the whole file each time becomes
 slow, which is when saving only what changed (redb's strength) starts to matter.
 
-**For the owner:** choose the zip package (recommended), stay with JSON text for now, or choose redb.
-Adding the `zip` library is a new dependency, so it needs your approval as well.
+**Chosen:** the zip package.
