@@ -70,6 +70,8 @@ const PANEL_RADIUS: u8 = 12;
 const PANEL_MARGIN: f32 = 8.0;
 /// The height of a panel's title row, holding its name or tabs.
 const TITLE_ROW: f32 = 20.0;
+/// The size of panel titles, the same on every panel.
+const TITLE_FONT: f32 = 13.0;
 /// How near a panel's edge, in points, the pointer turns into a resize arrow.
 const RESIZE_REACH: f32 = 6.0;
 /// The size of a command button with an icon, in points.
@@ -145,6 +147,17 @@ const COMMAND_TABS: [(&str, &[&str]); 4] = [
     ),
 ];
 const PICTURE_SIZE: [u32; 2] = [1200, 800];
+/// The specializations in the top bar's dial; only Freeform has commands yet.
+const SPECIALIZATIONS: [&str; 4] = [
+    "ui.specialization.freeform",
+    "ui.specialization.architecture",
+    "ui.specialization.publisher",
+    "ui.specialization.analysis",
+];
+/// The width of the specializations dial in the top bar, in points.
+const DIAL_WIDTH: f32 = 440.0;
+/// The height of the top bar, in points.
+const TOP_BAR_HEIGHT: f32 = 72.0;
 /// Views kept for each viewport's `UndoView`.
 const MOST_VIEWS_KEPT: usize = 50;
 /// How fast Ctrl + right-drag zooms, per pixel dragged.
@@ -206,16 +219,20 @@ struct Curva {
     layout: layout::Layout,
     /// The user's settings: theme, glass or solid panels, grid.
     settings: theme::Settings,
-    /// Whether the Settings window is open.
-    settings_open: bool,
-    /// Whether the About window is open.
-    about_open: bool,
+    /// The Settings panel's tab showing.
+    settings_tab: SettingsTab,
+    /// A panel whose cross was clicked, while asking whether to close it.
+    closing: Option<layout::PanelId>,
+    /// The window's area this frame, for panels that open in its centre.
+    window_rect: egui::Rect,
     /// A unit chosen in Settings, while asking whether to scale the model to it.
     unit_asked: Option<curva_document::Unit>,
     /// Whether the light theme was last put in use, once one has been.
     applied_light: Option<bool>,
-    /// The command tab showing: 0 for File, then one more than an index into [`COMMAND_TABS`].
+    /// The command tab showing, as an index into [`COMMAND_TABS`].
     command_tab: usize,
+    /// The specialization selected in the top bar's dial, as an index into [`SPECIALIZATIONS`].
+    specialization: usize,
     /// When an agent last asked something, to show whether one is connected.
     agent_seen: Option<std::time::Instant>,
     /// Where the pointer last aimed in a viewport, for Enter to place a point with a held distance.
@@ -258,6 +275,10 @@ enum PanelEvent {
     Hide,
     /// One of its tabs was clicked.
     TabChosen(usize),
+    /// A tab was dragged along the row from one place to another.
+    TabMoved(usize, usize),
+    /// Its cross was clicked: ask, then close it.
+    Close,
 }
 
 /// A panel being moved by its grip.
@@ -727,14 +748,16 @@ impl Curva {
                 .map(|file| theme::Settings::load(&file))
                 .unwrap_or_default(),
             applied_light: None,
-            settings_open: false,
-            about_open: false,
+            settings_tab: SettingsTab::General,
+            closing: None,
+            window_rect: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 800.0)),
             unit_asked: None,
             layout: layout::file()
                 .filter(|_| benchmark.is_none())
                 .map(|file| layout::Layout::load(&file))
                 .unwrap_or_default(),
-            command_tab: 1,
+            command_tab: 0,
+            specialization: 0,
             agent_seen: None,
             last_aim: None,
             held_aim: None,
@@ -1585,7 +1608,6 @@ impl Curva {
     }
 
     fn layers_panel(&mut self, ui: &mut egui::Ui) {
-        ui.heading(self.text.render(&Message::new("ui.layers")));
         let layers = self.doc.layers().to_vec();
         let current = self.doc.current_layer();
         egui::Grid::new(ui.scope_id().with("layers")).show(ui, |ui| {
@@ -1989,6 +2011,29 @@ impl Curva {
         self.applied_light = Some(light);
         theme::use_light(light);
         ctx.set_visuals(theme::visuals(theme::current()));
+        // One set of sizes for every panel, the top bar included.
+        ctx.all_styles_mut(|style| {
+            use egui::{FontFamily, FontId, TextStyle};
+            style
+                .text_styles
+                .insert(TextStyle::Body, FontId::new(14.0, FontFamily::Proportional));
+            style.text_styles.insert(
+                TextStyle::Button,
+                FontId::new(14.0, FontFamily::Proportional),
+            );
+            style.text_styles.insert(
+                TextStyle::Small,
+                FontId::new(12.0, FontFamily::Proportional),
+            );
+            style.text_styles.insert(
+                TextStyle::Heading,
+                FontId::new(18.0, FontFamily::Proportional),
+            );
+            style.text_styles.insert(
+                TextStyle::Monospace,
+                FontId::new(13.0, FontFamily::Monospace),
+            );
+        });
         for pane in &mut self.panes {
             let plane = pane.plane;
             pane.set_plane(plane);
@@ -2098,6 +2143,25 @@ impl Curva {
             self.toggle_focus();
         }
         self.history_keys(ctx);
+        self.window_rect = window;
+        // The top bar sits fixed along the top, sliding up out of view in focus mode; the other
+        // panels are laid out in the window below it.
+        let full_window = window;
+        let bar = egui::Rect::from_min_size(
+            window.min + egui::Vec2::splat(layout::GAP),
+            egui::vec2(window.width() - 2.0 * layout::GAP, TOP_BAR_HEIGHT),
+        );
+        let lift = ctx.animate_value_with_time(
+            egui::Id::NULL.with("top bar slide"),
+            if self.focus {
+                bar.max.y - window.min.y
+            } else {
+                0.0
+            },
+            SLIDE_TIME,
+        );
+        self.top_bar(ctx, bar.translate(egui::vec2(0.0, -lift)));
+        let window = egui::Rect::from_min_max(egui::pos2(window.min.x, bar.max.y), window.max);
         let (placed, free) = self.layout.arrange(window);
         // Typing brings the command line's panel out until the command ends.
         let typing = !self.typed.is_empty() || self.processor.is_running();
@@ -2195,15 +2259,16 @@ impl Curva {
                 self.panel_event(event, panel, &place, drawn, window);
             }
         }
-        self.focus_tab(ctx, window);
+        self.focus_tab(ctx, full_window);
+        self.version_label(ctx, full_window);
         // In focus mode the viewports take the window, short of the tabs left at its edges.
         if self.focus {
-            let shrunk = window.shrink(layout::STRIP);
+            let shrunk = full_window.shrink(layout::STRIP);
             return (shrunk, shrunk);
         }
         // The viewports reach under the glass panels, so there is something to see through
         // them; their titles and frames stay in the free area.
-        (free, window)
+        (free, full_window)
     }
 
     /// Where a dragged panel would go if let go with the pointer at `at`: merged into the panel
@@ -2289,6 +2354,11 @@ impl Curva {
                     self.save_layout();
                 }
             }
+            PanelEvent::TabMoved(from, to) => {
+                self.layout = self.layout.reordered(panel, from, to);
+                self.save_layout();
+            }
+            PanelEvent::Close => self.closing = Some(panel),
             PanelEvent::TabChosen(index) => {
                 self.layout = self.layout.with_active(panel, index);
                 self.save_layout();
@@ -2369,32 +2439,11 @@ impl Curva {
         let panel = place.id();
         let mut event = PanelEvent::Nothing;
         let glass = self.settings.glass;
-        let frame = egui::Frame::new()
-            .fill(if glass {
-                theme::current().glass
-            } else {
-                theme::current().panel
-            })
-            .stroke(egui::Stroke::new(
-                if glowing { 2.0 } else { 1.0 },
-                if glowing {
-                    theme::ACCENT
-                } else {
-                    theme::current().panel_edge
-                },
-            ))
-            .corner_radius(PANEL_RADIUS)
-            .shadow(egui::Shadow {
-                offset: [0, 4],
-                blur: if glowing { 24 } else { 16 },
-                spread: 0,
-                color: if glowing {
-                    theme::ACCENT.gamma_multiply(0.5)
-                } else {
-                    egui::Color32::from_black_alpha(90)
-                },
-            })
-            .inner_margin(PANEL_MARGIN);
+        let frame = panel_frame(glowing).fill(if glass {
+            theme::current().glass
+        } else {
+            theme::current().panel
+        });
         egui::Area::new(egui::Id::NULL.with(("panel", panel)))
             .fixed_pos(rect.min)
             .order(egui::Order::Middle)
@@ -2447,6 +2496,8 @@ impl Curva {
                                 .auto_shrink([false, false])
                                 .show(ui, |ui| self.agent_status(ui));
                         }
+                        layout::Piece::Display => self.display_piece(ui),
+                        layout::Piece::Settings => self.settings_piece(ui),
                     }
                 });
                 // Added after the contents, so these sit above the panel's own controls.
@@ -2467,7 +2518,7 @@ impl Curva {
             rect.min + egui::vec2(PANEL_MARGIN, 4.0),
             egui::vec2(rect.width() - 2.0 * PANEL_MARGIN, TITLE_ROW),
         );
-        let font = egui::FontId::proportional(12.5);
+        let font = egui::FontId::proportional(TITLE_FONT);
         let galleys: Vec<_> = place
             .pieces
             .iter()
@@ -2505,10 +2556,20 @@ impl Curva {
                 ui.close();
             }
         });
+        let tabs: Vec<egui::Rect> = galleys
+            .iter()
+            .scan(x, |left, galley| {
+                let tab = egui::Rect::from_min_size(
+                    egui::pos2(*left, row.min.y),
+                    egui::vec2(galley.size().x, TITLE_ROW),
+                );
+                *left += galley.size().x + spacing;
+                Some(tab)
+            })
+            .collect();
         for (index, galley) in galleys.into_iter().enumerate() {
             let width = galley.size().x;
-            let tab =
-                egui::Rect::from_min_size(egui::pos2(x, row.min.y), egui::vec2(width, TITLE_ROW));
+            let tab = tabs[index];
             let active =
                 place.pieces.len() > 1 && index == place.active.min(place.pieces.len() - 1);
             let colour = if active {
@@ -2524,12 +2585,23 @@ impl Curva {
                         egui::Sense::click_and_drag(),
                     )
                     .on_hover_cursor(egui::CursorIcon::Grab);
+                let pointer = ui.input(|input| input.pointer.latest_pos());
+                let in_row =
+                    pointer.is_some_and(|at| row.expand2(egui::vec2(0.0, 10.0)).contains(at));
                 if response.clicked() {
                     event = PanelEvent::TabChosen(index);
-                } else if response.drag_started()
-                    && let Some(at) = response.interact_pointer_pos()
+                } else if response.dragged()
+                    && !in_row
+                    && let Some(at) = pointer
                 {
+                    // Dragged out of the row, the piece comes out as a panel of its own.
                     event = PanelEvent::DragStarted(at - rect.min, Some(place.pieces[index]));
+                } else if response.drag_stopped()
+                    && in_row
+                    && let Some(at) = pointer
+                {
+                    // Let go along the row, the tab moves there.
+                    event = PanelEvent::TabMoved(index, tab_slot(&tabs, at.x));
                 }
                 if active {
                     ui.painter().line_segment(
@@ -2548,41 +2620,60 @@ impl Curva {
             );
             x += width + spacing;
         }
-        // The hide control: a V at the row's end.
-        let hide = egui::Rect::from_center_size(
+        let _ = x;
+        // At the row's end: the hide V, pointing to the edge the panel hides to, then the cross.
+        let edge = self.layout.edge_of(place.id(), rect, self.window_rect);
+        let close = egui::Rect::from_center_size(
             egui::pos2(row.max.x - 8.0, row.center().y),
             egui::vec2(16.0, TITLE_ROW),
         );
-        let response = ui
+        let hide = close.translate(egui::vec2(-20.0, 0.0));
+        let quiet = theme::current().quiet;
+        let lit = |r: &egui::Response| {
+            egui::Stroke::new(1.5, if r.hovered() { theme::ACCENT } else { quiet })
+        };
+        let hidden = ui
             .interact(hide, ui.scope_id().with("hide"), egui::Sense::click())
             .on_hover_text(self.text.render(&Message::new("ui.panel.hide")));
-        let stroke = egui::Stroke::new(
-            1.5,
-            if response.hovered() {
-                theme::ACCENT
-            } else {
-                theme::current().quiet
-            },
-        );
-        let (mid, half) = (hide.center(), egui::vec2(4.5, 2.5));
-        ui.painter().line_segment(
-            [
-                mid + egui::vec2(-half.x, -half.y),
-                mid + egui::vec2(0.0, half.y),
-            ],
-            stroke,
-        );
-        ui.painter().line_segment(
-            [
-                mid + egui::vec2(0.0, half.y),
-                mid + egui::vec2(half.x, -half.y),
-            ],
-            stroke,
-        );
-        if response.clicked() {
+        let towards = match edge {
+            layout::Edge::Top => egui::vec2(0.0, -1.0),
+            layout::Edge::Bottom => egui::vec2(0.0, 1.0),
+            layout::Edge::Left => egui::vec2(-1.0, 0.0),
+            layout::Edge::Right => egui::vec2(1.0, 0.0),
+        };
+        paint_chevron(ui.painter(), hide.center(), towards, lit(&hidden));
+        if hidden.clicked() {
             event = PanelEvent::Hide;
         }
+        let closed = ui
+            .interact(close, ui.scope_id().with("close"), egui::Sense::click())
+            .on_hover_text(self.text.render(&Message::new("ui.panel.close")));
+        let (mid, arm) = (close.center(), 3.5);
+        for (a, b) in [((-arm, -arm), (arm, arm)), ((arm, -arm), (-arm, arm))] {
+            ui.painter().line_segment(
+                [mid + egui::vec2(a.0, a.1), mid + egui::vec2(b.0, b.1)],
+                lit(&closed),
+            );
+        }
+        if closed.clicked() {
+            event = PanelEvent::Close;
+        }
         event
+    }
+
+    /// The software's name and version, small and quiet, at the window's bottom right.
+    fn version_label(&self, ctx: &egui::Context, window: egui::Rect) {
+        let painter = ctx.layer_painter(egui::LayerId::new(
+            egui::Order::Background,
+            egui::Id::NULL.with("version"),
+        ));
+        painter.text(
+            window.max - egui::vec2(8.0, 4.0),
+            egui::Align2::RIGHT_BOTTOM,
+            format!("Curva {}", env!("CARGO_PKG_VERSION")),
+            egui::FontId::proportional(11.0),
+            theme::current().quiet,
+        );
     }
 
     /// Hides every panel, or brings them all back.
@@ -2655,10 +2746,13 @@ impl Curva {
     /// The command buttons, in tabs. A button runs its command as typing it would, ending any
     /// command already running, as a Rhino toolbar button does.
     fn command_tabs(&mut self, ui: &mut egui::Ui) {
-        // The File tab first, then the command tabs; `command_tab` 0 is File.
+        // Only Freeform has commands yet; the other specializations say when they come.
+        if self.specialization != 0 {
+            ui.label(self.text.render(&Message::new("ui.specialization.later")));
+            return;
+        }
         ui.horizontal(|ui| {
-            let keys = std::iter::once("ui.tab.file").chain(COMMAND_TABS.iter().map(|(k, _)| *k));
-            for (index, key) in keys.enumerate() {
+            for (index, (key, _)) in COMMAND_TABS.iter().enumerate() {
                 let label = self.text.render(&Message::new(key));
                 if ui
                     .selectable_label(self.command_tab == index, label)
@@ -2671,11 +2765,7 @@ impl Curva {
         let mut chosen = None;
         egui::ScrollArea::horizontal().show(ui, |ui| {
             ui.horizontal(|ui| {
-                if self.command_tab == 0 {
-                    chosen = self.file_items(ui);
-                    return;
-                }
-                for name in COMMAND_TABS[self.command_tab - 1].1 {
+                for name in COMMAND_TABS[self.command_tab.min(COMMAND_TABS.len() - 1)].1 {
                     if command_button(ui, name).clicked() {
                         chosen = Some(*name);
                     }
@@ -2684,6 +2774,135 @@ impl Curva {
         });
         if let Some(name) = chosen {
             self.run_from_button(name);
+        }
+    }
+
+    /// The top bar, named Curva: always there and fixed (only focus mode hides it). The file's
+    /// name and Curva centred on top; under them File and Settings at the left, and the
+    /// specializations as a dial in the middle, the selected one centred.
+    fn top_bar(&mut self, ctx: &egui::Context, rect: egui::Rect) {
+        let glass = self.settings.glass;
+        let frame = panel_frame(false).fill(if glass {
+            theme::current().glass
+        } else {
+            theme::current().panel
+        });
+        let mut chosen = None;
+        egui::Area::new(egui::Id::NULL.with("top bar"))
+            .fixed_pos(rect.min)
+            .order(egui::Order::Middle)
+            .constrain(false)
+            .show(ctx, |ui| {
+                ui.set_clip_rect(rect.expand(SHADOW_ROOM));
+                if glass {
+                    ui.painter().add(egui::Shape::from(
+                        eframe::egui_wgpu::Callback::new_paint_callback(
+                            rect,
+                            curva_viewport::Glass {
+                                rect,
+                                radius: f32::from(PANEL_RADIUS),
+                            },
+                        ),
+                    ));
+                }
+                frame.show(ui, |ui| {
+                    let inner = rect.size() - egui::Vec2::splat(2.0 * PANEL_MARGIN);
+                    ui.set_min_size(inner);
+                    ui.set_max_size(inner);
+                    let file = self
+                        .doc
+                        .path()
+                        .and_then(|path| path.file_stem())
+                        .map_or_else(
+                            || self.text.render(&Message::new("ui.untitled")),
+                            |stem| stem.to_string_lossy().into_owned(),
+                        );
+                    ui.vertical_centered(|ui| {
+                        ui.label(
+                            egui::RichText::new(format!("{file}  ·  Curva"))
+                                .color(theme::current().quiet)
+                                .size(13.0),
+                        );
+                    });
+                    ui.horizontal(|ui| {
+                        ui.menu_button(self.text.render(&Message::new("ui.tab.file")), |ui| {
+                            chosen = self.file_items(ui);
+                        });
+                        if ui
+                            .button(self.text.render(&Message::new("ui.file.settings")))
+                            .clicked()
+                        {
+                            self.open_settings(SettingsTab::General);
+                        }
+                    });
+                    let dial = egui::Rect::from_center_size(
+                        egui::pos2(rect.center().x, rect.max.y - PANEL_MARGIN - 12.0),
+                        egui::vec2(DIAL_WIDTH, 22.0),
+                    );
+                    self.specialization_dial(ui, dial);
+                });
+            });
+        if let Some(name) = chosen {
+            self.run_from_button(name);
+        }
+    }
+
+    /// The specializations as a dial that loops: the selected one in the centre, its neighbours
+    /// either side and fading. Clicking a neighbour or scrolling over the dial turns it.
+    fn specialization_dial(&mut self, ui: &mut egui::Ui, rect: egui::Rect) {
+        let count = SPECIALIZATIONS.len();
+        let response = ui.interact(rect, ui.scope_id().with("dial"), egui::Sense::click());
+        if response.hovered() {
+            let scroll =
+                ui.input(|input| input.smooth_scroll_delta.x + input.smooth_scroll_delta.y);
+            if scroll.abs() > 20.0 {
+                self.specialization =
+                    (self.specialization + if scroll < 0.0 { 1 } else { count - 1 }) % count;
+            }
+        }
+        let spacing = rect.width() / 3.0;
+        for offset in [-1_i32, 0, 1] {
+            let index = (self.specialization as i32 + offset).rem_euclid(count as i32) as usize;
+            let centre = egui::pos2(rect.center().x + spacing * offset as f32, rect.center().y);
+            let fade = match offset.abs() {
+                0 => 1.0,
+                1 => 0.55,
+                _ => 0.22,
+            };
+            let colour = if offset == 0 {
+                theme::current().text
+            } else {
+                theme::current().quiet.gamma_multiply(fade)
+            };
+            let name = self.text.render(&Message::new(SPECIALIZATIONS[index]));
+            let galley = ui.painter().layout_no_wrap(
+                name,
+                egui::FontId::new(14.0, egui::FontFamily::Name("Bold".into())),
+                colour,
+            );
+            let at = centre - galley.size() / 2.0;
+            let hit = egui::Rect::from_min_size(at, galley.size()).expand(4.0);
+            ui.painter().galley(at, galley, colour);
+            if offset != 0
+                && ui
+                    .interact(
+                        hit,
+                        ui.scope_id().with(("dial item", offset)),
+                        egui::Sense::click(),
+                    )
+                    .clicked()
+            {
+                self.specialization = index;
+            }
+            if offset == 0 {
+                ui.painter().line_segment(
+                    [
+                        egui::pos2(hit.min.x + 4.0, hit.max.y),
+                        egui::pos2(hit.max.x - 4.0, hit.max.y),
+                    ],
+                    egui::Stroke::new(2.0, theme::ACCENT),
+                );
+            }
         }
     }
 
@@ -2698,8 +2917,8 @@ impl Curva {
         self.processor.submit(&mut self.doc, name);
     }
 
-    /// The File tab: New, Open, Save and Save As run their commands; Import and Export wait for
-    /// a format to offer; Settings and About open their windows. Returns a command to run.
+    /// The File menu: New, Open, Save and Save As run their commands; Import and Export wait for
+    /// a format to offer; About opens Settings at its About tab. Returns a command to run.
     fn file_items(&mut self, ui: &mut egui::Ui) -> Option<&'static str> {
         let mut chosen = None;
         for (name, key) in [
@@ -2710,8 +2929,10 @@ impl Curva {
         ] {
             if ui.button(self.text.render(&Message::new(key))).clicked() {
                 chosen = Some(name);
+                ui.close();
             }
         }
+        ui.separator();
         for key in ["ui.file.import", "ui.file.export"] {
             ui.add_enabled(
                 false,
@@ -2719,79 +2940,158 @@ impl Curva {
             )
             .on_disabled_hover_text(self.text.render(&Message::new("ui.file.later")));
         }
-        if ui
-            .button(self.text.render(&Message::new("ui.file.settings")))
-            .clicked()
-        {
-            self.settings_open = true;
-        }
+        ui.separator();
         if ui
             .button(self.text.render(&Message::new("ui.file.about")))
             .clicked()
         {
-            self.about_open = true;
+            self.open_settings(SettingsTab::About);
+            ui.close();
         }
         chosen
     }
 
-    /// The Settings window: theme, glass or solid panels, the model's unit, and the grid.
-    fn settings_window(&mut self, ctx: &egui::Context) {
-        if self.settings_open {
-            let before = self.settings.clone();
-            let mut open = true;
-            let mut unit = self.doc.state().unit;
-            let text = &self.text;
-            let settings = &mut self.settings;
-            egui::Window::new(text.render(&Message::new("ui.file.settings")))
-                .open(&mut open)
-                .collapsible(false)
-                .resizable(false)
-                .show(ctx, |ui| {
-                    let say = |key: &'static str| text.render(&Message::new(key));
-                    ui.label(egui::RichText::new(say("ui.settings.theme")).strong());
-                    ui.horizontal(|ui| {
-                        for (choice, key) in [
-                            (theme::ThemeChoice::System, "ui.settings.system"),
-                            (theme::ThemeChoice::Light, "ui.settings.light"),
-                            (theme::ThemeChoice::Dark, "ui.settings.dark"),
-                        ] {
-                            ui.radio_value(&mut settings.theme, choice, say(key));
-                        }
-                    });
-                    ui.label(egui::RichText::new(say("ui.settings.panels")).strong());
-                    ui.horizontal(|ui| {
-                        ui.radio_value(&mut settings.glass, true, say("ui.settings.glass"));
-                        ui.radio_value(&mut settings.glass, false, say("ui.settings.solid"));
-                    });
-                    ui.label(egui::RichText::new(say("ui.settings.units")).strong());
-                    ui.horizontal(|ui| {
-                        ui.radio_value(
-                            &mut unit,
-                            curva_document::Unit::Millimetres,
-                            say("ui.settings.mm"),
-                        );
-                        ui.radio_value(
-                            &mut unit,
-                            curva_document::Unit::Metres,
-                            say("ui.settings.m"),
-                        );
-                    });
-                    ui.checkbox(&mut settings.grid, say("ui.settings.grid"));
-                });
-            if unit != self.doc.state().unit {
-                self.unit_asked = Some(unit);
-            }
-            self.settings_open = open;
-            if self.settings != before {
-                self.applied_light = None;
-                if self.benchmark.is_none()
-                    && let Some(file) = theme::file()
+    /// Brings the Settings panel out at a tab: back from closed, floating in the centre of the
+    /// window, or to the front of the panel holding it.
+    fn open_settings(&mut self, tab: SettingsTab) {
+        self.settings_tab = tab;
+        let window = self.window_rect;
+        self.layout = self.layout.restored(layout::Piece::Settings, window);
+        if let Some(panel) = self.layout.panel_of(layout::Piece::Settings)
+            && let Some(index) = self
+                .layout
+                .place(panel)
+                .and_then(|p| p.pieces.iter().position(|p| *p == layout::Piece::Settings))
+        {
+            self.layout = self
+                .layout
+                .with_active(panel, index)
+                .with_hidden(panel, false);
+        }
+        self.save_layout();
+    }
+
+    /// The Settings panel, in tabs: General, Interface, AI Assistant and About.
+    fn settings_piece(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            for (tab, key) in [
+                (SettingsTab::General, "ui.settings.general"),
+                (SettingsTab::Interface, "ui.settings.interface"),
+                (SettingsTab::Assistant, "ui.piece.assistant"),
+                (SettingsTab::About, "ui.file.about"),
+            ] {
+                let label = self.text.render(&Message::new(key));
+                if ui
+                    .selectable_label(self.settings_tab == tab, label)
+                    .clicked()
                 {
-                    let _ = self.settings.save(&file);
+                    self.settings_tab = tab;
                 }
             }
+        });
+        ui.separator();
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| match self.settings_tab {
+                SettingsTab::General => self.general_settings(ui),
+                SettingsTab::Interface => self.interface_settings(ui),
+                SettingsTab::Assistant => self.assistant_settings(ui),
+                SettingsTab::About => self.about_settings(ui),
+            });
+    }
+
+    /// Settings → General: theme, glass or solid panels, the model's unit, the grid, updates.
+    fn general_settings(&mut self, ui: &mut egui::Ui) {
+        let before = self.settings.clone();
+        let mut unit = self.doc.state().unit;
+        let text = &self.text;
+        let settings = &mut self.settings;
+        let say = |key: &'static str| text.render(&Message::new(key));
+        ui.label(egui::RichText::new(say("ui.settings.theme")).strong());
+        ui.horizontal(|ui| {
+            for (choice, key) in [
+                (theme::ThemeChoice::System, "ui.settings.system"),
+                (theme::ThemeChoice::Light, "ui.settings.light"),
+                (theme::ThemeChoice::Dark, "ui.settings.dark"),
+            ] {
+                ui.radio_value(&mut settings.theme, choice, say(key));
+            }
+        });
+        ui.label(egui::RichText::new(say("ui.settings.panels")).strong());
+        ui.horizontal(|ui| {
+            ui.radio_value(&mut settings.glass, true, say("ui.settings.glass"));
+            ui.radio_value(&mut settings.glass, false, say("ui.settings.solid"));
+        });
+        ui.label(egui::RichText::new(say("ui.settings.units")).strong());
+        ui.horizontal(|ui| {
+            ui.radio_value(
+                &mut unit,
+                curva_document::Unit::Millimetres,
+                say("ui.settings.mm"),
+            );
+            ui.radio_value(
+                &mut unit,
+                curva_document::Unit::Metres,
+                say("ui.settings.m"),
+            );
+        });
+        ui.checkbox(&mut settings.grid, say("ui.settings.grid"));
+        ui.checkbox(&mut settings.check_updates, say("ui.settings.updates"));
+        if unit != self.doc.state().unit {
+            self.unit_asked = Some(unit);
         }
-        self.unit_question(ctx);
+        if self.settings != before {
+            self.applied_light = None;
+            if self.benchmark.is_none()
+                && let Some(file) = theme::file()
+            {
+                let _ = self.settings.save(&file);
+            }
+        }
+    }
+
+    /// Settings → Interface: every panel with a switch to show or close it, and a way back to the
+    /// standard arrangement.
+    fn interface_settings(&mut self, ui: &mut egui::Ui) {
+        ui.label(
+            self.text
+                .render(&Message::new("ui.settings.interface_note")),
+        );
+        let window = self.window_rect;
+        for piece in layout::Piece::ALL {
+            let mut shown = self.layout.is_shown(piece);
+            let name = self.text.render(&Message::new(piece.name_key()));
+            if ui.checkbox(&mut shown, name).changed() {
+                self.layout = if shown {
+                    self.layout.restored(piece, window)
+                } else {
+                    // Only this piece goes, even from a panel with others.
+                    let alone = self.layout.pulled(
+                        piece,
+                        layout::Dock::Floating { x: 0.0, y: 0.0 },
+                        layout::FLOATING_STANDARD,
+                    );
+                    alone.closing(piece)
+                };
+                self.save_layout();
+            }
+        }
+        ui.add_space(8.0);
+        if ui
+            .button(self.text.render(&Message::new("ui.layout.reset")))
+            .clicked()
+        {
+            self.layout = layout::Layout::default().restored(layout::Piece::Settings, window);
+            self.save_layout();
+        }
+    }
+
+    /// Settings → About: the version, the licence, and the credits.
+    fn about_settings(&self, ui: &mut egui::Ui) {
+        ui.heading(format!("Curva {}", env!("CARGO_PKG_VERSION")));
+        ui.label(self.text.render(&Message::new("ui.about.licence")));
+        ui.separator();
+        ui.label(include_str!("../../../ATTRIBUTION.md"));
     }
 
     /// As Rhino does, asks whether changing the unit should scale the model to keep its real
@@ -2801,28 +3101,25 @@ impl Curva {
             return;
         };
         let mut answer = None;
-        egui::Window::new(self.text.render(&Message::new("ui.settings.units")))
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-            .show(ctx, |ui| {
-                ui.label(self.text.render(&Message::with(
-                    "ui.units.question",
-                    vec![unit.symbol().to_owned()],
-                )));
-                ui.horizontal(|ui| {
-                    let say = |key: &'static str| self.text.render(&Message::new(key));
-                    if ui.button(say("ui.units.scale")).clicked() {
-                        answer = Some(Some(true));
-                    }
-                    if ui.button(say("ui.units.keep")).clicked() {
-                        answer = Some(Some(false));
-                    }
-                    if ui.button(say("ui.units.cancel")).clicked() {
-                        answer = Some(None);
-                    }
-                });
+        let say = |key: &'static str| self.text.render(&Message::new(key));
+        let question = self.text.render(&Message::with(
+            "ui.units.question",
+            vec![unit.symbol().to_owned()],
+        ));
+        centred_dialog(ctx, "unit question", |ui| {
+            ui.label(question);
+            ui.horizontal(|ui| {
+                if ui.button(say("ui.units.scale")).clicked() {
+                    answer = Some(Some(true));
+                }
+                if ui.button(say("ui.units.keep")).clicked() {
+                    answer = Some(Some(false));
+                }
+                if ui.button(say("ui.units.cancel")).clicked() {
+                    answer = Some(None);
+                }
             });
+        });
         if let Some(choice) = answer {
             self.unit_asked = None;
             if let Some(scale) = choice {
@@ -2833,22 +3130,86 @@ impl Curva {
         }
     }
 
-    /// The About window: the version, the licence, and the credits.
-    fn about_window(&mut self, ctx: &egui::Context) {
-        let mut open = self.about_open;
-        egui::Window::new(self.text.render(&Message::new("ui.file.about")))
-            .open(&mut open)
-            .collapsible(false)
-            .default_width(460.0)
-            .show(ctx, |ui| {
-                ui.heading(format!("Curva {}", env!("CARGO_PKG_VERSION")));
-                ui.label(self.text.render(&Message::new("ui.about.licence")));
-                ui.separator();
-                egui::ScrollArea::vertical()
-                    .max_height(320.0)
-                    .show(ui, |ui| ui.label(include_str!("../../../ATTRIBUTION.md")));
+    /// Asks whether to close a panel, saying where to bring it back, before closing it.
+    fn close_question(&mut self, ctx: &egui::Context) {
+        let Some(panel) = self.closing else {
+            return;
+        };
+        let names: Vec<String> = self
+            .layout
+            .place(panel)
+            .map(|p| {
+                p.pieces
+                    .iter()
+                    .map(|piece| self.text.render(&Message::new(piece.name_key())))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let say = |key: &'static str| self.text.render(&Message::new(key));
+        let question = self
+            .text
+            .render(&Message::with("ui.close.question", vec![names.join(", ")]));
+        let mut answer = None;
+        centred_dialog(ctx, "close question", |ui| {
+            ui.label(egui::RichText::new(question).strong());
+            ui.label(say("ui.close.where"));
+            ui.horizontal(|ui| {
+                if ui.button(say("ui.close.close")).clicked() {
+                    answer = Some(true);
+                }
+                if ui.button(say("ui.units.cancel")).clicked() {
+                    answer = Some(false);
+                }
             });
-        self.about_open = open;
+        });
+        if let Some(close) = answer {
+            self.closing = None;
+            if close {
+                self.layout = self.layout.closing(panel);
+                self.save_layout();
+            }
+        }
+    }
+
+    /// The Display panel: the active viewport's display mode, as a button with a V pointing down
+    /// that opens the list of modes.
+    fn display_piece(&mut self, ui: &mut egui::Ui) {
+        let current = self.panes[self.active].display;
+        let label = |mode: DisplayMode| match mode {
+            DisplayMode::Wireframe => "ui.display.wireframe",
+            DisplayMode::Shaded => "ui.display.shaded",
+            DisplayMode::Ghosted => "ui.display.ghosted",
+        };
+        let title = self.text.render(&Message::new(label(current)));
+        let mut chosen = None;
+        egui::ComboBox::from_id_salt("display mode")
+            .selected_text(title)
+            .width(ui.available_width())
+            .show_ui(ui, |ui| {
+                for mode in [
+                    DisplayMode::Wireframe,
+                    DisplayMode::Shaded,
+                    DisplayMode::Ghosted,
+                ] {
+                    let name = self.text.render(&Message::new(label(mode)));
+                    if ui.selectable_label(mode == current, name).clicked() {
+                        chosen = Some(mode);
+                    }
+                }
+            });
+        if let Some(mode) = chosen {
+            self.panes[self.active].display = mode;
+        }
+    }
+
+    /// Settings → AI Assistant.
+    fn assistant_settings(&mut self, ui: &mut egui::Ui) {
+        self.assistant_connections(ui);
+    }
+
+    /// The AI Assistant's connections.
+    fn assistant_connections(&mut self, ui: &mut egui::Ui) {
+        self.agent_status(ui);
     }
 
     /// Agent access, and whether an agent is talking to Curva.
@@ -3490,8 +3851,8 @@ impl eframe::App for Curva {
         self.serve_agents();
         self.approval_window(ui);
         self.recovery_window(ui);
-        self.settings_window(ui.ctx());
-        self.about_window(ui.ctx());
+        self.unit_question(ui.ctx());
+        self.close_question(ui.ctx());
         if let Some(autosave) = &mut self.autosave {
             autosave.tick(&self.doc, std::time::Instant::now());
         }
@@ -3749,6 +4110,76 @@ fn aim_at(aiming: &Aiming<'_>) -> Option<(Point, Option<SnapHit>)> {
         constrained(plane, cursor, base, aiming.ortho, aiming.grid_snap),
         None,
     ))
+}
+
+/// The Settings panel's tabs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SettingsTab {
+    General,
+    Interface,
+    Assistant,
+    About,
+}
+
+/// A small question in the centre of the window, drawn like a panel.
+fn centred_dialog(ctx: &egui::Context, id: &str, contents: impl FnOnce(&mut egui::Ui)) {
+    egui::Area::new(egui::Id::NULL.with(("dialog", id)))
+        .order(egui::Order::Foreground)
+        .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+        .show(ctx, |ui| {
+            panel_frame(false).show(ui, |ui| {
+                ui.set_max_width(420.0);
+                contents(ui);
+            });
+        });
+}
+
+/// The frame every panel is drawn in: rounded, edged and shadowed, glass or solid; glowing in the
+/// accent while another panel dragged over it would merge into it.
+fn panel_frame(glowing: bool) -> egui::Frame {
+    egui::Frame::new()
+        .fill(theme::current().glass)
+        .stroke(egui::Stroke::new(
+            if glowing { 2.0 } else { 1.0 },
+            if glowing {
+                theme::ACCENT
+            } else {
+                theme::current().panel_edge
+            },
+        ))
+        .corner_radius(PANEL_RADIUS)
+        .shadow(egui::Shadow {
+            offset: [0, 4],
+            blur: if glowing { 24 } else { 16 },
+            spread: 0,
+            color: if glowing {
+                theme::ACCENT.gamma_multiply(0.5)
+            } else {
+                egui::Color32::from_black_alpha(90)
+            },
+        })
+        .inner_margin(PANEL_MARGIN)
+}
+
+/// A V pointing along `towards` (a unit direction on screen), as the hide control draws it.
+fn paint_chevron(
+    painter: &egui::Painter,
+    centre: egui::Pos2,
+    towards: egui::Vec2,
+    stroke: egui::Stroke,
+) {
+    let side = egui::vec2(-towards.y, towards.x);
+    let tip = centre + towards * 2.5;
+    let back = centre - towards * 2.5;
+    painter.line_segment([back + side * 4.5, tip], stroke);
+    painter.line_segment([tip, back - side * 4.5], stroke);
+}
+
+/// Where along a row of tabs a tab let go at `x` lands, as an index among them.
+fn tab_slot(tabs: &[egui::Rect], x: f32) -> usize {
+    tabs.iter()
+        .position(|tab| x < tab.center().x)
+        .unwrap_or(tabs.len().saturating_sub(1))
 }
 
 /// A command button: its icon, with its name on hover, or its name where it has no icon yet.

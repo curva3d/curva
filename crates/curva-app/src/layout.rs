@@ -28,16 +28,22 @@ pub enum Piece {
     Command,
     /// The agent connection.
     Agent,
+    /// The active viewport's display mode: Wireframe, Shaded, Ghosted.
+    Display,
+    /// The settings, in tabs.
+    Settings,
 }
 
 impl Piece {
     /// Every piece, in their standard order.
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 7] = [
         Self::CommandTabs,
         Self::Layers,
         Self::Properties,
         Self::Command,
         Self::Agent,
+        Self::Display,
+        Self::Settings,
     ];
 
     /// Its name's key in the translation file.
@@ -48,7 +54,9 @@ impl Piece {
             Self::Layers => "ui.tab.layers",
             Self::Properties => "ui.tab.properties",
             Self::Command => "ui.piece.command",
-            Self::Agent => "ui.agent.title",
+            Self::Agent => "ui.piece.assistant",
+            Self::Display => "ui.piece.display",
+            Self::Settings => "ui.file.settings",
         }
     }
 }
@@ -156,6 +164,9 @@ pub struct Layout {
     /// first sits against the window's edge. Panels shorter than their edge share a row when
     /// they fit side by side.
     pub places: Vec<Place>,
+    /// Pieces closed with their cross, to be brought back from Settings.
+    #[serde(default)]
+    pub closed: Vec<Piece>,
 }
 
 impl Default for Layout {
@@ -184,10 +195,24 @@ impl Default for Layout {
                     Align::Fill,
                     [260.0, 0.0],
                 ),
+                // The display mode button, below the top-left panel.
+                Place::new(
+                    vec![Piece::Display],
+                    Dock::Floating {
+                        x: GAP,
+                        y: GAP + 104.0 + GAP,
+                    },
+                    Align::Fill,
+                    [180.0, 64.0],
+                ),
             ],
+            closed: vec![Piece::Settings],
         }
     }
 }
+
+/// The size a panel brought back without a standard place opens at, as Settings does.
+pub const FLOATING_STANDARD: Vec2 = vec2(560.0, 460.0);
 
 /// The widest the command bar is in the standard arrangement.
 pub const COMMAND_WIDTH: f32 = 720.0;
@@ -314,6 +339,7 @@ impl Layout {
                     .ok()
                     .map(older::Layout::updated)
             })
+            .map(Self::completed)
             .filter(Self::is_complete)
             .unwrap_or_default()
     }
@@ -368,7 +394,10 @@ impl Layout {
             hidden: false,
             ..old
         });
-        Self { places }
+        Self {
+            places,
+            closed: self.closed.clone(),
+        }
     }
 
     /// The arrangement with `panel` resized, never smaller than a usable panel. For a docked
@@ -500,16 +529,110 @@ impl Layout {
     /// older or newer Curva with a different set of pieces falls back to the standard
     /// arrangement.
     fn is_complete(&self) -> bool {
+        let all = || {
+            self.places
+                .iter()
+                .flat_map(|p| p.pieces.iter())
+                .chain(&self.closed)
+        };
         self.places.iter().all(|p| !p.pieces.is_empty())
-            && Piece::ALL.iter().all(|piece| {
-                self.places
-                    .iter()
-                    .flat_map(|p| p.pieces.iter())
-                    .filter(|p| *p == piece)
-                    .count()
-                    == 1
-            })
-            && self.places.iter().map(|p| p.pieces.len()).sum::<usize>() == Piece::ALL.len()
+            && Piece::ALL
+                .iter()
+                .all(|piece| all().filter(|p| *p == piece).count() == 1)
+            && all().count() == Piece::ALL.len()
+    }
+
+    /// The arrangement with any piece it lacks (a piece newer than the file) given its standard
+    /// place, or closed if it starts closed, as Settings does.
+    #[must_use]
+    pub fn completed(mut self) -> Self {
+        let standard = Self::default();
+        for piece in Piece::ALL {
+            let has = self.places.iter().any(|p| p.pieces.contains(&piece))
+                || self.closed.contains(&piece);
+            if has {
+                continue;
+            }
+            match standard.places.iter().find(|p| p.pieces.contains(&piece)) {
+                Some(place) => self.places.push(Place {
+                    pieces: vec![piece],
+                    active: 0,
+                    ..place.clone()
+                }),
+                None => self.closed.push(piece),
+            }
+        }
+        self
+    }
+
+    /// The arrangement with `panel` closed: its pieces go to the closed list, all of them.
+    #[must_use]
+    pub fn closing(&self, panel: PanelId) -> Self {
+        let mut layout = self.clone();
+        if let Some(index) = layout.places.iter().position(|p| p.id() == panel) {
+            let place = layout.places.remove(index);
+            layout.closed.extend(place.pieces);
+        }
+        layout
+    }
+
+    /// The arrangement with a closed `piece` brought back: to its standard place if it has one,
+    /// otherwise floating in the centre of `window`, as Settings opens.
+    #[must_use]
+    pub fn restored(&self, piece: Piece, window: Rect) -> Self {
+        if !self.closed.contains(&piece) {
+            return self.clone();
+        }
+        let mut layout = self.clone();
+        layout.closed.retain(|p| *p != piece);
+        let standard = Self::default();
+        let place = standard
+            .places
+            .iter()
+            .find(|p| p.pieces.contains(&piece))
+            .map_or_else(
+                || {
+                    let size = FLOATING_STANDARD;
+                    let corner = window.center() - size / 2.0 - window.min.to_vec2();
+                    Place::new(
+                        vec![piece],
+                        Dock::Floating {
+                            x: corner.x,
+                            y: corner.y,
+                        },
+                        Align::Fill,
+                        [size.x, size.y],
+                    )
+                },
+                |place| Place {
+                    pieces: vec![piece],
+                    active: 0,
+                    ..place.clone()
+                },
+            );
+        layout.places.push(place);
+        layout
+    }
+
+    /// The arrangement with tab `from` of `panel` moved to position `to`.
+    #[must_use]
+    pub fn reordered(&self, panel: PanelId, from: usize, to: usize) -> Self {
+        let mut layout = self.clone();
+        if let Some(place) = layout.places.iter_mut().find(|p| p.id() == panel)
+            && from < place.pieces.len()
+        {
+            let showing = place.showing();
+            let piece = place.pieces.remove(from);
+            place.pieces.insert(to.min(place.pieces.len()), piece);
+            place.active = place.pieces.iter().position(|p| *p == showing).unwrap_or(0);
+        }
+        layout
+    }
+
+    /// Whether a piece is shown somewhere, rather than closed.
+    #[must_use]
+    pub fn is_shown(&self, piece: Piece) -> bool {
+        !self.closed.contains(&piece)
     }
 }
 
@@ -908,7 +1031,11 @@ mod older {
             {
                 places.push(agent);
             }
-            super::Layout { places }
+            super::Layout {
+                places,
+                closed: Vec::new(),
+            }
+            .completed()
         }
     }
 }
@@ -951,7 +1078,8 @@ mod tests {
             assert_eq!(side.min.y, tabs.max.y + GAP);
             assert_eq!(side.max.y, bar.min.y.min(agent.min.y) - GAP);
             // The viewports get the rest, and no panel overlaps them or another panel.
-            for (_, rect) in &placed {
+            // The Display panel floats over the viewports, by design; the docked ones do not.
+            for (_, rect) in placed.iter().filter(|(p, _)| *p != Piece::Display) {
                 assert!(!rect.intersects(free.shrink(0.5)), "{rect:?} over {free:?}");
                 assert!(screen.contains_rect(*rect));
             }
@@ -1039,7 +1167,16 @@ mod tests {
             .iter()
             .map(|(p, r)| layout.edge_of(*p, *r, screen))
             .collect();
-        assert_eq!(edges, [Edge::Top, Edge::Bottom, Edge::Bottom, Edge::Right]);
+        assert_eq!(
+            edges,
+            [
+                Edge::Top,
+                Edge::Bottom,
+                Edge::Bottom,
+                Edge::Right,
+                Edge::Left
+            ]
+        );
         // A hidden panel leaves its space to the viewports but keeps its place to slide from.
         let hiding = layout.with_hidden(Piece::Layers, true);
         let (placed_hidden, free) = hiding.arrange(screen);
@@ -1184,13 +1321,14 @@ mod tests {
             [Piece::Properties]
         );
         assert_eq!(pulled.panel_of(Piece::Command), Some(Piece::Layers));
-        // Every piece is always in exactly one panel.
+        // Every piece is always in exactly one panel, or closed.
         for piece in Piece::ALL {
             let holding = pulled
                 .places
                 .iter()
                 .filter(|p| p.pieces.contains(&piece))
-                .count();
+                .count()
+                + usize::from(pulled.closed.contains(&piece));
             assert_eq!(holding, 1, "{piece:?}");
         }
     }
@@ -1276,5 +1414,37 @@ mod tests {
         );
         assert_eq!(rect(&pulled).width(), before.width() + 40.0);
         assert_eq!(rect(&pulled).min.y, before.min.y);
+    }
+
+    #[test]
+    fn panels_close_and_come_back_and_tabs_reorder() {
+        let screen = window(1200.0, 800.0);
+        let layout = Layout::default();
+        assert!(layout.is_complete());
+        assert!(!layout.is_shown(Piece::Settings));
+        // Closing a panel with tabs closes them all; each comes back on its own.
+        let closed = layout.closing(Piece::Layers);
+        assert!(closed.is_complete());
+        assert!(!closed.is_shown(Piece::Layers) && !closed.is_shown(Piece::Properties));
+        let back = closed.restored(Piece::Properties, screen);
+        assert!(back.is_shown(Piece::Properties) && !back.is_shown(Piece::Layers));
+        // Settings, with no standard place, opens floating in the centre of the window.
+        let settings = layout.restored(Piece::Settings, screen);
+        let rect = rect_of(&settings.arrange(screen).0, Piece::Settings);
+        assert!((rect.center() - screen.center()).length() < 1.0, "{rect:?}");
+        // Tabs reorder, and the one showing stays showing.
+        let merged = layout.merged(Piece::Command, Piece::Layers);
+        let moved = merged.reordered(Piece::Layers, 2, 0);
+        let place = moved.place(Piece::Command).unwrap();
+        assert_eq!(
+            place.pieces,
+            [Piece::Command, Piece::Layers, Piece::Properties]
+        );
+        assert_eq!(place.showing(), Piece::Command);
+        // A file without the newer pieces gains them.
+        let mut old = Layout::default();
+        old.places.retain(|p| p.pieces != [Piece::Display]);
+        old.closed.clear();
+        assert!(old.completed().is_complete());
     }
 }
