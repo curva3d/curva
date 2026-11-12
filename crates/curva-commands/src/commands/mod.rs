@@ -117,6 +117,8 @@ pub struct CommandDef {
     /// Its options, for commands written as a [`crate::recipe::Recipe`]; empty for the others,
     /// which are still to be moved onto the framework.
     pub options: &'static [crate::recipe::OptionDef],
+    /// Whether it is written as a recipe on the command framework.
+    pub recipe: bool,
 }
 
 macro_rules! listed {
@@ -128,6 +130,7 @@ macro_rules! listed {
             records_undo: $undo,
             make: || Box::<$kind>::default(),
             options: &[],
+            recipe: false,
         }
     };
 }
@@ -142,6 +145,7 @@ macro_rules! recipe {
             records_undo: true,
             make: || Box::<crate::recipe::RecipeCommand<$recipe>>::default(),
             options: <$recipe as crate::recipe::Recipe>::OPTIONS,
+            recipe: true,
         }
     };
 }
@@ -669,8 +673,13 @@ mod tests {
                 assert_eq!(*status, "missing", "{name} is listed but not a command");
                 continue;
             };
-            // Only commands written on the framework declare their options.
-            if def.options.is_empty() && named_options(curva).is_empty() {
+            // Only commands written on the framework declare their options, so only they are
+            // checked; the others' rows are the audit for moving them.
+            if !def.recipe {
+                assert_ne!(
+                    *status, "done",
+                    "{name} is marked done but is not on the framework"
+                );
                 continue;
             }
             let has = |option: &str| def.options.iter().any(|o| o.name == option);
@@ -695,6 +704,14 @@ mod tests {
             checked += 1;
         }
         assert!(checked >= 3, "the reference table was not read");
+        // The audit covers every command Curva has.
+        for def in &COMMANDS {
+            assert!(
+                table.contains(&format!("| {} |", def.name)),
+                "{} has no row in docs/commands/rhino-reference.md",
+                def.name
+            );
+        }
     }
 
     #[test]
