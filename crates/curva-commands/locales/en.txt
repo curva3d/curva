@@ -371,3 +371,4 @@ error.arc_points_in_line = The three points lie in a line, so no arc passes thro
 error.option_whole = {0} must be a whole number from {1} to {2}.
 error.option_positive = {0} must be more than zero.
 error.option_negative = {0} cannot be less than zero.
+prompt.move.height = Height to move, straight out of the plane

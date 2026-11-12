@@ -1,75 +1,98 @@
-//! `Mirror`: adds a mirror image of objects across a line, keeping the originals as Rhino does.
+//! `Mirror`, as in Rhino: a mirror image of objects across a line on the plane being drawn on.
+//! `Copy` (on, as in Rhino) keeps the originals, and each curve's image then follows it
+//! (`History`). `XAxis` and `YAxis` mirror across the plane's own axes at once. Rhino's `3Point`,
+//! `ZAxis` and `Object` are still to come (`docs/commands/rhino-reference.md`).
 
-use super::{ask_objects, ask_point, ghosts, guide, plane_normal, unexpected};
-use crate::{Answer, Command, Live, Message, Step};
-use curva_document::{Document, Recipe};
+use super::{Change, changed};
+use crate::Message;
+use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef, Value};
 use curva_kernel::{Curve, Point, Similarity, cross, sub, unit};
 
-/// The running command.
+const COPY: &str = "Copy";
+const X_AXIS: &str = "XAxis";
+const Y_AXIS: &str = "YAxis";
+
+/// The recipe.
 #[derive(Default)]
-pub struct Mirror {
-    ids: Option<Vec<u64>>,
-    start: Option<Point>,
-    axis: Point,
+pub struct Mirror;
+
+/// The mirror image across the line from `start` to `end` on a plane with normal `axis`, or
+/// `None` if the line has no length.
+fn reflection(axis: Point, start: Point, end: Point) -> Option<Similarity> {
+    let normal = unit(cross(sub(end, start), axis))?;
+    Some(Similarity::mirror(start, normal))
 }
 
-impl Mirror {
-    /// The mirror image across a line on the plane, or `None` if the line has no length.
-    fn reflection(&self, start: Point, end: Point) -> Option<Similarity> {
-        let normal = unit(cross(sub(end, start), self.axis))?;
-        Some(Similarity::mirror(start, normal))
-    }
-}
+impl Recipe for Mirror {
+    const NAME: &'static str = "mirror";
+    const OPTIONS: &'static [OptionDef] = &[
+        OptionDef::toggle(COPY, true),
+        OptionDef::finish(X_AXIS),
+        OptionDef::finish(Y_AXIS),
+    ];
 
-impl Command for Mirror {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let Some(ids) = self.ids.clone() else {
-            let chosen = match answer {
-                Some(Answer::Objects(list)) => list,
-                _ => doc.selection(),
-            };
-            if chosen.is_empty() {
-                return ask_objects("prompt.mirror.objects");
-            }
-            self.ids = Some(chosen);
-            return ask_point("prompt.mirror.start", Vec::new());
-        };
-        match (self.start, answer) {
-            (None, Some(Answer::Point(start))) => {
-                self.start = Some(start);
-                self.axis = plane_normal(doc);
-                ask_point("prompt.mirror.end", vec![start])
-            }
-            (Some(start), Some(Answer::Point(end))) => {
-                let Some(change) = self.reflection(start, end) else {
-                    return Step::Failed(Message::new("error.reference_point"));
-                };
-                let made = doc.copy_transformed(&ids, &change);
-                let sources: Vec<u64> = super::curves_of(doc, &ids)
-                    .iter()
-                    .map(|(id, _)| *id)
-                    .collect();
-                for (source, child) in sources.into_iter().zip(&made) {
-                    doc.record_recipe(*child, Recipe::Mirror { source, change });
-                }
-                Step::Done(Some(Message::with(
-                    "done.mirror",
-                    vec![made.len().to_string()],
-                )))
-            }
-            _ => unexpected(),
+    fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
+        let mut steps = vec![StepDef::objects("prompt.mirror.objects").offering(&[])];
+        if !cx.values.is_empty() {
+            steps.push(StepDef::point("prompt.mirror.start"));
         }
+        if let Some(start) = cx.values.get(1).and_then(Value::point) {
+            steps.push(
+                StepDef::point("prompt.mirror.end")
+                    .from(start)
+                    .offering(&[COPY]),
+            );
+        }
+        steps
     }
 
-    fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
-        let (Some(ids), Some(start), Some(cursor)) = (&self.ids, self.start, live.cursor) else {
-            return Vec::new();
-        };
-        let mut shown = guide(start, cursor);
-        if let Some(change) = self.reflection(start, cursor) {
-            shown.extend(ghosts(doc, ids, |curve| curve.mapped(&change)));
+    fn check(&self, cx: &Context<'_>) -> Result<(), Message> {
+        if let (Some(start), Some(end)) = (
+            cx.values.get(1).and_then(Value::point),
+            cx.values.get(2).and_then(Value::point),
+        ) {
+            let [x, y] = cx.plane();
+            if reflection(cross(x, y), start, end).is_none() {
+                return Err(Message::new("error.reference_point"));
+            }
         }
-        shown
+        Ok(())
+    }
+
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let Some(Value::Objects(ids)) = cx.values.first() else {
+            return Ok(Made::default());
+        };
+        let [x, y] = cx.plane();
+        let (origin, _) = cx.doc.work_frame();
+        let (start, end): (Point, Point) = match cx.mode {
+            Some(X_AXIS) => (origin, std::array::from_fn(|i| origin[i] + x[i])),
+            Some(Y_AXIS) => (origin, std::array::from_fn(|i| origin[i] + y[i])),
+            _ => match (
+                cx.values.get(1).and_then(Value::point),
+                cx.values.get(2).and_then(Value::point),
+            ) {
+                (Some(start), Some(end)) => (start, end),
+                _ => return Ok(Made::default()),
+            },
+        };
+        let Some(change) = reflection(cross(x, y), start, end) else {
+            return Ok(Made::default());
+        };
+        let copy = cx.toggle(COPY);
+        let mut made = changed(cx, ids, &[Change::Map(change)], copy, |source, _| {
+            let is_curve = cx
+                .doc
+                .state()
+                .objects
+                .iter()
+                .any(|o| o.id == source && o.curve().is_some());
+            is_curve.then_some(curva_document::Recipe::Mirror { source, change })
+        });
+        made.guides.extend(Curve::line(start, end).ok());
+        let count = if copy { made.derived.len() } else { ids.len() };
+        made.message = Some(Message::with("done.mirror", vec![count.to_string()]));
+        Ok(made)
     }
 }
 
@@ -128,5 +151,16 @@ mod tests {
         let mut doc = selected_line();
         run(&mut doc, &["mirror", "1,1", "1,1"]);
         assert_eq!(doc.state().objects.len(), 1);
+    }
+
+    #[test]
+    fn x_axis_mirrors_at_once_and_copy_off_moves_the_original() {
+        let mut doc = selected_line();
+        run(&mut doc, &["mirror", "xaxis"]);
+        assert!(close(ends(&doc, 1)[0], [1.0, -2.0, 0.0]));
+        let mut doc = selected_line();
+        run(&mut doc, &["mirror", "0,0", "copy", "1,0"]);
+        assert_eq!(doc.state().objects.len(), 1);
+        assert!(close(ends(&doc, 0)[0], [1.0, -2.0, 0.0]));
     }
 }

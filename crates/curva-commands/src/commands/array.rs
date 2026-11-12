@@ -1,13 +1,15 @@
-//! `Array`: copies objects into rows, columns and levels.
+//! `Array`, as in Rhino: copies objects into rows, columns and levels: the number of places in X,
+//! Y and Z, then the spacing for each direction with more than one. Rhino's unit cell picked with
+//! the mouse, and its `Mode`, `Number`, `Spacing` and `Preview` options at the end, are still to
+//! come (`docs/commands/rhino-reference.md`).
 
-use super::{ask_objects, ghosts};
-use crate::{Answer, Command, Kind, Live, Message, Request, Step};
-use curva_document::Document;
-use curva_kernel::{Curve, Point};
+use super::{Change, changed};
+use crate::Message;
+use crate::recipe::{Context, Made, Recipe, StepDef, Value};
+use curva_kernel::Point;
 
 /// Most copies an array may make, so that a slip of the keyboard cannot freeze Curva.
 const MOST_COPIES: usize = 10_000;
-/// Zero copies in a direction means nothing is arrayed that way, the same as one.
 /// Most places previewed, so that a large array does not stall the window.
 const MOST_PREVIEWED: usize = 200;
 
@@ -22,13 +24,9 @@ const SPACING_KEYS: [&str; 3] = [
     "prompt.array.spacing_z",
 ];
 
-/// The running command.
+/// The recipe.
 #[derive(Default)]
-pub struct Array {
-    ids: Option<Vec<u64>>,
-    counts: Vec<usize>,
-    spacings: Vec<f64>,
-}
+pub struct Array;
 
 /// Every offset of the array except the first, which is where the originals already are.
 fn offsets(counts: [usize; 3], spacing: [f64; 3]) -> impl Iterator<Item = Point> {
@@ -45,96 +43,92 @@ fn offsets(counts: [usize; 3], spacing: [f64; 3]) -> impl Iterator<Item = Point>
         })
 }
 
+/// A typed number of places, if it is one: zero counts as one, as nothing is arrayed that way.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn valid_count(typed: f64) -> Option<usize> {
     (typed >= 0.0 && typed.fract() == 0.0 && typed <= MOST_COPIES as f64)
         .then_some((typed as usize).max(1))
 }
 
-impl Array {
-    /// The next axis whose spacing is needed, skipping axes with only one place.
-    fn spacing_needed(&self) -> Option<usize> {
-        (self.spacings.len()..3).find(|axis| self.counts[*axis] > 1)
-    }
-
-    fn ask(key: &'static str) -> Step {
-        Step::Ask(Request::new(key, Kind::Number))
-    }
-
-    fn next(&mut self, doc: &mut Document, ids: &[u64]) -> Step {
-        if self.counts.len() < 3 {
-            return Self::ask(COUNT_KEYS[self.counts.len()]);
-        }
-        if let Some(axis) = self.spacing_needed() {
-            self.spacings.resize(axis, 0.0);
-            return Self::ask(SPACING_KEYS[axis]);
-        }
-        self.spacings.resize(3, 0.0);
-        let counts = [self.counts[0], self.counts[1], self.counts[2]];
-        let spacing = [self.spacings[0], self.spacings[1], self.spacings[2]];
-        let mut made = 0;
-        for by in offsets(counts, spacing) {
-            made += doc.copy(ids, by).len();
-        }
-        Step::Done(Some(Message::with("done.array", vec![made.to_string()])))
-    }
+/// The numbers of places given so far, one for each direction not yet given.
+fn counts(cx: &Context<'_>) -> [usize; 3] {
+    std::array::from_fn(|axis| {
+        cx.values
+            .get(1 + axis)
+            .and_then(Value::number)
+            .and_then(valid_count)
+            .unwrap_or(1)
+    })
 }
 
-impl Command for Array {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let Some(ids) = self.ids.clone() else {
-            let chosen = match answer {
-                Some(Answer::Objects(list)) => list,
-                _ => doc.selection(),
-            };
-            if chosen.is_empty() {
-                return ask_objects("prompt.array.objects");
-            }
-            self.ids = Some(chosen.clone());
-            return self.next(doc, &chosen);
-        };
-        let Some(Answer::Number(typed)) = answer else {
-            return super::unexpected();
-        };
-        if self.counts.len() < 3 {
-            let Some(count) = valid_count(typed) else {
-                return Step::Failed(Message::new("error.bad_count"));
-            };
-            self.counts.push(count);
-            let places: usize = self.counts.iter().product();
-            if places.saturating_mul(ids.len()) > MOST_COPIES {
-                return Step::Failed(Message::new("error.too_many_copies"));
-            }
-        } else {
-            self.spacings.push(typed);
+/// The directions that need a spacing: those with more than one place.
+fn spaced(counts: [usize; 3]) -> Vec<usize> {
+    (0..3).filter(|axis| counts[*axis] > 1).collect()
+}
+
+impl Recipe for Array {
+    const NAME: &'static str = "array";
+
+    fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
+        let mut steps = vec![StepDef::objects("prompt.array.objects")];
+        if cx.values.is_empty() {
+            return steps;
         }
-        self.next(doc, &ids)
+        steps.extend(COUNT_KEYS.iter().map(|key| StepDef::number(key)));
+        if cx.values.len() >= 4 {
+            steps.extend(
+                spaced(counts(cx))
+                    .into_iter()
+                    .map(|axis| StepDef::number(SPACING_KEYS[axis])),
+            );
+        }
+        steps
     }
 
-    fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
-        let Some(ids) = &self.ids else {
-            return Vec::new();
-        };
-        let mut counts = [1; 3];
-        counts[..self.counts.len()].copy_from_slice(&self.counts);
-        let mut spacing = [0.0; 3];
-        spacing[..self.spacings.len()].copy_from_slice(&self.spacings);
-        match (self.counts.len(), live.number) {
-            (asked @ 0..=2, Some(typed)) => {
-                if let Some(count) = valid_count(typed) {
-                    counts[asked] = count;
-                }
+    fn check(&self, cx: &Context<'_>) -> Result<(), Message> {
+        for value in cx.values.iter().skip(1).take(3) {
+            if value.number().and_then(valid_count).is_none() {
+                return Err(Message::new("error.bad_count"));
             }
-            (3, Some(typed)) => {
-                if let Some(axis) = self.spacing_needed() {
-                    spacing[axis] = typed;
-                }
-            }
-            _ => {}
         }
-        offsets(counts, spacing)
-            .take(MOST_PREVIEWED)
-            .flat_map(|by| ghosts(doc, ids, |curve| curve.translated(by)))
-            .collect()
+        let Some(Value::Objects(ids)) = cx.values.first() else {
+            return Ok(());
+        };
+        let places: usize = counts(cx).iter().product();
+        if places.saturating_mul(ids.len()) > MOST_COPIES {
+            return Err(Message::new("error.too_many_copies"));
+        }
+        Ok(())
+    }
+
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let Some(Value::Objects(ids)) = cx.values.first() else {
+            return Ok(Made::default());
+        };
+        let counts = counts(cx);
+        let mut spacing = [0.0; 3];
+        for (index, axis) in spaced(counts).into_iter().enumerate() {
+            spacing[axis] = cx
+                .values
+                .get(4 + index)
+                .and_then(Value::number)
+                .unwrap_or(0.0);
+        }
+        let most = if cx.previewing {
+            MOST_PREVIEWED
+        } else {
+            usize::MAX
+        };
+        let changes: Vec<Change> = offsets(counts, spacing)
+            .take(most)
+            .map(Change::Move)
+            .collect();
+        let mut made = changed(cx, ids, &changes, true, |_, _| None);
+        made.message = Some(Message::with(
+            "done.array",
+            vec![made.derived.len().to_string()],
+        ));
+        Ok(made)
     }
 }
 

@@ -1,57 +1,59 @@
-//! `Split`: cuts curves where they cross other curves, keeping every piece.
+//! `Split`, as in Rhino: cuts curves where they cross the cutting curves, keeping every piece.
+//! Rhino's `Point`, `Isocurve` and `Shrink`, and splitting surfaces, are still to come
+//! (`docs/commands/rhino-reference.md`).
 
-use super::{ask_objects, curves_of, cut_by, geometry_failed, unexpected};
-use crate::{Answer, Command, Message, Step};
-use curva_document::Document;
+use super::{curves_of, cut_by};
+use crate::Message;
+use crate::recipe::{Context, Derived, Made, Recipe, StepDef, Value};
+use curva_document::Shape;
 
-/// The running command.
+/// The recipe.
 #[derive(Default)]
-pub struct Split {
-    targets: Option<Vec<u64>>,
-}
+pub struct Split;
 
-impl Command for Split {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let Some(targets) = self.targets.clone() else {
-            let chosen = match answer {
-                Some(Answer::Objects(list)) => list,
-                _ => doc.selection(),
-            };
-            if chosen.is_empty() {
-                return ask_objects("prompt.split.objects");
-            }
-            self.targets = Some(chosen);
-            // What was chosen to be cut must not also count as chosen to cut with.
-            doc.select(&[]);
-            return ask_objects("prompt.split.cutters");
+impl Recipe for Split {
+    const NAME: &'static str = "split";
+
+    fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
+        let mut steps = vec![StepDef::objects("prompt.split.objects").curves()];
+        if !cx.values.is_empty() {
+            steps.push(StepDef::objects("prompt.split.cutters").curves());
+        }
+        steps
+    }
+
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let (Some(Value::Objects(targets)), Some(Value::Objects(cutter_ids))) =
+            (cx.values.first(), cx.values.get(1))
+        else {
+            return Ok(Made::default());
         };
-        let Some(Answer::Objects(cutter_ids)) = answer else {
-            return unexpected();
-        };
-        let mut made = 0;
-        for (id, curve) in curves_of(doc, &targets) {
+        let mut made = Made::default();
+        for (id, curve) in curves_of(cx.doc, targets) {
             let others: Vec<u64> = cutter_ids.iter().copied().filter(|c| *c != id).collect();
-            let cutters: Vec<_> = curves_of(doc, &others)
+            let cutters: Vec<_> = curves_of(cx.doc, &others)
                 .into_iter()
                 .map(|(_, c)| c)
                 .collect();
-            let pieces = match cut_by(&curve, &cutters) {
-                Ok(pieces) => pieces,
-                Err(error) => return geometry_failed(&error),
-            };
+            let pieces = cut_by(&curve, &cutters)
+                .map_err(|e| Message::with("error.geometry", vec![e.to_string()]))?;
             if pieces.len() >= 2 {
-                let layer = doc.layer_of(id);
-                doc.remove(&[id]);
-                made += pieces.len();
-                for piece in pieces {
-                    doc.add_on(piece, layer);
-                }
+                made.remove.push(id);
+                made.derived.extend(pieces.into_iter().map(|piece| Derived {
+                    shape: Shape::Curve(piece),
+                    from: id,
+                    history: None,
+                }));
             }
         }
-        if made == 0 {
-            return Step::Failed(Message::new("error.nothing_to_cut"));
+        if made.derived.is_empty() {
+            return Err(Message::new("error.nothing_to_cut"));
         }
-        Step::Done(Some(Message::with("done.split", vec![made.to_string()])))
+        made.message = Some(Message::with(
+            "done.split",
+            vec![made.derived.len().to_string()],
+        ));
+        Ok(made)
     }
 }
 

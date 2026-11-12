@@ -156,12 +156,12 @@ pub static COMMANDS: [CommandDef; 100] = [
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
     recipe!("Circle", ["c", "ci"], true, circle::Circle),
-    listed!("Move", ["m"], true, true, move_objects::MoveObjects),
-    listed!("Copy", ["co", "cp"], true, true, copy::CopyObjects),
-    listed!("Rotate", ["ro"], true, true, rotate::Rotate),
-    listed!("Scale", ["sc"], true, true, scale::Scale),
-    listed!("Mirror", ["mi"], true, true, mirror::Mirror),
-    listed!("Array", ["ar"], true, true, array::Array),
+    recipe!("Move", ["m"], true, move_objects::MoveObjects),
+    recipe!("Copy", ["co", "cp"], true, copy::CopyObjects),
+    recipe!("Rotate", ["ro"], true, rotate::Rotate),
+    recipe!("Scale", ["sc"], true, scale::Scale),
+    recipe!("Mirror", ["mi"], true, mirror::Mirror),
+    recipe!("Array", ["ar"], true, array::Array),
     listed!("ArrayPolar", ["arp"], true, true, array_polar::ArrayPolar),
     listed!("ArrayCrv", [], true, true, array_crv::ArrayCrv),
     recipe!("Point", ["pt"], true, point::PointObject),
@@ -240,9 +240,9 @@ pub static COMMANDS: [CommandDef; 100] = [
         true,
         project_to_cplane::ProjectToCPlane
     ),
-    listed!("Join", ["j"], true, true, join::Join),
-    listed!("Explode", ["x"], true, true, explode::Explode),
-    listed!("Split", [], true, true, split::Split),
+    recipe!("Join", ["j"], true, join::Join),
+    recipe!("Explode", ["x"], true, explode::Explode),
+    recipe!("Split", [], true, split::Split),
     listed!("Trim", ["tr"], true, true, trim::Trim),
     recipe!("Offset", [], true, offset::Offset),
     recipe!("Fillet", [], true, fillet::Fillet),
@@ -274,18 +274,16 @@ pub static COMMANDS: [CommandDef; 100] = [
     listed!("FilletEdge", [], true, true, fillet_edge::FilletEdge),
     listed!("ChamferEdge", [], true, true, chamfer_edge::ChamferEdge),
     listed!("Shell", [], true, true, shell::Shell),
-    listed!("BooleanUnion", [], true, true, boolean_union::BooleanUnion),
-    listed!(
+    recipe!("BooleanUnion", [], true, boolean_union::BooleanUnion),
+    recipe!(
         "BooleanDifference",
         [],
         true,
-        true,
         boolean_difference::BooleanDifference
     ),
-    listed!(
+    recipe!(
         "BooleanIntersection",
         [],
-        true,
         true,
         boolean_intersection::BooleanIntersection
     ),
@@ -1019,4 +1017,79 @@ mod tests {
         assert_eq!(autofilled("ne", 0), "ne");
         assert_eq!(autofilled("NEW", 0), "New");
     }
+}
+
+/// Solids and surfaces at most whose changed copies a preview draws ghosted; beyond that, only
+/// their outlines, so moving many stays smooth.
+const MOST_GHOSTED_BODIES: usize = 8;
+
+/// A move or a turn, mirror or resize, applied alike to shapes and outlines.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Change {
+    /// A move by a vector.
+    Move(Point),
+    /// A turn, mirror or resize.
+    Map(curva_kernel::Similarity),
+}
+
+impl Change {
+    fn shape(&self, shape: &curva_document::Shape) -> curva_document::Shape {
+        match self {
+            Self::Move(by) => shape.translated(*by),
+            Self::Map(change) => shape.mapped(change),
+        }
+    }
+
+    fn curve(&self, curve: &curva_kernel::Curve) -> curva_kernel::Curve {
+        match self {
+            Self::Move(by) => curve.translated(*by),
+            Self::Map(change) => curve.mapped(change),
+        }
+    }
+}
+
+/// The objects `ids` changed by `change`: in place, or as copies on their layers when `copy`.
+/// Each copy is passed to `history` with its source, for a copy that should follow it. For the
+/// preview, many solids show as outlines only.
+pub(crate) fn changed(
+    cx: &crate::recipe::Context<'_>,
+    ids: &[u64],
+    changes: &[Change],
+    copy: bool,
+    history: impl Fn(u64, &Change) -> Option<curva_document::Recipe>,
+) -> crate::recipe::Made {
+    let mut made = crate::recipe::Made::default();
+    let objects: Vec<&curva_document::Object> = cx
+        .doc
+        .state()
+        .objects
+        .iter()
+        .filter(|object| ids.contains(&object.id))
+        .collect();
+    let bodies = objects.iter().filter(|o| o.shape.body().is_some()).count() * changes.len();
+    let light = cx.previewing && bodies > MOST_GHOSTED_BODIES;
+    for change in changes {
+        for object in objects.iter().take(if cx.previewing {
+            MOST_PREVIEW_OBJECTS
+        } else {
+            usize::MAX
+        }) {
+            if light && object.shape.body().is_some() {
+                made.guides
+                    .extend(object.shape.outlines().iter().map(|c| change.curve(c)));
+                continue;
+            }
+            let shape = change.shape(&object.shape);
+            if copy {
+                made.derived.push(crate::recipe::Derived {
+                    shape,
+                    from: object.id,
+                    history: history(object.id, change),
+                });
+            } else {
+                made.replace.push((object.id, shape));
+            }
+        }
+    }
+    made
 }

@@ -1,96 +1,82 @@
-//! `Scale`: resizes objects evenly about a point.
+//! `Scale`, as in Rhino: resizes objects evenly about a base point, by a factor typed or by two
+//! reference points. `Copy` resizes copies instead. Rhino's `Rigid` and Enter for the bounding
+//! box centre are still to come (`docs/commands/rhino-reference.md`).
 
-use super::{ask_objects, ask_point, ask_point_or_number, ghosts, guide, unexpected};
-use crate::{Answer, Command, Live, Message, Step};
-use curva_document::Document;
-use curva_kernel::{Curve, Point, Similarity, dot, sub};
+use super::{Change, changed};
+use crate::Message;
+use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef, Value};
+use curva_kernel::{Curve, Similarity, gap};
 
 /// Smallest size change treated as real.
 const SMALLEST_FACTOR: f64 = 1e-9;
+const COPY: &str = "Copy";
 
-/// The running command.
+/// The recipe.
 #[derive(Default)]
-pub struct Scale {
-    ids: Option<Vec<u64>>,
-    origin: Option<Point>,
-    first: Option<Point>,
-}
+pub struct Scale;
 
-/// How much further `second` is from `origin` than `first` is.
-fn ratio(origin: Point, first: Point, second: Point) -> f64 {
-    let reach = |p: Point| {
-        let offset = sub(p, origin);
-        dot(offset, offset).sqrt()
-    };
-    reach(second) / reach(first)
-}
-
-impl Scale {
-    fn finish(doc: &mut Document, ids: &[u64], origin: Point, factor: f64) -> Step {
-        if !factor.is_finite() || factor < SMALLEST_FACTOR {
-            return Step::Failed(Message::new("error.bad_factor"));
+/// The factor the answers give: typed, or how much further the second reference point is.
+fn factor(cx: &Context<'_>) -> Option<f64> {
+    let origin = cx.values.get(1).and_then(Value::point)?;
+    match cx.values.get(2)? {
+        Value::Number(factor) => Some(*factor),
+        Value::Point(first) => {
+            let second = cx.values.get(3).and_then(Value::point)?;
+            Some(gap(second, origin) / gap(*first, origin))
         }
-        doc.transform(ids, &Similarity::scaling(origin, factor));
-        Step::Done(Some(Message::with(
-            "done.scale",
-            vec![ids.len().to_string()],
-        )))
+        _ => None,
     }
 }
 
-impl Command for Scale {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let Some(ids) = self.ids.clone() else {
-            let chosen = match answer {
-                Some(Answer::Objects(list)) => list,
-                _ => doc.selection(),
-            };
-            if chosen.is_empty() {
-                return ask_objects("prompt.scale.objects");
-            }
-            self.ids = Some(chosen);
-            return ask_point("prompt.scale.origin", Vec::new());
-        };
-        match (self.origin, self.first, answer) {
-            (None, None, Some(Answer::Point(origin))) => {
-                self.origin = Some(origin);
-                ask_point_or_number("prompt.scale.factor", vec![origin])
-            }
-            (Some(origin), None, Some(Answer::Number(factor))) => {
-                Self::finish(doc, &ids, origin, factor)
-            }
-            (Some(origin), None, Some(Answer::Point(first))) => {
-                self.first = Some(first);
-                ask_point("prompt.scale.second", vec![origin])
-            }
-            (Some(origin), Some(first), Some(Answer::Point(second))) => {
-                Self::finish(doc, &ids, origin, ratio(origin, first, second))
-            }
-            _ => unexpected(),
+impl Recipe for Scale {
+    const NAME: &'static str = "scale";
+    const OPTIONS: &'static [OptionDef] = &[OptionDef::toggle(COPY, false)];
+
+    fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
+        let mut steps = vec![StepDef::objects("prompt.scale.objects").offering(&[])];
+        if !cx.values.is_empty() {
+            steps.push(StepDef::point("prompt.scale.origin"));
         }
+        if let Some(origin) = cx.values.get(1).and_then(Value::point) {
+            steps.push(StepDef::point_or_number("prompt.scale.factor").from(origin));
+            if cx.values.get(2).and_then(Value::point).is_some() {
+                steps.push(StepDef::point("prompt.scale.second").from(origin));
+            }
+        }
+        steps
     }
 
-    fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
-        let (Some(ids), Some(origin)) = (&self.ids, self.origin) else {
-            return Vec::new();
+    fn check(&self, cx: &Context<'_>) -> Result<(), Message> {
+        if let Some(factor) = factor(cx)
+            && !(factor.is_finite() && factor >= SMALLEST_FACTOR)
+        {
+            return Err(Message::new("error.bad_factor"));
+        }
+        Ok(())
+    }
+
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let (Some(Value::Objects(ids)), Some(origin)) =
+            (cx.values.first(), cx.values.get(1).and_then(Value::point))
+        else {
+            return Ok(Made::default());
         };
-        let factor = match (self.first, live.number, live.cursor) {
-            (None, Some(typed), _) => Some(typed),
-            (Some(first), _, Some(cursor)) => Some(ratio(origin, first, cursor)),
-            _ => None,
+        let mut guides: Vec<Curve> = cx.values[2..]
+            .iter()
+            .filter_map(Value::point)
+            .filter_map(|p| Curve::line(origin, p).ok())
+            .collect();
+        let Some(factor) = factor(cx).filter(|f| f.is_finite() && *f >= SMALLEST_FACTOR) else {
+            return Ok(Made {
+                guides,
+                ..Made::default()
+            });
         };
-        let mut shown = Vec::new();
-        if let Some(factor) = factor.filter(|f| f.is_finite() && *f >= SMALLEST_FACTOR) {
-            let change = Similarity::scaling(origin, factor);
-            shown.extend(ghosts(doc, ids, |curve| curve.mapped(&change)));
-        }
-        if let Some(first) = self.first {
-            shown.extend(guide(origin, first));
-        }
-        if let Some(cursor) = live.cursor {
-            shown.extend(guide(origin, cursor));
-        }
-        shown
+        let change = Change::Map(Similarity::scaling(origin, factor));
+        let mut made = changed(cx, ids, &[change], cx.toggle(COPY), |_, _| None);
+        made.guides.append(&mut guides);
+        made.message = Some(Message::with("done.scale", vec![ids.len().to_string()]));
+        Ok(made)
     }
 }
 
@@ -149,5 +135,12 @@ mod tests {
         let mut doc = selected_line();
         run(&mut doc, &["scale", "0,0", "0,0", "2,0"]);
         assert_eq!(ends(&doc), [[1.0, 0.0, 0.0], [3.0, 0.0, 0.0]]);
+    }
+
+    #[test]
+    fn copy_resizes_a_copy_and_keeps_the_original() {
+        let mut doc = selected_line();
+        run(&mut doc, &["scale", "copy", "0,0", "2"]);
+        assert_eq!(doc.state().objects.len(), 2);
     }
 }
