@@ -7,6 +7,7 @@
 //! `curva --orbit-benchmark --curves 5000` opens the window on a scene of that many circles, spins
 //! the view and prints how fast it drew and snapped. `--solids 500` adds that many cylinders.
 
+mod icons;
 mod layout;
 mod recovery;
 mod theme;
@@ -64,10 +65,16 @@ const GRIP_PICKED: egui::Color32 = theme::ACCENT;
 /// The lines between a smooth curve's control points.
 const CONTROL_POLYGON: egui::Color32 = egui::Color32::from_rgb(150, 150, 165);
 const LOG_LINES: usize = 3;
+/// Rows the list of matching commands shows before it scrolls.
+const MOST_MATCH_ROWS: f32 = 10.0;
 const PANEL_RADIUS: u8 = 12;
 const PANEL_MARGIN: f32 = 8.0;
 /// The height of a panel's title row, holding its name or tabs.
 const TITLE_ROW: f32 = 20.0;
+/// How near a panel's edge, in points, the pointer turns into a resize arrow.
+const RESIZE_REACH: f32 = 6.0;
+/// The size of a command button with an icon, in points.
+const COMMAND_BUTTON: f32 = 30.0;
 /// Room left around a panel for its shadow, beyond which nothing it holds is drawn.
 const SHADOW_ROOM: f32 = 20.0;
 /// How long a panel takes to slide in or out, in seconds.
@@ -231,8 +238,8 @@ enum PanelEvent {
     /// Its title began to be dragged, held this far from its corner: one tab's piece, or the
     /// whole panel.
     DragStarted(egui::Vec2, Option<layout::Piece>),
-    /// A floating panel's corner was dragged this far.
-    Resized(egui::Vec2),
+    /// These sides of it were dragged this far to resize it.
+    Resized(layout::Sides, egui::Vec2),
     /// Reset layout was chosen from its grip's menu.
     Reset,
     /// Its hide control was clicked.
@@ -808,13 +815,38 @@ impl Curva {
             .fixed_pos(above)
             .pivot(egui::Align2::LEFT_BOTTOM)
             .show(ui.ctx(), |ui| {
+                // As wide as the longest name, one per row, never cut; ten rows, then it scrolls.
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
-                    for (index, name) in matches.iter().enumerate() {
-                        let shown = ui.selectable_label(index == self.highlight, *name);
-                        if shown.clicked() {
-                            clicked = Some(*name);
-                        }
-                    }
+                    let font = egui::TextStyle::Button.resolve(ui.style());
+                    let widest = matches
+                        .iter()
+                        .map(|name| {
+                            ui.painter()
+                                .layout_no_wrap(
+                                    (*name).to_owned(),
+                                    font.clone(),
+                                    egui::Color32::WHITE,
+                                )
+                                .size()
+                                .x
+                        })
+                        .fold(0.0, f32::max);
+                    ui.set_min_width(widest + 2.0 * ui.spacing().button_padding.x);
+                    let row = ui.spacing().interact_size.y + ui.spacing().item_spacing.y;
+                    egui::ScrollArea::vertical()
+                        .max_height(row * MOST_MATCH_ROWS)
+                        .show(ui, |ui| {
+                            for (index, name) in matches.iter().enumerate() {
+                                let shown = ui.selectable_label(index == self.highlight, *name);
+                                if index == self.highlight {
+                                    shown.scroll_to_me(None);
+                                }
+                                if shown.clicked() {
+                                    clicked = Some(*name);
+                                }
+                            }
+                        });
                 });
             });
         clicked
@@ -1900,7 +1932,7 @@ impl Curva {
                 events.push(self.panel_area(ctx, &place, size, drawn, merge_into == Some(panel)));
             }
             for event in events {
-                self.panel_event(event, panel, &place, drawn, size, window);
+                self.panel_event(event, panel, &place, drawn, window);
             }
         }
         self.focus_tab(ctx, window);
@@ -1961,7 +1993,6 @@ impl Curva {
         panel: layout::PanelId,
         place: &layout::Place,
         drawn: egui::Rect,
-        size: egui::Vec2,
         window: egui::Rect,
     ) {
         match event {
@@ -1982,8 +2013,8 @@ impl Curva {
                     size: drawn.size().min(window.size() * 0.6).max(layout::MIN_PANEL),
                 });
             }
-            PanelEvent::Resized(by) => {
-                self.layout = self.layout.resized(panel, size + by);
+            PanelEvent::Resized(sides, by) => {
+                self.layout = self.layout.resized_from(panel, sides, by, window);
                 self.save_layout();
             }
             PanelEvent::Reset => {
@@ -2076,7 +2107,6 @@ impl Curva {
     ) -> PanelEvent {
         let rect = drawn;
         let panel = place.id();
-        let floating = matches!(place.dock, layout::Dock::Floating { .. });
         let mut event = PanelEvent::Nothing;
         let glass = self.settings.glass;
         let frame = egui::Frame::new()
@@ -2147,32 +2177,8 @@ impl Curva {
                 });
                 // Added after the contents, so these sit above the panel's own controls.
                 event = self.panel_title(ui, place, rect);
-                if floating {
-                    let corner =
-                        egui::Rect::from_min_max(rect.max - egui::Vec2::splat(14.0), rect.max);
-                    let resize = ui
-                        .interact(corner, ui.scope_id().with("resize"), egui::Sense::drag())
-                        .on_hover_cursor(egui::CursorIcon::ResizeNwSe);
-                    let stroke = egui::Stroke::new(
-                        1.0,
-                        if resize.hovered() {
-                            theme::ACCENT
-                        } else {
-                            theme::current().panel_edge
-                        },
-                    );
-                    for inset in [4.0, 8.0] {
-                        ui.painter().line_segment(
-                            [
-                                egui::pos2(rect.max.x - inset, rect.max.y - 3.0),
-                                egui::pos2(rect.max.x - 3.0, rect.max.y - inset),
-                            ],
-                            stroke,
-                        );
-                    }
-                    if resize.dragged() {
-                        event = PanelEvent::Resized(resize.drag_delta());
-                    }
+                if let Some(resize) = resize_handles(ui, place, rect) {
+                    event = resize;
                 }
             });
         event
@@ -2396,7 +2402,7 @@ impl Curva {
                     return;
                 }
                 for name in COMMAND_TABS[self.command_tab - 1].1 {
-                    if ui.button(*name).on_hover_text(*name).clicked() {
+                    if command_button(ui, name).clicked() {
                         chosen = Some(*name);
                     }
                 }
@@ -3046,6 +3052,21 @@ impl Curva {
                 paint_cursor_tag(ui, position, &format!("{value:.3} {unit}"));
             }
         }
+        // Picking objects, edges or faces shows the pointer with a small box beside it.
+        let picking = self.processor.current_request().is_some_and(|request| {
+            matches!(request.kind, Kind::Objects | Kind::Edges | Kind::Faces)
+        });
+        if let Some((.., position)) = hovered
+            && picking
+        {
+            let corner = position + egui::vec2(10.0, 10.0);
+            ui.painter().rect_stroke(
+                egui::Rect::from_min_size(corner, egui::Vec2::splat(8.0)),
+                1.0,
+                egui::Stroke::new(1.5, theme::current().text),
+                egui::StrokeKind::Middle,
+            );
+        }
         let mut previewed = self.processor.preview(&self.doc, cursor, &self.typed);
         previewed.extend(self.gumball_preview());
         let preview = ghost_lines(&previewed);
@@ -3323,6 +3344,118 @@ fn main() -> Result<(), String> {
         Box::new(move |context| Ok(Box::new(Curva::new(context, benchmark)))),
     )
     .map_err(|error| error.to_string())
+}
+
+/// A command button: its icon, with its name on hover, or its name where it has no icon yet.
+fn command_button(ui: &mut egui::Ui, name: &str) -> egui::Response {
+    if !icons::has(name) {
+        return ui.button(name).on_hover_text(name);
+    }
+    let (rect, response) =
+        ui.allocate_exact_size(egui::Vec2::splat(COMMAND_BUTTON), egui::Sense::click());
+    if response.hovered() {
+        ui.painter().rect_filled(rect, 6.0, theme::current().hover);
+    }
+    icons::paint(ui.painter(), rect.shrink(4.0), name);
+    response.on_hover_text(name)
+}
+
+/// The edges and corners a panel can be resized from: near one, the pointer becomes a resize
+/// arrow and the edge pulses gently in the accent. Returns the drag, if one is under way.
+fn resize_handles(ui: &egui::Ui, place: &layout::Place, rect: egui::Rect) -> Option<PanelEvent> {
+    let movable = layout::Sides::movable(place);
+    let side = |left, right, top, bottom| layout::Sides {
+        left,
+        right,
+        top,
+        bottom,
+    };
+    let reach = RESIZE_REACH;
+    let (l, r, t, b) = (rect.min.x, rect.max.x, rect.min.y, rect.max.y);
+    let zone = |x0: f32, y0: f32, x1: f32, y1: f32| {
+        egui::Rect::from_min_max(egui::pos2(x0, y0), egui::pos2(x1, y1))
+    };
+    let handles = [
+        (
+            side(true, false, true, false),
+            zone(l - reach, t - reach, l + reach, t + reach),
+            egui::CursorIcon::ResizeNwSe,
+        ),
+        (
+            side(false, true, false, true),
+            zone(r - reach, b - reach, r + reach, b + reach),
+            egui::CursorIcon::ResizeNwSe,
+        ),
+        (
+            side(false, true, true, false),
+            zone(r - reach, t - reach, r + reach, t + reach),
+            egui::CursorIcon::ResizeNeSw,
+        ),
+        (
+            side(true, false, false, true),
+            zone(l - reach, b - reach, l + reach, b + reach),
+            egui::CursorIcon::ResizeNeSw,
+        ),
+        (
+            side(true, false, false, false),
+            zone(l - reach / 2.0, t + reach, l + reach / 2.0, b - reach),
+            egui::CursorIcon::ResizeHorizontal,
+        ),
+        (
+            side(false, true, false, false),
+            zone(r - reach / 2.0, t + reach, r + reach / 2.0, b - reach),
+            egui::CursorIcon::ResizeHorizontal,
+        ),
+        (
+            side(false, false, true, false),
+            zone(l + reach, t - reach / 2.0, r - reach, t + reach / 2.0),
+            egui::CursorIcon::ResizeVertical,
+        ),
+        (
+            side(false, false, false, true),
+            zone(l + reach, b - reach / 2.0, r - reach, b + reach / 2.0),
+            egui::CursorIcon::ResizeVertical,
+        ),
+    ];
+    let mut event = None;
+    for (sides, area, cursor) in handles {
+        // A corner needs both its sides to be movable, an edge its one.
+        if sides.within(movable) != sides {
+            continue;
+        }
+        let key = (sides.left, sides.right, sides.top, sides.bottom);
+        let response = ui
+            .interact(
+                area,
+                ui.scope_id().with(("resize", key)),
+                egui::Sense::drag(),
+            )
+            .on_hover_cursor(cursor);
+        if response.hovered() || response.dragged() {
+            // A gentle pulse along the edges being held.
+            let time = ui.input(|input| input.time) as f32;
+            let strength = 0.55 + 0.45 * (time * 5.0).sin();
+            let stroke = egui::Stroke::new(2.0, theme::ACCENT.gamma_multiply(strength));
+            let painter = ui.painter();
+            if sides.left {
+                painter.line_segment([rect.left_top(), rect.left_bottom()], stroke);
+            }
+            if sides.right {
+                painter.line_segment([rect.right_top(), rect.right_bottom()], stroke);
+            }
+            if sides.top {
+                painter.line_segment([rect.left_top(), rect.right_top()], stroke);
+            }
+            if sides.bottom {
+                painter.line_segment([rect.left_bottom(), rect.right_bottom()], stroke);
+            }
+            ui.ctx().request_repaint();
+        }
+        if response.dragged() {
+            event = Some(PanelEvent::Resized(sides, response.drag_delta()));
+        }
+    }
+    event
 }
 
 #[cfg(test)]

@@ -8,6 +8,9 @@ with its original copyright and licence notice.
 Curva's Freeform command list, names, aliases, prompts, options and interaction flows are based on
 Serpentine3D: https://github.com/chisomobanzi/Serpentine3D
 
+The icons on Curva's command buttons (`crates/curva-app/src/icons.rs`) are Serpentine3D's toolbar icons
+(`serpentine3d/ui/icons.py`), redrawn in Rust with the same shapes, in Curva's colours.
+
 > MIT License
 >
 > Copyright (c) 2026 Chisomo Banzi
