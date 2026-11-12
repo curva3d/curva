@@ -18,6 +18,16 @@ pub enum OptionKind {
     Toggle(bool),
     /// A number, typed after choosing it; remembered between runs.
     Number(f64),
+    /// A whole number from `low` to `high`, typed after choosing it, such as a curve's degree;
+    /// remembered between runs.
+    Whole {
+        /// Its value until another is typed.
+        default: u32,
+        /// The least it may be.
+        low: u32,
+        /// The most it may be.
+        high: u32,
+    },
     /// A way of making the result, such as Arc's `StartPoint`: choosing it switches to it for this
     /// run, and the steps can change with it.
     Mode,
@@ -53,6 +63,15 @@ impl OptionDef {
         Self {
             name,
             kind: OptionKind::Number(default),
+        }
+    }
+
+    /// A whole-number option, from `low` to `high`.
+    #[must_use]
+    pub const fn whole(name: &'static str, default: u32, low: u32, high: u32) -> Self {
+        Self {
+            name,
+            kind: OptionKind::Whole { default, low, high },
         }
     }
 
@@ -290,6 +309,10 @@ impl Context<'_> {
                 .doc
                 .remembered(&key(self.command, name))
                 .unwrap_or(default),
+            Some(OptionKind::Whole { default, .. }) => self
+                .doc
+                .remembered(&key(self.command, name))
+                .unwrap_or(f64::from(default)),
             _ => 0.0,
         }
     }
@@ -388,7 +411,9 @@ impl<R: Recipe> RecipeCommand<R> {
                             if cx.toggle(o.name) { "Yes" } else { "No" }
                         )
                     }
-                    OptionKind::Number(_) => format!("{}={}", o.name, cx.number(o.name)),
+                    OptionKind::Number(_) | OptionKind::Whole { .. } => {
+                        format!("{}={}", o.name, cx.number(o.name))
+                    }
                     OptionKind::Mode | OptionKind::Finish | OptionKind::Undo => o.name.to_owned(),
                 };
                 (o.name, label)
@@ -443,7 +468,7 @@ impl<R: Recipe> RecipeCommand<R> {
                 doc.remember(&key(R::NAME, name), f64::from(u8::from(!now)));
                 self.ask(doc)
             }
-            Some(OptionKind::Number(_)) => {
+            Some(OptionKind::Number(_) | OptionKind::Whole { .. }) => {
                 self.typing_option = Some(name);
                 let value = self.context(doc, &self.values).number(name);
                 Step::Ask(Request {
@@ -478,6 +503,16 @@ impl<R: Recipe> RecipeCommand<R> {
 impl<R: Recipe> Command for RecipeCommand<R> {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
         if let Some(name) = self.typing_option.take() {
+            if let (Some(Answer::Number(value)), Some(OptionKind::Whole { low, high, .. })) = (
+                &answer,
+                R::OPTIONS.iter().find(|o| o.name == name).map(|o| o.kind),
+            ) && (value.fract() != 0.0 || *value < f64::from(low) || *value > f64::from(high))
+            {
+                return Step::Failed(Message::with(
+                    "error.option_whole",
+                    vec![name.to_owned(), low.to_string(), high.to_string()],
+                ));
+            }
             if let Some(Answer::Number(value)) = answer
                 && value.is_finite()
             {

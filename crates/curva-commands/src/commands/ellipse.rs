@@ -1,69 +1,119 @@
-//! `Ellipse`: an ellipse from its centre, the end of one axis and the end of the other.
+//! `Ellipse`, as in Rhino: its centre, the end of one axis, then the end of the other. With
+//! `Diameter`, the ends of the first axis, then the end of the second; with `Corner`, two opposite
+//! corners of the rectangle around it. Rhino's `Deformable`, `Vertical`, `FromFoci`, `MarkFoci` and
+//! `AroundCurve` are still to come (`docs/commands/rhino-reference.md`).
 
-use super::{ask_point, geometry_failed, guide, plane_normal, unexpected};
-use crate::{Answer, Command, Live, Message, Step};
-use curva_document::Document;
-use curva_kernel::{Curve, KernelError, Point, cross, dot, flattened, sub, unit};
+use crate::Message;
+use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef, Value};
+use curva_document::Shape;
+use curva_kernel::{Curve, KernelError, Point, cross, dot, sub, unit};
 
-/// The running command.
+const DIAMETER: &str = "Diameter";
+const CORNER: &str = "Corner";
+
+/// The recipe.
 #[derive(Default)]
-pub struct Ellipse {
-    centre: Option<Point>,
-    first: Option<Point>,
+pub struct Ellipse;
+
+fn point(cx: &Context<'_>, index: usize) -> Option<Point> {
+    cx.values.get(index).and_then(Value::point)
+}
+
+fn scaled(v: Point, by: f64) -> Point {
+    v.map(|c| c * by)
+}
+
+/// The ellipse about `centre` with its first axis reaching `first`, and its second as far across
+/// as `toward` is, on the plane with normal `normal`.
+fn through(
+    centre: Point,
+    first: Point,
+    toward: Point,
     normal: Point,
+) -> Result<Curve, KernelError> {
+    let a = sub(first, centre);
+    let a = sub(a, scaled(normal, dot(a, normal)));
+    let side = unit(cross(normal, a))
+        .ok_or_else(|| KernelError("the axes need some length".to_owned()))?;
+    let reach = dot(sub(toward, centre), side).abs();
+    Curve::ellipse(centre, a, scaled(side, reach))
 }
 
-impl Ellipse {
-    /// The ellipse whose second axis reaches as far as `toward` does, at a right angle.
-    fn through(&self, centre: Point, first: Point, toward: Point) -> Result<Curve, KernelError> {
-        let a = flattened(sub(first, centre), self.normal);
-        let side = unit(cross(self.normal, a))
-            .ok_or_else(|| KernelError("the axes need some length".to_owned()))?;
-        let reach = dot(sub(toward, centre), side).abs();
-        Curve::ellipse(
-            centre,
-            a,
-            [side[0] * reach, side[1] * reach, side[2] * reach],
-        )
-    }
-}
+impl Recipe for Ellipse {
+    const NAME: &'static str = "ellipse";
+    const OPTIONS: &'static [OptionDef] = &[OptionDef::mode(DIAMETER), OptionDef::mode(CORNER)];
 
-impl Command for Ellipse {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        match (self.centre, self.first, answer) {
-            (None, None, None) => ask_point("prompt.ellipse.centre", Vec::new()),
-            (None, None, Some(Answer::Point(centre))) => {
-                self.centre = Some(centre);
-                self.normal = plane_normal(doc);
-                ask_point("prompt.ellipse.first", vec![centre])
-            }
-            (Some(centre), None, Some(Answer::Point(first))) => {
-                self.first = Some(first);
-                ask_point("prompt.ellipse.second", vec![centre])
-            }
-            (Some(centre), Some(first), Some(Answer::Point(toward))) => {
-                match self.through(centre, first, toward) {
-                    Ok(curve) => {
-                        doc.add(curve);
-                        Step::Done(Some(Message::new("done.ellipse")))
-                    }
-                    Err(error) => geometry_failed(&error),
-                }
-            }
-            _ => unexpected(),
-        }
-    }
-
-    fn preview(&self, _doc: &Document, live: &Live) -> Vec<Curve> {
-        let (Some(centre), Some(cursor)) = (self.centre, live.cursor) else {
-            return Vec::new();
+    fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
+        let prompts: [&'static str; 3] = match cx.mode {
+            Some(DIAMETER) => [
+                "prompt.ellipse.axis_start",
+                "prompt.ellipse.axis_end",
+                "prompt.ellipse.second",
+            ],
+            Some(CORNER) => ["prompt.ellipse.corner", "prompt.ellipse.other_corner", ""],
+            _ => [
+                "prompt.ellipse.centre",
+                "prompt.ellipse.first",
+                "prompt.ellipse.second",
+            ],
         };
-        let mut shown = guide(centre, cursor);
-        if let Some(first) = self.first {
-            shown.extend(self.through(centre, first, cursor));
-            shown.extend(guide(centre, first));
+        let mut steps = vec![StepDef::point(prompts[0])];
+        if let Some(a) = point(cx, 0) {
+            steps.push(StepDef::point(prompts[1]).from(a).offering(&[]));
+            if cx.mode != Some(CORNER) {
+                // The second axis is measured from the centre.
+                let centre = match (cx.mode, point(cx, 1)) {
+                    (Some(DIAMETER), Some(b)) => Some(std::array::from_fn(|i| (a[i] + b[i]) / 2.0)),
+                    (_, Some(_)) => Some(a),
+                    _ => None,
+                };
+                steps.extend(centre.map(|c| StepDef::point(prompts[2]).from(c).offering(&[])));
+            }
         }
-        shown
+        steps
+    }
+
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let [x, y] = cx.plane();
+        let normal = cross(x, y);
+        let (Some(a), Some(b)) = (point(cx, 0), point(cx, 1)) else {
+            return Ok(Made::default());
+        };
+        let failed = |e: KernelError| Message::with("error.geometry", vec![e.to_string()]);
+        let (ellipse, guides) = match cx.mode {
+            Some(CORNER) => {
+                let across = sub(b, a);
+                let centre = std::array::from_fn(|i| (a[i] + b[i]) / 2.0);
+                let (wide, high) = (dot(across, x) / 2.0, dot(across, y) / 2.0);
+                let curve =
+                    Curve::ellipse(centre, scaled(x, wide), scaled(y, high)).map_err(failed)?;
+                (curve, Vec::new())
+            }
+            mode => {
+                let (centre, first) = if mode == Some(DIAMETER) {
+                    (std::array::from_fn(|i| (a[i] + b[i]) / 2.0), b)
+                } else {
+                    (a, b)
+                };
+                let Some(toward) = point(cx, 2) else {
+                    return Ok(Made {
+                        guides: Curve::line(if mode == Some(DIAMETER) { a } else { centre }, first)
+                            .ok()
+                            .into_iter()
+                            .collect(),
+                        ..Made::default()
+                    });
+                };
+                let curve = through(centre, first, toward, normal).map_err(failed)?;
+                (curve, Curve::line(centre, first).ok().into_iter().collect())
+            }
+        };
+        Ok(Made {
+            add: vec![Shape::Curve(ellipse)],
+            guides,
+            message: Some(Message::new("done.ellipse")),
+            ..Made::default()
+        })
     }
 }
 
@@ -96,5 +146,24 @@ mod tests {
         let mut doc = Document::default();
         run(&mut doc, &["ellipse", "0,0", "0,0", "1,1"]);
         assert!(doc.state().objects.is_empty());
+    }
+
+    #[test]
+    fn diameter_and_corner() {
+        let on_ellipse = |doc: &Document| {
+            doc.state().objects[0]
+                .curve()
+                .unwrap()
+                .sample()
+                .unwrap()
+                .iter()
+                .all(|p| ((p[0] / 5.0).powi(2) + (p[1] / 3.0).powi(2) - 1.0).abs() < 1e-6)
+        };
+        let mut doc = Document::default();
+        run(&mut doc, &["ellipse", "diameter", "-5,0", "5,0", "2,3"]);
+        assert!(on_ellipse(&doc));
+        let mut doc = Document::default();
+        run(&mut doc, &["ellipse", "corner", "-5,-3", "5,3"]);
+        assert!(on_ellipse(&doc));
     }
 }
