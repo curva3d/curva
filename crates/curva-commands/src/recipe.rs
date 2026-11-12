@@ -11,6 +11,9 @@ use crate::{Answer, Command, Kind, Live, Message, Request, Step};
 use curva_document::{Document, Shape};
 use curva_kernel::{Curve, Point};
 
+/// How far from a curve a picked point may be, in millimetres, to mean that curve.
+pub const ON_CURVE: f64 = 1e-3;
+
 /// What an option holds.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum OptionKind {
@@ -27,6 +30,14 @@ pub enum OptionKind {
         low: u32,
         /// The most it may be.
         high: u32,
+    },
+    /// A length, typed after choosing it: more than zero, or zero too when `zero` is set;
+    /// remembered between runs.
+    Distance {
+        /// Its value until another is typed.
+        default: f64,
+        /// Whether zero is allowed, as for a fillet's radius.
+        zero: bool,
     },
     /// A way of making the result, such as Arc's `StartPoint`: choosing it switches to it for this
     /// run, and the steps can change with it.
@@ -63,6 +74,38 @@ impl OptionDef {
         Self {
             name,
             kind: OptionKind::Number(default),
+        }
+    }
+
+    /// A length option: more than zero, or zero too when `zero` is set.
+    #[must_use]
+    pub const fn distance(name: &'static str, default: f64, zero: bool) -> Self {
+        Self {
+            name,
+            kind: OptionKind::Distance { default, zero },
+        }
+    }
+
+    /// Why `value` cannot be this option's value, if it cannot.
+    fn refuses(&self, value: f64) -> Option<Message> {
+        let name = self.name.to_owned();
+        match self.kind {
+            OptionKind::Whole { low, high, .. }
+                if value.fract() != 0.0 || value < f64::from(low) || value > f64::from(high) =>
+            {
+                Some(Message::with(
+                    "error.option_whole",
+                    vec![name, low.to_string(), high.to_string()],
+                ))
+            }
+            OptionKind::Distance { zero: true, .. } if value < 0.0 => {
+                Some(Message::with("error.option_negative", vec![name]))
+            }
+            OptionKind::Distance { zero: false, .. } if value <= 0.0 => {
+                Some(Message::with("error.option_positive", vec![name]))
+            }
+            _ if !value.is_finite() => Some(Message::with("error.bad_number", vec![name])),
+            _ => None,
         }
     }
 
@@ -118,6 +161,9 @@ pub struct StepDef {
     pub optional: bool,
     /// Which of the recipe's options this step offers: all of them unless a list is given.
     pub options: Option<Vec<&'static str>>,
+    /// The number option a number typed at this step sets, as Rhino's Offset takes a distance at
+    /// its side prompt; the step is then asked again.
+    pub sets: Option<&'static str>,
 }
 
 impl StepDef {
@@ -129,7 +175,14 @@ impl StepDef {
             along: None,
             optional: false,
             options: None,
+            sets: None,
         }
+    }
+
+    /// Asks for a spot on a curve, clicked; the answer is the exact point on it.
+    #[must_use]
+    pub fn pick(prompt: &'static str) -> Self {
+        Self::new(prompt, Kind::PickPart)
     }
 
     /// Asks for a position.
@@ -186,6 +239,13 @@ impl StepDef {
         self.options = Some(options.to_vec());
         self
     }
+
+    /// A number typed at this step sets the number option `option`, and the step is asked again.
+    #[must_use]
+    pub fn number_sets(mut self, option: &'static str) -> Self {
+        self.sets = Some(option);
+        self
+    }
 }
 
 /// An answer to a step.
@@ -230,10 +290,33 @@ pub struct Made {
     pub replace: Vec<(u64, Shape)>,
     /// Objects taken away.
     pub remove: Vec<u64>,
+    /// New objects made from existing ones, which go on their source's layer.
+    pub derived: Vec<Derived>,
     /// Lines that only guide while the command runs, such as from a centre to the pointer.
     pub guides: Vec<Curve>,
     /// What to report when done.
     pub message: Option<Message>,
+}
+
+impl Made {
+    /// Everything it adds or changes, for the preview.
+    fn shapes(&self) -> impl Iterator<Item = &Shape> {
+        self.add
+            .iter()
+            .chain(self.replace.iter().map(|(_, s)| s))
+            .chain(self.derived.iter().map(|d| &d.shape))
+    }
+}
+
+/// A new object made from an existing one, such as an offset.
+#[derive(Clone, Debug)]
+pub struct Derived {
+    /// The new object.
+    pub shape: Shape,
+    /// The object it was made from, whose layer it goes on.
+    pub from: u64,
+    /// How it follows its source when that changes, if it does (`History`).
+    pub history: Option<curva_document::Recipe>,
 }
 
 /// The steps of a run of points ended by Enter, as Polyline and Curve take them: the first point,
@@ -286,6 +369,8 @@ pub struct Context<'a> {
     options: &'static [OptionDef],
     /// The construction plane when the first answer came, which the command keeps.
     plane: Option<[Point; 2]>,
+    /// For the preview: a number being typed for an option, standing in for its value.
+    held: Option<(&'static str, f64)>,
 }
 
 impl Context<'_> {
@@ -304,6 +389,11 @@ impl Context<'_> {
     /// A number option's value.
     #[must_use]
     pub fn number(&self, name: &str) -> f64 {
+        if let Some((held, value)) = self.held
+            && held == name
+        {
+            return value;
+        }
         match self.options.iter().find(|o| o.name == name).map(|o| o.kind) {
             Some(OptionKind::Number(default)) => self
                 .doc
@@ -313,6 +403,10 @@ impl Context<'_> {
                 .doc
                 .remembered(&key(self.command, name))
                 .unwrap_or(f64::from(default)),
+            Some(OptionKind::Distance { default, .. }) => self
+                .doc
+                .remembered(&key(self.command, name))
+                .unwrap_or(default),
             _ => 0.0,
         }
     }
@@ -359,7 +453,7 @@ pub trait Recipe: Default + 'static {
 }
 
 /// A preview made, with the answers and mode it was made from.
-type Shown = std::cell::RefCell<Option<(Vec<Value>, Option<&'static str>, Made)>>;
+type Shown = std::cell::RefCell<Option<(Vec<Value>, Option<&'static str>, Vec<f64>, Made)>>;
 
 /// Runs a [`Recipe`] as a [`Command`].
 #[derive(Default)]
@@ -385,6 +479,7 @@ impl<R: Recipe> RecipeCommand<R> {
             command: R::NAME,
             options: R::OPTIONS,
             plane: self.plane,
+            held: None,
         }
     }
 
@@ -411,7 +506,9 @@ impl<R: Recipe> RecipeCommand<R> {
                             if cx.toggle(o.name) { "Yes" } else { "No" }
                         )
                     }
-                    OptionKind::Number(_) | OptionKind::Whole { .. } => {
+                    OptionKind::Number(_)
+                    | OptionKind::Whole { .. }
+                    | OptionKind::Distance { .. } => {
                         format!("{}={}", o.name, cx.number(o.name))
                     }
                     OptionKind::Mode | OptionKind::Finish | OptionKind::Undo => o.name.to_owned(),
@@ -433,6 +530,12 @@ impl<R: Recipe> RecipeCommand<R> {
         }
         let (options, option_labels) = self.offered(doc, &step);
         let preview = step.from.into_iter().collect();
+        // A step whose typed number sets an option takes numbers as well as positions.
+        let kind = if step.sets.is_some() && step.kind == Kind::Point {
+            Kind::PointOrNumber
+        } else {
+            step.kind
+        };
         Step::Ask(Request {
             allow_empty: step.optional,
             options,
@@ -440,8 +543,20 @@ impl<R: Recipe> RecipeCommand<R> {
             preview,
             from: step.from,
             along: step.along,
-            ..Request::new(step.prompt, step.kind)
+            ..Request::new(step.prompt, kind)
         })
+    }
+
+    /// Takes a typed value for the option `name`, unless the option refuses it.
+    fn set_option(&mut self, doc: &mut Document, name: &'static str, value: f64) -> Step {
+        let Some(option) = R::OPTIONS.iter().find(|o| o.name == name) else {
+            return crate::commands::unexpected_step();
+        };
+        if let Some(message) = option.refuses(value) {
+            return Step::Failed(message);
+        }
+        doc.remember(&key(R::NAME, name), value);
+        self.ask(doc)
     }
 
     fn finish(&self, doc: &mut Document) -> Step {
@@ -449,6 +564,8 @@ impl<R: Recipe> RecipeCommand<R> {
             Ok(made) => made,
             Err(message) => return Step::Failed(message),
         };
+        // Layers are looked up first, as a source may be among the objects taken away.
+        let layers: Vec<Option<u64>> = made.derived.iter().map(|d| doc.layer_of(d.from)).collect();
         for id in &made.remove {
             doc.remove(&[*id]);
         }
@@ -457,6 +574,12 @@ impl<R: Recipe> RecipeCommand<R> {
         }
         for shape in made.add {
             doc.add_shape(shape);
+        }
+        for (derived, layer) in made.derived.into_iter().zip(layers) {
+            let id = doc.add_shape_on(derived.shape, layer);
+            if let Some(history) = derived.history {
+                doc.record_recipe(id, history);
+            }
         }
         Step::Done(made.message)
     }
@@ -468,7 +591,9 @@ impl<R: Recipe> RecipeCommand<R> {
                 doc.remember(&key(R::NAME, name), f64::from(u8::from(!now)));
                 self.ask(doc)
             }
-            Some(OptionKind::Number(_) | OptionKind::Whole { .. }) => {
+            Some(
+                OptionKind::Number(_) | OptionKind::Whole { .. } | OptionKind::Distance { .. },
+            ) => {
                 self.typing_option = Some(name);
                 let value = self.context(doc, &self.values).number(name);
                 Step::Ask(Request {
@@ -503,21 +628,24 @@ impl<R: Recipe> RecipeCommand<R> {
 impl<R: Recipe> Command for RecipeCommand<R> {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
         if let Some(name) = self.typing_option.take() {
-            if let (Some(Answer::Number(value)), Some(OptionKind::Whole { low, high, .. })) = (
-                &answer,
-                R::OPTIONS.iter().find(|o| o.name == name).map(|o| o.kind),
-            ) && (value.fract() != 0.0 || *value < f64::from(low) || *value > f64::from(high))
-            {
-                return Step::Failed(Message::with(
-                    "error.option_whole",
-                    vec![name.to_owned(), low.to_string(), high.to_string()],
-                ));
-            }
-            if let Some(Answer::Number(value)) = answer
-                && value.is_finite()
-            {
-                doc.remember(&key(R::NAME, name), value);
-            }
+            return match answer {
+                Some(Answer::Number(value)) => self.set_option(doc, name, value),
+                _ => self.ask(doc),
+            };
+        }
+        if let Some(Answer::Number(value)) = answer
+            && let Some(name) = self
+                .steps(doc)
+                .get(self.values.len())
+                .and_then(|step| step.sets)
+        {
+            return self.set_option(doc, name, value);
+        }
+        // A pick must land on a curve; a click on nothing asks again.
+        if let Some(Answer::Point(at)) = answer
+            && self.steps(doc).get(self.values.len()).map(|s| s.kind) == Some(Kind::PickPart)
+            && !matches!(crate::commands::curve_at(doc, at, ON_CURVE), Ok(Some(_)))
+        {
             return self.ask(doc);
         }
         let value = match answer {
@@ -543,8 +671,8 @@ impl<R: Recipe> Command for RecipeCommand<R> {
         let Some(made) = self.preview_made(doc, live) else {
             return Vec::new();
         };
-        let mut shown = made.guides;
-        for shape in made.add.iter().chain(made.replace.iter().map(|(_, s)| s)) {
+        let mut shown = made.guides.clone();
+        for shape in made.shapes() {
             shown.extend(shape.outlines());
         }
         shown
@@ -554,31 +682,37 @@ impl<R: Recipe> Command for RecipeCommand<R> {
         let Some(made) = self.preview_made(doc, live) else {
             return Vec::new();
         };
-        made.add
-            .iter()
-            .chain(made.replace.iter().map(|(_, s)| s))
+        made.shapes()
             .filter_map(|shape| shape.body().cloned())
             .collect()
     }
 }
 
 impl<R: Recipe> RecipeCommand<R> {
-    /// What the answers so far and the pointer or typed number would make, kept while they stay
-    /// the same.
+    /// What the answers so far and the pointer or typed number would make, kept while they and
+    /// the options stay the same.
     fn preview_made(&self, doc: &Document, live: &Live) -> Option<Made> {
         let steps = self.steps(doc);
         let mut values = self.values.clone();
+        let mut held = None;
         if let Some(step) = steps.get(values.len()) {
-            match step.kind {
-                Kind::Point => values.extend(live.cursor.map(Value::Point)),
+            match (step.kind, step.sets, live.number) {
+                // A number being typed for the option the step sets shows at once.
+                (Kind::Point | Kind::PickPart, Some(name), Some(number)) => {
+                    held = Some((name, number));
+                    values.extend(live.cursor.map(Value::Point));
+                }
+                (Kind::Point | Kind::PickPart, _, _) => {
+                    values.extend(live.cursor.map(Value::Point))
+                }
                 // A typed number, or else the pointer's distance from where the step measures,
                 // as a click would give.
-                Kind::Number => values.extend(
+                (Kind::Number, _, _) => values.extend(
                     live.number
                         .or_else(|| Some(curva_kernel::gap(live.cursor?, step.from?)))
                         .map(Value::Number),
                 ),
-                Kind::PointOrNumber => values.extend(
+                (Kind::PointOrNumber, _, _) => values.extend(
                     live.number
                         .map(Value::Number)
                         .or_else(|| live.cursor.map(Value::Point)),
@@ -586,14 +720,24 @@ impl<R: Recipe> RecipeCommand<R> {
                 _ => {}
             }
         }
-        if let Some((held, mode, made)) = &*self.shown.borrow()
-            && *held == values
+        let mut cx = self.context(doc, &values);
+        cx.held = held;
+        let options: Vec<f64> = R::OPTIONS
+            .iter()
+            .map(|o| match o.kind {
+                OptionKind::Toggle(_) => f64::from(u8::from(cx.toggle(o.name))),
+                _ => cx.number(o.name),
+            })
+            .collect();
+        if let Some((was, mode, with, made)) = &*self.shown.borrow()
+            && *was == values
             && *mode == self.mode
+            && *with == options
         {
             return Some(made.clone());
         }
-        let made = self.recipe.make(&self.context(doc, &values)).ok()?;
-        *self.shown.borrow_mut() = Some((values, self.mode, made.clone()));
+        let made = self.recipe.make(&cx).ok()?;
+        *self.shown.borrow_mut() = Some((values.clone(), self.mode, options, made.clone()));
         Some(made)
     }
 }

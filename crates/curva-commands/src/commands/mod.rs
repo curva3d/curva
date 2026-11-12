@@ -244,8 +244,8 @@ pub static COMMANDS: [CommandDef; 100] = [
     listed!("Explode", ["x"], true, true, explode::Explode),
     listed!("Split", [], true, true, split::Split),
     listed!("Trim", ["tr"], true, true, trim::Trim),
-    listed!("Offset", [], true, true, offset::Offset),
-    listed!("Fillet", [], true, true, fillet::Fillet),
+    recipe!("Offset", [], true, offset::Offset),
+    recipe!("Fillet", [], true, fillet::Fillet),
     listed!(
         "FilletCorners",
         [],
@@ -255,7 +255,7 @@ pub static COMMANDS: [CommandDef; 100] = [
     ),
     listed!("TweenCurves", [], true, true, tween_curves::TweenCurves),
     listed!("Orient3Pt", [], true, true, orient3pt::Orient3Pt),
-    listed!("Chamfer", [], true, true, chamfer::Chamfer),
+    recipe!("Chamfer", [], true, chamfer::Chamfer),
     recipe!("Ellipse", ["el"], true, ellipse::Ellipse),
     listed!("Rotate3D", [], true, true, rotate3d::Rotate3D),
     listed!("Scale1D", [], true, true, scale1d::Scale1D),
@@ -464,7 +464,7 @@ fn curves_of(doc: &curva_document::Document, ids: &[u64]) -> Vec<(u64, curva_ker
 }
 
 /// The curve passing within `reach` of `at`, if any, for commands that pick a curve.
-fn curve_at(
+pub(crate) fn curve_at(
     doc: &curva_document::Document,
     at: Point,
     reach: f64,

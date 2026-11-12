@@ -38,10 +38,10 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | Divide | Select curves; number of segments, or `Length` / `EqualChordLength` and a number | `Length` `EqualChordLength` `Split` `DeleteRemainder` `MarkEnds` `GroupOutput` | none | partly |
 | CloseCrv | Select open curves; Enter | `CloseWideGapsWithLine` `Tolerance` | none | partly |
 | TweenCurves | First curve; second curve; click an end to flip | `Number` `OutputLayer` `MatchMethod` `SampleNumber` `Flip` | none | partly |
-| Offset | Select a curve; click the side | `Distance` `Loose` `Corner` `Trim` `ThroughPoint` `Tolerance` `BothSides` `InCPlane` `Cap` `OutputLayer` | none | partly |
-| Fillet | First curve near its end; second curve near its end | `Radius` `Join` `Trim` `ExtendArcsBy` `ExtendOtherCurvesBy` `Dynamic` | none | partly |
+| Offset | Select a curve; click the side | `Distance` `Loose` `Corner` `Trim` `ThroughPoint` `Tolerance` `BothSides` `InCPlane` `Cap` `OutputLayer` | `Distance` `ThroughPoint` `BothSides` | partly |
+| Fillet | First curve near its end; second curve near its end | `Radius` `Join` `Trim` `ExtendArcsBy` `ExtendOtherCurvesBy` `Dynamic` | `Radius` | partly |
 | FilletCorners | Select polycurves; Enter; radius typed or by two points (on Rhino's Fillet page) | none | none | partly |
-| Chamfer | First curve near its end; second curve near its end | `Distances` `Join` `Trim` `ExtendArcsBy` `ExtendOtherCurvesBy` | none | partly |
+| Chamfer | First curve near its end; second curve near its end | `Distances` `Join` `Trim` `ExtendArcsBy` `ExtendOtherCurvesBy` | `Distances` | partly |
 | Rebuild | Select curves; point count and degree (a dialog in Rhino; `-Rebuild` on the command line) | `PointCount` `Degree` `DeleteInput` `CurrentLayer` `PreserveTangents` | none | partly |
 
 ## Transforms

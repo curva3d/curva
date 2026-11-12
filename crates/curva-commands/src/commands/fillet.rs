@@ -1,120 +1,68 @@
-//! `Fillet`: rounds the corner between two lines, keeping the sides clicked.
+//! `Fillet`, as in Rhino: rounds the corner between two curves, keeping the sides clicked. A
+//! number typed at either prompt sets `Radius`. Rhino's `Join`, `Trim`, `ExtendArcsBy`,
+//! `ExtendOtherCurvesBy` and `Dynamic` are still to come (`docs/commands/rhino-reference.md`).
 
-use super::{curve_at, geometry_failed, unexpected};
-use crate::{Answer, Command, Kind, Live, Message, Request, Step};
-use curva_document::Document;
-use curva_kernel::{Curve, KernelError, Point, fillet_curves, gap};
+use super::curve_at;
+use crate::Message;
+use crate::recipe::{Context, Derived, Made, ON_CURVE, OptionDef, Recipe, StepDef, Value};
+use curva_document::Shape;
+use curva_kernel::{fillet_curves, gap};
 
-/// How far from a curve a picked point may be, in millimetres, to mean that curve.
-const ON_CURVE: f64 = 1e-3;
-/// The radius used until another is typed, in millimetres.
-const STARTING_RADIUS: f64 = 1.0;
-/// Where the document remembers the last radius.
-const MEMORY: &str = "fillet.radius";
+const RADIUS: &str = "Radius";
 
-/// The running command.
+/// The recipe.
 #[derive(Default)]
-pub struct Fillet {
-    first: Option<(u64, Point)>,
-}
+pub struct Fillet;
 
-fn radius_of(doc: &Document) -> f64 {
-    doc.remembered(MEMORY).unwrap_or(STARTING_RADIUS)
-}
+impl Recipe for Fillet {
+    const NAME: &'static str = "fillet";
+    const OPTIONS: &'static [OptionDef] = &[OptionDef::distance(RADIUS, 1.0, true)];
 
-fn ask(doc: &Document, key: &'static str) -> Step {
-    Step::Ask(Request {
-        prompt: Message::with(key, vec![radius_of(doc).to_string()]),
-        ..Request::new(key, Kind::PickPart)
-    })
-}
-
-/// The object under a picked point.
-fn under(doc: &Document, at: Point) -> Result<Option<(u64, Curve)>, KernelError> {
-    curve_at(doc, at, ON_CURVE)
-}
-
-fn curve_of(doc: &Document, id: u64) -> Option<Curve> {
-    doc.state()
-        .objects
-        .iter()
-        .find(|object| object.id == id)
-        .and_then(|object| object.curve().cloned())
-}
-
-impl Fillet {
-    fn result(
-        &self,
-        doc: &Document,
-        at: Point,
-        radius: f64,
-    ) -> Result<Option<(u64, u64, Vec<Curve>)>, KernelError> {
-        let Some((first_id, first_pick)) = self.first else {
-            return Ok(None);
-        };
-        let (Some((second_id, second)), Some(first)) = (under(doc, at)?, curve_of(doc, first_id))
-        else {
-            return Ok(None);
-        };
-        let same = second_id == first_id;
-        if same && gap(first_pick, at) <= ON_CURVE {
-            return Ok(None);
+    fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
+        let mut steps = vec![StepDef::pick("prompt.fillet.first").number_sets(RADIUS)];
+        if !cx.values.is_empty() {
+            steps.push(StepDef::pick("prompt.fillet.second").number_sets(RADIUS));
         }
-        fillet_curves(&first, first_pick, &second, at, radius, same)
-            .map(|made| Some((first_id, second_id, made)))
-    }
-}
-
-impl Command for Fillet {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let again = if self.first.is_some() {
-            "prompt.fillet.second"
-        } else {
-            "prompt.fillet.first"
-        };
-        match answer {
-            None => ask(doc, again),
-            Some(Answer::Number(radius)) if radius >= 0.0 => {
-                doc.remember(MEMORY, radius);
-                ask(doc, again)
-            }
-            Some(Answer::Number(_)) => Step::Failed(Message::new("error.bad_radius")),
-            Some(Answer::Point(at)) if self.first.is_none() => match under(doc, at) {
-                Ok(Some((id, _))) => {
-                    self.first = Some((id, at));
-                    ask(doc, "prompt.fillet.second")
-                }
-                Ok(None) => ask(doc, again),
-                Err(error) => geometry_failed(&error),
-            },
-            Some(Answer::Point(at)) => match self.result(doc, at, radius_of(doc)) {
-                Ok(Some((first, second, made))) => {
-                    let layer = doc.layer_of(first);
-                    doc.remove(&[first, second]);
-                    for curve in made {
-                        doc.add_on(curve, layer);
-                    }
-                    Step::Done(Some(Message::new("done.fillet")))
-                }
-                Ok(None) => ask(doc, again),
-                Err(error) => geometry_failed(&error),
-            },
-            _ => unexpected(),
-        }
+        steps
     }
 
-    fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
-        let Some(at) = live.cursor else {
-            return Vec::new();
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let (Some(a), Some(b)) = (
+            cx.values.first().and_then(Value::point),
+            cx.values.get(1).and_then(Value::point),
+        ) else {
+            return Ok(Made::default());
         };
-        let radius = live
-            .number
-            .filter(|n| *n >= 0.0)
-            .unwrap_or_else(|| radius_of(doc));
-        match self.result(doc, at, radius) {
-            Ok(Some((_, _, made))) => made,
-            _ => Vec::new(),
+        let failed =
+            |e: curva_kernel::KernelError| Message::with("error.geometry", vec![e.to_string()]);
+        let (Some((first_id, first)), Some((second_id, second))) = (
+            curve_at(cx.doc, a, ON_CURVE).map_err(failed)?,
+            curve_at(cx.doc, b, ON_CURVE).map_err(failed)?,
+        ) else {
+            return Ok(Made::default());
+        };
+        let same = first_id == second_id;
+        if same && gap(a, b) <= ON_CURVE {
+            return Ok(Made::default());
         }
+        let made = fillet_curves(&first, a, &second, b, cx.number(RADIUS), same).map_err(failed)?;
+        Ok(Made {
+            remove: if same {
+                vec![first_id]
+            } else {
+                vec![first_id, second_id]
+            },
+            derived: made
+                .into_iter()
+                .map(|curve| Derived {
+                    shape: Shape::Curve(curve),
+                    from: first_id,
+                    history: None,
+                })
+                .collect(),
+            message: Some(Message::new("done.fillet")),
+            ..Made::default()
+        })
     }
 }
 
