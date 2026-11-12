@@ -1,6 +1,6 @@
-# Curva — Architecture (draft v0.9)
+# Curva — Architecture (draft v0.10)
 
-*8 November 2026 · starting point for the Curva project (working name; previously "Dex")*
+*8 November 2026, updated 11 November 2026 · starting point for the Curva project (working name; previously "Dex")*
 
 ## 1. Vision
 
@@ -53,7 +53,7 @@ This avoids FreeCAD's problem, where workbenches feel like separate programs wit
 
 | # | Specialization | Inspired by | Content |
 |---|---|---|---|
-| 1 | **Freeform** (the base) | Rhino | Curves, surfaces, solids, meshes, transforms, analysis, layouts. Interface follows Rhino's overall layout and command line |
+| 1 | **Freeform** (the base) | Rhino | Curves, surfaces, solids, transforms, analysis, layouts. Mesh and SubD objects come at a later stage (section 10d). Interface follows Rhino's overall layout and command line |
 | 2 | **Architecture** | Archicad, Vectorworks | Levels, walls, slabs, doors, windows, roofs, stairs, types; plans, sections, elevations; IFC. Interface closer to Archicad / Vectorworks |
 | 3 | **Urban** | Grasshopper-style massing tools | Rule-based generation of urban settings: plots, setbacks, heights, floor-area ratios; massing exercises; city data import (OpenStreetMap, terrain, GIS); area and density tables |
 | 4 | **Analysis** (much later) | — | Sun and shadow first, then wind, views and others |
@@ -130,7 +130,8 @@ A smart object (a door, window, tree, person, furniture piece, wall style) carri
 | Exact geometry (B-rep / NURBS) | **solidcore**, primary | Apache-2.0 | Young (0.0.x). We contribute fixes upstream |
 | NURBS curves and surfaces library (to evaluate) | **curvo** | check | Actively developed Rust NURBS modelling library (Oct 2026). Possible source of curve and surface algorithms for Freeform, alongside solidcore |
 | Second kernel / reference | **truck** | Apache-2.0 / MIT | Older Rust B-rep kernel (last release Sept 2024). A cross-check for tests, or a fallback for single operations, behind the same interface |
-| Mesh operations | **boolmesh** | check | Pure-Rust robust mesh booleans, actively developed. Alternative: csgrs |
+| Mesh booleans (later stage, section 10d) | **csgrs** (decision 0008) | MIT | **manifold-rust** to be evaluated alongside it when that stage starts |
+| SubD (later stage, section 10d) | **subdiv-kernels** | MIT / Apache-2.0 / Zlib / BSD-3 | Pure-Rust Catmull–Clark with creases and the true limit surface, matching OpenSubdiv. Very young |
 | Sketch constraints | Reuse **SolidCraft's** Rust constraint solver | MIT / Apache | Our own solver later only if needed |
 | BIM model (Architecture) | **Our own**, built on IFC 4.3 concepts: storeys, walls, slabs, openings, types, property sets | — | No stable open-source BIM base exists in Rust. BIMCraft, Rustit and Bonsai are references only |
 | IFC import / export | **openbim-ifc** crates (Rust, actively developed) as the first candidate | check | IFC2x3, IFC4 and IFC 4.3. Tested against the official schemas and buildingSMART samples |
@@ -255,12 +256,15 @@ Each operation has a primary implementation (solidcore) and can have a second Ru
 
 ## 10. Roadmap
 
+**Build order.** First, a demo that proves Curva is possible: NURBS modelling and an interface on par with Rhino (M1 and M2). Then layouts and drafting (M3). Then a first try at the Architecture specialization (M4). Mesh and SubD come only after that (section 10d).
+
 | Milestone | Content |
 |---|---|
 | **M1 — Freeform foundation** | Core, viewport, command framework, `.curva` file, phase F1 commands, history on curves |
 | **M2 — Freeform surfaces and solids** | Phases F2 and F3: surfaces, solids, booleans (live), deformation, analysis, blocks. 3DM import / export |
 | **M3 — Layouts and drafting** | Phase F4: layouts, detail views, Make2D, dimensions, hatches, PDF / DXF. Becomes the shared views-and-sheets core. **Smart object representations** (section 5b) arrive here, with blocks gaining plan symbols and detail levels |
 | **M4 — Architecture** | Specialization 2: levels, walls, slabs, openings, doors, windows, types; live plan and section views; IFC. The Serpentine BIM tool specs carry over. Ships the **built-in object library**: wall and door styles, windows, simple trees and people, each with drawing representations |
+| **After M4 — Mesh and SubD** | Mesh and SubD objects (section 10d). Not part of the demo |
 | **M5 — Urban** | Specialization 3, with visual scripting as shared core |
 | **M6 — Analysis** | Specialization 4, starting with sun and shadow |
 | **Rendering** | Blender / Cycles bridge, whenever it's useful from M2 on |
@@ -344,6 +348,18 @@ An **open-core model**: Curva itself stays free and open source, and paid online
 - If plain "Curva" is too weak or conflicted, use a compound such as **Curva3D** or **CurvaCAD**.
 - Register the domains and GitHub organisation early.
 
+## 10d. Mesh and SubD (later stage)
+
+This comes after the NURBS demo and the first try at the Architecture specialization. Display meshes for the viewport are not affected: they are needed from M1. This section is about mesh and SubD **objects** the user models with.
+
+- **SubD smoothing:** **subdiv-kernels**. Catmull–Clark subdivision with creases and the true limit surface, matching OpenSubdiv (the industry standard), tested against OpenSubdiv on every change. Permissive licence. Version 0.1.0, so expect changes.
+- **Mesh booleans:** **csgrs** first, as decision 0008 chose. Evaluate **manifold-rust** alongside it: a pure-Rust port of Manifold, one of the most reliable mesh boolean engines, Apache-2.0, and it also handles messy non-manifold imported meshes.
+- **Remeshing and simplification (optional):** **baby_shark**, for cleaning up heavy imported meshes. Its booleans work through voxels and are approximate, so they are not used for modelling. Check its licence first.
+- **Editable mesh / SubD cage:** Curva's own polygon (n-gon) mesh structure. No existing pure-Rust library fits well (the `halfedge` crate assumes triangle meshes), and this structure has to carry Curva's object memory anyway. It feeds the libraries above.
+- **SubD to NURBS** conversion, as Rhino does, is a separate question for after that, tied to the NURBS kernel.
+
+Re-check all of these when the stage starts: they are young and the landscape will have moved.
+
 ## 11. Prior art to learn from
 
 | Project | What to take from it |
@@ -381,7 +397,7 @@ SolidCraft and solidcore are about a month old (started October 2026). Re-check 
 2. **`.curva` container:** redb vs zip-style package. Measure both in Milestone 1.
 3. **Interface toolkit:** egui vs Slint vs iced. It must handle a different layout per specialization.
 4. **IFC library:** openbim-ifc, or our own. Check its licence and IFC 4.3 coverage.
-5. **Mesh boolean library:** boolmesh vs csgrs. Check each licence and robustness.
+5. **Mesh boolean library:** answered by decision 0008 (csgrs first). Re-check with manifold-rust when mesh work starts (section 10d).
 6. **Licence:** suggest MIT OR Apache-2.0, to match the Rust ecosystem and allow reusing SolidCraft and Serpentine3D code.
 7. **Rhino licensing for automated reference generation:** check Rhino's licence terms for scripted, unattended use on the Windows machine (section 15).
 8. **A Mac for hands-on checks:** CI covers macOS builds and tests, but a real Mac (for example a Mac mini) is eventually needed for feel and display checks. An Apple Developer account is needed to sign and notarise the macOS app.
