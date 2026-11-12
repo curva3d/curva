@@ -8,7 +8,7 @@ Curva is an open-source, design-oriented 3D suite for architects and designers, 
 It combines Rhino-style freeform modelling with the "memory" of Archicad and Revit: objects that
 remember how they were made, live 2D plans and sections, and sheets.
 
-**Status:** preview, 0.1.1: Rhino-style curves, transforms, first surfaces and solids. Early and
+**Status:** preview, 0.2.0: Milestone 1 complete, with first surfaces and solids and floating panels. Early and
 unpolished; a Windows installer, a Linux AppImage and a macOS disk image are on the Releases page.
 
 ## Where things are
