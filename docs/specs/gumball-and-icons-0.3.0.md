@@ -1,6 +1,6 @@
 # Spec: gumball and icons, after 0.3.0
 
-**Status:** Proposed · 12 November 2026. Third in the order of work (decision 0017).
+**Status:** Approved by the owner in chat · 12 November 2026. Third in the order of work (decision 0017).
 **Covers:** feedback items 26 to 29 (`docs/specs/feedback-0.3.0.md`). Revises `gumball-rhino.md` §1
 and extends `ui-look-and-layout.md` §5.
 

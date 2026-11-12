@@ -1,6 +1,6 @@
 # Spec: the AI Assistant
 
-**Status:** Proposed · 12 November 2026. Fifth in the order of work (decision 0017).
+**Status:** Approved by the owner in chat · 12 November 2026. Fifth in the order of work (decision 0017).
 **Covers:** feedback item 34 (`docs/specs/feedback-0.3.0.md`), following Serpentine3D's assistant panel
 (`serpentine3d/ai`).
 

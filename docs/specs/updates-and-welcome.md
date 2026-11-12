@@ -1,6 +1,6 @@
 # Spec: updates and the welcome
 
-**Status:** Proposed · 12 November 2026. Fourth in the order of work (decision 0017).
+**Status:** Approved by the owner in chat · 12 November 2026. Fourth in the order of work (decision 0017).
 **Covers:** feedback items 30 to 33 (`docs/specs/feedback-0.3.0.md`).
 
 ## 1. Checking for updates

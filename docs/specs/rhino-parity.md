@@ -1,6 +1,6 @@
 # Spec: command parity with Rhino for NURBS modelling
 
-**Status:** Proposed · 12 November 2026. Sixth in the order of work (decision 0017), and part of the same
+**Status:** Approved by the owner in chat · 12 November 2026. Sixth in the order of work (decision 0017), and part of the same
 version as the other specs from the feedback on 0.3.0.
 **Covers:** the owner's addition: "add all the commands we are missing from our list so we have command
 parity with Rhino (for NURBS), and the command symbols that are still missing."

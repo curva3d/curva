@@ -1,6 +1,6 @@
 # Spec: one panel system for everything
 
-**Status:** Proposed · 12 November 2026. Second in the order of work (decision 0017).
+**Status:** Approved by the owner in chat · 12 November 2026. Second in the order of work (decision 0017).
 **Covers:** feedback items 15 to 25 (`docs/specs/feedback-0.3.0.md`). Builds on `panel-system.md`.
 
 ## 1. Every piece is a panel

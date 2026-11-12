@@ -1,6 +1,6 @@
 # Spec: fixes after 0.3.0
 
-**Status:** Proposed · 12 November 2026. First in the order of work (decision 0017).
+**Status:** Approved by the owner in chat · 12 November 2026. First in the order of work (decision 0017).
 **Covers:** feedback items 1 to 14 (`docs/specs/feedback-0.3.0.md`).
 
 ## What changes
