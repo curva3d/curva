@@ -349,3 +349,4 @@ ui.agent.waiting = Waiting for an agent
 ui.agent.active = Agent connected
 ui.focus.on = Hide the panels (F12)
 ui.focus.off = Bring the panels back (F12)
+ui.layout.reset = Reset layout
