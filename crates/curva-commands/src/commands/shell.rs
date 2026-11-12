@@ -6,6 +6,9 @@ use curva_document::{Document, FacePick, Shape};
 use curva_kernel::{Body, Curve, KernelError};
 use std::cell::RefCell;
 
+/// The last preview worked out: the size it was for, the result's edges and the result.
+type Shown = RefCell<Option<(f64, Vec<Curve>, Vec<Body>)>>;
+
 /// The thickness used until another is typed, in millimetres.
 const STARTING_THICKNESS: f64 = 1.0;
 const MEMORY: &str = "shell.thickness";
@@ -16,7 +19,7 @@ pub struct Shell {
     /// The solid and the faces of it to open.
     open: Option<(u64, Vec<usize>)>,
     /// The last preview worked out, for the thickness it was worked out for.
-    shown: RefCell<Option<(f64, Vec<Curve>)>>,
+    shown: Shown,
 }
 
 fn thickness_of(doc: &Document) -> f64 {
@@ -97,24 +100,40 @@ impl Command for Shell {
     }
 
     fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
+        self.previewed(doc, live).0
+    }
+
+    fn preview_bodies(&self, doc: &Document, live: &Live) -> Vec<Body> {
+        self.previewed(doc, live).1
+    }
+}
+
+impl Shell {
+    /// The hollowed solid for the thickness shown, and its edges, kept while the thickness stays
+    /// the same.
+    fn previewed(&self, doc: &Document, live: &Live) -> (Vec<Curve>, Vec<Body>) {
         if self.open.is_none() {
-            return Vec::new();
+            return (Vec::new(), Vec::new());
         }
         let thickness = live
             .number
             .filter(|n| *n > 0.0)
             .unwrap_or_else(|| thickness_of(doc));
-        if let Some((held, curves)) = &*self.shown.borrow()
+        if let Some((held, curves, bodies)) = &*self.shown.borrow()
             && *held == thickness
         {
-            return curves.clone();
+            return (curves.clone(), bodies.clone());
         }
-        let curves = match self.shelled(doc, thickness) {
-            Ok(Some((_, body))) => body.edge_curves().unwrap_or_default(),
+        let bodies: Vec<Body> = match self.shelled(doc, thickness) {
+            Ok(Some((_, body))) => vec![body],
             _ => Vec::new(),
         };
-        *self.shown.borrow_mut() = Some((thickness, curves.clone()));
-        curves
+        let curves: Vec<Curve> = bodies
+            .iter()
+            .flat_map(|body| body.edge_curves().unwrap_or_default())
+            .collect();
+        *self.shown.borrow_mut() = Some((thickness, curves.clone(), bodies.clone()));
+        (curves, bodies)
     }
 }
 

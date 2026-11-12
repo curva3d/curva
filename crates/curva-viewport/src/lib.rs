@@ -860,6 +860,28 @@ pub fn face_vertices(outlines: &Outlines, selected: &[u64]) -> Vec<MeshVertex> {
     out
 }
 
+/// The triangles of the surfaces and solids a command would make, in the preview colour, to be
+/// drawn ghosted like Serpentine3D's previews. Every solid preview comes through here.
+#[must_use]
+pub fn ghost_faces(meshes: &[curva_kernel::BodyMesh]) -> Vec<MeshVertex> {
+    let mut out = Vec::new();
+    for mesh in meshes {
+        for &corner in mesh.triangles.iter().flatten() {
+            let index = corner as usize;
+            if let (Some(position), Some(normal)) =
+                (mesh.positions.get(index), mesh.normals.get(index))
+            {
+                out.push(MeshVertex {
+                    position: narrow(*position),
+                    normal: narrow(*normal),
+                    colour: PREVIEW_COLOUR,
+                });
+            }
+        }
+    }
+    out
+}
+
 /// How a command's preview is drawn. Every preview in Curva comes through here, so that they
 /// all look the same.
 #[must_use]

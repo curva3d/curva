@@ -270,4 +270,10 @@ pub trait Command {
     fn preview(&self, _doc: &Document, _live: &Live) -> Vec<Curve> {
         Vec::new()
     }
+
+    /// The surfaces and solids the command would make or change, for the viewport to show
+    /// ghosted in the accent colour beside [`Self::preview`]'s lines. It must not change anything.
+    fn preview_bodies(&self, _doc: &Document, _live: &Live) -> Vec<curva_kernel::Body> {
+        Vec::new()
+    }
 }

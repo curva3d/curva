@@ -180,7 +180,7 @@ impl Value {
 }
 
 /// What a recipe's answers make, for the model or for the preview.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Made {
     /// New objects.
     pub add: Vec<Shape>,
@@ -271,6 +271,9 @@ pub trait Recipe: Default + 'static {
     fn make(&self, cx: &Context<'_>) -> Result<Made, Message>;
 }
 
+/// A preview made, with the answers and mode it was made from.
+type Shown = std::cell::RefCell<Option<(Vec<Value>, Option<&'static str>, Made)>>;
+
 /// Runs a [`Recipe`] as a [`Command`].
 #[derive(Default)]
 pub struct RecipeCommand<R: Recipe> {
@@ -279,6 +282,9 @@ pub struct RecipeCommand<R: Recipe> {
     mode: Option<&'static str>,
     /// Waiting for a number option's new value.
     typing_option: Option<&'static str>,
+    /// The last preview made and the answers it was made from, so the lines and the ghosted
+    /// solids of one frame come from one `make`.
+    shown: Shown,
 }
 
 impl<R: Recipe> RecipeCommand<R> {
@@ -414,6 +420,32 @@ impl<R: Recipe> Command for RecipeCommand<R> {
     }
 
     fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
+        let Some(made) = self.preview_made(doc, live) else {
+            return Vec::new();
+        };
+        let mut shown = made.guides;
+        for shape in made.add.iter().chain(made.replace.iter().map(|(_, s)| s)) {
+            shown.extend(shape.outlines());
+        }
+        shown
+    }
+
+    fn preview_bodies(&self, doc: &Document, live: &Live) -> Vec<curva_kernel::Body> {
+        let Some(made) = self.preview_made(doc, live) else {
+            return Vec::new();
+        };
+        made.add
+            .iter()
+            .chain(made.replace.iter().map(|(_, s)| s))
+            .filter_map(|shape| shape.body().cloned())
+            .collect()
+    }
+}
+
+impl<R: Recipe> RecipeCommand<R> {
+    /// What the answers so far and the pointer or typed number would make, kept while they stay
+    /// the same.
+    fn preview_made(&self, doc: &Document, live: &Live) -> Option<Made> {
         let steps = self.steps(doc);
         let mut values = self.values.clone();
         if let Some(step) = steps.get(values.len()) {
@@ -428,13 +460,14 @@ impl<R: Recipe> Command for RecipeCommand<R> {
                 _ => {}
             }
         }
-        let Ok(made) = self.recipe.make(&self.context(doc, &values)) else {
-            return Vec::new();
-        };
-        let mut shown = made.guides;
-        for shape in made.add.iter().chain(made.replace.iter().map(|(_, s)| s)) {
-            shown.extend(shape.outlines());
+        if let Some((held, mode, made)) = &*self.shown.borrow()
+            && *held == values
+            && *mode == self.mode
+        {
+            return Some(made.clone());
         }
-        shown
+        let made = self.recipe.make(&self.context(doc, &values)).ok()?;
+        *self.shown.borrow_mut() = Some((values, self.mode, made.clone()));
+        Some(made)
     }
 }

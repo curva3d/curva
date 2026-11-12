@@ -7,6 +7,9 @@ use curva_document::{Document, EdgePick, Shape};
 use curva_kernel::{Body, Curve, KernelError};
 use std::cell::RefCell;
 
+/// The last preview worked out: the size it was for, the result's edges and the result.
+type Shown = RefCell<Option<(f64, Vec<Curve>, Vec<Body>)>>;
+
 /// The size used until another is typed, in millimetres.
 const STARTING_SIZE: f64 = 1.0;
 
@@ -15,7 +18,7 @@ const STARTING_SIZE: f64 = 1.0;
 pub struct BlendEdges<const CHAMFER: bool> {
     edges: Option<Vec<EdgePick>>,
     /// The last preview worked out, for the size it was worked out for.
-    shown: RefCell<Option<(f64, Vec<Curve>)>>,
+    shown: Shown,
 }
 
 impl<const CHAMFER: bool> BlendEdges<CHAMFER> {
@@ -126,28 +129,40 @@ impl<const CHAMFER: bool> Command for BlendEdges<CHAMFER> {
     }
 
     fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
+        self.previewed(doc, live).0
+    }
+
+    fn preview_bodies(&self, doc: &Document, live: &Live) -> Vec<Body> {
+        self.previewed(doc, live).1
+    }
+}
+
+impl<const CHAMFER: bool> BlendEdges<CHAMFER> {
+    /// The rounded or bevelled solids for the size shown, and their edges, kept while the size
+    /// stays the same, as working them out takes the engine a while.
+    fn previewed(&self, doc: &Document, live: &Live) -> (Vec<Curve>, Vec<Body>) {
         if self.edges.is_none() {
-            return Vec::new();
+            return (Vec::new(), Vec::new());
         }
         let size = live
             .number
             .filter(|n| *n > 0.0)
             .unwrap_or_else(|| Self::size_of(doc));
-        if let Some((held, curves)) = &*self.shown.borrow()
+        if let Some((held, curves, bodies)) = &*self.shown.borrow()
             && *held == size
         {
-            return curves.clone();
+            return (curves.clone(), bodies.clone());
         }
-        let curves: Vec<Curve> = self
+        let bodies: Vec<Body> = self
             .blended(doc, size)
-            .map(|made| {
-                made.iter()
-                    .flat_map(|(_, body)| body.edge_curves().unwrap_or_default())
-                    .collect()
-            })
+            .map(|made| made.into_iter().map(|(_, body)| body).collect())
             .unwrap_or_default();
-        *self.shown.borrow_mut() = Some((size, curves.clone()));
-        curves
+        let curves: Vec<Curve> = bodies
+            .iter()
+            .flat_map(|body| body.edge_curves().unwrap_or_default())
+            .collect();
+        *self.shown.borrow_mut() = Some((size, curves.clone(), bodies.clone()));
+        (curves, bodies)
     }
 }
 
