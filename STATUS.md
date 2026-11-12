@@ -79,7 +79,7 @@
 
 **First release, 0.1.0 (12 November 2026, the owner asked for it):** a preview to show where Curva is. Pushing a tag `v*` runs `.github/workflows/release.yml`, which builds Windows, Linux and macOS (Apple silicon), adds `THIRD-PARTY-LICENSES.html` (made by `cargo-about` from `about.toml` and `about.hbs`) and the notices in `licenses/`, and publishes a GitHub pre-release with the notes in `docs/releases/<tag>.md`. Builds are not signed; on Windows a console window opens beside Curva.
 
-**0.1.1 (12 November 2026):** at the owner's request, releases come as a Windows installer (`.exe`, Inno Setup, per-user, no administrator rights), a Linux AppImage (built on Ubuntu 22.04 for older systems) and a macOS `.dmg` holding `Curva.app` (ad-hoc signed only). Packaging files are in `packaging/`. Pull requests that change the packaging build and check all three without publishing. The Linux icon is a placeholder until the owner chooses one.
+**0.1.1 (12 November 2026):** at the owner's request, releases come as a Windows installer (`.exe`, Inno Setup, per-user, no administrator rights), a Linux AppImage (built on Ubuntu 22.04 for older systems) and a macOS `.dmg` holding `Curva.app` (ad-hoc signed only). Packaging files are in `packaging/`. Pull requests that change the packaging build and check all three without publishing. The icon (`packaging/linux/curva.svg`) is a C drawn as an arc through three control points, chosen by the owner on 12 November 2026; Windows and macOS still use the default app icon.
 
 **Waiting for the owner**
 - Nothing yet. The engine is solidcore, with Serpentine3D's commands as the base (decision 0010). SolidCraft
