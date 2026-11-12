@@ -21,3 +21,9 @@ eframe = { version = "0.37", default-features = false, features = ["default_font
 # curva-document.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Reads Curva's icon for the window. Already in the build through curva-viewport.
+png = "0.18"
+
+# Puts Curva's icon into the Windows program, so Explorer and the task bar show it. Build time only.
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"

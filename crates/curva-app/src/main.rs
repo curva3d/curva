@@ -2370,6 +2370,26 @@ impl Curva {
     }
 }
 
+/// Curva's icon, for the window's title bar and the task bar.
+const ICON_PNG: &[u8] = include_bytes!("../../../packaging/icons/curva-256.png");
+
+/// The icon as the window wants it, or `None` if it cannot be read, in which case the system's
+/// default icon shows.
+fn window_icon() -> Option<egui::IconData> {
+    let mut decoder = png::Decoder::new(std::io::Cursor::new(ICON_PNG));
+    decoder.set_transformations(
+        png::Transformations::normalize_to_color8() | png::Transformations::ALPHA,
+    );
+    let mut reader = decoder.read_info().ok()?;
+    let mut rgba = vec![0; reader.output_buffer_size()?];
+    let info = reader.next_frame(&mut rgba).ok()?;
+    (info.color_type == png::ColorType::Rgba).then(|| egui::IconData {
+        rgba: rgba[..info.buffer_size()].to_vec(),
+        width: info.width,
+        height: info.height,
+    })
+}
+
 fn egui_wgpu_callback(rect: egui::Rect, drawing: Drawing) -> egui::Shape {
     eframe::egui_wgpu::Callback::new_paint_callback(rect, drawing).into()
 }
@@ -2556,6 +2576,10 @@ fn main() -> Result<(), String> {
             },
             // Shaded views need depth, so nearer faces hide farther ones.
             depth_buffer: DEPTH_BITS,
+            viewport: match window_icon() {
+                Some(icon) => egui::ViewportBuilder::default().with_icon(icon),
+                None => egui::ViewportBuilder::default(),
+            },
             ..eframe::NativeOptions::default()
         },
         Box::new(move |context| Ok(Box::new(Curva::new(context, benchmark)))),
@@ -2689,6 +2713,17 @@ mod tests {
                 assert!(!one.intersects(*other));
             }
         }
+    }
+
+    #[test]
+    fn the_window_icon_reads_as_a_square_with_see_through_corners() {
+        let icon = window_icon().expect("the icon reads");
+        assert_eq!((icon.width, icon.height), (256, 256));
+        assert_eq!(icon.rgba.len(), 256 * 256 * 4);
+        // The corner is outside the rounded square; the middle is inside it.
+        assert_eq!(icon.rgba[3], 0);
+        let middle = (128 * 256 + 128) * 4;
+        assert_eq!(icon.rgba[middle + 3], 255);
     }
 
     #[test]
