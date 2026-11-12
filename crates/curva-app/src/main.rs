@@ -172,6 +172,8 @@ struct Curva {
     gumball_drag: Option<GumballDrag>,
     /// A gumball handle clicked without a drag, and the value being typed for it.
     gumball_typing: Option<(Handle, String)>,
+    /// Whether Alt is held this frame, which turns object snaps off for the moment.
+    alt_held: bool,
     snaps: SnapSet,
     ortho: bool,
     grid_snap: bool,
@@ -694,6 +696,7 @@ impl Curva {
             waiting_approval: None,
             gumball_drag: None,
             gumball_typing: None,
+            alt_held: false,
             snaps: SnapSet::default(),
             ortho: false,
             grid_snap: false,
@@ -1182,14 +1185,50 @@ impl Curva {
 
     /// What the drag under way would do.
     fn gumball_change(&self, drag: &GumballDrag) -> Option<GumballChange> {
-        self.gumball()?.change_with(
-            &self.panes[drag.pane].camera,
+        let gumball = self.gumball()?;
+        let camera = &self.panes[drag.pane].camera;
+        let change = gumball.change_with(
+            camera,
             drag.size,
             drag.handle,
             drag.from,
             drag.now,
             drag.even,
-        )
+        )?;
+        // Object snaps apply to the point dragged: the centre lines up with the snapped point
+        // along the axis, or moves to it in the plane, as in Rhino. Alt turns them off.
+        let alt = self.alt_held;
+        let Some(hit) = self
+            .outlines
+            .snap(camera, drag.now, drag.size, &self.snaps, None)
+            .filter(|_| !alt)
+        else {
+            return Some(change);
+        };
+        let axis_of =
+            |index: usize| -> Point { std::array::from_fn(|i| f64::from(u8::from(i == index))) };
+        let to_hit: Point = std::array::from_fn(|i| hit.point[i] - gumball.centre[i]);
+        let along = |axis: Point| (0..3).map(|i| to_hit[i] * axis[i]).sum::<f64>();
+        Some(match (drag.handle, change) {
+            (Handle::Move(index), _) => {
+                let axis = axis_of(index);
+                GumballChange::Move(axis.map(|v| v * along(axis)))
+            }
+            (Handle::Extrude(index), _) => GumballChange::Extrude {
+                axis: axis_of(index),
+                distance: along(axis_of(index)),
+            },
+            (Handle::Plane(_) | Handle::Centre, _) => {
+                let index = match drag.handle {
+                    Handle::Plane(index) => index,
+                    _ => 2,
+                };
+                let normal = axis_of(index);
+                let off = along(normal);
+                GumballChange::Move(std::array::from_fn(|i| to_hit[i] - normal[i] * off))
+            }
+            (_, change) => change,
+        })
     }
 
     /// Runs the gumball for one viewport. Returns whether it took the mouse.
@@ -1951,6 +1990,7 @@ impl Curva {
     /// unless it holds typed text, which keeps its own undo. Alt+Z and Alt+Shift+Z step through
     /// the last-used viewport's views. Also keeps each viewport's view history.
     fn history_keys(&mut self, ctx: &egui::Context) {
+        self.alt_held = ctx.input(|input| input.modifiers.alt);
         use egui::{Key, KeyboardShortcut, Modifiers};
         let moving = ctx.input(|input| {
             input.pointer.any_down() || input.smooth_scroll_delta != egui::Vec2::ZERO
