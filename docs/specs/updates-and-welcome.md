@@ -9,10 +9,13 @@
   latest release of `curva3d/curva`. Nothing waits for the answer; no network means no message.
 - If it is newer, the command bar's first line says "Curva 0.4.0 is available. Click here to update."
 - Clicking it downloads the file for this system from the release, showing progress in the command bar:
-  - **Windows:** runs the new installer and closes Curva (after offering to save a changed model).
-  - **Linux:** replaces the running AppImage with the new one and restarts.
+  - **Windows:** offers to save a changed model, closes Curva, runs the new installer silently, and
+    reopens Curva when it finishes.
+  - **Linux:** replaces the running AppImage with the new one and reopens Curva.
   - **macOS:** opens the new disk image for the user to drag to Applications, as an unsigned app cannot
-    be replaced in place.
+    be replaced in place; Curva then quits, and a small helper it leaves running waits for the new copy
+    in Applications and opens it.
+  In every case the model that was open, if saved, opens again.
 - Before installing, the file's size and SHA-256 are checked against the release's checksums file,
   which the release workflow now publishes.
 
@@ -23,7 +26,7 @@ link to that release's notes on GitHub.
 
 ## 3. The welcome
 
-After any update line: "Curva is ready. What will you shape today?" These opening lines glow softly in
+After any update line: "Curva is ready. What will you Create today?" These opening lines glow softly in
 the accent for about two seconds, then settle.
 
 ## 4. How it is checked

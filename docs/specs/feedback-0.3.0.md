@@ -58,10 +58,14 @@ answer to questions are in decision 0017.
 30. Check for an update on GitHub each time Curva opens; say so in the command bar with "click here to
     update", which updates Curva on every system.
 31. After an update, the command bar says so and links to the release notes.
-32. On opening: "Curva is ready. What will you shape today?", after the update message if there is one.
+32. On opening: "Curva is ready. What will you Create today?", after the update message if there is one.
 33. The opening messages glow briefly.
 
 ## AI Assistant (`ai-assistant.md`)
 
 34. The MCP panel becomes the **AI Assistant**: models from cloud to local, as Serpentine3D offers
     (screenshot 2), and instructions for connecting an external assistant through MCP.
+
+## Rhino parity (`rhino-parity.md`)
+
+35. Every Rhino NURBS modelling command Curva is missing, each with an icon, in this same version.

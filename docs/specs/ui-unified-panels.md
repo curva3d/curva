@@ -6,9 +6,9 @@
 ## 1. Every piece is a panel
 
 The pieces are: the top bar, Commands (the command tabs and buttons), Layers, Properties, Command, AI
-Assistant, Display (the viewport display mode), Settings and About. All are drawn by the same code with
+Assistant, Display (the viewport display mode) and Settings. All are drawn by the same code with
 the same frame, glass, title font (Inter 13, the theme's quiet text), text size (Inter 14, the theme's
-text) and controls. Settings and About open as panels, floating in the centre of Curva's window, and can
+text) and controls. Settings opens as a panel, floating in the centre of Curva's window, and can
 be docked or merged like any other. Any panel that pops up does so in the centre of the window.
 
 ## 2. The top bar
@@ -41,7 +41,8 @@ the layout file.
 ## 5. Settings
 
 Tabs: **General** (theme, glass or solid, units, grid, check for updates on opening), **Interface**
-(§4), **AI Assistant** (`ai-assistant.md`). About opens from File as its own panel.
+(§4), **AI Assistant** (`ai-assistant.md`), and **About** last (version, licence, credits). File → About
+opens Settings at the About tab.
 
 ## 6. Smaller pieces
 
