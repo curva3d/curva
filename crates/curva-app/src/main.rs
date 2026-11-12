@@ -437,6 +437,26 @@ fn pane_rects(area: egui::Rect, maximised: Option<usize>) -> Vec<(usize, egui::R
     ]
 }
 
+/// A viewport stretched from `area` out to `reach` on each side where it touches the edge of
+/// `area`, so it carries on under a glass panel there.
+fn reaching(rect: egui::Rect, area: egui::Rect, reach: egui::Rect) -> egui::Rect {
+    let touches = |a: f32, b: f32| (a - b).abs() < 1.0;
+    let mut stretched = rect;
+    if touches(rect.min.x, area.min.x) {
+        stretched.min.x = reach.min.x;
+    }
+    if touches(rect.max.x, area.max.x) {
+        stretched.max.x = reach.max.x;
+    }
+    if touches(rect.min.y, area.min.y) {
+        stretched.min.y = reach.min.y;
+    }
+    if touches(rect.max.y, area.max.y) {
+        stretched.max.y = reach.max.y;
+    }
+    stretched
+}
+
 /// A viewport's size for the camera, never zero even while the window is being squashed.
 fn pane_size(rect: egui::Rect) -> [f64; 2] {
     [
@@ -545,7 +565,11 @@ impl Benchmark {
 impl Curva {
     fn new(context: &eframe::CreationContext<'_>, benchmark: Option<BenchmarkScene>) -> Self {
         if let Some(state) = context.wgpu_render_state.as_ref() {
-            let renderer = LineRenderer::new(&state.device, state.target_format);
+            let mut renderer = LineRenderer::new(&state.device, state.target_format);
+            // Software graphics, as over some remote desktops, show the glass's tint alone.
+            renderer.set_blur(
+                state.adapter.get_info().device_type != eframe::egui_wgpu::wgpu::DeviceType::Cpu,
+            );
             state.renderer.write().callback_resources.insert(renderer);
         }
         let mut doc = Document::default();
@@ -1498,13 +1522,17 @@ impl Curva {
         }
     }
 
-    /// Lays out and draws the panels, sliding them out of view in focus mode, and returns the
-    /// area left for the viewports.
-    fn panels(&mut self, ctx: &egui::Context, window: egui::Rect) -> egui::Rect {
+    /// Lays out and draws the panels, sliding them out of view in focus mode. Returns the area
+    /// left for the viewports, and how far they may reach to be seen through glass panels.
+    fn panels(&mut self, ctx: &egui::Context, window: egui::Rect) -> (egui::Rect, egui::Rect) {
         if ctx.input(|input| input.key_pressed(egui::Key::F12)) {
             self.toggle_focus();
         }
         let (placed, free) = self.layout.arrange(window);
+        let placed_bar = placed
+            .iter()
+            .copied()
+            .find(|(panel, _)| *panel == layout::PanelId::CommandBar);
         // Typing brings the command bar out until the command ends.
         let typing = !self.typed.is_empty() || self.processor.is_running();
         let pointer = ctx.pointer_hover_pos();
@@ -1594,10 +1622,27 @@ impl Curva {
         self.focus_tab(ctx, window);
         // In focus mode the viewports take the window, short of the strips left at its edges.
         if self.focus {
-            window.shrink(layout::STRIP)
-        } else {
-            free
+            return (window.shrink(layout::STRIP), window.shrink(layout::STRIP));
         }
+        // The viewports reach under the glass command bar, so there is something to see
+        // through it; their titles and frames stay in the free area.
+        let mut reach = free;
+        if let Some((_, bar)) = placed_bar
+            && let Some(place) = self
+                .layout
+                .places
+                .iter()
+                .find(|p| p.panel == layout::PanelId::CommandBar)
+        {
+            match place.dock {
+                layout::Dock::Bottom => reach.max.y = bar.max.y,
+                layout::Dock::Top => reach.min.y = bar.min.y,
+                layout::Dock::Left => reach.min.x = bar.min.x,
+                layout::Dock::Right => reach.max.x = bar.max.x,
+                layout::Dock::Floating { .. } => {}
+            }
+        }
+        (free, reach)
     }
 
     /// Hides every panel, or brings them all back.
@@ -1692,6 +1737,18 @@ impl Curva {
             .show(ctx, |ui| {
                 // Nothing a panel holds may spill outside its place.
                 ui.set_clip_rect(rect.expand(SHADOW_ROOM));
+                if glass {
+                    // The blurred view behind, under the tint the frame paints over it.
+                    ui.painter().add(egui::Shape::from(
+                        eframe::egui_wgpu::Callback::new_paint_callback(
+                            rect,
+                            curva_viewport::Glass {
+                                rect,
+                                radius: f32::from(PANEL_RADIUS),
+                            },
+                        ),
+                    ));
+                }
                 frame.show(ui, |ui| {
                     let inner = size - egui::Vec2::splat(2.0 * PANEL_MARGIN);
                     ui.set_min_size(inner);
@@ -2221,7 +2278,7 @@ impl Curva {
         }
     }
 
-    fn viewports(&mut self, ui: &mut egui::Ui, area: egui::Rect) {
+    fn viewports(&mut self, ui: &mut egui::Ui, area: egui::Rect, reach: egui::Rect) {
         // Picked edges and faces only mean something while a command asks for them.
         let wants = |kind: Kind| {
             self.processor
@@ -2236,6 +2293,7 @@ impl Curva {
         }
         let mut shown = Vec::new();
         for (pane, rect) in pane_rects(area, self.maximised) {
+            let rect = reaching(rect, area, reach);
             let response = ui.allocate_rect(rect, egui::Sense::click_and_drag());
             self.display_menu(ui, pane, rect);
             self.handle_mouse(ui, pane, &response, pane_size(rect));
@@ -2283,6 +2341,9 @@ impl Curva {
                 light: camera.forward().map(|value| value as f32),
                 shaded: display != DisplayMode::Wireframe,
                 ghosted: display == DisplayMode::Ghosted,
+                area: *rect,
+                frame: ui.ctx().cumulative_frame_nr(),
+                background: WINDOW_BACKGROUND,
             };
             ui.painter().add(egui_wgpu_callback(*rect, drawing));
             self.paint_frame(ui, *pane, *rect);
@@ -2330,7 +2391,7 @@ impl eframe::App for Curva {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.share_work_plane();
         // The panels float over the viewports, which take the area they leave free.
-        let free = self.panels(ui.ctx(), ui.max_rect());
+        let (free, reach) = self.panels(ui.ctx(), ui.max_rect());
         self.keep_agent_link(ui.ctx());
         self.serve_agents();
         self.approval_window(ui);
@@ -2341,7 +2402,7 @@ impl eframe::App for Curva {
         self.apply_view_request();
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(WINDOW_BACKGROUND))
-            .show(ui, |ui| self.viewports(ui, free));
+            .show(ui, |ui| self.viewports(ui, free, reach));
         if let Some(benchmark) = &mut self.benchmark {
             self.panes[PERSPECTIVE].camera.orbit(BENCHMARK_DRAG, 0.0);
             // Snapping is measured with every snap on, the slowest case.

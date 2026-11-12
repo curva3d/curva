@@ -1,6 +1,7 @@
 //! Curva's 3D viewport: what to draw, how to pick it, and drawing it on the graphics card.
 
 mod camera;
+mod glass;
 mod gpu;
 mod gumball;
 mod snap;
@@ -9,6 +10,7 @@ use curva_document::{Shape, State};
 use curva_kernel::{Curve, Point};
 
 pub use camera::{CPlane, Camera, StandardView};
+pub use glass::Glass;
 pub use gpu::{DEPTH_BITS, Drawing, LineRenderer, Picture, VIEW_SLOTS, save_picture};
 pub use gumball::{Gumball, GumballChange, Handle};
 pub use snap::{SnapHit, SnapKind, SnapSet, constrained};
