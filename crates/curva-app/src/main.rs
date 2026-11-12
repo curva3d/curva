@@ -419,6 +419,8 @@ struct GumballDrag {
     now: [f64; 2],
     /// Whether Shift is held, for an even scale.
     even: bool,
+    /// Whether Ctrl is held: with Shift, the circle scales evenly.
+    ctrl: bool,
 }
 
 /// One viewport: what it looks at and what it is tracking.
@@ -1224,14 +1226,17 @@ impl Curva {
     fn gumball_change(&self, drag: &GumballDrag) -> Option<GumballChange> {
         let gumball = self.gumball()?;
         let camera = &self.panes[drag.pane].camera;
-        let change = gumball.change_with(
-            camera,
-            drag.size,
-            drag.handle,
-            drag.from,
-            drag.now,
-            drag.even,
-        )?;
+        // The circle extrudes curves and open surfaces and stretches closed solids; Shift
+        // stretches anything, and Shift with Ctrl scales evenly.
+        let handle = match drag.handle {
+            Handle::Extrude(index) if drag.even || self.selection_all_solid() => {
+                Handle::Scale(index)
+            }
+            other => other,
+        };
+        let even_scale = drag.even && drag.ctrl;
+        let change =
+            gumball.change_with(camera, drag.size, handle, drag.from, drag.now, even_scale)?;
         // Object snaps apply to the point dragged: the centre lines up with the snapped point
         // along the axis, or moves to it in the plane, as in Rhino. Alt turns them off.
         let alt = self.alt_held;
@@ -1244,28 +1249,56 @@ impl Curva {
         };
         let axis_of =
             |index: usize| -> Point { std::array::from_fn(|i| f64::from(u8::from(i == index))) };
-        let to_hit: Point = std::array::from_fn(|i| hit.point[i] - gumball.centre[i]);
-        let along = |axis: Point| (0..3).map(|i| to_hit[i] * axis[i]).sum::<f64>();
-        Some(match (drag.handle, change) {
+        let from_centre = |p: Point| -> Point { std::array::from_fn(|i| p[i] - gumball.centre[i]) };
+        let to_hit = from_centre(hit.point);
+        let along = |v: Point, axis: Point| (0..3).map(|i| v[i] * axis[i]).sum::<f64>();
+        Some(match (handle, change) {
             (Handle::Move(index), _) => {
                 let axis = axis_of(index);
-                GumballChange::Move(axis.map(|v| v * along(axis)))
+                GumballChange::Move(axis.map(|v| v * along(to_hit, axis)))
             }
             (Handle::Extrude(index), _) => GumballChange::Extrude {
                 axis: axis_of(index),
-                distance: along(axis_of(index)),
+                distance: along(to_hit, axis_of(index)),
             },
+            // A stretch takes the snapped point to where the circle was.
+            (Handle::Scale(index), GumballChange::Stretch { origin, axis, .. }) => {
+                let held = gumball
+                    .handle_point(camera, drag.size, Handle::Scale(index))
+                    .map(|p| along(from_centre(p), axis))
+                    .unwrap_or(1.0);
+                let factor = along(to_hit, axis) / held;
+                if factor.is_finite() && factor > 1e-9 {
+                    GumballChange::Stretch {
+                        origin,
+                        axis,
+                        factor,
+                    }
+                } else {
+                    change
+                }
+            }
             (Handle::Plane(_) | Handle::Centre, _) => {
-                let index = match drag.handle {
+                let index = match handle {
                     Handle::Plane(index) => index,
                     _ => 2,
                 };
                 let normal = axis_of(index);
-                let off = along(normal);
+                let off = along(to_hit, normal);
                 GumballChange::Move(std::array::from_fn(|i| to_hit[i] - normal[i] * off))
             }
             (_, change) => change,
         })
+    }
+
+    /// Whether everything selected is a closed solid, which the gumball's circle stretches
+    /// rather than extrudes.
+    fn selection_all_solid(&self) -> bool {
+        let shapes = self.selected_shapes();
+        !shapes.is_empty()
+            && shapes
+                .iter()
+                .all(|(_, shape)| shape.body().is_some_and(curva_kernel::Body::is_solid))
     }
 
     /// Runs the gumball for one viewport. Returns whether it took the mouse.
@@ -1289,6 +1322,7 @@ impl Curva {
             if let Some(now) = ui.input(|input| input.pointer.latest_pos()) {
                 drag.now = local(now);
                 drag.even = ui.input(|input| input.modifiers.shift);
+                drag.ctrl = ui.input(|input| input.modifiers.command);
                 self.gumball_drag = Some(drag);
             }
             let released = events.iter().any(|event| {
@@ -1335,6 +1369,7 @@ impl Curva {
                     from: local(*pos),
                     now: local(*pos),
                     even: false,
+                    ctrl: false,
                 });
                 return true;
             }
@@ -1439,10 +1474,15 @@ impl Curva {
         let Some((handle, mut typed)) = self.gumball_typing.take() else {
             return;
         };
+        // The circle asks for a factor where it stretches, a distance where it extrudes.
+        let asked = match handle {
+            Handle::Extrude(index) if self.selection_all_solid() => Handle::Scale(index),
+            other => other,
+        };
         let Some(at) = ctx.pointer_latest_pos() else {
             return;
         };
-        let key = match handle {
+        let key = match asked {
             Handle::Turn(_) => "ui.gumball.angle",
             Handle::Scale(_) => "ui.gumball.factor",
             _ => "ui.gumball.distance",
@@ -1472,7 +1512,7 @@ impl Curva {
         if done {
             let even = ctx.input(|input| input.modifiers.shift);
             if let (Ok(value), Some(gumball)) = (typed.trim().parse::<f64>(), self.gumball())
-                && let Some(change) = gumball.typed(handle, value, even)
+                && let Some(change) = gumball.typed(asked, value, even)
             {
                 self.apply_gumball(change);
             }

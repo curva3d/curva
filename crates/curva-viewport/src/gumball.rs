@@ -1,6 +1,6 @@
 //! The gumball, as in Rhino (spec `docs/specs/gumball-rhino.md`): on-screen handles on the
 //! selection's centre that move, extrude, turn and scale it. Along each axis: an arrow at the
-//! tip to move, a circle midway to extrude, a small square just inside the arrow to scale; between
+//! tip to move, a circle midway to extrude (or stretch a solid along the axis); between
 //! each pair of axes a quarter arc to turn and a plane square to move in that plane; and the
 //! centre dot to move freely on the construction plane.
 
@@ -17,8 +17,6 @@ const HANDLE_REACH: f64 = 7.0;
 const ARC_STEPS: usize = 24;
 /// An axis pointing nearly at the viewer is too short on screen to be dragged.
 const SHORTEST_ON_SCREEN: f64 = 1e-3;
-/// Where along an arrow its scale square sits, as a part of its length.
-const SCALE_AT: f64 = 0.78;
 /// Where along an arrow its extrude circle sits.
 const EXTRUDE_AT: f64 = 0.5;
 /// How far out along both of its axes a plane square sits, as a part of an arrow's length.
@@ -268,9 +266,6 @@ impl Gumball {
             if seen && let Some(middle) = along(EXTRUDE_AT) {
                 found.push((Handle::Extrude(index), mark(middle, true)));
             }
-            if seen && let Some(near_tip) = along(SCALE_AT) {
-                found.push((Handle::Scale(index), mark(near_tip, false)));
-            }
             let (u, v) = (AXES[(index + 1) % 3], AXES[(index + 2) % 3]);
             // A quarter of a circle, from one of the other axes to the next.
             let radius = ARC_PIXELS * unit;
@@ -436,6 +431,18 @@ impl Gumball {
                 Some(GumballChange::Move(sub(end, start)))
             }
         }
+    }
+
+    /// Where an axis handle sits in the model: the tip of an arrow, the middle of a circle.
+    #[must_use]
+    pub fn handle_point(&self, camera: &Camera, size: [f64; 2], handle: Handle) -> Option<Point> {
+        let unit = self.units_per_pixel(camera, size)?;
+        let (index, part) = match handle {
+            Handle::Move(index) => (index, 1.0),
+            Handle::Extrude(index) | Handle::Scale(index) => (index, EXTRUDE_AT),
+            _ => return None,
+        };
+        Some(plus(self.centre, AXES[index], ARROW_PIXELS * unit * part))
     }
 
     /// The change a value typed for a handle makes: a distance for an arrow, a circle or a plane
