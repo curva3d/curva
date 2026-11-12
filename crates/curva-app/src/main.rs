@@ -202,6 +202,8 @@ struct Curva {
     side_tab: usize,
     /// When an agent last asked something, to show whether one is connected.
     agent_seen: Option<std::time::Instant>,
+    /// Where the pointer last aimed in a viewport, for Enter to place a point with a held distance.
+    last_aim: Option<Point>,
     /// Focus mode: the panels slid out of view.
     focus: bool,
     /// In focus mode, the one panel brought back out by clicking its strip.
@@ -306,6 +308,26 @@ fn log_rows(log: &[String]) -> Vec<&str> {
 /// Whether a press that moved from one place to another counts as a drag, not a click.
 fn is_box_drag(from: egui::Pos2, to: egui::Pos2) -> bool {
     (to - from).abs().max_elem() >= BOX_MIN_DRAG
+}
+
+/// The small tag beside the pointer saying what a step measures there, as in Serpentine3D.
+fn paint_cursor_tag(ui: &egui::Ui, pointer: egui::Pos2, text: &str) {
+    let painter = ui.ctx().layer_painter(egui::LayerId::new(
+        egui::Order::Foreground,
+        egui::Id::NULL.with("cursor tag"),
+    ));
+    let galley =
+        painter.layout_no_wrap(text.to_owned(), egui::FontId::monospace(12.0), TITLE_COLOUR);
+    let corner = pointer + egui::vec2(18.0, 14.0);
+    let frame = egui::Rect::from_min_size(corner, galley.size()).expand2(egui::vec2(6.0, 3.0));
+    painter.rect(
+        frame,
+        4.0,
+        PANEL_FILL,
+        egui::Stroke::new(1.0, PANEL_EDGE),
+        egui::StrokeKind::Inside,
+    );
+    painter.galley(corner, galley, TITLE_COLOUR);
 }
 
 /// The selection box: solid for a window, dashed for a crossing box, as in Rhino.
@@ -626,6 +648,7 @@ impl Curva {
             command_tab: 0,
             side_tab: 0,
             agent_seen: None,
+            last_aim: None,
             focus: false,
             revealed: None,
             drawn_panels: Vec::new(),
@@ -834,7 +857,13 @@ impl Curva {
             let line = self.processor.autofilled(&self.typed, self.highlight);
             self.typed.clear();
             self.highlight = 0;
-            self.processor.submit(&mut self.doc, &line);
+            // With a distance or angle held, Enter places the point where the pointer aims.
+            match self.last_aim {
+                Some(at) if line.is_empty() && self.processor.lock().is_set() => {
+                    self.processor.click(&mut self.doc, at);
+                }
+                _ => self.processor.submit(&mut self.doc, &line),
+            }
         }
         if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
             self.typed.clear();
@@ -902,6 +931,12 @@ impl Curva {
             )
         {
             return Some((hit.point, Some(hit)));
+        }
+        // A height or extrusion follows the pointer along its line, as in Rhino.
+        if let Some((origin, direction)) = request.along {
+            return camera
+                .line_point(screen, size, origin, direction)
+                .map(|at| (at, None));
         }
         let plane = self.panes[pane].plane;
         let cursor = camera.plane_point(screen, size, &plane)?;
@@ -2318,6 +2353,16 @@ impl Curva {
             }
         });
         let cursor = aimed.map(|(at, _)| at);
+        self.last_aim = cursor;
+        // Picking a point shows a crosshair, and what the step measures beside it.
+        if let Some((.., position)) = hovered
+            && self.takes_position()
+        {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+            if let Some(value) = cursor.and_then(|at| self.processor.measure(&self.doc, at)) {
+                paint_cursor_tag(ui, position, &format!("{value:.3} mm"));
+            }
+        }
         let mut previewed = self.processor.preview(&self.doc, cursor, &self.typed);
         previewed.extend(self.gumball_preview());
         let preview = ghost_lines(&previewed);

@@ -67,9 +67,12 @@ impl BoxSolid {
         made
     }
 
-    fn ask_height(&self) -> Step {
+    fn ask_height(&self, doc: &Document) -> Step {
+        let [.., up] = self.axes(doc);
         Step::Ask(Request {
             from: self.first,
+            // The height follows the pointer up and down, and lines up with what it snaps to.
+            along: self.first.map(|first| (first, up)),
             ..Request::new("prompt.box.height", Kind::Number)
         })
     }
@@ -87,7 +90,7 @@ impl Command for BoxSolid {
             (Some(_), None, Some(Answer::Point(other))) => match self.sides(doc, other) {
                 Some(sides) => {
                     self.base = Some(sides);
-                    self.ask_height()
+                    self.ask_height(doc)
                 }
                 None => Step::Failed(Message::new("error.flat_rectangle")),
             },

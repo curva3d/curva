@@ -1,7 +1,7 @@
 //! Runs commands: turns typed text and clicks into answers, and makes each command one undo step.
 
 use crate::commands::{CommandDef, autofilled, completions, resolve};
-use crate::{Answer, Command, Kind, Live, Message, Request, Step, Translations, ViewRequest};
+use crate::{Answer, Command, Kind, Live, Lock, Message, Request, Step, Translations, ViewRequest};
 use curva_document::{Document, State};
 use curva_kernel::{Curve, Point, cross};
 
@@ -17,6 +17,8 @@ pub struct Processor {
     active: Option<Active>,
     last: Option<&'static CommandDef>,
     last_point: Option<Point>,
+    /// A distance or angle typed for the next point, until it is placed.
+    lock: Lock,
     log: Vec<String>,
     text: Translations,
     view_requests: std::collections::VecDeque<ViewRequest>,
@@ -28,9 +30,34 @@ impl Default for Processor {
             active: None,
             last: None,
             last_point: None,
+            lock: Lock::default(),
             log: Vec::new(),
             text: Translations::english(),
             view_requests: std::collections::VecDeque::new(),
+        }
+    }
+}
+
+/// A distance or angle typed for a point measured from a base.
+#[derive(Debug, PartialEq)]
+enum TypedLock {
+    /// `25`: hold the distance.
+    Distance(f64),
+    /// `<30`: hold the angle, in degrees.
+    Angle(f64),
+    /// `25<30`: both, which places the point at once.
+    Both(f64, f64),
+}
+
+/// Reads `25`, `<30` or `25<30`. A positive, finite distance only; any finite angle.
+fn parse_lock(text: &str) -> Option<TypedLock> {
+    let number = |part: &str| part.trim().parse::<f64>().ok().filter(|v| v.is_finite());
+    match text.split_once('<') {
+        None => number(text).filter(|d| *d > 0.0).map(TypedLock::Distance),
+        Some((before, after)) if before.trim().is_empty() => number(after).map(TypedLock::Angle),
+        Some((before, after)) => {
+            let distance = number(before).filter(|d| *d > 0.0)?;
+            Some(TypedLock::Both(distance, number(after)?))
         }
     }
 }
@@ -111,13 +138,54 @@ impl Processor {
     /// The curves the running command would make or move, for the viewport to draw.
     #[must_use]
     pub fn preview(&self, doc: &Document, cursor: Option<Point>, typed: &str) -> Vec<Curve> {
+        let cursor = cursor.map(|at| self.constrained(doc, at));
+        let typed_number = typed.trim().parse().ok().filter(|n: &f64| n.is_finite());
+        // A size measured along a direction follows the pointer until a number is typed.
+        let along = cursor.and_then(|at| self.request()?.along_value(at));
         let live = Live {
             cursor,
-            number: typed.trim().parse().ok().filter(|n: &f64| n.is_finite()),
+            number: typed_number.or(along),
         };
         self.active
             .as_ref()
             .map_or_else(Vec::new, |active| active.command.preview(doc, &live))
+    }
+
+    /// The distance or angle typed for the next point, if any.
+    #[must_use]
+    pub fn lock(&self) -> Lock {
+        self.lock
+    }
+
+    /// Where the pointer at `cursor` lands for the current step, with any typed distance or angle
+    /// held (Rhino's typed constraints).
+    #[must_use]
+    pub fn constrained(&self, doc: &Document, cursor: Point) -> Point {
+        match self.request().and_then(Request::base) {
+            Some(base) if self.lock.is_set() && self.takes_point() => {
+                self.lock.apply(base, cursor, doc.work_plane())
+            }
+            _ => cursor,
+        }
+    }
+
+    /// What the current step measures at the pointer, for the tag beside it: a size along its
+    /// direction, or the distance from its base point.
+    #[must_use]
+    pub fn measure(&self, doc: &Document, cursor: Point) -> Option<f64> {
+        let request = self.request()?;
+        if let Some(value) = request.along_value(cursor) {
+            return Some(value);
+        }
+        let takes_distance = self.takes_point() || request.kind == Kind::Number;
+        let base = request.base().filter(|_| takes_distance)?;
+        let at = self.constrained(doc, cursor);
+        Some(curva_kernel::gap(at, base))
+    }
+
+    /// Whether the current step asks for a position that typed constraints apply to.
+    fn takes_point(&self) -> bool {
+        self.request().is_some_and(|r| r.kind == Kind::Point)
     }
 
     /// Adds a line to the log, for reports from outside the command line.
@@ -214,6 +282,34 @@ impl Processor {
             self.advance(doc, Some(Answer::Option(option)));
             return;
         }
+        // A point measured from a base takes a typed distance, angle or both, as in Rhino.
+        if request.kind == Kind::Point
+            && let Some(base) = request.base()
+            && let Some(typed_lock) = parse_lock(typed)
+        {
+            match typed_lock {
+                TypedLock::Distance(distance) => {
+                    self.lock.distance = Some(distance);
+                    self.say(&Message::with(
+                        "note.lock.distance",
+                        vec![distance.to_string()],
+                    ));
+                }
+                TypedLock::Angle(angle) => {
+                    self.lock.angle = Some(angle);
+                    self.say(&Message::with("note.lock.angle", vec![angle.to_string()]));
+                }
+                TypedLock::Both(distance, angle) => {
+                    let both = Lock {
+                        distance: Some(distance),
+                        angle: Some(angle),
+                    };
+                    let at = both.apply(base, base, doc.work_plane());
+                    self.advance(doc, Some(Answer::Point(at)));
+                }
+            }
+            return;
+        }
         let answer = match request.kind {
             Kind::Point => parse_point(typed, self.last_point, doc.work_frame())
                 .map(Answer::Point)
@@ -266,8 +362,18 @@ impl Processor {
         let Some(request) = self.request().cloned() else {
             return;
         };
+        if request.kind == Kind::Number
+            && let Some(value) = request.along_value(at)
+        {
+            self.advance(doc, Some(Answer::Number(value)));
+            return;
+        }
         match (request.kind, request.from) {
-            (Kind::Point | Kind::PointOrNumber | Kind::PickPart, _) => {
+            (Kind::Point, _) => {
+                let at = self.constrained(doc, at);
+                self.advance(doc, Some(Answer::Point(at)));
+            }
+            (Kind::PointOrNumber | Kind::PickPart, _) => {
                 self.advance(doc, Some(Answer::Point(at)));
             }
             (Kind::Number, Some(from)) => {
@@ -294,6 +400,10 @@ impl Processor {
     fn advance(&mut self, doc: &mut Document, answer: Option<Answer>) {
         if let Some(Answer::Point(point)) = &answer {
             self.last_point = Some(*point);
+        }
+        // A typed distance or angle holds for one point only.
+        if !matches!(answer, Some(Answer::Option(_))) {
+            self.lock = Lock::default();
         }
         let Some(active) = self.active.as_mut() else {
             return;
@@ -336,6 +446,90 @@ mod tests {
 
     const FRONT: Frame = ([0.0; 3], [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
     const RAISED: Frame = ([5.0, 5.0, 5.0], [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
+
+    fn near(a: Point, b: Point) -> bool {
+        curva_kernel::gap(a, b) < 1e-9
+    }
+
+    fn line_end(doc: &Document) -> Point {
+        let points = doc.state().objects[0].curve().unwrap().sample().unwrap();
+        points[points.len() - 1]
+    }
+
+    #[test]
+    fn typed_locks_are_read() {
+        assert_eq!(parse_lock("25"), Some(TypedLock::Distance(25.0)));
+        assert_eq!(parse_lock("<30"), Some(TypedLock::Angle(30.0)));
+        assert_eq!(parse_lock("25<30"), Some(TypedLock::Both(25.0, 30.0)));
+        assert_eq!(parse_lock("-5"), None);
+        assert_eq!(parse_lock("3,4"), None);
+    }
+
+    #[test]
+    fn a_typed_distance_holds_while_the_mouse_gives_the_direction() {
+        let mut doc = Document::default();
+        let mut processor = Processor::default();
+        for line in ["line", "1,1", "25"] {
+            processor.submit(&mut doc, line);
+        }
+        assert!(processor.lock().is_set());
+        // The pointer is 3, 4 away; the end is 25 away in that direction.
+        processor.click(&mut doc, [4.0, 5.0, 0.0]);
+        assert!(
+            near(line_end(&doc), [16.0, 21.0, 0.0]),
+            "{:?}",
+            line_end(&doc)
+        );
+    }
+
+    #[test]
+    fn a_typed_angle_holds_while_the_mouse_gives_the_distance() {
+        let mut doc = Document::default();
+        let mut processor = Processor::default();
+        for line in ["line", "0,0", "<90"] {
+            processor.submit(&mut doc, line);
+        }
+        processor.click(&mut doc, [3.0, 7.0, 0.0]);
+        assert!(
+            near(line_end(&doc), [0.0, 7.0, 0.0]),
+            "{:?}",
+            line_end(&doc)
+        );
+    }
+
+    #[test]
+    fn a_typed_distance_and_angle_place_the_point_at_once() {
+        let mut doc = Document::default();
+        let mut processor = Processor::default();
+        for line in ["line", "0,0", "10<90"] {
+            processor.submit(&mut doc, line);
+        }
+        assert!(
+            near(line_end(&doc), [0.0, 10.0, 0.0]),
+            "{:?}",
+            line_end(&doc)
+        );
+    }
+
+    #[test]
+    fn a_height_follows_a_point_off_the_plane() {
+        let mut doc = Document::default();
+        let mut processor = Processor::default();
+        for line in ["box", "0,0", "10,10"] {
+            processor.submit(&mut doc, line);
+        }
+        // A point snapped 7 above the plane, off to the side, gives a height of 7.
+        let above = [30.0, -4.0, 7.0];
+        assert_eq!(processor.measure(&doc, above), Some(7.0));
+        processor.click(&mut doc, above);
+        let volume = doc.state().objects[0]
+            .shape
+            .body()
+            .unwrap()
+            .volume()
+            .unwrap();
+        assert!((volume - 700.0).abs() < 1e-6, "{volume}");
+    }
 
     #[test]
     fn typed_points_follow_the_plane() {

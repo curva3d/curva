@@ -350,3 +350,5 @@ ui.agent.active = Agent connected
 ui.focus.on = Hide the panels (F12)
 ui.focus.off = Bring the panels back (F12)
 ui.layout.reset = Reset layout
+note.lock.distance = Distance held at {0}. Move the mouse to choose the direction, then click or press Enter.
+note.lock.angle = Angle held at {0}°. Move the mouse to choose the distance, then click.

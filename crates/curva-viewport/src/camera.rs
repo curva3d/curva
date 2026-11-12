@@ -311,20 +311,54 @@ impl Camera {
         self.plane_point(screen, size, &CPlane::WORLD_XY)
     }
 
-    /// The point on a plane under a screen position, if the view can reach it.
+    /// The line of sight through a screen position: where it starts and its direction. In a flat
+    /// view every line of sight runs the same way, from a point beside the view's centre.
     #[must_use]
-    pub fn plane_point(&self, screen: [f64; 2], size: [f64; 2], plane: &CPlane) -> Option<Point> {
+    pub fn ray(&self, screen: [f64; 2], size: [f64; 2]) -> (Point, Point) {
         let (f, r, u) = self.axes();
         let x = (screen[0] / size[0] * 2.0 - 1.0) * (size[0] / size[1]) / self.focal();
         let y = (1.0 - screen[1] / size[1] * 2.0) / self.focal();
         let eye = self.eye();
-        let (start, direction) = if self.parallel {
+        if self.parallel {
             let sideways = |axis: usize| eye[axis] + (r[axis] * x + u[axis] * y) * self.distance;
             ([sideways(0), sideways(1), sideways(2)], f)
         } else {
             let along = |axis: usize| f[axis] + r[axis] * x + u[axis] * y;
             (eye, [along(0), along(1), along(2)])
-        };
+        }
+    }
+
+    /// The point on the line through `origin` along `direction` nearest the line of sight through
+    /// a screen position, as Rhino finds a height from the mouse. `None` when looking straight
+    /// along the line.
+    #[must_use]
+    pub fn line_point(
+        &self,
+        screen: [f64; 2],
+        size: [f64; 2],
+        origin: Point,
+        direction: Point,
+    ) -> Option<Point> {
+        let (start, sight) = self.ray(screen, size);
+        let apart = sub(start, origin);
+        let (a, b, c) = (
+            dot(sight, sight),
+            dot(sight, direction),
+            dot(direction, direction),
+        );
+        let (d, e) = (dot(sight, apart), dot(direction, apart));
+        let denominator = a * c - b * b;
+        if denominator.abs() < 1e-12 * a * c {
+            return None;
+        }
+        let t = (a * e - b * d) / denominator;
+        Some(std::array::from_fn(|i| origin[i] + direction[i] * t))
+    }
+
+    /// The point on a plane under a screen position, if the view can reach it.
+    #[must_use]
+    pub fn plane_point(&self, screen: [f64; 2], size: [f64; 2], plane: &CPlane) -> Option<Point> {
+        let (start, direction) = self.ray(screen, size);
         let facing = dot(direction, plane.normal);
         if facing.abs() < 1e-9 {
             return None;
@@ -401,6 +435,32 @@ impl Camera {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_mouse_finds_heights_along_a_line() {
+        let size = [800.0, 600.0];
+        for camera in [Camera::default(), StandardView::Front.camera()] {
+            let up = [0.0, 0.0, 1.0];
+            for height in [-3.0, 0.0, 12.5] {
+                let point = [2.0, 1.0, height];
+                let screen = camera.project(point, size).unwrap();
+                let found = camera
+                    .line_point(screen, size, [2.0, 1.0, 0.0], up)
+                    .unwrap();
+                assert!(
+                    curva_kernel::gap(found, point) < 1e-6,
+                    "{found:?} for {point:?}"
+                );
+            }
+        }
+        // Looking straight down a vertical line gives no height.
+        let top = StandardView::Top.camera();
+        let screen = top.project([0.0; 3], size).unwrap();
+        assert!(
+            top.line_point(screen, size, [0.0; 3], [0.0, 0.0, 1.0])
+                .is_none()
+        );
+    }
 
     #[test]
     fn flat_views_keep_nearer_points_in_front() {

@@ -60,6 +60,8 @@ impl ExtrudeCrv {
             options: vec![SOLID_OPTION, BOTH_SIDES_OPTION],
             allow_empty: true,
             from: self.base(doc),
+            // The distance follows the pointer along the extrusion, snaps included.
+            along: self.base(doc).zip(unit(plane_normal(doc))),
             ..Request::new("prompt.extrudecrv.distance", Kind::Number)
         })
     }

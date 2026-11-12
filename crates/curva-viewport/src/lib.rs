@@ -25,8 +25,8 @@ const SELECTED_COLOUR: [f32; 3] = [1.0, 0.85, 0.2];
 const LOCKED_COLOUR: [f32; 3] = [0.45, 0.45, 0.48];
 /// Edges of surfaces and solids in shaded views.
 const EDGE_ON_FACES_COLOUR: [f32; 3] = [0.08, 0.08, 0.1];
-/// The colour every preview is drawn in.
-pub const PREVIEW_COLOUR: [f32; 3] = [0.45, 0.75, 1.0];
+/// The colour every preview is drawn in: the accent orange, `#e0782f` (decision 0016).
+pub const PREVIEW_COLOUR: [f32; 3] = [0.878, 0.471, 0.184];
 const X_AXIS_COLOUR: [f32; 3] = [0.85, 0.3, 0.3];
 const Y_AXIS_COLOUR: [f32; 3] = [0.35, 0.8, 0.4];
 
