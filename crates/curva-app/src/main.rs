@@ -3275,6 +3275,7 @@ impl Curva {
                 area: *rect,
                 frame: ui.ctx().cumulative_frame_nr(),
                 background: theme::current().window,
+                background_low: theme::current().window_low,
             };
             ui.painter().add(egui_wgpu_callback(*rect, drawing));
             self.paint_frame(ui, *pane, *rect);
