@@ -164,6 +164,24 @@ pub struct StepDef {
     /// The number option a number typed at this step sets, as Rhino's Offset takes a distance at
     /// its side prompt; the step is then asked again.
     pub sets: Option<&'static str>,
+    /// For objects: which sort it takes.
+    pub only: Only,
+    /// For objects: how many it needs; with fewer it asks again.
+    pub least: usize,
+    /// For objects: whether objects chosen at an earlier step are left out.
+    pub apart: bool,
+}
+
+/// Which sort of objects a step takes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Only {
+    /// Any object.
+    #[default]
+    Any,
+    /// Curves.
+    Curves,
+    /// Surfaces and solids.
+    Bodies,
 }
 
 impl StepDef {
@@ -176,6 +194,9 @@ impl StepDef {
             optional: false,
             options: None,
             sets: None,
+            only: Only::Any,
+            least: 1,
+            apart: false,
         }
     }
 
@@ -237,6 +258,34 @@ impl StepDef {
     #[must_use]
     pub fn offering(mut self, options: &[&'static str]) -> Self {
         self.options = Some(options.to_vec());
+        self
+    }
+
+    /// Takes only curves.
+    #[must_use]
+    pub fn curves(mut self) -> Self {
+        self.only = Only::Curves;
+        self
+    }
+
+    /// Takes only surfaces and solids.
+    #[must_use]
+    pub fn bodies(mut self) -> Self {
+        self.only = Only::Bodies;
+        self
+    }
+
+    /// Needs at least `count` objects.
+    #[must_use]
+    pub fn at_least(mut self, count: usize) -> Self {
+        self.least = count;
+        self
+    }
+
+    /// Leaves out objects chosen at an earlier step, as Rhino's Boolean commands do.
+    #[must_use]
+    pub fn apart(mut self) -> Self {
+        self.apart = true;
         self
     }
 
@@ -371,6 +420,9 @@ pub struct Context<'a> {
     plane: Option<[Point; 2]>,
     /// For the preview: a number being typed for an option, standing in for its value.
     held: Option<(&'static str, f64)>,
+    /// Whether this is for the preview rather than the result, so a recipe can show less of a
+    /// heavy change.
+    pub previewing: bool,
 }
 
 impl Context<'_> {
@@ -430,6 +482,9 @@ pub trait Recipe: Default + 'static {
     const NAME: &'static str;
     /// Its options; none by default.
     const OPTIONS: &'static [OptionDef] = &[];
+    /// Whether what the answers make goes into the model after each answer, as Rhino's Copy
+    /// places each copy at once, so later answers can snap to it. Off by default.
+    const PLACES_AS_IT_GOES: bool = false;
 
     /// The steps to ask, given the answers and mode so far. The list may change as they come in,
     /// and the command finishes once every step in it is answered.
@@ -468,6 +523,8 @@ pub struct RecipeCommand<R: Recipe> {
     shown: Shown,
     /// The construction plane when the first answer came.
     plane: Option<[Point; 2]>,
+    /// What a recipe that places as it goes has put in the model so far.
+    placed: Vec<u64>,
 }
 
 impl<R: Recipe> RecipeCommand<R> {
@@ -480,6 +537,7 @@ impl<R: Recipe> RecipeCommand<R> {
             options: R::OPTIONS,
             plane: self.plane,
             held: None,
+            previewing: false,
         }
     }
 
@@ -523,10 +581,18 @@ impl<R: Recipe> RecipeCommand<R> {
         let Some(step) = steps.get(self.values.len()).cloned() else {
             return self.finish(doc);
         };
-        // A selection made beforehand answers a step asking for objects, as in Rhino.
-        if step.kind == Kind::Objects && !doc.selection().is_empty() {
-            self.values.push(Value::Objects(doc.selection()));
-            return self.ask(doc);
+        if step.kind == Kind::Objects {
+            if self.values.is_empty() {
+                // A selection made beforehand answers the first step asking for objects, as in
+                // Rhino, when it has enough of the right sort.
+                let chosen = self.chosen(doc, &step, doc.selection());
+                if chosen.len() >= step.least {
+                    return self.step(doc, Some(Answer::Objects(chosen)));
+                }
+            } else {
+                // What was chosen before must not count as chosen again.
+                doc.select(&[]);
+            }
         }
         let (options, option_labels) = self.offered(doc, &step);
         let preview = step.from.into_iter().collect();
@@ -547,6 +613,35 @@ impl<R: Recipe> RecipeCommand<R> {
         })
     }
 
+    /// The objects among `ids` that `step` takes.
+    fn chosen(&self, doc: &Document, step: &StepDef, ids: Vec<u64>) -> Vec<u64> {
+        let earlier: Vec<u64> = if step.apart {
+            self.values
+                .iter()
+                .filter_map(|v| match v {
+                    Value::Objects(ids) => Some(ids.clone()),
+                    _ => None,
+                })
+                .flatten()
+                .collect()
+        } else {
+            Vec::new()
+        };
+        ids.into_iter()
+            .filter(|id| !earlier.contains(id))
+            .filter(|id| {
+                doc.state().objects.iter().any(|o| {
+                    o.id == *id
+                        && match step.only {
+                            Only::Any => true,
+                            Only::Curves => o.curve().is_some(),
+                            Only::Bodies => o.shape.body().is_some(),
+                        }
+                })
+            })
+            .collect()
+    }
+
     /// Takes a typed value for the option `name`, unless the option refuses it.
     fn set_option(&mut self, doc: &mut Document, name: &'static str, value: f64) -> Step {
         let Some(option) = R::OPTIONS.iter().find(|o| o.name == name) else {
@@ -559,11 +654,20 @@ impl<R: Recipe> RecipeCommand<R> {
         self.ask(doc)
     }
 
-    fn finish(&self, doc: &mut Document) -> Step {
+    fn finish(&mut self, doc: &mut Document) -> Step {
+        doc.remove(&std::mem::take(&mut self.placed));
         let made = match self.recipe.make(&self.context(doc, &self.values)) {
             Ok(made) => made,
             Err(message) => return Step::Failed(message),
         };
+        let message = made.message.clone();
+        Self::apply(doc, made);
+        Step::Done(message)
+    }
+
+    /// Puts what was made into the model, and returns the ids of the objects added.
+    fn apply(doc: &mut Document, made: Made) -> Vec<u64> {
+        let mut added = Vec::new();
         // Layers are looked up first, as a source may be among the objects taken away.
         let layers: Vec<Option<u64>> = made.derived.iter().map(|d| doc.layer_of(d.from)).collect();
         for id in &made.remove {
@@ -573,15 +677,16 @@ impl<R: Recipe> RecipeCommand<R> {
             doc.replace_shape(id, shape);
         }
         for shape in made.add {
-            doc.add_shape(shape);
+            added.push(doc.add_shape(shape));
         }
         for (derived, layer) in made.derived.into_iter().zip(layers) {
             let id = doc.add_shape_on(derived.shape, layer);
             if let Some(history) = derived.history {
                 doc.record_recipe(id, history);
             }
+            added.push(id);
         }
-        Step::Done(made.message)
+        added
     }
 
     fn choose_option(&mut self, doc: &mut Document, name: &'static str) -> Step {
@@ -653,7 +758,17 @@ impl<R: Recipe> Command for RecipeCommand<R> {
             Some(Answer::Option(name)) => return self.choose_option(doc, name),
             Some(Answer::Point(p)) => Value::Point(p),
             Some(Answer::Number(n)) => Value::Number(n),
-            Some(Answer::Objects(ids)) => Value::Objects(ids),
+            Some(Answer::Objects(ids)) => {
+                let step = self.steps(doc).get(self.values.len()).cloned();
+                let Some(step) = step.filter(|s| s.kind == Kind::Objects) else {
+                    return crate::commands::unexpected_step();
+                };
+                let chosen = self.chosen(doc, &step, ids);
+                if chosen.len() < step.least {
+                    return self.ask(doc);
+                }
+                Value::Objects(chosen)
+            }
             Some(Answer::Empty) => Value::Empty,
             Some(_) => return crate::commands::unexpected_step(),
         };
@@ -663,6 +778,13 @@ impl<R: Recipe> Command for RecipeCommand<R> {
         self.values.push(value);
         if let Err(message) = self.recipe.check(&self.context(doc, &self.values)) {
             return Step::Failed(message);
+        }
+        if R::PLACES_AS_IT_GOES && self.steps(doc).len() > self.values.len() {
+            doc.remove(&std::mem::take(&mut self.placed));
+            match self.recipe.make(&self.context(doc, &self.values)) {
+                Ok(made) => self.placed = Self::apply(doc, made),
+                Err(message) => return Step::Failed(message),
+            }
         }
         self.ask(doc)
     }
@@ -722,6 +844,7 @@ impl<R: Recipe> RecipeCommand<R> {
         }
         let mut cx = self.context(doc, &values);
         cx.held = held;
+        cx.previewing = true;
         let options: Vec<f64> = R::OPTIONS
             .iter()
             .map(|o| match o.kind {
@@ -736,7 +859,13 @@ impl<R: Recipe> RecipeCommand<R> {
         {
             return Some(made.clone());
         }
-        let made = self.recipe.make(&cx).ok()?;
+        let mut made = self.recipe.make(&cx).ok()?;
+        // What is already in the model is not shown again.
+        let placed = self.placed.len();
+        let from_add = placed.min(made.add.len());
+        made.add.drain(..from_add);
+        made.derived
+            .drain(..(placed - from_add).min(made.derived.len()));
         *self.shown.borrow_mut() = Some((values.clone(), self.mode, options, made.clone()));
         Some(made)
     }

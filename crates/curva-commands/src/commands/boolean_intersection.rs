@@ -1,72 +1,54 @@
-//! `BooleanIntersection`: keeps only where two sets of solids overlap, as in Rhino. The
-//! originals are replaced by what is left.
+//! `BooleanIntersection`, as in Rhino: keeps only where two sets of solids overlap. With
+//! `DeleteInput` (on, as in Rhino) the originals are replaced by what is left.
 
-use super::{ask_objects, bodies_of, geometry_failed, unexpected};
-use crate::{Answer, Command, Message, Step};
-use curva_document::{Document, Shape};
-use curva_kernel::{Body, Combine, KernelError};
+use super::bodies_of;
+use super::boolean_union::{DELETE_INPUT, failed, result, united};
+use crate::Message;
+use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef, Value};
+use curva_kernel::Combine;
 
-/// The running command.
+/// The recipe.
 #[derive(Default)]
-pub struct BooleanIntersection {
-    first: Option<Vec<u64>>,
-}
+pub struct BooleanIntersection;
 
-/// The solids joined into one.
-fn united(bodies: &[(u64, Body)]) -> Result<Option<Body>, KernelError> {
-    let mut whole = bodies[0].1.clone();
-    for (_, body) in &bodies[1..] {
-        match whole.combined(body, Combine::Union)? {
-            Some(made) => whole = made,
-            None => return Ok(None),
+impl Recipe for BooleanIntersection {
+    const NAME: &'static str = "booleanintersection";
+    const OPTIONS: &'static [OptionDef] = &[OptionDef::toggle(DELETE_INPUT, true)];
+
+    fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
+        let mut steps = vec![StepDef::objects("prompt.booleanintersection.first").bodies()];
+        if !cx.values.is_empty() {
+            steps.push(
+                StepDef::objects("prompt.booleanintersection.second")
+                    .bodies()
+                    .apart(),
+            );
         }
+        steps
     }
-    Ok(Some(whole))
-}
 
-impl Command for BooleanIntersection {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let Some(first) = self.first.clone() else {
-            let chosen = match answer {
-                Some(Answer::Objects(list)) => list,
-                _ => doc.selection(),
-            };
-            let solids: Vec<u64> = bodies_of(doc, &chosen).iter().map(|(id, _)| *id).collect();
-            if solids.is_empty() {
-                return ask_objects("prompt.booleanintersection.first");
-            }
-            self.first = Some(solids);
-            doc.select(&[]);
-            return ask_objects("prompt.booleanintersection.second");
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let (Some(Value::Objects(first)), Some(Value::Objects(second))) =
+            (cx.values.first(), cx.values.get(1))
+        else {
+            return Ok(Made::default());
         };
-        let Some(Answer::Objects(chosen)) = answer else {
-            return unexpected();
+        let (firsts, seconds) = (bodies_of(cx.doc, first), bodies_of(cx.doc, second));
+        let left = match (
+            united(&firsts).map_err(|e| failed(&e))?,
+            united(&seconds).map_err(|e| failed(&e))?,
+        ) {
+            (Some(a), Some(b)) => a
+                .combined(&b, Combine::Intersection)
+                .map_err(|e| failed(&e))?,
+            _ => None,
         };
-        let second: Vec<_> = bodies_of(doc, &chosen)
-            .into_iter()
-            .filter(|(id, _)| !first.contains(id))
-            .collect();
-        if second.is_empty() {
-            return ask_objects("prompt.booleanintersection.second");
+        if left.is_none() {
+            return Err(Message::new("error.boolean.empty"));
         }
-        let firsts = bodies_of(doc, &first);
-        let made = match (united(&firsts), united(&second)) {
-            (Ok(Some(a)), Ok(Some(b))) => a.combined(&b, Combine::Intersection),
-            (Err(error), _) | (_, Err(error)) => return geometry_failed(&error),
-            _ => Ok(None),
-        };
-        let left = match made {
-            Ok(left) => left,
-            Err(error) => return geometry_failed(&error),
-        };
-        let Some(body) = left else {
-            return Step::Failed(Message::new("error.boolean.empty"));
-        };
-        let layer = doc.layer_of(firsts[0].0);
-        let ids: Vec<u64> = firsts.iter().chain(&second).map(|(id, _)| *id).collect();
-        doc.remove(&ids);
-        doc.add_shape_on(Shape::Body(body), layer);
-        Step::Done(Some(Message::new("done.booleanintersection")))
+        let used: Vec<u64> = firsts.iter().chain(&seconds).map(|(id, _)| *id).collect();
+        let message = Message::new("done.booleanintersection");
+        Ok(result(cx, left, used[0], used, message))
     }
 }
 

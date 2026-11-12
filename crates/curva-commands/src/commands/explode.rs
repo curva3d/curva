@@ -1,43 +1,47 @@
-//! `Explode`: breaks joined curves and polylines back into separate curves.
+//! `Explode`, as in Rhino: breaks joined curves and polylines back into separate curves.
 
-use super::ask_objects;
-use crate::{Answer, Command, Message, Step};
-use curva_document::Document;
-use curva_kernel::Curve;
+use crate::Message;
+use crate::recipe::{Context, Derived, Made, Recipe, StepDef, Value};
+use curva_document::Shape;
 
-/// The running command.
+/// The recipe.
 #[derive(Default)]
 pub struct Explode;
 
-impl Command for Explode {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let chosen = match answer {
-            Some(Answer::Objects(list)) => list,
-            _ => doc.selection(),
+impl Recipe for Explode {
+    const NAME: &'static str = "explode";
+
+    fn steps(&self, _cx: &Context<'_>) -> Vec<StepDef> {
+        vec![StepDef::objects("prompt.explode.objects")]
+    }
+
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let Some(Value::Objects(chosen)) = cx.values.first() else {
+            return Ok(Made::default());
         };
-        if chosen.is_empty() {
-            return ask_objects("prompt.explode.objects");
-        }
-        let broken: Vec<(u64, Vec<Curve>)> = doc
-            .state()
-            .objects
-            .iter()
-            .filter(|object| chosen.contains(&object.id))
-            .filter_map(|object| Some((object.id, object.curve()?.exploded()?)))
-            .collect();
-        if broken.is_empty() {
-            return Step::Failed(Message::new("error.nothing_to_explode"));
-        }
-        let mut made = 0;
-        for (id, parts) in broken {
-            let layer = doc.layer_of(id);
-            doc.remove(&[id]);
-            made += parts.len();
-            for part in parts {
-                doc.add_on(part, layer);
+        let mut made = Made::default();
+        for object in &cx.doc.state().objects {
+            if !chosen.contains(&object.id) {
+                continue;
             }
+            let Some(parts) = object.curve().and_then(curva_kernel::Curve::exploded) else {
+                continue;
+            };
+            made.remove.push(object.id);
+            made.derived.extend(parts.into_iter().map(|part| Derived {
+                shape: Shape::Curve(part),
+                from: object.id,
+                history: None,
+            }));
         }
-        Step::Done(Some(Message::with("done.explode", vec![made.to_string()])))
+        if made.remove.is_empty() {
+            return Err(Message::new("error.nothing_to_explode"));
+        }
+        made.message = Some(Message::with(
+            "done.explode",
+            vec![made.derived.len().to_string()],
+        ));
+        Ok(made)
     }
 }
 

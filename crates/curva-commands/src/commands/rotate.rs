@@ -1,97 +1,91 @@
-//! `Rotate`: turns objects about a point, on the plane being drawn on.
+//! `Rotate`, as in Rhino: turns objects about a centre on the plane being drawn on, by an angle
+//! typed or between two reference points. `Copy` turns copies instead. Rhino's `UseLastCenter` is
+//! still to come (`docs/commands/rhino-reference.md`).
 
-use super::{ask_objects, ask_point, ask_point_or_number, ghosts, guide, plane_normal, unexpected};
-use crate::{Answer, Command, Live, Message, Step};
-use curva_document::Document;
+use super::{Change, changed};
+use crate::Message;
+use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef, Value};
 use curva_kernel::{Curve, Point, Similarity, cross, dot, flattened, sub, unit};
 
-/// The running command.
+const COPY: &str = "Copy";
+
+/// The recipe.
 #[derive(Default)]
-pub struct Rotate {
-    ids: Option<Vec<u64>>,
-    centre: Option<Point>,
-    first: Option<Point>,
-    axis: Point,
+pub struct Rotate;
+
+/// The signed turn from one reference point to another about `centre`, seen along `axis`.
+fn turn(axis: Point, centre: Point, first: Point, second: Point) -> Option<f64> {
+    let across = |p: Point| unit(flattened(sub(p, centre), axis));
+    let (from, to) = (across(first)?, across(second)?);
+    Some(dot(axis, cross(from, to)).atan2(dot(from, to)))
 }
 
-impl Rotate {
-    fn finish(doc: &mut Document, ids: &[u64], centre: Point, axis: Point, angle: f64) -> Step {
-        doc.transform(ids, &Similarity::rotation(centre, axis, angle));
-        Step::Done(Some(Message::with(
-            "done.rotate",
-            vec![ids.len().to_string()],
-        )))
+/// The turn the answers give, in radians: typed in degrees, or between two reference points.
+fn angle(cx: &Context<'_>) -> Option<f64> {
+    let centre = cx.values.get(1).and_then(Value::point)?;
+    match cx.values.get(2)? {
+        Value::Number(degrees) => Some(degrees.to_radians()),
+        Value::Point(first) => {
+            let [x, y] = cx.plane();
+            turn(
+                cross(x, y),
+                centre,
+                *first,
+                cx.values.get(3).and_then(Value::point)?,
+            )
+        }
+        _ => None,
     }
 }
 
-impl Command for Rotate {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let Some(ids) = self.ids.clone() else {
-            let chosen = match answer {
-                Some(Answer::Objects(list)) => list,
-                _ => doc.selection(),
-            };
-            if chosen.is_empty() {
-                return ask_objects("prompt.rotate.objects");
-            }
-            self.ids = Some(chosen);
-            return ask_point("prompt.rotate.centre", Vec::new());
-        };
-        match (self.centre, self.first, answer) {
-            (None, None, Some(Answer::Point(centre))) => {
-                self.centre = Some(centre);
-                self.axis = plane_normal(doc);
-                ask_point_or_number("prompt.rotate.angle", vec![centre])
-            }
-            (Some(centre), None, Some(Answer::Number(degrees))) => {
-                Self::finish(doc, &ids, centre, self.axis, degrees.to_radians())
-            }
-            (Some(centre), None, Some(Answer::Point(first))) => {
-                self.first = Some(first);
-                ask_point("prompt.rotate.second", vec![centre])
-            }
-            (Some(centre), Some(first), Some(Answer::Point(second))) => {
-                let Some(angle) = self.turn(centre, first, second) else {
-                    return Step::Failed(Message::new("error.reference_point"));
-                };
-                Self::finish(doc, &ids, centre, self.axis, angle)
-            }
-            _ => unexpected(),
+impl Recipe for Rotate {
+    const NAME: &'static str = "rotate";
+    const OPTIONS: &'static [OptionDef] = &[OptionDef::toggle(COPY, false)];
+
+    fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
+        let mut steps = vec![StepDef::objects("prompt.rotate.objects").offering(&[])];
+        if !cx.values.is_empty() {
+            steps.push(StepDef::point("prompt.rotate.centre"));
         }
+        if let Some(centre) = cx.values.get(1).and_then(Value::point) {
+            steps.push(StepDef::point_or_number("prompt.rotate.angle").from(centre));
+            if cx.values.get(2).and_then(Value::point).is_some() {
+                steps.push(StepDef::point("prompt.rotate.second").from(centre));
+            }
+        }
+        steps
     }
 
-    fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
-        let (Some(ids), Some(centre)) = (&self.ids, self.centre) else {
-            return Vec::new();
-        };
-        let turned = |angle: f64| {
-            let change = Similarity::rotation(centre, self.axis, angle);
-            ghosts(doc, ids, |curve| curve.mapped(&change))
-        };
-        let mut shown = Vec::new();
-        match (self.first, live.number, live.cursor) {
-            (None, Some(degrees), _) => shown.extend(turned(degrees.to_radians())),
-            (Some(first), _, Some(cursor)) => {
-                if let Some(angle) = self.turn(centre, first, cursor) {
-                    shown.extend(turned(angle));
-                }
-                shown.extend(guide(centre, first));
-            }
-            _ => {}
+    fn check(&self, cx: &Context<'_>) -> Result<(), Message> {
+        if cx.values.get(3).is_some() && angle(cx).is_none() {
+            return Err(Message::new("error.reference_point"));
         }
-        if let Some(cursor) = live.cursor {
-            shown.extend(guide(centre, cursor));
-        }
-        shown
+        Ok(())
     }
-}
 
-impl Rotate {
-    /// The signed turn from one reference point to another, seen along the axis.
-    fn turn(&self, centre: Point, first: Point, second: Point) -> Option<f64> {
-        let across = |p: Point| unit(flattened(sub(p, centre), self.axis));
-        let (from, to) = (across(first)?, across(second)?);
-        Some(dot(self.axis, cross(from, to)).atan2(dot(from, to)))
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let (Some(Value::Objects(ids)), Some(centre)) =
+            (cx.values.first(), cx.values.get(1).and_then(Value::point))
+        else {
+            return Ok(Made::default());
+        };
+        let mut guides: Vec<Curve> = cx.values[2..]
+            .iter()
+            .filter_map(Value::point)
+            .filter_map(|p| Curve::line(centre, p).ok())
+            .collect();
+        let Some(angle) = angle(cx) else {
+            return Ok(Made {
+                guides,
+                ..Made::default()
+            });
+        };
+        let [x, y] = cx.plane();
+        let change = Change::Map(Similarity::rotation(centre, cross(x, y), angle));
+        let mut made = changed(cx, ids, &[change], cx.toggle(COPY), |_, _| None);
+        made.guides.append(&mut guides);
+        made.message = Some(Message::with("done.rotate", vec![ids.len().to_string()]));
+        Ok(made)
     }
 }
 
@@ -150,6 +144,14 @@ mod tests {
     fn it_is_one_undo_step() {
         let mut doc = selected_line();
         run(&mut doc, &["rotate", "0,0", "90", "undo"]);
+        assert!(close(start_of_first(&doc), [1.0, 0.0, 0.0]));
+    }
+
+    #[test]
+    fn copy_turns_a_copy_and_keeps_the_original() {
+        let mut doc = selected_line();
+        run(&mut doc, &["rotate", "copy", "0,0", "90"]);
+        assert_eq!(doc.state().objects.len(), 2);
         assert!(close(start_of_first(&doc), [1.0, 0.0, 0.0]));
     }
 }

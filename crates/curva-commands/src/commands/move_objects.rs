@@ -1,86 +1,109 @@
-//! `Move`: moves objects, or picked control points, from one point to another.
+//! `Move`, as in Rhino: moves objects, or picked control points, from one point to another. With
+//! `Vertical`, the move goes straight up or down from the plane being drawn on, following the
+//! mouse. Rhino's `Normal` and Enter for the bounding box centre are still to come
+//! (`docs/commands/rhino-reference.md`).
 
-use super::{ask_objects, ask_point, geometry_failed, ghost_results, ghosts, guide, unexpected};
-use crate::{Answer, Command, Live, Message, Step};
-use curva_document::{Document, Grip};
-use curva_kernel::{Curve, Point, sub};
+use super::{Change, changed};
+use crate::Message;
+use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef, Value};
+use curva_document::Shape;
+use curva_kernel::{Point, cross, sub};
 
-/// The running command.
+const VERTICAL: &str = "Vertical";
+
+/// The recipe.
 #[derive(Default)]
-pub struct MoveObjects {
-    ids: Option<Vec<u64>>,
-    /// Picked control points, which are moved instead of whole objects, as in Rhino.
-    grips: Vec<Grip>,
-    from: Option<Point>,
+pub struct MoveObjects;
+
+/// How many answers come before the point to move from: none when control points are picked.
+fn picked_first(cx: &Context<'_>) -> usize {
+    usize::from(cx.doc.grip_selection().is_empty())
 }
 
-fn shifted(by: Point) -> impl Fn(Point) -> Point {
-    move |p| [p[0] + by[0], p[1] + by[1], p[2] + by[2]]
-}
-
-impl Command for MoveObjects {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let Some(ids) = self.ids.clone() else {
-            let grips = doc.grip_selection();
-            if answer.is_none() && !grips.is_empty() {
-                self.ids = Some(grips.iter().map(|(id, _)| *id).collect());
-                self.grips = grips;
-                return ask_point("prompt.move.from", Vec::new());
-            }
-            let chosen = match answer {
-                Some(Answer::Objects(list)) => list,
-                _ => doc.selection(),
-            };
-            if chosen.is_empty() {
-                return ask_objects("prompt.move.objects");
-            }
-            self.ids = Some(chosen);
-            return ask_point("prompt.move.from", Vec::new());
-        };
-        match (self.from, answer) {
-            (None, Some(Answer::Point(from))) => {
-                self.from = Some(from);
-                ask_point("prompt.move.to", vec![from])
-            }
-            (Some(from), Some(Answer::Point(to))) if !self.grips.is_empty() => {
-                match doc.grips_changed(&self.grips, shifted(sub(to, from))) {
-                    Ok(made) => {
-                        for (id, curve) in made {
-                            doc.replace(id, curve);
-                        }
-                        Step::Done(Some(Message::with(
-                            "done.move_points",
-                            vec![self.grips.len().to_string()],
-                        )))
-                    }
-                    Err(error) => geometry_failed(&error),
-                }
-            }
-            (Some(from), Some(Answer::Point(to))) => {
-                doc.translate(&ids, sub(to, from));
-                Step::Done(Some(Message::with(
-                    "done.move",
-                    vec![ids.len().to_string()],
-                )))
-            }
-            _ => unexpected(),
+/// Where the move ends: the point given, or the height given straight out of the plane.
+pub(super) fn end(cx: &Context<'_>, from: Point, value: Option<&Value>) -> Option<Point> {
+    match value? {
+        Value::Point(p) => Some(*p),
+        Value::Number(height) => {
+            let [x, y] = cx.plane();
+            let up = cross(x, y);
+            Some(std::array::from_fn(|i| from[i] + up[i] * height))
         }
-    }
-
-    fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
-        let (Some(ids), Some(from), Some(cursor)) = (&self.ids, self.from, live.cursor) else {
-            return Vec::new();
-        };
-        let by = sub(cursor, from);
-        let mut shown = guide(from, cursor);
-        if self.grips.is_empty() {
-            shown.extend(ghosts(doc, ids, |curve| curve.translated(by)));
-        } else if let Ok(made) = doc.grips_changed(&self.grips, shifted(by)) {
-            shown.extend(ghost_results(made));
-        }
-        shown
+        _ => None,
     }
 }
+
+/// The step asking where a move ends, straight up with `Vertical`.
+pub(super) fn end_step(cx: &Context<'_>, prompt: &'static str, from: Point) -> StepDef {
+    if cx.toggle(VERTICAL) {
+        let [x, y] = cx.plane();
+        StepDef::along("prompt.move.height", from, cross(x, y))
+    } else {
+        StepDef::point(prompt).from(from)
+    }
+}
+
+impl Recipe for MoveObjects {
+    const NAME: &'static str = "move";
+    const OPTIONS: &'static [OptionDef] = &[OptionDef::toggle(VERTICAL, false)];
+
+    fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
+        let first = picked_first(cx);
+        let mut steps = Vec::new();
+        if first == 1 {
+            steps.push(StepDef::objects("prompt.move.objects").offering(&[]));
+        }
+        if cx.values.len() >= first {
+            steps.push(StepDef::point("prompt.move.from"));
+        }
+        if let Some(from) = cx.values.get(first).and_then(Value::point) {
+            steps.push(end_step(cx, "prompt.move.to", from));
+        }
+        steps
+    }
+
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let first = picked_first(cx);
+        let Some(from) = cx.values.get(first).and_then(Value::point) else {
+            return Ok(Made::default());
+        };
+        let Some(to) = end(cx, from, cx.values.get(first + 1)) else {
+            return Ok(Made::default());
+        };
+        let by = sub(to, from);
+        let guides = curva_kernel::Curve::line(from, to)
+            .ok()
+            .into_iter()
+            .collect();
+        if first == 0 {
+            let grips = cx.doc.grip_selection();
+            let moved = cx
+                .doc
+                .grips_changed(&grips, |p| std::array::from_fn(|i| p[i] + by[i]))
+                .map_err(|e| Message::with("error.geometry", vec![e.to_string()]))?;
+            return Ok(Made {
+                replace: moved
+                    .into_iter()
+                    .map(|(id, c)| (id, Shape::Curve(c)))
+                    .collect(),
+                guides,
+                message: Some(Message::with(
+                    "done.move_points",
+                    vec![grips.len().to_string()],
+                )),
+                ..Made::default()
+            });
+        }
+        let Some(Value::Objects(ids)) = cx.values.first() else {
+            return Ok(Made::default());
+        };
+        let mut made = changed(cx, ids, &[Change::Move(by)], false, |_, _| None);
+        made.guides.extend::<Vec<_>>(guides);
+        made.message = Some(Message::with("done.move", vec![ids.len().to_string()]));
+        Ok(made)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::run;
@@ -143,5 +166,13 @@ mod tests {
         let before = doc.state().clone();
         run(&mut doc, &["move", "0,0", "9,9", "undo"]);
         assert_eq!(doc.state(), &before);
+    }
+
+    #[test]
+    fn vertical_moves_straight_up_by_a_typed_height() {
+        let mut doc = one_selected_line();
+        run(&mut doc, &["move", "vertical", "0,0", "7"]);
+        let start = doc.state().objects[0].curve().unwrap().sample().unwrap()[0];
+        assert_eq!(start, [0.0, 0.0, 7.0]);
     }
 }

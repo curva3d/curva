@@ -1,66 +1,74 @@
-//! `Copy`: places copies of objects at each point given, until Enter.
+//! `Copy`, as in Rhino: places copies of objects at each point given, until Enter. `InPlace` adds
+//! a copy where the objects are and ends; `Vertical` places copies straight up or down from the
+//! plane being drawn on. Rhino's `FromLastPoint`, `UseLastDistance` and `UseLastDirection` are
+//! still to come (`docs/commands/rhino-reference.md`).
 
-use super::{ask_objects, ask_point, ghosts, guide, unexpected};
-use crate::{Answer, Command, Kind, Live, Message, Request, Step};
-use curva_document::Document;
-use curva_kernel::{Curve, Point, sub};
+use super::move_objects::{end, end_step};
+use super::{Change, changed};
+use crate::Message;
+use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef, Value};
+use curva_kernel::sub;
 
-/// The running command.
+const VERTICAL: &str = "Vertical";
+const IN_PLACE: &str = "InPlace";
+
+/// The recipe.
 #[derive(Default)]
-pub struct CopyObjects {
-    ids: Option<Vec<u64>>,
-    from: Option<Point>,
-    placed: usize,
-}
+pub struct CopyObjects;
 
-fn ask_target(from: Point) -> Step {
-    Step::Ask(Request {
-        allow_empty: true,
-        preview: vec![from],
-        ..Request::new("prompt.copy.to", Kind::Point)
-    })
-}
+impl Recipe for CopyObjects {
+    const NAME: &'static str = "copy";
+    const PLACES_AS_IT_GOES: bool = true;
+    const OPTIONS: &'static [OptionDef] = &[
+        OptionDef::toggle(VERTICAL, false),
+        OptionDef::finish(IN_PLACE),
+    ];
 
-impl Command for CopyObjects {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let Some(ids) = self.ids.clone() else {
-            let chosen = match answer {
-                Some(Answer::Objects(list)) => list,
-                _ => doc.selection(),
-            };
-            if chosen.is_empty() {
-                return ask_objects("prompt.copy.objects");
-            }
-            self.ids = Some(chosen);
-            return ask_point("prompt.copy.from", Vec::new());
-        };
-        match (self.from, answer) {
-            (None, Some(Answer::Point(from))) => {
-                self.from = Some(from);
-                ask_target(from)
-            }
-            (Some(from), Some(Answer::Point(to))) => {
-                self.placed += doc
-                    .copy(&ids, [to[0] - from[0], to[1] - from[1], to[2] - from[2]])
-                    .len();
-                ask_target(from)
-            }
-            (Some(_), Some(Answer::Empty)) => Step::Done(Some(Message::with(
-                "done.copy",
-                vec![self.placed.to_string()],
-            ))),
-            _ => unexpected(),
+    fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
+        let mut steps = vec![StepDef::objects("prompt.copy.objects").offering(&[])];
+        if cx.values.is_empty() {
+            return steps;
         }
+        steps.push(StepDef::point("prompt.copy.from").offering(&[IN_PLACE]));
+        let Some(from) = cx.values.get(1).and_then(Value::point) else {
+            return steps;
+        };
+        // One step per copy placed, then one more, which Enter answers to end.
+        for _ in 2..cx.values.len() {
+            steps.push(end_step(cx, "prompt.copy.to", from).offering(&[VERTICAL]));
+        }
+        if cx.values.last() != Some(&Value::Empty) {
+            steps.push(
+                end_step(cx, "prompt.copy.to", from)
+                    .offering(&[VERTICAL])
+                    .optional(),
+            );
+        }
+        steps
     }
 
-    fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
-        let (Some(ids), Some(from), Some(cursor)) = (&self.ids, self.from, live.cursor) else {
-            return Vec::new();
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let Some(Value::Objects(ids)) = cx.values.first() else {
+            return Ok(Made::default());
         };
-        let by = sub(cursor, from);
-        let mut shown = guide(from, cursor);
-        shown.extend(ghosts(doc, ids, |curve| curve.translated(by)));
-        shown
+        let mut changes: Vec<Change> = Vec::new();
+        let mut guides = Vec::new();
+        if let Some(from) = cx.values.get(1).and_then(Value::point) {
+            for value in &cx.values[2..] {
+                if let Some(to) = end(cx, from, Some(value)) {
+                    changes.push(Change::Move(sub(to, from)));
+                    guides.extend(curva_kernel::Curve::line(from, to).ok());
+                }
+            }
+        }
+        if cx.mode == Some(IN_PLACE) {
+            changes.push(Change::Move([0.0; 3]));
+        }
+        let mut made = changed(cx, ids, &changes, true, |_, _| None);
+        let count = made.derived.len();
+        made.guides.extend(guides);
+        made.message = Some(Message::with("done.copy", vec![count.to_string()]));
+        Ok(made)
     }
 }
 
@@ -103,5 +111,14 @@ mod tests {
         let before = doc.state().clone();
         run(&mut doc, &["cp", "0,0", "5,0", "9,0", "", "undo"]);
         assert_eq!(doc.state(), &before);
+    }
+
+    #[test]
+    fn in_place_adds_a_copy_where_the_objects_are() {
+        let mut doc = one_selected_line();
+        run(&mut doc, &["copy", "inplace"]);
+        let objects = &doc.state().objects;
+        assert_eq!(objects.len(), 2);
+        assert_eq!(objects[0].shape, objects[1].shape);
     }
 }

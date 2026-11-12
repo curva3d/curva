@@ -1,46 +1,48 @@
-//! `Join`: makes curves that meet end to end into one curve.
+//! `Join`, as in Rhino: makes curves that meet end to end into one curve. Rhino's `Undo` while
+//! picking one by one is still to come (`docs/commands/rhino-reference.md`).
 
-use super::{ask_objects, geometry_failed};
-use crate::{Answer, Command, Message, Step};
-use curva_document::Document;
+use super::curves_of;
+use crate::Message;
+use crate::recipe::{Context, Derived, Made, Recipe, StepDef, Value};
+use curva_document::Shape;
 use curva_kernel::{Curve, join};
 
-/// The running command.
+/// The recipe.
 #[derive(Default)]
 pub struct Join;
 
-impl Command for Join {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let chosen = match answer {
-            Some(Answer::Objects(list)) => list,
-            _ => doc.selection(),
+impl Recipe for Join {
+    const NAME: &'static str = "join";
+
+    fn steps(&self, _cx: &Context<'_>) -> Vec<StepDef> {
+        vec![StepDef::objects("prompt.join.objects").curves().at_least(2)]
+    }
+
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let Some(Value::Objects(chosen)) = cx.values.first() else {
+            return Ok(Made::default());
         };
-        if chosen.len() < 2 {
-            return ask_objects("prompt.join.objects");
-        }
-        let (ids, curves): (Vec<u64>, Vec<Curve>) = doc
-            .state()
-            .objects
-            .iter()
-            .filter(|object| chosen.contains(&object.id))
-            .filter_map(|object| Some((object.id, object.curve()?.clone())))
-            .unzip();
-        let made = match join(&curves) {
-            Ok(made) => made,
-            Err(error) => return geometry_failed(&error),
-        };
+        let (ids, curves): (Vec<u64>, Vec<Curve>) = curves_of(cx.doc, chosen).into_iter().unzip();
+        let made =
+            join(&curves).map_err(|e| Message::with("error.geometry", vec![e.to_string()]))?;
         if made.is_empty() {
-            return Step::Failed(Message::new("error.nothing_to_join"));
+            return Err(Message::new("error.nothing_to_join"));
         }
-        let mut joined = 0;
+        let mut result = Made::default();
         for (replaced, curve) in made {
             let gone: Vec<u64> = replaced.iter().map(|index| ids[*index]).collect();
-            joined += gone.len();
-            let layer = gone.first().and_then(|id| doc.layer_of(*id));
-            doc.remove(&gone);
-            doc.add_on(curve, layer);
+            result.derived.push(Derived {
+                shape: Shape::Curve(curve),
+                from: gone[0],
+                history: None,
+            });
+            result.remove.extend(gone);
         }
-        Step::Done(Some(Message::with("done.join", vec![joined.to_string()])))
+        result.message = Some(Message::with(
+            "done.join",
+            vec![result.remove.len().to_string()],
+        ));
+        Ok(result)
     }
 }
 

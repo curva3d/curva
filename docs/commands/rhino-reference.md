@@ -48,15 +48,15 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 
 | Command | Rhino's steps | Rhino's options | In Curva | Status |
 |---|---|---|---|---|
-| Move | Select objects; point to move from (Enter: bounding box centre); point to move to (a typed distance constrains) | `Normal` `Vertical` | none | partly |
-| Copy | Select objects; point to copy from; points to copy to, once per copy; Enter ends | `Vertical` `InPlace` `FromLastPoint` `UseLastDistance` `UseLastDirection` | none | partly |
-| Rotate | Select objects; centre; angle typed or two reference points | `UseLastCenter` `Copy` | none | partly |
+| Move | Select objects; point to move from (Enter: bounding box centre); point to move to (a typed distance constrains) | `Normal` `Vertical` | `Vertical` | partly |
+| Copy | Select objects; point to copy from; points to copy to, once per copy; Enter ends | `Vertical` `InPlace` `FromLastPoint` `UseLastDistance` `UseLastDirection` | `Vertical` `InPlace` | partly |
+| Rotate | Select objects; centre; angle typed or two reference points | `UseLastCenter` `Copy` | `Copy` | partly |
 | Rotate3D | Select objects; axis start; axis end; angle typed or two reference points | `SurfaceNormal` `UseLastAxis` `Copy` | none | partly |
-| Scale | Select objects; base point (Enter: bounding box centre); factor typed or two reference points | `Copy` `Rigid` | none | partly |
+| Scale | Select objects; base point (Enter: bounding box centre); factor typed or two reference points | `Copy` `Rigid` | `Copy` | partly |
 | Scale1D | Select objects; base point; factor and direction, or two reference points (0 flattens) | `Copy` `Rigid` | none | partly |
 | Scale2D | Select objects; base point; factor or two reference points, in the construction plane | `Copy` `Rigid` | none | partly |
 | ScaleNU | Select objects; origin; X, Y, Z factors in turn (Enter is 1) | `Copy` `Rigid` `WorldCoordinates` | `Copy` | partly |
-| Mirror | Select objects; start of mirror plane; end of mirror plane | `3Point` `Copy` `XAxis` `YAxis` `ZAxis` `Object` | none | partly |
+| Mirror | Select objects; start of mirror plane; end of mirror plane | `3Point` `Copy` `XAxis` `YAxis` `ZAxis` `Object` | `Copy` `XAxis` `YAxis` | partly |
 | Array | Select objects; numbers in X, Y, Z; unit cell corners; height or Enter for the width | `Mode` `Number` `XNumber` `YNumber` `ZNumber` `Preview` `Spacing` `XSpacing` `YSpacing` `ZSpacing` | none | partly |
 | ArrayPolar | Select objects; centre; number of items; angle to fill (on Rhino's Array page) | `Axis` `UseLastAxis` `Preview` `StepAngle` `Rotate` `ZOffset` | none | partly |
 | ArrayCrv | Select objects; path curve; number of items or spacing | `Basepoint` `Items` `Distance` `Orientation` | none | partly |
@@ -70,7 +70,7 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | Command | Rhino's steps | Rhino's options | In Curva | Status |
 |---|---|---|---|---|
 | Join | Select objects one by one; Enter | `Undo` | none | partly |
-| Explode | Select objects | none | none | partly |
+| Explode | Select objects | none | none | done |
 | Split | Objects to split; cutting objects; Enter | `Point` `Isocurve` `Shrink` | none | partly |
 | Trim | Cutting objects; parts to trim away (Shift extends) | `ExtendCuttingLines` `ApparentIntersections` `Line` | none | partly |
 | Delete | Select objects | none | none | partly |
@@ -100,9 +100,9 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | Pipe | Select a curve; start radius; end radius; more radii; Enter | `ChainEdges` `Multiple` `Diameter` `Thick` `Cap` `FitRail` `ShapeBlending` `WallThickness` | `Cap` `Thick` | partly |
 | OffsetSrf | Select a surface or solid; distance | `Distance` `Corner` `ThroughPoint` `FlipAll` `Solid` `Loose` `Tolerance` `BothSides` `DeleteInput` | `Solid` | partly |
 | Box | First corner of base; other corner or length; height, Enter uses the width | `Diagonal` `Cube` `3Point` `EdgeMidpoint` `Vertical` `Center` `BothSides` | `Center` `BothSides` | partly |
-| BooleanUnion | Select objects; Enter | `DeleteInput` `MergeCoplanarFaces` | none | partly |
-| BooleanDifference | Objects to subtract from; Enter; objects to subtract with; Enter | `DeleteInput` `DeleteCutters` | none | partly |
-| BooleanIntersection | First set; Enter; second set; Enter | `DeleteInput` | none | partly |
+| BooleanUnion | Select objects; Enter | `DeleteInput` `MergeCoplanarFaces` | `DeleteInput` | partly |
+| BooleanDifference | Objects to subtract from; Enter; objects to subtract with; Enter | `DeleteInput` `DeleteCutters` | `DeleteInput` | partly |
+| BooleanIntersection | First set; Enter; second set; Enter | `DeleteInput` | `DeleteInput` | done |
 | FilletEdge | Select edges; edit radius handles; Enter | `ShowRadius` `NextRadius` `ChainEdges` `FaceEdges` `PreviousEdgeSelection` `TrimAndJoin` `RailType` `AddHandle` `RemoveHandle` `SetAll` `LinkHandles` | none | partly |
 | ChamferEdge | Select edges; edit distance handles; Enter | `ShowChamferDistance` `NextChamferDistance` `ChainEdges` `FaceEdges` `PreviousEdgeSelection` `TrimAndJoin` `RailType` `AddHandle` `RemoveHandle` `SetAll` `LinkHandles` | none | partly |
 | Shell | Select faces to remove; Enter (on Rhino's OffsetSrf page) | `Thickness` `DeleteInput` `EditThickness` | none | partly |

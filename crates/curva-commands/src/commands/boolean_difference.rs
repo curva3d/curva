@@ -1,68 +1,68 @@
-//! `BooleanDifference`: cuts solids away from others, as in Rhino. First the solids to cut
-//! from, then the solids to cut with; the cutters are used up.
+//! `BooleanDifference`, as in Rhino: cuts solids away from others. First the solids to cut from,
+//! then the solids to cut with. With `DeleteInput` (on, as in Rhino) the originals and the cutters
+//! are used up. Rhino's `DeleteCutters` is still to come (`docs/commands/rhino-reference.md`).
 
-use super::{ask_objects, bodies_of, geometry_failed, unexpected};
-use crate::{Answer, Command, Message, Step};
-use curva_document::{Document, Shape};
+use super::bodies_of;
+use super::boolean_union::{DELETE_INPUT, failed};
+use crate::Message;
+use crate::recipe::{Context, Derived, Made, OptionDef, Recipe, StepDef, Value};
+use curva_document::Shape;
 use curva_kernel::Combine;
 
-/// The running command.
+/// The recipe.
 #[derive(Default)]
-pub struct BooleanDifference {
-    from: Option<Vec<u64>>,
-}
+pub struct BooleanDifference;
 
-impl Command for BooleanDifference {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let Some(from) = self.from.clone() else {
-            let chosen = match answer {
-                Some(Answer::Objects(list)) => list,
-                _ => doc.selection(),
-            };
-            let solids: Vec<u64> = bodies_of(doc, &chosen).iter().map(|(id, _)| *id).collect();
-            if solids.is_empty() {
-                return ask_objects("prompt.booleandifference.from");
-            }
-            self.from = Some(solids);
-            doc.select(&[]);
-            return ask_objects("prompt.booleandifference.with");
-        };
-        let Some(Answer::Objects(chosen)) = answer else {
-            return unexpected();
-        };
-        let cutters: Vec<_> = bodies_of(doc, &chosen)
-            .into_iter()
-            .filter(|(id, _)| !from.contains(id))
-            .collect();
-        if cutters.is_empty() {
-            return ask_objects("prompt.booleandifference.with");
+impl Recipe for BooleanDifference {
+    const NAME: &'static str = "booleandifference";
+    const OPTIONS: &'static [OptionDef] = &[OptionDef::toggle(DELETE_INPUT, true)];
+
+    fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
+        let mut steps = vec![StepDef::objects("prompt.booleandifference.from").bodies()];
+        if !cx.values.is_empty() {
+            steps.push(
+                StepDef::objects("prompt.booleandifference.with")
+                    .bodies()
+                    .apart(),
+            );
         }
-        let mut results = Vec::new();
-        for (id, body) in bodies_of(doc, &from) {
+        steps
+    }
+
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let (Some(Value::Objects(from)), Some(Value::Objects(with))) =
+            (cx.values.first(), cx.values.get(1))
+        else {
+            return Ok(Made::default());
+        };
+        let cutters = bodies_of(cx.doc, with);
+        let mut made = Made::default();
+        for (id, body) in bodies_of(cx.doc, from) {
             let mut left = Some(body);
             for (_, cutter) in &cutters {
                 let Some(current) = left else { break };
-                left = match current.combined(cutter, Combine::Difference) {
-                    Ok(made) => made,
-                    Err(error) => return geometry_failed(&error),
-                };
+                left = current
+                    .combined(cutter, Combine::Difference)
+                    .map_err(|e| failed(&e))?;
             }
-            results.push((id, left));
-        }
-        let cutter_ids: Vec<u64> = cutters.iter().map(|(id, _)| *id).collect();
-        doc.remove(&cutter_ids);
-        for (id, left) in results {
-            let layer = doc.layer_of(id);
-            doc.remove(&[id]);
             // A solid cut away entirely is gone, as in Rhino.
-            if let Some(body) = left {
-                doc.add_shape_on(Shape::Body(body), layer);
-            }
+            made.derived.extend(left.map(|body| Derived {
+                shape: Shape::Body(body),
+                from: id,
+                history: None,
+            }));
+            made.remove.push(id);
         }
-        Step::Done(Some(Message::with(
+        if cx.toggle(DELETE_INPUT) {
+            made.remove.extend(cutters.iter().map(|(id, _)| *id));
+        } else {
+            made.remove.clear();
+        }
+        made.message = Some(Message::with(
             "done.booleandifference",
             vec![from.len().to_string()],
-        )))
+        ));
+        Ok(made)
     }
 }
 
