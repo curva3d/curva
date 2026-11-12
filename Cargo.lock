@@ -419,6 +419,8 @@ dependencies = [
  "curva-mcp",
  "curva-viewport",
  "eframe",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

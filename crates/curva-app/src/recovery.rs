@@ -14,9 +14,15 @@ const EXTENSION: &str = "curva";
 /// saves back to it.
 const SOURCE_EXTENSION: &str = "source";
 
-/// The folder recovery files go in: the user's app-data folder for Curva.
+/// The folder recovery files go in, inside [`app_folder`].
 #[must_use]
 pub fn folder() -> Option<PathBuf> {
+    Some(app_folder()?.join("recovery"))
+}
+
+/// Curva's own folder in the user's app data, for what Curva keeps per user.
+#[must_use]
+pub fn app_folder() -> Option<PathBuf> {
     let base = if cfg!(target_os = "windows") {
         std::env::var_os("LOCALAPPDATA").map(PathBuf::from)
     } else if cfg!(target_os = "macos") {
@@ -27,7 +33,7 @@ pub fn folder() -> Option<PathBuf> {
             .filter(|path| path.is_absolute())
             .or_else(|| std::env::home_dir().map(|home| home.join(".local").join("share")))
     };
-    Some(base?.join("Curva").join("recovery"))
+    Some(base?.join("Curva"))
 }
 
 /// Keeps one running Curva's recovery file up to date.
