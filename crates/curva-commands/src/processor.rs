@@ -107,7 +107,9 @@ impl Processor {
     pub fn prompt(&self) -> Option<String> {
         let request = self.request()?;
         let mut shown = self.text.render(&request.prompt);
-        if !request.options.is_empty() {
+        if !request.option_labels.is_empty() {
+            shown = format!("{shown} ( {} )", request.option_labels.join("  "));
+        } else if !request.options.is_empty() {
             shown = format!("{shown} ({})", request.options.join(", "));
         }
         Some(shown)

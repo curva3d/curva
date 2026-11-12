@@ -17,7 +17,7 @@ impl Command for Polyline {
             .run
             .feed(answer, "prompt.polyline.start", "prompt.polyline.next")
         {
-            RunState::Asking(step) => step,
+            RunState::Asking(step) => *step,
             RunState::Finished { closed } => {
                 let count = self.run.points.len();
                 match Curve::polyline(self.run.points.clone(), closed) {

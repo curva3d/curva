@@ -3,6 +3,7 @@
 
 pub mod commands;
 mod processor;
+pub mod recipe;
 mod text;
 
 use curva_document::Document;
@@ -76,6 +77,9 @@ pub struct Request {
     /// the direction, of length 1. The pointer, snapped, is projected onto that line, so the size
     /// follows the mouse and lines up with what it snaps to, as in Rhino.
     pub along: Option<(Point, Point)>,
+    /// How to show the options in the prompt, Rhino's way, such as `Solid=Yes`; when empty the
+    /// option words are shown as they are.
+    pub option_labels: Vec<String>,
 }
 
 impl Request {
@@ -90,6 +94,7 @@ impl Request {
             preview: Vec::new(),
             from: None,
             along: None,
+            option_labels: Vec::new(),
         }
     }
 
