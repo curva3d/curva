@@ -21,6 +21,11 @@ pub enum OptionKind {
     /// A way of making the result, such as Arc's `StartPoint`: choosing it switches to it for this
     /// run, and the steps can change with it.
     Mode,
+    /// Finishes the command at once in this way, such as `Close` on a polyline; the recipe sees
+    /// it as the mode.
+    Finish,
+    /// Takes back the last answer, as Rhino's `Undo` option does while drawing.
+    Undo,
 }
 
 /// One option of a command.
@@ -59,6 +64,24 @@ impl OptionDef {
             kind: OptionKind::Mode,
         }
     }
+
+    /// An option that finishes the command in its own way.
+    #[must_use]
+    pub const fn finish(name: &'static str) -> Self {
+        Self {
+            name,
+            kind: OptionKind::Finish,
+        }
+    }
+
+    /// Rhino's `Undo` while drawing: takes back the last answer.
+    #[must_use]
+    pub const fn undo() -> Self {
+        Self {
+            name: "Undo",
+            kind: OptionKind::Undo,
+        }
+    }
 }
 
 /// One step of a recipe: what it asks for.
@@ -74,8 +97,8 @@ pub struct StepDef {
     pub along: Option<(Point, Point)>,
     /// Whether Enter with nothing typed answers it.
     pub optional: bool,
-    /// Which of the recipe's options this step offers; all of them when empty.
-    pub options: Vec<&'static str>,
+    /// Which of the recipe's options this step offers: all of them unless a list is given.
+    pub options: Option<Vec<&'static str>>,
 }
 
 impl StepDef {
@@ -86,7 +109,7 @@ impl StepDef {
             from: None,
             along: None,
             optional: false,
-            options: Vec::new(),
+            options: None,
         }
     }
 
@@ -141,7 +164,7 @@ impl StepDef {
     /// Offers only these of the recipe's options at this step.
     #[must_use]
     pub fn offering(mut self, options: &[&'static str]) -> Self {
-        self.options = options.to_vec();
+        self.options = Some(options.to_vec());
         self
     }
 }
@@ -194,6 +217,44 @@ pub struct Made {
     pub message: Option<Message>,
 }
 
+/// The steps of a run of points ended by Enter, as Polyline and Curve take them: the first point,
+/// then one more each time, which Enter may answer once `enough` points are placed. Each point is
+/// measured from the one before, so typed distances and angles work. A run already ended by Enter
+/// asks nothing more.
+#[must_use]
+pub fn point_run(
+    cx: &Context<'_>,
+    first: &'static str,
+    next: &'static str,
+    enough: usize,
+) -> Vec<StepDef> {
+    let points: Vec<Point> = cx.values.iter().filter_map(Value::point).collect();
+    let mut steps: Vec<StepDef> = cx
+        .values
+        .iter()
+        .enumerate()
+        .map(|(i, _)| StepDef::point(if i == 0 { first } else { next }))
+        .collect();
+    if cx.values.last() == Some(&Value::Empty) {
+        return steps;
+    }
+    let mut step = StepDef::point(if points.is_empty() { first } else { next });
+    if let Some(last) = points.last() {
+        step = step.from(*last);
+    }
+    if points.len() >= enough {
+        step = step.optional();
+    }
+    steps.push(step);
+    steps
+}
+
+/// The points of a run made by [`point_run`].
+#[must_use]
+pub fn run_points(cx: &Context<'_>) -> Vec<Point> {
+    cx.values.iter().filter_map(Value::point).collect()
+}
+
 /// What a recipe sees: the model, the answers so far, the mode chosen, and its options' values.
 pub struct Context<'a> {
     /// The model.
@@ -204,6 +265,8 @@ pub struct Context<'a> {
     pub mode: Option<&'static str>,
     command: &'static str,
     options: &'static [OptionDef],
+    /// The construction plane when the first answer came, which the command keeps.
+    plane: Option<[Point; 2]>,
 }
 
 impl Context<'_> {
@@ -231,10 +294,11 @@ impl Context<'_> {
         }
     }
 
-    /// The construction plane's X and Y directions.
+    /// The construction plane's X and Y directions: the one in use when the first answer came,
+    /// kept for the rest of the command, as in Rhino, even if another viewport is used later.
     #[must_use]
     pub fn plane(&self) -> [Point; 2] {
-        self.doc.work_plane()
+        self.plane.unwrap_or_else(|| self.doc.work_plane())
     }
 }
 
@@ -285,6 +349,8 @@ pub struct RecipeCommand<R: Recipe> {
     /// The last preview made and the answers it was made from, so the lines and the ghosted
     /// solids of one frame come from one `make`.
     shown: Shown,
+    /// The construction plane when the first answer came.
+    plane: Option<[Point; 2]>,
 }
 
 impl<R: Recipe> RecipeCommand<R> {
@@ -295,6 +361,7 @@ impl<R: Recipe> RecipeCommand<R> {
             mode: self.mode,
             command: R::NAME,
             options: R::OPTIONS,
+            plane: self.plane,
         }
     }
 
@@ -307,7 +374,11 @@ impl<R: Recipe> RecipeCommand<R> {
         let cx = self.context(doc, &self.values);
         R::OPTIONS
             .iter()
-            .filter(|o| step.options.is_empty() || step.options.contains(&o.name))
+            .filter(|o| {
+                step.options
+                    .as_ref()
+                    .is_none_or(|only| only.contains(&o.name))
+            })
             .map(|o| {
                 let label = match o.kind {
                     OptionKind::Toggle(_) => {
@@ -318,7 +389,7 @@ impl<R: Recipe> RecipeCommand<R> {
                         )
                     }
                     OptionKind::Number(_) => format!("{}={}", o.name, cx.number(o.name)),
-                    OptionKind::Mode => o.name.to_owned(),
+                    OptionKind::Mode | OptionKind::Finish | OptionKind::Undo => o.name.to_owned(),
                 };
                 (o.name, label)
             })
@@ -388,6 +459,17 @@ impl<R: Recipe> RecipeCommand<R> {
                 self.mode = Some(name);
                 self.ask(doc)
             }
+            Some(OptionKind::Finish) => {
+                self.mode = Some(name);
+                if let Err(message) = self.recipe.check(&self.context(doc, &self.values)) {
+                    return Step::Failed(message);
+                }
+                self.finish(doc)
+            }
+            Some(OptionKind::Undo) => {
+                self.values.pop();
+                self.ask(doc)
+            }
             None => crate::commands::unexpected_step(),
         }
     }
@@ -412,6 +494,9 @@ impl<R: Recipe> Command for RecipeCommand<R> {
             Some(Answer::Empty) => Value::Empty,
             Some(_) => return crate::commands::unexpected_step(),
         };
+        if self.values.is_empty() {
+            self.plane = Some(doc.work_plane());
+        }
         self.values.push(value);
         if let Err(message) = self.recipe.check(&self.context(doc, &self.values)) {
             return Step::Failed(message);
@@ -451,7 +536,13 @@ impl<R: Recipe> RecipeCommand<R> {
         if let Some(step) = steps.get(values.len()) {
             match step.kind {
                 Kind::Point => values.extend(live.cursor.map(Value::Point)),
-                Kind::Number => values.extend(live.number.map(Value::Number)),
+                // A typed number, or else the pointer's distance from where the step measures,
+                // as a click would give.
+                Kind::Number => values.extend(
+                    live.number
+                        .or_else(|| Some(curva_kernel::gap(live.cursor?, step.from?)))
+                        .map(Value::Number),
+                ),
                 Kind::PointOrNumber => values.extend(
                     live.number
                         .map(Value::Number)

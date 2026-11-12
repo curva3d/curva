@@ -153,7 +153,7 @@ macro_rules! recipe {
 /// Every command Curva has.
 pub static COMMANDS: [CommandDef; 100] = [
     recipe!("Line", ["l"], true, line::Line),
-    listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
+    recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     listed!(
         "InterpCrv",
         ["interpcurve"],
@@ -161,7 +161,7 @@ pub static COMMANDS: [CommandDef; 100] = [
         true,
         interpcrv::InterpCrv
     ),
-    listed!("Circle", ["c", "ci"], true, true, circle::Circle),
+    recipe!("Circle", ["c", "ci"], true, circle::Circle),
     listed!("Move", ["m"], true, true, move_objects::MoveObjects),
     listed!("Copy", ["co", "cp"], true, true, copy::CopyObjects),
     listed!("Rotate", ["ro"], true, true, rotate::Rotate),
@@ -268,7 +268,7 @@ pub static COMMANDS: [CommandDef; 100] = [
     listed!("Scale2D", [], true, true, scale2d::Scale2D),
     listed!("ScaleNU", [], true, true, scale_nu::ScaleNu),
     recipe!("Arc", ["a"], true, arc::Arc),
-    listed!("Rectangle", ["rec"], true, true, rectangle::Rectangle),
+    recipe!("Rectangle", ["rec"], true, rectangle::Rectangle),
     recipe!("Box", [], true, box_solid::BoxSolid),
     listed!("ExtrudeCrv", [], true, true, extrude_crv::ExtrudeCrv),
     listed!("PlanarSrf", [], true, true, planar_srf::PlanarSrf),
@@ -375,6 +375,29 @@ fn unexpected() -> Step {
 /// An answer a step did not ask for, for the framework in `recipe.rs`.
 pub(crate) fn unexpected_step() -> Step {
     unexpected()
+}
+
+/// The centre and radius of the circle through three points, on the plane with axes `x` and `y`
+/// through the first point. `None` when the points lie in a line.
+pub(crate) fn circle_through(
+    a: Point,
+    b: Point,
+    c: Point,
+    [x, y]: [Point; 2],
+) -> Option<(Point, f64)> {
+    let along = |p: Point| {
+        let d = curva_kernel::sub(p, a);
+        [curva_kernel::dot(d, x), curva_kernel::dot(d, y)]
+    };
+    let ([bx, by], [cx, cy]) = (along(b), along(c));
+    let d = 2.0 * (bx * cy - by * cx);
+    if d.abs() < 1e-12 {
+        return None;
+    }
+    let (b2, c2) = (bx * bx + by * by, cx * cx + cy * cy);
+    let (u, v) = ((cy * b2 - by * c2) / d, (bx * c2 - cx * b2) / d);
+    let centre: Point = std::array::from_fn(|i| a[i] + u * x[i] + v * y[i]);
+    Some((centre, u.hypot(v)))
 }
 
 fn geometry_failed(error: &KernelError) -> Step {
