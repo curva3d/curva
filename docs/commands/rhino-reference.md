@@ -159,3 +159,38 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | Open | Choose a file | none | none | partly |
 | Save | File name | `Version` `SaveSmall` `GeometryOnly` `SaveTextures` `SavePlugInData` `Browse` | none | partly |
 | SaveAs | Asks for a file name; saves there and keeps saving there | none | none | partly |
+
+## Added for Rhino parity (after 0.3.0)
+
+| Command | Rhino's steps | Rhino's options | In Curva | Status |
+|---|---|---|---|---|
+| Sphere | Center; radius | `2Point` `3Point` `Tangent` `AroundCurve` `4Point` `FitPoints` `Diameter` | `2Point` `Diameter` | partly |
+| Cylinder | Base center; radius; end of cylinder | `DirectionConstraint` `Solid` `2Point` `3Point` `Tangent` `FitPoints` `Diameter` `BothSides` | `Diameter` `Solid` `BothSides` | partly |
+| Cone | Base center; radius; end of cone | `DirectionConstraint` `Solid` `2Point` `3Point` `Tangent` `FitPoints` `Diameter` | `Diameter` | partly |
+| TruncatedCone | Base center; radius; end; top radius | `DirectionConstraint` `Solid` `2Point` `3Point` `Tangent` `FitPoints` | none | partly |
+| Torus | Center; radius; second radius | `Vertical` `2Point` `3Point` `Tangent` `AroundCurve` `Diameter` `FixInnerRadius` | none | partly |
+| Tube | Base center; outer radius; inner radius; end of tube | `DirectionConstraint` `Diameter` `WallThickness` `BothSides` `Cap` | `BothSides` | partly |
+| Polygon | Center; corner | `NumSides` `Circumscribed` `Edge` `Star` `Vertical` `AroundCurve` | `NumSides` `Circumscribed` | partly |
+| Helix | Start of axis; end of axis; radius | `Vertical` `AroundCurve` `Turns` `Pitch` `ReverseTwist` `Diameter` | `Turns` | partly |
+| Spiral | Start of axis; end; first radius; second radius | `Flat` `Vertical` `AroundCurve` `Turns` `Pitch` `ReverseTwist` `Diameter` | `Turns` `Flat` | partly |
+| Plane | First corner; other corner | `Deformable` `Vertical` `Center` `3Point` | none | partly |
+| SrfPt | Three or four corner points | none | none | done |
+| ExtrudeSrf | Select surfaces; distance | `Direction` `BothSides` `Solid` `DeleteInput` `ToBoundary` `SetBasePoint` | `DeleteInput` | partly |
+| ArrayLinear | Select objects; number of elements; first and second reference points | none | none | done |
+| Angle | Corner; point on first side; point on second side | `TwoObjects` | none | partly |
+| EvaluatePt | Point to evaluate | none | none | done |
+| Radius | Select a circle, arc or curve | none | none | partly |
+| What | Select objects | none | none | done |
+| SelLine | none | none | none | partly |
+| SelPolyline | none | none | none | partly |
+| SelCircle | none | none | none | partly |
+| SelArc | none | none | none | partly |
+| SelClosedCrv | none | none | none | partly |
+| SelOpenCrv | none | none | none | partly |
+| HideSwap | none | none | none | partly |
+| Points | Points until Enter | `MarkPoints` | none | partly |
+| Lines | Pairs of points until Enter | `BothSides` | none | partly |
+| Slot | Center of first end; center of second end; width | `Vertical` | none | partly |
+| Ellipsoid | Center; end of first axis; end of second; end of third | `Corner` `Diameter` `FromFoci` `AroundCurve` | none | partly |
+| BooleanSplit | Objects to split; cutting objects | `DeleteInput` | `DeleteInput` | done |
+| DupEdge | Select edges | none | none | done |

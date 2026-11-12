@@ -89,7 +89,7 @@ const AGENT_RECENT: std::time::Duration = std::time::Duration::from_secs(30);
 const AGENT_ACTIVE: egui::Color32 = egui::Color32::from_rgb(110, 200, 120);
 /// The command tabs at the top, each with its most used commands (spec
 /// `docs/specs/ui-floating-panels.md`).
-const COMMAND_TABS: [(&str, &[&str]); 4] = [
+const COMMAND_TABS: [(&str, &[&str]); 6] = [
     (
         "ui.tab.curves",
         &[
@@ -101,7 +101,13 @@ const COMMAND_TABS: [(&str, &[&str]); 4] = [
             "Arc",
             "Ellipse",
             "Rectangle",
+            "Polygon",
+            "Slot",
+            "Helix",
+            "Spiral",
             "Point",
+            "Points",
+            "Lines",
             "Offset",
             "Fillet",
             "Chamfer",
@@ -111,17 +117,28 @@ const COMMAND_TABS: [(&str, &[&str]); 4] = [
         "ui.tab.surfaces",
         &[
             "PlanarSrf",
+            "Plane",
+            "SrfPt",
             "ExtrudeCrv",
             "Revolve",
             "Loft",
             "Sweep1",
             "OffsetSrf",
+            "ExtrudeSrf",
+            "DupEdge",
         ],
     ),
     (
         "ui.tab.solids",
         &[
             "Box",
+            "Sphere",
+            "Cylinder",
+            "Cone",
+            "TruncatedCone",
+            "Torus",
+            "Tube",
+            "Ellipsoid",
             "Pipe",
             "FilletEdge",
             "ChamferEdge",
@@ -135,6 +152,7 @@ const COMMAND_TABS: [(&str, &[&str]); 4] = [
             "BooleanUnion",
             "BooleanDifference",
             "BooleanIntersection",
+            "BooleanSplit",
             "Trim",
             "Split",
             "Join",
@@ -145,6 +163,42 @@ const COMMAND_TABS: [(&str, &[&str]); 4] = [
             "Scale",
             "Mirror",
             "Array",
+            "ArrayLinear",
+        ],
+    ),
+    (
+        "ui.tab.analyze",
+        &[
+            "Distance",
+            "Length",
+            "Area",
+            "Volume",
+            "Angle",
+            "Radius",
+            "EvaluatePt",
+            "What",
+            "BoundingBox",
+        ],
+    ),
+    (
+        "ui.tab.select",
+        &[
+            "SelAll",
+            "SelNone",
+            "Invert",
+            "SelCrv",
+            "SelLine",
+            "SelPolyline",
+            "SelCircle",
+            "SelArc",
+            "SelClosedCrv",
+            "SelOpenCrv",
+            "SelSrf",
+            "SelSolid",
+            "SelPt",
+            "Hide",
+            "Show",
+            "HideSwap",
         ],
     ),
 ];

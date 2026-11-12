@@ -967,6 +967,201 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
                 theme::ACCENT.gamma_multiply(0.6),
             );
         }
+        // Added for Rhino parity
+        "sphere" => {
+            pen.ellipse((3.0, 3.0, 16.0, 16.0));
+            pen.dashed(&pen.arc_points((3.0, 8.5, 16.0, 5.0), 0.0, 180.0), 1.0);
+            pen.arc((3.0, 8.5, 16.0, 5.0), 180.0, 180.0);
+        }
+        "cylinder" | "tube" => {
+            pen.ellipse((5.0, 2.0, 12.0, 5.0));
+            pen.line((5.0, 4.5), (5.0, 17.5));
+            pen.line((17.0, 4.5), (17.0, 17.5));
+            pen.arc((5.0, 15.0, 12.0, 5.0), 180.0, 180.0);
+            if name.eq_ignore_ascii_case("tube") {
+                pen.path_in(
+                    &pen.arc_points((8.0, 3.0, 6.0, 3.0), 0.0, 360.0),
+                    true,
+                    pen.accent(),
+                );
+            }
+        }
+        "cone" => {
+            pen.arc((4.0, 15.0, 14.0, 5.0), 180.0, 180.0);
+            pen.dashed(&pen.arc_points((4.0, 15.0, 14.0, 5.0), 0.0, 180.0), 1.0);
+            pen.line((4.0, 17.5), (11.0, 3.0));
+            pen.line((18.0, 17.5), (11.0, 3.0));
+            pen.dot(11.0, 3.0);
+        }
+        "truncatedcone" => {
+            pen.ellipse((7.0, 3.0, 8.0, 3.0));
+            pen.arc((3.0, 15.0, 16.0, 5.0), 180.0, 180.0);
+            pen.line((7.0, 4.5), (3.0, 17.5));
+            pen.line((15.0, 4.5), (19.0, 17.5));
+        }
+        "torus" => {
+            pen.ellipse((2.0, 6.0, 18.0, 10.0));
+            pen.arc((7.0, 9.0, 8.0, 4.0), 200.0, 140.0);
+            pen.arc((8.0, 8.0, 6.0, 4.0), 20.0, 140.0);
+        }
+        "polygon" => {
+            let points: Vec<(f32, f32)> = (0..6)
+                .map(|i| {
+                    let a = (i as f32 * 60.0 + 30.0).to_radians();
+                    (11.0 + 8.0 * a.cos(), 11.0 - 8.0 * a.sin())
+                })
+                .collect();
+            pen.path(&points, true);
+            pen.dot(11.0, 11.0);
+        }
+        "helix" => {
+            for i in 0..3 {
+                let y = 4.0 + i as f32 * 5.0;
+                pen.cubic((4.0, y), (4.0, y + 3.0), (18.0, y + 2.0), (18.0, y + 5.0));
+            }
+            pen.dashed(&[(11.0, 2.0), (11.0, 20.0)], 0.9);
+        }
+        "spiral" => {
+            let points: Vec<(f32, f32)> = (0..=48)
+                .map(|i| {
+                    let t = i as f32 / 48.0;
+                    let a = t * 3.0 * std::f32::consts::TAU;
+                    let r = 1.0 + 8.0 * t;
+                    (11.0 + r * a.cos(), 11.0 - r * a.sin())
+                })
+                .collect();
+            pen.path(&points, false);
+        }
+        "plane" => {
+            let quad = [(3.0, 15.0), (8.0, 6.0), (19.0, 6.0), (14.0, 15.0)];
+            pen.filled(&quad, fill);
+            pen.path(&quad, true);
+        }
+        "srfpt" => {
+            let quad = [(4.0, 16.0), (7.0, 5.0), (18.0, 6.0), (16.0, 17.0)];
+            pen.filled(&quad, fill);
+            pen.path(&quad, true);
+            for (x, y) in quad {
+                pen.dot(x, y);
+            }
+        }
+        "extrudesrf" => {
+            let quad = [(3.0, 18.0), (7.0, 14.0), (19.0, 14.0), (15.0, 18.0)];
+            pen.filled(&quad, fill);
+            pen.path(&quad, true);
+            pen.line_in((11.0, 13.0), (11.0, 3.0), pen.accent());
+            pen.arrow_head((11.0, 3.0), (11.0, 13.0), pen.accent());
+        }
+        "arraylinear" => {
+            for i in 0..4 {
+                let x = 2.0 + i as f32 * 5.0;
+                if i == 0 {
+                    pen.filled(
+                        &[(x, 9.0), (x + 3.5, 9.0), (x + 3.5, 12.5), (x, 12.5)],
+                        theme::ACCENT,
+                    );
+                } else {
+                    pen.rect(x, 9.0, 3.5, 3.5);
+                }
+            }
+        }
+        "angle" => {
+            pen.line((4.0, 18.0), (19.0, 18.0));
+            pen.line((4.0, 18.0), (14.0, 5.0));
+            pen.arc_in((-4.0, 10.0, 16.0, 16.0), 0.0, 52.0, pen.accent());
+        }
+        "evaluatept" => {
+            pen.line((11.0, 3.0), (11.0, 19.0));
+            pen.line((3.0, 11.0), (19.0, 11.0));
+            pen.ellipse((7.0, 7.0, 8.0, 8.0));
+            pen.dot(11.0, 11.0);
+        }
+        "radius" => {
+            pen.ellipse((3.0, 3.0, 16.0, 16.0));
+            pen.line_in((11.0, 11.0), (16.7, 5.3), pen.accent());
+            pen.dot(11.0, 11.0);
+        }
+        "what" => {
+            pen.ellipse((3.0, 3.0, 16.0, 16.0));
+            pen.line_in((11.0, 10.0), (11.0, 16.0), pen.accent());
+            pen.dot(11.0, 6.8);
+        }
+        "selline" | "selpolyline" | "selcircle" | "selarc" | "selclosedcrv" | "selopencrv" => {
+            pen.pointer();
+            let accent = pen.accent();
+            match name.to_lowercase().as_str() {
+                "selline" => pen.line_in((11.0, 20.0), (20.0, 11.0), accent),
+                "selpolyline" => pen.path_in(
+                    &[(11.0, 20.0), (13.0, 13.0), (17.0, 18.0), (20.0, 11.0)],
+                    false,
+                    accent,
+                ),
+                "selcircle" => pen.path_in(
+                    &pen.arc_points((11.0, 11.0, 9.0, 9.0), 0.0, 360.0),
+                    true,
+                    accent,
+                ),
+                "selarc" => pen.path_in(
+                    &pen.arc_points((11.0, 11.0, 9.0, 9.0), 0.0, 180.0),
+                    false,
+                    accent,
+                ),
+                "selclosedcrv" => pen.path_in(
+                    &[(11.0, 18.0), (13.0, 11.0), (20.0, 13.0), (18.0, 20.0)],
+                    true,
+                    accent,
+                ),
+                _ => pen.cubic_in(
+                    (11.0, 20.0),
+                    (12.0, 11.0),
+                    (19.0, 21.0),
+                    (20.0, 11.0),
+                    accent,
+                ),
+            }
+        }
+        "hideswap" => {
+            pen.eye(true);
+            pen.arrow_head((19.0, 3.0), (14.0, 3.0), pen.accent());
+            pen.arrow_head((3.0, 19.0), (8.0, 19.0), pen.accent());
+        }
+        "points" => {
+            for (x, y) in [(5.0, 15.0), (9.0, 7.0), (14.0, 13.0), (17.0, 5.0)] {
+                pen.line((x - 2.0, y), (x + 2.0, y));
+                pen.line((x, y - 2.0), (x, y + 2.0));
+                pen.dot(x, y);
+            }
+        }
+        "lines" => {
+            for (a, b) in [((3.0, 17.0), (10.0, 5.0)), ((9.0, 18.0), (19.0, 9.0))] {
+                pen.line(a, b);
+                pen.dot(a.0, a.1);
+                pen.dot(b.0, b.1);
+            }
+        }
+        "slot" => {
+            pen.line((7.0, 7.0), (15.0, 7.0));
+            pen.line((7.0, 15.0), (15.0, 15.0));
+            pen.arc((11.0, 7.0, 8.0, 8.0), -90.0, 180.0);
+            pen.arc((3.0, 7.0, 8.0, 8.0), 90.0, 180.0);
+            pen.dot(7.0, 11.0);
+            pen.dot(15.0, 11.0);
+        }
+        "ellipsoid" => {
+            pen.ellipse((1.0, 5.0, 20.0, 12.0));
+            pen.arc((1.0, 9.0, 20.0, 4.0), 180.0, 180.0);
+            pen.dashed(&pen.arc_points((1.0, 9.0, 20.0, 4.0), 0.0, 180.0), 1.0);
+        }
+        "booleansplit" => {
+            pen.arc((3.0, 6.0, 11.0, 11.0), 70.0, 250.0);
+            pen.dashed(&pen.arc_points((8.0, 5.0, 11.0, 11.0), 0.0, 360.0), 1.1);
+            pen.line_in((11.0, 2.0), (11.0, 20.0), pen.accent());
+        }
+        "dupedge" => {
+            pen.cube(4.0, 6.0, 9.0);
+            pen.line_in((15.5, 4.0), (15.5, 13.0), pen.accent());
+            pen.line_in((19.0, 2.0), (19.0, 11.0), pen.accent());
+        }
         _ => return false,
     }
     true

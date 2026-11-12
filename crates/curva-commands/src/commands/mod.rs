@@ -49,6 +49,8 @@ mod offset_srf;
 mod open;
 mod orient;
 mod orient3pt;
+mod parity;
+mod parity2;
 mod perspective;
 mod pipe;
 mod planar_srf;
@@ -56,6 +58,7 @@ mod point;
 mod points_off;
 mod points_on;
 mod polyline;
+mod primitives;
 mod project_to_cplane;
 mod rebuild;
 mod rectangle;
@@ -153,7 +156,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 103] = [
+pub static COMMANDS: [CommandDef; 133] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -266,6 +269,36 @@ pub static COMMANDS: [CommandDef; 103] = [
     recipe!("Arc", ["a"], true, arc::Arc),
     recipe!("Rectangle", ["rec"], true, rectangle::Rectangle),
     recipe!("Box", [], true, box_solid::BoxSolid),
+    recipe!("Sphere", ["sph"], true, primitives::Sphere),
+    recipe!("Cylinder", ["cyl"], true, primitives::Cylinder),
+    recipe!("Cone", [], true, primitives::Cone),
+    recipe!("TruncatedCone", [], true, primitives::TruncatedCone),
+    recipe!("Torus", [], true, primitives::Torus),
+    recipe!("Tube", [], true, primitives::Tube),
+    recipe!("Polygon", [], true, parity::Polygon),
+    recipe!("Helix", [], true, parity::Helix),
+    recipe!("Spiral", [], true, parity::Spiral),
+    recipe!("Plane", [], true, parity::Plane),
+    recipe!("SrfPt", [], true, parity::SrfPt),
+    recipe!("ExtrudeSrf", [], true, parity::ExtrudeSrf),
+    recipe!("ArrayLinear", [], true, parity::ArrayLinear),
+    recipe!("Angle", [], true, parity::Angle),
+    recipe!("EvaluatePt", [], true, parity::EvaluatePt),
+    recipe!("Radius", [], true, parity::Radius),
+    recipe!("What", [], true, parity::What),
+    listed!("SelLine", [], false, false, parity::SelLine),
+    listed!("SelPolyline", [], false, false, parity::SelPolyline),
+    listed!("SelCircle", [], false, false, parity::SelCircle),
+    listed!("SelArc", [], false, false, parity::SelArc),
+    listed!("SelClosedCrv", [], false, false, parity::SelClosedCrv),
+    listed!("SelOpenCrv", [], false, false, parity::SelOpenCrv),
+    listed!("HideSwap", [], true, true, parity::HideSwap),
+    recipe!("Points", [], true, parity2::Points),
+    recipe!("Lines", [], true, parity2::Lines),
+    recipe!("Slot", [], true, parity2::Slot),
+    recipe!("Ellipsoid", [], true, parity2::Ellipsoid),
+    recipe!("BooleanSplit", [], true, parity2::BooleanSplit),
+    recipe!("DupEdge", [], true, parity2::DupEdge),
     recipe!("ExtrudeCrv", [], true, extrude_crv::ExtrudeCrv),
     recipe!("PlanarSrf", [], true, planar_srf::PlanarSrf),
     recipe!("Revolve", [], true, revolve::Revolve),
@@ -541,7 +574,25 @@ mod tests {
 
     /// For each command that changes geometry, the typed steps that reach its live preview.
     /// A new command must be added here, which is how the preview rule in AGENTS.md is enforced.
-    const PREVIEW_STEPS: [(&str, &[&str]); 30] = [
+    const PREVIEW_STEPS: [(&str, &[&str]); 48] = [
+        ("Points", &[]),
+        ("Lines", &["0,0"]),
+        ("Slot", &["0,0"]),
+        ("Ellipsoid", &["0,0"]),
+        ("Sphere", &["0,0"]),
+        ("Cylinder", &["0,0"]),
+        ("Cone", &["0,0"]),
+        ("TruncatedCone", &["0,0"]),
+        ("Torus", &["0,0"]),
+        ("Tube", &["0,0"]),
+        ("Polygon", &["0,0"]),
+        ("Helix", &["0,0,0", "0,0,10"]),
+        ("Spiral", &["0,0,0", "0,0,10", "1"]),
+        ("Plane", &["0,0"]),
+        ("SrfPt", &["0,0", "4,0"]),
+        ("ArrayLinear", &["4", "0,0"]),
+        ("Angle", &["0,0"]),
+        ("Polygon", &["1,1"]),
         ("Line", &["0,0"]),
         ("Polyline", &["0,0", "9,0"]),
         ("InterpCrv", &["0,0", "9,0"]),
@@ -575,8 +626,12 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 14] = [
+    const NOTHING_TO_PREVIEW: [&str; 18] = [
         "Delete",
+        "HideSwap",
+        "EvaluatePt",
+        "Radius",
+        "What",
         "Join",
         "Explode",
         "Split",
@@ -593,7 +648,10 @@ mod tests {
     ];
 
     /// Commands whose preview needs its own setup, tested in their own files.
-    const PREVIEW_TESTED_ELSEWHERE: [&str; 18] = [
+    const PREVIEW_TESTED_ELSEWHERE: [&str; 21] = [
+        "BooleanSplit",
+        "DupEdge",
+        "ExtrudeSrf",
         "Trim",
         "Fillet",
         "Chamfer",
@@ -687,6 +745,31 @@ mod tests {
                 def.name
             );
         }
+    }
+
+    #[test]
+    fn rhino_parity_lists_only_real_commands() {
+        let table = include_str!("../../../../docs/commands/rhino-parity.md");
+        let mut listed = 0;
+        for line in table
+            .lines()
+            .filter(|l| l.starts_with("| ") && !l.starts_with("| Rhino command"))
+        {
+            let cells: Vec<&str> = line.split('|').map(str::trim).collect();
+            let (name, status) = (cells[1], cells[2]);
+            assert!(
+                ["done", "partly", "missing", "blocked"].contains(&status),
+                "{name}: unknown status {status}"
+            );
+            if status == "done" || status == "partly" {
+                assert!(
+                    resolve(name).is_some(),
+                    "{name} is marked {status} but is not in Curva"
+                );
+            }
+            listed += 1;
+        }
+        assert!(listed > 150, "the parity list looks short: {listed}");
     }
 
     #[test]
@@ -1009,14 +1092,21 @@ mod tests {
     fn completion_offers_matching_names() {
         assert_eq!(
             completions("po"),
-            ["Polyline", "Point", "PointsOn", "PointsOff"]
+            [
+                "Polyline",
+                "Point",
+                "PointsOn",
+                "PointsOff",
+                "Polygon",
+                "Points"
+            ]
         );
         assert!(completions("").is_empty());
     }
 
     #[test]
     fn completion_finds_aliases_and_puts_an_exact_match_first() {
-        assert_eq!(completions("pl"), ["Polyline", "PlanarSrf"]);
+        assert_eq!(completions("pl"), ["Polyline", "Plane", "PlanarSrf"]);
         assert_eq!(
             completions("c"),
             [
@@ -1024,12 +1114,14 @@ mod tests {
                 "Copy",
                 "CloseCrv",
                 "Chamfer",
+                "Cylinder",
+                "Cone",
                 "ChamferEdge",
                 "CPlane",
                 "Curve"
             ]
         );
-        assert_eq!(completions("co"), ["Copy"]);
+        assert_eq!(completions("co"), ["Copy", "Cone"]);
     }
 
     #[test]
