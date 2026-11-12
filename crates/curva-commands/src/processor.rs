@@ -10,6 +10,8 @@ struct Active {
     command: Box<dyn Command>,
     request: Option<Request>,
     before: State,
+    /// The selection when the command began, which an undo of it brings back.
+    selection_before: Vec<u64>,
 }
 
 /// The command line's engine.
@@ -270,6 +272,7 @@ impl Processor {
             command: (def.make)(),
             request: None,
             before: doc.state().clone(),
+            selection_before: doc.selection(),
         });
         self.advance(doc, None);
     }
@@ -439,7 +442,7 @@ impl Processor {
                     && active.def.records_undo
                     && doc.state() != &active.before
                 {
-                    doc.record_change(active.before);
+                    doc.record_change_with(active.before, &active.selection_before);
                 }
                 if let Some(message) = message {
                     self.say(&message);

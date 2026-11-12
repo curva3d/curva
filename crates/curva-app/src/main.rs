@@ -31,6 +31,10 @@ const BOX_EDGE: egui::Color32 = egui::Color32::from_rgb(230, 230, 235);
 const BOX_FILL: egui::Color32 = egui::Color32::from_rgba_premultiplied(30, 40, 60, 40);
 const SNAP_MARKER: egui::Color32 = egui::Color32::from_rgb(255, 170, 40);
 const SNAP_MARKER_SIZE: f32 = 10.0;
+/// The accent orange, for held points and their guidelines.
+const ACCENT: egui::Color32 = egui::Color32::from_rgb(0xe0, 0x78, 0x2f);
+/// How long the pointer rests on a snap point to hold it, or let it go, in seconds.
+const HOLD_AFTER: f64 = 0.5;
 /// Spacing and size of the circles in a benchmark scene, in millimetres.
 const BENCHMARK_SPACING: f64 = 12.0;
 const BENCHMARK_RADIUS: f64 = 5.0;
@@ -73,16 +77,14 @@ const GLASS_FILL: egui::Color32 = egui::Color32::from_rgba_premultiplied(52, 55,
 const PANEL_EDGE: egui::Color32 = egui::Color32::from_rgb(60, 63, 72);
 const PANEL_RADIUS: u8 = 12;
 const PANEL_MARGIN: f32 = 8.0;
+/// The height of a panel's title row, holding its name or tabs.
+const TITLE_ROW: f32 = 20.0;
 /// Room left around a panel for its shadow, beyond which nothing it holds is drawn.
 const SHADOW_ROOM: f32 = 20.0;
 /// How long a panel takes to slide in or out, in seconds.
 const SLIDE_TIME: f32 = 0.2;
-/// The bar a panel is moved by.
-const GRIP: egui::Vec2 = egui::vec2(32.0, 4.0);
 /// Where a dragged panel would land.
 const DOCK_PREVIEW_FILL: egui::Color32 = egui::Color32::from_rgba_premultiplied(24, 33, 51, 64);
-/// Width of the agent connection, at the right of the command bar.
-const AGENT_COLUMN: f32 = 170.0;
 /// How long after an agent's last request it still counts as connected.
 const AGENT_RECENT: std::time::Duration = std::time::Duration::from_secs(30);
 const AGENT_ACTIVE: egui::Color32 = egui::Color32::from_rgb(110, 200, 120);
@@ -148,6 +150,10 @@ const COMMAND_TABS: [(&str, &[&str]); 4] = [
     ),
 ];
 const PICTURE_SIZE: [u32; 2] = [1200, 800];
+/// Views kept for each viewport's `UndoView`.
+const MOST_VIEWS_KEPT: usize = 50;
+/// How fast Ctrl + right-drag zooms, per pixel dragged.
+const ZOOM_DRAG_SPEED: f64 = 0.01;
 const BENCHMARK_FRAMES: usize = 240;
 /// Leading frames left out of the report, as they include the window opening.
 const SETTLE_FRAMES: usize = 30;
@@ -198,12 +204,14 @@ struct Curva {
     layout: layout::Layout,
     /// The command tab showing, as an index into [`COMMAND_TABS`].
     command_tab: usize,
-    /// The side panel's tab showing: 0 for layers, 1 for properties.
-    side_tab: usize,
     /// When an agent last asked something, to show whether one is connected.
     agent_seen: Option<std::time::Instant>,
     /// Where the pointer last aimed in a viewport, for Enter to place a point with a held distance.
     last_aim: Option<Point>,
+    /// Snap points held by resting on them, which send out guidelines, as Rhino's SmartTrack.
+    held: Vec<Point>,
+    /// The snap point the pointer rests on, since when, and whether resting there has acted.
+    resting: Option<(Point, f64, bool)>,
     /// The bodies of the last solid preview, and their ghosted triangles.
     ghosted: (Vec<curva_kernel::Body>, Arc<Vec<MeshVertex>>),
     /// Focus mode: the panels slid out of view.
@@ -221,18 +229,25 @@ enum PanelEvent {
     Nothing,
     /// A hidden panel's strip was clicked, in focus mode.
     StripClicked,
-    /// Its grip began to be dragged, held this far from its corner.
-    DragStarted(egui::Vec2),
+    /// Its title began to be dragged, held this far from its corner: one tab's piece, or the
+    /// whole panel.
+    DragStarted(egui::Vec2, Option<layout::Piece>),
     /// A floating panel's corner was dragged this far.
     Resized(egui::Vec2),
     /// Reset layout was chosen from its grip's menu.
     Reset,
+    /// Its hide control was clicked.
+    Hide,
+    /// One of its tabs was clicked.
+    TabChosen(usize),
 }
 
 /// A panel being moved by its grip.
 #[derive(Clone, Copy)]
 struct PanelDrag {
     panel: layout::PanelId,
+    /// The piece being pulled out by its tab, if only one is.
+    piece: Option<layout::Piece>,
     /// Where the grip was held, from the panel's corner.
     grab: egui::Vec2,
     /// Its size while it moves.
@@ -373,6 +388,12 @@ struct Pane {
     named: Option<String>,
     /// How it draws surfaces and solids: by their edges, filled in and lit, or see-through.
     display: DisplayMode,
+    /// Views to step back to with `UndoView`, newest last, and the view they were left from.
+    views_back: Vec<Camera>,
+    /// Views stepped back from, for `RedoView`, newest last.
+    views_ahead: Vec<Camera>,
+    /// The view as it last stood still, which a camera move leaves behind.
+    settled: Camera,
 }
 
 impl Pane {
@@ -381,9 +402,40 @@ impl Pane {
         self.grid = Arc::new(grid_lines(&plane));
     }
 
+    /// Keeps the view history: once the camera has moved and stands still again, the view it
+    /// left goes on the list `UndoView` steps back through.
+    fn track_view(&mut self, moving: bool) {
+        if moving || self.camera == self.settled {
+            return;
+        }
+        self.views_back.push(self.settled);
+        if self.views_back.len() > MOST_VIEWS_KEPT {
+            self.views_back.remove(0);
+        }
+        self.views_ahead.clear();
+        self.settled = self.camera;
+    }
+
+    /// Steps back, or with `forward` forward, through the view history.
+    fn step_view(&mut self, forward: bool) {
+        let (from, to) = if forward {
+            (&mut self.views_ahead, &mut self.views_back)
+        } else {
+            (&mut self.views_back, &mut self.views_ahead)
+        };
+        if let Some(view) = from.pop() {
+            to.push(self.camera);
+            self.camera = view;
+            self.settled = view;
+        }
+    }
+
     fn new(view: StandardView) -> Self {
         Self {
             view,
+            views_back: Vec::new(),
+            views_ahead: Vec::new(),
+            settled: view.camera(),
             camera: view.camera(),
             plane: view.plane(),
             grid: Arc::new(grid_lines(&view.plane())),
@@ -648,9 +700,10 @@ impl Curva {
                 .map(|file| layout::Layout::load(&file))
                 .unwrap_or_default(),
             command_tab: 0,
-            side_tab: 0,
             agent_seen: None,
             last_aim: None,
+            held: Vec::new(),
+            resting: None,
             ghosted: (Vec::new(), Arc::new(Vec::new())),
             focus: false,
             revealed: None,
@@ -895,6 +948,91 @@ impl Curva {
         }
     }
 
+    /// The held points and their guidelines on a viewport's plane: along its X and Y, and at
+    /// 45° unless ortho is on (Shift flipping it for the moment).
+    fn guides(&self, pane: usize, shift: bool) -> curva_viewport::Guides {
+        let plane = self.panes[pane].plane;
+        curva_viewport::Guides {
+            held: self.held.clone(),
+            axes: [plane.x, plane.y],
+            diagonals: self.ortho == shift,
+        }
+    }
+
+    /// Holds a snap point the pointer has rested on for a moment, or lets it go if it was held,
+    /// as Rhino's SmartTrack does. Everything held is let go when no command is asking for a
+    /// point.
+    fn rest_on(&mut self, ctx: &egui::Context, hit: Option<SnapHit>) {
+        if !self.takes_position() {
+            self.held.clear();
+            self.resting = None;
+            return;
+        }
+        let holdable = hit.filter(|hit| {
+            matches!(
+                hit.kind,
+                SnapKind::End | SnapKind::Mid | SnapKind::Center | SnapKind::Intersection
+            )
+        });
+        let Some(hit) = holdable else {
+            self.resting = None;
+            return;
+        };
+        let now = ctx.input(|input| input.time);
+        match &mut self.resting {
+            Some((point, since, acted)) if *point == hit.point => {
+                if !*acted && now - *since >= HOLD_AFTER {
+                    *acted = true;
+                    let mut guides = curva_viewport::Guides {
+                        held: std::mem::take(&mut self.held),
+                        ..curva_viewport::Guides::default()
+                    };
+                    guides.toggle(hit.point);
+                    self.held = guides.held;
+                } else if !*acted {
+                    // Come back when the rest is long enough, even if the mouse stays still.
+                    ctx.request_repaint_after(std::time::Duration::from_secs_f64(HOLD_AFTER));
+                }
+            }
+            _ => {
+                self.resting = Some((hit.point, now, false));
+                ctx.request_repaint_after(std::time::Duration::from_secs_f64(HOLD_AFTER));
+            }
+        }
+    }
+
+    /// The held points and their guidelines, dashed and see-through in the accent orange.
+    fn paint_guides(&self, ui: &egui::Ui, pane: usize, viewport: egui::Rect, size: [f64; 2]) {
+        if self.held.is_empty() {
+            return;
+        }
+        let camera = &self.panes[pane].camera;
+        let painter = ui.painter_at(viewport);
+        let on_screen = |p: Point| {
+            camera
+                .project(p, size)
+                .map(|at| viewport.min + egui::vec2(at[0] as f32, at[1] as f32))
+        };
+        let faint = ACCENT.gamma_multiply(0.45);
+        let reach = camera.distance * 20.0;
+        for (point, direction) in self.guides(pane, false).lines() {
+            let end = |sign: f64| std::array::from_fn(|i| point[i] + direction[i] * reach * sign);
+            if let (Some(a), Some(b)) = (on_screen(end(-1.0)), on_screen(end(1.0))) {
+                painter.extend(egui::Shape::dashed_line(
+                    &[a, b],
+                    egui::Stroke::new(1.0, faint),
+                    6.0,
+                    4.0,
+                ));
+            }
+        }
+        for point in &self.held {
+            if let Some(at) = on_screen(*point) {
+                painter.circle_filled(at, 3.5, ACCENT);
+            }
+        }
+    }
+
     fn takes_position(&self) -> bool {
         self.processor.current_request().is_some_and(|request| {
             matches!(
@@ -928,10 +1066,21 @@ impl Curva {
                 camera,
                 screen,
                 size,
-                &self.snaps,
+                &SnapSet {
+                    visible_only: self.panes[pane].display != DisplayMode::Wireframe,
+                    ..self.snaps
+                },
                 base,
                 &request.preview,
             )
+        {
+            return Some((hit.point, Some(hit)));
+        }
+        // Then the guidelines of held points: their crossings, and midway between them.
+        if !alt
+            && let Some(hit) =
+                self.outlines
+                    .guide_snap(camera, screen, size, &self.guides(pane, shift))
         {
             return Some((hit.point, Some(hit)));
         }
@@ -1560,34 +1709,95 @@ impl Curva {
         }
     }
 
-    /// Lays out and draws the panels, sliding them out of view in focus mode. Returns the area
-    /// left for the viewports, and how far they may reach to be seen through glass panels.
+    /// The undo keys, taken before the command line can see them: Ctrl+Z undoes and Ctrl+Y or
+    /// Ctrl+Shift+Z redoes the last change to the model, even while the command line has focus,
+    /// unless it holds typed text, which keeps its own undo. Alt+Z and Alt+Shift+Z step through
+    /// the last-used viewport's views. Also keeps each viewport's view history.
+    fn history_keys(&mut self, ctx: &egui::Context) {
+        use egui::{Key, KeyboardShortcut, Modifiers};
+        let moving = ctx.input(|input| {
+            input.pointer.any_down() || input.smooth_scroll_delta != egui::Vec2::ZERO
+        });
+        for pane in &mut self.panes {
+            pane.track_view(moving);
+        }
+        if !self.typed.is_empty() || self.naming_layer {
+            return;
+        }
+        let shortcut = |modifiers, key| KeyboardShortcut::new(modifiers, key);
+        let (redo, undo, view_ahead, view_back) = ctx.input_mut(|input| {
+            // The fuller shortcuts are taken first, as a plain one also matches them.
+            let view_ahead =
+                input.consume_shortcut(&shortcut(Modifiers::ALT | Modifiers::SHIFT, Key::Z));
+            let view_back = input.consume_shortcut(&shortcut(Modifiers::ALT, Key::Z));
+            // Rhino's own keys for them too, Home and End.
+            let view_back = view_back || input.consume_key(Modifiers::NONE, Key::Home);
+            let view_ahead = view_ahead || input.consume_key(Modifiers::NONE, Key::End);
+            let redo = input
+                .consume_shortcut(&shortcut(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z))
+                || input.consume_shortcut(&shortcut(Modifiers::COMMAND, Key::Y));
+            let undo = input.consume_shortcut(&shortcut(Modifiers::COMMAND, Key::Z));
+            (redo, undo, view_ahead, view_back)
+        });
+        if view_back || view_ahead {
+            self.panes[self.active].step_view(view_ahead);
+        }
+        if undo || redo {
+            // A command in progress is ended first, as its changes are not yet a step.
+            if self.processor.is_running() {
+                self.processor.cancel(&mut self.doc);
+            }
+            self.processor
+                .submit(&mut self.doc, if redo { "redo" } else { "undo" });
+        }
+    }
+
+    /// Lays out and draws the panels, sliding hidden ones to their edges (all of them in focus
+    /// mode). Returns the area left for the viewports, and how far they may reach to be seen
+    /// through glass panels.
     fn panels(&mut self, ctx: &egui::Context, window: egui::Rect) -> (egui::Rect, egui::Rect) {
         if ctx.input(|input| input.key_pressed(egui::Key::F12)) {
             self.toggle_focus();
         }
+        self.history_keys(ctx);
         let (placed, free) = self.layout.arrange(window);
-        let placed_bar = placed
-            .iter()
-            .copied()
-            .find(|(panel, _)| *panel == layout::PanelId::CommandBar);
-        // Typing brings the command bar out until the command ends.
+        // Typing brings the command line's panel out until the command ends.
         let typing = !self.typed.is_empty() || self.processor.is_running();
         let pointer = ctx.pointer_hover_pos();
+        let released = !ctx.input(|input| input.pointer.primary_down());
+        // While a panel is dragged over another, that one lights up to show they would merge.
+        let merge_into = self.panel_drag.and_then(|drag| {
+            let at = ctx.pointer_latest_pos()?;
+            self.drawn_panels
+                .iter()
+                .find(|(p, rect)| *p != drag.panel && rect.contains(at))
+                .map(|(p, _)| *p)
+        });
+        let floating_rects: Vec<egui::Rect> = placed
+            .iter()
+            .filter(|(panel, _)| self.panel_drag.is_none_or(|drag| drag.panel != *panel))
+            .map(|(_, rect)| *rect)
+            .collect();
         for (panel, rect) in placed {
-            let shown = !self.focus
+            let Some(place) = self.layout.place(panel).cloned() else {
+                continue;
+            };
+            let shown = (!self.focus && !place.hidden)
                 || self.revealed == Some(panel)
-                || (panel == layout::PanelId::CommandBar && typing);
+                || (place.pieces.contains(&layout::Piece::Command) && typing && !place.hidden);
+            let edge = self.layout.edge_of(panel, rect, window);
+            let (tab, upright) = layout::edge_tab(rect, edge, window);
             let hovered = pointer.is_some_and(|at| {
-                self.drawn_panels
-                    .iter()
-                    .any(|(p, drawn)| *p == panel && drawn.contains(at))
+                tab.contains(at)
+                    || self
+                        .drawn_panels
+                        .iter()
+                        .any(|(p, drawn)| *p == panel && drawn.contains(at))
             });
             let target = if shown {
                 rect
             } else {
-                let edge = self.layout.edge_of(panel, rect, window);
-                let visible = if hovered { layout::PEEK } else { layout::STRIP };
+                let visible = if hovered { layout::PEEK } else { 0.0 };
                 layout::slid(rect, edge, window, visible)
             };
             let id = egui::Id::NULL.with(("panel slide", panel));
@@ -1603,84 +1813,428 @@ impl Curva {
             {
                 drawn = egui::Rect::from_min_size(at - drag.grab, drag.size);
                 size = drag.size;
-                let landing =
-                    self.layout
-                        .moved(panel, layout::drop_dock(at, drawn.min, window), drag.size);
-                if let Some((_, target)) = landing
-                    .arrange(window)
-                    .0
-                    .into_iter()
-                    .find(|(p, _)| *p == panel)
-                {
-                    ctx.layer_painter(egui::LayerId::new(
-                        egui::Order::Foreground,
-                        egui::Id::NULL.with("dock preview"),
-                    ))
-                    .rect(
-                        target,
-                        PANEL_RADIUS,
-                        DOCK_PREVIEW_FILL,
-                        egui::Stroke::new(1.5, ACTIVE_EDGE),
-                        egui::StrokeKind::Inside,
-                    );
+                let landing = self.landing(drag, at, drawn, window, merge_into, &floating_rects);
+                if merge_into.is_none() {
+                    let shown_piece = drag.piece.unwrap_or(panel);
+                    if let Some(id) = landing.panel_of(shown_piece)
+                        && let Some((_, spot)) = landing
+                            .arrange(window)
+                            .0
+                            .into_iter()
+                            .find(|(p, _)| *p == id)
+                    {
+                        ctx.layer_painter(egui::LayerId::new(
+                            egui::Order::Foreground,
+                            egui::Id::NULL.with("dock preview"),
+                        ))
+                        .rect(
+                            spot,
+                            PANEL_RADIUS,
+                            DOCK_PREVIEW_FILL,
+                            egui::Stroke::new(1.5, ACCENT.gamma_multiply(0.6)),
+                            egui::StrokeKind::Inside,
+                        );
+                    }
                 }
-                if !ctx.input(|input| input.pointer.primary_down()) {
+                if released {
                     self.layout = landing;
                     self.panel_drag = None;
                     self.save_layout();
                 }
             }
             self.drawn_panels.retain(|(p, _)| *p != panel);
-            self.drawn_panels.push((panel, drawn));
-            let floating = self
-                .layout
-                .places
-                .iter()
-                .any(|p| p.panel == panel && matches!(p.dock, layout::Dock::Floating { .. }));
-            match self.panel_area(ctx, panel, size, drawn, !shown, floating) {
-                PanelEvent::Nothing => {}
-                PanelEvent::StripClicked => self.revealed = Some(panel),
-                PanelEvent::DragStarted(grab) => {
-                    self.panel_drag = Some(PanelDrag {
-                        panel,
-                        grab,
-                        size: drawn.size().min(window.size() * 0.6).max(layout::MIN_PANEL),
-                    });
-                }
-                PanelEvent::Resized(by) => {
-                    self.layout = self.layout.resized(panel, size + by);
-                    self.save_layout();
-                }
-                PanelEvent::Reset => {
-                    self.layout = layout::Layout::default();
-                    self.save_layout();
-                }
+            if shown || hovered || self.panel_drag.is_some_and(|d| d.panel == panel) {
+                self.drawn_panels.push((panel, drawn));
+            }
+            let mut events = Vec::new();
+            if !shown {
+                events.push(self.edge_tab(ctx, &place, tab, upright));
+            }
+            if shown || hovered || offset != target.min - rect.min || drawn != target {
+                events.push(self.panel_area(ctx, &place, size, drawn, merge_into == Some(panel)));
+            }
+            for event in events {
+                self.panel_event(event, panel, &place, drawn, size, window);
             }
         }
         self.focus_tab(ctx, window);
-        // In focus mode the viewports take the window, short of the strips left at its edges.
+        // In focus mode the viewports take the window, short of the tabs left at its edges.
         if self.focus {
-            return (window.shrink(layout::STRIP), window.shrink(layout::STRIP));
+            let shrunk = window.shrink(layout::STRIP);
+            return (shrunk, shrunk);
         }
-        // The viewports reach under the glass command bar, so there is something to see
-        // through it; their titles and frames stay in the free area.
-        let mut reach = free;
-        if let Some((_, bar)) = placed_bar
-            && let Some(place) = self
-                .layout
-                .places
-                .iter()
-                .find(|p| p.panel == layout::PanelId::CommandBar)
-        {
-            match place.dock {
-                layout::Dock::Bottom => reach.max.y = bar.max.y,
-                layout::Dock::Top => reach.min.y = bar.min.y,
-                layout::Dock::Left => reach.min.x = bar.min.x,
-                layout::Dock::Right => reach.max.x = bar.max.x,
-                layout::Dock::Floating { .. } => {}
+        // The viewports reach under the glass panels, so there is something to see through
+        // them; their titles and frames stay in the free area.
+        (free, window)
+    }
+
+    /// Where a dragged panel would go if let go with the pointer at `at`: merged into the panel
+    /// under the pointer, docked to a near edge, or floating, settled on the grid.
+    fn landing(
+        &self,
+        drag: PanelDrag,
+        at: egui::Pos2,
+        drawn: egui::Rect,
+        window: egui::Rect,
+        merge_into: Option<layout::PanelId>,
+        others: &[egui::Rect],
+    ) -> layout::Layout {
+        if let Some(onto) = merge_into {
+            return match drag.piece {
+                Some(piece) => {
+                    let alone = self.layout.pulled(
+                        piece,
+                        layout::Dock::Floating { x: 0.0, y: 0.0 },
+                        drag.size,
+                    );
+                    alone.merged(piece, onto)
+                }
+                None => self.layout.merged(drag.panel, onto),
+            };
+        }
+        let mut size = drag.size;
+        let mut dock = layout::drop_dock(at, drawn.min, window);
+        if matches!(dock, layout::Dock::Floating { .. }) {
+            let settled = layout::settle(drawn, window, others);
+            size = settled.size();
+            dock = layout::Dock::Floating {
+                x: settled.min.x - window.min.x,
+                y: settled.min.y - window.min.y,
+            };
+        }
+        match drag.piece {
+            Some(piece) => self.layout.pulled(piece, dock, size),
+            None => self.layout.moved(drag.panel, dock, size),
+        }
+    }
+
+    /// Carries out what happened on one panel.
+    fn panel_event(
+        &mut self,
+        event: PanelEvent,
+        panel: layout::PanelId,
+        place: &layout::Place,
+        drawn: egui::Rect,
+        size: egui::Vec2,
+        window: egui::Rect,
+    ) {
+        match event {
+            PanelEvent::Nothing => {}
+            PanelEvent::StripClicked => {
+                if place.hidden {
+                    self.layout = self.layout.with_hidden(panel, false);
+                    self.save_layout();
+                } else {
+                    self.revealed = Some(panel);
+                }
+            }
+            PanelEvent::DragStarted(grab, piece) => {
+                self.panel_drag = Some(PanelDrag {
+                    panel,
+                    piece: piece.filter(|_| place.pieces.len() > 1),
+                    grab,
+                    size: drawn.size().min(window.size() * 0.6).max(layout::MIN_PANEL),
+                });
+            }
+            PanelEvent::Resized(by) => {
+                self.layout = self.layout.resized(panel, size + by);
+                self.save_layout();
+            }
+            PanelEvent::Reset => {
+                self.layout = layout::Layout::default();
+                self.save_layout();
+            }
+            PanelEvent::Hide => {
+                if self.revealed == Some(panel) {
+                    self.revealed = None;
+                } else {
+                    self.layout = self.layout.with_hidden(panel, true);
+                    self.save_layout();
+                }
+            }
+            PanelEvent::TabChosen(index) => {
+                self.layout = self.layout.with_active(panel, index);
+                self.save_layout();
             }
         }
-        (free, reach)
+    }
+
+    /// The tab a hidden panel leaves at its edge, with its pieces' names written along it:
+    /// hovering it peeks the panel out, clicking brings it back, dragging pulls it out.
+    fn edge_tab(
+        &self,
+        ctx: &egui::Context,
+        place: &layout::Place,
+        tab: egui::Rect,
+        upright: bool,
+    ) -> PanelEvent {
+        let mut event = PanelEvent::Nothing;
+        let names: Vec<String> = place
+            .pieces
+            .iter()
+            .map(|piece| self.text.render(&Message::new(piece.name_key())))
+            .collect();
+        egui::Area::new(egui::Id::NULL.with(("edge tab", place.id())))
+            .fixed_pos(tab.min)
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                let (rect, response) =
+                    ui.allocate_exact_size(tab.size(), egui::Sense::click_and_drag());
+                let fill = if response.hovered() {
+                    PANEL_EDGE
+                } else {
+                    PANEL_FILL
+                };
+                ui.painter().rect_filled(rect, 6.0, fill);
+                let font = egui::FontId::proportional(12.0);
+                let galley = ui
+                    .painter()
+                    .layout_no_wrap(names.join(" · "), font, TITLE_COLOUR);
+                let text_size = galley.size();
+                let (position, angle) = if upright {
+                    // Running upwards along a side.
+                    (
+                        egui::pos2(
+                            rect.center().x - text_size.y / 2.0,
+                            rect.center().y + text_size.x / 2.0,
+                        ),
+                        -std::f32::consts::FRAC_PI_2,
+                    )
+                } else {
+                    (rect.center() - text_size / 2.0, 0.0)
+                };
+                ui.painter().add(
+                    egui::epaint::TextShape::new(position, galley, TITLE_COLOUR).with_angle(angle),
+                );
+                if response.clicked() {
+                    event = PanelEvent::StripClicked;
+                } else if response.drag_started() {
+                    event = PanelEvent::DragStarted(egui::vec2(24.0, 12.0), None);
+                }
+            });
+        event
+    }
+
+    /// Draws one panel at `drawn`, with rounded corners and a soft shadow: its name centred
+    /// along its top, or a tab per piece, which are its grips; a control to hide it; and on a
+    /// floating one a corner to resize it by. `glowing` lights it in the accent while another
+    /// panel dragged over it would merge into it.
+    fn panel_area(
+        &mut self,
+        ctx: &egui::Context,
+        place: &layout::Place,
+        size: egui::Vec2,
+        drawn: egui::Rect,
+        glowing: bool,
+    ) -> PanelEvent {
+        let rect = drawn;
+        let panel = place.id();
+        let floating = matches!(place.dock, layout::Dock::Floating { .. });
+        let mut event = PanelEvent::Nothing;
+        let frame = egui::Frame::new()
+            .fill(GLASS_FILL)
+            .stroke(egui::Stroke::new(
+                if glowing { 2.0 } else { 1.0 },
+                if glowing { ACCENT } else { PANEL_EDGE },
+            ))
+            .corner_radius(PANEL_RADIUS)
+            .shadow(egui::Shadow {
+                offset: [0, 4],
+                blur: if glowing { 24 } else { 16 },
+                spread: 0,
+                color: if glowing {
+                    ACCENT.gamma_multiply(0.5)
+                } else {
+                    egui::Color32::from_black_alpha(90)
+                },
+            })
+            .inner_margin(PANEL_MARGIN);
+        egui::Area::new(egui::Id::NULL.with(("panel", panel)))
+            .fixed_pos(rect.min)
+            .order(egui::Order::Middle)
+            .constrain(false)
+            .show(ctx, |ui| {
+                // Nothing a panel holds may spill outside its place.
+                ui.set_clip_rect(rect.expand(SHADOW_ROOM));
+                // The blurred view behind, under the tint the frame paints over it.
+                ui.painter().add(egui::Shape::from(
+                    eframe::egui_wgpu::Callback::new_paint_callback(
+                        rect,
+                        curva_viewport::Glass {
+                            rect,
+                            radius: f32::from(PANEL_RADIUS),
+                        },
+                    ),
+                ));
+                frame.show(ui, |ui| {
+                    let inner = size - egui::Vec2::splat(2.0 * PANEL_MARGIN);
+                    ui.set_min_size(inner);
+                    ui.set_max_size(inner);
+                    ui.add_space(TITLE_ROW);
+                    match place.showing() {
+                        layout::Piece::CommandTabs => self.command_tabs(ui),
+                        layout::Piece::Layers => {
+                            egui::ScrollArea::both()
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| self.layers_panel(ui));
+                        }
+                        layout::Piece::Properties => {
+                            egui::ScrollArea::both()
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| self.properties_panel(ui));
+                        }
+                        layout::Piece::Command => self.command_line(ui),
+                        layout::Piece::Agent => self.agent_status(ui),
+                    }
+                });
+                // Added after the contents, so these sit above the panel's own controls.
+                event = self.panel_title(ui, place, rect);
+                if floating {
+                    let corner =
+                        egui::Rect::from_min_max(rect.max - egui::Vec2::splat(14.0), rect.max);
+                    let resize = ui
+                        .interact(corner, ui.scope_id().with("resize"), egui::Sense::drag())
+                        .on_hover_cursor(egui::CursorIcon::ResizeNwSe);
+                    let stroke =
+                        egui::Stroke::new(1.0, if resize.hovered() { ACCENT } else { PANEL_EDGE });
+                    for inset in [4.0, 8.0] {
+                        ui.painter().line_segment(
+                            [
+                                egui::pos2(rect.max.x - inset, rect.max.y - 3.0),
+                                egui::pos2(rect.max.x - 3.0, rect.max.y - inset),
+                            ],
+                            stroke,
+                        );
+                    }
+                    if resize.dragged() {
+                        event = PanelEvent::Resized(resize.drag_delta());
+                    }
+                }
+            });
+        event
+    }
+
+    /// A panel's title row: its name centred, or one tab per piece with the showing one in the
+    /// accent. The row is the grip: dragging a tab of a panel with several pulls that piece
+    /// out, dragging elsewhere moves the panel. A V at its end hides the panel.
+    fn panel_title(&self, ui: &egui::Ui, place: &layout::Place, rect: egui::Rect) -> PanelEvent {
+        let mut event = PanelEvent::Nothing;
+        let row = egui::Rect::from_min_size(
+            rect.min + egui::vec2(PANEL_MARGIN, 4.0),
+            egui::vec2(rect.width() - 2.0 * PANEL_MARGIN, TITLE_ROW),
+        );
+        let font = egui::FontId::proportional(12.5);
+        let galleys: Vec<_> = place
+            .pieces
+            .iter()
+            .map(|piece| {
+                ui.painter().layout_no_wrap(
+                    self.text.render(&Message::new(piece.name_key())),
+                    font.clone(),
+                    TITLE_COLOUR,
+                )
+            })
+            .collect();
+        let spacing = 18.0;
+        let total: f32 = galleys.iter().map(|g| g.size().x).sum::<f32>()
+            + spacing * (galleys.len().saturating_sub(1)) as f32;
+        let mut x = row.center().x - total / 2.0;
+        // The row as a whole moves the panel.
+        let grip = ui
+            .interact(
+                row,
+                ui.scope_id().with("title"),
+                egui::Sense::click_and_drag(),
+            )
+            .on_hover_cursor(egui::CursorIcon::Grab);
+        if grip.drag_started()
+            && let Some(at) = grip.interact_pointer_pos()
+        {
+            event = PanelEvent::DragStarted(at - rect.min, None);
+        }
+        grip.context_menu(|ui| {
+            if ui
+                .button(self.text.render(&Message::new("ui.layout.reset")))
+                .clicked()
+            {
+                event = PanelEvent::Reset;
+                ui.close();
+            }
+        });
+        for (index, galley) in galleys.into_iter().enumerate() {
+            let width = galley.size().x;
+            let tab =
+                egui::Rect::from_min_size(egui::pos2(x, row.min.y), egui::vec2(width, TITLE_ROW));
+            let active =
+                place.pieces.len() > 1 && index == place.active.min(place.pieces.len() - 1);
+            let colour = if active { ACCENT } else { TITLE_COLOUR };
+            if place.pieces.len() > 1 {
+                let response = ui
+                    .interact(
+                        tab.expand(4.0),
+                        ui.scope_id().with(("tab", index)),
+                        egui::Sense::click_and_drag(),
+                    )
+                    .on_hover_cursor(egui::CursorIcon::Grab);
+                if response.clicked() {
+                    event = PanelEvent::TabChosen(index);
+                } else if response.drag_started()
+                    && let Some(at) = response.interact_pointer_pos()
+                {
+                    event = PanelEvent::DragStarted(at - rect.min, Some(place.pieces[index]));
+                }
+                if active {
+                    ui.painter().line_segment(
+                        [
+                            egui::pos2(tab.min.x, tab.max.y),
+                            egui::pos2(tab.max.x, tab.max.y),
+                        ],
+                        egui::Stroke::new(2.0, ACCENT),
+                    );
+                }
+            }
+            ui.painter().galley(
+                egui::pos2(tab.min.x, row.center().y - galley.size().y / 2.0),
+                galley,
+                colour,
+            );
+            x += width + spacing;
+        }
+        // The hide control: a V at the row's end.
+        let hide = egui::Rect::from_center_size(
+            egui::pos2(row.max.x - 8.0, row.center().y),
+            egui::vec2(16.0, TITLE_ROW),
+        );
+        let response = ui
+            .interact(hide, ui.scope_id().with("hide"), egui::Sense::click())
+            .on_hover_text(self.text.render(&Message::new("ui.panel.hide")));
+        let stroke = egui::Stroke::new(
+            1.5,
+            if response.hovered() {
+                ACCENT
+            } else {
+                TITLE_COLOUR
+            },
+        );
+        let (mid, half) = (hide.center(), egui::vec2(4.5, 2.5));
+        ui.painter().line_segment(
+            [
+                mid + egui::vec2(-half.x, -half.y),
+                mid + egui::vec2(0.0, half.y),
+            ],
+            stroke,
+        );
+        ui.painter().line_segment(
+            [
+                mid + egui::vec2(0.0, half.y),
+                mid + egui::vec2(half.x, -half.y),
+            ],
+            stroke,
+        );
+        if response.clicked() {
+            event = PanelEvent::Hide;
+        }
+        event
     }
 
     /// Hides every panel, or brings them all back.
@@ -1741,131 +2295,6 @@ impl Curva {
             });
     }
 
-    /// Draws one floating panel at `drawn`, with rounded corners and a soft shadow, a grip to
-    /// move it by, and on a `floating` one a corner to resize it by. A `hidden` panel, slid away
-    /// in focus mode, answers a click on what shows of it instead of passing it to what it holds.
-    fn panel_area(
-        &mut self,
-        ctx: &egui::Context,
-        panel: layout::PanelId,
-        size: egui::Vec2,
-        drawn: egui::Rect,
-        hidden: bool,
-        floating: bool,
-    ) -> PanelEvent {
-        let rect = drawn;
-        let mut event = PanelEvent::Nothing;
-        let glass = panel == layout::PanelId::CommandBar;
-        let frame = egui::Frame::new()
-            // The command bar is glass: lighter and see-through. Its blur comes in a later step.
-            .fill(if glass { GLASS_FILL } else { PANEL_FILL })
-            .stroke(egui::Stroke::new(1.0, PANEL_EDGE))
-            .corner_radius(PANEL_RADIUS)
-            .shadow(egui::Shadow {
-                offset: [0, 4],
-                blur: 16,
-                spread: 0,
-                color: egui::Color32::from_black_alpha(90),
-            })
-            .inner_margin(PANEL_MARGIN);
-        egui::Area::new(egui::Id::NULL.with(("panel", panel)))
-            .fixed_pos(rect.min)
-            .order(egui::Order::Middle)
-            .constrain(false)
-            .show(ctx, |ui| {
-                // Nothing a panel holds may spill outside its place.
-                ui.set_clip_rect(rect.expand(SHADOW_ROOM));
-                if glass {
-                    // The blurred view behind, under the tint the frame paints over it.
-                    ui.painter().add(egui::Shape::from(
-                        eframe::egui_wgpu::Callback::new_paint_callback(
-                            rect,
-                            curva_viewport::Glass {
-                                rect,
-                                radius: f32::from(PANEL_RADIUS),
-                            },
-                        ),
-                    ));
-                }
-                frame.show(ui, |ui| {
-                    let inner = size - egui::Vec2::splat(2.0 * PANEL_MARGIN);
-                    ui.set_min_size(inner);
-                    ui.set_max_size(inner);
-                    match panel {
-                        layout::PanelId::CommandTabs => self.command_tabs(ui),
-                        layout::PanelId::Side => self.side_panel(ui),
-                        layout::PanelId::CommandBar => self.command_bar(ui),
-                    }
-                });
-                // Added after the contents, so these sit above the panel's own controls.
-                if hidden {
-                    let strip =
-                        ui.interact(rect, ui.scope_id().with("strip"), egui::Sense::click());
-                    if strip.clicked() {
-                        event = PanelEvent::StripClicked;
-                    }
-                    return;
-                }
-                // The grip: a small bar in the top-left corner's margin.
-                let grip = egui::Rect::from_min_size(rect.min + egui::vec2(14.0, 2.5), GRIP);
-                let held = ui
-                    .interact(
-                        grip.expand(4.0),
-                        ui.scope_id().with("grip"),
-                        egui::Sense::drag(),
-                    )
-                    .on_hover_cursor(egui::CursorIcon::Grab);
-                let lit = held.hovered() || held.dragged();
-                ui.painter().rect_filled(
-                    grip,
-                    GRIP.y / 2.0,
-                    if lit { ACTIVE_EDGE } else { PANEL_EDGE },
-                );
-                if held.drag_started()
-                    && let Some(at) = held.interact_pointer_pos()
-                {
-                    event = PanelEvent::DragStarted(at - rect.min);
-                }
-                held.context_menu(|ui| {
-                    if ui
-                        .button(self.text.render(&Message::new("ui.layout.reset")))
-                        .clicked()
-                    {
-                        event = PanelEvent::Reset;
-                        ui.close();
-                    }
-                });
-                if floating {
-                    let corner =
-                        egui::Rect::from_min_max(rect.max - egui::Vec2::splat(14.0), rect.max);
-                    let resize = ui
-                        .interact(corner, ui.scope_id().with("resize"), egui::Sense::drag())
-                        .on_hover_cursor(egui::CursorIcon::ResizeNwSe);
-                    let stroke = egui::Stroke::new(
-                        1.0,
-                        if resize.hovered() {
-                            ACTIVE_EDGE
-                        } else {
-                            PANEL_EDGE
-                        },
-                    );
-                    for inset in [4.0, 8.0] {
-                        ui.painter().line_segment(
-                            [
-                                egui::pos2(rect.max.x - inset, rect.max.y - 3.0),
-                                egui::pos2(rect.max.x - 3.0, rect.max.y - inset),
-                            ],
-                            stroke,
-                        );
-                    }
-                    if resize.dragged() {
-                        event = PanelEvent::Resized(resize.drag_delta());
-                    }
-                }
-            });
-        event
-    }
-
     /// Keeps the panel arrangement for the next session. Losing it only loses the arrangement.
     fn save_layout(&self) {
         if self.benchmark.is_none()
@@ -1909,49 +2338,8 @@ impl Curva {
         }
     }
 
-    /// Layers and properties, in tabs.
-    fn side_panel(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            for (index, key) in ["ui.tab.layers", "ui.tab.properties"]
-                .into_iter()
-                .enumerate()
-            {
-                let label = self.text.render(&Message::new(key));
-                if ui.selectable_label(self.side_tab == index, label).clicked() {
-                    self.side_tab = index;
-                }
-            }
-        });
-        ui.separator();
-        // Both ways, so a wide row scrolls inside the panel instead of stretching it.
-        egui::ScrollArea::both()
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                if self.side_tab == 0 {
-                    self.layers_panel(ui);
-                } else {
-                    self.properties_panel(ui);
-                }
-            });
-    }
-
-    /// The command line and drawing aids on the left, the agent connection on the right.
-    fn command_bar(&mut self, ui: &mut egui::Ui) {
-        let agent_width = AGENT_COLUMN;
-        ui.horizontal_top(|ui| {
-            let command_width = (ui.available_width() - agent_width - 16.0).max(100.0);
-            ui.vertical(|ui| {
-                ui.set_width(command_width);
-                self.command_line(ui);
-            });
-            ui.separator();
-            ui.vertical(|ui| self.agent_status(ui));
-        });
-    }
-
     /// Agent access, and whether an agent is talking to Curva.
     fn agent_status(&mut self, ui: &mut egui::Ui) {
-        ui.label(egui::RichText::new(self.text.render(&Message::new("ui.agent.title"))).strong());
         ui.checkbox(
             &mut self.agent_on,
             self.text.render(&Message::new("ui.agent")),
@@ -2041,6 +2429,8 @@ impl Curva {
     /// Carries out one change of view.
     fn apply_view(&mut self, request: ViewRequest) {
         match request {
+            ViewRequest::UndoView => self.panes[self.active].step_view(false),
+            ViewRequest::RedoView => self.panes[self.active].step_view(true),
             ViewRequest::ZoomBy(factor) => {
                 self.panes[self.active].camera.zoom(1.0 / factor);
             }
@@ -2126,19 +2516,35 @@ impl Curva {
     ) {
         // Not `drag_delta`: egui holds that back for the first 6 points to tell a click from a
         // drag, and only the left button clicks here. The view must move from the first pixel.
-        let (delta, shift, middle, right) = ui.input(|input| {
+        let (delta, shift, ctrl, middle, right, pressed) = ui.input(|input| {
             (
                 input.pointer.delta(),
                 input.modifiers.shift,
+                input.modifiers.command,
                 input.pointer.middle_down(),
                 input.pointer.secondary_down(),
+                input.pointer.press_origin(),
             )
         });
         let (dx, dy) = (f64::from(delta.x), f64::from(delta.y));
         if response.is_pointer_button_down_on() {
             self.active = pane;
+            // Ctrl + right-drag zooms about where the drag began; dragging up comes closer.
+            let plane = self.panes[pane].plane;
+            let origin = response.rect.min;
+            let about = pressed.and_then(|at| {
+                let offset = at - origin;
+                let screen = [f64::from(offset.x), f64::from(offset.y)];
+                self.panes[pane].camera.plane_point(screen, size, &plane)
+            });
             let camera = &mut self.panes[pane].camera;
-            if middle || (right && (shift || camera.is_parallel())) {
+            if right && ctrl {
+                if let Some(about) = about {
+                    camera.zoom_about((dy * ZOOM_DRAG_SPEED).exp(), about);
+                } else {
+                    camera.zoom((dy * ZOOM_DRAG_SPEED).exp());
+                }
+            } else if middle || (right && (shift || camera.is_parallel())) {
                 camera.pan(dx, dy, size[1]);
             } else if right {
                 camera.orbit(dx, dy);
@@ -2262,12 +2668,37 @@ impl Curva {
         };
         let centre = viewport.min + egui::vec2(at[0] as f32, at[1] as f32);
         let painter = ui.painter_at(viewport);
-        painter.rect_stroke(
-            egui::Rect::from_center_size(centre, egui::Vec2::splat(SNAP_MARKER_SIZE)),
-            0.0,
-            egui::Stroke::new(2.0, SNAP_MARKER),
-            egui::StrokeKind::Middle,
-        );
+        // ArchiCAD's symbols: a cross for an intersection, a triangle for a midpoint, a circle
+        // for a centre, a square for an end and the rest.
+        let stroke = egui::Stroke::new(2.0, SNAP_MARKER);
+        let half = SNAP_MARKER_SIZE / 2.0;
+        match hit.kind {
+            SnapKind::Intersection => {
+                for (a, b) in [(-1.0, -1.0), (-1.0, 1.0)] {
+                    let offset = egui::vec2(a * half, b * half);
+                    painter.line_segment([centre + offset, centre - offset], stroke);
+                }
+            }
+            SnapKind::Mid => {
+                let corners = vec![
+                    centre + egui::vec2(0.0, -half),
+                    centre + egui::vec2(half, half * 0.8),
+                    centre + egui::vec2(-half, half * 0.8),
+                ];
+                painter.add(egui::Shape::closed_line(corners, stroke));
+            }
+            SnapKind::Center => {
+                painter.circle_stroke(centre, half, stroke);
+            }
+            _ => {
+                painter.rect_stroke(
+                    egui::Rect::from_center_size(centre, egui::Vec2::splat(SNAP_MARKER_SIZE)),
+                    0.0,
+                    stroke,
+                    egui::StrokeKind::Middle,
+                );
+            }
+        }
         painter.text(
             centre + egui::vec2(SNAP_MARKER_SIZE, -SNAP_MARKER_SIZE),
             egui::Align2::LEFT_BOTTOM,
@@ -2371,6 +2802,7 @@ impl Curva {
         });
         let cursor = aimed.map(|(at, _)| at);
         self.last_aim = cursor;
+        self.rest_on(ui.ctx(), aimed.and_then(|(_, hit)| hit));
         // Picking a point shows a crosshair, and what the step measures beside it.
         if let Some((.., position)) = hovered
             && self.takes_position()
@@ -2416,6 +2848,7 @@ impl Curva {
             self.paint_picked_edges(ui, *pane, *rect, size);
             self.paint_picked_faces(ui, *pane, *rect, size);
             self.paint_gumball(ui, *pane, *rect, size);
+            self.paint_guides(ui, *pane, *rect, size);
             if let Some((hover_pane, ..)) = hovered
                 && hover_pane == *pane
                 && let Some(hit) = aimed.and_then(|(_, hit)| hit)

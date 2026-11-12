@@ -46,6 +46,9 @@ pub struct SnapSet {
     pub perpendicular: bool,
     /// The closest point on a curve.
     pub near: bool,
+    /// Only points that can be seen, not hidden behind a face: on in shaded and ghosted views,
+    /// off in wireframe ones, where everything can be seen. Set by the view, not a checkbox.
+    pub visible_only: bool,
 }
 
 impl Default for SnapSet {
@@ -58,6 +61,7 @@ impl Default for SnapSet {
             intersection: true,
             perpendicular: true,
             near: false,
+            visible_only: false,
         }
     }
 }
@@ -359,15 +363,16 @@ impl Outlines {
             view.project(point)
                 .map(|at| (at[0] - cursor[0]).hypot(at[1] - cursor[1]))
         };
-        let mut best: Option<(f64, SnapHit)> = None;
+        let mut offered: Vec<(f64, SnapHit)> = Vec::new();
         let mut offer = |kind: SnapKind, point: Point| {
             if let Some(distance) = gap(point)
                 && distance <= SNAP_REACH
-                && best.is_none_or(|(held, _)| distance < held)
             {
-                best = Some((distance, SnapHit { kind, point }));
+                offered.push((distance, SnapHit { kind, point }));
             }
         };
+        // In a shaded view, a point behind a face cannot be seen and is not offered.
+        let seen = |point: Point| !set.visible_only || !self.hidden(camera, size, point);
         for place in self.sites.iter().filter(|place| set.has(place.kind)) {
             offer(place.kind, place.point);
         }
@@ -405,7 +410,8 @@ impl Outlines {
                 }
             }
         }
-        if let Some((_, hit)) = best {
+        offered.sort_by(|a, b| a.0.total_cmp(&b.0));
+        if let Some((_, hit)) = offered.into_iter().find(|(_, hit)| seen(hit.point)) {
             return Some(hit);
         }
         if !set.near {
@@ -419,6 +425,7 @@ impl Outlines {
                 kind: SnapKind::Near,
                 point: along(segment.a, segment.b, nearest_along(segment, &gap)),
             })
+            .filter(|hit| seen(hit.point))
     }
 }
 
@@ -481,6 +488,120 @@ pub fn constrained(
     [world(0), world(1), world(2)]
 }
 
+/// Points held by resting on them, and the guidelines they send out, as Rhino's SmartTrack and
+/// ArchiCAD's guide lines do.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Guides {
+    /// The held points, oldest first.
+    pub held: Vec<Point>,
+    /// The construction plane's X and Y directions, of length 1, which the guidelines follow.
+    pub axes: [Point; 2],
+    /// Whether the guidelines also run at 45°; off while ortho is on.
+    pub diagonals: bool,
+}
+
+/// How far each way a guideline is taken to run, in millimetres: further than any model.
+const GUIDE_REACH: f64 = 1e7;
+
+impl Guides {
+    /// Most points held at once.
+    pub const MOST_HELD: usize = 8;
+
+    /// Each guideline, as a point on it and its direction of length 1.
+    #[must_use]
+    pub fn lines(&self) -> Vec<(Point, Point)> {
+        let [x, y] = self.axes;
+        let mut directions = vec![x, y];
+        if self.diagonals {
+            let half = std::f64::consts::FRAC_1_SQRT_2;
+            directions.push(std::array::from_fn(|i| (x[i] + y[i]) * half));
+            directions.push(std::array::from_fn(|i| (x[i] - y[i]) * half));
+        }
+        self.held
+            .iter()
+            .flat_map(|p| directions.iter().map(move |d| (*p, *d)))
+            .collect()
+    }
+
+    /// Holds `point`, or lets it go if it is held already. The oldest goes past the most held.
+    pub fn toggle(&mut self, point: Point) {
+        if let Some(index) = self.held.iter().position(|p| length(sub(*p, point)) < 1e-9) {
+            self.held.remove(index);
+            return;
+        }
+        if self.held.len() >= Self::MOST_HELD {
+            self.held.remove(0);
+        }
+        self.held.push(point);
+    }
+}
+
+impl Outlines {
+    /// The snap the held points' guidelines give near the cursor, if one is in reach: where two
+    /// guidelines cross, where a guideline crosses an object (both shown as intersections), and
+    /// midway between two held points.
+    #[must_use]
+    pub fn guide_snap(
+        &self,
+        camera: &Camera,
+        cursor: [f64; 2],
+        size: [f64; 2],
+        guides: &Guides,
+    ) -> Option<SnapHit> {
+        if guides.held.is_empty() {
+            return None;
+        }
+        let view = camera.projector(size);
+        let gap = |point: Point| {
+            view.project(point)
+                .map(|at| (at[0] - cursor[0]).hypot(at[1] - cursor[1]))
+        };
+        let mut candidates: Vec<(SnapKind, Point)> = Vec::new();
+        let span = |(p, d): (Point, Point)| {
+            (
+                std::array::from_fn(|i| p[i] - d[i] * GUIDE_REACH),
+                std::array::from_fn(|i| p[i] + d[i] * GUIDE_REACH),
+            )
+        };
+        let lines = guides.lines();
+        // Two lines meet where their closest points coincide.
+        let meeting = |a: (Point, Point), b: (Point, Point)| -> Option<Point> {
+            let (s, t) = closest_between(a, b);
+            let (p, q) = (along(a.0, a.1, s), along(b.0, b.1, t));
+            (length(sub(p, q)) < 1e-6 * (1.0 + length(p))).then_some(p)
+        };
+        for (i, first) in lines.iter().enumerate() {
+            for second in &lines[i + 1..] {
+                if length(sub(first.0, second.0)) < 1e-9 {
+                    continue; // Lines from the same held point meet only there.
+                }
+                candidates.extend(
+                    meeting(span(*first), span(*second)).map(|p| (SnapKind::Intersection, p)),
+                );
+            }
+        }
+        for segment in self.segments_near(&view, cursor, &[]) {
+            for line in &lines {
+                candidates.extend(
+                    meeting(span(*line), (segment.a, segment.b))
+                        .map(|p| (SnapKind::Intersection, p)),
+                );
+            }
+        }
+        for (i, a) in guides.held.iter().enumerate() {
+            for b in &guides.held[i + 1..] {
+                candidates.push((SnapKind::Mid, along(*a, *b, 0.5)));
+            }
+        }
+        candidates
+            .into_iter()
+            .filter_map(|(kind, point)| Some((gap(point)?, kind, point)))
+            .filter(|(distance, ..)| *distance <= SNAP_REACH)
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, kind, point)| SnapHit { kind, point })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -508,6 +629,7 @@ mod tests {
             intersection: kind == SnapKind::Intersection,
             perpendicular: kind == SnapKind::Perpendicular,
             near: kind == SnapKind::Near,
+            visible_only: false,
         }
     }
 
@@ -874,5 +996,32 @@ mod tests {
             constrained(&CPlane::WORLD_XY, ground, Some([0.0; 3]), false, false),
             ground
         );
+    }
+
+    #[test]
+    fn held_points_give_crossings_midpoints_and_hits_on_objects() {
+        let shapes = outlines(vec![line([20.0, -5.0, 0.0], [20.0, 5.0, 0.0])]);
+        let mut guides = Guides {
+            held: Vec::new(),
+            axes: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            diagonals: true,
+        };
+        guides.toggle([0.0; 3]);
+        guides.toggle([10.0, 10.0, 0.0]);
+        let camera = Camera::default();
+        let near = |p: Point| {
+            let at = camera.project(p, SIZE).unwrap();
+            shapes.guide_snap(&camera, [at[0] + 3.0, at[1] - 2.0], SIZE, &guides)
+        };
+        let crossing = near([10.0, 0.0, 0.0]).unwrap();
+        assert_eq!(crossing.kind, SnapKind::Intersection);
+        assert!(close(crossing.point, [10.0, 0.0, 0.0]));
+        let middle = near([5.0, 5.0, 0.0]).unwrap();
+        assert!(close(middle.point, [5.0, 5.0, 0.0]));
+        let on_line = near([20.0, 0.0, 0.0]).unwrap();
+        assert!(close(on_line.point, [20.0, 0.0, 0.0]));
+        // Resting on a held point again lets it go.
+        guides.toggle([10.0, 10.0, 0.0]);
+        assert_eq!(guides.held.len(), 1);
     }
 }

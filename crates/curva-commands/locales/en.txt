@@ -373,3 +373,6 @@ error.option_positive = {0} must be more than zero.
 error.option_negative = {0} cannot be less than zero.
 prompt.move.height = Height to move, straight out of the plane
 error.loft.two = A loft needs at least two curves.
+ui.piece.commands = Commands
+ui.piece.command = Command
+ui.panel.hide = Hide this panel

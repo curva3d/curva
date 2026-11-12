@@ -94,6 +94,7 @@ mod top;
 mod trim;
 mod tween_curves;
 mod undo;
+mod view_history;
 mod volume;
 mod zoom;
 mod zoom_extents;
@@ -151,7 +152,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 100] = [
+pub static COMMANDS: [CommandDef; 102] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -301,6 +302,8 @@ pub static COMMANDS: [CommandDef; 100] = [
         zoom_extents::ZoomExtents
     ),
     listed!("4View", [], false, false, four_view::FourView),
+    listed!("UndoView", [], false, false, view_history::UndoView),
+    listed!("RedoView", [], false, false, view_history::RedoView),
     listed!("Top", [], false, false, top::Top),
     listed!("Front", [], false, false, front::Front),
     listed!("Right", [], false, false, right::Right),
