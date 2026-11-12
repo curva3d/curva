@@ -7,6 +7,7 @@
 //! `curva --orbit-benchmark --curves 5000` opens the window on a scene of that many circles, spins
 //! the view and prints how fast it drew and snapped. `--solids 500` adds that many cylinders.
 
+mod assistant;
 mod icons;
 mod layout;
 mod recovery;
@@ -254,6 +255,22 @@ struct Curva {
     update: Option<updates::Release>,
     /// The update being downloaded.
     update_download: Option<std::sync::mpsc::Receiver<Result<std::path::PathBuf, String>>>,
+    /// The AI Assistant's conversation as shown.
+    assistant_lines: Vec<assistant::Line>,
+    /// The conversation so far, as (request, answer) turns, for the model.
+    assistant_history: Vec<(String, String)>,
+    /// What is being typed to the assistant.
+    assistant_input: String,
+    /// The answer being worked out.
+    assistant_busy: Option<std::sync::mpsc::Receiver<(String, Vec<assistant::Line>)>>,
+    /// The way of connecting chosen, before it connects.
+    assistant_choice: Option<assistant::Provider>,
+    /// An API key being typed.
+    assistant_key: String,
+    /// The models LM Studio offers.
+    assistant_models: Vec<String>,
+    /// Why connecting did not work.
+    assistant_error: Option<String>,
     /// Snap points held by resting on them, which send out guidelines, as Rhino's SmartTrack.
     held: Vec<Point>,
     /// The snap point the pointer rests on, since when, and whether resting there has acted.
@@ -780,6 +797,14 @@ impl Curva {
             update_check: None,
             update: None,
             update_download: None,
+            assistant_lines: Vec::new(),
+            assistant_history: Vec::new(),
+            assistant_input: String::new(),
+            assistant_busy: None,
+            assistant_choice: None,
+            assistant_key: String::new(),
+            assistant_models: Vec::new(),
+            assistant_error: None,
             held: Vec::new(),
             resting: None,
             ghosted: (Vec::new(), Arc::new(Vec::new())),
@@ -2550,7 +2575,7 @@ impl Curva {
                         layout::Piece::Agent => {
                             egui::ScrollArea::vertical()
                                 .auto_shrink([false, false])
-                                .show(ui, |ui| self.agent_status(ui));
+                                .show(ui, |ui| self.assistant_panel(ui));
                         }
                         layout::Piece::Display => self.display_piece(ui),
                         layout::Piece::Settings => self.settings_piece(ui),
@@ -3263,11 +3288,6 @@ impl Curva {
         self.assistant_connections(ui);
     }
 
-    /// The AI Assistant's connections.
-    fn assistant_connections(&mut self, ui: &mut egui::Ui) {
-        self.agent_status(ui);
-    }
-
     /// What happens once Curva has opened: the model given on the command line opens, the check
     /// for updates starts in the background, and the command bar says what an update brought and
     /// welcomes the user.
@@ -3409,19 +3429,257 @@ impl Curva {
 
     /// Agent access, and whether an agent is talking to Curva.
     fn agent_status(&mut self, ui: &mut egui::Ui) {
-        ui.checkbox(
-            &mut self.agent_on,
-            self.text.render(&Message::new("ui.agent")),
-        );
-        let recent = self
-            .agent_seen
-            .is_some_and(|seen| seen.elapsed() < AGENT_RECENT);
-        let (key, colour) = match (self.agent.is_some(), recent) {
-            (false, _) => ("ui.agent.off", theme::current().quiet),
-            (true, false) => ("ui.agent.waiting", theme::current().quiet),
-            (true, true) => ("ui.agent.active", AGENT_ACTIVE),
-        };
-        ui.colored_label(colour, self.text.render(&Message::new(key)));
+        ui.horizontal(|ui| {
+            ui.checkbox(
+                &mut self.agent_on,
+                self.text.render(&Message::new("ui.agent")),
+            );
+            let recent = self
+                .agent_seen
+                .is_some_and(|seen| seen.elapsed() < AGENT_RECENT);
+            let (key, colour) = match (self.agent.is_some(), recent) {
+                (false, _) => ("ui.agent.off", theme::current().quiet),
+                (true, false) => ("ui.agent.waiting", theme::current().quiet),
+                (true, true) => ("ui.agent.active", AGENT_ACTIVE),
+            };
+            ui.colored_label(colour, self.text.render(&Message::new(key)));
+        });
+    }
+
+    /// The AI Assistant panel: the choice of model service until one is connected, then the chat.
+    fn assistant_panel(&mut self, ui: &mut egui::Ui) {
+        self.receive_assistant();
+        if self.settings.assistant.connected {
+            self.assistant_chat(ui);
+        } else {
+            self.assistant_connections(ui);
+        }
+        ui.separator();
+        self.agent_status(ui);
+    }
+
+    /// The ways to connect a model, as Serpentine3D offers them, and how to connect an outside
+    /// assistant through MCP.
+    fn assistant_connections(&mut self, ui: &mut egui::Ui) {
+        let say = |key: &'static str| self.text.render(&Message::new(key));
+        ui.label(say("ui.assistant.connect"));
+        ui.horizontal_wrapped(|ui| {
+            for (provider, key) in [
+                (assistant::Provider::ChatGpt, "ui.assistant.chatgpt"),
+                (assistant::Provider::LmStudio, "ui.assistant.local"),
+                (assistant::Provider::OpenAi, "ui.assistant.key"),
+            ] {
+                let chosen = self.assistant_choice == Some(provider)
+                    || (provider == assistant::Provider::OpenAi
+                        && self.assistant_choice == Some(assistant::Provider::Claude));
+                if ui.selectable_label(chosen, say(key)).clicked() {
+                    self.assistant_choice = Some(provider);
+                    self.assistant_error = None;
+                    if provider == assistant::Provider::LmStudio {
+                        match assistant::local_models() {
+                            Ok(models) => self.assistant_models = models,
+                            Err(error) => self.assistant_error = Some(error),
+                        }
+                    }
+                }
+            }
+        });
+        let mut connect = None;
+        match self.assistant_choice {
+            Some(assistant::Provider::ChatGpt) => {
+                ui.label(say("ui.assistant.chatgpt_note"));
+                ui.horizontal(|ui| {
+                    if ui.button(say("ui.assistant.sign_in")).clicked()
+                        && let Err(error) = assistant::sign_in()
+                    {
+                        self.assistant_error = Some(error);
+                    }
+                    if ui.button(say("ui.assistant.use")).clicked() {
+                        connect = Some((
+                            assistant::Provider::ChatGpt,
+                            assistant::Provider::ChatGpt.standard_model().to_owned(),
+                        ));
+                    }
+                });
+            }
+            Some(assistant::Provider::LmStudio) => {
+                if self.assistant_models.is_empty() {
+                    ui.label(say("ui.assistant.no_models"));
+                }
+                for model in self.assistant_models.clone() {
+                    if ui.button(&model).clicked() {
+                        connect = Some((assistant::Provider::LmStudio, model));
+                    }
+                }
+            }
+            Some(provider @ (assistant::Provider::OpenAi | assistant::Provider::Claude)) => {
+                ui.horizontal(|ui| {
+                    let mut choice = provider;
+                    ui.radio_value(&mut choice, assistant::Provider::OpenAi, "OpenAI");
+                    ui.radio_value(&mut choice, assistant::Provider::Claude, "Claude");
+                    self.assistant_choice = Some(choice);
+                });
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.assistant_key)
+                        .password(true)
+                        .hint_text(say("ui.assistant.key_hint")),
+                );
+                if ui.button(say("ui.assistant.use")).clicked() {
+                    let provider = self.assistant_choice.unwrap_or(provider);
+                    if !self.assistant_key.trim().is_empty() {
+                        if let Err(error) = assistant::set_key(provider, self.assistant_key.trim())
+                        {
+                            self.assistant_error = Some(error);
+                        }
+                        self.assistant_key.clear();
+                    }
+                    connect = Some((provider, provider.standard_model().to_owned()));
+                }
+            }
+            None => {}
+        }
+        if let Some(error) = &self.assistant_error {
+            ui.colored_label(theme::ACCENT, error);
+        }
+        // An outside assistant, through MCP.
+        egui::CollapsingHeader::new(say("ui.assistant.mcp")).show(ui, |ui| {
+            ui.label(say("ui.assistant.mcp_steps"));
+            let mut settings = assistant::mcp_settings();
+            ui.add(
+                egui::TextEdit::multiline(&mut settings)
+                    .code_editor()
+                    .desired_rows(5)
+                    .desired_width(f32::INFINITY),
+            );
+            if ui.button(say("ui.assistant.copy")).clicked() {
+                ui.ctx().copy_text(assistant::mcp_settings());
+            }
+        });
+        if let Some((provider, model)) = connect {
+            self.settings.assistant = assistant::Connection {
+                provider,
+                model,
+                connected: true,
+            };
+            self.save_settings();
+        }
+    }
+
+    /// The conversation, and the box to ask in.
+    fn assistant_chat(&mut self, ui: &mut egui::Ui) {
+        let connection = self.settings.assistant.clone();
+        ui.horizontal(|ui| {
+            ui.colored_label(
+                theme::ACCENT,
+                format!("{} · {}", connection.provider.label(), connection.model),
+            );
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui
+                    .small_button("⟲")
+                    .on_hover_text(self.text.render(&Message::new("ui.assistant.change")))
+                    .clicked()
+                {
+                    self.settings.assistant.connected = false;
+                    self.save_settings();
+                }
+                if ui
+                    .small_button("+")
+                    .on_hover_text(self.text.render(&Message::new("ui.assistant.new")))
+                    .clicked()
+                {
+                    self.assistant_lines.clear();
+                    self.assistant_history.clear();
+                }
+            });
+        });
+        let height = (ui.available_height() - 64.0).max(60.0);
+        egui::ScrollArea::vertical()
+            .max_height(height)
+            .stick_to_bottom(true)
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                for line in &self.assistant_lines {
+                    match line {
+                        assistant::Line::User(text) => {
+                            ui.label(egui::RichText::new(text).strong());
+                        }
+                        assistant::Line::Assistant(text) => {
+                            ui.label(text);
+                        }
+                        assistant::Line::Tool(name) => {
+                            ui.colored_label(theme::current().quiet, format!("· {name}"));
+                        }
+                        assistant::Line::Error(text) => {
+                            ui.colored_label(theme::ACCENT, text);
+                        }
+                    }
+                }
+                if self.assistant_busy.is_some() {
+                    ui.colored_label(
+                        theme::current().quiet,
+                        self.text.render(&Message::new("ui.assistant.thinking")),
+                    );
+                }
+            });
+        let mut send = false;
+        ui.horizontal(|ui| {
+            let field = ui.add(
+                egui::TextEdit::singleline(&mut self.assistant_input)
+                    .hint_text(self.text.render(&Message::new("ui.assistant.ask")))
+                    .desired_width(ui.available_width() - 60.0),
+            );
+            send |= field.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
+            send |= ui
+                .add_enabled(
+                    self.assistant_busy.is_none(),
+                    egui::Button::new(self.text.render(&Message::new("ui.assistant.send"))),
+                )
+                .clicked();
+        });
+        if send && self.assistant_busy.is_none() && !self.assistant_input.trim().is_empty() {
+            let request = std::mem::take(&mut self.assistant_input);
+            self.assistant_lines
+                .push(assistant::Line::User(request.clone()));
+            // The assistant works on the model through Agent access.
+            self.agent_on = true;
+            let history = self.assistant_history.clone();
+            let (sender, receiver) = std::sync::mpsc::channel();
+            let repaint = ui.ctx().clone();
+            std::thread::spawn(move || {
+                let lines = assistant::answer(&connection, &history, &request);
+                let _ = sender.send((request, lines));
+                repaint.request_repaint();
+            });
+            self.assistant_busy = Some(receiver);
+        }
+    }
+
+    /// Takes the assistant's answer when it comes.
+    fn receive_assistant(&mut self) {
+        if let Some(receiver) = &self.assistant_busy
+            && let Ok((request, lines)) = receiver.try_recv()
+        {
+            self.assistant_busy = None;
+            let reply = lines
+                .iter()
+                .filter_map(|line| match line {
+                    assistant::Line::Assistant(text) => Some(text.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            self.assistant_history.push((request, reply));
+            self.assistant_lines.extend(lines);
+        }
+    }
+
+    /// Keeps the settings for the next session.
+    fn save_settings(&self) {
+        if self.benchmark.is_none()
+            && let Some(file) = theme::file()
+        {
+            let _ = self.settings.save(&file);
+        }
     }
 
     /// The surfaces and solids the running command would make, as ghosted triangles. The meshes

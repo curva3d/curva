@@ -110,6 +110,8 @@ pub struct Settings {
     pub grid: bool,
     /// Whether Curva looks for a newer release on GitHub when it opens.
     pub check_updates: bool,
+    /// The AI Assistant's connection.
+    pub assistant: crate::assistant::Connection,
 }
 
 impl Default for Settings {
@@ -119,6 +121,7 @@ impl Default for Settings {
             glass: true,
             grid: true,
             check_updates: true,
+            assistant: crate::assistant::Connection::default(),
         }
     }
 }
