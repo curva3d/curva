@@ -895,8 +895,22 @@ fn lines_of(outlines: &Outlines, selected: &[u64], shaded: bool) -> Vec<Vertex> 
 /// The surfaces and solids as shaded triangles, selected ones in the selection colour.
 #[must_use]
 pub fn face_vertices(outlines: &Outlines, selected: &[u64]) -> Vec<MeshVertex> {
+    face_vertices_without(outlines, selected, &[])
+}
+
+/// As [`face_vertices`], leaving out the objects `hidden`, as while a preview stands in for them.
+#[must_use]
+pub fn face_vertices_without(
+    outlines: &Outlines,
+    selected: &[u64],
+    hidden: &[u64],
+) -> Vec<MeshVertex> {
     let mut out = Vec::new();
-    for faces in &outlines.faces {
+    for faces in outlines
+        .faces
+        .iter()
+        .filter(|faces| !hidden.contains(&faces.id))
+    {
         let colour = if selected.contains(&faces.id) {
             SELECTED_COLOUR
         } else if faces.locked {

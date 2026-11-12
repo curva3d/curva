@@ -690,6 +690,35 @@ mod tests {
     }
 
     #[test]
+    fn every_option_offered_can_be_typed() {
+        let fresh = || {
+            let mut doc = curva_document::Document::default();
+            let id = doc.add(curva_kernel::Curve::line([0.0; 3], [4.0, 0.0, 0.0]).unwrap());
+            doc.select(&[id]);
+            doc
+        };
+        for def in COMMANDS.iter().filter(|def| def.recipe) {
+            let mut probe = crate::Processor::default();
+            probe.submit(&mut fresh(), def.name);
+            let offered: Vec<&str> = probe.options().iter().map(|(name, _)| *name).collect();
+            for option in offered {
+                let mut doc = fresh();
+                let mut processor = crate::Processor::default();
+                processor.submit(&mut doc, def.name);
+                let before = processor.log().len();
+                processor.submit(&mut doc, option);
+                let said: Vec<&String> = processor.log().iter().skip(before).collect();
+                assert!(
+                    said.iter()
+                        .all(|line| !line.starts_with("Not a") && !line.contains("does not fit")),
+                    "{} {option}: {said:?}",
+                    def.name
+                );
+            }
+        }
+    }
+
+    #[test]
     fn every_command_that_changes_geometry_shows_a_preview() {
         for (name, steps) in PREVIEW_STEPS {
             let mut doc = curva_document::Document::default();

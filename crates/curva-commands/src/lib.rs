@@ -77,6 +77,9 @@ pub struct Request {
     /// the direction, of length 1. The pointer, snapped, is projected onto that line, so the size
     /// follows the mouse and lines up with what it snaps to, as in Rhino.
     pub along: Option<(Point, Point)>,
+    /// Whether the step picks the far corner of a rectangle from [`Self::from`], so the pointer's
+    /// tag shows width × depth.
+    pub corner: bool,
     /// How to show the options in the prompt, Rhino's way, such as `Solid=Yes`; when empty the
     /// option words are shown as they are.
     pub option_labels: Vec<String>,
@@ -94,6 +97,7 @@ impl Request {
             preview: Vec::new(),
             from: None,
             along: None,
+            corner: false,
             option_labels: Vec::new(),
         }
     }
@@ -272,6 +276,18 @@ pub trait Command {
     /// The curves to show while waiting for the next answer: the result so far and any
     /// construction lines. It must not change anything.
     fn preview(&self, _doc: &Document, _live: &Live) -> Vec<Curve> {
+        Vec::new()
+    }
+
+    /// Whether, when the command is ended with Escape, what it has already put in the model
+    /// stays, as Rhino keeps the copies Copy placed. Nothing stays by default.
+    fn keeps_on_cancel(&self) -> bool {
+        false
+    }
+
+    /// The objects the preview changes in place, which the viewport hides meanwhile. None by
+    /// default.
+    fn preview_replaces(&self, _doc: &Document, _live: &Live) -> Vec<u64> {
         Vec::new()
     }
 

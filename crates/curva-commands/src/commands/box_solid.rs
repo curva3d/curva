@@ -54,7 +54,12 @@ impl Recipe for BoxSolid {
     fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
         let mut steps = vec![StepDef::point("prompt.box.first").offering(&[CENTER])];
         if let Some(first) = cx.values.first().and_then(Value::point) {
-            steps.push(StepDef::point("prompt.box.other").from(first).offering(&[]));
+            steps.push(
+                StepDef::point("prompt.box.other")
+                    .from(first)
+                    .offering(&[])
+                    .corner(),
+            );
             if cx.values.len() >= 2 {
                 steps.push(
                     StepDef::along("prompt.box.height", first, up(cx))

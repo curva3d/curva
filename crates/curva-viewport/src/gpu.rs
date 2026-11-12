@@ -5,11 +5,17 @@ use egui_wgpu::wgpu;
 use std::sync::Arc;
 
 const LINE_SHADER: &str = "
-struct Uniforms { matrix: mat4x4<f32>, light: vec4<f32> };
+struct Uniforms { matrix: mat4x4<f32>, light: vec4<f32>, pixel: vec4<f32> };
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 struct Out { @builtin(position) position: vec4<f32>, @location(0) colour: vec3<f32> };
-@vertex fn vertex_main(@location(0) p: vec3<f32>, @location(1) c: vec3<f32>) -> Out {
-    return Out(uniforms.matrix * vec4<f32>(p, 1.0), c);
+// Lines are drawn LINE_PASSES times, each a pixel to the side, so they are two pixels wide.
+@vertex fn vertex_main(
+    @location(0) p: vec3<f32>, @location(1) c: vec3<f32>, @builtin(instance_index) copy: u32,
+) -> Out {
+    var at = uniforms.matrix * vec4<f32>(p, 1.0);
+    let side = vec2<f32>(f32(copy == 1u), f32(copy == 2u));
+    at = vec4<f32>(at.xy + side * uniforms.pixel.xy * at.w, at.zw);
+    return Out(at, c);
 }
 @fragment fn fragment_main(input: Out) -> @location(0) vec4<f32> {
     return vec4<f32>(input.colour, 1.0);
@@ -67,7 +73,9 @@ pub const DEPTH_BITS: u8 = 24;
 
 const LINE_VERTEX_SIZE: u64 = 24;
 const FACE_VERTEX_SIZE: u64 = 36;
-const UNIFORM_SIZE: u64 = 80;
+const UNIFORM_SIZE: u64 = 96;
+/// How many times each line is drawn, a pixel apart, to make it two pixels wide.
+const LINE_PASSES: u32 = 3;
 /// Faces are pushed slightly back, so edges on them are drawn in front.
 const FACE_DEPTH_BIAS: wgpu::DepthBiasState = wgpu::DepthBiasState {
     constant: 4,
@@ -107,12 +115,14 @@ fn face_bytes(faces: &[MeshVertex]) -> Vec<u8> {
     bytes
 }
 
-fn uniform_bytes(matrix: &[[f32; 4]; 4], light: [f32; 3]) -> Vec<u8> {
+fn uniform_bytes(matrix: &[[f32; 4]; 4], light: [f32; 3], pixel: [f32; 2]) -> Vec<u8> {
     matrix
         .iter()
         .flatten()
         .chain(&light)
         .chain(&[0.0])
+        .chain(&pixel)
+        .chain(&[0.0, 0.0])
         .flat_map(|value| value.to_le_bytes())
         .collect()
 }
@@ -468,14 +478,20 @@ impl LineRenderer {
     }
 
     /// Sends one view's camera and grid, and anything that changed, to the graphics card.
-    fn update(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, drawing: &Drawing) {
+    fn update(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        drawing: &Drawing,
+        pixel: [f32; 2],
+    ) {
         let Some(slot) = self.slots.get_mut(drawing.slot) else {
             return;
         };
         queue.write_buffer(
             &slot.uniforms,
             0,
-            &uniform_bytes(&drawing.matrix, drawing.light),
+            &uniform_bytes(&drawing.matrix, drawing.light, pixel),
         );
         slot.shaded = drawing.shaded;
         slot.ghosted = drawing.ghosted;
@@ -547,10 +563,12 @@ impl LineRenderer {
             draw_faces(pass, &self.faces, faces);
         }
         pass.set_pipeline(&self.lines);
-        for lines in [&slot.grid, &slot.scene].into_iter().flatten() {
+        // The grid stays a pixel wide; the model's lines are drawn two pixels wide.
+        for (lines, copies) in [(&slot.grid, 1), (&slot.scene, LINE_PASSES)] {
+            let Some(lines) = lines else { continue };
             if lines.count > 0 {
                 pass.set_vertex_buffer(0, lines.buffer.slice(..));
-                pass.draw(0..lines.count, 0..1);
+                pass.draw(0..lines.count, 0..copies);
             }
         }
         // Ghosted faces go over the lines, so lines behind a face show through it, dimmed,
@@ -568,7 +586,7 @@ impl LineRenderer {
         if let Some(overlay) = self.overlay.as_ref().filter(|lines| lines.count > 0) {
             pass.set_pipeline(&self.lines);
             pass.set_vertex_buffer(0, overlay.buffer.slice(..));
-            pass.draw(0..overlay.count, 0..1);
+            pass.draw(0..overlay.count, 0..LINE_PASSES);
         }
     }
 }
@@ -618,7 +636,10 @@ impl egui_wgpu::CallbackTrait for Drawing {
         let Some(renderer) = resources.get_mut::<LineRenderer>() else {
             return Vec::new();
         };
-        renderer.update(device, queue, self);
+        // The size of a pixel in the view's clip space, for drawing lines two pixels wide.
+        let pixels = self.area.size() * screen.pixels_per_point;
+        let pixel = [2.0 / pixels.x.max(1.0), 2.0 / pixels.y.max(1.0)];
+        renderer.update(device, queue, self, pixel);
         renderer
             .background
             .set(queue, self.background, self.background_low);
@@ -769,7 +790,12 @@ pub fn save_picture(
         background: epaint::Color32::BLACK,
         background_low: epaint::Color32::BLACK,
     };
-    renderer.update(&device, &queue, &drawing);
+    renderer.update(
+        &device,
+        &queue,
+        &drawing,
+        [2.0 / width as f32, 2.0 / height as f32],
+    );
     let row = (width * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
     let readback = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("curva picture"),

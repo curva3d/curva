@@ -165,7 +165,10 @@ struct Curva {
     active: usize,
     maximised: Option<usize>,
     gumball_on: bool,
+    /// Whether a text field other than the command line has the keyboard, so keys go there.
     naming_layer: bool,
+    /// The command line's text field, to tell it from other fields.
+    command_field: Option<egui::Id>,
     agent_on: bool,
     agent: Option<curva_mcp::Listener>,
     waiting_approval: Option<(curva_mcp::AgentRequest, String)>,
@@ -217,6 +220,12 @@ struct Curva {
     agent_seen: Option<std::time::Instant>,
     /// Where the pointer last aimed in a viewport, for Enter to place a point with a held distance.
     last_aim: Option<Point>,
+    /// The last aim, with its snap, held while the view is turned or slid.
+    held_aim: Option<(Point, Option<SnapHit>)>,
+    /// The faces with those a preview replaces left out, and which those are.
+    faces_without: (Vec<u64>, Arc<Vec<MeshVertex>>),
+    /// Objects copied with Ctrl+C or Ctrl+X, with their layers, for Ctrl+V.
+    clipboard: Vec<(Shape, Option<u64>)>,
     /// Snap points held by resting on them, which send out guidelines, as Rhino's SmartTrack.
     held: Vec<Point>,
     /// The snap point the pointer rests on, since when, and whether resting there has acted.
@@ -690,6 +699,7 @@ impl Curva {
             maximised: STARTING_LAYOUT,
             gumball_on: true,
             naming_layer: false,
+            command_field: None,
             // A benchmark must not take over the connection of a window that is in use.
             agent_on: benchmark.is_none(),
             agent: None,
@@ -727,6 +737,9 @@ impl Curva {
             command_tab: 1,
             agent_seen: None,
             last_aim: None,
+            held_aim: None,
+            faces_without: (Vec::new(), Arc::default()),
+            clipboard: Vec::new(),
             held: Vec::new(),
             resting: None,
             ghosted: (Vec::new(), Arc::new(Vec::new())),
@@ -751,6 +764,7 @@ impl Curva {
             self.shaded_scene = Arc::new(shaded_object_lines(&self.outlines, &selection));
             self.faces = Arc::new(face_vertices(&self.outlines, &selection));
             self.drawn = Some((self.doc.state().clone(), selection));
+            self.faces_without.0.clear();
         }
         // The filter can change without the model changing, so it is passed on every frame.
         self.outlines.set_filter(self.pick_filter);
@@ -918,14 +932,30 @@ impl Curva {
             .unwrap_or_else(|| self.text.render(&Message::new("ui.command")));
         // These keys must be taken before the text box, which would otherwise act on them.
         let filled = self.completion_keys(ui);
+        let mut clicked_option = None;
         let mut submit = false;
         let mut clicked = None;
         let mut changed = false;
         ui.horizontal(|ui| {
-            ui.label(format!("{prompt}:"));
+            // The question, then its options as buttons, which answer as typing them would.
+            if let Some(question) = self.processor.question() {
+                ui.label(question);
+                for (name, label) in self.processor.options() {
+                    let chip = egui::Button::new(egui::RichText::new(label).color(theme::ACCENT))
+                        .small()
+                        .frame(true);
+                    if ui.add(chip).on_hover_text(name).clicked() {
+                        clicked_option = Some(name);
+                    }
+                }
+                ui.label(":");
+            } else {
+                ui.label(format!("{prompt}:"));
+            }
             let output = egui::TextEdit::singleline(&mut self.typed)
                 .desired_width(f32::INFINITY)
                 .show(ui);
+            self.command_field = Some(output.response.id);
             if !self.naming_layer {
                 output.response.request_focus();
             }
@@ -943,6 +973,10 @@ impl Curva {
             clicked = self.match_list(ui, output.response.rect.left_top());
             submit = !self.naming_layer && ui.input(|input| input.key_pressed(egui::Key::Enter));
         });
+        if let Some(name) = clicked_option {
+            self.typed.clear();
+            self.processor.submit(&mut self.doc, name);
+        }
         self.drawing_aids_bar(ui);
         let wants_path = self
             .processor
@@ -973,6 +1007,13 @@ impl Curva {
             }
         }
         if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+            // With nothing running and nothing typed, Escape clears the selection.
+            if !self.processor.is_running() && self.typed.is_empty() {
+                self.doc.select(&[]);
+                self.doc.select_grips(&[]);
+                self.doc.select_edges(&[]);
+                self.doc.select_faces(&[]);
+            }
             self.typed.clear();
             self.highlight = 0;
             self.processor.cancel(&mut self.doc);
@@ -1105,48 +1146,21 @@ impl Curva {
     ) -> Option<(Point, Option<SnapHit>)> {
         let (shift, alt) = ui.input(|input| (input.modifiers.shift, input.modifiers.alt));
         let request = self.processor.current_request()?;
-        if request.kind == Kind::PickPart {
-            let camera = &self.panes[pane].camera;
-            let on = self.outlines.pick_point(camera, screen, size, PICK_REACH)?;
-            return Some((on, None));
-        }
-        let base = request.preview.last().copied().or(request.from);
-        let camera = &self.panes[pane].camera;
-        if !alt
-            && let Some(hit) = self.outlines.snap_while_drawing(
-                camera,
-                screen,
-                size,
-                &SnapSet {
-                    visible_only: self.panes[pane].display != DisplayMode::Wireframe,
-                    ..self.snaps
-                },
-                base,
-                &request.preview,
-            )
-        {
-            return Some((hit.point, Some(hit)));
-        }
-        // Then the guidelines of held points: their crossings, and midway between them.
-        if !alt
-            && let Some(hit) =
-                self.outlines
-                    .guide_snap(camera, screen, size, &self.guides(pane, shift))
-        {
-            return Some((hit.point, Some(hit)));
-        }
-        // A height or extrusion follows the pointer along its line, as in Rhino.
-        if let Some((origin, direction)) = request.along {
-            return camera
-                .line_point(screen, size, origin, direction)
-                .map(|at| (at, None));
-        }
-        let plane = self.panes[pane].plane;
-        let cursor = camera.plane_point(screen, size, &plane)?;
-        Some((
-            constrained(&plane, cursor, base, self.ortho != shift, self.grid_snap),
-            None,
-        ))
+        let view = &self.panes[pane];
+        aim_at(&Aiming {
+            outlines: &self.outlines,
+            request,
+            camera: &view.camera,
+            plane: &view.plane,
+            display: view.display,
+            snaps: self.snaps,
+            guides: self.guides(pane, shift),
+            ortho: self.ortho != shift,
+            grid_snap: self.grid_snap,
+            snaps_off: alt,
+            screen,
+            size,
+        })
     }
 
     /// The gumball for the current selection, if it should show.
@@ -1574,7 +1588,6 @@ impl Curva {
         ui.heading(self.text.render(&Message::new("ui.layers")));
         let layers = self.doc.layers().to_vec();
         let current = self.doc.current_layer();
-        let mut naming = false;
         egui::Grid::new(ui.scope_id().with("layers")).show(ui, |ui| {
             for layer in &layers {
                 if ui.radio(layer.id == current, "").clicked() {
@@ -1582,7 +1595,6 @@ impl Curva {
                 }
                 let mut name = layer.name.clone();
                 let edit = ui.add(egui::TextEdit::singleline(&mut name).desired_width(90.0));
-                naming |= edit.has_focus();
                 if edit.changed() {
                     self.doc.rename_layer(layer.id, name);
                 }
@@ -1615,7 +1627,6 @@ impl Curva {
                 ui.end_row();
             }
         });
-        self.naming_layer = naming;
         if ui
             .button(self.text.render(&Message::new("ui.layer.new")))
             .clicked()
@@ -2033,6 +2044,39 @@ impl Curva {
         if let Some(name) = file_command {
             self.run_from_button(name);
         }
+        // The clipboard keys every program has, on the selected objects.
+        let (copy, cut, paste, all) = ctx.input_mut(|input| {
+            (
+                input.consume_shortcut(&shortcut(Modifiers::COMMAND, Key::C)),
+                input.consume_shortcut(&shortcut(Modifiers::COMMAND, Key::X)),
+                input.consume_shortcut(&shortcut(Modifiers::COMMAND, Key::V)),
+                input.consume_shortcut(&shortcut(Modifiers::COMMAND, Key::A)),
+            )
+        });
+        if copy || cut {
+            self.clipboard = self
+                .selected_shapes()
+                .into_iter()
+                .map(|(id, shape)| (shape, self.doc.layer_of(id)))
+                .collect();
+        }
+        if cut && !self.clipboard.is_empty() {
+            self.run_from_button("delete");
+        }
+        if paste && !self.clipboard.is_empty() {
+            // Pasted in place, as in Rhino, and selected.
+            let shapes = self.clipboard.clone();
+            self.undoable(|doc| {
+                let added: Vec<u64> = shapes
+                    .into_iter()
+                    .map(|(shape, layer)| doc.add_shape_on(shape, layer))
+                    .collect();
+                doc.select(&added);
+            });
+        }
+        if all {
+            self.run_from_button("selall");
+        }
         if view_back || view_ahead {
             self.panes[self.active].step_view(view_ahead);
         }
@@ -2376,7 +2420,12 @@ impl Curva {
                     ui.set_max_size(inner);
                     ui.add_space(TITLE_ROW);
                     match place.showing() {
-                        layout::Piece::CommandTabs => self.command_tabs(ui),
+                        // Inside a scroll area, so nothing a piece holds grows the panel past its place.
+                        layout::Piece::CommandTabs => {
+                            egui::ScrollArea::vertical()
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| self.command_tabs(ui));
+                        }
                         layout::Piece::Layers => {
                             egui::ScrollArea::both()
                                 .auto_shrink([false, false])
@@ -2387,8 +2436,17 @@ impl Curva {
                                 .auto_shrink([false, false])
                                 .show(ui, |ui| self.properties_panel(ui));
                         }
-                        layout::Piece::Command => self.command_line(ui),
-                        layout::Piece::Agent => self.agent_status(ui),
+                        layout::Piece::Command => {
+                            egui::ScrollArea::vertical()
+                                .auto_shrink([false, false])
+                                .stick_to_bottom(true)
+                                .show(ui, |ui| self.command_line(ui));
+                        }
+                        layout::Piece::Agent => {
+                            egui::ScrollArea::vertical()
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| self.agent_status(ui));
+                        }
                     }
                 });
                 // Added after the contents, so these sit above the panel's own controls.
@@ -3241,6 +3299,11 @@ impl Curva {
         let hovered = shown
             .iter()
             .find_map(|(pane, rect, response)| response.hover_pos().map(|at| (*pane, *rect, at)));
+        // While the view is being turned or slid, the aim holds where it was, so a height or a
+        // preview does not jump with the view.
+        let navigating =
+            ui.input(|input| input.pointer.secondary_down() || input.pointer.middle_down());
+        let held = self.held_aim;
         let aimed = hovered.and_then(|(pane, rect, position)| {
             let local = position - rect.min;
             let screen = [f64::from(local.x), f64::from(local.y)];
@@ -3255,6 +3318,8 @@ impl Curva {
                     .map(|at| (at, None))
             }
         });
+        let aimed = if navigating { held } else { aimed };
+        self.held_aim = aimed;
         let cursor = aimed.map(|(at, _)| at);
         self.last_aim = cursor;
         self.rest_on(ui.ctx(), aimed.and_then(|(_, hit)| hit));
@@ -3263,7 +3328,22 @@ impl Curva {
             && self.takes_position()
         {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
-            if let Some(value) = cursor.and_then(|at| self.processor.measure(&self.doc, at)) {
+            // A rectangle's far corner shows width × depth.
+            let unit = self.doc.state().unit.symbol();
+            let corner = cursor.and_then(|at| self.processor.corner_size(&self.doc, at));
+            if let Some((wide, deep)) = corner {
+                paint_cursor_tag(
+                    ui,
+                    position,
+                    &format!("{wide:.3} {unit} × {deep:.3} {unit}"),
+                );
+            }
+            // A number being typed for a size shows in the tag, as it drives the command.
+            let typed = self.typed.trim().parse::<f64>().ok();
+            if corner.is_none()
+                && let Some(value) =
+                    typed.or_else(|| cursor.and_then(|at| self.processor.measure(&self.doc, at)))
+            {
                 let unit = self.doc.state().unit.symbol();
                 paint_cursor_tag(ui, position, &format!("{value:.3} {unit}"));
             }
@@ -3288,6 +3368,21 @@ impl Curva {
         let preview = ghost_lines(&previewed);
         let overlay = Arc::new(preview);
         let preview_faces = self.ghosted_preview(cursor);
+        // A solid the preview changes in place is hidden, so the changed one shows in its place.
+        let replaced = self
+            .processor
+            .preview_replaces(&self.doc, cursor, &self.typed);
+        let faces = if replaced.is_empty() {
+            Arc::clone(&self.faces)
+        } else {
+            if self.faces_without.0 != replaced {
+                let selection = self.doc.selection();
+                let made =
+                    curva_viewport::face_vertices_without(&self.outlines, &selection, &replaced);
+                self.faces_without = (replaced, Arc::new(made));
+            }
+            Arc::clone(&self.faces_without.1)
+        };
         for (pane, rect, _) in &shown {
             let size = pane_size(*rect);
             let camera = &self.panes[*pane].camera;
@@ -3305,7 +3400,7 @@ impl Curva {
                 } else {
                     &self.scene
                 }),
-                faces: Arc::clone(&self.faces),
+                faces: Arc::clone(&faces),
                 overlay: Arc::clone(&overlay),
                 preview_faces: Arc::clone(&preview_faces),
                 matrix: camera.matrix(size[0] / size[1]),
@@ -3383,6 +3478,9 @@ impl eframe::App for Curva {
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.apply_theme(ui.ctx());
+        // Keys go to whichever field has focus; the command line takes them when no other does.
+        let focused = ui.ctx().memory(|memory| memory.focused());
+        self.naming_layer = focused.is_some() && focused != self.command_field;
         // Before the panels, so its Enter is not also taken by the command line.
         self.gumball_value_box(ui.ctx());
         self.share_work_plane();
@@ -3555,8 +3653,10 @@ fn main() -> Result<(), String> {
             // Shaded views need depth, so nearer faces hide farther ones.
             depth_buffer: DEPTH_BITS,
             viewport: match window_icon() {
-                Some(icon) => egui::ViewportBuilder::default().with_icon(icon),
-                None => egui::ViewportBuilder::default(),
+                Some(icon) => egui::ViewportBuilder::default()
+                    .with_icon(icon)
+                    .with_maximized(true),
+                None => egui::ViewportBuilder::default().with_maximized(true),
             },
             ..eframe::NativeOptions::default()
         },
@@ -3588,6 +3688,69 @@ fn gumball_extruded(
     }
 }
 
+/// What decides where a cursor position lands for the point a command asks for.
+struct Aiming<'a> {
+    outlines: &'a Outlines,
+    request: &'a curva_commands::Request,
+    camera: &'a Camera,
+    plane: &'a CPlane,
+    display: DisplayMode,
+    snaps: SnapSet,
+    guides: curva_viewport::Guides,
+    ortho: bool,
+    grid_snap: bool,
+    /// Alt held: no object snaps for the moment.
+    snaps_off: bool,
+    screen: [f64; 2],
+    size: [f64; 2],
+}
+
+/// Where a cursor position lands for the point being asked for: an object snap if one is in reach
+/// (in a shaded view only one that can be seen), then the held points' guidelines, then a height
+/// along its line, otherwise the viewport's plane with ortho and grid snap applied.
+fn aim_at(aiming: &Aiming<'_>) -> Option<(Point, Option<SnapHit>)> {
+    let Aiming {
+        outlines,
+        request,
+        camera,
+        plane,
+        screen,
+        size,
+        ..
+    } = *aiming;
+    if request.kind == Kind::PickPart {
+        let on = outlines.pick_point(camera, screen, size, PICK_REACH)?;
+        return Some((on, None));
+    }
+    let base = request.preview.last().copied().or(request.from);
+    if !aiming.snaps_off {
+        let set = SnapSet {
+            // Only a shaded view hides what is behind faces; ghosted and wireframe show it all.
+            visible_only: aiming.display == DisplayMode::Shaded,
+            ..aiming.snaps
+        };
+        if let Some(hit) =
+            outlines.snap_while_drawing(camera, screen, size, &set, base, &request.preview)
+        {
+            return Some((hit.point, Some(hit)));
+        }
+        if let Some(hit) = outlines.guide_snap(camera, screen, size, &aiming.guides) {
+            return Some((hit.point, Some(hit)));
+        }
+    }
+    // A height or extrusion follows the pointer along its line, as in Rhino.
+    if let Some((origin, direction)) = request.along {
+        return camera
+            .line_point(screen, size, origin, direction)
+            .map(|at| (at, None));
+    }
+    let cursor = camera.plane_point(screen, size, plane)?;
+    Some((
+        constrained(plane, cursor, base, aiming.ortho, aiming.grid_snap),
+        None,
+    ))
+}
+
 /// A command button: its icon, with its name on hover, or its name where it has no icon yet.
 fn command_button(ui: &mut egui::Ui, name: &str) -> egui::Response {
     if !icons::has(name) {
@@ -3603,7 +3766,8 @@ fn command_button(ui: &mut egui::Ui, name: &str) -> egui::Response {
 }
 
 /// The edges and corners a panel can be resized from: near one, the pointer becomes a resize
-/// arrow and the edge pulses gently in the accent. Returns the drag, if one is under way.
+/// arrow and the edge pulses gently in the accent. The handles lie just inside the panel, so a drag
+/// from one never reaches the viewport behind. Returns the drag, if one is under way.
 fn resize_handles(ui: &egui::Ui, place: &layout::Place, rect: egui::Rect) -> Option<PanelEvent> {
     let movable = layout::Sides::movable(place);
     let side = |left, right, top, bottom| layout::Sides {
@@ -3620,42 +3784,42 @@ fn resize_handles(ui: &egui::Ui, place: &layout::Place, rect: egui::Rect) -> Opt
     let handles = [
         (
             side(true, false, true, false),
-            zone(l - reach, t - reach, l + reach, t + reach),
+            zone(l, t, l + 2.0 * reach, t + 2.0 * reach),
             egui::CursorIcon::ResizeNwSe,
         ),
         (
             side(false, true, false, true),
-            zone(r - reach, b - reach, r + reach, b + reach),
+            zone(r - 2.0 * reach, b - 2.0 * reach, r, b),
             egui::CursorIcon::ResizeNwSe,
         ),
         (
             side(false, true, true, false),
-            zone(r - reach, t - reach, r + reach, t + reach),
+            zone(r - 2.0 * reach, t, r, t + 2.0 * reach),
             egui::CursorIcon::ResizeNeSw,
         ),
         (
             side(true, false, false, true),
-            zone(l - reach, b - reach, l + reach, b + reach),
+            zone(l, b - 2.0 * reach, l + 2.0 * reach, b),
             egui::CursorIcon::ResizeNeSw,
         ),
         (
             side(true, false, false, false),
-            zone(l - reach / 2.0, t + reach, l + reach / 2.0, b - reach),
+            zone(l, t + 2.0 * reach, l + reach, b - 2.0 * reach),
             egui::CursorIcon::ResizeHorizontal,
         ),
         (
             side(false, true, false, false),
-            zone(r - reach / 2.0, t + reach, r + reach / 2.0, b - reach),
+            zone(r - reach, t + 2.0 * reach, r, b - 2.0 * reach),
             egui::CursorIcon::ResizeHorizontal,
         ),
         (
             side(false, false, true, false),
-            zone(l + reach, t - reach / 2.0, r - reach, t + reach / 2.0),
+            zone(l + 2.0 * reach, t, r - 2.0 * reach, t + reach),
             egui::CursorIcon::ResizeVertical,
         ),
         (
             side(false, false, false, true),
-            zone(l + reach, b - reach / 2.0, r - reach, b + reach / 2.0),
+            zone(l + 2.0 * reach, b - reach, r - 2.0 * reach, b),
             egui::CursorIcon::ResizeVertical,
         ),
     ];
@@ -3981,5 +4145,85 @@ mod tests {
         assert!(slab.is_solid());
         assert!((slab.volume().unwrap() - 500.0).abs() < 1e-3);
         assert!(gumball_extruded(&Shape::Body(slab), up, 5.0).is_none());
+    }
+
+    #[test]
+    fn clicks_snap_to_curves_and_polylines_in_every_display_mode() {
+        for display in [
+            DisplayMode::Wireframe,
+            DisplayMode::Shaded,
+            DisplayMode::Ghosted,
+        ] {
+            let mut doc = Document::default();
+            doc.add(Curve::line([0.0; 3], [40.0, 0.0, 0.0]).unwrap());
+            doc.add(
+                Curve::polyline(
+                    vec![[0.0, 30.0, 0.0], [30.0, 30.0, 0.0], [30.0, 60.0, 0.0]],
+                    false,
+                )
+                .unwrap(),
+            );
+            doc.add_body(curva_kernel::Body::cuboid([60.0, 0.0, 0.0], [10.0, 10.0, 10.0]).unwrap());
+            let outlines = Outlines::of(doc.state());
+            let mut processor = Processor::default();
+            processor.submit(&mut doc, "line");
+            processor.submit(&mut doc, "0,-20");
+            let pane = Pane::new(StandardView::Perspective);
+            let size = [800.0, 600.0];
+            for target in [[40.0, 0.0, 0.0], [30.0, 30.0, 0.0], [20.0, 0.0, 0.0]] {
+                let screen = pane.camera.project(target, size).unwrap();
+                let aimed = aim_at(&Aiming {
+                    outlines: &outlines,
+                    request: processor.current_request().unwrap(),
+                    camera: &pane.camera,
+                    plane: &pane.plane,
+                    display,
+                    snaps: SnapSet::default(),
+                    guides: curva_viewport::Guides::default(),
+                    ortho: false,
+                    grid_snap: false,
+                    snaps_off: false,
+                    screen: [screen[0] + 3.0, screen[1] - 2.0],
+                    size,
+                });
+                let (at, hit) = aimed.unwrap();
+                assert!(hit.is_some(), "no snap at {target:?} in {display:?}");
+                assert!(
+                    curva_kernel::gap(at, target) < 1e-6,
+                    "{at:?} for {target:?} in {display:?}"
+                );
+            }
+            // A click there ends the line exactly on the snapped point.
+            let end = pane.camera.project([30.0, 30.0, 0.0], size).unwrap();
+            let (at, _) = aim_at(&Aiming {
+                outlines: &outlines,
+                request: processor.current_request().unwrap(),
+                camera: &pane.camera,
+                plane: &pane.plane,
+                display,
+                snaps: SnapSet::default(),
+                guides: curva_viewport::Guides::default(),
+                ortho: false,
+                grid_snap: false,
+                snaps_off: false,
+                screen: end,
+                size,
+            })
+            .unwrap();
+            processor.click(&mut doc, at);
+            let made = doc
+                .state()
+                .objects
+                .last()
+                .unwrap()
+                .curve()
+                .unwrap()
+                .sample()
+                .unwrap();
+            assert!(
+                curva_kernel::gap(*made.last().unwrap(), [30.0, 30.0, 0.0]) < 1e-6,
+                "{display:?}"
+            );
+        }
     }
 }

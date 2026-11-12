@@ -70,7 +70,13 @@ impl Recipe for Rectangle {
             } else {
                 "prompt.rectangle.other"
             };
-            steps.push(StepDef::point(other).from(a).offering(&[]));
+            let step = StepDef::point(other).from(a).offering(&[]);
+            // Two opposite corners show width × depth; 3Point's side does not.
+            steps.push(if cx.mode == Some(THREE_POINT) {
+                step
+            } else {
+                step.corner()
+            });
             if cx.mode == Some(THREE_POINT)
                 && let Some(b) = point(cx, 1)
             {
