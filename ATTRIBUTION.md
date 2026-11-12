@@ -36,6 +36,12 @@ Curva calls solidcore (Apache-2.0) for its geometry: https://github.com/tangency
 Its licence and NOTICE ship with its source at the pinned revision in `Cargo.lock`. A copy of the
 NOTICE is in `licenses/solidcore-NOTICE.txt`, and goes with every release build.
 
+## Inter
+
+The interface's text is set in Inter 4.1, by The Inter Project Authors (https://github.com/rsms/inter),
+bundled from its official release as `crates/curva-app/fonts/Inter-Regular.ttf`
+under the SIL Open Font License 1.1, whose text is in `licenses/fonts/Inter-OFL.txt`.
+
 ## Fonts bundled by egui
 
 The Curva window uses the default fonts in `epaint_default_fonts` 0.37.0, part of egui. They are
