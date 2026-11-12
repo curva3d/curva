@@ -7,6 +7,7 @@
 //! `curva --orbit-benchmark --curves 5000` opens the window on a scene of that many circles, spins
 //! the view and prints how fast it drew and snapped. `--solids 500` adds that many cylinders.
 
+mod layout;
 mod recovery;
 
 use curva_commands::{DisplayMode, Kind, Message, Processor, Translations, ViewName, ViewRequest};
@@ -62,7 +63,86 @@ const GRIP_COLOUR: egui::Color32 = egui::Color32::from_rgb(235, 235, 245);
 const GRIP_PICKED: egui::Color32 = egui::Color32::from_rgb(255, 220, 60);
 /// The lines between a smooth curve's control points.
 const CONTROL_POLYGON: egui::Color32 = egui::Color32::from_rgb(150, 150, 165);
-const LOG_LINES: usize = 5;
+const LOG_LINES: usize = 3;
+/// Behind the viewports, showing in the gaps around the floating panels.
+const WINDOW_BACKGROUND: egui::Color32 = egui::Color32::from_rgb(22, 23, 27);
+/// A solid panel.
+const PANEL_FILL: egui::Color32 = egui::Color32::from_rgb(36, 38, 44);
+/// The command bar, lighter and see-through, as glass.
+const GLASS_FILL: egui::Color32 = egui::Color32::from_rgba_premultiplied(52, 55, 63, 214);
+const PANEL_EDGE: egui::Color32 = egui::Color32::from_rgb(60, 63, 72);
+const PANEL_RADIUS: u8 = 12;
+const PANEL_MARGIN: f32 = 8.0;
+/// Room left around a panel for its shadow, beyond which nothing it holds is drawn.
+const SHADOW_ROOM: f32 = 20.0;
+/// How long a panel takes to slide in or out, in seconds.
+const SLIDE_TIME: f32 = 0.2;
+/// Width of the agent connection, at the right of the command bar.
+const AGENT_COLUMN: f32 = 170.0;
+/// How long after an agent's last request it still counts as connected.
+const AGENT_RECENT: std::time::Duration = std::time::Duration::from_secs(30);
+const AGENT_ACTIVE: egui::Color32 = egui::Color32::from_rgb(110, 200, 120);
+/// The command tabs at the top, each with its most used commands (spec
+/// `docs/specs/ui-floating-panels.md`).
+const COMMAND_TABS: [(&str, &[&str]); 4] = [
+    (
+        "ui.tab.curves",
+        &[
+            "Line",
+            "Polyline",
+            "Curve",
+            "InterpCrv",
+            "Circle",
+            "Arc",
+            "Ellipse",
+            "Rectangle",
+            "Point",
+            "Offset",
+            "Fillet",
+            "Chamfer",
+        ],
+    ),
+    (
+        "ui.tab.surfaces",
+        &[
+            "PlanarSrf",
+            "ExtrudeCrv",
+            "Revolve",
+            "Loft",
+            "Sweep1",
+            "OffsetSrf",
+        ],
+    ),
+    (
+        "ui.tab.solids",
+        &[
+            "Box",
+            "Pipe",
+            "FilletEdge",
+            "ChamferEdge",
+            "Shell",
+            "Volume",
+        ],
+    ),
+    (
+        "ui.tab.operations",
+        &[
+            "BooleanUnion",
+            "BooleanDifference",
+            "BooleanIntersection",
+            "Trim",
+            "Split",
+            "Join",
+            "Explode",
+            "Move",
+            "Copy",
+            "Rotate",
+            "Scale",
+            "Mirror",
+            "Array",
+        ],
+    ),
+];
 const PICTURE_SIZE: [u32; 2] = [1200, 800];
 const BENCHMARK_FRAMES: usize = 240;
 /// Leading frames left out of the report, as they include the window opening.
@@ -110,6 +190,20 @@ struct Curva {
     /// A recovery file left by a Curva that did not close normally, waiting for the user to
     /// restore or discard it.
     left_behind: Option<std::path::PathBuf>,
+    /// Where the panels are.
+    layout: layout::Layout,
+    /// The command tab showing, as an index into [`COMMAND_TABS`].
+    command_tab: usize,
+    /// The side panel's tab showing: 0 for layers, 1 for properties.
+    side_tab: usize,
+    /// When an agent last asked something, to show whether one is connected.
+    agent_seen: Option<std::time::Instant>,
+    /// Focus mode: the panels slid out of view.
+    focus: bool,
+    /// In focus mode, the one panel brought back out by clicking its strip.
+    revealed: Option<layout::PanelId>,
+    /// Where each panel was last drawn, for hovering over a hidden one.
+    drawn_panels: Vec<(layout::PanelId, egui::Rect)>,
 }
 
 /// Finds left-button clicks and drags from the raw mouse events.
@@ -472,6 +566,16 @@ impl Curva {
             benchmark: benchmark.map(|_| Benchmark::default()),
             autosave,
             left_behind,
+            layout: layout::file()
+                .filter(|_| benchmark.is_none())
+                .map(|file| layout::Layout::load(&file))
+                .unwrap_or_default(),
+            command_tab: 0,
+            side_tab: 0,
+            agent_seen: None,
+            focus: false,
+            revealed: None,
+            drawn_panels: Vec::new(),
         }
     }
 
@@ -586,7 +690,6 @@ impl Curva {
         let snaps = &mut self.snaps;
         let (ortho, grid_snap) = (&mut self.ortho, &mut self.grid_snap);
         let gumball_on = &mut self.gumball_on;
-        let agent_on = &mut self.agent_on;
         let (filter, filter_row) = (&mut self.pick_filter, self.filter_row);
         ui.horizontal(|ui| {
             tick(ui, &mut snaps.end, snap_label(SnapKind::End));
@@ -607,7 +710,6 @@ impl Curva {
             tick(ui, ortho, "ui.ortho");
             tick(ui, grid_snap, "ui.grid_snap");
             tick(ui, gumball_on, "ui.gumball");
-            tick(ui, agent_on, "ui.agent");
             if filter_row {
                 ui.separator();
                 ui.label(text.render(&Message::new("ui.filter")));
@@ -1320,6 +1422,7 @@ impl Curva {
             else {
                 return;
             };
+            self.agent_seen = Some(std::time::Instant::now());
             if let Some(line) = curva_mcp::needs_approval(&request.message) {
                 self.waiting_approval = Some((request, line));
             } else {
@@ -1363,6 +1466,256 @@ impl Curva {
                     .send(Some(curva_mcp::declined(&request.message)));
             }
         }
+    }
+
+    /// Lays out and draws the panels, sliding them out of view in focus mode, and returns the
+    /// area left for the viewports.
+    fn panels(&mut self, ctx: &egui::Context, window: egui::Rect) -> egui::Rect {
+        if ctx.input(|input| input.key_pressed(egui::Key::F12)) {
+            self.toggle_focus();
+        }
+        let (placed, free) = self.layout.arrange(window);
+        // Typing brings the command bar out until the command ends.
+        let typing = !self.typed.is_empty() || self.processor.is_running();
+        let pointer = ctx.pointer_hover_pos();
+        for (panel, rect) in placed {
+            let shown = !self.focus
+                || self.revealed == Some(panel)
+                || (panel == layout::PanelId::CommandBar && typing);
+            let hovered = pointer.is_some_and(|at| {
+                self.drawn_panels
+                    .iter()
+                    .any(|(p, drawn)| *p == panel && drawn.contains(at))
+            });
+            let target = if shown {
+                rect
+            } else {
+                let edge = self.layout.edge_of(panel, rect, window);
+                let visible = if hovered { layout::PEEK } else { layout::STRIP };
+                layout::slid(rect, edge, window, visible)
+            };
+            let id = egui::Id::NULL.with(("panel slide", panel));
+            let offset = egui::vec2(
+                ctx.animate_value_with_time(id.with(0), target.min.x - rect.min.x, SLIDE_TIME),
+                ctx.animate_value_with_time(id.with(1), target.min.y - rect.min.y, SLIDE_TIME),
+            );
+            let drawn = rect.translate(offset);
+            self.drawn_panels.retain(|(p, _)| *p != panel);
+            self.drawn_panels.push((panel, drawn));
+            if self.panel_area(ctx, panel, rect.size(), drawn, !shown) {
+                self.revealed = Some(panel);
+            }
+        }
+        self.focus_tab(ctx, window);
+        // In focus mode the viewports take the window, short of the strips left at its edges.
+        if self.focus {
+            window.shrink(layout::STRIP)
+        } else {
+            free
+        }
+    }
+
+    /// Hides every panel, or brings them all back.
+    fn toggle_focus(&mut self) {
+        self.focus = !self.focus;
+        self.revealed = None;
+    }
+
+    /// The small tab with an arrow at the top centre that turns focus mode on and off. With one
+    /// panel brought out of focus mode, it hides that panel again.
+    fn focus_tab(&mut self, ctx: &egui::Context, window: egui::Rect) {
+        let size = egui::vec2(44.0, 14.0);
+        let corner = egui::pos2(window.center().x - size.x / 2.0, window.min.y);
+        egui::Area::new(egui::Id::NULL.with("focus tab"))
+            .fixed_pos(corner)
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+                let fill = if response.hovered() {
+                    PANEL_EDGE
+                } else {
+                    PANEL_FILL
+                };
+                let radius = egui::CornerRadius {
+                    nw: 0,
+                    ne: 0,
+                    sw: 7,
+                    se: 7,
+                };
+                ui.painter().rect_filled(rect, radius, fill);
+                // A V while the panels are hidden, to bring them down; turned over to hide them.
+                let (mid, half) = (rect.center(), egui::vec2(6.0, 3.0));
+                let tip = if self.focus { half.y } else { -half.y };
+                let stroke = egui::Stroke::new(1.5, TITLE_COLOUR);
+                ui.painter().line_segment(
+                    [mid + egui::vec2(-half.x, -tip), mid + egui::vec2(0.0, tip)],
+                    stroke,
+                );
+                ui.painter().line_segment(
+                    [mid + egui::vec2(0.0, tip), mid + egui::vec2(half.x, -tip)],
+                    stroke,
+                );
+                let tip_text = if self.focus {
+                    "ui.focus.off"
+                } else {
+                    "ui.focus.on"
+                };
+                if response
+                    .on_hover_text(self.text.render(&Message::new(tip_text)))
+                    .clicked()
+                {
+                    if self.revealed.is_some() {
+                        self.revealed = None;
+                    } else {
+                        self.toggle_focus();
+                    }
+                }
+            });
+    }
+
+    /// Draws one floating panel at `drawn`, with rounded corners and a soft shadow. A `hidden`
+    /// panel, slid away in focus mode, answers a click on what shows of it instead of passing it
+    /// to what it holds; returns whether it was clicked.
+    fn panel_area(
+        &mut self,
+        ctx: &egui::Context,
+        panel: layout::PanelId,
+        size: egui::Vec2,
+        drawn: egui::Rect,
+        hidden: bool,
+    ) -> bool {
+        let rect = drawn;
+        let mut clicked = false;
+        let glass = panel == layout::PanelId::CommandBar;
+        let frame = egui::Frame::new()
+            // The command bar is glass: lighter and see-through. Its blur comes in a later step.
+            .fill(if glass { GLASS_FILL } else { PANEL_FILL })
+            .stroke(egui::Stroke::new(1.0, PANEL_EDGE))
+            .corner_radius(PANEL_RADIUS)
+            .shadow(egui::Shadow {
+                offset: [0, 4],
+                blur: 16,
+                spread: 0,
+                color: egui::Color32::from_black_alpha(90),
+            })
+            .inner_margin(PANEL_MARGIN);
+        egui::Area::new(egui::Id::NULL.with(("panel", panel)))
+            .fixed_pos(rect.min)
+            .order(egui::Order::Middle)
+            .constrain(false)
+            .show(ctx, |ui| {
+                // Nothing a panel holds may spill outside its place.
+                ui.set_clip_rect(rect.expand(SHADOW_ROOM));
+                frame.show(ui, |ui| {
+                    let inner = size - egui::Vec2::splat(2.0 * PANEL_MARGIN);
+                    ui.set_min_size(inner);
+                    ui.set_max_size(inner);
+                    match panel {
+                        layout::PanelId::CommandTabs => self.command_tabs(ui),
+                        layout::PanelId::Side => self.side_panel(ui),
+                        layout::PanelId::CommandBar => self.command_bar(ui),
+                    }
+                });
+                if hidden {
+                    // Added last, so it sits above the panel's own controls.
+                    let strip =
+                        ui.interact(rect, ui.scope_id().with("strip"), egui::Sense::click());
+                    clicked = strip.clicked();
+                }
+            });
+        clicked
+    }
+
+    /// The command buttons, in tabs. A button runs its command as typing it would, ending any
+    /// command already running, as a Rhino toolbar button does.
+    fn command_tabs(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            for (index, (key, _)) in COMMAND_TABS.iter().enumerate() {
+                let label = self.text.render(&Message::new(key));
+                if ui
+                    .selectable_label(self.command_tab == index, label)
+                    .clicked()
+                {
+                    self.command_tab = index;
+                }
+            }
+        });
+        let mut chosen = None;
+        egui::ScrollArea::horizontal().show(ui, |ui| {
+            ui.horizontal(|ui| {
+                for name in COMMAND_TABS[self.command_tab].1 {
+                    if ui.button(*name).on_hover_text(*name).clicked() {
+                        chosen = Some(*name);
+                    }
+                }
+            });
+        });
+        if let Some(name) = chosen {
+            if self.processor.is_running() {
+                self.processor.cancel(&mut self.doc);
+            }
+            self.typed.clear();
+            self.highlight = 0;
+            self.processor.submit(&mut self.doc, name);
+        }
+    }
+
+    /// Layers and properties, in tabs.
+    fn side_panel(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            for (index, key) in ["ui.tab.layers", "ui.tab.properties"]
+                .into_iter()
+                .enumerate()
+            {
+                let label = self.text.render(&Message::new(key));
+                if ui.selectable_label(self.side_tab == index, label).clicked() {
+                    self.side_tab = index;
+                }
+            }
+        });
+        ui.separator();
+        // Both ways, so a wide row scrolls inside the panel instead of stretching it.
+        egui::ScrollArea::both()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                if self.side_tab == 0 {
+                    self.layers_panel(ui);
+                } else {
+                    self.properties_panel(ui);
+                }
+            });
+    }
+
+    /// The command line and drawing aids on the left, the agent connection on the right.
+    fn command_bar(&mut self, ui: &mut egui::Ui) {
+        let agent_width = AGENT_COLUMN;
+        ui.horizontal_top(|ui| {
+            let command_width = (ui.available_width() - agent_width - 16.0).max(100.0);
+            ui.vertical(|ui| {
+                ui.set_width(command_width);
+                self.command_line(ui);
+            });
+            ui.separator();
+            ui.vertical(|ui| self.agent_status(ui));
+        });
+    }
+
+    /// Agent access, and whether an agent is talking to Curva.
+    fn agent_status(&mut self, ui: &mut egui::Ui) {
+        ui.label(egui::RichText::new(self.text.render(&Message::new("ui.agent.title"))).strong());
+        ui.checkbox(
+            &mut self.agent_on,
+            self.text.render(&Message::new("ui.agent")),
+        );
+        let recent = self
+            .agent_seen
+            .is_some_and(|seen| seen.elapsed() < AGENT_RECENT);
+        let (key, colour) = match (self.agent.is_some(), recent) {
+            (false, _) => ("ui.agent.off", TITLE_COLOUR),
+            (true, false) => ("ui.agent.waiting", TITLE_COLOUR),
+            (true, true) => ("ui.agent.active", AGENT_ACTIVE),
+        };
+        ui.colored_label(colour, self.text.render(&Message::new(key)));
     }
 
     /// Offers back the model a Curva that did not close normally left behind.
@@ -1714,7 +2067,7 @@ impl Curva {
         }
     }
 
-    fn viewports(&mut self, ui: &mut egui::Ui) {
+    fn viewports(&mut self, ui: &mut egui::Ui, area: egui::Rect) {
         // Picked edges and faces only mean something while a command asks for them.
         let wants = |kind: Kind| {
             self.processor
@@ -1728,7 +2081,7 @@ impl Curva {
             self.doc.select_faces(&[]);
         }
         let mut shown = Vec::new();
-        for (pane, rect) in pane_rects(ui.available_rect_before_wrap(), self.maximised) {
+        for (pane, rect) in pane_rects(area, self.maximised) {
             let response = ui.allocate_rect(rect, egui::Sense::click_and_drag());
             self.display_menu(ui, pane, rect);
             self.handle_mouse(ui, pane, &response, pane_size(rect));
@@ -1812,16 +2165,18 @@ impl eframe::App for Curva {
         if let Some(autosave) = &self.autosave {
             autosave.finish();
         }
+        // The arrangement is only a convenience; failing to keep it is not worth stopping for.
+        if self.benchmark.is_none()
+            && let Some(file) = layout::file()
+        {
+            let _ = self.layout.save(&file);
+        }
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.share_work_plane();
-        egui::Panel::bottom("command line").show(ui, |ui| self.command_line(ui));
-        egui::Panel::right("layers and properties").show(ui, |ui| {
-            self.layers_panel(ui);
-            ui.separator();
-            self.properties_panel(ui);
-        });
+        // The panels float over the viewports, which take the area they leave free.
+        let free = self.panels(ui.ctx(), ui.max_rect());
         self.keep_agent_link(ui.ctx());
         self.serve_agents();
         self.approval_window(ui);
@@ -1830,7 +2185,9 @@ impl eframe::App for Curva {
             autosave.tick(&self.doc, std::time::Instant::now());
         }
         self.apply_view_request();
-        egui::CentralPanel::default().show(ui, |ui| self.viewports(ui));
+        egui::CentralPanel::default()
+            .frame(egui::Frame::NONE.fill(WINDOW_BACKGROUND))
+            .show(ui, |ui| self.viewports(ui, free));
         if let Some(benchmark) = &mut self.benchmark {
             self.panes[PERSPECTIVE].camera.orbit(BENCHMARK_DRAG, 0.0);
             // Snapping is measured with every snap on, the slowest case.
@@ -2115,6 +2472,17 @@ mod tests {
             assert!(area().contains_rect(*one));
             for (_, other) in &rects[index + 1..] {
                 assert!(!one.intersects(*other));
+            }
+        }
+    }
+
+    #[test]
+    fn every_command_button_names_a_command_and_each_tab_has_some() {
+        for (tab, names) in COMMAND_TABS {
+            assert!(!names.is_empty(), "{tab} is empty");
+            for name in names {
+                let found = curva_commands::commands::resolve(name).map(|def| def.name);
+                assert_eq!(found, Some(*name), "{name} in {tab}");
             }
         }
     }
