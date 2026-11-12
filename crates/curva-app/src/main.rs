@@ -17,8 +17,8 @@ use curva_mcp::Session;
 use curva_viewport::{
     CPlane, Camera, DEPTH_BITS, Drawing, Gumball, GumballChange, Handle, LineRenderer, MeshCache,
     MeshVertex, Outlines, PickFilter, Picture, SnapHit, SnapKind, SnapSet, StandardView,
-    VIEW_SLOTS, constrained, face_vertices, ghost_lines, grid_lines, object_lines, save_picture,
-    scene_lines, shaded_object_lines, shaded_scene_lines,
+    VIEW_SLOTS, constrained, face_vertices, ghost_faces, ghost_lines, grid_lines, object_lines,
+    save_picture, scene_lines, shaded_object_lines, shaded_scene_lines,
 };
 use eframe::egui;
 use std::sync::Arc;
@@ -204,6 +204,8 @@ struct Curva {
     agent_seen: Option<std::time::Instant>,
     /// Where the pointer last aimed in a viewport, for Enter to place a point with a held distance.
     last_aim: Option<Point>,
+    /// The bodies of the last solid preview, and their ghosted triangles.
+    ghosted: (Vec<curva_kernel::Body>, Arc<Vec<MeshVertex>>),
     /// Focus mode: the panels slid out of view.
     focus: bool,
     /// In focus mode, the one panel brought back out by clicking its strip.
@@ -649,6 +651,7 @@ impl Curva {
             side_tab: 0,
             agent_seen: None,
             last_aim: None,
+            ghosted: (Vec::new(), Arc::new(Vec::new())),
             focus: false,
             revealed: None,
             drawn_panels: Vec::new(),
@@ -1964,6 +1967,20 @@ impl Curva {
         ui.colored_label(colour, self.text.render(&Message::new(key)));
     }
 
+    /// The surfaces and solids the running command would make, as ghosted triangles. The meshes
+    /// are kept while the previewed bodies stay the same, so a still preview costs nothing.
+    fn ghosted_preview(&mut self, cursor: Option<Point>) -> Arc<Vec<MeshVertex>> {
+        let bodies = self
+            .processor
+            .preview_bodies(&self.doc, cursor, &self.typed);
+        if bodies != self.ghosted.0 {
+            let meshes: Vec<curva_kernel::BodyMesh> =
+                bodies.iter().filter_map(|body| body.mesh().ok()).collect();
+            self.ghosted = (bodies, Arc::new(ghost_faces(&meshes)));
+        }
+        Arc::clone(&self.ghosted.1)
+    }
+
     /// Offers back the model a Curva that did not close normally left behind.
     fn recovery_window(&mut self, ui: &mut egui::Ui) {
         let Some(file) = self.left_behind.clone() else {
@@ -2367,6 +2384,7 @@ impl Curva {
         previewed.extend(self.gumball_preview());
         let preview = ghost_lines(&previewed);
         let overlay = Arc::new(preview);
+        let preview_faces = self.ghosted_preview(cursor);
         for (pane, rect, _) in &shown {
             let size = pane_size(*rect);
             let camera = &self.panes[*pane].camera;
@@ -2382,6 +2400,7 @@ impl Curva {
                 }),
                 faces: Arc::clone(&self.faces),
                 overlay: Arc::clone(&overlay),
+                preview_faces: Arc::clone(&preview_faces),
                 matrix: camera.matrix(size[0] / size[1]),
                 light: camera.forward().map(|value| value as f32),
                 shaded: display != DisplayMode::Wireframe,

@@ -173,6 +173,8 @@ pub struct LineRenderer {
     slots: Vec<ViewSlot>,
     surfaces: Option<Uploaded<MeshVertex>>,
     overlay: Option<Uploaded<Vertex>>,
+    /// The ghosted faces of a command's preview.
+    preview_faces: Option<Uploaded<MeshVertex>>,
     /// Draws the viewports through a texture, which glass panels blur.
     pub(crate) compositor: crate::glass::Compositor,
 }
@@ -341,6 +343,7 @@ impl LineRenderer {
             slots,
             surfaces: None,
             overlay: None,
+            preview_faces: None,
             compositor: crate::glass::Compositor::new(device, format),
         }
     }
@@ -400,6 +403,15 @@ impl LineRenderer {
                 LINE_VERTEX_SIZE,
             ));
         }
+        if stale(&self.preview_faces, &drawing.preview_faces) {
+            self.preview_faces = Some(upload(
+                device,
+                queue,
+                &drawing.preview_faces,
+                face_bytes,
+                FACE_VERTEX_SIZE,
+            ));
+        }
     }
 
     fn draw(&self, pass: &mut wgpu::RenderPass<'_>, slot: usize) {
@@ -436,6 +448,10 @@ impl LineRenderer {
         {
             draw_faces(pass, &self.ghost_faces, faces);
         }
+        // A command's solid preview is ghosted in every display mode, over the model.
+        if let Some(preview) = self.preview_faces.as_ref().filter(|faces| faces.count > 0) {
+            draw_faces(pass, &self.ghost_faces, preview);
+        }
         if let Some(overlay) = self.overlay.as_ref().filter(|lines| lines.count > 0) {
             pass.set_pipeline(&self.lines);
             pass.set_vertex_buffer(0, overlay.buffer.slice(..));
@@ -456,6 +472,8 @@ pub struct Drawing {
     pub faces: Arc<Vec<MeshVertex>>,
     /// The live preview.
     pub overlay: Arc<Vec<Vertex>>,
+    /// The live preview's surfaces and solids, ghosted ([`crate::ghost_faces`]).
+    pub preview_faces: Arc<Vec<MeshVertex>>,
     /// The camera.
     pub matrix: [[f32; 4]; 4],
     /// The direction the camera looks, of length 1, which lights the faces.
@@ -620,7 +638,8 @@ pub fn save_picture(
         grid: Arc::clone(&empty),
         scene: Arc::new(picture.lines),
         faces: Arc::new(picture.faces),
-        overlay: empty,
+        overlay: Arc::clone(&empty),
+        preview_faces: Arc::new(Vec::new()),
         matrix: picture.matrix,
         light: picture.light,
         shaded,

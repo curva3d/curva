@@ -140,17 +140,38 @@ impl Processor {
     /// The curves the running command would make or move, for the viewport to draw.
     #[must_use]
     pub fn preview(&self, doc: &Document, cursor: Option<Point>, typed: &str) -> Vec<Curve> {
+        let live = self.live(doc, cursor, typed);
+        self.active
+            .as_ref()
+            .map_or_else(Vec::new, |active| active.command.preview(doc, &live))
+    }
+
+    /// The surfaces and solids the running command would make or change, for the viewport to show
+    /// ghosted.
+    #[must_use]
+    pub fn preview_bodies(
+        &self,
+        doc: &Document,
+        cursor: Option<Point>,
+        typed: &str,
+    ) -> Vec<curva_kernel::Body> {
+        let live = self.live(doc, cursor, typed);
+        self.active
+            .as_ref()
+            .map_or_else(Vec::new, |active| active.command.preview_bodies(doc, &live))
+    }
+
+    /// What a preview follows: the pointer, with any typed distance or angle held, and the typed
+    /// number, or the size along the step's direction at the pointer.
+    fn live(&self, doc: &Document, cursor: Option<Point>, typed: &str) -> Live {
         let cursor = cursor.map(|at| self.constrained(doc, at));
         let typed_number = typed.trim().parse().ok().filter(|n: &f64| n.is_finite());
         // A size measured along a direction follows the pointer until a number is typed.
         let along = cursor.and_then(|at| self.request()?.along_value(at));
-        let live = Live {
+        Live {
             cursor,
             number: typed_number.or(along),
-        };
-        self.active
-            .as_ref()
-            .map_or_else(Vec::new, |active| active.command.preview(doc, &live))
+        }
     }
 
     /// The distance or angle typed for the next point, if any.
@@ -510,6 +531,39 @@ mod tests {
             near(line_end(&doc), [0.0, 10.0, 0.0]),
             "{:?}",
             line_end(&doc)
+        );
+    }
+
+    #[test]
+    fn solid_previews_come_as_bodies_to_ghost() {
+        let mut doc = Document::default();
+        let mut processor = Processor::default();
+        for line in ["box", "0,0", "10,10"] {
+            processor.submit(&mut doc, line);
+        }
+        // Choosing the base: no solid yet. A height: one solid, exactly the box Enter would make.
+        assert!(processor.preview_bodies(&doc, None, "").is_empty());
+        let bodies = processor.preview_bodies(&doc, None, "5");
+        assert_eq!(bodies.len(), 1);
+        assert!((bodies[0].volume().unwrap() - 500.0).abs() < 1e-6);
+        // A fillet's preview is the rounded solid.
+        let mut doc = Document::default();
+        let id = doc.add_body(curva_kernel::Body::cuboid([0.0; 3], [10.0; 3]).unwrap());
+        doc.select_edges(&[(id, 0)]);
+        let mut processor = Processor::default();
+        processor.submit(&mut doc, "filletedge");
+        processor.submit(&mut doc, "");
+        let rounded = processor.preview_bodies(&doc, None, "2");
+        assert_eq!(rounded.len(), 1);
+        assert!(rounded[0].volume().unwrap() < 1000.0);
+        assert!(
+            doc.state().objects[0]
+                .shape
+                .body()
+                .unwrap()
+                .volume()
+                .unwrap()
+                > 999.0
         );
     }
 
