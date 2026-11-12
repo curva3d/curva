@@ -13,12 +13,15 @@ pub use camera::{CPlane, Camera, StandardView};
 pub use glass::Glass;
 pub use gpu::{DEPTH_BITS, Drawing, LineRenderer, Picture, VIEW_SLOTS, save_picture};
 pub use gumball::{Gumball, GumballChange, Handle};
-pub use snap::{SnapHit, SnapKind, SnapSet, constrained};
+pub use snap::{Guides, SnapHit, SnapKind, SnapSet, constrained};
 
 const GRID_HALF_SIZE: i32 = 100;
 const GRID_STEP: i32 = 10;
 /// Steps of the search along a segment for a picked point.
 const PICK_SEARCH_STEPS: usize = 48;
+/// How much of a body's size a point may lie behind its shaded mesh and still count as on it,
+/// as the mesh only approximates curved faces.
+const HIDING_ALLOWANCE: f64 = 0.002;
 const GRID_COLOUR: [f32; 3] = [0.30, 0.31, 0.34];
 const CURVE_COLOUR: [f32; 3] = [0.92, 0.92, 0.95];
 const SELECTED_COLOUR: [f32; 3] = [1.0, 0.85, 0.2];
@@ -112,6 +115,8 @@ struct Faces {
     colour: [f32; 3],
     locked: bool,
     mesh: curva_kernel::BodyMesh,
+    /// The lowest and highest corners of the mesh, so a line of sight can skip it quickly.
+    around: (Point, Point),
 }
 
 /// The drawable outline of each object.
@@ -243,6 +248,7 @@ impl Outlines {
                         id: object.id,
                         colour,
                         locked,
+                        around: mesh_box(&mesh),
                         mesh,
                     });
                     edges
@@ -435,7 +441,57 @@ impl Outlines {
                 }
             }
         }
-        best.map(|(_, id)| id)
+        // Curves, points and edges win within their few pixels; otherwise a click anywhere on a
+        // face takes its surface or solid, the nearest if several are under the pointer.
+        best.map(|(_, id)| id).or_else(|| {
+            let (id, _) = self.pick_face(camera, screen, size)?;
+            self.can_pick(id).then_some(id)
+        })
+    }
+
+    /// Whether the object `id` can be picked: not on a locked layer, and of a kind the
+    /// selection filter lets through.
+    fn can_pick(&self, id: u64) -> bool {
+        self.objects.iter().enumerate().any(|(index, (other, _))| {
+            *other == id
+                && !self.locked.get(index).copied().unwrap_or(false)
+                && self
+                    .kinds
+                    .get(index)
+                    .is_none_or(|kind| self.filter.allows(*kind))
+        })
+    }
+
+    /// The surfaces and solids a crossing box touches through their faces alone: those with a
+    /// face under the box, though no edge of them reaches it.
+    fn crossed_faces(
+        &self,
+        camera: &Camera,
+        low: [f64; 2],
+        high: [f64; 2],
+        size: [f64; 2],
+    ) -> Vec<u64> {
+        let corners = [low, [high[0], low[1]], high, [low[0], high[1]]];
+        self.faces
+            .iter()
+            .filter(|faces| !faces.locked && self.can_pick(faces.id))
+            .filter(|faces| {
+                let mesh = &faces.mesh;
+                mesh.triangles.iter().any(|triangle| {
+                    let on_screen: Vec<[f64; 2]> = triangle
+                        .iter()
+                        .filter_map(|&c| mesh.positions.get(c as usize))
+                        .filter_map(|p| camera.project(*p, size))
+                        .collect();
+                    let [a, b, c] = on_screen.as_slice() else {
+                        return false;
+                    };
+                    on_screen.iter().any(|p| inside_box(*p, low, high))
+                        || corners.iter().any(|q| inside_triangle(*q, *a, *b, *c))
+                })
+            })
+            .map(|faces| faces.id)
+            .collect()
     }
 
     /// The edge of a surface or solid nearest a screen position, if one is within `reach`
@@ -668,6 +724,14 @@ impl Outlines {
             };
             if taken {
                 chosen.push(*id);
+            }
+        }
+        // A crossing box also takes a surface or solid whose faces it touches.
+        if !window {
+            for id in self.crossed_faces(camera, low, high, size) {
+                if !chosen.contains(&id) {
+                    chosen.push(id);
+                }
             }
         }
         chosen
@@ -903,6 +967,107 @@ pub fn preview_lines(points: &[Point], cursor: Option<Point>) -> Vec<Vertex> {
     let mut out = Vec::new();
     polyline(&mut out, &all, PREVIEW_COLOUR);
     out
+}
+
+/// The lowest and highest corners of a mesh.
+fn mesh_box(mesh: &curva_kernel::BodyMesh) -> (Point, Point) {
+    let mut low = [f64::INFINITY; 3];
+    let mut high = [f64::NEG_INFINITY; 3];
+    for p in &mesh.positions {
+        for axis in 0..3 {
+            low[axis] = low[axis].min(p[axis]);
+            high[axis] = high[axis].max(p[axis]);
+        }
+    }
+    (low, high)
+}
+
+/// How far along the line from `origin` in `direction` it enters the box, if it meets it.
+fn enters_box(origin: Point, direction: Point, (low, high): (Point, Point)) -> Option<f64> {
+    let (mut near, mut far) = (f64::NEG_INFINITY, f64::INFINITY);
+    for axis in 0..3 {
+        if direction[axis].abs() < 1e-15 {
+            if origin[axis] < low[axis] || origin[axis] > high[axis] {
+                return None;
+            }
+            continue;
+        }
+        let a = (low[axis] - origin[axis]) / direction[axis];
+        let b = (high[axis] - origin[axis]) / direction[axis];
+        near = near.max(a.min(b));
+        far = far.min(a.max(b));
+    }
+    (near <= far && far >= 0.0).then_some(near)
+}
+
+/// How far along the line from `origin` in `direction` it crosses the triangle, if it does
+/// (Möller and Trumbore's method).
+fn crosses_triangle(origin: Point, direction: Point, [a, b, c]: [Point; 3]) -> Option<f64> {
+    let sub = |p: Point, q: Point| [p[0] - q[0], p[1] - q[1], p[2] - q[2]];
+    let dot = |p: Point, q: Point| p[0] * q[0] + p[1] * q[1] + p[2] * q[2];
+    let cross = |p: Point, q: Point| {
+        [
+            p[1] * q[2] - p[2] * q[1],
+            p[2] * q[0] - p[0] * q[2],
+            p[0] * q[1] - p[1] * q[0],
+        ]
+    };
+    let (ab, ac) = (sub(b, a), sub(c, a));
+    let side = cross(direction, ac);
+    let det = dot(ab, side);
+    if det.abs() < 1e-15 {
+        return None;
+    }
+    let to = sub(origin, a);
+    let u = dot(to, side) / det;
+    if !(0.0..=1.0).contains(&u) {
+        return None;
+    }
+    let up = cross(to, ab);
+    let v = dot(direction, up) / det;
+    if v < 0.0 || u + v > 1.0 {
+        return None;
+    }
+    Some(dot(ac, up) / det)
+}
+
+impl Outlines {
+    /// Whether a face lies between the camera and `point`, so it cannot be seen in a shaded
+    /// view. A face the point lies on does not hide it: the test allows a small part of the
+    /// body's size for the mesh standing off the true surface.
+    #[must_use]
+    pub fn hidden(&self, camera: &Camera, size: [f64; 2], point: Point) -> bool {
+        let Some(screen) = camera.project(point, size) else {
+            return false;
+        };
+        let (origin, direction) = camera.ray(screen, size);
+        let length = direction.iter().map(|v| v * v).sum::<f64>().sqrt();
+        if length < 1e-15 {
+            return false;
+        }
+        let direction = direction.map(|v| v / length);
+        let reach: f64 = (0..3).map(|i| (point[i] - origin[i]) * direction[i]).sum();
+        self.faces.iter().any(|faces| {
+            let (low, high) = faces.around;
+            let span = (0..3)
+                .map(|i| (high[i] - low[i]).powi(2))
+                .sum::<f64>()
+                .sqrt();
+            let allowance = (span * HIDING_ALLOWANCE).max(1e-6);
+            if enters_box(origin, direction, faces.around).is_none_or(|t| t > reach - allowance) {
+                return false;
+            }
+            let mesh = &faces.mesh;
+            mesh.triangles.iter().any(|triangle| {
+                let corner = |i: usize| mesh.positions.get(triangle[i] as usize).copied();
+                let (Some(a), Some(b), Some(c)) = (corner(0), corner(1), corner(2)) else {
+                    return false;
+                };
+                crosses_triangle(origin, direction, [a, b, c])
+                    .is_some_and(|t| t > 0.0 && t < reach - allowance)
+            })
+        })
+    }
 }
 
 #[cfg(test)]
@@ -1261,5 +1426,44 @@ mod tests {
         assert_eq!(lines.len(), 4);
         assert_eq!(lines[3].position, [2.0, 0.0, 0.0]);
         assert!(preview_lines(&[], Some([2.0, 0.0, 0.0])).is_empty());
+    }
+
+    #[test]
+    fn a_click_inside_a_face_picks_the_nearest_solid() {
+        let mut doc = Document::default();
+        let low = doc.add_body(curva_kernel::Body::cuboid([0.0; 3], [400.0, 400.0, 40.0]).unwrap());
+        let high = doc
+            .add_body(curva_kernel::Body::cuboid([0.0, 0.0, 100.0], [400.0, 400.0, 40.0]).unwrap());
+        let outlines = Outlines::of(doc.state());
+        let camera = StandardView::Top.camera();
+        let at = camera.project([200.0, 200.0, 0.0], SIZE).unwrap();
+        // Away from every edge, the box nearer the camera is taken.
+        assert_eq!(outlines.pick(&camera, at, SIZE, 6.0), Some(high));
+        assert_ne!(outlines.pick(&camera, at, SIZE, 6.0), Some(low));
+        // A crossing box wholly inside the faces takes both boxes.
+        let (a, b) = (
+            camera.project([150.0, 150.0, 0.0], SIZE).unwrap(),
+            camera.project([250.0, 250.0, 0.0], SIZE).unwrap(),
+        );
+        let crossed = outlines.in_box(&camera, [b[0], a[1]], [a[0], b[1]], SIZE);
+        assert!(crossed.contains(&low) && crossed.contains(&high));
+    }
+
+    #[test]
+    fn a_snap_behind_a_face_is_offered_only_in_wireframe() {
+        let mut doc = Document::default();
+        doc.add_body(curva_kernel::Body::cuboid([0.0; 3], [400.0, 400.0, 40.0]).unwrap());
+        doc.add(Curve::line([150.0, 200.0, -10.0], [200.0, 200.0, -10.0]).unwrap());
+        let outlines = Outlines::of(doc.state());
+        let camera = StandardView::Top.camera();
+        let at = camera.project([200.0, 200.0, -10.0], SIZE).unwrap();
+        let shaded = crate::SnapSet {
+            visible_only: true,
+            ..crate::SnapSet::default()
+        };
+        assert!(outlines.snap(&camera, at, SIZE, &shaded, None).is_none());
+        let wire = crate::SnapSet::default();
+        let hit = outlines.snap(&camera, at, SIZE, &wire, None).unwrap();
+        assert_eq!(hit.point, [200.0, 200.0, -10.0]);
     }
 }

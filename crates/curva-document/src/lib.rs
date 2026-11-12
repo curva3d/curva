@@ -199,8 +199,10 @@ impl std::error::Error for FileError {}
 pub struct Document {
     state: State,
     selection: BTreeSet<u64>,
-    undo: Vec<State>,
-    redo: Vec<State>,
+    /// Earlier states, each with the selection that came with it, newest last.
+    undo: Vec<(State, BTreeSet<u64>)>,
+    /// Undone states, each with its selection, newest last.
+    redo: Vec<(State, BTreeSet<u64>)>,
     path: Option<PathBuf>,
     /// The X and Y directions of the plane being drawn on. Not saved, and not part of undo.
     work_plane: Option<[Point; 2]>,
@@ -373,8 +375,12 @@ impl Document {
             self.undo.truncate(mark);
             return;
         }
+        let selection = self.undo.get(mark).map_or_else(
+            || self.selection.clone(),
+            |(_, selection)| selection.clone(),
+        );
         self.undo.truncate(mark);
-        self.undo.push(before);
+        self.undo.push((before, selection));
     }
 
     /// Names objects.
@@ -482,6 +488,15 @@ impl Document {
             .collect()
     }
 
+    /// As [`Self::record_change`], with the selection there was before the change, which an undo
+    /// brings back with the model.
+    pub fn record_change_with(&mut self, before: State, selection: &[u64]) {
+        self.record_change(before);
+        if let Some((_, kept)) = self.undo.last_mut() {
+            *kept = selection.iter().copied().collect();
+        }
+    }
+
     /// Records `before` as one undo step, and clears anything that could be redone.
     pub fn record_change(&mut self, before: State) {
         let earlier: std::collections::BTreeMap<u64, &Shape> =
@@ -493,7 +508,7 @@ impl Document {
             .filter(|o| earlier.get(&o.id) != Some(&&o.shape))
             .map(|o| o.id)
             .collect();
-        self.undo.push(before);
+        self.undo.push((before, self.selection.clone()));
         self.redo.clear();
     }
 
@@ -510,20 +525,24 @@ impl Document {
 
     /// Steps back one change. Returns false when there is nothing to undo.
     pub fn undo(&mut self) -> bool {
-        let Some(previous) = self.undo.pop() else {
+        let Some((previous, selection)) = self.undo.pop() else {
             return false;
         };
-        self.redo.push(std::mem::replace(&mut self.state, previous));
+        let now = std::mem::replace(&mut self.state, previous);
+        self.redo
+            .push((now, std::mem::replace(&mut self.selection, selection)));
         self.drop_missing_selection();
         true
     }
 
     /// Repeats one undone change. Returns false when there is nothing to redo.
     pub fn redo(&mut self) -> bool {
-        let Some(next) = self.redo.pop() else {
+        let Some((next, selection)) = self.redo.pop() else {
             return false;
         };
-        self.undo.push(std::mem::replace(&mut self.state, next));
+        let now = std::mem::replace(&mut self.state, next);
+        self.undo
+            .push((now, std::mem::replace(&mut self.selection, selection)));
         self.drop_missing_selection();
         true
     }
@@ -766,5 +785,20 @@ mod tests {
         .unwrap();
         assert!(Document::open(&path).is_err());
         std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn undo_brings_back_the_selection_that_came_with_the_change() {
+        let mut doc = Document::default();
+        let line = doc.add(Curve::line([0.0; 3], [1.0, 0.0, 0.0]).unwrap());
+        doc.select(&[line]);
+        let before = doc.state().clone();
+        doc.remove(&[line]);
+        doc.record_change_with(before, &[line]);
+        assert!(doc.selection().is_empty());
+        assert!(doc.undo());
+        assert_eq!(doc.selection(), vec![line]);
+        assert!(doc.redo());
+        assert!(doc.selection().is_empty());
     }
 }

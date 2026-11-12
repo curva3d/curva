@@ -31,6 +31,10 @@ const BOX_EDGE: egui::Color32 = egui::Color32::from_rgb(230, 230, 235);
 const BOX_FILL: egui::Color32 = egui::Color32::from_rgba_premultiplied(30, 40, 60, 40);
 const SNAP_MARKER: egui::Color32 = egui::Color32::from_rgb(255, 170, 40);
 const SNAP_MARKER_SIZE: f32 = 10.0;
+/// The accent orange, for held points and their guidelines.
+const ACCENT: egui::Color32 = egui::Color32::from_rgb(0xe0, 0x78, 0x2f);
+/// How long the pointer rests on a snap point to hold it, or let it go, in seconds.
+const HOLD_AFTER: f64 = 0.5;
 /// Spacing and size of the circles in a benchmark scene, in millimetres.
 const BENCHMARK_SPACING: f64 = 12.0;
 const BENCHMARK_RADIUS: f64 = 5.0;
@@ -148,6 +152,10 @@ const COMMAND_TABS: [(&str, &[&str]); 4] = [
     ),
 ];
 const PICTURE_SIZE: [u32; 2] = [1200, 800];
+/// Views kept for each viewport's `UndoView`.
+const MOST_VIEWS_KEPT: usize = 50;
+/// How fast Ctrl + right-drag zooms, per pixel dragged.
+const ZOOM_DRAG_SPEED: f64 = 0.01;
 const BENCHMARK_FRAMES: usize = 240;
 /// Leading frames left out of the report, as they include the window opening.
 const SETTLE_FRAMES: usize = 30;
@@ -204,6 +212,10 @@ struct Curva {
     agent_seen: Option<std::time::Instant>,
     /// Where the pointer last aimed in a viewport, for Enter to place a point with a held distance.
     last_aim: Option<Point>,
+    /// Snap points held by resting on them, which send out guidelines, as Rhino's SmartTrack.
+    held: Vec<Point>,
+    /// The snap point the pointer rests on, since when, and whether resting there has acted.
+    resting: Option<(Point, f64, bool)>,
     /// The bodies of the last solid preview, and their ghosted triangles.
     ghosted: (Vec<curva_kernel::Body>, Arc<Vec<MeshVertex>>),
     /// Focus mode: the panels slid out of view.
@@ -373,6 +385,12 @@ struct Pane {
     named: Option<String>,
     /// How it draws surfaces and solids: by their edges, filled in and lit, or see-through.
     display: DisplayMode,
+    /// Views to step back to with `UndoView`, newest last, and the view they were left from.
+    views_back: Vec<Camera>,
+    /// Views stepped back from, for `RedoView`, newest last.
+    views_ahead: Vec<Camera>,
+    /// The view as it last stood still, which a camera move leaves behind.
+    settled: Camera,
 }
 
 impl Pane {
@@ -381,9 +399,40 @@ impl Pane {
         self.grid = Arc::new(grid_lines(&plane));
     }
 
+    /// Keeps the view history: once the camera has moved and stands still again, the view it
+    /// left goes on the list `UndoView` steps back through.
+    fn track_view(&mut self, moving: bool) {
+        if moving || self.camera == self.settled {
+            return;
+        }
+        self.views_back.push(self.settled);
+        if self.views_back.len() > MOST_VIEWS_KEPT {
+            self.views_back.remove(0);
+        }
+        self.views_ahead.clear();
+        self.settled = self.camera;
+    }
+
+    /// Steps back, or with `forward` forward, through the view history.
+    fn step_view(&mut self, forward: bool) {
+        let (from, to) = if forward {
+            (&mut self.views_ahead, &mut self.views_back)
+        } else {
+            (&mut self.views_back, &mut self.views_ahead)
+        };
+        if let Some(view) = from.pop() {
+            to.push(self.camera);
+            self.camera = view;
+            self.settled = view;
+        }
+    }
+
     fn new(view: StandardView) -> Self {
         Self {
             view,
+            views_back: Vec::new(),
+            views_ahead: Vec::new(),
+            settled: view.camera(),
             camera: view.camera(),
             plane: view.plane(),
             grid: Arc::new(grid_lines(&view.plane())),
@@ -651,6 +700,8 @@ impl Curva {
             side_tab: 0,
             agent_seen: None,
             last_aim: None,
+            held: Vec::new(),
+            resting: None,
             ghosted: (Vec::new(), Arc::new(Vec::new())),
             focus: false,
             revealed: None,
@@ -895,6 +946,91 @@ impl Curva {
         }
     }
 
+    /// The held points and their guidelines on a viewport's plane: along its X and Y, and at
+    /// 45° unless ortho is on (Shift flipping it for the moment).
+    fn guides(&self, pane: usize, shift: bool) -> curva_viewport::Guides {
+        let plane = self.panes[pane].plane;
+        curva_viewport::Guides {
+            held: self.held.clone(),
+            axes: [plane.x, plane.y],
+            diagonals: self.ortho == shift,
+        }
+    }
+
+    /// Holds a snap point the pointer has rested on for a moment, or lets it go if it was held,
+    /// as Rhino's SmartTrack does. Everything held is let go when no command is asking for a
+    /// point.
+    fn rest_on(&mut self, ctx: &egui::Context, hit: Option<SnapHit>) {
+        if !self.takes_position() {
+            self.held.clear();
+            self.resting = None;
+            return;
+        }
+        let holdable = hit.filter(|hit| {
+            matches!(
+                hit.kind,
+                SnapKind::End | SnapKind::Mid | SnapKind::Center | SnapKind::Intersection
+            )
+        });
+        let Some(hit) = holdable else {
+            self.resting = None;
+            return;
+        };
+        let now = ctx.input(|input| input.time);
+        match &mut self.resting {
+            Some((point, since, acted)) if *point == hit.point => {
+                if !*acted && now - *since >= HOLD_AFTER {
+                    *acted = true;
+                    let mut guides = curva_viewport::Guides {
+                        held: std::mem::take(&mut self.held),
+                        ..curva_viewport::Guides::default()
+                    };
+                    guides.toggle(hit.point);
+                    self.held = guides.held;
+                } else if !*acted {
+                    // Come back when the rest is long enough, even if the mouse stays still.
+                    ctx.request_repaint_after(std::time::Duration::from_secs_f64(HOLD_AFTER));
+                }
+            }
+            _ => {
+                self.resting = Some((hit.point, now, false));
+                ctx.request_repaint_after(std::time::Duration::from_secs_f64(HOLD_AFTER));
+            }
+        }
+    }
+
+    /// The held points and their guidelines, dashed and see-through in the accent orange.
+    fn paint_guides(&self, ui: &egui::Ui, pane: usize, viewport: egui::Rect, size: [f64; 2]) {
+        if self.held.is_empty() {
+            return;
+        }
+        let camera = &self.panes[pane].camera;
+        let painter = ui.painter_at(viewport);
+        let on_screen = |p: Point| {
+            camera
+                .project(p, size)
+                .map(|at| viewport.min + egui::vec2(at[0] as f32, at[1] as f32))
+        };
+        let faint = ACCENT.gamma_multiply(0.45);
+        let reach = camera.distance * 20.0;
+        for (point, direction) in self.guides(pane, false).lines() {
+            let end = |sign: f64| std::array::from_fn(|i| point[i] + direction[i] * reach * sign);
+            if let (Some(a), Some(b)) = (on_screen(end(-1.0)), on_screen(end(1.0))) {
+                painter.extend(egui::Shape::dashed_line(
+                    &[a, b],
+                    egui::Stroke::new(1.0, faint),
+                    6.0,
+                    4.0,
+                ));
+            }
+        }
+        for point in &self.held {
+            if let Some(at) = on_screen(*point) {
+                painter.circle_filled(at, 3.5, ACCENT);
+            }
+        }
+    }
+
     fn takes_position(&self) -> bool {
         self.processor.current_request().is_some_and(|request| {
             matches!(
@@ -928,10 +1064,21 @@ impl Curva {
                 camera,
                 screen,
                 size,
-                &self.snaps,
+                &SnapSet {
+                    visible_only: self.panes[pane].display != DisplayMode::Wireframe,
+                    ..self.snaps
+                },
                 base,
                 &request.preview,
             )
+        {
+            return Some((hit.point, Some(hit)));
+        }
+        // Then the guidelines of held points: their crossings, and midway between them.
+        if !alt
+            && let Some(hit) =
+                self.outlines
+                    .guide_snap(camera, screen, size, &self.guides(pane, shift))
         {
             return Some((hit.point, Some(hit)));
         }
@@ -1560,12 +1707,53 @@ impl Curva {
         }
     }
 
+    /// The undo keys, taken before the command line can see them: Ctrl+Z undoes and Ctrl+Y or
+    /// Ctrl+Shift+Z redoes the last change to the model, even while the command line has focus,
+    /// unless it holds typed text, which keeps its own undo. Alt+Z and Alt+Shift+Z step through
+    /// the last-used viewport's views. Also keeps each viewport's view history.
+    fn history_keys(&mut self, ctx: &egui::Context) {
+        use egui::{Key, KeyboardShortcut, Modifiers};
+        let moving = ctx.input(|input| {
+            input.pointer.any_down() || input.smooth_scroll_delta != egui::Vec2::ZERO
+        });
+        for pane in &mut self.panes {
+            pane.track_view(moving);
+        }
+        if !self.typed.is_empty() || self.naming_layer {
+            return;
+        }
+        let shortcut = |modifiers, key| KeyboardShortcut::new(modifiers, key);
+        let (redo, undo, view_ahead, view_back) = ctx.input_mut(|input| {
+            // The fuller shortcuts are taken first, as a plain one also matches them.
+            let view_ahead =
+                input.consume_shortcut(&shortcut(Modifiers::ALT | Modifiers::SHIFT, Key::Z));
+            let view_back = input.consume_shortcut(&shortcut(Modifiers::ALT, Key::Z));
+            let redo = input
+                .consume_shortcut(&shortcut(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z))
+                || input.consume_shortcut(&shortcut(Modifiers::COMMAND, Key::Y));
+            let undo = input.consume_shortcut(&shortcut(Modifiers::COMMAND, Key::Z));
+            (redo, undo, view_ahead, view_back)
+        });
+        if view_back || view_ahead {
+            self.panes[self.active].step_view(view_ahead);
+        }
+        if undo || redo {
+            // A command in progress is ended first, as its changes are not yet a step.
+            if self.processor.is_running() {
+                self.processor.cancel(&mut self.doc);
+            }
+            self.processor
+                .submit(&mut self.doc, if redo { "redo" } else { "undo" });
+        }
+    }
+
     /// Lays out and draws the panels, sliding them out of view in focus mode. Returns the area
     /// left for the viewports, and how far they may reach to be seen through glass panels.
     fn panels(&mut self, ctx: &egui::Context, window: egui::Rect) -> (egui::Rect, egui::Rect) {
         if ctx.input(|input| input.key_pressed(egui::Key::F12)) {
             self.toggle_focus();
         }
+        self.history_keys(ctx);
         let (placed, free) = self.layout.arrange(window);
         let placed_bar = placed
             .iter()
@@ -2041,6 +2229,8 @@ impl Curva {
     /// Carries out one change of view.
     fn apply_view(&mut self, request: ViewRequest) {
         match request {
+            ViewRequest::UndoView => self.panes[self.active].step_view(false),
+            ViewRequest::RedoView => self.panes[self.active].step_view(true),
             ViewRequest::ZoomBy(factor) => {
                 self.panes[self.active].camera.zoom(1.0 / factor);
             }
@@ -2126,19 +2316,35 @@ impl Curva {
     ) {
         // Not `drag_delta`: egui holds that back for the first 6 points to tell a click from a
         // drag, and only the left button clicks here. The view must move from the first pixel.
-        let (delta, shift, middle, right) = ui.input(|input| {
+        let (delta, shift, ctrl, middle, right, pressed) = ui.input(|input| {
             (
                 input.pointer.delta(),
                 input.modifiers.shift,
+                input.modifiers.command,
                 input.pointer.middle_down(),
                 input.pointer.secondary_down(),
+                input.pointer.press_origin(),
             )
         });
         let (dx, dy) = (f64::from(delta.x), f64::from(delta.y));
         if response.is_pointer_button_down_on() {
             self.active = pane;
+            // Ctrl + right-drag zooms about where the drag began; dragging up comes closer.
+            let plane = self.panes[pane].plane;
+            let origin = response.rect.min;
+            let about = pressed.and_then(|at| {
+                let offset = at - origin;
+                let screen = [f64::from(offset.x), f64::from(offset.y)];
+                self.panes[pane].camera.plane_point(screen, size, &plane)
+            });
             let camera = &mut self.panes[pane].camera;
-            if middle || (right && (shift || camera.is_parallel())) {
+            if right && ctrl {
+                if let Some(about) = about {
+                    camera.zoom_about((dy * ZOOM_DRAG_SPEED).exp(), about);
+                } else {
+                    camera.zoom((dy * ZOOM_DRAG_SPEED).exp());
+                }
+            } else if middle || (right && (shift || camera.is_parallel())) {
                 camera.pan(dx, dy, size[1]);
             } else if right {
                 camera.orbit(dx, dy);
@@ -2262,12 +2468,37 @@ impl Curva {
         };
         let centre = viewport.min + egui::vec2(at[0] as f32, at[1] as f32);
         let painter = ui.painter_at(viewport);
-        painter.rect_stroke(
-            egui::Rect::from_center_size(centre, egui::Vec2::splat(SNAP_MARKER_SIZE)),
-            0.0,
-            egui::Stroke::new(2.0, SNAP_MARKER),
-            egui::StrokeKind::Middle,
-        );
+        // ArchiCAD's symbols: a cross for an intersection, a triangle for a midpoint, a circle
+        // for a centre, a square for an end and the rest.
+        let stroke = egui::Stroke::new(2.0, SNAP_MARKER);
+        let half = SNAP_MARKER_SIZE / 2.0;
+        match hit.kind {
+            SnapKind::Intersection => {
+                for (a, b) in [(-1.0, -1.0), (-1.0, 1.0)] {
+                    let offset = egui::vec2(a * half, b * half);
+                    painter.line_segment([centre + offset, centre - offset], stroke);
+                }
+            }
+            SnapKind::Mid => {
+                let corners = vec![
+                    centre + egui::vec2(0.0, -half),
+                    centre + egui::vec2(half, half * 0.8),
+                    centre + egui::vec2(-half, half * 0.8),
+                ];
+                painter.add(egui::Shape::closed_line(corners, stroke));
+            }
+            SnapKind::Center => {
+                painter.circle_stroke(centre, half, stroke);
+            }
+            _ => {
+                painter.rect_stroke(
+                    egui::Rect::from_center_size(centre, egui::Vec2::splat(SNAP_MARKER_SIZE)),
+                    0.0,
+                    stroke,
+                    egui::StrokeKind::Middle,
+                );
+            }
+        }
         painter.text(
             centre + egui::vec2(SNAP_MARKER_SIZE, -SNAP_MARKER_SIZE),
             egui::Align2::LEFT_BOTTOM,
@@ -2371,6 +2602,7 @@ impl Curva {
         });
         let cursor = aimed.map(|(at, _)| at);
         self.last_aim = cursor;
+        self.rest_on(ui.ctx(), aimed.and_then(|(_, hit)| hit));
         // Picking a point shows a crosshair, and what the step measures beside it.
         if let Some((.., position)) = hovered
             && self.takes_position()
@@ -2416,6 +2648,7 @@ impl Curva {
             self.paint_picked_edges(ui, *pane, *rect, size);
             self.paint_picked_faces(ui, *pane, *rect, size);
             self.paint_gumball(ui, *pane, *rect, size);
+            self.paint_guides(ui, *pane, *rect, size);
             if let Some((hover_pane, ..)) = hovered
                 && hover_pane == *pane
                 && let Some(hit) = aimed.and_then(|(_, hit)| hit)

@@ -213,6 +213,10 @@ pub enum ViewRequest {
     SaveView(String),
     /// Show the view saved under this name in the last-used viewport.
     RestoreView(String),
+    /// Go back to the last-used viewport's view before the latest camera move.
+    UndoView,
+    /// Go forward again through views stepped back from.
+    RedoView,
     /// Fit the model in every viewport.
     ZoomExtents,
     /// Fit the selection in every viewport.

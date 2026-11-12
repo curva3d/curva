@@ -394,6 +394,17 @@ impl Camera {
         self.distance = (self.distance * factor).clamp(0.01, 1e8);
     }
 
+    /// Moves closer (factor below 1) or further away, keeping `about` where it is on screen, as
+    /// Ctrl + right-drag does in Rhino.
+    pub fn zoom_about(&mut self, factor: f64, about: Point) {
+        let before = self.distance;
+        self.zoom(factor);
+        let applied = self.distance / before;
+        let target = self.target;
+        self.target =
+            std::array::from_fn(|axis| about[axis] + (target[axis] - about[axis]) * applied);
+    }
+
     /// Aims the view so a box of points fits.
     pub fn frame(&mut self, low: Point, high: Point) {
         for axis in 0..3 {
@@ -654,5 +665,16 @@ mod tests {
         camera.pan(40.0, 0.0, SIZE[1]);
         let after = camera.project([0.0; 3], SIZE).unwrap();
         assert!((after[0] - before[0] - 40.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn zooming_about_a_point_keeps_it_in_place_on_screen() {
+        let mut camera = StandardView::Top.camera();
+        let size = [800.0, 600.0];
+        let about = [30.0, 20.0, 0.0];
+        let before = camera.project(about, size).unwrap();
+        camera.zoom_about(0.5, about);
+        let after = camera.project(about, size).unwrap();
+        assert!((after[0] - before[0]).abs() < 1e-6 && (after[1] - before[1]).abs() < 1e-6);
     }
 }
