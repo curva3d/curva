@@ -1,32 +1,56 @@
 # Spec: floating panels
 
-**Status:** Draft for the owner · 12 November 2026. Asked for by the owner in chat, to follow the close of
-Milestone 1: "modern and clean", floating panels with rounded corners, a frosted-glass command bar, and
-a focus mode.
+**Status:** Approved by the owner in chat · 12 November 2026, with the recommendations taken (Curva's own
+blur), command tabs in the top bar, drawing aids and agent access kept at the bottom, and panels that
+users can move and dock elsewhere.
 **Scope comes from:** the owner's description, and how SolidCraft (`tangency-labs/solidcraft`, Apache-2.0)
-draws its floating cards and glass.
+draws its floating cards and glass. Only the method is followed; no SolidCraft code is copied.
 
 ## 1. What the owner will see
 
-The viewports fill the whole window. The interface floats above them in three panels with rounded
-corners, a small gap from the window's edges and a soft shadow:
+The viewports fill the whole window. The interface floats above them in panels with rounded corners, a
+small gap from the window's edges and a soft shadow. Clicks on a panel go to the panel; clicks anywhere
+else go to the viewport, as now.
 
-| Panel | Where | Holds | Look |
+| Panel | Where it starts | Holds | Look |
 |---|---|---|---|
-| Top bar | One long bar across the top | The file's name, the snaps (End, Mid, Cen, Int, Perp, Near), Ortho, Grid snap, Gumball, Agent access, and the selection filter when shown | Solid |
+| Command tabs | One long bar across the top | Tabs **Curves**, **Surfaces**, **Solids** and **Operations**, each a row of buttons for its most used commands (below) | Solid |
 | Side panel | Tall, down the right | Tabs: Layers, Properties, and later Layouts (Milestone 3) | Solid |
-| Command bar | Along the bottom | The command history, the prompt and the typed line, with its suggestions | **Frosted glass**: what is behind it shows through, blurred, under a light tint |
+| Command bar | Along the bottom | On the left: the command history, the prompt and the typed line, with its suggestions. Below it: the snaps (End, Mid, Cen, Int, Perp, Near), Ortho, Grid snap, Gumball, and the selection filter when shown. On the right: the agent (MCP) connection, with Agent access and whether an agent is connected | **Frosted glass**: what is behind shows through, blurred, under a light tint |
 
-The panels sit over the viewports rather than taking space from them, so the model can be seen right
-to the window's edges. Clicks on a panel go to the panel; clicks anywhere else go to the viewport, as now.
+### The command tabs
+
+Each button runs its command, as typing it would, and shows the command's name when hovered. A first
+set, to be adjusted once the owner has tried it:
+
+| Tab | Buttons |
+|---|---|
+| Curves | Line, Polyline, Curve, InterpCrv, Circle, Arc, Ellipse, Rectangle, Point, Offset, Fillet, Chamfer |
+| Surfaces | PlanarSrf, ExtrudeCrv, Revolve, Loft, Sweep1, OffsetSrf |
+| Solids | Box, Pipe, FilletEdge, ChamferEdge, Shell, Volume |
+| Operations | BooleanUnion, BooleanDifference, BooleanIntersection, Trim, Split, Join, Explode, Move, Copy, Rotate, Scale, Mirror, Array |
+
+Buttons show the command's name in text for now; icons come with their own piece of work.
+
+### Moving and docking panels
+
+Users can arrange the interface as they like:
+- Each panel has a grip. Dragging it lifts the panel, and the places it can go light up as it nears
+  them: the top, bottom, left or right edge of the window, or anywhere as a floating panel.
+- Dropping it on a lit place docks it there. A docked panel stretches along its edge, as the command
+  tabs do along the top; a floating one keeps its size and can be resized from its corners.
+- The arrangement is remembered between sessions, per user (not in the model file). A **Reset layout**
+  entry puts everything back as in the table above.
+- Panels are built so that every panel, now and later, takes part in this: a panel only says what it
+  holds, and the layout decides where it is and how big.
 
 ### Focus mode
 
-- A small tab with a V-shaped arrow sits at the top centre. Clicking it (or a key, `F12` suggested)
-  slides **all** the panels out of view, each towards its nearest edge: the top bar up, the side
-  panel right, the command bar down. Clicking it again brings them all back.
+- A small tab with a V-shaped arrow sits at the top centre. Clicking it (or `F12`) slides **all** the
+  panels out of view, each towards the edge it is docked to; a floating panel goes towards its nearest
+  edge. Clicking it again brings them all back.
 - When hidden, a thin strip of each panel stays visible at its edge, so it can be found again.
-- Hovering over a strip slides that panel out a little, as a hint. Moving away slides it back.
+- Hovering over a strip slides that panel out a little, as a hint; moving away slides it back.
 - Clicking a strip brings that one panel fully into view, leaving the others hidden. Clicking the
   arrow tab, or the strip again, hides it.
 - Typing still goes to the command line while the command bar is hidden: a typed letter brings the
@@ -35,38 +59,32 @@ to the window's edges. Clicks on a panel go to the panel; clicks anywhere else g
 
 ## 2. How the glass is made
 
-The command bar blurs the viewport behind it on the graphics card: the viewport is drawn, the part
-under the bar is blurred in a few small passes (the "dual Kawase" blur SolidCraft uses), and the bar
-is drawn over it with a light tint. Where the graphics card cannot do it (a software adapter, as over
-some remote desktops), the bar falls back to the same tint without blur, so it still reads as
-lighter glass.
+The command bar blurs the viewport behind it on the graphics card: the viewport is drawn, the part under
+the bar is blurred in a few small passes (the "dual Kawase" blur SolidCraft uses), and the bar is drawn
+over it with a light tint. The blur is Curva's own code (owner's choice). Where the graphics card cannot
+do it (a software adapter, as over some remote desktops), the bar falls back to the same tint without
+blur, so it still reads as lighter glass.
 
-## 3. Decisions for the owner
+## 3. Order of work
 
-1. **The blur's code.** (a) Write Curva's own blur, following SolidCraft's method. (b) Adapt
-   SolidCraft's code, about 1,400 lines and Apache-2.0, with its notice in `ATTRIBUTION.md`. Decision
-   0009 left reuse of SolidCraft's code undecided, so (b) would settle it for this part. Recommended:
-   (a). The part Curva needs is small: one surface, the command bar.
-2. **The top bar.** The list in section 1 moves what is now under the command line up to the top. Should
-   it also have buttons for common commands, as Rhino's toolbars do? Recommended: not yet. Keep it
-   clean, and add toolbars as their own piece of work.
-
-## 4. Order of work
-
-1. The panels float over the viewports with rounded corners and the solid style.
+1. The layout model: panels, the places they dock, and the default arrangement, remembered between
+   sessions. The panels float over the viewports with rounded corners and the solid style, laid out as
+   in section 1, with the command tabs.
 2. Focus mode: the arrow tab, the slides, the strips, hovering and clicking.
-3. The frosted command bar, with its fallback.
+3. Moving and docking panels by their grips, and Reset layout.
+4. The frosted command bar, with its fallback.
 
-## 5. Not in this piece of work
+## 4. Not in this piece of work
 
-Moving or docking panels elsewhere, light and dark themes, toolbars of command buttons, and the
+Icons for the command buttons, users choosing which buttons a tab holds, light and dark themes, and the
 built-in assistant panel (postponed by the owner on 10 November 2026).
 
-## 6. How it is checked
+## 5. How it is checked
 
-- Automatic checks on the layout logic: each panel's rectangle when shown, hidden and peeking, for
-  several window sizes, and which edge each one hides towards. A click on a panel never reaches the
-  viewport.
+- Automatic checks on the layout logic: each panel's rectangle when shown, hidden and peeking, for several
+  window sizes and every place a panel can dock, and which edge each one hides towards. A layout saved and
+  read back is the same. A click on a panel never reaches the viewport.
+- Each command button runs the command it names.
 - The blur is checked by a picture: a sharp line behind the command bar is softened in it, and is
   unchanged where there is no bar.
 - Drawing stays fast: orbiting with the panels shown costs no more than 1 ms a frame over today
