@@ -1,43 +1,48 @@
-//! `InterpCrv`: a smooth curve through points, ended by Enter or `Close`.
+//! `InterpCrv`: a smooth curve through points, as in Rhino. Enter ends it, or `Close` once there
+//! are three; `Undo` takes back the last point. Rhino's `Degree`, `Knots`, tangents, `AutoClose`,
+//! `PersistentClose` and `Sharp` are still to come (`docs/commands/rhino-reference.md`).
 
-use super::{PointRun, RunState, geometry_failed};
-use crate::{Answer, Command, Live, Message, Step};
-use curva_document::Document;
+use crate::Message;
+use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef, point_run, run_points};
+use curva_document::Shape;
 use curva_kernel::Curve;
 
-/// The running command.
-#[derive(Default)]
-pub struct InterpCrv {
-    run: PointRun,
-}
+const CLOSE: &str = "Close";
 
-impl Command for InterpCrv {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        match self
-            .run
-            .feed(answer, "prompt.interpcrv.start", "prompt.interpcrv.next")
-        {
-            RunState::Asking(step) => *step,
-            RunState::Finished { closed } => {
-                let count = self.run.points.len();
-                match Curve::interpolated(self.run.points.clone(), closed) {
-                    Ok(curve) => {
-                        doc.add(curve);
-                        Step::Done(Some(Message::with(
-                            "done.interpcrv",
-                            vec![count.to_string()],
-                        )))
-                    }
-                    Err(error) => geometry_failed(&error),
-                }
-            }
+/// The recipe.
+#[derive(Default)]
+pub struct InterpCrv;
+
+impl Recipe for InterpCrv {
+    const NAME: &'static str = "interpcrv";
+    const OPTIONS: &'static [OptionDef] = &[OptionDef::finish(CLOSE), OptionDef::undo()];
+
+    fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
+        let mut steps = point_run(cx, "prompt.interpcrv.start", "prompt.interpcrv.next", 2);
+        let offered: &[&'static str] = match run_points(cx).len() {
+            0 => &[],
+            1 | 2 => &["Undo"],
+            _ => &[CLOSE, "Undo"],
+        };
+        if let Some(last) = steps.last_mut() {
+            *last = last.clone().offering(offered);
         }
+        steps
     }
 
-    fn preview(&self, _doc: &Document, live: &Live) -> Vec<Curve> {
-        Curve::interpolated(self.run.through(live.cursor), false)
-            .into_iter()
-            .collect()
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let points = run_points(cx);
+        if points.len() < 2 {
+            return Ok(Made::default());
+        }
+        let count = points.len();
+        let curve = Curve::interpolated(points, cx.mode == Some(CLOSE))
+            .map_err(|e| Message::with("error.geometry", vec![e.to_string()]))?;
+        Ok(Made {
+            add: vec![Shape::Curve(curve)],
+            message: Some(Message::with("done.interpcrv", vec![count.to_string()])),
+            ..Made::default()
+        })
     }
 }
 

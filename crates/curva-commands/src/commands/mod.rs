@@ -99,7 +99,7 @@ mod zoom;
 mod zoom_extents;
 mod zoom_selected;
 
-use crate::{Answer, Command, Kind, Message, Request, Step};
+use crate::{Command, Kind, Message, Request, Step};
 use curva_kernel::{KernelError, Point};
 
 /// How a command is listed.
@@ -154,13 +154,7 @@ macro_rules! recipe {
 pub static COMMANDS: [CommandDef; 100] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
-    listed!(
-        "InterpCrv",
-        ["interpcurve"],
-        true,
-        true,
-        interpcrv::InterpCrv
-    ),
+    recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
     recipe!("Circle", ["c", "ci"], true, circle::Circle),
     listed!("Move", ["m"], true, true, move_objects::MoveObjects),
     listed!("Copy", ["co", "cp"], true, true, copy::CopyObjects),
@@ -170,7 +164,7 @@ pub static COMMANDS: [CommandDef; 100] = [
     listed!("Array", ["ar"], true, true, array::Array),
     listed!("ArrayPolar", ["arp"], true, true, array_polar::ArrayPolar),
     listed!("ArrayCrv", [], true, true, array_crv::ArrayCrv),
-    listed!("Point", ["pt"], true, true, point::PointObject),
+    recipe!("Point", ["pt"], true, point::PointObject),
     listed!("Divide", [], true, true, divide::Divide),
     listed!("Orient", [], true, true, orient::Orient),
     listed!("Rebuild", [], true, true, rebuild::Rebuild),
@@ -250,8 +244,8 @@ pub static COMMANDS: [CommandDef; 100] = [
     listed!("Explode", ["x"], true, true, explode::Explode),
     listed!("Split", [], true, true, split::Split),
     listed!("Trim", ["tr"], true, true, trim::Trim),
-    listed!("Offset", [], true, true, offset::Offset),
-    listed!("Fillet", [], true, true, fillet::Fillet),
+    recipe!("Offset", [], true, offset::Offset),
+    recipe!("Fillet", [], true, fillet::Fillet),
     listed!(
         "FilletCorners",
         [],
@@ -261,8 +255,8 @@ pub static COMMANDS: [CommandDef; 100] = [
     ),
     listed!("TweenCurves", [], true, true, tween_curves::TweenCurves),
     listed!("Orient3Pt", [], true, true, orient3pt::Orient3Pt),
-    listed!("Chamfer", [], true, true, chamfer::Chamfer),
-    listed!("Ellipse", ["el"], true, true, ellipse::Ellipse),
+    recipe!("Chamfer", [], true, chamfer::Chamfer),
+    recipe!("Ellipse", ["el"], true, ellipse::Ellipse),
     listed!("Rotate3D", [], true, true, rotate3d::Rotate3D),
     listed!("Scale1D", [], true, true, scale1d::Scale1D),
     listed!("Scale2D", [], true, true, scale2d::Scale2D),
@@ -314,7 +308,7 @@ pub static COMMANDS: [CommandDef; 100] = [
     listed!("Right", [], false, false, right::Right),
     listed!("Perspective", [], false, false, perspective::Perspective),
     listed!("CPlane", [], false, false, cplane::SetCPlane),
-    listed!("Curve", [], true, true, curve::CurveCommand),
+    recipe!("Curve", [], true, curve::CurveCommand),
     listed!("Zoom", [], false, false, zoom::Zoom),
     listed!("NamedView", ["nv"], false, false, named_view::NamedView),
     listed!(
@@ -470,7 +464,7 @@ fn curves_of(doc: &curva_document::Document, ids: &[u64]) -> Vec<(u64, curva_ker
 }
 
 /// The curve passing within `reach` of `at`, if any, for commands that pick a curve.
-fn curve_at(
+pub(crate) fn curve_at(
     doc: &curva_document::Document,
     at: Point,
     reach: f64,
@@ -507,51 +501,6 @@ fn ghost_results(made: Vec<(u64, curva_kernel::Curve)>) -> Vec<curva_kernel::Cur
 
 fn ask_objects(key: &'static str) -> Step {
     Step::Ask(Request::new(key, Kind::Objects))
-}
-
-/// Collects points until Enter or `Close`, for commands that draw through many points.
-#[derive(Default)]
-struct PointRun {
-    points: Vec<Point>,
-}
-
-/// What [`PointRun`] wants next.
-enum RunState {
-    Asking(Box<Step>),
-    Finished { closed: bool },
-}
-
-impl PointRun {
-    /// The points placed so far, then the cursor.
-    fn through(&self, cursor: Option<Point>) -> Vec<Point> {
-        self.points.iter().copied().chain(cursor).collect()
-    }
-
-    fn feed(
-        &mut self,
-        answer: Option<Answer>,
-        start_key: &'static str,
-        next_key: &'static str,
-    ) -> RunState {
-        match answer {
-            None => {}
-            Some(Answer::Point(point)) => self.points.push(point),
-            Some(Answer::Empty) => return RunState::Finished { closed: false },
-            Some(Answer::Option(_)) => return RunState::Finished { closed: true },
-            Some(_) => return RunState::Asking(Box::new(unexpected())),
-        }
-        let count = self.points.len();
-        RunState::Asking(Box::new(Step::Ask(Request {
-            allow_empty: count >= 2,
-            options: if count >= 3 {
-                vec!["Close"]
-            } else {
-                Vec::new()
-            },
-            preview: self.points.clone(),
-            ..Request::new(if count == 0 { start_key } else { next_key }, Kind::Point)
-        })))
-    }
 }
 
 /// Runs typed lines through a fresh processor, for the commands' tests.

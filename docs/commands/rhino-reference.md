@@ -28,20 +28,20 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 |---|---|---|---|---|
 | Line | Start of line; End of line (typed distance, angle, or both) | `BothSides` `Normal` `Angled` `Vertical` `FourPoint` `Bisector` `Perpendicular` `Tangent` `Extension` | `BothSides` | partly |
 | Polyline | Start; next points; Enter ends | `Close` `Helpers` `Length` `Mode` `Direction` `ThroughPoint` `Center` `PersistentClose` `Undo` | `Close` `Undo` | partly |
-| Curve | Start; next control points; Enter ends | `AutoClose` `Degree` `PersistentClose` `Close` `Sharp` `Undo` | `Degree` `Close` | partly |
-| InterpCrv | Start; next points; Enter ends (on Rhino's Curve page) | `AutoClose` `Degree` `PersistentClose` `Knots` `StartTangent` `EndTangent` `Close` `Sharp` `Undo` | `Close` | partly |
+| Curve | Start; next control points; Enter ends | `AutoClose` `Degree` `PersistentClose` `Close` `Sharp` `Undo` | `Degree` `Close` `Undo` | partly |
+| InterpCrv | Start; next points; Enter ends (on Rhino's Curve page) | `AutoClose` `Degree` `PersistentClose` `Knots` `StartTangent` `EndTangent` `Close` `Sharp` `Undo` | `Close` `Undo` | partly |
 | Circle | Center; radius, typed or picked | `Deformable` `2Point` `3Point` `Radius` `Diameter` `AroundCurve` `FitPoints` `Tangent` `Vertical` `Orientation` `Circumference` `Area` | `2Point` `3Point` `Diameter` | partly |
 | Arc | Center; start (radius); end point or angle (`Length`). With `StartPoint`: start, end, point on arc | `Center` `Tilted` `Length` `Midpoint` `Deformable` `StartPoint` `Direction` `ThroughPoint` `Tangent` `Extension` | `StartPoint` | partly |
-| Ellipse | Center; end of first axis; end of second axis | `Deformable` `Vertical` `Corner` `Diameter` `FromFoci` `MarkFoci` `AroundCurve` | none | partly |
+| Ellipse | Center; end of first axis; end of second axis | `Deformable` `Vertical` `Corner` `Diameter` `FromFoci` `MarkFoci` `AroundCurve` | `Diameter` `Corner` | partly |
 | Rectangle | Two opposite corners | `3Point` `EdgeMidpoint` `Vertical` `Center` `AroundCurve` `Rounded` | `Center` `3Point` | partly |
-| Point | Pick a location | none | none | partly |
+| Point | Pick a location | none | none | done |
 | Divide | Select curves; number of segments, or `Length` / `EqualChordLength` and a number | `Length` `EqualChordLength` `Split` `DeleteRemainder` `MarkEnds` `GroupOutput` | none | partly |
 | CloseCrv | Select open curves; Enter | `CloseWideGapsWithLine` `Tolerance` | none | partly |
 | TweenCurves | First curve; second curve; click an end to flip | `Number` `OutputLayer` `MatchMethod` `SampleNumber` `Flip` | none | partly |
-| Offset | Select a curve; click the side | `Distance` `Loose` `Corner` `Trim` `ThroughPoint` `Tolerance` `BothSides` `InCPlane` `Cap` `OutputLayer` | none | partly |
-| Fillet | First curve near its end; second curve near its end | `Radius` `Join` `Trim` `ExtendArcsBy` `ExtendOtherCurvesBy` `Dynamic` | none | partly |
+| Offset | Select a curve; click the side | `Distance` `Loose` `Corner` `Trim` `ThroughPoint` `Tolerance` `BothSides` `InCPlane` `Cap` `OutputLayer` | `Distance` `ThroughPoint` `BothSides` | partly |
+| Fillet | First curve near its end; second curve near its end | `Radius` `Join` `Trim` `ExtendArcsBy` `ExtendOtherCurvesBy` `Dynamic` | `Radius` | partly |
 | FilletCorners | Select polycurves; Enter; radius typed or by two points (on Rhino's Fillet page) | none | none | partly |
-| Chamfer | First curve near its end; second curve near its end | `Distances` `Join` `Trim` `ExtendArcsBy` `ExtendOtherCurvesBy` | none | partly |
+| Chamfer | First curve near its end; second curve near its end | `Distances` `Join` `Trim` `ExtendArcsBy` `ExtendOtherCurvesBy` | `Distances` | partly |
 | Rebuild | Select curves; point count and degree (a dialog in Rhino; `-Rebuild` on the command line) | `PointCount` `Degree` `DeleteInput` `CurrentLayer` `PreserveTangents` | none | partly |
 
 ## Transforms

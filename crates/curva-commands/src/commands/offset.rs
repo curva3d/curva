@@ -1,101 +1,83 @@
-//! `Offset`: a copy of curves at a distance, on the side clicked.
+//! `Offset`, as in Rhino: a copy of curves at a distance, on the side clicked. A number typed at
+//! the side prompt sets `Distance`; `ThroughPoint` makes the copy pass through the point clicked;
+//! `BothSides` makes one on each side. Each copy follows its curve when that changes (`History`).
+//! Rhino's `Loose`, `Corner`, `Trim`, `Tolerance`, `InCPlane`, `Cap` and `OutputLayer` are still to
+//! come (`docs/commands/rhino-reference.md`).
 
-use super::{ask_objects, curves_of, geometry_failed, plane_normal, unexpected};
-use crate::{Answer, Command, Kind, Live, Message, Request, Step};
-use curva_document::{Document, Recipe};
-use curva_kernel::{Curve, Point};
+use super::curves_of;
+use crate::Message;
+use crate::recipe::{Context, Derived, Made, OptionDef, Recipe, StepDef, Value};
+use curva_document::Shape;
+use curva_kernel::{cross, gap};
 
-/// The distance used until another is typed, in millimetres.
-const STARTING_DISTANCE: f64 = 1.0;
-/// Where the document remembers the last distance.
-const MEMORY: &str = "offset.distance";
+const DISTANCE: &str = "Distance";
+const THROUGH_POINT: &str = "ThroughPoint";
+const BOTH_SIDES: &str = "BothSides";
 
-/// The running command.
+/// The recipe.
 #[derive(Default)]
-pub struct Offset {
-    ids: Option<Vec<u64>>,
-}
+pub struct Offset;
 
-fn distance_of(doc: &Document) -> f64 {
-    doc.remembered(MEMORY).unwrap_or(STARTING_DISTANCE)
-}
+impl Recipe for Offset {
+    const NAME: &'static str = "offset";
+    const OPTIONS: &'static [OptionDef] = &[
+        OptionDef::distance(DISTANCE, 1.0, false),
+        OptionDef::mode(THROUGH_POINT),
+        OptionDef::toggle(BOTH_SIDES, false),
+    ];
 
-fn ask_side(doc: &Document) -> Step {
-    Step::Ask(Request {
-        prompt: Message::with("prompt.offset.side", vec![distance_of(doc).to_string()]),
-        ..Request::new("prompt.offset.side", Kind::PointOrNumber)
-    })
-}
-
-fn offsets(
-    doc: &Document,
-    ids: &[u64],
-    distance: f64,
-    toward: Point,
-) -> Result<Vec<Curve>, curva_kernel::KernelError> {
-    let normal = plane_normal(doc);
-    curves_of(doc, ids)
-        .iter()
-        .map(|(_, curve)| curve.offset(normal, distance, toward))
-        .collect()
-}
-
-impl Command for Offset {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let Some(ids) = self.ids.clone() else {
-            let chosen = match answer {
-                Some(Answer::Objects(list)) => list,
-                _ => doc.selection(),
-            };
-            if chosen.is_empty() {
-                return ask_objects("prompt.offset.objects");
-            }
-            self.ids = Some(chosen);
-            return ask_side(doc);
-        };
-        match answer {
-            Some(Answer::Number(distance)) if distance > 0.0 => {
-                doc.remember(MEMORY, distance);
-                ask_side(doc)
-            }
-            Some(Answer::Number(_)) => Step::Failed(Message::new("error.bad_distance")),
-            Some(Answer::Point(toward)) => match offsets(doc, &ids, distance_of(doc), toward) {
-                Ok(made) => {
-                    let count = made.len();
-                    let normal = plane_normal(doc);
-                    let distance = distance_of(doc);
-                    let sources = curves_of(doc, &ids);
-                    for (curve, (source, original)) in made.into_iter().zip(sources) {
-                        let child = doc.add_on(curve, doc.layer_of(source));
-                        if let Ok(side) = original.side_of_point(normal, toward) {
-                            doc.record_recipe(
-                                child,
-                                Recipe::Offset {
-                                    source,
-                                    normal,
-                                    distance,
-                                    side,
-                                },
-                            );
-                        }
-                    }
-                    Step::Done(Some(Message::with("done.offset", vec![count.to_string()])))
-                }
-                Err(error) => geometry_failed(&error),
-            },
-            _ => unexpected(),
-        }
+    fn steps(&self, _cx: &Context<'_>) -> Vec<StepDef> {
+        vec![
+            StepDef::objects("prompt.offset.objects").offering(&[]),
+            StepDef::point("prompt.offset.side").number_sets(DISTANCE),
+        ]
     }
 
-    fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
-        let (Some(ids), Some(cursor)) = (&self.ids, live.cursor) else {
-            return Vec::new();
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let (Some(Value::Objects(ids)), Some(toward)) =
+            (cx.values.first(), cx.values.get(1).and_then(Value::point))
+        else {
+            return Ok(Made::default());
         };
-        let distance = live
-            .number
-            .filter(|n| *n > 0.0)
-            .unwrap_or_else(|| distance_of(doc));
-        offsets(doc, ids, distance, cursor).unwrap_or_default()
+        let [x, y] = cx.plane();
+        let normal = cross(x, y);
+        let failed =
+            |e: curva_kernel::KernelError| Message::with("error.geometry", vec![e.to_string()]);
+        let mut derived = Vec::new();
+        for (source, curve) in curves_of(cx.doc, ids) {
+            let distance = if cx.mode == Some(THROUGH_POINT) {
+                gap(curve.closest_point(toward).map_err(failed)?, toward)
+            } else {
+                cx.number(DISTANCE)
+            };
+            let side = curve.side_of_point(normal, toward).map_err(failed)?;
+            let sides: &[f64] = if cx.toggle(BOTH_SIDES) {
+                &[1.0, -1.0]
+            } else {
+                &[side]
+            };
+            for side in sides {
+                let copy = curve
+                    .offset_on_side(normal, distance, *side)
+                    .map_err(failed)?;
+                derived.push(Derived {
+                    shape: Shape::Curve(copy),
+                    from: source,
+                    history: Some(curva_document::Recipe::Offset {
+                        source,
+                        normal,
+                        distance,
+                        side: *side,
+                    }),
+                });
+            }
+        }
+        let count = derived.len();
+        Ok(Made {
+            derived,
+            message: Some(Message::with("done.offset", vec![count.to_string()])),
+            ..Made::default()
+        })
     }
 }
 
@@ -172,6 +154,26 @@ mod tests {
         let (doc, processor) = start();
         let shown = processor.preview(&doc, Some([5.0, 9.0, 0.0]), "3");
         assert_eq!(shown[0].sample().unwrap()[0], [0.0, 3.0, 0.0]);
+        assert_eq!(doc.state().objects.len(), 1);
+    }
+
+    #[test]
+    fn through_point_and_both_sides() {
+        let (mut doc, mut processor) = start();
+        processor.submit(&mut doc, "throughpoint");
+        processor.click(&mut doc, [5.0, 2.5, 0.0]);
+        assert_eq!(last_start(&doc), [0.0, 2.5, 0.0]);
+        let (mut doc, mut processor) = start();
+        processor.submit(&mut doc, "bothsides");
+        processor.click(&mut doc, [5.0, 9.0, 0.0]);
+        assert_eq!(doc.state().objects.len(), 3);
+    }
+
+    #[test]
+    fn a_distance_of_zero_is_refused() {
+        let (mut doc, mut processor) = start();
+        processor.submit(&mut doc, "0");
+        assert!(!processor.is_running());
         assert_eq!(doc.state().objects.len(), 1);
     }
 }

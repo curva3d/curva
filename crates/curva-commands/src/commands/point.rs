@@ -1,31 +1,30 @@
-//! `Point`: places a point object.
+//! `Point`: places a point object where picked, as in Rhino.
 
-use super::{ask_point, unexpected};
-use crate::{Answer, Command, Live, Message, Step};
-use curva_document::Document;
+use crate::Message;
+use crate::recipe::{Context, Made, Recipe, StepDef, Value};
+use curva_document::Shape;
 use curva_kernel::Curve;
 
-/// The running command.
+/// The recipe.
 #[derive(Default)]
 pub struct PointObject;
 
-impl Command for PointObject {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        match answer {
-            None => ask_point("prompt.point.at", Vec::new()),
-            Some(Answer::Point(at)) => {
-                doc.add(Curve::Point { at });
-                Step::Done(Some(Message::new("done.point")))
-            }
-            _ => unexpected(),
-        }
+impl Recipe for PointObject {
+    const NAME: &'static str = "point";
+
+    fn steps(&self, _cx: &Context<'_>) -> Vec<StepDef> {
+        vec![StepDef::point("prompt.point.at")]
     }
 
-    fn preview(&self, _doc: &Document, live: &Live) -> Vec<Curve> {
-        live.cursor
-            .map(|at| Curve::Point { at })
-            .into_iter()
-            .collect()
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let Some(at) = cx.values.first().and_then(Value::point) else {
+            return Ok(Made::default());
+        };
+        Ok(Made {
+            add: vec![Shape::Curve(Curve::Point { at })],
+            message: Some(Message::new("done.point")),
+            ..Made::default()
+        })
     }
 }
 

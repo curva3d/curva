@@ -1,115 +1,65 @@
-//! `Chamfer`: cuts the corner between two lines with a straight line.
+//! `Chamfer`, as in Rhino: cuts the corner between two lines with a straight line. A number typed
+//! at either prompt sets `Distances`, used on both lines. Rhino's separate second distance, `Join`,
+//! `Trim`, `ExtendArcsBy` and `ExtendOtherCurvesBy` are still to come
+//! (`docs/commands/rhino-reference.md`).
 
-use super::{curve_at, geometry_failed, unexpected};
-use crate::{Answer, Command, Kind, Live, Message, Request, Step};
-use curva_document::Document;
-use curva_kernel::{Chamfered, Curve, KernelError, Point, chamfer_lines};
+use super::curve_at;
+use crate::Message;
+use crate::recipe::{Context, Derived, Made, ON_CURVE, OptionDef, Recipe, StepDef, Value};
+use curva_document::Shape;
+use curva_kernel::chamfer_lines;
 
-/// How far from a curve a picked point may be, in millimetres, to mean that curve.
-const ON_CURVE: f64 = 1e-3;
-/// The distance used until another is typed, in millimetres.
-const STARTING_DISTANCE: f64 = 1.0;
-/// Where the document remembers the last distance.
-const MEMORY: &str = "chamfer.distance";
+const DISTANCES: &str = "Distances";
 
-/// The running command.
+/// The recipe.
 #[derive(Default)]
-pub struct Chamfer {
-    first: Option<(u64, Point)>,
-}
+pub struct Chamfer;
 
-fn distance_of(doc: &Document) -> f64 {
-    doc.remembered(MEMORY).unwrap_or(STARTING_DISTANCE)
-}
+impl Recipe for Chamfer {
+    const NAME: &'static str = "chamfer";
+    const OPTIONS: &'static [OptionDef] = &[OptionDef::distance(DISTANCES, 1.0, false)];
 
-fn ask(doc: &Document, key: &'static str) -> Step {
-    Step::Ask(Request {
-        prompt: Message::with(key, vec![distance_of(doc).to_string()]),
-        ..Request::new(key, Kind::PickPart)
-    })
-}
-
-fn under(doc: &Document, at: Point) -> Result<Option<(u64, Curve)>, KernelError> {
-    curve_at(doc, at, ON_CURVE)
-}
-
-impl Chamfer {
-    fn result(
-        &self,
-        doc: &Document,
-        at: Point,
-        distance: f64,
-    ) -> Result<Option<(u64, u64, Chamfered)>, KernelError> {
-        let Some((first_id, first_pick)) = self.first else {
-            return Ok(None);
-        };
-        let first = doc
-            .state()
-            .objects
-            .iter()
-            .find(|object| object.id == first_id)
-            .and_then(|object| object.curve().cloned());
-        let (Some((second_id, second)), Some(first)) = (under(doc, at)?, first) else {
-            return Ok(None);
-        };
-        if second_id == first_id {
-            return Ok(None);
+    fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
+        let mut steps = vec![StepDef::pick("prompt.chamfer.first").number_sets(DISTANCES)];
+        if !cx.values.is_empty() {
+            steps.push(StepDef::pick("prompt.chamfer.second").number_sets(DISTANCES));
         }
-        chamfer_lines(&first, first_pick, &second, at, distance, distance)
-            .map(|done| Some((first_id, second_id, done)))
-    }
-}
-
-impl Command for Chamfer {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let again = if self.first.is_some() {
-            "prompt.chamfer.second"
-        } else {
-            "prompt.chamfer.first"
-        };
-        match answer {
-            None => ask(doc, again),
-            Some(Answer::Number(distance)) if distance > 0.0 => {
-                doc.remember(MEMORY, distance);
-                ask(doc, again)
-            }
-            Some(Answer::Number(_)) => Step::Failed(Message::new("error.bad_distance")),
-            Some(Answer::Point(at)) if self.first.is_none() => match under(doc, at) {
-                Ok(Some((id, _))) => {
-                    self.first = Some((id, at));
-                    ask(doc, "prompt.chamfer.second")
-                }
-                Ok(None) => ask(doc, again),
-                Err(error) => geometry_failed(&error),
-            },
-            Some(Answer::Point(at)) => match self.result(doc, at, distance_of(doc)) {
-                Ok(Some((first, second, done))) => {
-                    let layer = doc.layer_of(first);
-                    doc.remove(&[first, second]);
-                    for curve in [done.first, done.second, done.across] {
-                        doc.add_on(curve, layer);
-                    }
-                    Step::Done(Some(Message::new("done.chamfer")))
-                }
-                Ok(None) => ask(doc, again),
-                Err(error) => geometry_failed(&error),
-            },
-            _ => unexpected(),
-        }
+        steps
     }
 
-    fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
-        let Some(at) = live.cursor else {
-            return Vec::new();
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let (Some(a), Some(b)) = (
+            cx.values.first().and_then(Value::point),
+            cx.values.get(1).and_then(Value::point),
+        ) else {
+            return Ok(Made::default());
         };
-        let distance = live
-            .number
-            .filter(|n| *n > 0.0)
-            .unwrap_or_else(|| distance_of(doc));
-        match self.result(doc, at, distance) {
-            Ok(Some((_, _, done))) => vec![done.first, done.second, done.across],
-            _ => Vec::new(),
+        let failed =
+            |e: curva_kernel::KernelError| Message::with("error.geometry", vec![e.to_string()]);
+        let (Some((first_id, first)), Some((second_id, second))) = (
+            curve_at(cx.doc, a, ON_CURVE).map_err(failed)?,
+            curve_at(cx.doc, b, ON_CURVE).map_err(failed)?,
+        ) else {
+            return Ok(Made::default());
+        };
+        if first_id == second_id {
+            return Ok(Made::default());
         }
+        let distance = cx.number(DISTANCES);
+        let done = chamfer_lines(&first, a, &second, b, distance, distance).map_err(failed)?;
+        Ok(Made {
+            remove: vec![first_id, second_id],
+            derived: [done.first, done.second, done.across]
+                .into_iter()
+                .map(|curve| Derived {
+                    shape: Shape::Curve(curve),
+                    from: first_id,
+                    history: None,
+                })
+                .collect(),
+            message: Some(Message::new("done.chamfer")),
+            ..Made::default()
+        })
     }
 }
 
@@ -145,7 +95,7 @@ mod tests {
         assert_eq!(doc.state().objects.len(), 3);
         let expected = 14.0 + 18.0_f64.sqrt();
         assert!((total(&doc) - expected).abs() < 1e-6);
-        assert_eq!(doc.remembered("chamfer.distance"), Some(3.0));
+        assert_eq!(doc.remembered("chamfer.distances"), Some(3.0));
     }
 
     #[test]
