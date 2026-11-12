@@ -170,6 +170,10 @@ pub enum ViewRequest {
     Show(ViewName),
     /// Draw the last-used viewport this way.
     Display(DisplayMode),
+    /// Show or hide the selection filter row in the status bar.
+    ShowSelectionFilter,
+    /// Turn the selection filter off or back on, keeping its ticks.
+    ToggleSelectionFilter,
 }
 
 /// How a viewport draws the model.

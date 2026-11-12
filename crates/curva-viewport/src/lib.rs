@@ -28,6 +28,61 @@ pub const PREVIEW_COLOUR: [f32; 3] = [0.45, 0.75, 1.0];
 const X_AXIS_COLOUR: [f32; 3] = [0.85, 0.3, 0.3];
 const Y_AXIS_COLOUR: [f32; 3] = [0.35, 0.8, 0.4];
 
+/// What sort of object a pickable outline belongs to, for the selection filter.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PickKind {
+    /// A point object.
+    Point,
+    /// A curve.
+    Curve,
+    /// An open surface.
+    Surface,
+    /// A closed solid.
+    Solid,
+}
+
+/// Which kinds of object clicking and boxing may pick, as Rhino's selection filter.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)]
+pub struct PickFilter {
+    /// Whether the filter is in force; when off, everything can be picked.
+    pub on: bool,
+    /// Point objects.
+    pub points: bool,
+    /// Curves.
+    pub curves: bool,
+    /// Open surfaces.
+    pub surfaces: bool,
+    /// Closed solids.
+    pub solids: bool,
+}
+
+impl Default for PickFilter {
+    fn default() -> Self {
+        Self {
+            on: true,
+            points: true,
+            curves: true,
+            surfaces: true,
+            solids: true,
+        }
+    }
+}
+
+impl PickFilter {
+    /// Whether an object of this kind can be picked.
+    #[must_use]
+    pub fn allows(&self, kind: PickKind) -> bool {
+        !self.on
+            || match kind {
+                PickKind::Point => self.points,
+                PickKind::Curve => self.curves,
+                PickKind::Surface => self.surfaces,
+                PickKind::Solid => self.solids,
+            }
+    }
+}
+
 /// One end of a drawn line segment.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Vertex {
@@ -76,24 +131,35 @@ pub struct Outlines {
     edge_of: Vec<Option<usize>>,
     /// The box around each object, in the same order, so snapping can skip far-off ones.
     boxes: Vec<(Point, Point)>,
+    /// The sort of object each entry belongs to, in the same order, for the selection filter.
+    kinds: Vec<PickKind>,
+    /// Which kinds clicking and boxing may pick.
+    filter: PickFilter,
 }
 
 /// Meshes of bodies already worked out, so a body is meshed again only when it changes.
 #[derive(Debug, Default)]
 pub struct MeshCache {
-    held: std::collections::HashMap<u64, (curva_kernel::Body, curva_kernel::BodyMesh)>,
+    /// Each body as last meshed, its mesh, and whether it is a closed solid.
+    held: std::collections::HashMap<u64, (curva_kernel::Body, curva_kernel::BodyMesh, bool)>,
 }
 
 impl MeshCache {
-    fn mesh(&mut self, id: u64, body: &curva_kernel::Body) -> Option<curva_kernel::BodyMesh> {
-        if let Some((held, mesh)) = self.held.get(&id)
+    /// The body's mesh, and whether it is a closed solid.
+    fn mesh(
+        &mut self,
+        id: u64,
+        body: &curva_kernel::Body,
+    ) -> Option<(curva_kernel::BodyMesh, bool)> {
+        if let Some((held, mesh, solid)) = self.held.get(&id)
             && held == body
         {
-            return Some(mesh.clone());
+            return Some((mesh.clone(), *solid));
         }
         let mesh = body.mesh().ok()?;
-        self.held.insert(id, (body.clone(), mesh.clone()));
-        Some(mesh)
+        let solid = body.is_solid();
+        self.held.insert(id, (body.clone(), mesh.clone(), solid));
+        Some((mesh, solid))
     }
 
     /// Forgets bodies that are gone, and meshes new or changed ones all at once, on every
@@ -107,14 +173,16 @@ impl MeshCache {
             .iter()
             .filter(|object| !object.hidden)
             .filter_map(|object| Some((object.id, object.shape.body()?)))
-            .filter(|(id, body)| self.held.get(id).is_none_or(|(held, _)| held != *body))
+            .filter(|(id, body)| self.held.get(id).is_none_or(|(held, ..)| held != *body))
             .collect();
         let made: Vec<_> = wanted
             .par_iter()
-            .filter_map(|(id, body)| Some((*id, (*body).clone(), body.mesh().ok()?)))
+            .filter_map(|(id, body)| {
+                Some((*id, (*body).clone(), body.mesh().ok()?, body.is_solid()))
+            })
             .collect();
-        for (id, body, mesh) in made {
-            self.held.insert(id, (body, mesh));
+        for (id, body, mesh, solid) in made {
+            self.held.insert(id, (body, mesh, solid));
         }
     }
 }
@@ -140,11 +208,22 @@ impl Outlines {
             let locked = layer.is_some_and(|l| l.locked);
             // A body is meshed once: its triangles for shading, and its edges, each listed
             // under the body's id, for wireframe, picking and snapping.
+            let mut kind = PickKind::Curve;
             let pieces: Vec<(Curve, Option<usize>)> = match &object.shape {
-                Shape::Curve(curve) => vec![(curve.clone(), None)],
+                Shape::Curve(curve) => {
+                    if matches!(curve, Curve::Point { .. }) {
+                        kind = PickKind::Point;
+                    }
+                    vec![(curve.clone(), None)]
+                }
                 Shape::Body(body) => {
-                    let Some(mesh) = cache.mesh(object.id, body) else {
+                    let Some((mesh, solid)) = cache.mesh(object.id, body) else {
                         continue;
+                    };
+                    kind = if solid {
+                        PickKind::Solid
+                    } else {
+                        PickKind::Surface
                     };
                     let edges = mesh
                         .edges
@@ -179,6 +258,7 @@ impl Outlines {
                 outlines.locked.push(locked);
                 outlines.on_faces.push(object.shape.body().is_some());
                 outlines.edge_of.push(edge);
+                outlines.kinds.push(kind);
                 outlines.objects.push((object.id, points));
             }
         }
@@ -264,12 +344,23 @@ impl Outlines {
         around.map(|(low, high)| std::array::from_fn(|axis| (low[axis] + high[axis]) / 2.0))
     }
 
-    /// The objects that can be picked: those not on a locked layer.
+    /// Sets which kinds of object clicking and boxing may pick.
+    pub fn set_filter(&mut self, filter: PickFilter) {
+        self.filter = filter;
+    }
+
+    /// The objects that can be picked: those not on a locked layer, and of a kind the
+    /// selection filter lets through.
     fn selectable(&self) -> impl Iterator<Item = &(u64, Vec<Point>)> {
         self.objects
             .iter()
             .enumerate()
             .filter(|(index, _)| !self.locked.get(*index).copied().unwrap_or(false))
+            .filter(|(index, _)| {
+                self.kinds
+                    .get(*index)
+                    .is_none_or(|kind| self.filter.allows(*kind))
+            })
             .map(|(_, object)| object)
     }
 
@@ -861,6 +952,36 @@ mod tests {
                 .iter()
                 .all(|v| v.colour == LOCKED_COLOUR)
         );
+    }
+
+    #[test]
+    fn the_selection_filter_limits_boxing_to_the_kinds_ticked() {
+        let mut doc = Document::default();
+        let solid = doc.add_body(curva_kernel::Body::cuboid([0.0; 3], [2.0, 2.0, 2.0]).unwrap());
+        let line = doc.add(Curve::line([-5.0, 0.0, 0.0], [-3.0, 0.0, 0.0]).unwrap());
+        let mut outlines = Outlines::of(doc.state());
+        let camera = Camera::default();
+        let everything = |o: &Outlines| {
+            let mut found = o.in_box(&camera, [0.0, 0.0], SIZE, SIZE);
+            found.sort_unstable();
+            found.dedup();
+            found
+        };
+        assert_eq!(everything(&outlines), [solid, line]);
+        outlines.set_filter(PickFilter {
+            solids: false,
+            surfaces: false,
+            points: false,
+            ..PickFilter::default()
+        });
+        assert_eq!(everything(&outlines), [line]);
+        // Turned off, the filter lets everything through again without losing its ticks.
+        outlines.set_filter(PickFilter {
+            on: false,
+            solids: false,
+            ..PickFilter::default()
+        });
+        assert_eq!(everything(&outlines), [solid, line]);
     }
 
     #[test]

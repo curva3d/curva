@@ -13,9 +13,9 @@ use curva_kernel::{Curve, Point};
 use curva_mcp::Session;
 use curva_viewport::{
     CPlane, Camera, DEPTH_BITS, Drawing, Gumball, GumballChange, Handle, LineRenderer, MeshCache,
-    MeshVertex, Outlines, Picture, SnapHit, SnapKind, SnapSet, StandardView, VIEW_SLOTS,
-    constrained, face_vertices, ghost_lines, grid_lines, object_lines, save_picture, scene_lines,
-    shaded_object_lines, shaded_scene_lines,
+    MeshVertex, Outlines, PickFilter, Picture, SnapHit, SnapKind, SnapSet, StandardView,
+    VIEW_SLOTS, constrained, face_vertices, ghost_lines, grid_lines, object_lines, save_picture,
+    scene_lines, shaded_object_lines, shaded_scene_lines,
 };
 use eframe::egui;
 use std::sync::Arc;
@@ -86,6 +86,10 @@ struct Curva {
     snaps: SnapSet,
     ortho: bool,
     grid_snap: bool,
+    /// Which kinds of object clicking and boxing may pick.
+    pick_filter: PickFilter,
+    /// Whether the selection filter row shows in the status bar.
+    filter_row: bool,
     outlines: Outlines,
     scene: Arc<Vec<curva_viewport::Vertex>>,
     /// The objects' lines for shaded views, where edges on faces are dark.
@@ -439,6 +443,8 @@ impl Curva {
             snaps: SnapSet::default(),
             ortho: false,
             grid_snap: false,
+            pick_filter: PickFilter::default(),
+            filter_row: false,
             outlines: Outlines::default(),
             scene: Arc::new(Vec::new()),
             shaded_scene: Arc::new(Vec::new()),
@@ -464,6 +470,8 @@ impl Curva {
             self.faces = Arc::new(face_vertices(&self.outlines, &selection));
             self.drawn = Some((self.doc.state().clone(), selection));
         }
+        // The filter can change without the model changing, so it is passed on every frame.
+        self.outlines.set_filter(self.pick_filter);
     }
 
     /// The commands to offer for what has been typed. None while a command is asking for input.
@@ -560,6 +568,7 @@ impl Curva {
         let (ortho, grid_snap) = (&mut self.ortho, &mut self.grid_snap);
         let gumball_on = &mut self.gumball_on;
         let agent_on = &mut self.agent_on;
+        let (filter, filter_row) = (&mut self.pick_filter, self.filter_row);
         ui.horizontal(|ui| {
             tick(ui, &mut snaps.end, snap_label(SnapKind::End));
             tick(ui, &mut snaps.mid, snap_label(SnapKind::Mid));
@@ -580,6 +589,17 @@ impl Curva {
             tick(ui, grid_snap, "ui.grid_snap");
             tick(ui, gumball_on, "ui.gumball");
             tick(ui, agent_on, "ui.agent");
+            if filter_row {
+                ui.separator();
+                ui.label(text.render(&Message::new("ui.filter")));
+                tick(ui, &mut filter.points, "ui.filter.points");
+                tick(ui, &mut filter.curves, "ui.filter.curves");
+                tick(ui, &mut filter.surfaces, "ui.filter.surfaces");
+                tick(ui, &mut filter.solids, "ui.filter.solids");
+                let mut disabled = !filter.on;
+                tick(ui, &mut disabled, "ui.filter.disable");
+                filter.on = !disabled;
+            }
         });
     }
 
@@ -1415,6 +1435,8 @@ impl Curva {
             ViewRequest::Display(mode) => {
                 self.panes[self.active].shaded = mode == DisplayMode::Shaded;
             }
+            ViewRequest::ShowSelectionFilter => self.filter_row = !self.filter_row,
+            ViewRequest::ToggleSelectionFilter => self.pick_filter.on = !self.pick_filter.on,
         }
     }
 
