@@ -45,7 +45,7 @@ pub const DARK: Theme = Theme {
     window: Color32::from_rgb(0x26, 0x26, 0x24),
     window_low: Color32::from_rgb(0x1f, 0x1f, 0x1d),
     panel: Color32::from_rgb(0x30, 0x30, 0x2e),
-    glass: Color32::from_rgba_premultiplied(0x2a, 0x2a, 0x28, 0xd8),
+    glass: Color32::from_rgba_premultiplied(0x20, 0x20, 0x1e, 0xa2),
     panel_edge: Color32::from_rgb(0x45, 0x44, 0x3f),
     text: Color32::from_rgb(0xf5, 0xf4, 0xef),
     quiet: Color32::from_rgb(0xa6, 0xa3, 0x9b),
@@ -60,7 +60,7 @@ pub const LIGHT: Theme = Theme {
     window: Color32::from_rgb(0xf5, 0xf4, 0xef),
     window_low: Color32::from_rgb(0xec, 0xeb, 0xe5),
     panel: Color32::from_rgb(0xfa, 0xf9, 0xf5),
-    glass: Color32::from_rgba_premultiplied(0xe9, 0xe8, 0xe4, 0xe6),
+    glass: Color32::from_rgba_premultiplied(0xaf, 0xae, 0xab, 0xac),
     panel_edge: Color32::from_rgb(0xe5, 0xe3, 0xda),
     text: Color32::from_rgb(0x1f, 0x1e, 0x1d),
     quiet: Color32::from_rgb(0x6b, 0x6a, 0x64),
@@ -108,6 +108,10 @@ pub struct Settings {
     pub glass: bool,
     /// Whether the grid shows.
     pub grid: bool,
+    /// Whether Curva looks for a newer release on GitHub when it opens.
+    pub check_updates: bool,
+    /// The AI Assistant's connection.
+    pub assistant: crate::assistant::Connection,
 }
 
 impl Default for Settings {
@@ -116,6 +120,8 @@ impl Default for Settings {
             theme: ThemeChoice::System,
             glass: true,
             grid: true,
+            check_updates: true,
+            assistant: crate::assistant::Connection::default(),
         }
     }
 }
@@ -211,6 +217,17 @@ pub fn fonts() -> egui::FontDefinitions {
         .entry(egui::FontFamily::Proportional)
         .or_default()
         .insert(0, "Inter".to_owned());
+    // Inter Bold, for the specializations, as its own family.
+    fonts.font_data.insert(
+        "Inter Bold".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!(
+            "../fonts/Inter-Bold.ttf"
+        ))),
+    );
+    fonts.families.insert(
+        egui::FontFamily::Name("Bold".into()),
+        vec!["Inter Bold".to_owned(), "Inter".to_owned()],
+    );
     fonts
 }
 

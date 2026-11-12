@@ -23,6 +23,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Reads Curva's icon for the window. Already in the build through curva-viewport.
 png = "0.18"
+# Checks a downloaded update against the checksums its release lists.
+sha2 = "0.10"
 
 # Puts Curva's icon into the Windows program, so Explorer and the task bar show it. Build time only.
 [target.'cfg(windows)'.build-dependencies]
