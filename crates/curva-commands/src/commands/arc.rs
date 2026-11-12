@@ -38,16 +38,7 @@ fn three_point(
     end: Point,
     plane: [Point; 2],
 ) -> Option<(Point, Point, Point)> {
-    let [x, y] = plane;
-    let [bx, by] = on_plane(through, start, plane);
-    let [cx, cy] = on_plane(end, start, plane);
-    let d = 2.0 * (bx * cy - by * cx);
-    if d.abs() < 1e-12 {
-        return None;
-    }
-    let (b2, c2) = (bx * bx + by * by, cx * cx + cy * cy);
-    let (u, v) = ((cy * b2 - by * c2) / d, (bx * c2 - cx * b2) / d);
-    let centre: Point = std::array::from_fn(|i| start[i] + u * x[i] + v * y[i]);
+    let (centre, _) = super::circle_through(start, through, end, plane)?;
     // Arcs run anticlockwise from start to end; if that misses `through`, go the other way.
     let (a0, a1, am) = (
         angle_of(start, centre, plane),

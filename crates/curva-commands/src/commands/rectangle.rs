@@ -1,26 +1,24 @@
-//! `Rectangle`: a closed polyline from two opposite corners, on the plane being drawn on.
+//! `Rectangle`, as in Rhino: two opposite corners on the plane being drawn on. Option `Center`
+//! takes the centre and a corner; `3Point` takes two corners along one side, then a point on the
+//! opposite side, so the rectangle can lie at any angle. Rhino's `EdgeMidpoint`, `Vertical`,
+//! `AroundCurve` and `Rounded` are still to come (`docs/commands/rhino-reference.md`).
 
-use super::{ask_point, geometry_failed, unexpected};
-use crate::{Answer, Command, Live, Message, Step};
-use curva_document::Document;
-use curva_kernel::{Curve, Point, dot, sub};
+use crate::Message;
+use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef, Value};
+use curva_document::Shape;
+use curva_kernel::{Curve, Point, cross, dot, sub, unit};
 
 /// Shortest side treated as real, in millimetres.
 const SMALLEST_SIDE: f64 = 1e-9;
+const CENTER: &str = "Center";
+const THREE_POINT: &str = "3Point";
 
-/// The running command.
+/// The recipe.
 #[derive(Default)]
-pub struct Rectangle {
-    first: Option<Point>,
-    plane: Option<[Point; 2]>,
-}
+pub struct Rectangle;
 
 fn plus(p: Point, direction: Point, amount: f64) -> Point {
-    [
-        p[0] + direction[0] * amount,
-        p[1] + direction[1] * amount,
-        p[2] + direction[2] * amount,
-    ]
+    std::array::from_fn(|i| p[i] + direction[i] * amount)
 }
 
 /// The four corners on a plane from two opposite ones, or `None` if they are in line.
@@ -34,41 +32,85 @@ fn corners(first: Point, other: Point, x: Point, y: Point) -> Option<Vec<Point>>
     Some(vec![first, side, plus(side, y, high), plus(first, y, high)])
 }
 
-impl Command for Rectangle {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        match (self.first, answer) {
-            (None, None) => ask_point("prompt.rectangle.first", Vec::new()),
-            (None, Some(Answer::Point(first))) => {
-                self.first = Some(first);
-                self.plane = Some(doc.work_plane());
-                ask_point("prompt.rectangle.other", vec![first])
+/// The four corners from one side, `a` to `b`, and a point `c` on the opposite side.
+fn from_side(a: Point, b: Point, c: Point, [x, y]: [Point; 2]) -> Option<Vec<Point>> {
+    let along = unit(sub(b, a))?;
+    let across = cross(cross(x, y), along);
+    let high = dot(sub(c, a), across);
+    (high.abs() >= SMALLEST_SIDE).then(|| vec![a, b, plus(b, across, high), plus(a, across, high)])
+}
+
+fn point(cx: &Context<'_>, index: usize) -> Option<Point> {
+    cx.values.get(index).and_then(Value::point)
+}
+
+fn ring(cx: &Context<'_>) -> Option<Vec<Point>> {
+    let [x, y] = cx.plane();
+    let (a, b) = (point(cx, 0)?, point(cx, 1)?);
+    match cx.mode {
+        Some(THREE_POINT) => from_side(a, b, point(cx, 2)?, [x, y]),
+        Some(CENTER) => corners(std::array::from_fn(|i| 2.0 * a[i] - b[i]), b, x, y),
+        _ => corners(a, b, x, y),
+    }
+}
+
+impl Recipe for Rectangle {
+    const NAME: &'static str = "rectangle";
+    const OPTIONS: &'static [OptionDef] = &[OptionDef::mode(CENTER), OptionDef::mode(THREE_POINT)];
+
+    fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
+        let first_prompt = match cx.mode {
+            Some(CENTER) => "prompt.rectangle.centre",
+            _ => "prompt.rectangle.first",
+        };
+        let mut steps = vec![StepDef::point(first_prompt)];
+        if let Some(a) = point(cx, 0) {
+            let other = if cx.mode == Some(THREE_POINT) {
+                "prompt.rectangle.side_end"
+            } else {
+                "prompt.rectangle.other"
+            };
+            steps.push(StepDef::point(other).from(a).offering(&[]));
+            if cx.mode == Some(THREE_POINT)
+                && let Some(b) = point(cx, 1)
+            {
+                steps.push(
+                    StepDef::point("prompt.rectangle.opposite")
+                        .from(b)
+                        .offering(&[]),
+                );
             }
-            (Some(first), Some(Answer::Point(other))) => {
-                let [x, y] = self.plane.unwrap_or_else(|| doc.work_plane());
-                let Some(corners) = corners(first, other, x, y) else {
-                    return Step::Failed(Message::new("error.flat_rectangle"));
-                };
-                match Curve::polyline(corners, true) {
-                    Ok(curve) => {
-                        doc.add(curve);
-                        Step::Done(Some(Message::new("done.rectangle")))
-                    }
-                    Err(error) => geometry_failed(&error),
-                }
-            }
-            _ => unexpected(),
         }
+        steps
     }
 
-    fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
-        let (Some(first), Some(cursor)) = (self.first, live.cursor) else {
-            return Vec::new();
+    fn check(&self, cx: &Context<'_>) -> Result<(), Message> {
+        let complete = if cx.mode == Some(THREE_POINT) { 3 } else { 2 };
+        if cx.values.len() >= complete && ring(cx).is_none() {
+            return Err(Message::new("error.flat_rectangle"));
+        }
+        Ok(())
+    }
+
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let Some(corners) = ring(cx) else {
+            // While picking the third point of `3Point`, show the first side.
+            let side = match (point(cx, 0), point(cx, 1)) {
+                (Some(a), Some(b)) if cx.mode == Some(THREE_POINT) => Curve::line(a, b).ok(),
+                _ => None,
+            };
+            return Ok(Made {
+                guides: side.into_iter().collect(),
+                ..Made::default()
+            });
         };
-        let [x, y] = self.plane.unwrap_or_else(|| doc.work_plane());
-        corners(first, cursor, x, y)
-            .and_then(|corners| Curve::polyline(corners, true).ok())
-            .into_iter()
-            .collect()
+        let rectangle = Curve::polyline(corners, true)
+            .map_err(|e| Message::with("error.geometry", vec![e.to_string()]))?;
+        Ok(Made {
+            add: vec![Shape::Curve(rectangle)],
+            message: Some(Message::new("done.rectangle")),
+            ..Made::default()
+        })
     }
 }
 
@@ -105,5 +147,28 @@ mod tests {
         let processor = run(&mut doc, &["rectangle", "0,0", "5,0"]);
         assert!(doc.state().objects.is_empty());
         assert!(!processor.is_running());
+    }
+
+    #[test]
+    fn center_takes_the_middle_first() {
+        let mut doc = Document::default();
+        run(&mut doc, &["rectangle", "center", "0,0", "3,2"]);
+        let points = doc.state().objects[0].curve().unwrap().sample().unwrap();
+        assert_eq!(points[0], [-3.0, -2.0, 0.0]);
+        assert_eq!(points[2], [3.0, 2.0, 0.0]);
+    }
+
+    #[test]
+    fn three_point_lies_at_any_angle() {
+        let mut doc = Document::default();
+        run(&mut doc, &["rectangle", "3point", "0,0", "3,4", "-4,3"]);
+        let curve = doc.state().objects[0].curve().unwrap();
+        // A side of 5 and a side of 5, turned to follow the first side.
+        assert!((curve.length().unwrap() - 20.0).abs() < 1e-9);
+        let points = curve.sample().unwrap();
+        assert!(
+            curva_kernel::gap(points[2], [-1.0, 7.0, 0.0]) < 1e-9,
+            "{points:?}"
+        );
     }
 }

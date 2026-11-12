@@ -1,43 +1,50 @@
-//! `Polyline`: straight segments through points, ended by Enter or `Close`.
+//! `Polyline`, as in Rhino: straight segments through points, ended by Enter, or by `Close` once
+//! there are three points. `Undo` takes back the last point. Each point takes typed distances and
+//! angles from the one before. Rhino's arc segments (`Mode`), `Helpers` and `PersistentClose` are
+//! still to come (`docs/commands/rhino-reference.md`).
 
-use super::{PointRun, RunState, geometry_failed};
-use crate::{Answer, Command, Live, Message, Step};
-use curva_document::Document;
+use crate::Message;
+use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef, point_run, run_points};
+use curva_document::Shape;
 use curva_kernel::Curve;
 
-/// The running command.
-#[derive(Default)]
-pub struct Polyline {
-    run: PointRun,
-}
+const CLOSE: &str = "Close";
 
-impl Command for Polyline {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        match self
-            .run
-            .feed(answer, "prompt.polyline.start", "prompt.polyline.next")
-        {
-            RunState::Asking(step) => *step,
-            RunState::Finished { closed } => {
-                let count = self.run.points.len();
-                match Curve::polyline(self.run.points.clone(), closed) {
-                    Ok(curve) => {
-                        doc.add(curve);
-                        Step::Done(Some(Message::with(
-                            "done.polyline",
-                            vec![count.to_string()],
-                        )))
-                    }
-                    Err(error) => geometry_failed(&error),
-                }
-            }
+/// The recipe.
+#[derive(Default)]
+pub struct Polyline;
+
+impl Recipe for Polyline {
+    const NAME: &'static str = "polyline";
+    const OPTIONS: &'static [OptionDef] = &[OptionDef::finish(CLOSE), OptionDef::undo()];
+
+    fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
+        let mut steps = point_run(cx, "prompt.polyline.start", "prompt.polyline.next", 2);
+        let count = run_points(cx).len();
+        let offered: &[&'static str] = match count {
+            0 => &[],
+            1 | 2 => &["Undo"],
+            _ => &[CLOSE, "Undo"],
+        };
+        if let Some(last) = steps.last_mut() {
+            *last = last.clone().offering(offered);
         }
+        steps
     }
 
-    fn preview(&self, _doc: &Document, live: &Live) -> Vec<Curve> {
-        Curve::polyline(self.run.through(live.cursor), false)
-            .into_iter()
-            .collect()
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let points = run_points(cx);
+        if points.len() < 2 {
+            return Ok(Made::default());
+        }
+        let count = points.len();
+        let polyline = Curve::polyline(points, cx.mode == Some(CLOSE))
+            .map_err(|e| Message::with("error.geometry", vec![e.to_string()]))?;
+        Ok(Made {
+            add: vec![Shape::Curve(polyline)],
+            message: Some(Message::with("done.polyline", vec![count.to_string()])),
+            ..Made::default()
+        })
     }
 }
 
@@ -68,5 +75,16 @@ mod tests {
         let processor = run(&mut doc, &["pl", "0,0", ""]);
         assert!(processor.is_running());
         assert!(doc.state().objects.is_empty());
+    }
+
+    #[test]
+    fn undo_takes_back_the_last_point_and_distances_can_be_typed() {
+        let mut doc = Document::default();
+        run(
+            &mut doc,
+            &["pl", "0,0", "50,50", "undo", "10<0", "10<90", ""],
+        );
+        let length = doc.state().objects[0].curve().unwrap().length().unwrap();
+        assert!((length - 20.0).abs() < 1e-9, "{length}");
     }
 }
