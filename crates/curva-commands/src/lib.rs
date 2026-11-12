@@ -3,6 +3,7 @@
 
 pub mod commands;
 mod processor;
+pub mod recipe;
 mod text;
 
 use curva_document::Document;
@@ -72,6 +73,13 @@ pub struct Request {
     pub preview: Vec<Point>,
     /// Where a clicked distance is measured from.
     pub from: Option<Point>,
+    /// For a size measured along a direction, such as a height or an extrusion: where it starts and
+    /// the direction, of length 1. The pointer, snapped, is projected onto that line, so the size
+    /// follows the mouse and lines up with what it snaps to, as in Rhino.
+    pub along: Option<(Point, Point)>,
+    /// How to show the options in the prompt, Rhino's way, such as `Solid=Yes`; when empty the
+    /// option words are shown as they are.
+    pub option_labels: Vec<String>,
 }
 
 impl Request {
@@ -85,7 +93,63 @@ impl Request {
             options: Vec::new(),
             preview: Vec::new(),
             from: None,
+            along: None,
+            option_labels: Vec::new(),
         }
+    }
+
+    /// The point this step measures from: the last point placed, or where distances start.
+    #[must_use]
+    pub fn base(&self) -> Option<Point> {
+        self.preview.last().copied().or(self.from)
+    }
+
+    /// The signed size of `point` along [`Self::along`], if this step measures one.
+    #[must_use]
+    pub fn along_value(&self, point: Point) -> Option<f64> {
+        let (origin, direction) = self.along?;
+        Some((0..3).map(|i| (point[i] - origin[i]) * direction[i]).sum())
+    }
+}
+
+/// A distance or angle typed for the next point, held while the mouse supplies the rest, as Rhino's
+/// typed constraints are: `25` holds the distance from the step's base, `<30` the angle on the
+/// construction plane.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Lock {
+    /// The distance from the base point.
+    pub distance: Option<f64>,
+    /// The angle on the construction plane, in degrees from its X axis.
+    pub angle: Option<f64>,
+}
+
+impl Lock {
+    /// Whether anything is held.
+    #[must_use]
+    pub fn is_set(&self) -> bool {
+        self.distance.is_some() || self.angle.is_some()
+    }
+
+    /// Where the pointer at `cursor` lands with this lock, measured from `base`, on the construction
+    /// plane with axes `plane`. A held angle fixes the direction on the plane and the mouse gives the
+    /// distance along it; a held distance keeps the mouse's direction at that distance.
+    #[must_use]
+    pub fn apply(&self, base: Point, cursor: Point, plane: [Point; 2]) -> Point {
+        let [x, y] = plane;
+        let offset: Point = std::array::from_fn(|i| cursor[i] - base[i]);
+        let direction = match self.angle {
+            Some(degrees) => {
+                let (sin, cos) = degrees.to_radians().sin_cos();
+                std::array::from_fn(|i| cos * x[i] + sin * y[i])
+            }
+            None => curva_kernel::unit(offset).unwrap_or(x),
+        };
+        let reach = match (self.distance, self.angle) {
+            (Some(distance), _) => distance,
+            (None, Some(_)) => (0..3).map(|i| offset[i] * direction[i]).sum(),
+            (None, None) => return cursor,
+        };
+        std::array::from_fn(|i| base[i] + direction[i] * reach)
     }
 }
 

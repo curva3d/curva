@@ -209,7 +209,7 @@ pub struct Document {
     /// Whether new results remember how they were made. Not saved, and not part of undo.
     recording_history: bool,
     /// Values commands keep between runs, such as the last offset distance. Not saved.
-    remembered: std::collections::BTreeMap<&'static str, f64>,
+    remembered: std::collections::BTreeMap<String, f64>,
     /// The objects the last recorded change made or altered, for `SelLast`. Not saved.
     last_changed: Vec<u64>,
     /// The selection before it was last replaced, for `SelPrev`. Not saved.
@@ -241,8 +241,8 @@ impl Document {
     }
 
     /// Keeps a value for later runs of a command.
-    pub fn remember(&mut self, key: &'static str, value: f64) {
-        self.remembered.insert(key, value);
+    pub fn remember(&mut self, key: &str, value: f64) {
+        self.remembered.insert(key.to_owned(), value);
     }
 
     /// The origin and the X and Y directions that typed coordinates are measured on.

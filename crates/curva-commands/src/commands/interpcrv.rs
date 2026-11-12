@@ -17,7 +17,7 @@ impl Command for InterpCrv {
             .run
             .feed(answer, "prompt.interpcrv.start", "prompt.interpcrv.next")
         {
-            RunState::Asking(step) => step,
+            RunState::Asking(step) => *step,
             RunState::Finished { closed } => {
                 let count = self.run.points.len();
                 match Curve::interpolated(self.run.points.clone(), closed) {

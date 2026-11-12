@@ -114,6 +114,9 @@ pub struct CommandDef {
     pub records_undo: bool,
     /// Makes a fresh run of it.
     pub make: fn() -> Box<dyn Command>,
+    /// Its options, for commands written as a [`crate::recipe::Recipe`]; empty for the others,
+    /// which are still to be moved onto the framework.
+    pub options: &'static [crate::recipe::OptionDef],
 }
 
 macro_rules! listed {
@@ -124,13 +127,28 @@ macro_rules! listed {
             repeatable: $repeat,
             records_undo: $undo,
             make: || Box::<$kind>::default(),
+            options: &[],
+        }
+    };
+}
+
+/// Lists a command written as a [`crate::recipe::Recipe`]; how every new command is listed.
+macro_rules! recipe {
+    ($name:literal, [$($alias:literal),*], $repeat:literal, $recipe:ty) => {
+        CommandDef {
+            name: $name,
+            aliases: &[$($alias),*],
+            repeatable: $repeat,
+            records_undo: true,
+            make: || Box::<crate::recipe::RecipeCommand<$recipe>>::default(),
+            options: <$recipe as crate::recipe::Recipe>::OPTIONS,
         }
     };
 }
 
 /// Every command Curva has.
 pub static COMMANDS: [CommandDef; 100] = [
-    listed!("Line", ["l"], true, true, line::Line),
+    recipe!("Line", ["l"], true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
         "InterpCrv",
@@ -245,9 +263,9 @@ pub static COMMANDS: [CommandDef; 100] = [
     listed!("Scale1D", [], true, true, scale1d::Scale1D),
     listed!("Scale2D", [], true, true, scale2d::Scale2D),
     listed!("ScaleNU", [], true, true, scale_nu::ScaleNu),
-    listed!("Arc", ["a"], true, true, arc::Arc),
+    recipe!("Arc", ["a"], true, arc::Arc),
     listed!("Rectangle", ["rec"], true, true, rectangle::Rectangle),
-    listed!("Box", [], true, true, box_solid::BoxSolid),
+    recipe!("Box", [], true, box_solid::BoxSolid),
     listed!("ExtrudeCrv", [], true, true, extrude_crv::ExtrudeCrv),
     listed!("PlanarSrf", [], true, true, planar_srf::PlanarSrf),
     listed!("Revolve", [], true, true, revolve::Revolve),
@@ -348,6 +366,11 @@ pub fn autofilled(typed: &str, highlighted: usize) -> String {
 
 fn unexpected() -> Step {
     Step::Failed(Message::new("error.unexpected"))
+}
+
+/// An answer a step did not ask for, for the framework in `recipe.rs`.
+pub(crate) fn unexpected_step() -> Step {
+    unexpected()
 }
 
 fn geometry_failed(error: &KernelError) -> Step {
@@ -467,7 +490,7 @@ struct PointRun {
 
 /// What [`PointRun`] wants next.
 enum RunState {
-    Asking(Step),
+    Asking(Box<Step>),
     Finished { closed: bool },
 }
 
@@ -488,10 +511,10 @@ impl PointRun {
             Some(Answer::Point(point)) => self.points.push(point),
             Some(Answer::Empty) => return RunState::Finished { closed: false },
             Some(Answer::Option(_)) => return RunState::Finished { closed: true },
-            Some(_) => return RunState::Asking(unexpected()),
+            Some(_) => return RunState::Asking(Box::new(unexpected())),
         }
         let count = self.points.len();
-        RunState::Asking(Step::Ask(Request {
+        RunState::Asking(Box::new(Step::Ask(Request {
             allow_empty: count >= 2,
             options: if count >= 3 {
                 vec!["Close"]
@@ -500,7 +523,7 @@ impl PointRun {
             },
             preview: self.points.clone(),
             ..Request::new(if count == 0 { start_key } else { next_key }, Kind::Point)
-        }))
+        })))
     }
 }
 
@@ -623,6 +646,55 @@ mod tests {
                 def.name
             );
         }
+    }
+
+    /// The option names written in backticks in a cell of the reference table.
+    fn named_options(cell: &str) -> Vec<&str> {
+        cell.split('`').skip(1).step_by(2).collect()
+    }
+
+    #[test]
+    fn the_rhino_reference_matches_the_commands() {
+        let table = include_str!("../../../../docs/commands/rhino-reference.md");
+        let mut checked = 0;
+        for row in table.lines().filter(|line| line.starts_with("| ")) {
+            let cells: Vec<&str> = row.trim_matches('|').split('|').map(str::trim).collect();
+            let [name, _steps, rhino, curva, status] = cells.as_slice() else {
+                continue;
+            };
+            if *name == "Command" {
+                continue;
+            }
+            let Some(def) = COMMANDS.iter().find(|def| def.name == *name) else {
+                assert_eq!(*status, "missing", "{name} is listed but not a command");
+                continue;
+            };
+            // Only commands written on the framework declare their options.
+            if def.options.is_empty() && named_options(curva).is_empty() {
+                continue;
+            }
+            let has = |option: &str| def.options.iter().any(|o| o.name == option);
+            for option in named_options(curva) {
+                assert!(
+                    has(option),
+                    "{name}: the table says Curva has {option}, but it does not"
+                );
+            }
+            for option in def.options {
+                assert!(
+                    named_options(curva).contains(&option.name),
+                    "{name}: {} is in Curva but not under In Curva in the table",
+                    option.name
+                );
+            }
+            if *status == "done" {
+                for option in named_options(rhino) {
+                    assert!(has(option), "{name} is marked done but lacks {option}");
+                }
+            }
+            checked += 1;
+        }
+        assert!(checked >= 3, "the reference table was not read");
     }
 
     #[test]

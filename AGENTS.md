@@ -73,6 +73,23 @@ does not read code.
 - **The rule is tested.** A new command that changes geometry must be listed in `PREVIEW_STEPS` in
   `crates/curva-commands/src/commands/mod.rs`, or the tests fail.
 
+## Writing or completing a command (owner's decision, 12 November 2026)
+
+Every command is written on the command framework (`docs/specs/command-framework.md`), and matches Rhino.
+To add a command, or bring one up to Rhino:
+1. **Rhino first.** Find or write its row in `docs/commands/rhino-reference.md`, from Rhino itself: its steps
+   in order, its options, and what each step takes typed.
+2. **Declare it as a recipe** (`crates/curva-commands/src/recipe.rs`): its options (`OptionDef`), the steps
+   it asks given the answers so far (`StepDef`), and one `make` function used for both the preview and the
+   result. List it with `recipe!` in `commands/mod.rs`. See `line.rs`, `arc.rs` and `box_solid.rs`.
+3. **Use only the framework's kinds.** Typed distances and angles, sizes that follow the mouse (`along`),
+   options in Rhino's style and remembered, the cursor tag and the preview come with them. If the framework
+   cannot express something a command needs, add it to the framework for every command; never work around it
+   in one command.
+4. **Tests:** one per option and per typed form its steps take. The preview, undo and reference-table checks
+   run for every command without extra work.
+5. **Update the row** under In Curva and Status. The reference test fails if the table and the code disagree.
+
 ## When you are stuck
 
 - **Three genuine attempts, then stop.** If the same test still fails, write up what you tried and

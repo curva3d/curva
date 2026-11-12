@@ -1,130 +1,122 @@
-//! `Box`: a solid box from two corners of its base on the plane being drawn on, then a height,
-//! as in Rhino.
+//! `Box`, as in Rhino: two corners of its base on the plane being drawn on, then a height that
+//! follows the mouse, snaps included. Option `Center` takes the base's centre first. At the height,
+//! `BothSides` grows the box both ways and Enter uses the base's width. Rhino's `Diagonal`,
+//! `3Point` and `Vertical` ways are still to come (`docs/commands/rhino-reference.md`).
 
-use super::{ask_point, geometry_failed, unexpected};
-use crate::{Answer, Command, Kind, Live, Message, Request, Step};
-use curva_document::Document;
-use curva_kernel::{Body, Curve, Point, cross, dot, gap, sub};
+use crate::Message;
+use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef, Value};
+use curva_document::Shape;
+use curva_kernel::{Body, Curve, Point, cross, dot, sub};
 
 /// Shortest side treated as real, in millimetres.
 const SMALLEST_SIDE: f64 = 1e-9;
+const CENTER: &str = "Center";
+const BOTH_SIDES: &str = "BothSides";
 
-/// The running command.
+/// The recipe.
 #[derive(Default)]
-pub struct BoxSolid {
-    first: Option<Point>,
-    /// The base's width and depth along the plane, once its other corner is known.
-    base: Option<[f64; 2]>,
-    plane: Option<[Point; 2]>,
-}
+pub struct BoxSolid;
 
 fn plus(p: Point, direction: Point, amount: f64) -> Point {
-    [0, 1, 2].map(|k| p[k] + direction[k] * amount)
+    std::array::from_fn(|k| p[k] + direction[k] * amount)
 }
 
-impl BoxSolid {
-    fn axes(&self, doc: &Document) -> [Point; 3] {
-        let [x, y] = self.plane.unwrap_or_else(|| doc.work_plane());
-        [x, y, cross(x, y)]
-    }
+/// The base: its first corner and its width and depth along the plane, if it is not flat.
+fn base(cx: &Context<'_>) -> Option<(Point, [f64; 2])> {
+    let first = cx.values.first().and_then(Value::point)?;
+    let other = cx.values.get(1).and_then(Value::point)?;
+    let corner = if cx.mode == Some(CENTER) {
+        std::array::from_fn(|i| 2.0 * first[i] - other[i])
+    } else {
+        first
+    };
+    let [x, y] = cx.plane();
+    let across = sub(other, corner);
+    let sides = [dot(across, x), dot(across, y)];
+    sides
+        .iter()
+        .all(|side| side.abs() >= SMALLEST_SIDE)
+        .then_some((corner, sides))
+}
 
-    /// Width and depth of the base from its first corner to `other`, along the plane.
-    fn sides(&self, doc: &Document, other: Point) -> Option<[f64; 2]> {
-        let first = self.first?;
-        let [x, y, _] = self.axes(doc);
-        let across = sub(other, first);
-        let sides = [dot(across, x), dot(across, y)];
-        sides
-            .iter()
-            .all(|side| side.abs() >= SMALLEST_SIDE)
-            .then_some(sides)
-    }
+fn up(cx: &Context<'_>) -> Point {
+    let [x, y] = cx.plane();
+    cross(x, y)
+}
 
-    /// The twelve edges of the box, for its preview.
-    fn edges(&self, doc: &Document, [wide, deep]: [f64; 2], high: f64) -> Vec<Curve> {
-        let Some(first) = self.first else {
-            return Vec::new();
-        };
-        let [x, y, z] = self.axes(doc);
-        let corner = |a: f64, b: f64, c: f64| plus(plus(plus(first, x, a), y, b), z, c);
-        let ring = |c: f64| {
-            [
-                corner(0.0, 0.0, c),
-                corner(wide, 0.0, c),
-                corner(wide, deep, c),
-                corner(0.0, deep, c),
-            ]
-        };
-        let (bottom, top) = (ring(0.0), ring(high));
-        let mut made = Vec::new();
-        for i in 0..4 {
-            made.extend(Curve::line(bottom[i], bottom[(i + 1) % 4]));
-            if high.abs() >= SMALLEST_SIDE {
-                made.extend(Curve::line(top[i], top[(i + 1) % 4]));
-                made.extend(Curve::line(bottom[i], top[i]));
+impl Recipe for BoxSolid {
+    const NAME: &'static str = "box";
+    const OPTIONS: &'static [OptionDef] = &[
+        OptionDef::mode(CENTER),
+        OptionDef::toggle(BOTH_SIDES, false),
+    ];
+
+    fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
+        let mut steps = vec![StepDef::point("prompt.box.first").offering(&[CENTER])];
+        if let Some(first) = cx.values.first().and_then(Value::point) {
+            steps.push(StepDef::point("prompt.box.other").from(first).offering(&[]));
+            if cx.values.len() >= 2 {
+                steps.push(
+                    StepDef::along("prompt.box.height", first, up(cx))
+                        .optional()
+                        .offering(&[BOTH_SIDES]),
+                );
             }
         }
-        made
+        steps
     }
 
-    fn ask_height(&self) -> Step {
-        Step::Ask(Request {
-            from: self.first,
-            ..Request::new("prompt.box.height", Kind::Number)
+    fn check(&self, cx: &Context<'_>) -> Result<(), Message> {
+        if cx.values.len() >= 2 && base(cx).is_none() {
+            return Err(Message::new("error.flat_rectangle"));
+        }
+        if let Some(Value::Number(high)) = cx.values.get(2)
+            && high.abs() < SMALLEST_SIDE
+        {
+            return Err(Message::new("error.flat_box"));
+        }
+        Ok(())
+    }
+
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let Some((corner, [wide, deep])) = base(cx) else {
+            return Ok(Made::default());
+        };
+        let [x, y] = cx.plane();
+        let high = match cx.values.get(2) {
+            Some(Value::Number(high)) => *high,
+            // Enter at the height uses the base's width, as in Rhino.
+            Some(Value::Empty) => wide.abs(),
+            _ => 0.0,
+        };
+        if high.abs() < SMALLEST_SIDE {
+            // Still choosing the base, or no height yet: show the base flat.
+            let ring = [
+                corner,
+                plus(corner, x, wide),
+                plus(plus(corner, x, wide), y, deep),
+                plus(corner, y, deep),
+            ];
+            let guides = (0..4)
+                .filter_map(|i| Curve::line(ring[i], ring[(i + 1) % 4]).ok())
+                .collect();
+            return Ok(Made {
+                guides,
+                ..Made::default()
+            });
+        }
+        let (start, size) = if cx.toggle(BOTH_SIDES) {
+            (plus(corner, up(cx), -high), [wide, deep, 2.0 * high])
+        } else {
+            (corner, [wide, deep, high])
+        };
+        let body = Body::cuboid_on(start, x, y, size)
+            .map_err(|e| Message::with("error.geometry", vec![e.to_string()]))?;
+        Ok(Made {
+            add: vec![Shape::Body(body)],
+            message: Some(Message::new("done.box")),
+            ..Made::default()
         })
-    }
-}
-
-impl Command for BoxSolid {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        match (self.first, self.base, answer) {
-            (None, _, None) => ask_point("prompt.box.first", Vec::new()),
-            (None, _, Some(Answer::Point(first))) => {
-                self.first = Some(first);
-                self.plane = Some(doc.work_plane());
-                ask_point("prompt.box.other", vec![first])
-            }
-            (Some(_), None, Some(Answer::Point(other))) => match self.sides(doc, other) {
-                Some(sides) => {
-                    self.base = Some(sides);
-                    self.ask_height()
-                }
-                None => Step::Failed(Message::new("error.flat_rectangle")),
-            },
-            (Some(first), Some([wide, deep]), Some(Answer::Number(high))) => {
-                if high.abs() < SMALLEST_SIDE {
-                    return Step::Failed(Message::new("error.flat_box"));
-                }
-                let [x, y, _] = self.axes(doc);
-                match Body::cuboid_on(first, x, y, [wide, deep, high]) {
-                    Ok(body) => {
-                        doc.add_body(body);
-                        Step::Done(Some(Message::new("done.box")))
-                    }
-                    Err(error) => geometry_failed(&error),
-                }
-            }
-            _ => unexpected(),
-        }
-    }
-
-    fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
-        match (self.first, self.base) {
-            (Some(_), None) => live
-                .cursor
-                .and_then(|cursor| self.sides(doc, cursor))
-                .map(|sides| self.edges(doc, sides, 0.0))
-                .unwrap_or_default(),
-            (Some(first), Some(sides)) => {
-                // A typed height wins; otherwise the cursor's distance from the first corner.
-                let high = live
-                    .number
-                    .or_else(|| live.cursor.map(|cursor| gap(cursor, first)))
-                    .unwrap_or(0.0);
-                self.edges(doc, sides, high)
-            }
-            _ => Vec::new(),
-        }
     }
 }
 
@@ -135,6 +127,15 @@ mod tests {
 
     fn close(a: f64, b: f64) -> bool {
         (a - b).abs() <= 1e-6 * b.abs().max(1.0)
+    }
+
+    fn bounds(doc: &Document) -> ([f64; 3], [f64; 3]) {
+        doc.state().objects[0]
+            .shape
+            .body()
+            .unwrap()
+            .bounds()
+            .unwrap()
     }
 
     #[test]
@@ -155,12 +156,7 @@ mod tests {
     fn a_negative_height_goes_below_the_plane() {
         let mut doc = Document::default();
         run(&mut doc, &["box", "0,0", "2,2", "-3"]);
-        let (low, high) = doc.state().objects[0]
-            .shape
-            .body()
-            .unwrap()
-            .bounds()
-            .unwrap();
+        let (low, high) = bounds(&doc);
         assert!(close(low[2], -3.0) && close(high[2], 0.0));
     }
 
@@ -185,5 +181,30 @@ mod tests {
         for object in &doc.state().objects {
             assert!(close(object.shape.body().unwrap().volume().unwrap(), 24.0));
         }
+    }
+
+    #[test]
+    fn center_takes_the_middle_of_the_base_first() {
+        let mut doc = Document::default();
+        run(&mut doc, &["box", "center", "0,0", "2,3", "1"]);
+        let (low, high) = bounds(&doc);
+        assert!(
+            close(low[0], -2.0)
+                && close(low[1], -3.0)
+                && close(high[0], 2.0)
+                && close(high[1], 3.0)
+        );
+    }
+
+    #[test]
+    fn both_sides_and_enter_for_the_width() {
+        let mut doc = Document::default();
+        run(&mut doc, &["box", "0,0", "4,2", "bothsides", ""]);
+        let (low, high) = bounds(&doc);
+        // Enter: the height is the width, 4, grown both ways.
+        assert!(
+            close(low[2], -4.0) && close(high[2], 4.0),
+            "{low:?} {high:?}"
+        );
     }
 }
