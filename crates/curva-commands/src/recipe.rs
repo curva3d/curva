@@ -167,6 +167,8 @@ pub struct StepDef {
     /// A number step whose answer is remembered under this name: Enter then gives the last one
     /// (or the starting value), shown in the prompt, as Rhino offers its defaults.
     pub remembered: Option<(&'static str, f64)>,
+    /// Whether it picks a rectangle's far corner, so the tag shows width × depth.
+    pub corner: bool,
     /// For objects: which sort it takes.
     pub only: Only,
     /// For objects: how many it needs; with fewer it asks again.
@@ -200,6 +202,7 @@ impl StepDef {
             options: None,
             sets: None,
             remembered: None,
+            corner: false,
             only: Only::Any,
             least: 1,
             most: usize::MAX,
@@ -285,6 +288,13 @@ impl StepDef {
     pub fn remembered(mut self, name: &'static str, starting: f64) -> Self {
         self.remembered = Some((name, starting));
         self.optional = true;
+        self
+    }
+
+    /// Picks a rectangle's far corner: the pointer's tag shows width × depth.
+    #[must_use]
+    pub fn corner(mut self) -> Self {
+        self.corner = true;
         self
     }
 
@@ -671,6 +681,7 @@ impl<R: Recipe> RecipeCommand<R> {
             preview,
             from: step.from,
             along: step.along,
+            corner: step.corner,
             ..Request::new(step.prompt, kind)
         })
     }
@@ -876,6 +887,16 @@ impl<R: Recipe> Command for RecipeCommand<R> {
             }
         }
         self.ask(doc)
+    }
+
+    fn keeps_on_cancel(&self) -> bool {
+        !self.placed.is_empty()
+    }
+
+    fn preview_replaces(&self, doc: &Document, live: &Live) -> Vec<u64> {
+        self.preview_made(doc, live)
+            .map(|made| made.replace.iter().map(|(id, _)| *id).collect())
+            .unwrap_or_default()
     }
 
     fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {

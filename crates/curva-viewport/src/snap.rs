@@ -1024,4 +1024,32 @@ mod tests {
         guides.toggle([10.0, 10.0, 0.0]);
         assert_eq!(guides.held.len(), 1);
     }
+
+    #[test]
+    fn curves_snap_in_every_display_mode() {
+        let shapes = outlines(vec![
+            line([0.0; 3], [40.0, 0.0, 0.0]),
+            Curve::polyline(
+                vec![[0.0, 20.0, 0.0], [20.0, 20.0, 0.0], [20.0, 40.0, 0.0]],
+                false,
+            )
+            .unwrap(),
+        ]);
+        for visible_only in [false, true] {
+            let set = SnapSet {
+                visible_only,
+                ..SnapSet::default()
+            };
+            for (aim, kind) in [
+                ([40.0, 0.0, 0.0], SnapKind::End),
+                ([20.0, 0.0, 0.0], SnapKind::Mid),
+                ([20.0, 20.0, 0.0], SnapKind::End),
+            ] {
+                let hit = snap_by(&shapes, aim, set, None)
+                    .unwrap_or_else(|| panic!("{aim:?} {visible_only}"));
+                assert_eq!(hit.kind, kind, "{aim:?}");
+                assert!(close(hit.point, aim), "{aim:?} {:?}", hit.point);
+            }
+        }
+    }
 }

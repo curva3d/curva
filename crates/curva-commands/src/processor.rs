@@ -117,6 +117,35 @@ impl Processor {
         Some(shown)
     }
 
+    /// The running command's question alone, without its options, for a prompt that shows the
+    /// options as buttons.
+    #[must_use]
+    pub fn question(&self) -> Option<String> {
+        Some(self.text.render(&self.request()?.prompt))
+    }
+
+    /// The options the current question offers: each one's name, to answer with, and how it shows
+    /// ("Diameter=No").
+    #[must_use]
+    pub fn options(&self) -> Vec<(&'static str, String)> {
+        let Some(request) = self.request() else {
+            return Vec::new();
+        };
+        request
+            .options
+            .iter()
+            .enumerate()
+            .map(|(i, name)| {
+                let label = request
+                    .option_labels
+                    .get(i)
+                    .cloned()
+                    .unwrap_or_else(|| (*name).to_owned());
+                (*name, label)
+            })
+            .collect()
+    }
+
     fn request(&self) -> Option<&Request> {
         self.active.as_ref()?.request.as_ref()
     }
@@ -163,6 +192,16 @@ impl Processor {
             .map_or_else(Vec::new, |active| active.command.preview_bodies(doc, &live))
     }
 
+    /// The objects the running command's preview changes in place, which the viewport hides
+    /// while the changed ones show, as FilletEdge's rounded solid replaces the original.
+    #[must_use]
+    pub fn preview_replaces(&self, doc: &Document, cursor: Option<Point>, typed: &str) -> Vec<u64> {
+        let live = self.live(doc, cursor, typed);
+        self.active.as_ref().map_or_else(Vec::new, |active| {
+            active.command.preview_replaces(doc, &live)
+        })
+    }
+
     /// What a preview follows: the pointer, with any typed distance or angle held, and the typed
     /// number, or the size along the step's direction at the pointer.
     fn live(&self, doc: &Document, cursor: Option<Point>, typed: &str) -> Live {
@@ -206,6 +245,19 @@ impl Processor {
         let base = request.base().filter(|_| takes_distance)?;
         let at = self.constrained(doc, cursor);
         Some(curva_kernel::gap(at, base))
+    }
+
+    /// For a step picking a rectangle's far corner: its width and depth on the construction plane
+    /// with the pointer there.
+    #[must_use]
+    pub fn corner_size(&self, doc: &Document, cursor: Point) -> Option<(f64, f64)> {
+        let request = self.request().filter(|r| r.corner)?;
+        let base = request.from?;
+        let at = self.constrained(doc, cursor);
+        let [x, y] = doc.work_plane();
+        let across: Point = std::array::from_fn(|i| at[i] - base[i]);
+        let along = |axis: Point| (0..3).map(|i| across[i] * axis[i]).sum::<f64>().abs();
+        Some((along(x), along(y)))
     }
 
     /// Whether the current step asks for a position that typed constraints apply to.
@@ -417,7 +469,12 @@ impl Processor {
     pub fn cancel(&mut self, doc: &mut Document) {
         if let Some(active) = self.active.take() {
             if active.def.records_undo {
-                doc.restore(active.before);
+                if active.command.keeps_on_cancel() && doc.state() != &active.before {
+                    // What it placed stays, as one undo step.
+                    doc.record_change_with(active.before, &active.selection_before);
+                } else {
+                    doc.restore(active.before);
+                }
             }
             self.say(&Message::new("note.cancelled"));
         }
@@ -711,13 +768,30 @@ mod tests {
             processor.submit(&mut doc, typed);
         }
         let before = doc.state().clone();
+        // A command that has placed nothing leaves the model as it was.
+        for typed in ["line", "3,3"] {
+            processor.submit(&mut doc, typed);
+        }
+        processor.cancel(&mut doc);
+        assert_eq!(doc.state(), &before);
+    }
+
+    #[test]
+    fn cancel_keeps_the_copies_already_placed_as_rhino_does() {
+        let mut doc = Document::default();
+        let mut processor = Processor::default();
+        for typed in ["line", "0,0", "1,0"] {
+            processor.submit(&mut doc, typed);
+        }
         doc.select(&[0]);
         for typed in ["copy", "0,0", "5,0"] {
             processor.submit(&mut doc, typed);
         }
-        assert_eq!(doc.state().objects.len(), 2);
         processor.cancel(&mut doc);
-        assert_eq!(doc.state(), &before);
+        assert_eq!(doc.state().objects.len(), 2);
+        // One undo takes the copy away.
+        assert!(doc.undo());
+        assert_eq!(doc.state().objects.len(), 1);
     }
 
     #[test]

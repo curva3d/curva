@@ -169,7 +169,7 @@ impl Default for Layout {
                     vec![Piece::CommandTabs],
                     Dock::Top,
                     Align::Fill,
-                    [0.0, 64.0],
+                    [0.0, 104.0],
                 ),
                 Place::new(
                     vec![Piece::Command],
