@@ -1,0 +1,16 @@
+# cargo-about: lists every library in a Curva build with its licence text,
+# for THIRD-PARTY-LICENSES.html in each release. Keep in step with deny.toml.
+accepted = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "OFL-1.1",
+    "Ubuntu-font-1.0",
+]
+ignore-build-dependencies = true
+ignore-dev-dependencies = true

@@ -77,6 +77,8 @@
 - Picking faces works the same way (a picked face is tinted yellow). `Shell` hollows a solid to a wall thickness, opening the picked faces, with a live preview.
 - The surface tools spec is done apart from Cap (#67). The owner is trying them by hand.
 
+**First release, 0.1.0 (12 November 2026, the owner asked for it):** a preview to show where Curva is. Pushing a tag `v*` runs `.github/workflows/release.yml`, which builds Windows, Linux and macOS (Apple silicon), adds `THIRD-PARTY-LICENSES.html` (made by `cargo-about` from `about.toml` and `about.hbs`) and the notices in `licenses/`, and publishes a GitHub pre-release with the notes in `docs/releases/<tag>.md`. Builds are not signed; on Windows a console window opens beside Curva.
+
 **Waiting for the owner**
 - Nothing yet. The engine is solidcore, with Serpentine3D's commands as the base (decision 0010). SolidCraft
   reuse is parked (0009).

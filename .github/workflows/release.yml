@@ -1,0 +1,75 @@
+name: Release
+
+# Pushing a tag such as v0.1.0 builds Curva for Windows, Linux and macOS and
+# publishes the builds as a GitHub pre-release. Releases are the owner's call
+# (AGENTS.md), so a tag is only pushed once the owner has asked for one.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, name: windows-x64, exe: curva-app.exe, out: curva.exe }
+          - { os: ubuntu-latest, name: linux-x64, exe: curva-app, out: curva }
+          - { os: macos-latest, name: macos-arm64, exe: curva-app, out: curva }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the pinned Rust toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Install cargo-about
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about
+      - name: Build
+        run: cargo build --release --locked -p curva-app
+      - name: Gather the files
+        shell: bash
+        run: |
+          dir="curva-${GITHUB_REF_NAME}-${{ matrix.name }}"
+          mkdir -p "$dir/licenses"
+          cp "target/release/${{ matrix.exe }}" "$dir/${{ matrix.out }}"
+          cp README.md LICENSE-APACHE LICENSE-MIT ATTRIBUTION.md "$dir/"
+          cp -r licenses/. "$dir/licenses/"
+          cargo about generate --locked -m crates/curva-app/Cargo.toml \
+            about.hbs -o "$dir/THIRD-PARTY-LICENSES.html"
+          echo "DIR=$dir" >> "$GITHUB_ENV"
+      - name: Pack (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path $env:DIR -DestinationPath "$env:DIR.zip"
+      - name: Pack (Linux and macOS)
+        if: runner.os != 'Windows'
+        run: tar -czf "$DIR.tar.gz" "$DIR"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: curva-*.*z*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish the pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="docs/releases/${GITHUB_REF_NAME}.md"
+          gh release create "$GITHUB_REF_NAME" dist/* --prerelease \
+            --title "Curva ${GITHUB_REF_NAME#v} (preview)" --notes-file "$notes"
