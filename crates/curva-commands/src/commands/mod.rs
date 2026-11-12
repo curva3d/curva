@@ -16,6 +16,7 @@ mod circle;
 mod close_crv;
 mod copy;
 mod cplane;
+mod curve;
 mod delete;
 mod dir;
 mod distance;
@@ -70,7 +71,9 @@ mod save;
 mod scale;
 mod scale1d;
 mod scale2d;
+mod scale_nu;
 mod sel_all;
+mod sel_body;
 mod sel_crv;
 mod sel_dup;
 mod sel_last;
@@ -90,6 +93,7 @@ mod top;
 mod trim;
 mod tween_curves;
 mod undo;
+mod volume;
 mod zoom;
 mod zoom_extents;
 mod zoom_selected;
@@ -124,7 +128,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 93] = [
+pub static COMMANDS: [CommandDef; 98] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -174,6 +178,8 @@ pub static COMMANDS: [CommandDef; 93] = [
     listed!("SelAll", ["sa"], false, false, sel_all::SelAll),
     listed!("SelNone", ["sn"], false, false, sel_none::SelNone),
     listed!("SelCrv", [], false, false, sel_crv::SelCrv),
+    listed!("SelSrf", [], false, false, sel_body::SelSrf),
+    listed!("SelSolid", [], false, false, sel_body::SelSolid),
     listed!("SelPt", [], false, false, sel_pt::SelPt),
     listed!("SelName", [], false, false, sel_name::SelName),
     listed!("SelLayer", [], false, false, sel_layer::SelLayer),
@@ -200,6 +206,7 @@ pub static COMMANDS: [CommandDef; 93] = [
     listed!("Distance", ["dist"], true, false, distance::Distance),
     listed!("Length", ["len"], true, false, length::Length),
     listed!("Area", [], true, false, area::Area),
+    listed!("Volume", [], true, false, volume::Volume),
     listed!("SetPt", [], true, true, set_pt::SetPt),
     listed!(
         "ProjectToCPlane",
@@ -228,6 +235,7 @@ pub static COMMANDS: [CommandDef; 93] = [
     listed!("Rotate3D", [], true, true, rotate3d::Rotate3D),
     listed!("Scale1D", [], true, true, scale1d::Scale1D),
     listed!("Scale2D", [], true, true, scale2d::Scale2D),
+    listed!("ScaleNU", [], true, true, scale_nu::ScaleNu),
     listed!("Arc", ["a"], true, true, arc::Arc),
     listed!("Rectangle", ["rec"], true, true, rectangle::Rectangle),
     listed!("Box", [], true, true, box_solid::BoxSolid),
@@ -275,6 +283,7 @@ pub static COMMANDS: [CommandDef; 93] = [
     listed!("Right", [], false, false, right::Right),
     listed!("Perspective", [], false, false, perspective::Perspective),
     listed!("CPlane", [], false, false, cplane::SetCPlane),
+    listed!("Curve", [], true, true, curve::CurveCommand),
     listed!("Zoom", [], false, false, zoom::Zoom),
     listed!("NamedView", ["nv"], false, false, named_view::NamedView),
     listed!(
@@ -521,10 +530,11 @@ mod tests {
 
     /// For each command that changes geometry, the typed steps that reach its live preview.
     /// A new command must be added here, which is how the preview rule in AGENTS.md is enforced.
-    const PREVIEW_STEPS: [(&str, &[&str]); 28] = [
+    const PREVIEW_STEPS: [(&str, &[&str]); 30] = [
         ("Line", &["0,0"]),
         ("Polyline", &["0,0", "9,0"]),
         ("InterpCrv", &["0,0", "9,0"]),
+        ("Curve", &["0,0", "9,0"]),
         ("Circle", &["0,0"]),
         ("Move", &["0,0"]),
         ("Copy", &["0,0"]),
@@ -540,6 +550,7 @@ mod tests {
         ("Rotate3D", &["0,0,0"]),
         ("Scale1D", &["0,0", "2"]),
         ("Scale2D", &["0,0", "5,0"]),
+        ("ScaleNU", &["0,0"]),
         ("Point", &[]),
         ("Orient", &["0,0"]),
         ("SetPt", &["SetX", "SetZ"]),
@@ -912,7 +923,8 @@ mod tests {
                 "CloseCrv",
                 "Chamfer",
                 "ChamferEdge",
-                "CPlane"
+                "CPlane",
+                "Curve"
             ]
         );
         assert_eq!(completions("co"), ["Copy"]);

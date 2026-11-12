@@ -881,6 +881,41 @@ impl Curve {
         Ok(Self::Interpolated { points, closed })
     }
 
+    /// A control-point curve, as Rhino's `Curve` draws it. Open, it is clamped: it starts on
+    /// the first point and ends on the last. Closed, it is smooth all the way round, with no
+    /// kink where it joins. The degree is lowered when there are too few points for it.
+    pub fn control_point(
+        points: Vec<Point>,
+        degree: usize,
+        closed: bool,
+    ) -> Result<Self, KernelError> {
+        if points.len() < 2 || (closed && points.len() < 3) {
+            return Err(KernelError("too few points for a curve".to_owned()));
+        }
+        let degree = degree.clamp(1, points.len() - 1);
+        if closed {
+            // Wrapping the first `degree` points round, with evenly spaced knots, gives a
+            // periodic curve; it is then cut to its complete span as an ordinary clamped one.
+            let count = points.len();
+            let mut wrapped = points;
+            wrapped.extend_from_within(..degree);
+            let knots: Vec<f64> = (0..wrapped.len() + degree + 1).map(|i| i as f64).collect();
+            let (knots, points) = clamp_span(
+                degree,
+                knots,
+                wrapped,
+                degree as f64,
+                (degree + count) as f64,
+            );
+            return Self::nurbs(degree, knots, points, Vec::new());
+        }
+        let inner = points.len() - degree;
+        let mut knots = vec![0.0; degree + 1];
+        knots.extend((1..inner).map(|i| i as f64 / inner as f64));
+        knots.extend(std::iter::repeat_n(1.0, degree + 1));
+        Self::nurbs(degree, knots, points, Vec::new())
+    }
+
     /// The curve's length in millimetres.
     pub fn length(&self) -> Result<f64, KernelError> {
         Ok(match self {
@@ -1069,6 +1104,133 @@ impl Curve {
                 points: moved(points),
                 closed: *closed,
             },
+        }
+    }
+}
+
+/// Cuts a B-spline to the part between knot values `start` and `end`, as a clamped B-spline
+/// with knots from 0 to 1: knots are inserted at both ends until each is repeated `degree`
+/// times (Boehm's algorithm), which leaves the shape unchanged, then the span is kept.
+fn clamp_span(
+    degree: usize,
+    mut knots: Vec<f64>,
+    mut points: Vec<Point>,
+    start: f64,
+    end: f64,
+) -> (Vec<f64>, Vec<Point>) {
+    let same = |a: f64, b: f64| (a - b).abs() < 1e-12;
+    for at in [start, end] {
+        let present = knots.iter().filter(|k| same(**k, at)).count();
+        for _ in present..degree {
+            // The span holding `at`: the last knot not after it.
+            let span = knots.iter().rposition(|k| *k <= at).unwrap_or(degree);
+            let mut next = Vec::with_capacity(points.len() + 1);
+            for i in 0..=points.len() {
+                if i + degree <= span {
+                    next.push(points[i]);
+                } else if i > span {
+                    next.push(points[i - 1]);
+                } else {
+                    let a = (at - knots[i]) / (knots[i + degree] - knots[i]);
+                    // At the very end of the curve `a` is 0 and the point after does not exist.
+                    let p = points[i - 1];
+                    let q = points.get(i).copied().unwrap_or(p);
+                    next.push(std::array::from_fn(|axis| {
+                        (1.0 - a) * p[axis] + a * q[axis]
+                    }));
+                }
+            }
+            knots.insert(span + 1, at);
+            points = next;
+        }
+    }
+    let first = knots.iter().position(|k| same(*k, start)).unwrap_or(1);
+    let last = knots
+        .iter()
+        .rposition(|k| same(*k, end))
+        .unwrap_or(knots.len() - 1);
+    let mut kept = vec![start];
+    kept.extend_from_slice(&knots[first..=last]);
+    kept.push(end);
+    let kept_points = points[first - 1..last + 1 - degree].to_vec();
+    let scaled = kept.iter().map(|k| (k - start) / (end - start)).collect();
+    (scaled, kept_points)
+}
+
+#[cfg(test)]
+mod control_point_tests {
+    use super::*;
+
+    fn ends(curve: &Curve) -> (Point, Point) {
+        let path = curve.sample().unwrap();
+        (path[0], path[path.len() - 1])
+    }
+
+    #[test]
+    fn an_open_curve_starts_and_ends_on_its_end_points() {
+        let points = vec![
+            [0.0, 0.0, 0.0],
+            [5.0, 8.0, 0.0],
+            [10.0, -3.0, 0.0],
+            [15.0, 2.0, 0.0],
+        ];
+        let curve = Curve::control_point(points, 3, false).unwrap();
+        let Curve::Nurbs {
+            points: kept,
+            degree,
+            ..
+        } = &curve
+        else {
+            panic!("not NURBS")
+        };
+        assert_eq!((kept.len(), *degree), (4, 3));
+        let (first, last) = ends(&curve);
+        assert!(gap(first, [0.0, 0.0, 0.0]) < 1e-6 && gap(last, [15.0, 2.0, 0.0]) < 1e-6);
+    }
+
+    #[test]
+    fn closed_curves_close_for_every_degree() {
+        let hexagon: Vec<Point> = (0..6)
+            .map(|i| {
+                let turn = f64::from(i) * std::f64::consts::TAU / 6.0;
+                [10.0 * turn.cos(), 10.0 * turn.sin(), f64::from(i % 2)]
+            })
+            .collect();
+        for degree in 1..=7 {
+            let curve = Curve::control_point(hexagon.clone(), degree, true).unwrap();
+            let (first, last) = ends(&curve);
+            assert!(
+                gap(first, last) < 1e-6,
+                "degree {degree}: {first:?} {last:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn too_few_points_lower_the_degree() {
+        let curve = Curve::control_point(vec![[0.0; 3], [4.0, 1.0, 0.0]], 3, false).unwrap();
+        assert!(matches!(curve, Curve::Nurbs { degree: 1, .. }));
+    }
+
+    #[test]
+    fn a_closed_cubic_starts_where_a_uniform_b_spline_does_and_closes() {
+        let square = vec![
+            [0.0, 0.0, 0.0],
+            [6.0, 0.0, 0.0],
+            [6.0, 6.0, 0.0],
+            [0.0, 6.0, 0.0],
+        ];
+        let curve = Curve::control_point(square.clone(), 3, true).unwrap();
+        let (first, last) = ends(&curve);
+        assert!(gap(first, last) < 1e-6, "{first:?} {last:?}");
+        // A uniform cubic B-spline over points a, b, c, d starts at (a + 4b + c) / 6.
+        let expected: Point =
+            std::array::from_fn(|i| (square[0][i] + 4.0 * square[1][i] + square[2][i]) / 6.0);
+        assert!(gap(first, expected) < 1e-6, "{first:?} vs {expected:?}");
+        // Symmetric points give a curve that stays inside them and keeps away from the corners.
+        for point in curve.sample().unwrap() {
+            assert!((0.0..=6.0).contains(&point[0]) && (0.0..=6.0).contains(&point[1]));
+            assert!(gap(point, [0.0, 0.0, 0.0]) > 1.0);
         }
     }
 }
