@@ -21,6 +21,8 @@ pub use history::Recipe;
 
 /// Marks files of this early format, so a later Curva can recognise and convert them.
 const FORMAT: &str = "curva-first-slice";
+/// The entry inside a `.curva` package that holds the model.
+const MODEL_ENTRY: &str = "model.json";
 
 /// One object in the model.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -541,12 +543,26 @@ impl Document {
             state: self.state.clone(),
             views: self.views.clone(),
         };
-        let text = serde_json::to_string_pretty(&contents).map_err(|e| FileError(e.to_string()))?;
+        let failed = |e: &dyn std::fmt::Display| FileError(e.to_string());
+        let json = serde_json::to_vec(&contents).map_err(|e| failed(&e))?;
         let mut partial = path.as_os_str().to_owned();
         partial.push(".partial");
         let partial = std::path::PathBuf::from(partial);
-        std::fs::write(&partial, text).map_err(|e| FileError(e.to_string()))?;
-        std::fs::rename(&partial, path).map_err(|e| FileError(e.to_string()))
+        // A zip package holding the model as JSON (decision 0015). Fast compression: the file is
+        // about 13 times smaller than the JSON, and saving stays as quick.
+        let file = std::fs::File::create(&partial).map_err(|e| failed(&e))?;
+        let mut package = zip::ZipWriter::new(std::io::BufWriter::new(file));
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .compression_level(Some(1));
+        package
+            .start_file(MODEL_ENTRY, options)
+            .map_err(|e| failed(&e))?;
+        std::io::Write::write_all(&mut package, &json).map_err(|e| failed(&e))?;
+        let mut written = package.finish().map_err(|e| failed(&e))?;
+        std::io::Write::flush(&mut written).map_err(|e| failed(&e))?;
+        drop(written);
+        std::fs::rename(&partial, path).map_err(|e| failed(&e))
     }
 
     /// Sets or forgets the file the document saves to, as when a recovered copy is opened on
@@ -557,9 +573,20 @@ impl Document {
 
     /// Reads a document from a file. The undo history starts empty.
     pub fn open(path: &Path) -> Result<Self, FileError> {
-        let text = std::fs::read_to_string(path).map_err(|e| FileError(e.to_string()))?;
-        let contents: FileContents =
-            serde_json::from_str(&text).map_err(|e| FileError(e.to_string()))?;
+        let failed = |e: &dyn std::fmt::Display| FileError(e.to_string());
+        let bytes = std::fs::read(path).map_err(|e| failed(&e))?;
+        // A zip package since decision 0015; before that, the JSON text on its own.
+        let json = if bytes.starts_with(b"PK\x03\x04") {
+            let mut package =
+                zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| failed(&e))?;
+            let mut entry = package.by_name(MODEL_ENTRY).map_err(|e| failed(&e))?;
+            let mut json = Vec::new();
+            std::io::Read::read_to_end(&mut entry, &mut json).map_err(|e| failed(&e))?;
+            json
+        } else {
+            bytes
+        };
+        let contents: FileContents = serde_json::from_slice(&json).map_err(|e| failed(&e))?;
         if contents.format != FORMAT {
             return Err(FileError(format!("unknown format {}", contents.format)));
         }
@@ -646,6 +673,38 @@ mod tests {
         let opened = Document::open(&path).unwrap();
         assert_eq!(opened.state(), doc.state());
         assert_eq!(opened.path(), Some(path.as_path()));
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn files_are_zip_packages_and_older_json_files_still_open() {
+        let folder = std::env::temp_dir().join(format!("curva-zip-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let mut doc = Document::default();
+        for i in 0..200 {
+            doc.add(Curve::circle([f64::from(i) * 30.0, 0.0, 0.0], 10.0).unwrap());
+        }
+        let package = folder.join("new.curva");
+        doc.save(&package).unwrap();
+        let bytes = std::fs::read(&package).unwrap();
+        assert!(bytes.starts_with(b"PK\x03\x04"), "not a zip package");
+        assert_eq!(Document::open(&package).unwrap().state(), doc.state());
+        // The same model as the JSON text files were before.
+        let old = folder.join("old.curva");
+        let text = serde_json::to_string_pretty(&FileContents {
+            format: FORMAT.to_owned(),
+            state: doc.state().clone(),
+            views: Vec::new(),
+        })
+        .unwrap();
+        std::fs::write(&old, &text).unwrap();
+        assert_eq!(Document::open(&old).unwrap().state(), doc.state());
+        assert!(
+            bytes.len() * 5 < text.len(),
+            "{} vs {}",
+            bytes.len(),
+            text.len()
+        );
         std::fs::remove_dir_all(&folder).unwrap();
     }
 

@@ -15,3 +15,6 @@ curva-kernel = { path = "../curva-kernel" }
 serde = { version = "1", features = ["derive"] }
 # Exact numbers in files: a body read back a hair off can differ from the one saved.
 serde_json = { version = "1", features = ["float_roundtrip"] }
+# The .curva file is a zip package (decision 0015). Only deflate, through zlib-rs, which is pure
+# Rust; none of the C compressors.
+zip = { version = "9.5", default-features = false, features = ["deflate-flate2-zlib-rs"] }
