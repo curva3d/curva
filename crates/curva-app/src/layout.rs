@@ -193,6 +193,50 @@ impl Layout {
         std::fs::write(file, text)
     }
 
+    /// The arrangement with `panel` moved to `dock`. Docked, it goes innermost on that edge,
+    /// keeping its thickness if it was already docked the same way and taking its standard one
+    /// otherwise; floating, it takes `floating_size`.
+    #[must_use]
+    pub fn moved(&self, panel: PanelId, dock: Dock, floating_size: Vec2) -> Self {
+        let Some(old) = self.places.iter().find(|p| p.panel == panel).copied() else {
+            return self.clone();
+        };
+        let standard = Self::default()
+            .places
+            .into_iter()
+            .find(|p| p.panel == panel)
+            .map_or([260.0, 64.0], |p| p.size);
+        let across = |d: Dock| matches!(d, Dock::Top | Dock::Bottom);
+        let down = |d: Dock| matches!(d, Dock::Left | Dock::Right);
+        let size = match dock {
+            Dock::Top | Dock::Bottom if across(old.dock) => old.size,
+            Dock::Left | Dock::Right if down(old.dock) => old.size,
+            // A side panel laid across the top or bottom keeps a sensible height, and a bar stood
+            // up keeps a sensible width.
+            Dock::Top | Dock::Bottom => [old.size[0], standard[1].clamp(64.0, 200.0)],
+            Dock::Left | Dock::Right => [standard[0].max(220.0), old.size[1]],
+            Dock::Floating { .. } => [floating_size.x, floating_size.y],
+        };
+        let mut places: Vec<Place> = self
+            .places
+            .iter()
+            .copied()
+            .filter(|p| p.panel != panel)
+            .collect();
+        places.push(Place { panel, dock, size });
+        Self { places }
+    }
+
+    /// The arrangement with a floating `panel` resized, never smaller than a usable panel.
+    #[must_use]
+    pub fn resized(&self, panel: PanelId, size: Vec2) -> Self {
+        let mut layout = self.clone();
+        if let Some(place) = layout.places.iter_mut().find(|p| p.panel == panel) {
+            place.size = [size.x.max(MIN_PANEL.x), size.y.max(MIN_PANEL.y)];
+        }
+        layout
+    }
+
     /// Whether every panel has exactly one place, so a file from an older or newer Curva with
     /// a different set of panels falls back to the standard arrangement.
     fn is_complete(&self) -> bool {
@@ -201,6 +245,40 @@ impl Layout {
             && panels
                 .iter()
                 .all(|panel| self.places.iter().filter(|p| p.panel == *panel).count() == 1)
+    }
+}
+
+/// How near a window edge a dragged panel's pointer must be to dock there.
+pub const DOCK_REACH: f32 = 56.0;
+/// The smallest a floating panel can be made.
+pub const MIN_PANEL: Vec2 = vec2(160.0, 60.0);
+
+/// The edge a panel dragged to `pointer` would dock to, if the pointer is near enough to one.
+#[must_use]
+pub fn drop_edge(pointer: Pos2, window: Rect) -> Option<Edge> {
+    let edge = nearest_edge(pointer, window);
+    let distance = match edge {
+        Edge::Top => pointer.y - window.min.y,
+        Edge::Bottom => window.max.y - pointer.y,
+        Edge::Left => pointer.x - window.min.x,
+        Edge::Right => window.max.x - pointer.x,
+    };
+    (distance <= DOCK_REACH).then_some(edge)
+}
+
+/// Where a panel goes when dropped with its corner at `corner` and the pointer at `pointer`:
+/// docked to a near edge, or floating where it was let go.
+#[must_use]
+pub fn drop_dock(pointer: Pos2, corner: Pos2, window: Rect) -> Dock {
+    match drop_edge(pointer, window) {
+        Some(Edge::Top) => Dock::Top,
+        Some(Edge::Bottom) => Dock::Bottom,
+        Some(Edge::Left) => Dock::Left,
+        Some(Edge::Right) => Dock::Right,
+        None => Dock::Floating {
+            x: corner.x - window.min.x,
+            y: corner.y - window.min.y,
+        },
     }
 }
 
@@ -352,6 +430,69 @@ mod tests {
             .map(|(p, r)| layout.edge_of(*p, *r, screen))
             .collect();
         assert_eq!(edges, [Edge::Top, Edge::Bottom, Edge::Right]);
+    }
+
+    #[test]
+    fn a_dragged_panel_docks_near_an_edge_and_floats_elsewhere() {
+        let screen = window(1200.0, 800.0);
+        assert_eq!(
+            drop_dock(pos2(600.0, 20.0), pos2(0.0, 0.0), screen),
+            Dock::Top
+        );
+        assert_eq!(
+            drop_dock(pos2(30.0, 400.0), pos2(0.0, 0.0), screen),
+            Dock::Left
+        );
+        assert_eq!(
+            drop_dock(pos2(1190.0, 400.0), pos2(0.0, 0.0), screen),
+            Dock::Right
+        );
+        assert_eq!(
+            drop_dock(pos2(600.0, 790.0), pos2(0.0, 0.0), screen),
+            Dock::Bottom
+        );
+        assert_eq!(
+            drop_dock(pos2(600.0, 400.0), pos2(500.0, 380.0), screen),
+            Dock::Floating { x: 500.0, y: 380.0 }
+        );
+    }
+
+    #[test]
+    fn moving_a_panel_keeps_every_panel_placed_and_gives_it_a_usable_size() {
+        let screen = window(1200.0, 800.0);
+        let layout = Layout::default();
+        // The command bar stood up on the left gets a width; the side panel laid along the top
+        // gets a height.
+        let moved = layout
+            .moved(PanelId::CommandBar, Dock::Left, Vec2::ZERO)
+            .moved(PanelId::Side, Dock::Top, Vec2::ZERO);
+        assert!(moved.is_complete());
+        let (placed, free) = moved.arrange(screen);
+        for (panel, rect) in &placed {
+            assert!(
+                rect.width() >= 100.0 && rect.height() >= 50.0,
+                "{panel:?} {rect:?}"
+            );
+            assert!(!rect.intersects(free.shrink(0.5)));
+        }
+        // Docked to an edge that already has a panel, it goes inside it.
+        let tabs = rect_of(&placed, PanelId::CommandTabs);
+        let side = rect_of(&placed, PanelId::Side);
+        assert!(side.min.y > tabs.max.y);
+        // Floating, it takes the size it had while dragged, and resizing never goes too small.
+        let floating = layout.moved(
+            PanelId::Side,
+            Dock::Floating { x: 100.0, y: 100.0 },
+            vec2(300.0, 420.0),
+        );
+        let (placed, _) = floating.arrange(screen);
+        assert_eq!(rect_of(&placed, PanelId::Side).size(), vec2(300.0, 420.0));
+        let tiny = floating.resized(PanelId::Side, vec2(10.0, 10.0));
+        let (placed, _) = tiny.arrange(screen);
+        assert_eq!(rect_of(&placed, PanelId::Side).size(), MIN_PANEL);
+        // Moving it back to the right gives back its standard width.
+        let back = floating.moved(PanelId::Side, Dock::Right, Vec2::ZERO);
+        assert_eq!(back.arrange(screen).0, layout.arrange(screen).0);
     }
 
     #[test]

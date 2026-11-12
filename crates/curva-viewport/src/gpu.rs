@@ -173,6 +173,8 @@ pub struct LineRenderer {
     slots: Vec<ViewSlot>,
     surfaces: Option<Uploaded<MeshVertex>>,
     overlay: Option<Uploaded<Vertex>>,
+    /// Draws the viewports through a texture, which glass panels blur.
+    pub(crate) compositor: crate::glass::Compositor,
 }
 
 struct PipelineParts<'a> {
@@ -339,7 +341,14 @@ impl LineRenderer {
             slots,
             surfaces: None,
             overlay: None,
+            compositor: crate::glass::Compositor::new(device, format),
         }
+    }
+
+    /// Turns the glass blur on or off; off where the graphics card is a software one, so glass
+    /// panels show their tint alone.
+    pub fn set_blur(&mut self, on: bool) {
+        self.compositor.blur = on;
     }
 
     /// Sends one view's camera and grid, and anything that changed, to the graphics card.
@@ -455,6 +464,12 @@ pub struct Drawing {
     pub shaded: bool,
     /// Whether shaded faces are see-through, for the Ghosted display mode.
     pub ghosted: bool,
+    /// Where the view is in the window, in points.
+    pub area: epaint::Rect,
+    /// The window's frame number, so the first view drawn in a frame clears the scene texture.
+    pub frame: u64,
+    /// Behind the model.
+    pub background: epaint::Color32,
 }
 
 impl egui_wgpu::CallbackTrait for Drawing {
@@ -462,13 +477,70 @@ impl egui_wgpu::CallbackTrait for Drawing {
         &self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        _screen: &egui_wgpu::ScreenDescriptor,
-        _encoder: &mut wgpu::CommandEncoder,
+        screen: &egui_wgpu::ScreenDescriptor,
+        encoder: &mut wgpu::CommandEncoder,
         resources: &mut egui_wgpu::CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
-        if let Some(renderer) = resources.get_mut::<LineRenderer>() {
-            renderer.update(device, queue, self);
+        let Some(renderer) = resources.get_mut::<LineRenderer>() else {
+            return Vec::new();
+        };
+        renderer.update(device, queue, self);
+        // Drawn into the scene texture now, and copied to the screen when egui paints.
+        let size = screen.size_in_pixels;
+        let target = renderer.compositor.target(device, size);
+        let first = target.cleared != Some(self.frame);
+        target.cleared = Some(self.frame);
+        let (colour, depth) = (target.colour.clone(), target.depth.clone());
+        let scale = screen.pixels_per_point;
+        let low = (self.area.min * scale).max(epaint::Pos2::ZERO);
+        let high = (self.area.max * scale).min(epaint::pos2(size[0] as f32, size[1] as f32));
+        if high.x - low.x < 1.0 || high.y - low.y < 1.0 {
+            return Vec::new();
         }
+        // Written as stored, like every colour Curva draws: egui gives the window a texture that
+        // is not converted to linear light.
+        let channel = |value: u8| f64::from(value) / 255.0;
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("curva viewport"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &colour,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    // The first viewport of a frame clears the whole texture, gaps included.
+                    load: if first {
+                        wgpu::LoadOp::Clear(wgpu::Color {
+                            r: channel(self.background.r()),
+                            g: channel(self.background.g()),
+                            b: channel(self.background.b()),
+                            a: 1.0,
+                        })
+                    } else {
+                        wgpu::LoadOp::Load
+                    },
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &depth,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(1.0),
+                    store: wgpu::StoreOp::Discard,
+                }),
+                stencil_ops: None,
+            }),
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        pass.set_viewport(low.x, low.y, high.x - low.x, high.y - low.y, 0.0, 1.0);
+        pass.set_scissor_rect(
+            low.x as u32,
+            low.y as u32,
+            (high.x - low.x) as u32,
+            (high.y - low.y) as u32,
+        );
+        renderer.draw(&mut pass, self.slot);
         Vec::new()
     }
 
@@ -479,7 +551,7 @@ impl egui_wgpu::CallbackTrait for Drawing {
         resources: &egui_wgpu::CallbackResources,
     ) {
         if let Some(renderer) = resources.get::<LineRenderer>() {
-            renderer.draw(pass, self.slot);
+            renderer.compositor.copy_to_screen(pass);
         }
     }
 }
@@ -553,6 +625,9 @@ pub fn save_picture(
         light: picture.light,
         shaded,
         ghosted: picture.ghosted,
+        area: epaint::Rect::NOTHING,
+        frame: 0,
+        background: epaint::Color32::BLACK,
     };
     renderer.update(&device, &queue, &drawing);
     let row = (width * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
