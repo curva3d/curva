@@ -76,6 +76,7 @@ mod sel_all;
 mod sel_body;
 mod sel_crv;
 mod sel_dup;
+mod sel_filter;
 mod sel_last;
 mod sel_layer;
 mod sel_name;
@@ -128,7 +129,7 @@ macro_rules! listed {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 98] = [
+pub static COMMANDS: [CommandDef; 100] = [
     listed!("Line", ["l"], true, true, line::Line),
     listed!("Polyline", ["pl", "pline"], true, true, polyline::Polyline),
     listed!(
@@ -186,6 +187,14 @@ pub static COMMANDS: [CommandDef; 98] = [
     listed!("SelDup", [], false, false, sel_dup::SelDup),
     listed!("SelLast", [], false, false, sel_last::SelLast),
     listed!("SelPrev", [], false, false, sel_prev::SelPrev),
+    listed!("SelFilter", [], false, false, sel_filter::SelFilter),
+    listed!(
+        "SelFilterToggle",
+        [],
+        false,
+        false,
+        sel_filter::SelFilterToggle
+    ),
     listed!("Rename", [], true, true, rename::Rename),
     listed!("Isolate", [], true, true, isolate::Isolate),
     listed!(
