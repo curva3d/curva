@@ -528,15 +528,31 @@ impl Document {
 
     /// Writes the document to a file and remembers the location.
     pub fn save(&mut self, path: &Path) -> Result<(), FileError> {
+        self.write_copy(path)?;
+        self.path = Some(path.to_owned());
+        Ok(())
+    }
+
+    /// Writes the document to a file without making it the document's location, as autosave
+    /// does. A half-written file never replaces a whole one: it is written beside and renamed.
+    pub fn write_copy(&self, path: &Path) -> Result<(), FileError> {
         let contents = FileContents {
             format: FORMAT.to_owned(),
             state: self.state.clone(),
             views: self.views.clone(),
         };
         let text = serde_json::to_string_pretty(&contents).map_err(|e| FileError(e.to_string()))?;
-        std::fs::write(path, text).map_err(|e| FileError(e.to_string()))?;
-        self.path = Some(path.to_owned());
-        Ok(())
+        let mut partial = path.as_os_str().to_owned();
+        partial.push(".partial");
+        let partial = std::path::PathBuf::from(partial);
+        std::fs::write(&partial, text).map_err(|e| FileError(e.to_string()))?;
+        std::fs::rename(&partial, path).map_err(|e| FileError(e.to_string()))
+    }
+
+    /// Sets or forgets the file the document saves to, as when a recovered copy is opened on
+    /// behalf of the file it was made from.
+    pub fn set_path(&mut self, path: Option<std::path::PathBuf>) {
+        self.path = path;
     }
 
     /// Reads a document from a file. The undo history starts empty.
@@ -630,6 +646,22 @@ mod tests {
         let opened = Document::open(&path).unwrap();
         assert_eq!(opened.state(), doc.state());
         assert_eq!(opened.path(), Some(path.as_path()));
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn a_copy_is_written_whole_without_becoming_the_location() {
+        let folder = std::env::temp_dir().join(format!("curva-copy-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let mut doc = Document::default();
+        doc.add(line(5.0));
+        let copy = folder.join("copy.curva");
+        doc.write_copy(&copy).unwrap();
+        // Written twice, the second replaces the first; no partial file is left beside it.
+        doc.write_copy(&copy).unwrap();
+        assert_eq!(doc.path(), None);
+        assert_eq!(Document::open(&copy).unwrap().state(), doc.state());
+        assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 1);
         std::fs::remove_dir_all(&folder).unwrap();
     }
 

@@ -7,6 +7,8 @@
 //! `curva --orbit-benchmark --curves 5000` opens the window on a scene of that many circles, spins
 //! the view and prints how fast it drew and snapped. `--solids 500` adds that many cylinders.
 
+mod recovery;
+
 use curva_commands::{DisplayMode, Kind, Message, Processor, Translations, ViewName, ViewRequest};
 use curva_document::{Document, Grip, Shape, State};
 use curva_kernel::{Curve, Point};
@@ -103,6 +105,11 @@ struct Curva {
     measured: Option<(u64, curva_kernel::Body, (&'static str, &'static str, f64))>,
     drawn: Option<(State, Vec<u64>)>,
     benchmark: Option<Benchmark>,
+    /// Keeps a recovery copy of the model; off for benchmarks.
+    autosave: Option<recovery::Autosave>,
+    /// A recovery file left by a Curva that did not close normally, waiting for the user to
+    /// restore or discard it.
+    left_behind: Option<std::path::PathBuf>,
 }
 
 /// Finds left-button clicks and drags from the raw mouse events.
@@ -419,6 +426,12 @@ impl Curva {
             state.renderer.write().callback_resources.insert(renderer);
         }
         let mut doc = Document::default();
+        // Benchmarks neither autosave nor offer recovery.
+        let folder = recovery::folder().filter(|_| benchmark.is_none());
+        let left_behind = folder.as_deref().and_then(recovery::left_behind);
+        let autosave = folder
+            .as_deref()
+            .map(|folder| recovery::Autosave::new(folder, &doc, std::time::Instant::now()));
         let mut panes = standard_panes();
         if let Some(scene) = benchmark
             && benchmark_scene(&mut doc, scene).is_ok()
@@ -457,6 +470,8 @@ impl Curva {
             measured: None,
             drawn: None,
             benchmark: benchmark.map(|_| Benchmark::default()),
+            autosave,
+            left_behind,
         }
     }
 
@@ -1350,6 +1365,49 @@ impl Curva {
         }
     }
 
+    /// Offers back the model a Curva that did not close normally left behind.
+    fn recovery_window(&mut self, ui: &mut egui::Ui) {
+        let Some(file) = self.left_behind.clone() else {
+            return;
+        };
+        let (mut restore, mut discard) = (false, false);
+        egui::Window::new(self.text.render(&Message::new("ui.recovery")))
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ui.ctx(), |ui| {
+                ui.label(self.text.render(&Message::new("ui.recovery.question")));
+                ui.horizontal(|ui| {
+                    restore = ui
+                        .button(self.text.render(&Message::new("ui.recovery.restore")))
+                        .clicked();
+                    discard = ui
+                        .button(self.text.render(&Message::new("ui.recovery.discard")))
+                        .clicked();
+                });
+            });
+        if restore {
+            self.left_behind = None;
+            match recovery::restore(&file) {
+                Ok(doc) => {
+                    self.doc = doc;
+                    self.drawn = None;
+                    let line = self.text.render(&Message::new("done.recovered"));
+                    self.processor.note(line);
+                }
+                Err(error) => {
+                    let line = self
+                        .text
+                        .render(&Message::with("error.recovery", vec![error]));
+                    self.processor.note(line);
+                }
+            }
+        } else if discard {
+            self.left_behind = None;
+            recovery::discard(&file);
+        }
+    }
+
     /// Tells the document which plane flat objects go on: the last-used viewport's.
     fn share_work_plane(&mut self) {
         let plane = self.panes[self.active].plane;
@@ -1749,6 +1807,13 @@ fn egui_wgpu_callback(rect: egui::Rect, drawing: Drawing) -> egui::Shape {
 }
 
 impl eframe::App for Curva {
+    /// A normal close: the recovery copy is no longer needed.
+    fn on_exit(&mut self) {
+        if let Some(autosave) = &self.autosave {
+            autosave.finish();
+        }
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.share_work_plane();
         egui::Panel::bottom("command line").show(ui, |ui| self.command_line(ui));
@@ -1760,6 +1825,10 @@ impl eframe::App for Curva {
         self.keep_agent_link(ui.ctx());
         self.serve_agents();
         self.approval_window(ui);
+        self.recovery_window(ui);
+        if let Some(autosave) = &mut self.autosave {
+            autosave.tick(&self.doc, std::time::Instant::now());
+        }
         self.apply_view_request();
         egui::CentralPanel::default().show(ui, |ui| self.viewports(ui));
         if let Some(benchmark) = &mut self.benchmark {
