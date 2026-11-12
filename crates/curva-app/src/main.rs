@@ -11,6 +11,7 @@ mod icons;
 mod layout;
 mod recovery;
 mod theme;
+mod updates;
 
 use curva_commands::{DisplayMode, Kind, Message, Processor, Translations, ViewName, ViewRequest};
 use curva_document::{Document, Grip, Shape, State};
@@ -158,6 +159,8 @@ const SPECIALIZATIONS: [&str; 4] = [
 const DIAL_WIDTH: f32 = 440.0;
 /// The height of the top bar, in points.
 const TOP_BAR_HEIGHT: f32 = 72.0;
+/// How long the command bar's opening lines glow, in seconds.
+const NOTICE_GLOW: f32 = 2.0;
 /// Views kept for each viewport's `UndoView`.
 const MOST_VIEWS_KEPT: usize = 50;
 /// How fast Ctrl + right-drag zooms, per pixel dragged.
@@ -243,6 +246,14 @@ struct Curva {
     faces_without: (Vec<u64>, Arc<Vec<MeshVertex>>),
     /// Objects copied with Ctrl+C or Ctrl+X, with their layers, for Ctrl+V.
     clipboard: Vec<(Shape, Option<u64>)>,
+    /// The command bar's own lines: an update on offer, the welcome.
+    notices: Vec<Notice>,
+    /// The answer of the check for updates, while it is under way.
+    update_check: Option<std::sync::mpsc::Receiver<Option<updates::Release>>>,
+    /// A newer release on offer.
+    update: Option<updates::Release>,
+    /// The update being downloaded.
+    update_download: Option<std::sync::mpsc::Receiver<Result<std::path::PathBuf, String>>>,
     /// Snap points held by resting on them, which send out guidelines, as Rhino's SmartTrack.
     held: Vec<Point>,
     /// The snap point the pointer rests on, since when, and whether resting there has acted.
@@ -765,6 +776,10 @@ impl Curva {
             held_aim: None,
             faces_without: (Vec::new(), Arc::default()),
             clipboard: Vec::new(),
+            notices: Vec::new(),
+            update_check: None,
+            update: None,
+            update_download: None,
             held: Vec::new(),
             resting: None,
             ghosted: (Vec::new(), Arc::new(Vec::new())),
@@ -948,6 +963,7 @@ impl Curva {
     }
 
     fn command_line(&mut self, ui: &mut egui::Ui) {
+        self.notices(ui);
         for row in log_rows(self.processor.log()) {
             ui.add(egui::Label::new(row).truncate());
         }
@@ -3252,6 +3268,145 @@ impl Curva {
         self.agent_status(ui);
     }
 
+    /// What happens once Curva has opened: the model given on the command line opens, the check
+    /// for updates starts in the background, and the command bar says what an update brought and
+    /// welcomes the user.
+    fn opened(mut self, ctx: &egui::Context, file: Option<&std::path::Path>) -> Self {
+        if let Some(path) = file
+            && let Ok(doc) = Document::open(path)
+        {
+            self.doc = doc;
+        }
+        if self.benchmark.is_some() {
+            return self;
+        }
+        if let Some(version) = updates::just_updated() {
+            let (a, b, c) = version;
+            let text = format!("{a}.{b}.{c}");
+            let line = self
+                .text
+                .render(&Message::with("ui.update.done", vec![text.clone()]));
+            self.notices.push(Notice::new(
+                line,
+                NoticeAction::Open(format!("{}{text}", updates::NOTES)),
+            ));
+        }
+        let welcome = self.text.render(&Message::new("ui.welcome"));
+        self.notices.push(Notice::new(welcome, NoticeAction::None));
+        if self.settings.check_updates {
+            let (sender, receiver) = std::sync::mpsc::channel();
+            let repaint = ctx.clone();
+            std::thread::spawn(move || {
+                let _ = sender.send(updates::check());
+                repaint.request_repaint();
+            });
+            self.update_check = Some(receiver);
+        }
+        self
+    }
+
+    /// The command bar's own lines above the command history: an update on offer, what an update
+    /// brought, and the welcome. They glow softly in the accent for their first two seconds.
+    fn notices(&mut self, ui: &mut egui::Ui) {
+        self.receive_update(ui.ctx());
+        let now = ui.input(|input| input.time);
+        let mut clicked = None;
+        for (index, notice) in self.notices.iter_mut().enumerate() {
+            let born = *notice.born.get_or_insert(now);
+            let age = (now - born) as f32;
+            let glow = (1.0 - age / NOTICE_GLOW).clamp(0.0, 1.0);
+            if glow > 0.0 {
+                ui.ctx().request_repaint();
+            }
+            let colour = lerp_colour(theme::current().text, theme::ACCENT, glow);
+            let text = egui::RichText::new(&notice.text).color(colour);
+            match notice.action {
+                NoticeAction::None => {
+                    ui.label(text);
+                }
+                NoticeAction::Update | NoticeAction::Open(_) => {
+                    if ui.link(text).clicked() {
+                        clicked = Some(index);
+                    }
+                }
+            }
+        }
+        if let Some(index) = clicked {
+            match self.notices[index].action.clone() {
+                NoticeAction::Update => self.start_update(ui.ctx()),
+                NoticeAction::Open(url) => open_link(&url),
+                NoticeAction::None => {}
+            }
+        }
+    }
+
+    /// Takes the answer of the check for updates, and the download, when they come.
+    fn receive_update(&mut self, ctx: &egui::Context) {
+        if let Some(receiver) = &self.update_check
+            && let Ok(found) = receiver.try_recv()
+        {
+            self.update_check = None;
+            if let Some(release) = found {
+                let line = self.text.render(&Message::with(
+                    "ui.update.available",
+                    vec![release.version_text()],
+                ));
+                // The update line comes first, before the welcome.
+                self.notices
+                    .insert(0, Notice::new(line, NoticeAction::Update));
+                self.update = Some(release);
+            }
+        }
+        if let Some(receiver) = &self.update_download
+            && let Ok(result) = receiver.try_recv()
+        {
+            self.update_download = None;
+            let version = self
+                .update
+                .as_ref()
+                .map(updates::Release::version_text)
+                .unwrap_or_default();
+            match result
+                .and_then(|file| updates::install(&file, &version, self.doc.path()).map(|()| file))
+            {
+                Ok(_) => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+                Err(error) => {
+                    let line = self
+                        .text
+                        .render(&Message::with("ui.update.failed", vec![error]));
+                    self.notices
+                        .insert(0, Notice::new(line, NoticeAction::None));
+                }
+            }
+        }
+    }
+
+    /// Downloads the update in the background, saving the model first if it has a file.
+    fn start_update(&mut self, ctx: &egui::Context) {
+        let Some(release) = self.update.clone() else {
+            return;
+        };
+        if self.update_download.is_some() {
+            return;
+        }
+        if let Some(path) = self.doc.path().map(std::path::Path::to_path_buf) {
+            let _ = self.doc.save(&path);
+        }
+        let line = self.text.render(&Message::with(
+            "ui.update.downloading",
+            vec![release.version_text()],
+        ));
+        self.notices
+            .insert(0, Notice::new(line, NoticeAction::None));
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let repaint = ctx.clone();
+        std::thread::spawn(move || {
+            let _ = sender.send(updates::download(&release));
+            repaint.request_repaint();
+        });
+        self.update_download = Some(receiver);
+    }
+
     /// Agent access, and whether an agent is talking to Curva.
     fn agent_status(&mut self, ui: &mut egui::Ui) {
         ui.checkbox(
@@ -4028,6 +4183,11 @@ fn main() -> Result<(), String> {
         let script = value("--run").map_or("", String::as_str);
         return picture(path, script);
     }
+    // A model given on the command line opens, as after an update.
+    let file = arguments
+        .iter()
+        .find(|argument| argument.to_lowercase().ends_with(".curva"))
+        .map(std::path::PathBuf::from);
     let benchmark = arguments
         .iter()
         .any(|argument| argument == "--orbit-benchmark")
@@ -4061,7 +4221,10 @@ fn main() -> Result<(), String> {
             },
             ..eframe::NativeOptions::default()
         },
-        Box::new(move |context| Ok(Box::new(Curva::new(context, benchmark)))),
+        Box::new(move |context| {
+            let app = Curva::new(context, benchmark).opened(&context.egui_ctx, file.as_deref());
+            Ok(Box::new(app))
+        }),
     )
     .map_err(|error| error.to_string())
 }
@@ -4220,6 +4383,60 @@ fn tab_slot(tabs: &[egui::Rect], x: f32) -> usize {
     tabs.iter()
         .position(|tab| x < tab.center().x)
         .unwrap_or(tabs.len().saturating_sub(1))
+}
+
+/// What clicking one of the command bar's own lines does.
+#[derive(Clone, Debug, PartialEq)]
+enum NoticeAction {
+    /// Nothing; it is only said.
+    None,
+    /// Download and install the update on offer.
+    Update,
+    /// Open a page in the browser.
+    Open(String),
+}
+
+/// One of the command bar's own lines, above the command history.
+#[derive(Clone, Debug)]
+struct Notice {
+    text: String,
+    action: NoticeAction,
+    /// When it was first shown, for its glow.
+    born: Option<f64>,
+}
+
+impl Notice {
+    fn new(text: String, action: NoticeAction) -> Self {
+        Self {
+            text,
+            action,
+            born: None,
+        }
+    }
+}
+
+/// `from` moved towards `to` by `amount` (0 to 1).
+fn lerp_colour(from: egui::Color32, to: egui::Color32, amount: f32) -> egui::Color32 {
+    let mix = |a: u8, b: u8| (f32::from(a) + (f32::from(b) - f32::from(a)) * amount).round() as u8;
+    egui::Color32::from_rgb(
+        mix(from.r(), to.r()),
+        mix(from.g(), to.g()),
+        mix(from.b(), to.b()),
+    )
+}
+
+/// Opens a page in the system's browser.
+fn open_link(url: &str) {
+    let result = if cfg!(target_os = "windows") {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", url])
+            .spawn()
+    } else if cfg!(target_os = "macos") {
+        std::process::Command::new("open").arg(url).spawn()
+    } else {
+        std::process::Command::new("xdg-open").arg(url).spawn()
+    };
+    let _ = result;
 }
 
 /// A command button: its icon, with its name on hover, or its name where it has no icon yet.
