@@ -1,6 +1,6 @@
 # Spec: the command framework
 
-**Status:** Draft for the owner's approval · 12 November 2026. First in the order of work (decision 0016).
+**Status:** Approved by the owner in chat · 12 November 2026. First in the order of work (decision 0016).
 **Covers:** feedback items 4, 6, 7, 19, 20, 22 and 23 (`docs/specs/feedback-2026-11-12.md`).
 
 ## Why

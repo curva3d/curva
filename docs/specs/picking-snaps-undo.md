@@ -1,6 +1,6 @@
 # Spec: picking, snaps, undo and navigation
 
-**Status:** Draft for the owner's approval · 12 November 2026. Second in the order of work (decision 0016).
+**Status:** Approved by the owner in chat · 12 November 2026. Second in the order of work (decision 0016).
 **Covers:** feedback items 1, 8, 9, 17 and 18 (`docs/specs/feedback-2026-11-12.md`).
 
 ## 1. Clicking a surface or solid selects it (item 1)

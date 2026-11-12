@@ -1,6 +1,6 @@
 # Spec: a gumball like Rhino's
 
-**Status:** Draft for the owner's approval · 12 November 2026. Fourth in the order of work (decision 0016).
+**Status:** Approved by the owner in chat · 12 November 2026. Fourth in the order of work (decision 0016).
 **Covers:** feedback items 2 and 3 (`docs/specs/feedback-2026-11-12.md`). Replaces the handles of
 `m1-gumball.md`; how the gumball follows the selection and the construction plane stays as it is.
 

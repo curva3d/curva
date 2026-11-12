@@ -15,6 +15,7 @@ only the owner makes. These were asked and answered before any work started.
 | Font | **Inter** (SIL Open Font Licence), as a free lookalike of the Claude app's interface, with Claude-style greys |
 | Bringing commands up to Rhino | **Audit every command against Rhino first**, in a reference table kept in the repo, then move commands onto the framework tab by tab, adding the missing steps and options as each moves |
 | Light or dark | **Follow the system** at start, with Light or Dark forced from Settings. The 3D background and grid change with it |
+| Glass or solid (asked for when approving the specs) | **Every panel and interface element frosted glass** by default, with Frosted glass or Solid chosen in Settings; both follow light or dark. The glass must stay light on the machine: one shared low-resolution blur per frame, reused while nothing behind changes, at most 1 ms a frame more on the benchmark scene |
 
 **Also taken from the feedback as stated (no choice needed):** selection by clicking anywhere on a surface or
 solid; snaps only to what is visible; sticky snaps with guidelines as in Rhino and ArchiCAD; a Rhino-style

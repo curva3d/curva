@@ -1,6 +1,6 @@
 # Spec: the panel system: titles, hiding, tabs, merging and a placement grid
 
-**Status:** Draft for the owner's approval · 12 November 2026. Part of the look and layout work, third in
+**Status:** Approved by the owner in chat · 12 November 2026. Part of the look and layout work, third in
 the order of work (decision 0016), done before that spec's other steps since they build on it.
 **Covers:** feedback items 27 to 31 (`docs/specs/feedback-2026-11-12.md`). Extends the floating panels
 (`ui-floating-panels.md`) and the layout model (`crates/curva-app/src/layout.rs`).
@@ -43,8 +43,8 @@ which panel it is in and whether it shows are the layout's, and are remembered b
   it is let go, on an edge or on the grid (§5). For example, pulling Properties out of that panel leaves
   Layers and Command together.
 - Dropping near a window edge docks the panel there, as now, and the place it would take lights up.
-- A panel's look follows what it holds. The frosted glass belongs to the Command piece, so a panel shows
-  glass while Command is its active tab and the solid look otherwise.
+- Every panel has the same look, frosted glass or solid, as chosen in Settings
+  (`ui-look-and-layout.md` §1); it does not depend on which pieces a panel holds.
 - **Reset layout** puts every piece back in its standard panel and place.
 
 ## 5. A soft placement grid (item 31)

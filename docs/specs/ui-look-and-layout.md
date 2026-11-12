@@ -1,6 +1,6 @@
 # Spec: the look and layout, second round
 
-**Status:** Draft for the owner's approval · 12 November 2026. Third in the order of work (decision 0016), after the
+**Status:** Approved by the owner in chat · 12 November 2026. Third in the order of work (decision 0016), after the
 panel system (`panel-system.md`), which it builds on.
 **Covers:** feedback items 5, 10, 11, 12, 13, 14, 15, 16, 21, 23 (pointers), 24 and 25
 (`docs/specs/feedback-2026-11-12.md`). It builds on the floating panels (`ui-floating-panels.md`).
@@ -22,12 +22,24 @@ panel system (`panel-system.md`), which it builds on.
   points, previews, sticky snaps, the active tab, ticked toggles, focused fields and highlighted list rows.
 - **Inter** for the interface (decision 0016), bundled with its SIL Open Font Licence in `licenses/fonts/`.
   The command history keeps a monospace font, so typed values line up.
+- **Frosted glass or solid,** for every panel and interface element at once, chosen in Settings. Frosted
+  glass is the default (the owner, 12 November 2026). Both follow the light or dark theme: a light or
+  dark tint over the blur, or the theme's solid panel colour.
+- **The glass stays light on the machine** (the owner asked for this explicitly):
+  - **One blur per frame, shared by every panel:** the viewports' picture is blurred once, at a quarter
+    of the window's resolution, and each panel draws its own part of it. The cost does not grow with
+    the number of panels.
+  - **No blurring when nothing behind has changed.** With the model, camera and window as they were,
+    last frame's blur is reused, so an idle window or a typed command costs nothing extra.
+  - **Measured limits:** orbiting the benchmark scene (5,000 circles, 500 solids) with every panel
+    shown costs at most 1 ms a frame more than solid panels on the RTX 3060, at the window's full
+    resolution. On a software graphics adapter the blur is off and glass shows as its tint alone.
 
 ## 2. A compact command bar and more air (items 10, 11)
 
 - **The command bar** sits centred at the bottom, at most 720 points wide (narrower in a small window). It
   holds the history, the prompt and typed line, and under them the snaps, Ortho, Grid snap, Gumball and the
-  selection filter when shown. It stays frosted glass.
+  selection filter when shown.
 - **The agent connection** moves to its own small panel at the bottom right (decision 0016): Agent access
   and the status. It is a panel like the others: dockable, hidden in focus mode, and in the layout file.
 - **Space between panels and from the window's edges** triples, from 8 to 24 points.
@@ -47,7 +59,7 @@ panel system (`panel-system.md`), which it builds on.
 A first tab, **File** (decision 0016), before Curves: New, Open, Save, Save As, Import, Export, Settings and
 About, with Ctrl+N, Ctrl+O, Ctrl+S and Ctrl+Shift+S. Import and Export show but stay disabled, saying "Rhino
 files (.3dm) come later in Milestone 2", until there is a format to offer. **Settings** opens a small window:
-theme (System, Light, Dark), units (§7), and grid shown or not. **About** gives the version, the licence
+theme (System, Light, Dark), panels (Frosted glass, Solid), units (§7), and grid shown or not. **About** gives the version, the licence
 and the credits from `ATTRIBUTION.md`.
 
 ## 5. Icons on the command buttons (item 21)
