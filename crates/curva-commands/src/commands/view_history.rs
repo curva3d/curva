@@ -1,6 +1,6 @@
 //! `UndoView` and `RedoView`, as in Rhino: step back and forward through the last-used
 //! viewport's recent views. Camera moves are kept apart from the model's undo, so Ctrl+Z never
-//! moves the camera; these are on Alt+Z and Alt+Shift+Z.
+//! moves the camera; these are on Home and End, as in Rhino, and on Alt+Z and Alt+Shift+Z.
 
 use crate::{Answer, Command, Step, ViewRequest};
 use curva_document::Document;

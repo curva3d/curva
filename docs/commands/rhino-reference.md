@@ -147,8 +147,8 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | Right | none | none | none | partly |
 | Perspective | none | none | none | partly |
 | 4View | none | none | none | partly |
-| UndoView | none (Alt+Z in Curva) | none | none | partly |
-| RedoView | none (Alt+Shift+Z in Curva) | none | none | partly |
+| UndoView | none (Home or Alt+Z in Curva) | none | none | partly |
+| RedoView | none (End or Alt+Shift+Z in Curva) | none | none | partly |
 | CPlane | New origin, or an option | `All` `Curve` `Elevation` `Gumball` `Object` `Rotate` `Surface` `Through` `View` `World` `3Point` `Undo` `Redo` | `World` | partly |
 | Zoom | Drag a window (the default), or an option | `Window` `All` `Extents` `Selected` `1to1` `Dynamic` `Factor` `In` `Out` `Target` | `Extents` `Selected` `In` `Out` `Target` | partly |
 | ZoomExtents | none | none | none | partly |
