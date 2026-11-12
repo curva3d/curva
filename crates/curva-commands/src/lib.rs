@@ -183,6 +183,8 @@ pub enum DisplayMode {
     Wireframe,
     /// Surfaces and solids filled in and lit, with their edges on top.
     Shaded,
+    /// Surfaces and solids see-through at half strength, so edges behind them show.
+    Ghosted,
 }
 
 /// What a preview can follow while a command waits for its next answer.

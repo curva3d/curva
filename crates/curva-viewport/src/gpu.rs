@@ -38,6 +38,28 @@ struct Out {
     return vec4<f32>(input.colour * (0.25 + 0.5 * facing + 0.2 * above), 1.0);
 }";
 
+/// As [`FACE_SHADER`], but see-through at half strength, for the Ghosted display mode.
+const GHOST_FACE_SHADER: &str = "
+struct Uniforms { matrix: mat4x4<f32>, light: vec4<f32> };
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+struct Out {
+    @builtin(position) position: vec4<f32>,
+    @location(0) normal: vec3<f32>,
+    @location(1) colour: vec3<f32>,
+};
+@vertex fn vertex_main(
+    @location(0) p: vec3<f32>, @location(1) n: vec3<f32>, @location(2) c: vec3<f32>,
+) -> Out {
+    return Out(uniforms.matrix * vec4<f32>(p, 1.0), n, c);
+}
+@fragment fn fragment_main(input: Out) -> @location(0) vec4<f32> {
+    let n = normalize(input.normal);
+    let facing = abs(dot(n, uniforms.light.xyz));
+    let above = abs(n.z);
+    // Alpha 0.5: a ghosted face covers half of what is behind it.
+    return vec4<f32>(input.colour * (0.25 + 0.5 * facing + 0.2 * above), 0.5);
+}";
+
 /// The depth buffer's format, which the window must be opened with.
 pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
 /// Bits of depth to ask the window for, matching [`DEPTH_FORMAT`].
@@ -140,12 +162,14 @@ struct ViewSlot {
     /// Kept per view, as shaded and wireframe views draw edges in different colours.
     scene: Option<Uploaded<Vertex>>,
     shaded: bool,
+    ghosted: bool,
 }
 
 /// The graphics card's side of the viewport.
 pub struct LineRenderer {
     lines: wgpu::RenderPipeline,
     faces: wgpu::RenderPipeline,
+    ghost_faces: wgpu::RenderPipeline,
     slots: Vec<ViewSlot>,
     surfaces: Option<Uploaded<MeshVertex>>,
     overlay: Option<Uploaded<Vertex>>,
@@ -158,6 +182,8 @@ struct PipelineParts<'a> {
     attributes: &'a [wgpu::VertexAttribute],
     topology: wgpu::PrimitiveTopology,
     bias: wgpu::DepthBiasState,
+    /// See-through: blended over what is already drawn, and not hiding what comes after.
+    see_through: bool,
 }
 
 fn pipeline(
@@ -189,7 +215,9 @@ fn pipeline(
             compilation_options: wgpu::PipelineCompilationOptions::default(),
             targets: &[Some(wgpu::ColorTargetState {
                 format,
-                blend: None,
+                blend: parts
+                    .see_through
+                    .then_some(wgpu::BlendState::ALPHA_BLENDING),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
         }),
@@ -199,7 +227,7 @@ fn pipeline(
         },
         depth_stencil: Some(wgpu::DepthStencilState {
             format: DEPTH_FORMAT,
-            depth_write_enabled: Some(true),
+            depth_write_enabled: Some(!parts.see_through),
             depth_compare: Some(wgpu::CompareFunction::LessEqual),
             stencil: wgpu::StencilState::default(),
             bias: parts.bias,
@@ -250,6 +278,7 @@ impl LineRenderer {
                     grid: None,
                     scene: None,
                     shaded: false,
+                    ghosted: false,
                 }
             })
             .collect();
@@ -269,8 +298,12 @@ impl LineRenderer {
                 attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3],
                 topology: wgpu::PrimitiveTopology::LineList,
                 bias: wgpu::DepthBiasState::default(),
+                see_through: false,
             },
         );
+        let face_attributes = wgpu::vertex_attr_array![
+            0 => Float32x3, 1 => Float32x3, 2 => Float32x3
+        ];
         let faces = pipeline(
             device,
             format,
@@ -279,16 +312,30 @@ impl LineRenderer {
                 label: "curva faces",
                 shader: FACE_SHADER,
                 stride: FACE_VERTEX_SIZE,
-                attributes: &wgpu::vertex_attr_array![
-                    0 => Float32x3, 1 => Float32x3, 2 => Float32x3
-                ],
+                attributes: &face_attributes,
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 bias: FACE_DEPTH_BIAS,
+                see_through: false,
+            },
+        );
+        let ghost_faces = pipeline(
+            device,
+            format,
+            &pipeline_layout,
+            &PipelineParts {
+                label: "curva ghosted faces",
+                shader: GHOST_FACE_SHADER,
+                stride: FACE_VERTEX_SIZE,
+                attributes: &face_attributes,
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                bias: FACE_DEPTH_BIAS,
+                see_through: true,
             },
         );
         Self {
             lines,
             faces,
+            ghost_faces,
             slots,
             surfaces: None,
             overlay: None,
@@ -306,6 +353,7 @@ impl LineRenderer {
             &uniform_bytes(&drawing.matrix, drawing.light),
         );
         slot.shaded = drawing.shaded;
+        slot.ghosted = drawing.ghosted;
         if stale(&slot.grid, &drawing.grid) {
             slot.grid = Some(upload(
                 device,
@@ -350,23 +398,39 @@ impl LineRenderer {
             return;
         };
         pass.set_bind_group(0, &slot.bind_group, &[]);
+        let faces = self.surfaces.as_ref().filter(|faces| faces.count > 0);
+        let draw_faces =
+            |pass: &mut wgpu::RenderPass<'_>, pipeline, faces: &Uploaded<MeshVertex>| {
+                pass.set_pipeline(pipeline);
+                pass.set_vertex_buffer(0, faces.buffer.slice(..));
+                pass.draw(0..faces.count, 0..1);
+            };
+        // Solid faces go first and hide the lines behind them.
         if slot.shaded
-            && let Some(faces) = &self.surfaces
-            && faces.count > 0
+            && !slot.ghosted
+            && let Some(faces) = faces
         {
-            pass.set_pipeline(&self.faces);
-            pass.set_vertex_buffer(0, faces.buffer.slice(..));
-            pass.draw(0..faces.count, 0..1);
+            draw_faces(pass, &self.faces, faces);
         }
         pass.set_pipeline(&self.lines);
-        for lines in [&slot.grid, &slot.scene, &self.overlay]
-            .into_iter()
-            .flatten()
-        {
+        for lines in [&slot.grid, &slot.scene].into_iter().flatten() {
             if lines.count > 0 {
                 pass.set_vertex_buffer(0, lines.buffer.slice(..));
                 pass.draw(0..lines.count, 0..1);
             }
+        }
+        // Ghosted faces go over the lines, so lines behind a face show through it, dimmed,
+        // while lines on its near side stay in front.
+        if slot.shaded
+            && slot.ghosted
+            && let Some(faces) = faces
+        {
+            draw_faces(pass, &self.ghost_faces, faces);
+        }
+        if let Some(overlay) = self.overlay.as_ref().filter(|lines| lines.count > 0) {
+            pass.set_pipeline(&self.lines);
+            pass.set_vertex_buffer(0, overlay.buffer.slice(..));
+            pass.draw(0..overlay.count, 0..1);
         }
     }
 }
@@ -389,6 +453,8 @@ pub struct Drawing {
     pub light: [f32; 3],
     /// Whether this view shows faces shaded, rather than only lines.
     pub shaded: bool,
+    /// Whether shaded faces are see-through, for the Ghosted display mode.
+    pub ghosted: bool,
 }
 
 impl egui_wgpu::CallbackTrait for Drawing {
@@ -428,6 +494,8 @@ pub struct Picture {
     pub matrix: [[f32; 4]; 4],
     /// The direction the camera looks.
     pub light: [f32; 3],
+    /// Whether faces are see-through, as in the Ghosted display mode.
+    pub ghosted: bool,
 }
 
 /// Draws a picture into a PNG file without opening a window, so results can be checked by eye.
@@ -484,6 +552,7 @@ pub fn save_picture(
         matrix: picture.matrix,
         light: picture.light,
         shaded,
+        ghosted: picture.ghosted,
     };
     renderer.update(&device, &queue, &drawing);
     let row = (width * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
@@ -553,4 +622,79 @@ pub fn save_picture(
     writer
         .write_image_data(&pixels)
         .map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Picture, save_picture};
+    use crate::{MeshVertex, Vertex};
+
+    const SIZE: [u32; 2] = [64, 64];
+
+    /// The brightest red value along the middle few rows at the centre column, or `None` when
+    /// this machine has no graphics adapter to draw with.
+    fn centre_brightness(ghosted: bool) -> Option<u8> {
+        // Drawn straight in clip space: a grey face across the middle at depth 0.5, and a
+        // white line behind it at depth 0.8.
+        let corner = |x: f32, y: f32| MeshVertex {
+            position: [x, y, 0.5],
+            normal: [0.0, 0.0, 1.0],
+            colour: [0.3, 0.3, 0.3],
+        };
+        let faces = vec![corner(-0.9, -0.9), corner(0.9, -0.9), corner(0.0, 0.9)];
+        let lines = (-2..=2)
+            .flat_map(|step| {
+                let y = step as f32 * 0.01;
+                [
+                    Vertex {
+                        position: [-0.5, y, 0.8],
+                        colour: [1.0; 3],
+                    },
+                    Vertex {
+                        position: [0.5, y, 0.8],
+                        colour: [1.0; 3],
+                    },
+                ]
+            })
+            .collect();
+        let identity = [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ];
+        let picture = Picture {
+            lines,
+            faces,
+            matrix: identity,
+            light: [0.0, 0.0, 1.0],
+            ghosted,
+        };
+        let path = std::env::temp_dir().join(format!(
+            "curva-ghost-test-{ghosted}-{}.png",
+            std::process::id()
+        ));
+        if let Err(error) = save_picture(picture, SIZE, &path) {
+            eprintln!("no graphics adapter to draw with, so not checked: {error}");
+            return None;
+        }
+        let decoder = png::Decoder::new(std::io::BufReader::new(std::fs::File::open(&path).ok()?));
+        let mut reader = decoder.read_info().ok()?;
+        let mut pixels = vec![0; reader.output_buffer_size()?];
+        reader.next_frame(&mut pixels).ok()?;
+        let _ = std::fs::remove_file(&path);
+        let (width, middle) = (SIZE[0] as usize, SIZE[1] as usize / 2);
+        (middle - 3..=middle + 3)
+            .map(|row| pixels[(row * width + width / 2) * 4])
+            .max()
+    }
+
+    #[test]
+    fn a_line_behind_a_face_shows_through_only_when_ghosted() {
+        let (Some(shaded), Some(ghosted)) = (centre_brightness(false), centre_brightness(true))
+        else {
+            return;
+        };
+        assert!(ghosted > shaded + 40, "shaded {shaded}, ghosted {ghosted}");
+    }
 }

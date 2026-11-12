@@ -1,4 +1,4 @@
-//! `SetDisplayMode`: draws the last-used viewport in wireframe or shaded, as in Rhino.
+//! `SetDisplayMode`: draws the last-used viewport in wireframe, shaded or ghosted, as in Rhino.
 
 use super::unexpected;
 use crate::{Answer, Command, DisplayMode, Kind, Request, Step, ViewRequest};
@@ -6,6 +6,7 @@ use curva_document::Document;
 
 const WIREFRAME: &str = "Wireframe";
 const SHADED: &str = "Shaded";
+const GHOSTED: &str = "Ghosted";
 
 /// The running command.
 #[derive(Default)]
@@ -13,17 +14,19 @@ pub struct SetDisplayMode;
 
 impl Command for SetDisplayMode {
     fn step(&mut self, _doc: &mut Document, answer: Option<Answer>) -> Step {
-        match answer {
-            None => Step::Ask(Request {
-                options: vec![WIREFRAME, SHADED],
-                ..Request::new("prompt.setdisplaymode.mode", Kind::Choice)
-            }),
-            Some(Answer::Option(WIREFRAME)) => {
-                Step::View(ViewRequest::Display(DisplayMode::Wireframe))
+        let mode = match answer {
+            None => {
+                return Step::Ask(Request {
+                    options: vec![WIREFRAME, SHADED, GHOSTED],
+                    ..Request::new("prompt.setdisplaymode.mode", Kind::Choice)
+                });
             }
-            Some(Answer::Option(SHADED)) => Step::View(ViewRequest::Display(DisplayMode::Shaded)),
-            Some(_) => unexpected(),
-        }
+            Some(Answer::Option(WIREFRAME)) => DisplayMode::Wireframe,
+            Some(Answer::Option(SHADED)) => DisplayMode::Shaded,
+            Some(Answer::Option(GHOSTED)) => DisplayMode::Ghosted,
+            Some(_) => return unexpected(),
+        };
+        Step::View(ViewRequest::Display(mode))
     }
 }
 
@@ -43,5 +46,15 @@ mod tests {
             Some(ViewRequest::Display(DisplayMode::Shaded))
         );
         run(&mut doc, &["setdisplaymode", "Wireframe"]);
+    }
+
+    #[test]
+    fn ghosted_is_a_choice() {
+        let mut doc = Document::default();
+        let mut processor = run(&mut doc, &["setdisplaymode", "g"]);
+        assert_eq!(
+            processor.take_view_request(),
+            Some(ViewRequest::Display(DisplayMode::Ghosted))
+        );
     }
 }

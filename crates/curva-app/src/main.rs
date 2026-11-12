@@ -217,8 +217,8 @@ struct Pane {
     gestures: LeftGestures,
     /// The saved view it shows, whose name becomes its title.
     named: Option<String>,
-    /// Whether surfaces and solids are filled in and lit, rather than drawn by their edges.
-    shaded: bool,
+    /// How it draws surfaces and solids: by their edges, filled in and lit, or see-through.
+    display: DisplayMode,
 }
 
 impl Pane {
@@ -236,7 +236,11 @@ impl Pane {
             gestures: LeftGestures::default(),
             named: None,
             // As in Rhino, the perspective view starts shaded and the flat views in wireframe.
-            shaded: view == StandardView::Perspective,
+            display: if view == StandardView::Perspective {
+                DisplayMode::Shaded
+            } else {
+                DisplayMode::Wireframe
+            },
         }
     }
 }
@@ -1282,7 +1286,8 @@ impl Curva {
         // Earlier requests may have changed the view, and a picture shows what the window does.
         self.apply_view_request();
         let camera = self.panes[self.active].camera;
-        let draw = move |doc: &Document| picture_from(doc, &camera);
+        let ghosted = self.panes[self.active].display == DisplayMode::Ghosted;
+        let draw = move |doc: &Document| picture_from(doc, &camera, ghosted);
         let answer =
             Session::new(&mut self.doc, &mut self.processor, &draw).handle(&request.message);
         self.apply_view_request();
@@ -1428,13 +1433,11 @@ impl Curva {
                 pane.set_plane(pane.view.plane());
             }
             ViewRequest::Show(name) => {
-                let shaded = self.panes[self.active].shaded;
+                let display = self.panes[self.active].display;
                 self.panes[self.active] = Pane::new(standard_view(name));
-                self.panes[self.active].shaded = shaded;
+                self.panes[self.active].display = display;
             }
-            ViewRequest::Display(mode) => {
-                self.panes[self.active].shaded = mode == DisplayMode::Shaded;
-            }
+            ViewRequest::Display(mode) => self.panes[self.active].display = mode,
             ViewRequest::ShowSelectionFilter => self.filter_row = !self.filter_row,
             ViewRequest::ToggleSelectionFilter => self.pick_filter.on = !self.pick_filter.on,
         }
@@ -1636,8 +1639,9 @@ impl Curva {
             for (mode, key) in [
                 (DisplayMode::Wireframe, "ui.display.wireframe"),
                 (DisplayMode::Shaded, "ui.display.shaded"),
+                (DisplayMode::Ghosted, "ui.display.ghosted"),
             ] {
-                let current = self.panes[pane].shaded == (mode == DisplayMode::Shaded);
+                let current = self.panes[pane].display == mode;
                 if ui
                     .selectable_label(current, self.text.render(&Message::new(key)))
                     .clicked()
@@ -1647,7 +1651,7 @@ impl Curva {
             }
         });
         if let Some(mode) = chosen {
-            self.panes[pane].shaded = mode == DisplayMode::Shaded;
+            self.panes[pane].display = mode;
             self.active = pane;
         }
     }
@@ -1698,10 +1702,12 @@ impl Curva {
         for (pane, rect, _) in &shown {
             let size = pane_size(*rect);
             let camera = &self.panes[*pane].camera;
+            let display = self.panes[*pane].display;
             let drawing = Drawing {
                 slot: *pane,
                 grid: Arc::clone(&self.panes[*pane].grid),
-                scene: Arc::clone(if self.panes[*pane].shaded {
+                // Dark edges suit solid faces; ghosted views keep the light wireframe edges.
+                scene: Arc::clone(if display == DisplayMode::Shaded {
                     &self.shaded_scene
                 } else {
                     &self.scene
@@ -1710,7 +1716,8 @@ impl Curva {
                 overlay: Arc::clone(&overlay),
                 matrix: camera.matrix(size[0] / size[1]),
                 light: camera.forward().map(|value| value as f32),
-                shaded: self.panes[*pane].shaded,
+                shaded: display != DisplayMode::Wireframe,
+                ghosted: display == DisplayMode::Ghosted,
             };
             ui.painter().add(egui_wgpu_callback(*rect, drawing));
             self.paint_frame(ui, *pane, *rect);
@@ -1782,12 +1789,18 @@ impl eframe::App for Curva {
     }
 }
 
-/// What a picture of the model shows: everything, shaded, seen by `camera`.
-fn picture_of(doc: &Document, outlines: &Outlines, camera: &Camera, aspect: f64) -> Picture {
+/// What a picture of the model shows: everything, shaded or `ghosted`, seen by `camera`.
+fn picture_of(
+    doc: &Document,
+    outlines: &Outlines,
+    camera: &Camera,
+    aspect: f64,
+    ghosted: bool,
+) -> Picture {
     let selection = doc.selection();
     let faces = face_vertices(outlines, &selection);
     Picture {
-        lines: if faces.is_empty() {
+        lines: if faces.is_empty() || ghosted {
             scene_lines(outlines, &selection)
         } else {
             shaded_scene_lines(outlines, &selection)
@@ -1795,6 +1808,7 @@ fn picture_of(doc: &Document, outlines: &Outlines, camera: &Camera, aspect: f64)
         faces,
         matrix: camera.matrix(aspect),
         light: camera.forward().map(|value| value as f32),
+        ghosted,
     }
 }
 
@@ -1805,16 +1819,16 @@ fn mcp_picture(doc: &Document) -> Result<Vec<u8>, String> {
     if let Some((low, high)) = outlines.bounds() {
         camera.frame(low, high);
     }
-    picture_from(doc, &camera)
+    picture_from(doc, &camera, false)
 }
 
 /// A picture of the model seen by `camera`, as the bytes of a PNG file.
-fn picture_from(doc: &Document, camera: &Camera) -> Result<Vec<u8>, String> {
+fn picture_from(doc: &Document, camera: &Camera, ghosted: bool) -> Result<Vec<u8>, String> {
     let outlines = Outlines::of(doc.state());
     let aspect = f64::from(PICTURE_SIZE[0]) / f64::from(PICTURE_SIZE[1]);
     let path = std::env::temp_dir().join(format!("curva-mcp-{}.png", std::process::id()));
     save_picture(
-        picture_of(doc, &outlines, camera, aspect),
+        picture_of(doc, &outlines, camera, aspect, ghosted),
         PICTURE_SIZE,
         &path,
     )?;
@@ -1828,8 +1842,15 @@ fn picture_from(doc: &Document, camera: &Camera) -> Result<Vec<u8>, String> {
 fn picture(path: &str, script: &str) -> Result<(), String> {
     let mut doc = Document::default();
     let mut processor = Processor::default();
+    // A `SetDisplayMode Ghosted` in the script makes the picture ghosted.
+    let mut ghosted = false;
     for line in script.split(';') {
         processor.submit(&mut doc, line);
+        while let Some(request) = processor.take_view_request() {
+            if let ViewRequest::Display(mode) = request {
+                ghosted = mode == DisplayMode::Ghosted;
+            }
+        }
     }
     let outlines = Outlines::of(doc.state());
     let mut camera = Camera::default();
@@ -1838,7 +1859,7 @@ fn picture(path: &str, script: &str) -> Result<(), String> {
     }
     let aspect = f64::from(PICTURE_SIZE[0]) / f64::from(PICTURE_SIZE[1]);
     save_picture(
-        picture_of(&doc, &outlines, &camera, aspect),
+        picture_of(&doc, &outlines, &camera, aspect, ghosted),
         PICTURE_SIZE,
         std::path::Path::new(path),
     )?;
