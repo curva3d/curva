@@ -439,7 +439,7 @@ checksum = "f27ae1dd37df86211c42e150270f82743308803d90a6f6e6651cd730d5e1732f"
 
 [[package]]
 name = "curva-app"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "curva-commands",
  "curva-document",
@@ -456,7 +456,7 @@ dependencies = [
 
 [[package]]
 name = "curva-commands"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "curva-document",
  "curva-kernel",
@@ -464,7 +464,7 @@ dependencies = [
 
 [[package]]
 name = "curva-document"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "curva-kernel",
  "serde",
@@ -474,7 +474,7 @@ dependencies = [
 
 [[package]]
 name = "curva-kernel"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -486,7 +486,7 @@ dependencies = [
 
 [[package]]
 name = "curva-mcp"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "curva-commands",
  "curva-document",
@@ -496,11 +496,11 @@ dependencies = [
 
 [[package]]
 name = "curva-placeholder"
-version = "0.3.0"
+version = "0.4.0"
 
 [[package]]
 name = "curva-viewport"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "curva-document",
  "curva-kernel",
@@ -1235,7 +1235,7 @@ dependencies = [
 
 [[package]]
 name = "kernel-eval"
-version = "0.3.0"
+version = "0.4.0"
 
 [[package]]
 name = "khronos-egl"
