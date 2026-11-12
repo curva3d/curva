@@ -5,6 +5,9 @@ prompt.polyline.start = Start of polyline
 prompt.polyline.next = Next point
 prompt.interpcrv.start = First point of curve
 prompt.interpcrv.next = Next point
+prompt.curve.start = Start of curve (Degree={0})
+prompt.curve.next = Next point (Degree={0})
+prompt.curve.degree = Degree <{0}>
 prompt.circle.centre = Center of circle
 prompt.circle.radius = Radius
 prompt.move.objects = Select objects to move, then press Enter
@@ -19,6 +22,7 @@ prompt.open.path = File to open
 done.line = Created a line.
 done.polyline = Created a polyline with {0} points.
 done.interpcrv = Created a curve through {0} points.
+done.curve = Created a control-point curve with {0} points.
 done.circle = Created a circle.
 done.move = Moved {0} objects.
 done.copy = Copied {0} objects.
@@ -62,6 +66,9 @@ prompt.rotate.second = Second reference point
 prompt.scale.objects = Select objects to scale, then press Enter
 prompt.scale.origin = Origin point
 prompt.scale.factor = Scale factor or first reference point
+prompt.scalenu.x = Scale factor along X <1> (Copy={0})
+prompt.scalenu.y = Scale factor along Y <1> (Copy={0})
+prompt.scalenu.z = Scale factor along Z <1> (Copy={0})
 prompt.scale.second = Second reference point
 prompt.mirror.objects = Select objects to mirror, then press Enter
 prompt.mirror.start = Start of mirror line
@@ -161,6 +168,9 @@ prompt.length.objects = Select curves to measure, then press Enter
 done.length = Length: {0}
 prompt.area.objects = Select closed curves to measure, then press Enter
 done.area = Area: {0}
+prompt.volume.objects = Select closed solids to measure, then press Enter
+done.volume = Volume: {0} mm³
+done.volumes = Volumes: {0} mm³. Total: {1} mm³
 prompt.setpt.objects = Select objects to line up, then press Enter
 prompt.setpt.point = Point to line up on ({0})
 done.setpt = Lined up {0} objects.
@@ -312,3 +322,5 @@ prompt.shell.faces = Click the faces to open, then press Enter
 prompt.shell.thickness = Wall thickness <{0}>
 done.shell = Shelled the solid.
 error.pick_faces = Click faces in the viewport, then press Enter.
+error.bad_degree = The degree must be a whole number from 1 to 11.
+error.volume_needs_solids = Volume measures closed solids only; an open surface was chosen.

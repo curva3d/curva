@@ -249,10 +249,43 @@ impl Body {
         }
     }
 
+    /// The body stretched by `factor` along the direction `axis`, about `origin`, as Rhino's
+    /// Scale1D and ScaleNU do. Round faces become NURBS, as an uneven scale needs. The result
+    /// keeps its new shape as made, with no placement.
+    pub fn stretched(&self, origin: Point, axis: Point, factor: f64) -> Result<Self, KernelError> {
+        let a = crate::unit(axis)
+            .ok_or_else(|| KernelError("the direction to scale along has no length".to_owned()))?;
+        // A = I + (f − 1)·a·aᵀ stretches along `a` only; it is symmetric, so rows and columns
+        // agree, and the translation keeps `origin` where it is: t = o − o·A.
+        let k = factor - 1.0;
+        let m: [[f64; 3]; 3] = std::array::from_fn(|i| {
+            std::array::from_fn(|j| f64::from(u8::from(i == j)) + k * a[i] * a[j])
+        });
+        let moved: Point =
+            std::array::from_fn(|j| origin[j] - (0..3).map(|i| origin[i] * m[i][j]).sum::<f64>());
+        let matrix = [
+            [m[0][0], m[0][1], m[0][2], 0.0],
+            [m[1][0], m[1][1], m[1][2], 0.0],
+            [m[2][0], m[2][1], m[2][2], 0.0],
+            [moved[0], moved[1], moved[2], 1.0],
+        ];
+        let body = self.engine()?;
+        body.transform(&matrix)
+            .map_err(|e| failed("scaling a body unevenly", e))?;
+        Self::from_engine(&body)
+    }
+
     /// Whether it closes in a volume, as a solid does, rather than being an open surface.
     #[must_use]
     pub fn is_solid(&self) -> bool {
-        self.volume().is_ok_and(|volume| volume > 0.0)
+        // Closed means every edge is shared by two faces (a seam counts twice on its own face),
+        // which is quick to read; measuring the volume is the fallback.
+        match self.record() {
+            Ok(record) => {
+                !record.faces.is_empty() && record.edges.iter().all(|edge| edge.uses.len() >= 2)
+            }
+            Err(_) => self.volume().is_ok_and(|volume| volume > 0.0),
+        }
     }
 
     /// The enclosed volume; zero for an open surface. Worked out on the faces as made, then
@@ -390,6 +423,27 @@ mod tests {
 
     fn close(a: f64, b: f64) -> bool {
         (a - b).abs() <= 1e-6 * b.abs().max(1.0)
+    }
+
+    #[test]
+    fn stretching_a_box_unevenly_multiplies_its_volume() {
+        let cube = Body::cuboid([1.0, 2.0, 3.0], [1.0, 1.0, 1.0]).unwrap();
+        let wide = cube.stretched([0.0; 3], [1.0, 0.0, 0.0], 2.0).unwrap();
+        let tall = wide.stretched([0.0; 3], [0.0, 0.0, 1.0], 3.0).unwrap();
+        assert!(
+            close(tall.volume().unwrap(), 6.0),
+            "{}",
+            tall.volume().unwrap()
+        );
+    }
+
+    #[test]
+    fn stretching_a_cylinder_makes_an_elliptic_one() {
+        let ring = crate::Curve::circle([0.0; 3], 1.0).unwrap();
+        let cylinder = Body::extruded(&[ring], [0.0, 0.0, 1.0], 1.0, true).unwrap();
+        let oval = cylinder.stretched([0.0; 3], [1.0, 0.0, 0.0], 2.0).unwrap();
+        let expected = 2.0 * std::f64::consts::PI;
+        assert!((oval.volume().unwrap() - expected).abs() < 1e-4 * expected);
     }
 
     #[test]
