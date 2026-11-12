@@ -37,7 +37,7 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | Helix | partly | |
 | Spiral | partly | |
 | Conic | missing | |
-| Parabola | missing | |
+| Parabola | partly | |
 | Hyperbola | missing | |
 | Slot | partly | |
 | TweenCurves | partly | |
@@ -70,10 +70,10 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | Split | partly | |
 | Extend | missing | |
 | Rebuild | partly | |
-| ChangeDegree | missing | |
+| ChangeDegree | partly | |
 | InsertKnot | partly | |
 | RemoveKnot | partly | |
-| InsertControlPoint | missing | |
+| InsertControlPoint | partly | |
 | RemoveControlPoint | partly | |
 | PointsOn | partly | |
 | PointsOff | partly | |
@@ -135,7 +135,7 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | Tube | partly | |
 | Pyramid | missing | |
 | Ellipsoid | partly | |
-| Paraboloid | missing | |
+| Paraboloid | partly | |
 | ExtrudeSrf | partly | |
 | Cap | blocked | the engine leaves capped solids hollow (tangency-labs/solidcore#3266) |
 | BooleanUnion | partly | |
@@ -170,7 +170,7 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | ArrayPolar | partly | |
 | ArrayCrv | partly | |
 | ArrayLinear | done | |
-| Align | missing | |
+| Align | partly | |
 | Distribute | missing | |
 | Shear | blocked | needs shear transforms in the engine |
 | Twist | blocked | needs deformations |
@@ -227,8 +227,8 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | EvaluatePt | done | |
 | What | done | |
 | BoundingBox | partly | |
-| AreaCentroid | missing | |
-| VolumeCentroid | missing | |
+| AreaCentroid | partly | |
+| VolumeCentroid | done | |
 | CurvatureGraph | blocked | needs curvature from the engine |
 | Zebra | blocked | needs analysis display |
 | ShowEdges | missing | |

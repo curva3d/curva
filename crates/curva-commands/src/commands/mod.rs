@@ -51,6 +51,7 @@ mod orient;
 mod orient3pt;
 mod parity;
 mod parity2;
+mod parity3;
 mod perspective;
 mod pipe;
 mod planar_srf;
@@ -156,7 +157,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 133] = [
+pub static COMMANDS: [CommandDef; 139] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -299,6 +300,12 @@ pub static COMMANDS: [CommandDef; 133] = [
     recipe!("Ellipsoid", [], true, parity2::Ellipsoid),
     recipe!("BooleanSplit", [], true, parity2::BooleanSplit),
     recipe!("DupEdge", [], true, parity2::DupEdge),
+    recipe!("Parabola", [], true, parity3::Parabola),
+    recipe!("Paraboloid", [], true, parity3::Paraboloid),
+    recipe!("Align", [], true, parity3::Align),
+    recipe!("ChangeDegree", [], true, parity3::ChangeDegree),
+    recipe!("AreaCentroid", [], true, parity3::AreaCentroid),
+    recipe!("VolumeCentroid", [], true, parity3::VolumeCentroid),
     recipe!("ExtrudeCrv", [], true, extrude_crv::ExtrudeCrv),
     recipe!("PlanarSrf", [], true, planar_srf::PlanarSrf),
     recipe!("Revolve", [], true, revolve::Revolve),
@@ -574,7 +581,9 @@ mod tests {
 
     /// For each command that changes geometry, the typed steps that reach its live preview.
     /// A new command must be added here, which is how the preview rule in AGENTS.md is enforced.
-    const PREVIEW_STEPS: [(&str, &[&str]); 48] = [
+    const PREVIEW_STEPS: [(&str, &[&str]); 50] = [
+        ("Parabola", &["0,0"]),
+        ("Paraboloid", &["0,0"]),
         ("Points", &[]),
         ("Lines", &["0,0"]),
         ("Slot", &["0,0"]),
@@ -648,7 +657,11 @@ mod tests {
     ];
 
     /// Commands whose preview needs its own setup, tested in their own files.
-    const PREVIEW_TESTED_ELSEWHERE: [&str; 21] = [
+    const PREVIEW_TESTED_ELSEWHERE: [&str; 25] = [
+        "Align",
+        "ChangeDegree",
+        "AreaCentroid",
+        "VolumeCentroid",
         "BooleanSplit",
         "DupEdge",
         "ExtrudeSrf",
@@ -1116,6 +1129,7 @@ mod tests {
                 "Chamfer",
                 "Cylinder",
                 "Cone",
+                "ChangeDegree",
                 "ChamferEdge",
                 "CPlane",
                 "Curve"

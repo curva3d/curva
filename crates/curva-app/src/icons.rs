@@ -1162,6 +1162,34 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
             pen.line_in((15.5, 4.0), (15.5, 13.0), pen.accent());
             pen.line_in((19.0, 2.0), (19.0, 11.0), pen.accent());
         }
+        "parabola" => {
+            pen.quad((3.0, 3.0), (11.0, 30.0), (19.0, 3.0));
+            pen.dot(11.0, 16.5);
+            pen.dot(11.0, 11.0);
+        }
+        "paraboloid" => {
+            pen.ellipse((3.0, 3.0, 16.0, 5.0));
+            pen.quad((3.0, 5.5), (11.0, 30.0), (19.0, 5.5));
+        }
+        "align" => {
+            pen.line_in((3.0, 19.0), (19.0, 19.0), pen.accent());
+            pen.rect(4.0, 11.0, 5.0, 8.0);
+            pen.rect(12.0, 6.0, 6.0, 13.0);
+        }
+        "changedegree" => {
+            pen.cubic((3.0, 17.0), (7.0, 3.0), (15.0, 3.0), (19.0, 17.0));
+            pen.line_in((14.0, 15.0), (18.0, 15.0), pen.accent());
+            pen.line_in((14.0, 18.5), (18.0, 18.5), pen.accent());
+        }
+        "areacentroid" | "volumecentroid" => {
+            if name.eq_ignore_ascii_case("volumecentroid") {
+                pen.cube(4.0, 4.0, 10.0);
+            } else {
+                pen.path(&[(3.0, 15.0), (8.0, 6.0), (19.0, 6.0), (14.0, 15.0)], true);
+            }
+            pen.line_in((9.0, 12.0), (13.0, 12.0), pen.accent());
+            pen.line_in((11.0, 10.0), (11.0, 14.0), pen.accent());
+        }
         _ => return false,
     }
     true

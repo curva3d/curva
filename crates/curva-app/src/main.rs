@@ -105,6 +105,7 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "Slot",
             "Helix",
             "Spiral",
+            "Parabola",
             "Point",
             "Points",
             "Lines",
@@ -139,6 +140,7 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "Torus",
             "Tube",
             "Ellipsoid",
+            "Paraboloid",
             "Pipe",
             "FilletEdge",
             "ChamferEdge",
@@ -164,6 +166,7 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "Mirror",
             "Array",
             "ArrayLinear",
+            "Align",
         ],
     ),
     (
@@ -178,6 +181,8 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "EvaluatePt",
             "What",
             "BoundingBox",
+            "AreaCentroid",
+            "VolumeCentroid",
         ],
     ),
     (
