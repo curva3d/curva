@@ -94,7 +94,7 @@
 
 **Released 0.2.0** (12 November 2026, the owner asked for it): Milestone 1 complete and the floating panels.
 
-**Second round of interface work** (the owner's feedback on 0.2.0, `docs/specs/feedback-2026-11-12.md`; choices in decision 0016). Order: the command framework (`docs/specs/command-framework.md`), picking, snaps and undo (`picking-snaps-undo.md`), the look and layout (`ui-look-and-layout.md`), a Rhino-style gumball (`gumball-rhino.md`), then logo variations (`logo-variations.md`). **Specs drafted, waiting for the owner's approval;** nothing built yet.
+**Second round of interface work** (the owner's feedback on 0.2.0, `docs/specs/feedback-2026-11-12.md`; choices in decision 0016). Order: the command framework (`docs/specs/command-framework.md`), picking, snaps and undo (`picking-snaps-undo.md`), the look and layout (`panel-system.md`, then `ui-look-and-layout.md`), a Rhino-style gumball (`gumball-rhino.md`), then logo variations (`logo-variations.md`). **Specs drafted, waiting for the owner's approval;** nothing built yet.
 
 **First release, 0.1.0 (12 November 2026, the owner asked for it):** a preview to show where Curva is. Pushing a tag `v*` runs `.github/workflows/release.yml`, which builds Windows, Linux and macOS (Apple silicon), adds `THIRD-PARTY-LICENSES.html` (made by `cargo-about` from `about.toml` and `about.hbs`) and the notices in `licenses/`, and publishes a GitHub pre-release with the notes in `docs/releases/<tag>.md`. Builds are not signed; on Windows a console window opens beside Curva.
 

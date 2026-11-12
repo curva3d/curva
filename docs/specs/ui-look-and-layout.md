@@ -1,6 +1,7 @@
 # Spec: the look and layout, second round
 
-**Status:** Draft for the owner's approval · 12 November 2026. Third in the order of work (decision 0016).
+**Status:** Draft for the owner's approval · 12 November 2026. Third in the order of work (decision 0016), after the
+panel system (`panel-system.md`), which it builds on.
 **Covers:** feedback items 5, 10, 11, 12, 13, 14, 15, 16, 21, 23 (pointers), 24 and 25
 (`docs/specs/feedback-2026-11-12.md`). It builds on the floating panels (`ui-floating-panels.md`).
 
