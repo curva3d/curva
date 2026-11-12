@@ -82,6 +82,8 @@
 - Selection filter: `SelFilter` shows a row in the status bar, Points · Curves · Surfaces · Solids · Disable; clicking and boxing pick only the kinds ticked. `SelFilterToggle` (or Disable) turns it off and on and keeps the ticks. The `Sel…` commands ignore it, as in Rhino. Whether a body is a closed solid is worked out once, when it is meshed.
 - Ghosted display: a third mode beside Wireframe and Shaded, from `SetDisplayMode` or the viewport title. Faces are drawn at half strength over the lines, so edges behind them show dimmed and edges in front stay sharp. Pictures made with `--picture` are ghosted when the script runs `SetDisplayMode Ghosted`; agent pictures follow the viewport.
 - Autosave: every 5 minutes, if the model changed, a copy goes to `Curva/recovery` in the user's app-data folder (`%LOCALAPPDATA%` on Windows, `~/Library/Application Support` on macOS, `~/.local/share` on Linux), named by process so two Curvas do not clash, with the model's own file noted beside it. A normal close deletes it. At the next start a copy left behind is offered back; restored, it saves to its original file. Saving a file now writes beside it and renames, so a failed save never leaves a half-written file.
+- File format measured (`docs/decisions/0015-curva-file-container.md`): on the test scene, a zip package is as fast as today's JSON (about 25 ms to save or read) and 13 times smaller; redb was slower and larger. **Waiting for the owner to choose**; zip is recommended.
+- Upstream reports drafted in `docs/upstream/` for the two solidcore bugs, both reproduced at the pinned revision with a few lines of code. **Not posted until the owner has seen them.**
 
 **First release, 0.1.0 (12 November 2026, the owner asked for it):** a preview to show where Curva is. Pushing a tag `v*` runs `.github/workflows/release.yml`, which builds Windows, Linux and macOS (Apple silicon), adds `THIRD-PARTY-LICENSES.html` (made by `cargo-about` from `about.toml` and `about.hbs`) and the notices in `licenses/`, and publishes a GitHub pre-release with the notes in `docs/releases/<tag>.md`. Builds are not signed; on Windows a console window opens beside Curva.
 
@@ -104,7 +106,7 @@
 **Known problems / risks**
 - A pipe along a rail with a sharp corner (a polyline) is refused by the engine; Rhino mitres the corner. Smooth rails work.
 - solidcore runs one operation at a time behind a single lock, so meshing many solids gains only about 2.3 times from all cores. Faster opening of large models needs that looked at upstream.
-- solidcore cannot read back its own record of a body that has been turned and then moved (status 1007, "invalid input"). Curva avoids it by keeping each body as made plus one placement (`crates/curva-kernel/src/body.rs`). The bug should be reported upstream with a small reproducible case; booleans on turned bodies may meet it again.
+- solidcore cannot read back its own record of some turned bodies (status 1007): a box away from the origin, turned about z by certain angles (17°, 29°, 37° and others), is refused; at the origin every angle works. Moving is not the cause, as first thought. Curva avoids it by keeping each body as made plus one placement (`crates/curva-kernel/src/body.rs`). The report is drafted in `docs/upstream/solidcore-record-readback.md`, waiting for the owner.
 
 - Serpentine3D's geometry is done by OpenCascade (C++), so its geometric logic cannot be ported
   directly; only commands, prompts, options and interaction flow port. See decision 0003.
