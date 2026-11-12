@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Curva: third-party licences</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 52rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
+  pre { white-space: pre-wrap; background: #f4f4f4; padding: 1rem; font-size: 0.85rem; }
+  li { margin: 0.1rem 0; }
+</style>
+</head>
+<body>
+<h1>Third-party licences</h1>
+<p>Curva is built with the libraries below. Each licence is listed once, with the libraries it covers.
+Credits for Serpentine3D and the bundled fonts are in <code>ATTRIBUTION.md</code> and <code>licenses/</code>.</p>
+<h2>Licences used</h2>
+<ul>
+{{#each overview}}
+  <li><a href="#{{id}}">{{name}}</a> ({{count}})</li>
+{{/each}}
+</ul>
+{{#each licenses}}
+<h2 id="{{id}}">{{name}}</h2>
+<p>Used by:</p>
+<ul>
+{{#each used_by}}
+  <li>{{crate.name}} {{crate.version}}</li>
+{{/each}}
+</ul>
+<pre>{{text}}</pre>
+{{/each}}
+</body>
+</html>

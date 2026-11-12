@@ -33,7 +33,8 @@ Serpentine3D: https://github.com/chisomobanzi/Serpentine3D
 ## solidcore
 
 Curva calls solidcore (Apache-2.0) for its geometry: https://github.com/tangency-labs/solidcore
-Its licence and NOTICE ship with its source at the pinned revision in `Cargo.lock`.
+Its licence and NOTICE ship with its source at the pinned revision in `Cargo.lock`. A copy of the
+NOTICE is in `licenses/solidcore-NOTICE.txt`, and goes with every release build.
 
 ## Fonts bundled by egui
 
