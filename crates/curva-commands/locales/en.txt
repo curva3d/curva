@@ -285,6 +285,7 @@ done.box = Created a box.
 prompt.setdisplaymode.mode = Display mode
 ui.display.wireframe = Wireframe
 ui.display.shaded = Shaded
+ui.display.ghosted = Ghosted
 prompt.extrudecrv.objects = Select curves to extrude, then press Enter
 prompt.extrudecrv.distance = Extrusion distance <{0}> (Solid={1} BothSides={2})
 done.extrudecrv = Extruded {0} curves.
