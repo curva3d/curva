@@ -1,14 +1,29 @@
 name: Release
 
-# Pushing a tag such as v0.1.0 builds Curva for Windows, Linux and macOS and
-# publishes the builds as a GitHub pre-release. Releases are the owner's call
-# (AGENTS.md), so a tag is only pushed once the owner has asked for one.
+# Pushing a tag such as v0.1.1 builds Curva as a Windows installer (.exe), a
+# Linux AppImage and a macOS disk image (.dmg), and publishes them as a GitHub
+# pre-release. Releases are the owner's call (AGENTS.md), so a tag is only
+# pushed once the owner has asked for one.
+#
+# Pull requests that change the packaging build all three as well, without
+# publishing, so the packages are checked before a tag is pushed.
 on:
   push:
     tags: ["v*"]
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - "packaging/**"
+      - "about.toml"
+      - "about.hbs"
 
 permissions:
   contents: read
+
+env:
+  # appimagetool 1.9.1, pinned by checksum.
+  APPIMAGETOOL_URL: https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+  APPIMAGETOOL_SHA256: ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
 
 jobs:
   build:
@@ -19,7 +34,7 @@ jobs:
       matrix:
         include:
           - { os: windows-latest, name: windows-x64, exe: curva-app.exe, out: curva.exe }
-          - { os: ubuntu-latest, name: linux-x64, exe: curva-app, out: curva }
+          - { os: ubuntu-22.04, name: linux-x64, exe: curva-app, out: curva }
           - { os: macos-latest, name: macos-arm64, exe: curva-app, out: curva }
     steps:
       - uses: actions/checkout@v4
@@ -34,28 +49,88 @@ jobs:
       - name: Gather the files
         shell: bash
         run: |
-          dir="curva-${GITHUB_REF_NAME}-${{ matrix.name }}"
-          mkdir -p "$dir/licenses"
-          cp "target/release/${{ matrix.exe }}" "$dir/${{ matrix.out }}"
-          cp README.md LICENSE-APACHE LICENSE-MIT ATTRIBUTION.md "$dir/"
-          cp -r licenses/. "$dir/licenses/"
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+          test -n "$version"
+          stage="$RUNNER_TEMP/stage"
+          mkdir -p "$stage/licenses" dist
+          cp "target/release/${{ matrix.exe }}" "$stage/${{ matrix.out }}"
+          cp README.md LICENSE-APACHE LICENSE-MIT ATTRIBUTION.md "$stage/"
+          cp -r licenses/. "$stage/licenses/"
           cargo about generate --locked -m crates/curva-app/Cargo.toml \
-            about.hbs -o "$dir/THIRD-PARTY-LICENSES.html"
-          echo "DIR=$dir" >> "$GITHUB_ENV"
-      - name: Pack (Windows)
+            about.hbs -o "$stage/THIRD-PARTY-LICENSES.html"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "STAGE=$stage" >> "$GITHUB_ENV"
+
+      - name: Windows installer
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Compress-Archive -Path $env:DIR -DestinationPath "$env:DIR.zip"
-      - name: Pack (Linux and macOS)
-        if: runner.os != 'Windows'
-        run: tar -czf "$DIR.tar.gz" "$DIR"
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { choco install innosetup --no-progress -y }
+          & $iscc /Qp "/DVersion=$env:VERSION" "/DSource=$env:STAGE" "/O$PWD\dist" packaging\windows\curva.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup failed.' }
+      - name: Check the Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dist\*-setup.exe | Select-Object -First 1
+          $target = "$env:RUNNER_TEMP\installed"
+          Start-Process -Wait -FilePath $setup.FullName -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', "/DIR=$target", '/NOICONS'
+          & "$target\curva.exe" --picture "$env:RUNNER_TEMP\check.png" --run 'Box;0,0,0;10,10,0;10'
+          if ($LASTEXITCODE -ne 0) { throw 'The installed Curva did not run.' }
+
+      - name: Linux AppImage
+        if: runner.os == 'Linux'
+        run: |
+          appdir="$RUNNER_TEMP/Curva.AppDir"
+          mkdir -p "$appdir/usr/bin" "$appdir/usr/share/doc/curva"
+          mv "$STAGE/curva" "$appdir/usr/bin/curva"
+          cp -r "$STAGE/." "$appdir/usr/share/doc/curva/"
+          cp packaging/linux/curva.desktop packaging/linux/curva.svg "$appdir/"
+          ln -s usr/bin/curva "$appdir/AppRun"
+          curl -sSL -o "$RUNNER_TEMP/appimagetool" "$APPIMAGETOOL_URL"
+          echo "$APPIMAGETOOL_SHA256  $RUNNER_TEMP/appimagetool" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/appimagetool"
+          ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 "$RUNNER_TEMP/appimagetool" --no-appstream \
+            "$appdir" "dist/curva-v$VERSION-linux-x86_64.AppImage"
+      - name: Check the AppImage
+        if: runner.os == 'Linux'
+        run: |
+          chmod +x dist/*.AppImage
+          cd "$RUNNER_TEMP" && "$GITHUB_WORKSPACE"/dist/*.AppImage --appimage-extract >/dev/null
+          test -x squashfs-root/usr/bin/curva
+          test -f squashfs-root/usr/share/doc/curva/THIRD-PARTY-LICENSES.html
+
+      - name: macOS disk image
+        if: runner.os == 'macOS'
+        run: |
+          app="$RUNNER_TEMP/dmg/Curva.app"
+          mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+          mv "$STAGE/curva" "$app/Contents/MacOS/curva"
+          cp -r "$STAGE/." "$app/Contents/Resources/"
+          sed "s/@VERSION@/$VERSION/g" packaging/macos/Info.plist > "$app/Contents/Info.plist"
+          plutil -lint "$app/Contents/Info.plist"
+          # Not signed with a developer certificate yet; an ad-hoc signature lets it run on Apple silicon.
+          codesign --force --deep --sign - "$app"
+          ln -s /Applications "$RUNNER_TEMP/dmg/Applications"
+          hdiutil create -volname "Curva $VERSION" -srcfolder "$RUNNER_TEMP/dmg" -ov -format UDZO \
+            "dist/curva-v$VERSION-macos-arm64.dmg"
+      - name: Check the disk image
+        if: runner.os == 'macOS'
+        run: |
+          hdiutil attach -nobrowse -mountpoint "$RUNNER_TEMP/mnt" dist/*.dmg
+          codesign --verify --deep "$RUNNER_TEMP/mnt/Curva.app"
+          "$RUNNER_TEMP/mnt/Curva.app/Contents/MacOS/curva" --picture "$RUNNER_TEMP/check.png" --run 'Box;0,0,0;10,10,0;10'
+          hdiutil detach "$RUNNER_TEMP/mnt"
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}
-          path: curva-*.*z*
+          path: dist/*
           if-no-files-found: error
 
   publish:
+    if: startsWith(github.ref, 'refs/tags/')
     needs: build
     runs-on: ubuntu-latest
     permissions:

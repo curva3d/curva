@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Curva
+Comment=Design-oriented 3D modelling
+Exec=curva %F
+Icon=curva
+Terminal=false
+Categories=Graphics;3DGraphics;Engineering;
