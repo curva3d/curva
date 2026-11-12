@@ -9,7 +9,7 @@ for Milestone 2, next to the surface tools and .3dm files.
 
 | Piece | Does, as in Rhino |
 |---|---|
-| `Curve` | A control-point curve: click points, Enter to finish. Options `Degree` (1 to 11, default 3, remembered) and `Close`. As with InterpCrv, Backspace removes the last point and the preview follows the cursor |
+| `Curve` | A control-point curve: click points, Enter to finish. Options `Degree` (1 to 11, default 3, remembered) and `Close`. The preview follows the cursor |
 | `ScaleNU` | Pick a base point, then type a scale factor for X, then Y, then Z, along the construction plane's axes (Enter keeps 1). Option `Copy`. Live preview |
 | `SelSrf`, `SelSolid` | Select every visible, unlocked surface (open) or solid (closed), adding to the selection |
 | Selection filter | A row in the status bar, Points · Curves · Surfaces · Solids, each a checkbox, plus Disable. Clicking and boxing only pick the kinds ticked. `SelFilter` shows or hides the row; `SelFilterToggle` (or Disable) turns the filter off and on without losing the ticks. The `Sel…` commands ignore the filter, as in Rhino |
