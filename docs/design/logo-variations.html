@@ -1,0 +1,204 @@
+<title>Curva Logo Sheet</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap">
+<style>
+  /* Layout: a header, then two direction bands, each a wrapping grid of variant cards. */
+  :root {
+    --bg: #f5f4ef;
+    --surface: #faf9f5;
+    --edge: #e5e3da;
+    --ink: #1f1e1d;
+    --quiet: #6b6a64;
+    --accent: #e0782f;
+    --chip-dark: #262624;
+    --chip-light: #fbfaf6;
+    --display: "Space Grotesk", "Inter", system-ui, sans-serif;
+    --body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1f1f1d; --surface: #2a2a28; --edge: #3d3c38; --ink: #f5f4ef; --quiet: #a6a39b;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1f1f1d; --surface: #2a2a28; --edge: #3d3c38; --ink: #f5f4ef; --quiet: #a6a39b;
+    color-scheme: dark;
+  }
+  body {
+    background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5;
+  }
+  .wrap {
+    max-width: 1180px; margin: 0 auto;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 40px 64px;
+    display: grid; gap: 44px;
+  }
+  header { display: grid; gap: 10px; max-width: 68ch; }
+  h1 { font-family: var(--display); font-weight: 600; font-size: 2rem; margin: 0; text-wrap: balance; }
+  h2 { font-family: var(--display); font-weight: 600; font-size: 1.3rem; margin: 0; }
+  p { margin: 0; color: var(--quiet); }
+  .eyebrow { font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  section { display: grid; gap: 18px; }
+  section > header { gap: 6px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 18px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--edge); border-radius: 14px;
+    padding: 18px; display: grid; gap: 14px; min-width: 0;
+  }
+  .big { width: 100%; max-width: 240px; aspect-ratio: 1; justify-self: center; }
+  .big svg { width: 100%; height: 100%; display: block; }
+  .name { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .name strong { font-family: var(--display); font-weight: 600; font-size: 1.05rem; }
+  .name span { font-size: 0.78rem; color: var(--quiet); font-variant-numeric: tabular-nums; }
+  .note { font-size: 0.86rem; }
+  .sizes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .chip { border-radius: 10px; padding: 10px; display: flex; align-items: center; justify-content: center; gap: 14px; }
+  .chip.dark { background: var(--chip-dark); }
+  .chip.light { background: var(--chip-light); border: 1px solid var(--edge); }
+  .chip svg.s128 { width: 64px; height: 64px; }
+  .chip svg.s32 { width: 32px; height: 32px; }
+  .chip svg.s16 { width: 16px; height: 16px; }
+  .legend { font-size: 0.78rem; color: var(--quiet); }
+  @media (max-width: 420px) { h1 { font-size: 1.6rem; } }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- Shared geometry: a C of radius 78 about (139.4, 128), so with its points it sits centred
+         in the 256 square; its control polygon runs end, left, end. -->
+    <linearGradient id="g-tile-dark" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#383632"/><stop offset="1" stop-color="#1b1a18"/></linearGradient>
+    <linearGradient id="g-tile-orange" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ee9152"/><stop offset="1" stop-color="#c75c18"/></linearGradient>
+    <linearGradient id="g-c-warm" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fdfcf8"/><stop offset="1" stop-color="#d8d3c8"/></linearGradient>
+    <linearGradient id="g-c-ink" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a3835"/><stop offset="1" stop-color="#151413"/></linearGradient>
+    <linearGradient id="g-c-orange" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f3a165"/><stop offset="1" stop-color="#d0631c"/></linearGradient>
+    <radialGradient id="g-point" cx="0.38" cy="0.35" r="0.7"><stop offset="0" stop-color="#f6a46a"/><stop offset="1" stop-color="#c95f1c"/></radialGradient>
+
+    <g id="arc"><path d="M 194.55 72.85 A 78 78 0 1 0 194.55 183.15" fill="none" stroke-linecap="round"/></g>
+    <g id="poly"><polyline points="194.55,72.85 61.4,128 194.55,183.15" fill="none" stroke-linejoin="round"/></g>
+
+    <g id="guides" fill="none">
+      <path d="M32 8V248M64 8V248M96 8V248M128 8V248M160 8V248M192 8V248M224 8V248M8 32H248M8 64H248M8 96H248M8 128H248M8 160H248M8 192H248M8 224H248"/>
+      <circle cx="128" cy="128" r="104"/>
+      <circle cx="128" cy="128" r="64"/>
+      <rect x="40" y="40" width="176" height="176"/>
+      <path d="M8 8L248 248M248 8L8 248"/>
+    </g>
+
+    <!-- Direction 1: Serpentine3D in spirit -->
+    <symbol id="v1" viewBox="0 0 256 256">
+      <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#g-tile-dark)"/>
+      <use href="#poly" stroke="#e0782f" stroke-width="4"/>
+      <use href="#arc" stroke="url(#g-c-warm)" stroke-width="20"/>
+      <g fill="url(#g-point)"><circle cx="194.55" cy="72.85" r="13"/><circle cx="61.4" cy="128" r="13"/><circle cx="194.55" cy="183.15" r="13"/></g>
+    </symbol>
+    <symbol id="v2" viewBox="0 0 256 256">
+      <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#g-tile-orange)"/>
+      <use href="#poly" stroke="#ffffff" stroke-opacity="0.7" stroke-width="4"/>
+      <use href="#arc" stroke="#ffffff" stroke-width="20"/>
+      <g fill="#ffffff"><circle cx="194.55" cy="72.85" r="13"/><circle cx="61.4" cy="128" r="13"/><circle cx="194.55" cy="183.15" r="13"/></g>
+      <g fill="#d96a22"><circle cx="194.55" cy="72.85" r="5"/><circle cx="61.4" cy="128" r="5"/><circle cx="194.55" cy="183.15" r="5"/></g>
+    </symbol>
+    <symbol id="v3" viewBox="0 0 256 256">
+      <rect x="8" y="8" width="240" height="240" rx="52" fill="#262624"/>
+      <use href="#arc" stroke="#0e0d0c" stroke-opacity="0.7" stroke-width="22" transform="translate(4 7)"/>
+      <use href="#poly" stroke="#e0782f" stroke-width="4"/>
+      <use href="#arc" stroke="#f5f4ef" stroke-width="20"/>
+      <g fill="#a54b12"><circle cx="196.55" cy="75.85" r="13"/><circle cx="63.4" cy="131" r="13"/><circle cx="196.55" cy="186.15" r="13"/></g>
+      <g fill="#e0782f"><circle cx="194.55" cy="72.85" r="13"/><circle cx="61.4" cy="128" r="13"/><circle cx="194.55" cy="183.15" r="13"/></g>
+    </symbol>
+    <symbol id="v4" viewBox="0 0 256 256">
+      <rect x="8.5" y="8.5" width="239" height="239" rx="52" fill="#f5f4ef" stroke="#e2dfd5"/>
+      <use href="#poly" stroke="#e0782f" stroke-width="4"/>
+      <use href="#arc" stroke="url(#g-c-ink)" stroke-width="20"/>
+      <g fill="url(#g-point)"><circle cx="194.55" cy="72.85" r="13"/><circle cx="61.4" cy="128" r="13"/><circle cx="194.55" cy="183.15" r="13"/></g>
+    </symbol>
+
+    <!-- Direction 2: construction lines behind a much thicker C -->
+    <symbol id="v5" viewBox="0 0 256 256">
+      <rect x="8" y="8" width="240" height="240" rx="52" fill="#262624"/>
+      <use href="#guides" stroke="#ffffff" stroke-opacity="0.1" stroke-width="1"/>
+      <use href="#poly" stroke="#e0782f" stroke-width="3"/>
+      <use href="#arc" stroke="#f5f4ef" stroke-width="38"/>
+      <g fill="#e0782f"><circle cx="194.55" cy="72.85" r="10"/><circle cx="61.4" cy="128" r="10"/><circle cx="194.55" cy="183.15" r="10"/></g>
+    </symbol>
+    <symbol id="v6" viewBox="0 0 256 256">
+      <rect x="8.5" y="8.5" width="239" height="239" rx="52" fill="#faf9f5" stroke="#e2dfd5"/>
+      <use href="#guides" stroke="#1f1e1d" stroke-opacity="0.12" stroke-width="1"/>
+      <use href="#poly" stroke="#e0782f" stroke-width="3"/>
+      <use href="#arc" stroke="#1f1e1d" stroke-width="38"/>
+      <g fill="#e0782f"><circle cx="194.55" cy="72.85" r="10"/><circle cx="61.4" cy="128" r="10"/><circle cx="194.55" cy="183.15" r="10"/></g>
+    </symbol>
+    <symbol id="v7" viewBox="0 0 256 256">
+      <rect x="8" y="8" width="240" height="240" rx="52" fill="#e0782f"/>
+      <use href="#guides" stroke="#ffffff" stroke-opacity="0.22" stroke-width="1"/>
+      <use href="#poly" stroke="#1f1e1d" stroke-width="3"/>
+      <use href="#arc" stroke="#ffffff" stroke-width="38"/>
+      <g fill="#1f1e1d"><circle cx="194.55" cy="72.85" r="10"/><circle cx="61.4" cy="128" r="10"/><circle cx="194.55" cy="183.15" r="10"/></g>
+    </symbol>
+    <symbol id="v8" viewBox="0 0 256 256">
+      <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#g-tile-dark)"/>
+      <use href="#guides" stroke="#e0782f" stroke-opacity="0.22" stroke-width="1"/>
+      <use href="#poly" stroke="#f5f4ef" stroke-opacity="0.8" stroke-width="3"/>
+      <use href="#arc" stroke="url(#g-c-orange)" stroke-width="38"/>
+      <g fill="#f5f4ef"><circle cx="194.55" cy="72.85" r="10"/><circle cx="61.4" cy="128" r="10"/><circle cx="194.55" cy="183.15" r="10"/></g>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Curva · logo variations</span>
+    <h1>Eight ways to draw the C</h1>
+    <p>Every variant keeps the idea of the current icon: a C drawn as a curve, with its control polygon and
+      three control points. The C is now centred in its square, and the points and polygon are in the accent
+      orange #e0782f. Each is shown large, then at 128 and 32 pixels (and 16, for the tab) on dark and light,
+      to judge how it reads small. Nothing replaces the current icon until one is chosen.</p>
+  </header>
+
+  <section aria-labelledby="d1">
+    <header>
+      <h2 id="d1">1 · In the spirit of Serpentine3D</h2>
+      <p>A confident mark: depth from weight, a gentle gradient or a second tone.</p>
+    </header>
+    <div class="grid" id="grid-1"></div>
+  </section>
+
+  <section aria-labelledby="d2">
+    <header>
+      <h2 id="d2">2 · Construction lines</h2>
+      <p>The guides of an icon template behind (grid, circles, diagonals), and over them a much thicker C.</p>
+    </header>
+    <div class="grid" id="grid-2"></div>
+  </section>
+</div>
+
+<script>
+  const variants = [
+    { id: "v1", dir: 1, name: "Ember", note: "Dark tile shading downwards, a warm white C with a soft gradient, orange points with a highlight." },
+    { id: "v2", dir: 1, name: "Kiln", note: "An orange tile with a white C and white points, each holding an orange centre." },
+    { id: "v3", dir: 1, name: "Depth", note: "A flat dark tile; the C and its points cast a second, darker tone for depth." },
+    { id: "v4", dir: 1, name: "Paper", note: "The light theme's tile, an ink C with a gentle gradient, orange points." },
+    { id: "v5", dir: 2, name: "Blueprint", note: "Faint white guides on dark, a heavy warm white C, small orange points." },
+    { id: "v6", dir: 2, name: "Drafting", note: "Grey guides on the light tile, a heavy ink C, small orange points." },
+    { id: "v7", dir: 2, name: "Signal", note: "An orange tile with white guides and a heavy white C, ink points." },
+    { id: "v8", dir: 2, name: "Wire", note: "Orange guides on dark, a heavy C in an orange gradient, light points." },
+  ];
+  const svg = (id, cls) =>
+    `<svg class="${cls}" viewBox="0 0 256 256" role="img" aria-label="${id}"><use href="#${id}"/></svg>`;
+  for (const v of variants) {
+    const card = document.createElement("article");
+    card.className = "card";
+    card.innerHTML = `
+      <div class="name"><strong>${v.name}</strong><span>${v.dir}${"abcd"[(Number(v.id.slice(1)) - 1) % 4]}</span></div>
+      <div class="big">${svg(v.id, "")}</div>
+      <p class="note">${v.note}</p>
+      <div class="sizes">
+        <div class="chip dark">${svg(v.id, "s128")}${svg(v.id, "s32")}${svg(v.id, "s16")}</div>
+        <div class="chip light">${svg(v.id, "s128")}${svg(v.id, "s32")}${svg(v.id, "s16")}</div>
+      </div>
+      <span class="legend">128 (shown at 64), 32 and 16 pixels, on dark and light</span>`;
+    document.getElementById(`grid-${v.dir}`).appendChild(card);
+  }
+</script>
