@@ -1,6 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
-  <!-- Curva's icon: a C, drawn as an open arc through three yellow control points. -->
+  <!-- Curva's icon: a C, drawn as an open arc, with its control polygon: a thin line through three yellow points. -->
   <rect x="8" y="8" width="240" height="240" rx="48" fill="#2b2f36"/>
+  <polyline points="183.2,72.8 50,128 183.2,183.2" fill="none" stroke="#f2c94c" stroke-width="4" stroke-linejoin="round"/>
   <path d="M 183.2 72.8 A 78 78 0 1 0 183.2 183.2" fill="none" stroke="#e8e8e8" stroke-width="16" stroke-linecap="round"/>
   <circle cx="183.2" cy="72.8" r="14" fill="#f2c94c"/>
   <circle cx="50" cy="128" r="14" fill="#f2c94c"/>
