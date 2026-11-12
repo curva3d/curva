@@ -442,10 +442,23 @@ fn combined_selection<T: PartialEq>(
 
 /// The rows of the log to show, newest last. Always the same number, one line each, so that a
 /// new message never changes the height of the panel and moves the viewport.
+#[cfg(test)]
 fn log_rows(log: &[String]) -> Vec<&str> {
-    let shown = &log[log.len().saturating_sub(LOG_LINES)..];
-    let blanks = std::iter::repeat_n(" ", LOG_LINES - shown.len());
-    blanks.chain(shown.iter().map(String::as_str)).collect()
+    let (blanks, _, shown) = history_rows(log, 0);
+    std::iter::repeat_n(" ", blanks)
+        .chain(shown.iter().map(String::as_str))
+        .collect()
+}
+
+/// How the command bar's rows are shared between its own lines (`notices` of them) and the
+/// history: blank rows first, how many of its own lines to leave out (the oldest), and the history
+/// lines shown. Together they fill [`LOG_LINES`] rows, the oldest going as new ones come.
+fn history_rows(log: &[String], notices: usize) -> (usize, usize, &[String]) {
+    let total = notices + log.len();
+    let skip = total.saturating_sub(LOG_LINES);
+    let blanks = LOG_LINES.saturating_sub(total);
+    let log_skip = skip.saturating_sub(notices);
+    (blanks, skip.min(notices), &log[log_skip.min(log.len())..])
 }
 
 /// Whether a press that moved from one place to another counts as a drag, not a click.
@@ -1047,9 +1060,16 @@ impl Curva {
     }
 
     fn command_line(&mut self, ui: &mut egui::Ui) {
-        self.notices(ui);
-        for row in log_rows(self.processor.log()) {
-            ui.add(egui::Label::new(row).truncate());
+        // The command bar's own lines come first, then the history; together they fill the rows,
+        // the oldest going as new ones come.
+        let log = self.processor.log().to_vec();
+        let (blanks, skip, shown) = history_rows(&log, self.notices.len());
+        for _ in 0..blanks {
+            ui.label(" ");
+        }
+        self.notices(ui, skip);
+        for row in shown {
+            ui.add(egui::Label::new(row.as_str()).truncate());
         }
         let prompt = self
             .processor
@@ -3386,11 +3406,11 @@ impl Curva {
 
     /// The command bar's own lines above the command history: an update on offer, what an update
     /// brought, and the welcome. They glow softly in the accent for their first two seconds.
-    fn notices(&mut self, ui: &mut egui::Ui) {
+    fn notices(&mut self, ui: &mut egui::Ui, skip: usize) {
         self.receive_update(ui.ctx());
         let now = ui.input(|input| input.time);
         let mut clicked = None;
-        for (index, notice) in self.notices.iter_mut().enumerate() {
+        for (index, notice) in self.notices.iter_mut().enumerate().skip(skip) {
             let born = *notice.born.get_or_insert(now);
             let age = (now - born) as f32;
             let glow = (1.0 - age / NOTICE_GLOW).clamp(0.0, 1.0);
