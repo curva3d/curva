@@ -402,3 +402,6 @@ ui.units.scale = Scale the model
 ui.units.keep = Keep the numbers
 ui.units.cancel = Cancel
 ui.about.licence = Free and open source, under the MIT or Apache 2.0 licence. Credits:
+ui.gumball.distance = Distance
+ui.gumball.angle = Angle in degrees
+ui.gumball.factor = Scale factor

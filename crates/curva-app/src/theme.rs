@@ -19,6 +19,8 @@ pub struct Theme {
     pub dark: bool,
     /// Behind everything.
     pub window: Color32,
+    /// The 3D view's colour at the bottom, which it shades to from `window` at the top.
+    pub window_low: Color32,
     /// A solid panel.
     pub panel: Color32,
     /// The tint laid over the blur on a glass panel.
@@ -41,6 +43,7 @@ pub struct Theme {
 pub const DARK: Theme = Theme {
     dark: true,
     window: Color32::from_rgb(0x26, 0x26, 0x24),
+    window_low: Color32::from_rgb(0x1f, 0x1f, 0x1d),
     panel: Color32::from_rgb(0x30, 0x30, 0x2e),
     glass: Color32::from_rgba_premultiplied(0x2a, 0x2a, 0x28, 0xd8),
     panel_edge: Color32::from_rgb(0x45, 0x44, 0x3f),
@@ -55,6 +58,7 @@ pub const DARK: Theme = Theme {
 pub const LIGHT: Theme = Theme {
     dark: false,
     window: Color32::from_rgb(0xf5, 0xf4, 0xef),
+    window_low: Color32::from_rgb(0xec, 0xeb, 0xe5),
     panel: Color32::from_rgb(0xfa, 0xf9, 0xf5),
     glass: Color32::from_rgba_premultiplied(0xe9, 0xe8, 0xe4, 0xe6),
     panel_edge: Color32::from_rgb(0xe5, 0xe3, 0xda),

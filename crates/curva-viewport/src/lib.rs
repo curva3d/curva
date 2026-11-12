@@ -12,7 +12,7 @@ use curva_kernel::{Curve, Point};
 pub use camera::{CPlane, Camera, StandardView};
 pub use glass::Glass;
 pub use gpu::{DEPTH_BITS, Drawing, LineRenderer, Picture, VIEW_SLOTS, save_picture};
-pub use gumball::{Gumball, GumballChange, Handle};
+pub use gumball::{Amount, Gumball, GumballChange, Handle};
 pub use snap::{Guides, SnapHit, SnapKind, SnapSet, constrained};
 
 const GRID_HALF_SIZE: i32 = 100;

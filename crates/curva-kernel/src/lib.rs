@@ -543,6 +543,19 @@ impl Similarity {
         self.rows.map(|row| dot(row, v))
     }
 
+    /// How much it resizes: 1 for a turn or a mirror.
+    #[must_use]
+    pub fn factor(&self) -> f64 {
+        self.scale
+    }
+
+    /// How far it turns, in radians from 0 to π, read from its rotation.
+    #[must_use]
+    pub fn angle(&self) -> f64 {
+        let trace = self.rows[0][0] + self.rows[1][1] + self.rows[2][2];
+        ((trace - 1.0) / 2.0).clamp(-1.0, 1.0).acos()
+    }
+
     /// Where a point goes.
     #[must_use]
     pub fn point(&self, p: Point) -> Point {

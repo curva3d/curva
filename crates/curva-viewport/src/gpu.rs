@@ -177,6 +177,117 @@ pub struct LineRenderer {
     preview_faces: Option<Uploaded<MeshVertex>>,
     /// Draws the viewports through a texture, which glass panels blur.
     pub(crate) compositor: crate::glass::Compositor,
+    /// The shaded background behind each viewport.
+    background: Background,
+}
+
+/// The background: a quad over the whole viewport, shading from one colour at the top to
+/// another at the bottom, drawn behind everything.
+const BACKGROUND_SHADER: &str = "
+struct Shaded { @builtin(position) position: vec4<f32>, @location(0) colour: vec3<f32> };
+@vertex fn vertex_main(@location(0) at: vec2<f32>, @location(1) colour: vec3<f32>) -> Shaded {
+    var out: Shaded;
+    out.position = vec4<f32>(at, 1.0, 1.0);
+    out.colour = colour;
+    return out;
+}
+@fragment fn fragment_main(input: Shaded) -> @location(0) vec4<f32> {
+    return vec4<f32>(input.colour, 1.0);
+}
+";
+
+/// Bytes per background corner: a position on screen and a colour.
+const BACKGROUND_VERTEX_SIZE: u64 = 5 * 4;
+
+/// The program and the corners that draw the background.
+struct Background {
+    pipeline: wgpu::RenderPipeline,
+    corners: wgpu::Buffer,
+}
+
+impl Background {
+    fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
+        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("curva background"),
+            source: wgpu::ShaderSource::Wgsl(BACKGROUND_SHADER.into()),
+        });
+        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("curva background"),
+            bind_group_layouts: &[],
+            immediate_size: 0,
+        });
+        let attributes = wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x3];
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("curva background"),
+            layout: Some(&layout),
+            vertex: wgpu::VertexState {
+                module: &module,
+                entry_point: Some("vertex_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                buffers: &[Some(wgpu::VertexBufferLayout {
+                    array_stride: BACKGROUND_VERTEX_SIZE,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &attributes,
+                })],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &module,
+                entry_point: Some("fragment_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            // Behind everything, and hiding nothing.
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: Some(false),
+                depth_compare: Some(wgpu::CompareFunction::Always),
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+        let corners = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("curva background corners"),
+            size: 6 * BACKGROUND_VERTEX_SIZE,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        Self { pipeline, corners }
+    }
+
+    /// Sets the colours at the top and the bottom.
+    fn set(&self, queue: &wgpu::Queue, top: epaint::Color32, bottom: epaint::Color32) {
+        let colour = |c: epaint::Color32| [c.r(), c.g(), c.b()].map(|v| f32::from(v) / 255.0);
+        let (high, low) = (colour(top), colour(bottom));
+        let corner = |x: f32, y: f32| {
+            let c = if y > 0.0 { high } else { low };
+            [x, y, c[0], c[1], c[2]]
+        };
+        let corners: Vec<f32> = [
+            corner(-1.0, -1.0),
+            corner(1.0, -1.0),
+            corner(1.0, 1.0),
+            corner(-1.0, -1.0),
+            corner(1.0, 1.0),
+            corner(-1.0, 1.0),
+        ]
+        .concat();
+        let bytes: Vec<u8> = corners.iter().flat_map(|v| v.to_le_bytes()).collect();
+        queue.write_buffer(&self.corners, 0, &bytes);
+    }
+
+    fn draw(&self, pass: &mut wgpu::RenderPass<'_>) {
+        pass.set_pipeline(&self.pipeline);
+        pass.set_vertex_buffer(0, self.corners.slice(..));
+        pass.draw(0..6, 0..1);
+    }
 }
 
 struct PipelineParts<'a> {
@@ -336,10 +447,12 @@ impl LineRenderer {
                 see_through: true,
             },
         );
+        let background = Background::new(device, format);
         Self {
             lines,
             faces,
             ghost_faces,
+            background,
             slots,
             surfaces: None,
             overlay: None,
@@ -488,6 +601,9 @@ pub struct Drawing {
     pub frame: u64,
     /// Behind the model.
     pub background: epaint::Color32,
+    /// The 3D background's colour at the bottom, which it shades to from `background` at the
+    /// top.
+    pub background_low: epaint::Color32,
 }
 
 impl egui_wgpu::CallbackTrait for Drawing {
@@ -503,6 +619,9 @@ impl egui_wgpu::CallbackTrait for Drawing {
             return Vec::new();
         };
         renderer.update(device, queue, self);
+        renderer
+            .background
+            .set(queue, self.background, self.background_low);
         // Drawn into the scene texture now, and copied to the screen when egui paints.
         let size = screen.size_in_pixels;
         let target = renderer.compositor.target(device, size);
@@ -558,6 +677,7 @@ impl egui_wgpu::CallbackTrait for Drawing {
             (high.x - low.x) as u32,
             (high.y - low.y) as u32,
         );
+        renderer.background.draw(&mut pass);
         renderer.draw(&mut pass, self.slot);
         Vec::new()
     }
@@ -647,6 +767,7 @@ pub fn save_picture(
         area: epaint::Rect::NOTHING,
         frame: 0,
         background: epaint::Color32::BLACK,
+        background_low: epaint::Color32::BLACK,
     };
     renderer.update(&device, &queue, &drawing);
     let row = (width * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
