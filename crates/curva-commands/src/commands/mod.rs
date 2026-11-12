@@ -68,6 +68,7 @@ mod right;
 mod rotate;
 mod rotate3d;
 mod save;
+mod save_as;
 mod scale;
 mod scale1d;
 mod scale2d;
@@ -152,7 +153,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 102] = [
+pub static COMMANDS: [CommandDef; 103] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -292,6 +293,7 @@ pub static COMMANDS: [CommandDef; 102] = [
     listed!("Undo", [], false, false, undo::Undo),
     listed!("Redo", [], false, false, redo::Redo),
     listed!("Save", [], false, false, save::Save),
+    listed!("SaveAs", [], false, false, save_as::SaveAs),
     listed!("Open", [], false, false, open::Open),
     listed!("New", [], false, false, new::New),
     listed!(

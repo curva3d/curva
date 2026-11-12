@@ -7,8 +7,10 @@
 //! `curva --orbit-benchmark --curves 5000` opens the window on a scene of that many circles, spins
 //! the view and prints how fast it drew and snapped. `--solids 500` adds that many cylinders.
 
+mod icons;
 mod layout;
 mod recovery;
+mod theme;
 
 use curva_commands::{DisplayMode, Kind, Message, Processor, Translations, ViewName, ViewRequest};
 use curva_document::{Document, Grip, Shape, State};
@@ -17,7 +19,7 @@ use curva_mcp::Session;
 use curva_viewport::{
     CPlane, Camera, DEPTH_BITS, Drawing, Gumball, GumballChange, Handle, LineRenderer, MeshCache,
     MeshVertex, Outlines, PickFilter, Picture, SnapHit, SnapKind, SnapSet, StandardView,
-    VIEW_SLOTS, constrained, face_vertices, ghost_faces, ghost_lines, grid_lines, object_lines,
+    VIEW_SLOTS, constrained, face_vertices, ghost_faces, ghost_lines, grid_lines_in, object_lines,
     save_picture, scene_lines, shaded_object_lines, shaded_scene_lines,
 };
 use eframe::egui;
@@ -29,10 +31,7 @@ const PICK_REACH: f64 = 6.0;
 const BOX_MIN_DRAG: f32 = 6.0;
 const BOX_EDGE: egui::Color32 = egui::Color32::from_rgb(230, 230, 235);
 const BOX_FILL: egui::Color32 = egui::Color32::from_rgba_premultiplied(30, 40, 60, 40);
-const SNAP_MARKER: egui::Color32 = egui::Color32::from_rgb(255, 170, 40);
 const SNAP_MARKER_SIZE: f32 = 10.0;
-/// The accent orange, for held points and their guidelines.
-const ACCENT: egui::Color32 = egui::Color32::from_rgb(0xe0, 0x78, 0x2f);
 /// How long the pointer rests on a snap point to hold it, or let it go, in seconds.
 const HOLD_AFTER: f64 = 0.5;
 /// Spacing and size of the circles in a benchmark scene, in millimetres.
@@ -43,10 +42,8 @@ const PERSPECTIVE: usize = 1;
 /// The band at the top of a viewport that holds its title, in points.
 const TITLE_HEIGHT: f32 = 22.0;
 const PANE_GAP: f32 = 2.0;
-const TITLE_COLOUR: egui::Color32 = egui::Color32::from_rgb(190, 190, 200);
 /// The part of a viewport's corner that opens its display menu when clicked.
 const TITLE_SIZE: egui::Vec2 = egui::vec2(120.0, 22.0);
-const ACTIVE_EDGE: egui::Color32 = egui::Color32::from_rgb(120, 150, 210);
 /// Which viewport fills the window when Curva opens.
 const STARTING_LAYOUT: Option<usize> = Some(PERSPECTIVE);
 /// Most objects shown moving during a gumball drag.
@@ -63,28 +60,27 @@ const POINT_MARKER_SIZE: f32 = 6.0;
 const GRIP_SIZE: f32 = 7.0;
 /// A control point that is not picked.
 const GRIP_COLOUR: egui::Color32 = egui::Color32::from_rgb(235, 235, 245);
-/// A picked control point, yellow like selected objects.
-const GRIP_PICKED: egui::Color32 = egui::Color32::from_rgb(255, 220, 60);
+/// A picked control point, in the accent like selected objects.
+const GRIP_PICKED: egui::Color32 = theme::ACCENT;
 /// The lines between a smooth curve's control points.
 const CONTROL_POLYGON: egui::Color32 = egui::Color32::from_rgb(150, 150, 165);
 const LOG_LINES: usize = 3;
-/// Behind the viewports, showing in the gaps around the floating panels.
-const WINDOW_BACKGROUND: egui::Color32 = egui::Color32::from_rgb(22, 23, 27);
-/// A solid panel.
-const PANEL_FILL: egui::Color32 = egui::Color32::from_rgb(36, 38, 44);
-/// The command bar, lighter and see-through, as glass.
-const GLASS_FILL: egui::Color32 = egui::Color32::from_rgba_premultiplied(52, 55, 63, 214);
-const PANEL_EDGE: egui::Color32 = egui::Color32::from_rgb(60, 63, 72);
+/// Rows the list of matching commands shows before it scrolls.
+const MOST_MATCH_ROWS: f32 = 10.0;
 const PANEL_RADIUS: u8 = 12;
 const PANEL_MARGIN: f32 = 8.0;
 /// The height of a panel's title row, holding its name or tabs.
 const TITLE_ROW: f32 = 20.0;
+/// How near a panel's edge, in points, the pointer turns into a resize arrow.
+const RESIZE_REACH: f32 = 6.0;
+/// The size of a command button with an icon, in points.
+const COMMAND_BUTTON: f32 = 30.0;
 /// Room left around a panel for its shadow, beyond which nothing it holds is drawn.
 const SHADOW_ROOM: f32 = 20.0;
 /// How long a panel takes to slide in or out, in seconds.
 const SLIDE_TIME: f32 = 0.2;
 /// Where a dragged panel would land.
-const DOCK_PREVIEW_FILL: egui::Color32 = egui::Color32::from_rgba_premultiplied(24, 33, 51, 64);
+const DOCK_PREVIEW_FILL: egui::Color32 = egui::Color32::from_rgba_premultiplied(56, 30, 12, 56);
 /// How long after an agent's last request it still counts as connected.
 const AGENT_RECENT: std::time::Duration = std::time::Duration::from_secs(30);
 const AGENT_ACTIVE: egui::Color32 = egui::Color32::from_rgb(110, 200, 120);
@@ -202,7 +198,17 @@ struct Curva {
     left_behind: Option<std::path::PathBuf>,
     /// Where the panels are.
     layout: layout::Layout,
-    /// The command tab showing, as an index into [`COMMAND_TABS`].
+    /// The user's settings: theme, glass or solid panels, grid.
+    settings: theme::Settings,
+    /// Whether the Settings window is open.
+    settings_open: bool,
+    /// Whether the About window is open.
+    about_open: bool,
+    /// A unit chosen in Settings, while asking whether to scale the model to it.
+    unit_asked: Option<curva_document::Unit>,
+    /// Whether the light theme was last put in use, once one has been.
+    applied_light: Option<bool>,
+    /// The command tab showing: 0 for File, then one more than an index into [`COMMAND_TABS`].
     command_tab: usize,
     /// When an agent last asked something, to show whether one is connected.
     agent_seen: Option<std::time::Instant>,
@@ -232,8 +238,8 @@ enum PanelEvent {
     /// Its title began to be dragged, held this far from its corner: one tab's piece, or the
     /// whole panel.
     DragStarted(egui::Vec2, Option<layout::Piece>),
-    /// A floating panel's corner was dragged this far.
-    Resized(egui::Vec2),
+    /// These sides of it were dragged this far to resize it.
+    Resized(layout::Sides, egui::Vec2),
     /// Reset layout was chosen from its grip's menu.
     Reset,
     /// Its hide control was clicked.
@@ -333,18 +339,21 @@ fn paint_cursor_tag(ui: &egui::Ui, pointer: egui::Pos2, text: &str) {
         egui::Order::Foreground,
         egui::Id::NULL.with("cursor tag"),
     ));
-    let galley =
-        painter.layout_no_wrap(text.to_owned(), egui::FontId::monospace(12.0), TITLE_COLOUR);
+    let galley = painter.layout_no_wrap(
+        text.to_owned(),
+        egui::FontId::monospace(12.0),
+        theme::current().quiet,
+    );
     let corner = pointer + egui::vec2(18.0, 14.0);
     let frame = egui::Rect::from_min_size(corner, galley.size()).expand2(egui::vec2(6.0, 3.0));
     painter.rect(
         frame,
         4.0,
-        PANEL_FILL,
-        egui::Stroke::new(1.0, PANEL_EDGE),
+        theme::current().panel,
+        egui::Stroke::new(1.0, theme::current().panel_edge),
         egui::StrokeKind::Inside,
     );
-    painter.galley(corner, galley, TITLE_COLOUR);
+    painter.galley(corner, galley, theme::current().quiet);
 }
 
 /// The selection box: solid for a window, dashed for a crossing box, as in Rhino.
@@ -399,7 +408,7 @@ struct Pane {
 impl Pane {
     fn set_plane(&mut self, plane: CPlane) {
         self.plane = plane;
-        self.grid = Arc::new(grid_lines(&plane));
+        self.grid = Arc::new(grid_lines_in(&plane, &theme::current().viewport));
     }
 
     /// Keeps the view history: once the camera has moved and stands still again, the view it
@@ -438,7 +447,7 @@ impl Pane {
             settled: view.camera(),
             camera: view.camera(),
             plane: view.plane(),
-            grid: Arc::new(grid_lines(&view.plane())),
+            grid: Arc::new(grid_lines_in(&view.plane(), &theme::current().viewport)),
             gestures: LeftGestures::default(),
             named: None,
             // As in Rhino, the perspective view starts shaded and the flat views in wireframe.
@@ -640,6 +649,7 @@ impl Benchmark {
 
 impl Curva {
     fn new(context: &eframe::CreationContext<'_>, benchmark: Option<BenchmarkScene>) -> Self {
+        context.egui_ctx.set_fonts(theme::fonts());
         if let Some(state) = context.wgpu_render_state.as_ref() {
             let mut renderer = LineRenderer::new(&state.device, state.target_format);
             // Software graphics, as over some remote desktops, show the glass's tint alone.
@@ -695,11 +705,19 @@ impl Curva {
             benchmark: benchmark.map(|_| Benchmark::default()),
             autosave,
             left_behind,
+            settings: theme::file()
+                .filter(|_| benchmark.is_none())
+                .map(|file| theme::Settings::load(&file))
+                .unwrap_or_default(),
+            applied_light: None,
+            settings_open: false,
+            about_open: false,
+            unit_asked: None,
             layout: layout::file()
                 .filter(|_| benchmark.is_none())
                 .map(|file| layout::Layout::load(&file))
                 .unwrap_or_default(),
-            command_tab: 0,
+            command_tab: 1,
             agent_seen: None,
             last_aim: None,
             held: Vec::new(),
@@ -720,7 +738,8 @@ impl Curva {
             .as_ref()
             .is_some_and(|(state, chosen)| state == self.doc.state() && chosen == &selection);
         if !current {
-            self.outlines = Outlines::of_cached(self.doc.state(), &mut self.meshes);
+            self.outlines = Outlines::of_cached(self.doc.state(), &mut self.meshes)
+                .inked(theme::current().viewport.ink);
             self.scene = Arc::new(object_lines(&self.outlines, &selection));
             self.shaded_scene = Arc::new(shaded_object_lines(&self.outlines, &selection));
             self.faces = Arc::new(face_vertices(&self.outlines, &selection));
@@ -796,13 +815,38 @@ impl Curva {
             .fixed_pos(above)
             .pivot(egui::Align2::LEFT_BOTTOM)
             .show(ui.ctx(), |ui| {
+                // As wide as the longest name, one per row, never cut; ten rows, then it scrolls.
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
-                    for (index, name) in matches.iter().enumerate() {
-                        let shown = ui.selectable_label(index == self.highlight, *name);
-                        if shown.clicked() {
-                            clicked = Some(*name);
-                        }
-                    }
+                    let font = egui::TextStyle::Button.resolve(ui.style());
+                    let widest = matches
+                        .iter()
+                        .map(|name| {
+                            ui.painter()
+                                .layout_no_wrap(
+                                    (*name).to_owned(),
+                                    font.clone(),
+                                    egui::Color32::WHITE,
+                                )
+                                .size()
+                                .x
+                        })
+                        .fold(0.0, f32::max);
+                    ui.set_min_width(widest + 2.0 * ui.spacing().button_padding.x);
+                    let row = ui.spacing().interact_size.y + ui.spacing().item_spacing.y;
+                    egui::ScrollArea::vertical()
+                        .max_height(row * MOST_MATCH_ROWS)
+                        .show(ui, |ui| {
+                            for (index, name) in matches.iter().enumerate() {
+                                let shown = ui.selectable_label(index == self.highlight, *name);
+                                if index == self.highlight {
+                                    shown.scroll_to_me(None);
+                                }
+                                if shown.clicked() {
+                                    clicked = Some(*name);
+                                }
+                            }
+                        });
                 });
             });
         clicked
@@ -1013,7 +1057,7 @@ impl Curva {
                 .project(p, size)
                 .map(|at| viewport.min + egui::vec2(at[0] as f32, at[1] as f32))
         };
-        let faint = ACCENT.gamma_multiply(0.45);
+        let faint = theme::ACCENT.gamma_multiply(0.45);
         let reach = camera.distance * 20.0;
         for (point, direction) in self.guides(pane, false).lines() {
             let end = |sign: f64| std::array::from_fn(|i| point[i] + direction[i] * reach * sign);
@@ -1028,7 +1072,7 @@ impl Curva {
         }
         for point in &self.held {
             if let Some(at) = on_screen(*point) {
-                painter.circle_filled(at, 3.5, ACCENT);
+                painter.circle_filled(at, 3.5, theme::ACCENT);
             }
         }
     }
@@ -1709,6 +1753,23 @@ impl Curva {
         }
     }
 
+    /// Puts the chosen theme in use (or the system's), when it changes: the interface's look,
+    /// the viewports' grids and the colours objects are drawn in.
+    fn apply_theme(&mut self, ctx: &egui::Context) {
+        let light = self.settings.light(ctx.system_theme());
+        if self.applied_light == Some(light) {
+            return;
+        }
+        self.applied_light = Some(light);
+        theme::use_light(light);
+        ctx.set_visuals(theme::visuals(theme::current()));
+        for pane in &mut self.panes {
+            let plane = pane.plane;
+            pane.set_plane(plane);
+        }
+        self.drawn = None;
+    }
+
     /// The undo keys, taken before the command line can see them: Ctrl+Z undoes and Ctrl+Y or
     /// Ctrl+Shift+Z redoes the last change to the model, even while the command line has focus,
     /// unless it holds typed text, which keeps its own undo. Alt+Z and Alt+Shift+Z step through
@@ -1739,6 +1800,23 @@ impl Curva {
             let undo = input.consume_shortcut(&shortcut(Modifiers::COMMAND, Key::Z));
             (redo, undo, view_ahead, view_back)
         });
+        // The File tab's keys, also taken before the command line sees them.
+        let file_command = ctx.input_mut(|input| {
+            if input.consume_shortcut(&shortcut(Modifiers::COMMAND | Modifiers::SHIFT, Key::S)) {
+                Some("SaveAs")
+            } else if input.consume_shortcut(&shortcut(Modifiers::COMMAND, Key::S)) {
+                Some("Save")
+            } else if input.consume_shortcut(&shortcut(Modifiers::COMMAND, Key::O)) {
+                Some("Open")
+            } else if input.consume_shortcut(&shortcut(Modifiers::COMMAND, Key::N)) {
+                Some("New")
+            } else {
+                None
+            }
+        });
+        if let Some(name) = file_command {
+            self.run_from_button(name);
+        }
         if view_back || view_ahead {
             self.panes[self.active].step_view(view_ahead);
         }
@@ -1831,7 +1909,7 @@ impl Curva {
                             spot,
                             PANEL_RADIUS,
                             DOCK_PREVIEW_FILL,
-                            egui::Stroke::new(1.5, ACCENT.gamma_multiply(0.6)),
+                            egui::Stroke::new(1.5, theme::ACCENT.gamma_multiply(0.6)),
                             egui::StrokeKind::Inside,
                         );
                     }
@@ -1854,7 +1932,7 @@ impl Curva {
                 events.push(self.panel_area(ctx, &place, size, drawn, merge_into == Some(panel)));
             }
             for event in events {
-                self.panel_event(event, panel, &place, drawn, size, window);
+                self.panel_event(event, panel, &place, drawn, window);
             }
         }
         self.focus_tab(ctx, window);
@@ -1915,7 +1993,6 @@ impl Curva {
         panel: layout::PanelId,
         place: &layout::Place,
         drawn: egui::Rect,
-        size: egui::Vec2,
         window: egui::Rect,
     ) {
         match event {
@@ -1936,8 +2013,8 @@ impl Curva {
                     size: drawn.size().min(window.size() * 0.6).max(layout::MIN_PANEL),
                 });
             }
-            PanelEvent::Resized(by) => {
-                self.layout = self.layout.resized(panel, size + by);
+            PanelEvent::Resized(sides, by) => {
+                self.layout = self.layout.resized_from(panel, sides, by, window);
                 self.save_layout();
             }
             PanelEvent::Reset => {
@@ -1981,15 +2058,15 @@ impl Curva {
                 let (rect, response) =
                     ui.allocate_exact_size(tab.size(), egui::Sense::click_and_drag());
                 let fill = if response.hovered() {
-                    PANEL_EDGE
+                    theme::current().panel_edge
                 } else {
-                    PANEL_FILL
+                    theme::current().panel
                 };
                 ui.painter().rect_filled(rect, 6.0, fill);
                 let font = egui::FontId::proportional(12.0);
-                let galley = ui
-                    .painter()
-                    .layout_no_wrap(names.join(" · "), font, TITLE_COLOUR);
+                let galley =
+                    ui.painter()
+                        .layout_no_wrap(names.join(" · "), font, theme::current().quiet);
                 let text_size = galley.size();
                 let (position, angle) = if upright {
                     // Running upwards along a side.
@@ -2004,7 +2081,8 @@ impl Curva {
                     (rect.center() - text_size / 2.0, 0.0)
                 };
                 ui.painter().add(
-                    egui::epaint::TextShape::new(position, galley, TITLE_COLOUR).with_angle(angle),
+                    egui::epaint::TextShape::new(position, galley, theme::current().quiet)
+                        .with_angle(angle),
                 );
                 if response.clicked() {
                     event = PanelEvent::StripClicked;
@@ -2029,13 +2107,21 @@ impl Curva {
     ) -> PanelEvent {
         let rect = drawn;
         let panel = place.id();
-        let floating = matches!(place.dock, layout::Dock::Floating { .. });
         let mut event = PanelEvent::Nothing;
+        let glass = self.settings.glass;
         let frame = egui::Frame::new()
-            .fill(GLASS_FILL)
+            .fill(if glass {
+                theme::current().glass
+            } else {
+                theme::current().panel
+            })
             .stroke(egui::Stroke::new(
                 if glowing { 2.0 } else { 1.0 },
-                if glowing { ACCENT } else { PANEL_EDGE },
+                if glowing {
+                    theme::ACCENT
+                } else {
+                    theme::current().panel_edge
+                },
             ))
             .corner_radius(PANEL_RADIUS)
             .shadow(egui::Shadow {
@@ -2043,7 +2129,7 @@ impl Curva {
                 blur: if glowing { 24 } else { 16 },
                 spread: 0,
                 color: if glowing {
-                    ACCENT.gamma_multiply(0.5)
+                    theme::ACCENT.gamma_multiply(0.5)
                 } else {
                     egui::Color32::from_black_alpha(90)
                 },
@@ -2057,15 +2143,17 @@ impl Curva {
                 // Nothing a panel holds may spill outside its place.
                 ui.set_clip_rect(rect.expand(SHADOW_ROOM));
                 // The blurred view behind, under the tint the frame paints over it.
-                ui.painter().add(egui::Shape::from(
-                    eframe::egui_wgpu::Callback::new_paint_callback(
-                        rect,
-                        curva_viewport::Glass {
+                if glass {
+                    ui.painter().add(egui::Shape::from(
+                        eframe::egui_wgpu::Callback::new_paint_callback(
                             rect,
-                            radius: f32::from(PANEL_RADIUS),
-                        },
-                    ),
-                ));
+                            curva_viewport::Glass {
+                                rect,
+                                radius: f32::from(PANEL_RADIUS),
+                            },
+                        ),
+                    ));
+                }
                 frame.show(ui, |ui| {
                     let inner = size - egui::Vec2::splat(2.0 * PANEL_MARGIN);
                     ui.set_min_size(inner);
@@ -2089,26 +2177,8 @@ impl Curva {
                 });
                 // Added after the contents, so these sit above the panel's own controls.
                 event = self.panel_title(ui, place, rect);
-                if floating {
-                    let corner =
-                        egui::Rect::from_min_max(rect.max - egui::Vec2::splat(14.0), rect.max);
-                    let resize = ui
-                        .interact(corner, ui.scope_id().with("resize"), egui::Sense::drag())
-                        .on_hover_cursor(egui::CursorIcon::ResizeNwSe);
-                    let stroke =
-                        egui::Stroke::new(1.0, if resize.hovered() { ACCENT } else { PANEL_EDGE });
-                    for inset in [4.0, 8.0] {
-                        ui.painter().line_segment(
-                            [
-                                egui::pos2(rect.max.x - inset, rect.max.y - 3.0),
-                                egui::pos2(rect.max.x - 3.0, rect.max.y - inset),
-                            ],
-                            stroke,
-                        );
-                    }
-                    if resize.dragged() {
-                        event = PanelEvent::Resized(resize.drag_delta());
-                    }
+                if let Some(resize) = resize_handles(ui, place, rect) {
+                    event = resize;
                 }
             });
         event
@@ -2131,7 +2201,7 @@ impl Curva {
                 ui.painter().layout_no_wrap(
                     self.text.render(&Message::new(piece.name_key())),
                     font.clone(),
-                    TITLE_COLOUR,
+                    theme::current().quiet,
                 )
             })
             .collect();
@@ -2167,7 +2237,11 @@ impl Curva {
                 egui::Rect::from_min_size(egui::pos2(x, row.min.y), egui::vec2(width, TITLE_ROW));
             let active =
                 place.pieces.len() > 1 && index == place.active.min(place.pieces.len() - 1);
-            let colour = if active { ACCENT } else { TITLE_COLOUR };
+            let colour = if active {
+                theme::ACCENT
+            } else {
+                theme::current().quiet
+            };
             if place.pieces.len() > 1 {
                 let response = ui
                     .interact(
@@ -2189,7 +2263,7 @@ impl Curva {
                             egui::pos2(tab.min.x, tab.max.y),
                             egui::pos2(tab.max.x, tab.max.y),
                         ],
-                        egui::Stroke::new(2.0, ACCENT),
+                        egui::Stroke::new(2.0, theme::ACCENT),
                     );
                 }
             }
@@ -2211,9 +2285,9 @@ impl Curva {
         let stroke = egui::Stroke::new(
             1.5,
             if response.hovered() {
-                ACCENT
+                theme::ACCENT
             } else {
-                TITLE_COLOUR
+                theme::current().quiet
             },
         );
         let (mid, half) = (hide.center(), egui::vec2(4.5, 2.5));
@@ -2254,9 +2328,9 @@ impl Curva {
             .show(ctx, |ui| {
                 let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
                 let fill = if response.hovered() {
-                    PANEL_EDGE
+                    theme::current().panel_edge
                 } else {
-                    PANEL_FILL
+                    theme::current().panel
                 };
                 let radius = egui::CornerRadius {
                     nw: 0,
@@ -2268,7 +2342,7 @@ impl Curva {
                 // A V while the panels are hidden, to bring them down; turned over to hide them.
                 let (mid, half) = (rect.center(), egui::vec2(6.0, 3.0));
                 let tip = if self.focus { half.y } else { -half.y };
-                let stroke = egui::Stroke::new(1.5, TITLE_COLOUR);
+                let stroke = egui::Stroke::new(1.5, theme::current().quiet);
                 ui.painter().line_segment(
                     [mid + egui::vec2(-half.x, -tip), mid + egui::vec2(0.0, tip)],
                     stroke,
@@ -2307,8 +2381,10 @@ impl Curva {
     /// The command buttons, in tabs. A button runs its command as typing it would, ending any
     /// command already running, as a Rhino toolbar button does.
     fn command_tabs(&mut self, ui: &mut egui::Ui) {
+        // The File tab first, then the command tabs; `command_tab` 0 is File.
         ui.horizontal(|ui| {
-            for (index, (key, _)) in COMMAND_TABS.iter().enumerate() {
+            let keys = std::iter::once("ui.tab.file").chain(COMMAND_TABS.iter().map(|(k, _)| *k));
+            for (index, key) in keys.enumerate() {
                 let label = self.text.render(&Message::new(key));
                 if ui
                     .selectable_label(self.command_tab == index, label)
@@ -2321,21 +2397,184 @@ impl Curva {
         let mut chosen = None;
         egui::ScrollArea::horizontal().show(ui, |ui| {
             ui.horizontal(|ui| {
-                for name in COMMAND_TABS[self.command_tab].1 {
-                    if ui.button(*name).on_hover_text(*name).clicked() {
+                if self.command_tab == 0 {
+                    chosen = self.file_items(ui);
+                    return;
+                }
+                for name in COMMAND_TABS[self.command_tab - 1].1 {
+                    if command_button(ui, name).clicked() {
                         chosen = Some(*name);
                     }
                 }
             });
         });
         if let Some(name) = chosen {
-            if self.processor.is_running() {
-                self.processor.cancel(&mut self.doc);
-            }
-            self.typed.clear();
-            self.highlight = 0;
-            self.processor.submit(&mut self.doc, name);
+            self.run_from_button(name);
         }
+    }
+
+    /// Runs a command as typing it would, ending any command already running, as a Rhino
+    /// toolbar button does.
+    fn run_from_button(&mut self, name: &str) {
+        if self.processor.is_running() {
+            self.processor.cancel(&mut self.doc);
+        }
+        self.typed.clear();
+        self.highlight = 0;
+        self.processor.submit(&mut self.doc, name);
+    }
+
+    /// The File tab: New, Open, Save and Save As run their commands; Import and Export wait for
+    /// a format to offer; Settings and About open their windows. Returns a command to run.
+    fn file_items(&mut self, ui: &mut egui::Ui) -> Option<&'static str> {
+        let mut chosen = None;
+        for (name, key) in [
+            ("New", "ui.file.new"),
+            ("Open", "ui.file.open"),
+            ("Save", "ui.file.save"),
+            ("SaveAs", "ui.file.save_as"),
+        ] {
+            if ui.button(self.text.render(&Message::new(key))).clicked() {
+                chosen = Some(name);
+            }
+        }
+        for key in ["ui.file.import", "ui.file.export"] {
+            ui.add_enabled(
+                false,
+                egui::Button::new(self.text.render(&Message::new(key))),
+            )
+            .on_disabled_hover_text(self.text.render(&Message::new("ui.file.later")));
+        }
+        if ui
+            .button(self.text.render(&Message::new("ui.file.settings")))
+            .clicked()
+        {
+            self.settings_open = true;
+        }
+        if ui
+            .button(self.text.render(&Message::new("ui.file.about")))
+            .clicked()
+        {
+            self.about_open = true;
+        }
+        chosen
+    }
+
+    /// The Settings window: theme, glass or solid panels, the model's unit, and the grid.
+    fn settings_window(&mut self, ctx: &egui::Context) {
+        if self.settings_open {
+            let before = self.settings.clone();
+            let mut open = true;
+            let mut unit = self.doc.state().unit;
+            let text = &self.text;
+            let settings = &mut self.settings;
+            egui::Window::new(text.render(&Message::new("ui.file.settings")))
+                .open(&mut open)
+                .collapsible(false)
+                .resizable(false)
+                .show(ctx, |ui| {
+                    let say = |key: &'static str| text.render(&Message::new(key));
+                    ui.label(egui::RichText::new(say("ui.settings.theme")).strong());
+                    ui.horizontal(|ui| {
+                        for (choice, key) in [
+                            (theme::ThemeChoice::System, "ui.settings.system"),
+                            (theme::ThemeChoice::Light, "ui.settings.light"),
+                            (theme::ThemeChoice::Dark, "ui.settings.dark"),
+                        ] {
+                            ui.radio_value(&mut settings.theme, choice, say(key));
+                        }
+                    });
+                    ui.label(egui::RichText::new(say("ui.settings.panels")).strong());
+                    ui.horizontal(|ui| {
+                        ui.radio_value(&mut settings.glass, true, say("ui.settings.glass"));
+                        ui.radio_value(&mut settings.glass, false, say("ui.settings.solid"));
+                    });
+                    ui.label(egui::RichText::new(say("ui.settings.units")).strong());
+                    ui.horizontal(|ui| {
+                        ui.radio_value(
+                            &mut unit,
+                            curva_document::Unit::Millimetres,
+                            say("ui.settings.mm"),
+                        );
+                        ui.radio_value(
+                            &mut unit,
+                            curva_document::Unit::Metres,
+                            say("ui.settings.m"),
+                        );
+                    });
+                    ui.checkbox(&mut settings.grid, say("ui.settings.grid"));
+                });
+            if unit != self.doc.state().unit {
+                self.unit_asked = Some(unit);
+            }
+            self.settings_open = open;
+            if self.settings != before {
+                self.applied_light = None;
+                if self.benchmark.is_none()
+                    && let Some(file) = theme::file()
+                {
+                    let _ = self.settings.save(&file);
+                }
+            }
+        }
+        self.unit_question(ctx);
+    }
+
+    /// As Rhino does, asks whether changing the unit should scale the model to keep its real
+    /// size or keep the numbers as they are.
+    fn unit_question(&mut self, ctx: &egui::Context) {
+        let Some(unit) = self.unit_asked else {
+            return;
+        };
+        let mut answer = None;
+        egui::Window::new(self.text.render(&Message::new("ui.settings.units")))
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.label(self.text.render(&Message::with(
+                    "ui.units.question",
+                    vec![unit.symbol().to_owned()],
+                )));
+                ui.horizontal(|ui| {
+                    let say = |key: &'static str| self.text.render(&Message::new(key));
+                    if ui.button(say("ui.units.scale")).clicked() {
+                        answer = Some(Some(true));
+                    }
+                    if ui.button(say("ui.units.keep")).clicked() {
+                        answer = Some(Some(false));
+                    }
+                    if ui.button(say("ui.units.cancel")).clicked() {
+                        answer = Some(None);
+                    }
+                });
+            });
+        if let Some(choice) = answer {
+            self.unit_asked = None;
+            if let Some(scale) = choice {
+                let before = self.doc.state().clone();
+                self.doc.set_unit(unit, scale);
+                self.doc.record_change(before);
+            }
+        }
+    }
+
+    /// The About window: the version, the licence, and the credits.
+    fn about_window(&mut self, ctx: &egui::Context) {
+        let mut open = self.about_open;
+        egui::Window::new(self.text.render(&Message::new("ui.file.about")))
+            .open(&mut open)
+            .collapsible(false)
+            .default_width(460.0)
+            .show(ctx, |ui| {
+                ui.heading(format!("Curva {}", env!("CARGO_PKG_VERSION")));
+                ui.label(self.text.render(&Message::new("ui.about.licence")));
+                ui.separator();
+                egui::ScrollArea::vertical()
+                    .max_height(320.0)
+                    .show(ui, |ui| ui.label(include_str!("../../../ATTRIBUTION.md")));
+            });
+        self.about_open = open;
     }
 
     /// Agent access, and whether an agent is talking to Curva.
@@ -2348,8 +2587,8 @@ impl Curva {
             .agent_seen
             .is_some_and(|seen| seen.elapsed() < AGENT_RECENT);
         let (key, colour) = match (self.agent.is_some(), recent) {
-            (false, _) => ("ui.agent.off", TITLE_COLOUR),
-            (true, false) => ("ui.agent.waiting", TITLE_COLOUR),
+            (false, _) => ("ui.agent.off", theme::current().quiet),
+            (true, false) => ("ui.agent.waiting", theme::current().quiet),
             (true, true) => ("ui.agent.active", AGENT_ACTIVE),
         };
         ui.colored_label(colour, self.text.render(&Message::new(key)));
@@ -2670,7 +2909,7 @@ impl Curva {
         let painter = ui.painter_at(viewport);
         // ArchiCAD's symbols: a cross for an intersection, a triangle for a midpoint, a circle
         // for a centre, a square for an end and the rest.
-        let stroke = egui::Stroke::new(2.0, SNAP_MARKER);
+        let stroke = egui::Stroke::new(2.0, theme::ACCENT);
         let half = SNAP_MARKER_SIZE / 2.0;
         match hit.kind {
             SnapKind::Intersection => {
@@ -2704,7 +2943,7 @@ impl Curva {
             egui::Align2::LEFT_BOTTOM,
             self.text.render(&Message::new(snap_label(hit.kind))),
             egui::TextStyle::Body.resolve(ui.style()),
-            SNAP_MARKER,
+            theme::ACCENT,
         );
     }
 
@@ -2719,13 +2958,13 @@ impl Curva {
                     .render(&Message::new(view_label(self.panes[pane].view)))
             }),
             egui::TextStyle::Body.resolve(ui.style()),
-            TITLE_COLOUR,
+            theme::current().quiet,
         );
         if pane == self.active && self.maximised.is_none() {
             painter.rect_stroke(
                 rect,
                 0.0,
-                egui::Stroke::new(1.0, ACTIVE_EDGE),
+                egui::Stroke::new(1.0, theme::ACCENT),
                 egui::StrokeKind::Inside,
             );
         }
@@ -2809,8 +3048,24 @@ impl Curva {
         {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
             if let Some(value) = cursor.and_then(|at| self.processor.measure(&self.doc, at)) {
-                paint_cursor_tag(ui, position, &format!("{value:.3} mm"));
+                let unit = self.doc.state().unit.symbol();
+                paint_cursor_tag(ui, position, &format!("{value:.3} {unit}"));
             }
+        }
+        // Picking objects, edges or faces shows the pointer with a small box beside it.
+        let picking = self.processor.current_request().is_some_and(|request| {
+            matches!(request.kind, Kind::Objects | Kind::Edges | Kind::Faces)
+        });
+        if let Some((.., position)) = hovered
+            && picking
+        {
+            let corner = position + egui::vec2(10.0, 10.0);
+            ui.painter().rect_stroke(
+                egui::Rect::from_min_size(corner, egui::Vec2::splat(8.0)),
+                1.0,
+                egui::Stroke::new(1.5, theme::current().text),
+                egui::StrokeKind::Middle,
+            );
         }
         let mut previewed = self.processor.preview(&self.doc, cursor, &self.typed);
         previewed.extend(self.gumball_preview());
@@ -2823,7 +3078,11 @@ impl Curva {
             let display = self.panes[*pane].display;
             let drawing = Drawing {
                 slot: *pane,
-                grid: Arc::clone(&self.panes[*pane].grid),
+                grid: if self.settings.grid {
+                    Arc::clone(&self.panes[*pane].grid)
+                } else {
+                    Arc::default()
+                },
                 // Dark edges suit solid faces; ghosted views keep the light wireframe edges.
                 scene: Arc::clone(if display == DisplayMode::Shaded {
                     &self.shaded_scene
@@ -2839,7 +3098,7 @@ impl Curva {
                 ghosted: display == DisplayMode::Ghosted,
                 area: *rect,
                 frame: ui.ctx().cumulative_frame_nr(),
-                background: WINDOW_BACKGROUND,
+                background: theme::current().window,
             };
             ui.painter().add(egui_wgpu_callback(*rect, drawing));
             self.paint_frame(ui, *pane, *rect);
@@ -2906,6 +3165,7 @@ impl eframe::App for Curva {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        self.apply_theme(ui.ctx());
         self.share_work_plane();
         // The panels float over the viewports, which take the area they leave free.
         let (free, reach) = self.panels(ui.ctx(), ui.max_rect());
@@ -2913,12 +3173,14 @@ impl eframe::App for Curva {
         self.serve_agents();
         self.approval_window(ui);
         self.recovery_window(ui);
+        self.settings_window(ui.ctx());
+        self.about_window(ui.ctx());
         if let Some(autosave) = &mut self.autosave {
             autosave.tick(&self.doc, std::time::Instant::now());
         }
         self.apply_view_request();
         egui::CentralPanel::default()
-            .frame(egui::Frame::NONE.fill(WINDOW_BACKGROUND))
+            .frame(egui::Frame::NONE.fill(theme::current().window))
             .show(ui, |ui| self.viewports(ui, free, reach));
         if let Some(benchmark) = &mut self.benchmark {
             self.panes[PERSPECTIVE].camera.orbit(BENCHMARK_DRAG, 0.0);
@@ -3082,6 +3344,118 @@ fn main() -> Result<(), String> {
         Box::new(move |context| Ok(Box::new(Curva::new(context, benchmark)))),
     )
     .map_err(|error| error.to_string())
+}
+
+/// A command button: its icon, with its name on hover, or its name where it has no icon yet.
+fn command_button(ui: &mut egui::Ui, name: &str) -> egui::Response {
+    if !icons::has(name) {
+        return ui.button(name).on_hover_text(name);
+    }
+    let (rect, response) =
+        ui.allocate_exact_size(egui::Vec2::splat(COMMAND_BUTTON), egui::Sense::click());
+    if response.hovered() {
+        ui.painter().rect_filled(rect, 6.0, theme::current().hover);
+    }
+    icons::paint(ui.painter(), rect.shrink(4.0), name);
+    response.on_hover_text(name)
+}
+
+/// The edges and corners a panel can be resized from: near one, the pointer becomes a resize
+/// arrow and the edge pulses gently in the accent. Returns the drag, if one is under way.
+fn resize_handles(ui: &egui::Ui, place: &layout::Place, rect: egui::Rect) -> Option<PanelEvent> {
+    let movable = layout::Sides::movable(place);
+    let side = |left, right, top, bottom| layout::Sides {
+        left,
+        right,
+        top,
+        bottom,
+    };
+    let reach = RESIZE_REACH;
+    let (l, r, t, b) = (rect.min.x, rect.max.x, rect.min.y, rect.max.y);
+    let zone = |x0: f32, y0: f32, x1: f32, y1: f32| {
+        egui::Rect::from_min_max(egui::pos2(x0, y0), egui::pos2(x1, y1))
+    };
+    let handles = [
+        (
+            side(true, false, true, false),
+            zone(l - reach, t - reach, l + reach, t + reach),
+            egui::CursorIcon::ResizeNwSe,
+        ),
+        (
+            side(false, true, false, true),
+            zone(r - reach, b - reach, r + reach, b + reach),
+            egui::CursorIcon::ResizeNwSe,
+        ),
+        (
+            side(false, true, true, false),
+            zone(r - reach, t - reach, r + reach, t + reach),
+            egui::CursorIcon::ResizeNeSw,
+        ),
+        (
+            side(true, false, false, true),
+            zone(l - reach, b - reach, l + reach, b + reach),
+            egui::CursorIcon::ResizeNeSw,
+        ),
+        (
+            side(true, false, false, false),
+            zone(l - reach / 2.0, t + reach, l + reach / 2.0, b - reach),
+            egui::CursorIcon::ResizeHorizontal,
+        ),
+        (
+            side(false, true, false, false),
+            zone(r - reach / 2.0, t + reach, r + reach / 2.0, b - reach),
+            egui::CursorIcon::ResizeHorizontal,
+        ),
+        (
+            side(false, false, true, false),
+            zone(l + reach, t - reach / 2.0, r - reach, t + reach / 2.0),
+            egui::CursorIcon::ResizeVertical,
+        ),
+        (
+            side(false, false, false, true),
+            zone(l + reach, b - reach / 2.0, r - reach, b + reach / 2.0),
+            egui::CursorIcon::ResizeVertical,
+        ),
+    ];
+    let mut event = None;
+    for (sides, area, cursor) in handles {
+        // A corner needs both its sides to be movable, an edge its one.
+        if sides.within(movable) != sides {
+            continue;
+        }
+        let key = (sides.left, sides.right, sides.top, sides.bottom);
+        let response = ui
+            .interact(
+                area,
+                ui.scope_id().with(("resize", key)),
+                egui::Sense::drag(),
+            )
+            .on_hover_cursor(cursor);
+        if response.hovered() || response.dragged() {
+            // A gentle pulse along the edges being held.
+            let time = ui.input(|input| input.time) as f32;
+            let strength = 0.55 + 0.45 * (time * 5.0).sin();
+            let stroke = egui::Stroke::new(2.0, theme::ACCENT.gamma_multiply(strength));
+            let painter = ui.painter();
+            if sides.left {
+                painter.line_segment([rect.left_top(), rect.left_bottom()], stroke);
+            }
+            if sides.right {
+                painter.line_segment([rect.right_top(), rect.right_bottom()], stroke);
+            }
+            if sides.top {
+                painter.line_segment([rect.left_top(), rect.right_top()], stroke);
+            }
+            if sides.bottom {
+                painter.line_segment([rect.left_bottom(), rect.right_bottom()], stroke);
+            }
+            ui.ctx().request_repaint();
+        }
+        if response.dragged() {
+            event = Some(PanelEvent::Resized(sides, response.drag_delta()));
+        }
+    }
+    event
 }
 
 #[cfg(test)]
@@ -3274,7 +3648,10 @@ mod tests {
         };
         pane.set_plane(raised);
         assert_eq!(pane.plane, raised);
-        assert_eq!(pane.grid.len(), grid_lines(&raised).len());
+        assert_eq!(
+            pane.grid.len(),
+            grid_lines_in(&raised, &theme::current().viewport).len()
+        );
         assert!(pane.grid.iter().all(|v| v.position[2] == 5.0));
         pane.set_plane(pane.view.plane());
         assert_eq!(pane.plane, CPlane::WORLD_XY);

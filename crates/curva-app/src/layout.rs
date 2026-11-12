@@ -387,6 +387,48 @@ impl Layout {
         layout
     }
 
+    /// The arrangement with `panel` resized by dragging `sides` of it by `by`: a floating panel
+    /// from any edge or corner, a docked one only from its inner edge, and a top or bottom panel
+    /// shorter than its edge also from its ends. Never smaller than a usable panel.
+    #[must_use]
+    pub fn resized_from(&self, panel: PanelId, sides: Sides, by: Vec2, window: Rect) -> Self {
+        let Some(place) = self.place(panel) else {
+            return self.clone();
+        };
+        let Some((_, rect)) = self
+            .arrange(window)
+            .0
+            .into_iter()
+            .find(|(p, _)| *p == panel)
+        else {
+            return self.clone();
+        };
+        let allowed = sides.within(Sides::movable(place));
+        let mut moved = rect;
+        if allowed.left {
+            moved.min.x = (rect.min.x + by.x).min(rect.max.x - MIN_PANEL.x);
+        }
+        if allowed.right {
+            moved.max.x = (rect.max.x + by.x).max(rect.min.x + MIN_PANEL.x);
+        }
+        if allowed.top {
+            moved.min.y = (rect.min.y + by.y).min(rect.max.y - MIN_PANEL.y);
+        }
+        if allowed.bottom {
+            moved.max.y = (rect.max.y + by.y).max(rect.min.y + MIN_PANEL.y);
+        }
+        let mut layout = self.resized(panel, moved.size());
+        if let Some(place) = layout.places.iter_mut().find(|p| p.id() == panel)
+            && let Dock::Floating { .. } = place.dock
+        {
+            place.dock = Dock::Floating {
+                x: moved.min.x - window.min.x,
+                y: moved.min.y - window.min.y,
+            };
+        }
+        layout
+    }
+
     /// The arrangement with the panel `dragged` merged into `onto`: its pieces become tabs at
     /// the end of `onto`'s, and the one that was showing shows.
     #[must_use]
@@ -468,6 +510,72 @@ impl Layout {
                     == 1
             })
             && self.places.iter().map(|p| p.pieces.len()).sum::<usize>() == Piece::ALL.len()
+    }
+}
+
+/// Which sides of a panel are being dragged to resize it; two for a corner.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)] // One per side is what this is.
+pub struct Sides {
+    /// The left edge.
+    pub left: bool,
+    /// The right edge.
+    pub right: bool,
+    /// The top edge.
+    pub top: bool,
+    /// The bottom edge.
+    pub bottom: bool,
+}
+
+impl Sides {
+    /// The sides of `place` that can be dragged: every one for a floating panel; for a docked
+    /// one its inner edge, and the ends of a top or bottom panel shorter than its edge.
+    #[must_use]
+    pub fn movable(place: &Place) -> Self {
+        let ends = place.align != Align::Fill;
+        match place.dock {
+            Dock::Floating { .. } => Self {
+                left: true,
+                right: true,
+                top: true,
+                bottom: true,
+            },
+            Dock::Top => Self {
+                bottom: true,
+                left: ends,
+                right: ends,
+                top: false,
+            },
+            Dock::Bottom => Self {
+                top: true,
+                left: ends,
+                right: ends,
+                bottom: false,
+            },
+            Dock::Left => Self {
+                right: true,
+                top: ends,
+                bottom: ends,
+                left: false,
+            },
+            Dock::Right => Self {
+                left: true,
+                top: ends,
+                bottom: ends,
+                right: false,
+            },
+        }
+    }
+
+    /// Only those of these sides that `allowed` has.
+    #[must_use]
+    pub fn within(self, allowed: Self) -> Self {
+        Self {
+            left: self.left && allowed.left,
+            right: self.right && allowed.right,
+            top: self.top && allowed.top,
+            bottom: self.bottom && allowed.bottom,
+        }
     }
 }
 
@@ -1115,5 +1223,58 @@ mod tests {
         );
         assert!(!moved.intersects(other));
         assert!(screen.contains_rect(moved));
+    }
+
+    #[test]
+    fn resizing_from_an_edge_moves_that_side_only_and_a_corner_two() {
+        let screen = window(1200.0, 800.0);
+        let layout = Layout::default().moved(
+            Piece::Layers,
+            Dock::Floating { x: 300.0, y: 200.0 },
+            vec2(240.0, 300.0),
+        );
+        let rect = |l: &Layout| rect_of(&l.arrange(screen).0, Piece::Layers);
+        let before = rect(&layout);
+        let side = |left, right, top, bottom| Sides {
+            left,
+            right,
+            top,
+            bottom,
+        };
+        let wider = layout.resized_from(
+            Piece::Layers,
+            side(false, true, false, false),
+            vec2(48.0, 30.0),
+            screen,
+        );
+        assert_eq!(rect(&wider).min, before.min);
+        assert_eq!(rect(&wider).size(), before.size() + vec2(48.0, 0.0));
+        let left = layout.resized_from(
+            Piece::Layers,
+            side(true, false, false, false),
+            vec2(-48.0, 0.0),
+            screen,
+        );
+        assert_eq!(rect(&left).max, before.max);
+        assert_eq!(rect(&left).min.x, before.min.x - 48.0);
+        let corner = layout.resized_from(
+            Piece::Layers,
+            side(false, true, false, true),
+            vec2(24.0, 24.0),
+            screen,
+        );
+        assert_eq!(rect(&corner).min, before.min);
+        assert_eq!(rect(&corner).max, before.max + vec2(24.0, 24.0));
+        // Docked on the right, only its inner edge moves.
+        let docked = Layout::default();
+        let before = rect(&docked);
+        let pulled = docked.resized_from(
+            Piece::Layers,
+            side(true, false, true, false),
+            vec2(-40.0, -40.0),
+            screen,
+        );
+        assert_eq!(rect(&pulled).width(), before.width() + 40.0);
+        assert_eq!(rect(&pulled).min.y, before.min.y);
     }
 }

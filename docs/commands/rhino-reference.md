@@ -158,3 +158,4 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | New | Choose a template | none | none | partly |
 | Open | Choose a file | none | none | partly |
 | Save | File name | `Version` `SaveSmall` `GeometryOnly` `SaveTextures` `SavePlugInData` `Browse` | none | partly |
+| SaveAs | Asks for a file name; saves there and keeps saving there | none | none | partly |

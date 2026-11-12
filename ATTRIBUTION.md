@@ -8,6 +8,9 @@ with its original copyright and licence notice.
 Curva's Freeform command list, names, aliases, prompts, options and interaction flows are based on
 Serpentine3D: https://github.com/chisomobanzi/Serpentine3D
 
+The icons on Curva's command buttons (`crates/curva-app/src/icons.rs`) are Serpentine3D's toolbar icons
+(`serpentine3d/ui/icons.py`), redrawn in Rust with the same shapes, in Curva's colours.
+
 > MIT License
 >
 > Copyright (c) 2026 Chisomo Banzi
@@ -35,6 +38,12 @@ Serpentine3D: https://github.com/chisomobanzi/Serpentine3D
 Curva calls solidcore (Apache-2.0) for its geometry: https://github.com/tangency-labs/solidcore
 Its licence and NOTICE ship with its source at the pinned revision in `Cargo.lock`. A copy of the
 NOTICE is in `licenses/solidcore-NOTICE.txt`, and goes with every release build.
+
+## Inter
+
+The interface's text is set in Inter 4.1, by The Inter Project Authors (https://github.com/rsms/inter),
+bundled from its official release as `crates/curva-app/fonts/Inter-Regular.ttf`
+under the SIL Open Font License 1.1, whose text is in `licenses/fonts/Inter-OFL.txt`.
 
 ## Fonts bundled by egui
 

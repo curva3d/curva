@@ -160,6 +160,39 @@ pub struct State {
     /// The id the next layer receives.
     #[serde(default = "first_new_layer")]
     pub next_layer: u64,
+    /// The model's unit; files from before units were kept are in millimetres.
+    #[serde(default)]
+    pub unit: Unit,
+}
+
+/// The unit a model is drawn in (spec `docs/specs/ui-look-and-layout.md` §7).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Unit {
+    /// Millimetres, the unit new models start in.
+    #[default]
+    Millimetres,
+    /// Metres.
+    Metres,
+}
+
+impl Unit {
+    /// Its symbol, shown after numbers.
+    #[must_use]
+    pub fn symbol(self) -> &'static str {
+        match self {
+            Self::Millimetres => "mm",
+            Self::Metres => "m",
+        }
+    }
+
+    /// How many millimetres one of it is.
+    #[must_use]
+    pub fn millimetres(self) -> f64 {
+        match self {
+            Self::Millimetres => 1.0,
+            Self::Metres => 1000.0,
+        }
+    }
 }
 
 impl Default for State {
@@ -170,6 +203,7 @@ impl Default for State {
             layers: standard_layers(),
             current_layer: 0,
             next_layer: first_new_layer(),
+            unit: Unit::Millimetres,
         }
     }
 }
@@ -381,6 +415,17 @@ impl Document {
         );
         self.undo.truncate(mark);
         self.undo.push((before, selection));
+    }
+
+    /// Changes the model's unit. With `scale`, everything is resized about the origin to keep
+    /// its real size, as Rhino offers; otherwise the numbers stay as they are.
+    pub fn set_unit(&mut self, unit: Unit, scale: bool) {
+        let factor = self.state.unit.millimetres() / unit.millimetres();
+        if scale && (factor - 1.0).abs() > f64::EPSILON {
+            let ids: Vec<u64> = self.state.objects.iter().map(|o| o.id).collect();
+            self.transform(&ids, &curva_kernel::Similarity::scaling([0.0; 3], factor));
+        }
+        self.state.unit = unit;
     }
 
     /// Names objects.
@@ -800,5 +845,24 @@ mod tests {
         assert_eq!(doc.selection(), vec![line]);
         assert!(doc.redo());
         assert!(doc.selection().is_empty());
+    }
+
+    #[test]
+    fn the_unit_is_kept_in_the_file_and_scaling_keeps_real_sizes() {
+        let mut doc = Document::default();
+        doc.add(Curve::line([0.0; 3], [1000.0, 0.0, 0.0]).unwrap());
+        doc.set_unit(Unit::Metres, true);
+        let length = doc.state().objects[0].curve().unwrap().length().unwrap();
+        assert!((length - 1.0).abs() < 1e-12);
+        doc.set_unit(Unit::Millimetres, false);
+        let kept = doc.state().objects[0].curve().unwrap().length().unwrap();
+        assert!((kept - 1.0).abs() < 1e-12);
+        doc.set_unit(Unit::Metres, false);
+        let folder = std::env::temp_dir().join(format!("curva-unit-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let file = folder.join("unit.curva");
+        doc.save(&file).unwrap();
+        assert_eq!(Document::open(&file).unwrap().state().unit, Unit::Metres);
+        let _ = std::fs::remove_dir_all(&folder);
     }
 }
