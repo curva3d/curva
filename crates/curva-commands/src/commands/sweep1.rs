@@ -1,53 +1,53 @@
-//! `Sweep1`: sweeps cross-section curves along one rail, as in Rhino. The rail is chosen first,
-//! then the cross sections.
+//! `Sweep1`: sweeps cross-section curves along one rail, as in Rhino. The rail is chosen first
+//! (one curve selected beforehand is taken as it), then the cross sections. Rhino's frame
+//! styles, `Closed`, shape blending and the other sweep options are still to come
+//! (`docs/commands/rhino-reference.md`).
 
-use super::{ask_objects, curves_of, geometry_failed, unexpected};
-use crate::{Answer, Command, Message, Step};
-use curva_document::{Document, Shape};
+use super::curves_of;
+use crate::Message;
+use crate::recipe::{Context, Derived, Made, Recipe, StepDef, Value};
+use curva_document::Shape;
 use curva_kernel::{Body, Curve};
 
-/// The running command.
+/// The recipe.
 #[derive(Default)]
-pub struct Sweep1 {
-    rail: Option<(u64, Curve)>,
-}
+pub struct Sweep1;
 
-impl Command for Sweep1 {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let Some((rail_id, rail)) = self.rail.clone() else {
-            // One curve selected beforehand is taken as the rail, as in Rhino.
-            let chosen = match answer {
-                Some(Answer::Objects(list)) => list,
-                _ => doc.selection(),
-            };
-            return match curves_of(doc, &chosen).as_slice() {
-                [only] => {
-                    self.rail = Some(only.clone());
-                    doc.select(&[]);
-                    ask_objects("prompt.sweep1.sections")
-                }
-                _ => ask_objects("prompt.sweep1.rail"),
-            };
+impl Recipe for Sweep1 {
+    const NAME: &'static str = "sweep1";
+
+    fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
+        let mut steps = vec![StepDef::objects("prompt.sweep1.rail").curves().one()];
+        if !cx.values.is_empty() {
+            steps.push(StepDef::objects("prompt.sweep1.sections").curves().apart());
+        }
+        steps
+    }
+
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let (Some(Value::Objects(rail)), Some(Value::Objects(chosen))) =
+            (cx.values.first(), cx.values.get(1))
+        else {
+            return Ok(Made::default());
         };
-        let Some(Answer::Objects(chosen)) = answer else {
-            return unexpected();
+        let Some((rail_id, rail)) = curves_of(cx.doc, rail).into_iter().next() else {
+            return Ok(Made::default());
         };
-        let sections: Vec<Curve> = curves_of(doc, &chosen)
+        let sections: Vec<Curve> = curves_of(cx.doc, chosen)
             .into_iter()
-            .filter(|(id, _)| *id != rail_id)
             .map(|(_, curve)| curve)
             .collect();
-        if sections.is_empty() {
-            return ask_objects("prompt.sweep1.sections");
-        }
-        match Body::swept(&sections, &rail, false) {
-            Ok(body) => {
-                let layer = doc.layer_of(rail_id);
-                doc.add_shape_on(Shape::Body(body), layer);
-                Step::Done(Some(Message::new("done.sweep1")))
-            }
-            Err(error) => geometry_failed(&error),
-        }
+        let body = Body::swept(&sections, &rail, false)
+            .map_err(|e| Message::with("error.geometry", vec![e.to_string()]))?;
+        Ok(Made {
+            derived: vec![Derived {
+                shape: Shape::Body(body),
+                from: rail_id,
+                history: None,
+            }],
+            message: Some(Message::new("done.sweep1")),
+            ..Made::default()
+        })
     }
 }
 

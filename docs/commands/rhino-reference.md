@@ -92,20 +92,20 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 
 | Command | Rhino's steps | Rhino's options | In Curva | Status |
 |---|---|---|---|---|
-| ExtrudeCrv | Select curves; distance, typed or by two points | `Direction` `BothSides` `Solid` `DeleteInput` `ToBoundary` `SplitAtTangents` `SetBasePoint` | `Solid` `BothSides` | partly |
-| PlanarSrf | Select planar curves in one plane | none | none | partly |
-| Revolve | Select curves; axis start; axis end (Enter: construction plane Z); angles | `DeleteInput` `FullCircle` `AskForStartAngle` `Deformable` `PointCount` `SplitAtTangents` | none | partly |
+| ExtrudeCrv | Select curves; distance, typed or by two points | `Direction` `BothSides` `Solid` `DeleteInput` `ToBoundary` `SplitAtTangents` `SetBasePoint` | `Solid` `BothSides` `DeleteInput` | partly |
+| PlanarSrf | Select planar curves in one plane | none | none | done |
+| Revolve | Select curves; axis start; axis end (Enter: construction plane Z); angles | `DeleteInput` `FullCircle` `AskForStartAngle` `Deformable` `PointCount` `SplitAtTangents` | `DeleteInput` `FullCircle` | partly |
 | Loft | Select curves in order; adjust seams; Enter; loft options | `Point` `Style` `Closed` `MatchStartTangent` `MatchEndTangent` `SplitAtTangents` `AlignCurves` `Rebuild` `Refit` | none | partly |
 | Sweep1 | Rail; cross sections in order; sweep options | `ChainEdges` `Point` `FrameStyle` `Closed` `GlobalShapeBlending` `UntrimmedMiters` `RefitRail` `AlignCrossSections` | none | partly |
-| Pipe | Select a curve; start radius; end radius; more radii; Enter | `ChainEdges` `Multiple` `Diameter` `Thick` `Cap` `FitRail` `ShapeBlending` `WallThickness` | `Cap` `Thick` | partly |
-| OffsetSrf | Select a surface or solid; distance | `Distance` `Corner` `ThroughPoint` `FlipAll` `Solid` `Loose` `Tolerance` `BothSides` `DeleteInput` | `Solid` | partly |
+| Pipe | Select a curve; start radius; end radius; more radii; Enter | `ChainEdges` `Multiple` `Diameter` `Thick` `Cap` `FitRail` `ShapeBlending` `WallThickness` | `Cap` `Thick` `Diameter` | partly |
+| OffsetSrf | Select a surface or solid; distance | `Distance` `Corner` `ThroughPoint` `FlipAll` `Solid` `Loose` `Tolerance` `BothSides` `DeleteInput` | `Solid` `DeleteInput` | partly |
 | Box | First corner of base; other corner or length; height, Enter uses the width | `Diagonal` `Cube` `3Point` `EdgeMidpoint` `Vertical` `Center` `BothSides` | `Center` `BothSides` | partly |
 | BooleanUnion | Select objects; Enter | `DeleteInput` `MergeCoplanarFaces` | `DeleteInput` | partly |
 | BooleanDifference | Objects to subtract from; Enter; objects to subtract with; Enter | `DeleteInput` `DeleteCutters` | `DeleteInput` | partly |
 | BooleanIntersection | First set; Enter; second set; Enter | `DeleteInput` | `DeleteInput` | done |
 | FilletEdge | Select edges; edit radius handles; Enter | `ShowRadius` `NextRadius` `ChainEdges` `FaceEdges` `PreviousEdgeSelection` `TrimAndJoin` `RailType` `AddHandle` `RemoveHandle` `SetAll` `LinkHandles` | none | partly |
 | ChamferEdge | Select edges; edit distance handles; Enter | `ShowChamferDistance` `NextChamferDistance` `ChainEdges` `FaceEdges` `PreviousEdgeSelection` `TrimAndJoin` `RailType` `AddHandle` `RemoveHandle` `SetAll` `LinkHandles` | none | partly |
-| Shell | Select faces to remove; Enter (on Rhino's OffsetSrf page) | `Thickness` `DeleteInput` `EditThickness` | none | partly |
+| Shell | Select faces to remove; Enter (on Rhino's OffsetSrf page) | `Thickness` `DeleteInput` `EditThickness` | `DeleteInput` | partly |
 
 ## Selecting
 

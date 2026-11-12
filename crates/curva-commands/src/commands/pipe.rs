@@ -1,181 +1,114 @@
-//! `Pipe`: a round tube along curves, as in Rhino. Options `Cap` (closed ends) and `Thick`
-//! (a wall between two radii).
+//! `Pipe`, as in Rhino: a round tube along curves; Enter uses the last radius. `Cap` closes the
+//! ends; `Thick` asks for an inner radius too, for a wall between the two (Enter: half the outer);
+//! `Diameter` takes diameters instead of radii. Rhino's radii along the curve, `ChainEdges`,
+//! `Multiple`, `FitRail`, `ShapeBlending` and `WallThickness` are still to come
+//! (`docs/commands/rhino-reference.md`).
 
-use super::{ask_objects, curves_of, geometry_failed, unexpected};
-use crate::{Answer, Command, Kind, Live, Message, Request, Step};
-use curva_document::{Document, Shape};
-use curva_kernel::{Body, Curve, cross, sub, unit};
+use super::curves_of;
+use crate::Message;
+use crate::recipe::{Context, Derived, Made, OptionDef, Recipe, StepDef, Value};
+use curva_document::Shape;
+use curva_kernel::{Body, Curve};
 
-/// The radius used until another is typed, in millimetres.
-const STARTING_RADIUS: f64 = 1.0;
-const RADIUS: &str = "pipe.radius";
-const CAP: &str = "pipe.cap";
-const THICK: &str = "pipe.thick";
-const CAP_OPTION: &str = "Cap";
-const THICK_OPTION: &str = "Thick";
-/// Rings shown along each curve in the preview.
-const PREVIEW_RINGS: usize = 6;
+const CAP: &str = "Cap";
+const THICK: &str = "Thick";
+const DIAMETER: &str = "Diameter";
 
-/// The running command.
+/// The recipe.
 #[derive(Default)]
-pub struct Pipe {
-    ids: Option<Vec<u64>>,
-    /// The outer radius, once given, while the inner one of a thick pipe is asked for.
-    outer: Option<f64>,
+pub struct Pipe;
+
+/// The outer radius and, for a thick pipe, the inner one, from the sizes given.
+fn radii(cx: &Context<'_>) -> Option<(f64, Option<f64>)> {
+    let scale = if cx.toggle(DIAMETER) { 0.5 } else { 1.0 };
+    let outer = cx.values.get(1).and_then(Value::number)? * scale;
+    if !cx.toggle(THICK) {
+        return Some((outer, None));
+    }
+    let inner = match cx.values.get(2) {
+        Some(Value::Number(inner)) => inner * scale,
+        _ => outer / 2.0,
+    };
+    Some((outer, Some(inner)))
 }
 
-fn on(doc: &Document, key: &str, starting: bool) -> bool {
-    doc.remembered(key).map_or(starting, |value| value != 0.0)
-}
+impl Recipe for Pipe {
+    const NAME: &'static str = "pipe";
+    const OPTIONS: &'static [OptionDef] = &[
+        OptionDef::toggle(CAP, true),
+        OptionDef::toggle(THICK, false),
+        OptionDef::toggle(DIAMETER, false),
+    ];
 
-fn yes_no(value: bool) -> String {
-    if value { "Yes" } else { "No" }.to_owned()
-}
-
-fn radius_of(doc: &Document) -> f64 {
-    doc.remembered(RADIUS).unwrap_or(STARTING_RADIUS)
-}
-
-impl Pipe {
-    fn ask_radius(doc: &Document) -> Step {
-        Step::Ask(Request {
-            prompt: Message::with(
-                "prompt.pipe.radius",
-                vec![
-                    radius_of(doc).to_string(),
-                    yes_no(on(doc, CAP, true)),
-                    yes_no(on(doc, THICK, false)),
-                ],
-            ),
-            options: vec![CAP_OPTION, THICK_OPTION],
-            allow_empty: true,
-            ..Request::new("prompt.pipe.radius", Kind::Number)
-        })
+    fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
+        let mut steps = vec![
+            StepDef::objects("prompt.pipe.objects")
+                .curves()
+                .offering(&[]),
+        ];
+        if cx.values.is_empty() {
+            return steps;
+        }
+        steps.push(StepDef::number("prompt.pipe.radius").remembered("Radius", 1.0));
+        if cx.toggle(THICK) && cx.values.len() >= 2 {
+            steps.push(
+                StepDef::number("prompt.pipe.inner")
+                    .optional()
+                    .offering(&[]),
+            );
+        }
+        steps
     }
 
-    fn ask_inner(outer: f64) -> Step {
-        Step::Ask(Request {
-            prompt: Message::with("prompt.pipe.inner", vec![(outer / 2.0).to_string()]),
-            allow_empty: true,
-            ..Request::new("prompt.pipe.inner", Kind::Number)
-        })
+    fn check(&self, cx: &Context<'_>) -> Result<(), Message> {
+        if cx
+            .values
+            .get(1)
+            .and_then(Value::number)
+            .is_some_and(|r| r <= 0.0)
+        {
+            return Err(Message::new("error.bad_distance"));
+        }
+        Ok(())
     }
 
-    fn make(&self, doc: &mut Document, radius: f64, inner: Option<f64>) -> Step {
-        let Some(ids) = &self.ids else {
-            return unexpected();
+    /// An inner radius must be more than zero and less than the outer one; otherwise it is
+    /// asked again.
+    fn accepts(&self, cx: &Context<'_>) -> bool {
+        match (cx.values.len(), radii(cx)) {
+            (3, Some((outer, Some(inner)))) => inner > 0.0 && inner < outer,
+            _ => true,
+        }
+    }
+
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let (Some(Value::Objects(ids)), Some((radius, inner))) = (cx.values.first(), radii(cx))
+        else {
+            return Ok(Made::default());
         };
-        let cap = on(doc, CAP, true);
-        let mut made = Vec::new();
-        for (id, rail) in curves_of(doc, ids) {
-            match Body::pipe(&rail, radius, inner, cap) {
-                Ok(body) => made.push((id, body)),
-                Err(error) => return geometry_failed(&error),
-            }
+        // While the inner radius is asked for, the plain pipe shows.
+        let inner = inner.filter(|_| cx.values.len() >= 3 || !cx.toggle(THICK));
+        if radius <= 0.0 || inner.is_some_and(|i| i <= 0.0 || i >= radius) {
+            return Ok(Made::default());
         }
-        let count = made.len();
-        for (source, body) in made {
-            let layer = doc.layer_of(source);
-            doc.add_shape_on(Shape::Body(body), layer);
-        }
-        Step::Done(Some(Message::with("done.pipe", vec![count.to_string()])))
-    }
-
-    /// Given the outer radius: a thick pipe asks for its inner one, a plain pipe is made.
-    fn outer_given(&mut self, doc: &mut Document, radius: f64) -> Step {
-        if on(doc, THICK, false) {
-            self.outer = Some(radius);
-            return Self::ask_inner(radius);
-        }
-        self.make(doc, radius, None)
-    }
-}
-
-impl Command for Pipe {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        if self.ids.is_none() {
-            let chosen = match answer {
-                Some(Answer::Objects(list)) => list,
-                _ => doc.selection(),
-            };
-            let curves: Vec<u64> = curves_of(doc, &chosen)
-                .into_iter()
-                .filter(|(_, curve)| !matches!(curve, Curve::Point { .. }))
-                .map(|(id, _)| id)
-                .collect();
-            if curves.is_empty() {
-                return ask_objects("prompt.pipe.objects");
-            }
-            self.ids = Some(curves);
-            return Self::ask_radius(doc);
-        }
-        if let Some(outer) = self.outer {
-            return match answer {
-                Some(Answer::Empty) => self.make(doc, outer, Some(outer / 2.0)),
-                Some(Answer::Number(inner)) if inner > 0.0 && inner < outer => {
-                    self.make(doc, outer, Some(inner))
-                }
-                Some(Answer::Number(_)) => Self::ask_inner(outer),
-                _ => unexpected(),
-            };
-        }
-        match answer {
-            Some(Answer::Option(CAP_OPTION)) => {
-                let flipped = !on(doc, CAP, true);
-                doc.remember(CAP, f64::from(u8::from(flipped)));
-                Self::ask_radius(doc)
-            }
-            Some(Answer::Option(_)) => {
-                let flipped = !on(doc, THICK, false);
-                doc.remember(THICK, f64::from(u8::from(flipped)));
-                Self::ask_radius(doc)
-            }
-            Some(Answer::Empty) => {
-                let radius = radius_of(doc);
-                self.outer_given(doc, radius)
-            }
-            Some(Answer::Number(radius)) if radius > 0.0 => {
-                doc.remember(RADIUS, radius);
-                self.outer_given(doc, radius)
-            }
-            Some(Answer::Number(_)) => Step::Failed(Message::new("error.bad_distance")),
-            _ => unexpected(),
-        }
-    }
-
-    fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
-        let Some(ids) = &self.ids else {
-            return Vec::new();
-        };
-        let typed = live.number.filter(|n| *n > 0.0);
-        let radii: Vec<f64> = match self.outer {
-            Some(outer) => vec![outer, typed.filter(|n| *n < outer).unwrap_or(outer / 2.0)],
-            None => vec![typed.unwrap_or_else(|| radius_of(doc))],
-        };
-        // Rings across each curve, square to it, at points spread along it.
-        let mut shown = Vec::new();
-        for (_, rail) in curves_of(doc, ids) {
-            let Ok(points) = rail.sample() else {
+        let mut made = Made::default();
+        for (id, rail) in curves_of(cx.doc, ids) {
+            if matches!(rail, Curve::Point { .. }) {
                 continue;
-            };
-            let step = (points.len() / PREVIEW_RINGS).max(1);
-            for (index, at) in points.iter().enumerate().step_by(step) {
-                let next = points.get(index + 1).or(points.get(index.wrapping_sub(1)));
-                let Some(along) = next.and_then(|n| unit(sub(*n, *at))) else {
-                    continue;
-                };
-                let Some(x) = unit(cross(along, [0.0, 0.0, 1.0]))
-                    .or_else(|| unit(cross(along, [1.0, 0.0, 0.0])))
-                else {
-                    continue;
-                };
-                let y = cross(along, x);
-                for radius in &radii {
-                    shown.extend(Curve::circle_on(*at, *radius, x, y));
-                }
             }
+            let body = Body::pipe(&rail, radius, inner, cx.toggle(CAP))
+                .map_err(|e| Message::with("error.geometry", vec![e.to_string()]))?;
+            made.derived.push(Derived {
+                shape: Shape::Body(body),
+                from: id,
+                history: None,
+            });
         }
-        shown
+        made.message = Some(Message::with(
+            "done.pipe",
+            vec![made.derived.len().to_string()],
+        ));
+        Ok(made)
     }
 }
 
@@ -219,5 +152,14 @@ mod tests {
         selected_rail(&mut doc);
         let processor = run(&mut doc, &["pipe", "t", "2", "3"]);
         assert!(processor.is_running());
+    }
+
+    #[test]
+    fn diameter_takes_the_width_across() {
+        let mut doc = Document::default();
+        selected_rail(&mut doc);
+        run(&mut doc, &["pipe", "diameter", "4"]);
+        let body = doc.state().objects[1].shape.body().unwrap();
+        assert!((body.volume().unwrap() - PI * 4.0 * 10.0).abs() < 1e-2);
     }
 }

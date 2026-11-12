@@ -1,51 +1,52 @@
 //! `PlanarSrf`: fills closed flat curves with a surface, as in Rhino. A curve inside another
 //! makes a hole; curves apart from each other make separate surfaces in one go.
 
-use super::{ask_objects, curves_of, geometry_failed, plane_normal};
-use crate::{Answer, Command, Message, Step};
-use curva_document::{Document, Shape};
-use curva_kernel::{Body, nested_groups};
+use super::curves_of;
+use crate::Message;
+use crate::recipe::{Context, Derived, Made, Recipe, StepDef, Value};
+use curva_document::Shape;
+use curva_kernel::{Body, Curve, cross, nested_groups};
 
-/// The running command.
+/// The recipe.
 #[derive(Default)]
 pub struct PlanarSrf;
 
-impl Command for PlanarSrf {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let chosen = match answer {
-            Some(Answer::Objects(list)) => list,
-            _ => doc.selection(),
+impl Recipe for PlanarSrf {
+    const NAME: &'static str = "planarsrf";
+
+    fn steps(&self, _cx: &Context<'_>) -> Vec<StepDef> {
+        vec![StepDef::objects("prompt.planarsrf.objects").curves()]
+    }
+
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let Some(Value::Objects(chosen)) = cx.values.first() else {
+            return Ok(Made::default());
         };
-        let closed: Vec<(u64, curva_kernel::Curve)> = curves_of(doc, &chosen)
+        let closed: Vec<(u64, Curve)> = curves_of(cx.doc, chosen)
             .into_iter()
             .filter(|(_, curve)| curve.is_closed().unwrap_or(false))
             .collect();
         if closed.is_empty() {
-            if chosen.is_empty() {
-                return ask_objects("prompt.planarsrf.objects");
-            }
-            return Step::Failed(Message::new("error.planarsrf.none_closed"));
+            return Err(Message::new("error.planarsrf.none_closed"));
         }
-        let curves: Vec<curva_kernel::Curve> =
-            closed.iter().map(|(_, curve)| curve.clone()).collect();
-        let mut made = Vec::new();
-        for group in nested_groups(&curves, plane_normal(doc)) {
-            let members: Vec<curva_kernel::Curve> =
-                group.iter().map(|&i| curves[i].clone()).collect();
-            match Body::planar(&members) {
-                Ok(body) => made.push((closed[group[0]].0, body)),
-                Err(error) => return geometry_failed(&error),
-            }
+        let curves: Vec<Curve> = closed.iter().map(|(_, curve)| curve.clone()).collect();
+        let [x, y] = cx.plane();
+        let mut made = Made::default();
+        for group in nested_groups(&curves, cross(x, y)) {
+            let members: Vec<Curve> = group.iter().map(|&i| curves[i].clone()).collect();
+            let body = Body::planar(&members)
+                .map_err(|e| Message::with("error.geometry", vec![e.to_string()]))?;
+            made.derived.push(Derived {
+                shape: Shape::Body(body),
+                from: closed[group[0]].0,
+                history: None,
+            });
         }
-        let count = made.len();
-        for (source, body) in made {
-            let layer = doc.layer_of(source);
-            doc.add_shape_on(Shape::Body(body), layer);
-        }
-        Step::Done(Some(Message::with(
+        made.message = Some(Message::with(
             "done.planarsrf",
-            vec![count.to_string()],
-        )))
+            vec![made.derived.len().to_string()],
+        ));
+        Ok(made)
     }
 }
 

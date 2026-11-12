@@ -1,130 +1,135 @@
-//! `Revolve`: spins curves about an axis into surfaces, as in Rhino.
+//! `Revolve`, as in Rhino: spins curves about an axis into surfaces. Enter at the angle, or
+//! `FullCircle`, makes a whole turn; `DeleteInput` takes the curves away. A closed curve turned
+//! part of the way is closed at its ends. Rhino's `AskForStartAngle`, `Deformable`, `PointCount`
+//! and `SplitAtTangents`, and Enter for the plane's Z axis, are still to come
+//! (`docs/commands/rhino-reference.md`).
 
-use super::{ask_objects, ask_point, curves_of, geometry_failed, unexpected};
-use crate::{Answer, Command, Kind, Live, Message, Request, Step};
-use curva_document::{Document, Shape};
-use curva_kernel::{Body, Curve, Point, Similarity, sub};
+use super::curves_of;
+use crate::Message;
+use crate::recipe::{Context, Derived, Made, OptionDef, Recipe, StepDef, Value};
+use curva_document::Shape;
+use curva_kernel::{Body, Curve, Similarity, gap, sub, unit};
 
-/// A whole turn, in degrees, the angle used unless another is typed.
+/// A whole turn, in degrees.
 const FULL_TURN: f64 = 360.0;
-/// Copies of the curves shown around the axis in the preview.
-const PREVIEW_STEPS: usize = 8;
+/// Shortest axis treated as real, in millimetres.
+const SHORTEST_AXIS: f64 = 1e-9;
+/// Copies of the curves shown turned about the axis in the preview.
+const PREVIEW_STEPS: u32 = 8;
+const FULL_CIRCLE: &str = "FullCircle";
+const DELETE_INPUT: &str = "DeleteInput";
 
-/// The running command.
+/// The recipe.
 #[derive(Default)]
-pub struct Revolve {
-    ids: Option<Vec<u64>>,
-    start: Option<Point>,
-    end: Option<Point>,
-}
+pub struct Revolve;
 
-impl Revolve {
-    fn ask_angle() -> Step {
-        Step::Ask(Request {
-            prompt: Message::with("prompt.revolve.angle", vec![FULL_TURN.to_string()]),
-            allow_empty: true,
-            ..Request::new("prompt.revolve.angle", Kind::Number)
-        })
+impl Recipe for Revolve {
+    const NAME: &'static str = "revolve";
+    const OPTIONS: &'static [OptionDef] = &[
+        OptionDef::finish(FULL_CIRCLE),
+        OptionDef::toggle(DELETE_INPUT, false),
+    ];
+
+    fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
+        let mut steps = vec![
+            StepDef::objects("prompt.revolve.objects")
+                .curves()
+                .offering(&[DELETE_INPUT]),
+        ];
+        if !cx.values.is_empty() {
+            steps.push(StepDef::point("prompt.revolve.axis_start").offering(&[DELETE_INPUT]));
+        }
+        if let Some(start) = cx.values.get(1).and_then(Value::point) {
+            steps.push(
+                StepDef::point("prompt.revolve.axis_end")
+                    .from(start)
+                    .offering(&[DELETE_INPUT]),
+            );
+        }
+        if cx.values.len() >= 3 {
+            steps.push(StepDef::number("prompt.revolve.angle").optional());
+        }
+        steps
     }
 
-    fn make(&self, doc: &mut Document, degrees: f64) -> Step {
-        let (Some(ids), Some(start), Some(end)) = (&self.ids, self.start, self.end) else {
-            return unexpected();
+    /// An axis with no length, or an angle outside a whole turn, is asked again.
+    fn accepts(&self, cx: &Context<'_>) -> bool {
+        let axis_ok = match (
+            cx.values.get(1).and_then(Value::point),
+            cx.values.get(2).and_then(Value::point),
+        ) {
+            (Some(start), Some(end)) => gap(start, end) >= SHORTEST_AXIS,
+            _ => true,
         };
-        let angle = degrees.to_radians();
-        let mut made = Vec::new();
-        for (id, curve) in curves_of(doc, ids) {
-            // A closed curve turned part of the way is closed at its ends, as in Rhino.
+        let angle_ok = cx
+            .values
+            .get(3)
+            .and_then(Value::number)
+            .is_none_or(|degrees| degrees > 0.0 && degrees <= FULL_TURN);
+        axis_ok && angle_ok
+    }
+
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let (Some(Value::Objects(ids)), Some(start)) =
+            (cx.values.first(), cx.values.get(1).and_then(Value::point))
+        else {
+            return Ok(Made::default());
+        };
+        let Some(end) = cx.values.get(2).and_then(Value::point) else {
+            return Ok(Made::default());
+        };
+        let axis_line: Vec<Curve> = Curve::line(start, end).ok().into_iter().collect();
+        // While the axis is being placed, only the axis shows, as turning is heavy.
+        if cx.answered < 3 || gap(start, end) < SHORTEST_AXIS {
+            return Ok(Made {
+                guides: axis_line,
+                ..Made::default()
+            });
+        }
+        // Until an angle is given, and with Enter or FullCircle, a whole turn.
+        let degrees = match (cx.mode, cx.values.get(3).and_then(Value::number)) {
+            (Some(FULL_CIRCLE), _) | (_, None) => FULL_TURN,
+            (_, Some(degrees)) => degrees.clamp(f64::EPSILON, FULL_TURN),
+        };
+        let mut made = Made {
+            guides: axis_line,
+            ..Made::default()
+        };
+        // The preview also shows the curves turned step by step, to show the way round.
+        if cx.previewing
+            && let Some(axis) = unit(sub(end, start))
+        {
+            for step in 1..=PREVIEW_STEPS {
+                let angle = degrees * f64::from(step) / f64::from(PREVIEW_STEPS);
+                let turn = Similarity::rotation(start, axis, angle.to_radians());
+                made.guides.extend(
+                    curves_of(cx.doc, ids)
+                        .iter()
+                        .map(|(_, curve)| curve.mapped(&turn)),
+                );
+            }
+        }
+        for (id, curve) in curves_of(cx.doc, ids) {
+            if matches!(curve, Curve::Point { .. }) {
+                continue;
+            }
             let cap = degrees < FULL_TURN && curve.is_closed().unwrap_or(false);
-            match Body::revolved(&[curve], start, sub(end, start), angle, cap) {
-                Ok(body) => made.push((id, body)),
-                Err(error) => return geometry_failed(&error),
+            let body = Body::revolved(&[curve], start, sub(end, start), degrees.to_radians(), cap)
+                .map_err(|e| Message::with("error.geometry", vec![e.to_string()]))?;
+            made.derived.push(Derived {
+                shape: Shape::Body(body),
+                from: id,
+                history: None,
+            });
+            if cx.toggle(DELETE_INPUT) {
+                made.remove.push(id);
             }
         }
-        let count = made.len();
-        for (source, body) in made {
-            let layer = doc.layer_of(source);
-            doc.add_shape_on(Shape::Body(body), layer);
-        }
-        Step::Done(Some(Message::with("done.revolve", vec![count.to_string()])))
-    }
-}
-
-impl Command for Revolve {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let Some(_) = &self.ids else {
-            let chosen = match answer {
-                Some(Answer::Objects(list)) => list,
-                _ => doc.selection(),
-            };
-            let curves: Vec<u64> = curves_of(doc, &chosen)
-                .into_iter()
-                .filter(|(_, curve)| !matches!(curve, Curve::Point { .. }))
-                .map(|(id, _)| id)
-                .collect();
-            if curves.is_empty() {
-                return ask_objects("prompt.revolve.objects");
-            }
-            self.ids = Some(curves);
-            return ask_point("prompt.revolve.axis_start", Vec::new());
-        };
-        match (self.start, self.end, answer) {
-            (None, _, Some(Answer::Point(start))) => {
-                self.start = Some(start);
-                ask_point("prompt.revolve.axis_end", vec![start])
-            }
-            (Some(start), None, Some(Answer::Point(end))) => {
-                if curva_kernel::gap(start, end) < 1e-9 {
-                    return ask_point("prompt.revolve.axis_end", vec![start]);
-                }
-                self.end = Some(end);
-                Self::ask_angle()
-            }
-            (Some(_), Some(_), Some(Answer::Empty)) => self.make(doc, FULL_TURN),
-            (Some(_), Some(_), Some(Answer::Number(degrees)))
-                if degrees > 0.0 && degrees <= FULL_TURN =>
-            {
-                self.make(doc, degrees)
-            }
-            (Some(_), Some(_), Some(Answer::Number(_))) => Self::ask_angle(),
-            _ => unexpected(),
-        }
-    }
-
-    fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
-        let Some(ids) = &self.ids else {
-            return Vec::new();
-        };
-        let (Some(start), end) = (self.start, self.end.or(live.cursor)) else {
-            return Vec::new();
-        };
-        let Some(end) = end else {
-            return Vec::new();
-        };
-        let mut shown: Vec<Curve> = Curve::line(start, end).into_iter().collect();
-        if self.end.is_none() {
-            return shown;
-        }
-        let degrees = live
-            .number
-            .filter(|d| *d > 0.0 && *d <= FULL_TURN)
-            .unwrap_or(FULL_TURN);
-        let Some(axis) = curva_kernel::unit(sub(end, start)) else {
-            return shown;
-        };
-        for step in 1..=PREVIEW_STEPS {
-            let turn = Similarity::rotation(
-                start,
-                axis,
-                (degrees * step as f64 / PREVIEW_STEPS as f64).to_radians(),
-            );
-            shown.extend(
-                curves_of(doc, ids)
-                    .iter()
-                    .map(|(_, curve)| curve.mapped(&turn)),
-            );
-        }
-        shown
+        made.message = Some(Message::with(
+            "done.revolve",
+            vec![made.derived.len().to_string()],
+        ));
+        Ok(made)
     }
 }
 
@@ -183,5 +188,14 @@ mod tests {
         selected_profile(&mut doc);
         let processor = run(&mut doc, &["revolve", "0,0,0", "0,0,1", "400"]);
         assert!(processor.is_running());
+    }
+
+    #[test]
+    fn full_circle_makes_a_whole_turn_at_once() {
+        let mut doc = Document::default();
+        selected_profile(&mut doc);
+        run(&mut doc, &["revolve", "0,0,0", "0,0,1", "fullcircle"]);
+        let body = doc.state().objects[1].shape.body().unwrap();
+        assert!(close(body.volume().unwrap(), PI * 7.0 * 2.0));
     }
 }
