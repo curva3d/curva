@@ -49,7 +49,6 @@ const STARTING_LAYOUT: Option<usize> = Some(PERSPECTIVE);
 /// Most objects shown moving during a gumball drag.
 const MOST_GUMBALL_PREVIEW: usize = 2000;
 const GUMBALL_TIP: f32 = 5.0;
-const GUMBALL_ACTIVE: egui::Color32 = egui::Color32::from_rgb(255, 230, 90);
 const GUMBALL_AXES: [egui::Color32; 3] = [
     egui::Color32::from_rgb(230, 80, 80),
     egui::Color32::from_rgb(90, 200, 100),
@@ -171,6 +170,8 @@ struct Curva {
     agent: Option<curva_mcp::Listener>,
     waiting_approval: Option<(curva_mcp::AgentRequest, String)>,
     gumball_drag: Option<GumballDrag>,
+    /// A gumball handle clicked without a drag, and the value being typed for it.
+    gumball_typing: Option<(Handle, String)>,
     snaps: SnapSet,
     ortho: bool,
     grid_snap: bool,
@@ -384,6 +385,8 @@ struct GumballDrag {
     size: [f64; 2],
     from: [f64; 2],
     now: [f64; 2],
+    /// Whether Shift is held, for an even scale.
+    even: bool,
 }
 
 /// One viewport: what it looks at and what it is tracking.
@@ -690,6 +693,7 @@ impl Curva {
             agent: None,
             waiting_approval: None,
             gumball_drag: None,
+            gumball_typing: None,
             snaps: SnapSet::default(),
             ortho: false,
             grid_snap: false,
@@ -1178,12 +1182,13 @@ impl Curva {
 
     /// What the drag under way would do.
     fn gumball_change(&self, drag: &GumballDrag) -> Option<GumballChange> {
-        self.gumball()?.change(
+        self.gumball()?.change_with(
             &self.panes[drag.pane].camera,
             drag.size,
             drag.handle,
             drag.from,
             drag.now,
+            drag.even,
         )
     }
 
@@ -1207,6 +1212,7 @@ impl Curva {
             }
             if let Some(now) = ui.input(|input| input.pointer.latest_pos()) {
                 drag.now = local(now);
+                drag.even = ui.input(|input| input.modifiers.shift);
                 self.gumball_drag = Some(drag);
             }
             let released = events.iter().any(|event| {
@@ -1239,12 +1245,20 @@ impl Curva {
                 && let Some(handle) = gumball.handle_at(&self.panes[pane].camera, local(*pos), size)
             {
                 self.active = pane;
+                // Ctrl-dragging an arrow extrudes along it, as in Rhino.
+                let handle = match handle {
+                    Handle::Move(axis) if ui.input(|input| input.modifiers.command) => {
+                        Handle::Extrude(axis)
+                    }
+                    other => other,
+                };
                 self.gumball_drag = Some(GumballDrag {
                     pane,
                     handle,
                     size,
                     from: local(*pos),
                     now: local(*pos),
+                    even: false,
                 });
                 return true;
             }
@@ -1254,12 +1268,19 @@ impl Curva {
 
     /// Applies a finished drag as one undo step.
     fn finish_gumball(&mut self, drag: &GumballDrag) {
+        // A click without a drag asks for an exact value, as in Rhino.
+        if drag.from == drag.now {
+            self.gumball_typing = Some((drag.handle, String::new()));
+            return;
+        }
         let Some(change) = self.gumball_change(drag) else {
             return;
         };
-        if drag.from == drag.now {
-            return;
-        }
+        self.apply_gumball(change);
+    }
+
+    /// Applies a gumball change to the selection, or its picked control points, as one undo step.
+    fn apply_gumball(&mut self, change: GumballChange) {
         let before = self.doc.state().clone();
         let grips = self.doc.grip_selection();
         if !grips.is_empty() {
@@ -1279,9 +1300,109 @@ impl Curva {
         match change {
             GumballChange::Move(by) => self.doc.translate(&selection, by),
             GumballChange::Turn(turn) => self.doc.transform(&selection, &turn),
+            GumballChange::Stretch {
+                origin,
+                axis,
+                factor,
+            } => {
+                for (id, shape) in self.selected_shapes() {
+                    let stretched = match &shape {
+                        Shape::Curve(curve) => {
+                            curve.stretched(origin, axis, factor).map(Shape::Curve)
+                        }
+                        Shape::Body(body) => body.stretched(origin, axis, factor).map(Shape::Body),
+                    };
+                    match stretched {
+                        Ok(made) => self.doc.replace_shape(id, made),
+                        Err(error) => self.processor.note(error.to_string()),
+                    }
+                }
+            }
+            GumballChange::Extrude { axis, distance } => self.gumball_extrude(axis, distance),
         }
         self.doc.refresh_history();
         self.doc.record_change(before);
+    }
+
+    /// The selected objects and their shapes.
+    fn selected_shapes(&self) -> Vec<(u64, Shape)> {
+        let selection = self.doc.selection();
+        self.doc
+            .state()
+            .objects
+            .iter()
+            .filter(|object| selection.contains(&object.id))
+            .map(|object| (object.id, object.shape.clone()))
+            .collect()
+    }
+
+    /// The gumball's extrude circle, as `ExtrudeCrv` and `ExtrudeSrf` do: curves become surfaces
+    /// (closed ones solids), and flat surfaces facing that way become solids. The originals
+    /// stay, as in Rhino.
+    fn gumball_extrude(&mut self, axis: Point, distance: f64) {
+        if distance.abs() < 1e-9 {
+            return;
+        }
+        for (id, shape) in self.selected_shapes() {
+            let layer = self.doc.layer_of(id);
+            let Some(made) = gumball_extruded(&shape, axis, distance) else {
+                continue;
+            };
+            match made {
+                Ok(body) => {
+                    self.doc.add_shape_on(Shape::Body(body), layer);
+                }
+                Err(error) => self.processor.note(error.to_string()),
+            }
+        }
+    }
+
+    /// The small box at the cursor for an exact gumball value, after a click on a handle
+    /// without a drag: a distance, an angle or a factor. Enter applies it; Escape closes it.
+    fn gumball_value_box(&mut self, ctx: &egui::Context) {
+        let Some((handle, mut typed)) = self.gumball_typing.take() else {
+            return;
+        };
+        let Some(at) = ctx.pointer_latest_pos() else {
+            return;
+        };
+        let key = match handle {
+            Handle::Turn(_) => "ui.gumball.angle",
+            Handle::Scale(_) => "ui.gumball.factor",
+            _ => "ui.gumball.distance",
+        };
+        let mut done = false;
+        let mut keep = true;
+        egui::Area::new(egui::Id::NULL.with("gumball value"))
+            .fixed_pos(at + egui::vec2(14.0, 14.0))
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.label(self.text.render(&Message::new(key)));
+                    let field = ui.add(egui::TextEdit::singleline(&mut typed).desired_width(90.0));
+                    field.request_focus();
+                    if ui.input_mut(|input| {
+                        input.consume_key(egui::Modifiers::NONE, egui::Key::Enter)
+                    }) {
+                        done = true;
+                    }
+                    if ui.input_mut(|input| {
+                        input.consume_key(egui::Modifiers::NONE, egui::Key::Escape)
+                    }) {
+                        keep = false;
+                    }
+                });
+            });
+        if done {
+            let even = ctx.input(|input| input.modifiers.shift);
+            if let (Ok(value), Some(gumball)) = (typed.trim().parse::<f64>(), self.gumball())
+                && let Some(change) = gumball.typed(handle, value, even)
+            {
+                self.apply_gumball(change);
+            }
+        } else if keep {
+            self.gumball_typing = Some((handle, typed));
+        }
     }
 
     /// The selected objects as the drag under way would leave them.
@@ -1329,20 +1450,75 @@ impl Curva {
             .filter(|drag| drag.pane == pane)
             .map(|d| d.handle);
         let painter = ui.painter_at(rect);
-        for (handle, run) in gumball.outlines(camera, size) {
-            let colour = if Some(handle) == hovered || Some(handle) == dragged {
-                GUMBALL_ACTIVE
+        if hovered.is_some() || dragged.is_some() {
+            ui.ctx().set_cursor_icon(if dragged.is_some() {
+                egui::CursorIcon::Grabbing
             } else {
-                GUMBALL_AXES[handle.axis()]
+                egui::CursorIcon::Grab
+            });
+        }
+        for (handle, run) in gumball.outlines(camera, size) {
+            let lit = Some(handle) == hovered || Some(handle) == dragged;
+            let colour = if lit {
+                theme::ACCENT
+            } else {
+                handle
+                    .axis()
+                    .map_or(theme::current().text, |axis| GUMBALL_AXES[axis])
             };
             let points: Vec<egui::Pos2> = run
                 .iter()
                 .map(|p| rect.min + egui::vec2(p[0] as f32, p[1] as f32))
                 .collect();
-            if let (Handle::Move(_), Some(tip)) = (handle, points.last()) {
-                painter.circle_filled(*tip, GUMBALL_TIP, colour);
+            let stroke = egui::Stroke::new(2.0, colour);
+            match handle {
+                Handle::Move(_) => {
+                    // An arrowhead at the tip.
+                    if let (Some(start), Some(tip)) = (points.first(), points.last()) {
+                        let along = (*tip - *start).normalized();
+                        let side = egui::vec2(-along.y, along.x);
+                        let base = *tip - along * GUMBALL_TIP * 2.2;
+                        painter.add(egui::Shape::convex_polygon(
+                            vec![*tip, base + side * GUMBALL_TIP, base - side * GUMBALL_TIP],
+                            colour,
+                            egui::Stroke::NONE,
+                        ));
+                    }
+                    painter.add(egui::Shape::line(points, stroke));
+                }
+                Handle::Turn(_) => {
+                    painter.add(egui::Shape::line(points, stroke));
+                }
+                Handle::Extrude(_) => {
+                    painter.add(egui::Shape::closed_line(points, stroke));
+                }
+                Handle::Plane(_) => {
+                    let fill = colour.gamma_multiply(if lit { 0.8 } else { 0.45 });
+                    painter.add(egui::Shape::convex_polygon(points, fill, stroke));
+                }
+                Handle::Scale(_) | Handle::Centre => {
+                    painter.add(egui::Shape::convex_polygon(
+                        points,
+                        colour,
+                        egui::Stroke::NONE,
+                    ));
+                }
             }
-            painter.add(egui::Shape::line(points, egui::Stroke::new(2.0, colour)));
+        }
+        // While dragging, what the drag amounts to beside the pointer.
+        if let Some(drag) = self.gumball_drag.filter(|drag| drag.pane == pane)
+            && let Some(change) = self.gumball_change(&drag)
+            && let Some(pointer) = ui.input(|input| input.pointer.latest_pos())
+        {
+            let (value, amount) = change.amount();
+            let text = match amount {
+                curva_viewport::Amount::Distance => {
+                    format!("{value:.3} {}", self.doc.state().unit.symbol())
+                }
+                curva_viewport::Amount::Angle => format!("{value:.2}°"),
+                curva_viewport::Amount::Factor => format!("× {value:.4}"),
+            };
+            paint_cursor_tag(ui, pointer, &text);
         }
     }
 
@@ -3166,6 +3342,8 @@ impl eframe::App for Curva {
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.apply_theme(ui.ctx());
+        // Before the panels, so its Enter is not also taken by the command line.
+        self.gumball_value_box(ui.ctx());
         self.share_work_plane();
         // The panels float over the viewports, which take the area they leave free.
         let (free, reach) = self.panels(ui.ctx(), ui.max_rect());
@@ -3344,6 +3522,29 @@ fn main() -> Result<(), String> {
         Box::new(move |context| Ok(Box::new(Curva::new(context, benchmark)))),
     )
     .map_err(|error| error.to_string())
+}
+
+/// What the gumball's extrude circle makes of one object: a curve becomes a surface (a closed
+/// one a solid), a flat surface thickens into a solid along its normal, which the axis should be;
+/// a solid makes nothing.
+fn gumball_extruded(
+    shape: &Shape,
+    axis: Point,
+    distance: f64,
+) -> Option<Result<curva_kernel::Body, curva_kernel::KernelError>> {
+    match shape {
+        Shape::Curve(curve) => {
+            let closed = curve.is_closed().unwrap_or(false);
+            Some(curva_kernel::Body::extruded(
+                std::slice::from_ref(curve),
+                axis,
+                distance,
+                closed,
+            ))
+        }
+        Shape::Body(body) if !body.is_solid() => Some(body.offset(distance, true)),
+        Shape::Body(_) => None,
+    }
 }
 
 /// A command button: its icon, with its name on hover, or its name where it has no icon yet.
@@ -3710,5 +3911,34 @@ mod tests {
         let mut clicks = LeftGestures::default();
         assert!(clicks.take(&events, anywhere).is_empty());
         assert!(clicks.pressed_at.is_none());
+    }
+
+    #[test]
+    fn the_gumball_extrudes_curves_into_surfaces_and_flat_surfaces_into_solids() {
+        let up = [0.0, 0.0, 1.0];
+        let line = Shape::Curve(Curve::line([0.0; 3], [10.0, 0.0, 0.0]).unwrap());
+        let wall = gumball_extruded(&line, up, 5.0).unwrap().unwrap();
+        assert!(!wall.is_solid());
+        let square = Curve::polyline(
+            vec![
+                [0.0; 3],
+                [10.0, 0.0, 0.0],
+                [10.0, 10.0, 0.0],
+                [0.0, 10.0, 0.0],
+            ],
+            true,
+        )
+        .unwrap();
+        let block = gumball_extruded(&Shape::Curve(square.clone()), up, 5.0)
+            .unwrap()
+            .unwrap();
+        assert!(block.is_solid());
+        let sheet = curva_kernel::Body::planar(&[square]).unwrap();
+        let slab = gumball_extruded(&Shape::Body(sheet), up, 5.0)
+            .unwrap()
+            .unwrap();
+        assert!(slab.is_solid());
+        assert!((slab.volume().unwrap() - 500.0).abs() < 1e-3);
+        assert!(gumball_extruded(&Shape::Body(slab), up, 5.0).is_none());
     }
 }
