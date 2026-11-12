@@ -1,4 +1,8 @@
-# Curva
+<p align="center">
+  <img src="packaging/icons/curva.svg" width="128" height="128" alt="Curva's icon: a C drawn as an arc through three yellow control points">
+</p>
+
+<h1 align="center">Curva</h1>
 
 Curva is an open-source, design-oriented 3D suite for architects and designers, written in Rust.
 It combines Rhino-style freeform modelling with the "memory" of Archicad and Revit: objects that

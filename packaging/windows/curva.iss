@@ -25,6 +25,8 @@ OutputBaseFilename=curva-v{#Version}-windows-x64-setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+; The installer itself shows Curva's icon; the program carries it too.
+SetupIconFile=..\icons\curva.ico
 UninstallDisplayIcon={app}\curva.exe
 
 [Tasks]

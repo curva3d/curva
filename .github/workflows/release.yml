@@ -86,7 +86,7 @@ jobs:
           mkdir -p "$appdir/usr/bin" "$appdir/usr/share/doc/curva"
           mv "$STAGE/curva" "$appdir/usr/bin/curva"
           cp -r "$STAGE/." "$appdir/usr/share/doc/curva/"
-          cp packaging/linux/curva.desktop packaging/linux/curva.svg "$appdir/"
+          cp packaging/linux/curva.desktop packaging/icons/curva.svg "$appdir/"
           ln -s usr/bin/curva "$appdir/AppRun"
           curl -sSL -o "$RUNNER_TEMP/appimagetool" "$APPIMAGETOOL_URL"
           echo "$APPIMAGETOOL_SHA256  $RUNNER_TEMP/appimagetool" | sha256sum -c -
@@ -109,6 +109,14 @@ jobs:
           mv "$STAGE/curva" "$app/Contents/MacOS/curva"
           cp -r "$STAGE/." "$app/Contents/Resources/"
           sed "s/@VERSION@/$VERSION/g" packaging/macos/Info.plist > "$app/Contents/Info.plist"
+          # Curva's icon, in every size macOS asks for, from the large picture.
+          iconset="$RUNNER_TEMP/curva.iconset"
+          mkdir -p "$iconset"
+          for s in 16 32 128 256 512; do
+            sips -z $s $s packaging/icons/curva-1024.png --out "$iconset/icon_${s}x${s}.png" >/dev/null
+            sips -z $((s * 2)) $((s * 2)) packaging/icons/curva-1024.png --out "$iconset/icon_${s}x${s}@2x.png" >/dev/null
+          done
+          iconutil -c icns "$iconset" -o "$app/Contents/Resources/curva.icns"
           plutil -lint "$app/Contents/Info.plist"
           # Not signed with a developer certificate yet; an ad-hoc signature lets it run on Apple silicon.
           codesign --force --deep --sign - "$app"
@@ -120,6 +128,7 @@ jobs:
         run: |
           hdiutil attach -nobrowse -mountpoint "$RUNNER_TEMP/mnt" dist/*.dmg
           codesign --verify --deep "$RUNNER_TEMP/mnt/Curva.app"
+          test -s "$RUNNER_TEMP/mnt/Curva.app/Contents/Resources/curva.icns"
           "$RUNNER_TEMP/mnt/Curva.app/Contents/MacOS/curva" --picture "$RUNNER_TEMP/check.png" --run 'Box;0,0,0;10,10,0;10'
           hdiutil detach "$RUNNER_TEMP/mnt"
 
