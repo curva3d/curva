@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 /// Where LM Studio's local server listens by default.
 pub const LM_STUDIO: &str = "http://localhost:1234/v1";
@@ -124,7 +124,7 @@ fn restrict(_file: &std::path::Path) {}
 
 /// Sends a JSON body to a web service with the system's curl, and reads the JSON answer.
 fn post(url: &str, headers: &[String], body: &Value) -> Result<Value, String> {
-    let mut command = Command::new("curl");
+    let mut command = crate::quiet_command("curl");
     command.args([
         "-sS",
         "--max-time",
@@ -171,7 +171,7 @@ fn post(url: &str, headers: &[String], body: &Value) -> Result<Value, String> {
 
 /// The models LM Studio has, from its local server.
 pub fn local_models() -> Result<Vec<String>, String> {
-    let output = Command::new("curl")
+    let output = crate::quiet_command("curl")
         .args(["-sS", "--max-time", "5", &format!("{LM_STUDIO}/models")])
         .output()
         .map_err(|e| e.to_string())?;
@@ -202,7 +202,7 @@ struct Tools {
 impl Tools {
     fn open() -> Result<Self, String> {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-        let mut child = Command::new(exe)
+        let mut child = crate::quiet_command(exe)
             .args(["--mcp", "--connect"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -411,7 +411,7 @@ fn answer_claude(
 fn answer_through_codex(connection: &Connection, request: &str) -> Result<Vec<Line>, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let exe = exe.display().to_string().replace('\\', "\\\\");
-    let output = Command::new(codex())
+    let output = crate::quiet_command(codex())
         .args([
             "exec",
             "--json",
@@ -467,7 +467,7 @@ fn codex() -> &'static str {
 
 /// Starts Codex's ChatGPT sign-in, which opens the browser.
 pub fn sign_in() -> Result<(), String> {
-    Command::new(codex())
+    crate::quiet_command(codex())
         .arg("login")
         .spawn()
         .map(|_| ())

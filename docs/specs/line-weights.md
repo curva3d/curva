@@ -1,6 +1,6 @@
 # Spec: line drawing and line weights
 
-**Status:** Draft, for the owner's approval · 13 November 2026.
+**Status:** Approved by the owner in chat · 13 November 2026.
 **Covers:** feedback on 0.4.0, points 1 and 2; decision 0018 (1, 2).
 
 ## 1. What Rhino does

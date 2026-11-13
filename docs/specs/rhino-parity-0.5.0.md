@@ -1,6 +1,6 @@
 # Spec: the last 31 missing Rhino commands, and fixing the approximations
 
-**Status:** Draft, for the owner's approval · 13 November 2026.
+**Status:** Approved by the owner in chat · 13 November 2026.
 **Covers:** feedback on 0.4.0, points 3 and 4. Follows `rhino-parity.md` (how each command is built,
 how it is checked), which still applies.
 

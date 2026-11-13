@@ -6,7 +6,6 @@
 //! Linux all have, rather than a TLS library: that keeps Curva's licences and build simple.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 /// Where Curva's releases are listed.
 const RELEASES: &str = "https://api.github.com/repos/curva3d/curva/releases?per_page=10";
@@ -110,7 +109,7 @@ pub fn newest(list: &serde_json::Value, than: Version) -> Option<Release> {
 
 /// Fetches `url` with the system's curl.
 fn fetch(url: &str) -> Result<Vec<u8>, String> {
-    let output = Command::new("curl")
+    let output = crate::quiet_command("curl")
         .args(["-fsSL", "--max-time", "20", "-H", "User-Agent: Curva", url])
         .output()
         .map_err(|error| format!("curl could not run: {error}"))?;
@@ -195,14 +194,14 @@ pub fn install(file: &Path, version: &str, reopen: Option<&Path>) -> Result<(), 
                 format!("-ArgumentList '\"{model}\"'")
             },
         );
-        Command::new("powershell")
+        crate::quiet_command("powershell")
             .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &script])
             .spawn()
             .map_err(|e| e.to_string())?;
         return Ok(());
     }
     if cfg!(target_os = "macos") {
-        Command::new("open")
+        crate::quiet_command("open")
             .arg(file)
             .spawn()
             .map_err(|e| e.to_string())?;
@@ -215,7 +214,7 @@ pub fn install(file: &Path, version: &str, reopen: Option<&Path>) -> Result<(), 
                 format!("--args '{model}'")
             },
         );
-        Command::new("sh")
+        crate::quiet_command("sh")
             .args(["-c", &script])
             .spawn()
             .map_err(|e| e.to_string())?;
@@ -227,7 +226,7 @@ pub fn install(file: &Path, version: &str, reopen: Option<&Path>) -> Result<(), 
     make_executable(file)?;
     std::fs::copy(file, format!("{running}.new")).map_err(|e| e.to_string())?;
     std::fs::rename(format!("{running}.new"), &running).map_err(|e| e.to_string())?;
-    let mut command = Command::new(&running);
+    let mut command = crate::quiet_command(&running);
     if !model.is_empty() {
         command.arg(&model);
     }

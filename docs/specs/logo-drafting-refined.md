@@ -1,6 +1,6 @@
 # Spec: the refined Drafting logo
 
-**Status:** Draft, for the owner's approval · 13 November 2026.
+**Status:** Approved by the owner in chat · 13 November 2026.
 **Covers:** feedback on 0.4.0, points 6 to 8; decision 0018 (3).
 
 ## 1. The problem

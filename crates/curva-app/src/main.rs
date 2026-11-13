@@ -6,6 +6,14 @@
 //! its own. `curva --mcp --connect` connects an agent to the window that is open instead.
 //! `curva --orbit-benchmark --curves 5000` opens the window on a scene of that many circles, spins
 //! the view and prints how fast it drew and snapped. `--solids 500` adds that many cylinders.
+//!
+//! On Windows Curva is a GUI program, so no console opens beside it. Output from the command-line
+//! modes reaches a terminal when it is piped (`curva --picture out.png --run line | more`), and the
+//! MCP modes talk through the pipes the agent opens. An error that stops Curva starting is also kept
+//! in `curva.log` in its settings folder.
+
+// No console window beside Curva on Windows (spec `windows-no-console.md`).
+#![cfg_attr(windows, windows_subsystem = "windows")]
 
 mod assistant;
 mod icons;
@@ -4500,6 +4508,21 @@ fn picture(path: &str, script: &str) -> Result<(), String> {
 }
 
 fn main() -> Result<(), String> {
+    let result = run();
+    if let Err(error) = &result {
+        // Without a console the error would be lost, so it is kept where a user can find it.
+        if let Some(folder) = recovery::app_folder() {
+            let _ = std::fs::create_dir_all(&folder);
+            let _ = std::fs::write(
+                folder.join("curva.log"),
+                format!("Curva could not run: {error}\n"),
+            );
+        }
+    }
+    result
+}
+
+fn run() -> Result<(), String> {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     let value = |flag: &str| {
         arguments
@@ -4765,7 +4788,7 @@ fn lerp_colour(from: egui::Color32, to: egui::Color32, amount: f32) -> egui::Col
 /// Opens a page in the system's browser.
 fn open_link(url: &str) {
     let result = if cfg!(target_os = "windows") {
-        std::process::Command::new("cmd")
+        quiet_command("cmd")
             .args(["/C", "start", "", url])
             .spawn()
     } else if cfg!(target_os = "macos") {
@@ -5251,4 +5274,18 @@ mod tests {
             );
         }
     }
+}
+
+/// A program to run without a console window of its own: on Windows, a console program started
+/// from Curva (a GUI program) would otherwise flash one up.
+pub(crate) fn quiet_command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
+    #[allow(unused_mut)]
+    let mut command = std::process::Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // CREATE_NO_WINDOW.
+        command.creation_flags(0x0800_0000);
+    }
+    command
 }
