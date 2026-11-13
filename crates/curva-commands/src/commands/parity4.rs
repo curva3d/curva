@@ -300,7 +300,8 @@ impl Recipe for Hyperbola {
             return Err(Message::new("error.hyperbola_focus"));
         }
         let b = (focal * focal - a * a).sqrt();
-        let side = unit(cross(up(cx), axis)).ok_or_else(|| Message::new("error.reference_point"))?;
+        let side =
+            unit(cross(up(cx), axis)).ok_or_else(|| Message::new("error.reference_point"))?;
         // How far the branch reaches across its axis: at least a little.
         let reach = point(cx, 3)
             .map(|end| dot(sub(end, c), side).abs())
@@ -392,7 +393,10 @@ impl Recipe for BlendCrv {
     }
 
     fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
-        let (first, second) = (curves_of(cx.doc, objects(cx, 0)), curves_of(cx.doc, objects(cx, 1)));
+        let (first, second) = (
+            curves_of(cx.doc, objects(cx, 0)),
+            curves_of(cx.doc, objects(cx, 1)),
+        );
         let (Some((_, a)), Some((_, b))) = (first.first(), second.first()) else {
             return Ok(Made::default());
         };
@@ -410,10 +414,7 @@ impl Recipe for BlendCrv {
         let curve = match continuity(cx, Continuity::Curvature) {
             Continuity::Position => Curve::line(p0, p3),
             Continuity::Tangency => {
-                let (t0, t3) = (
-                    unit(d0).unwrap_or([0.0; 3]),
-                    unit(d3).unwrap_or([0.0; 3]),
-                );
+                let (t0, t3) = (unit(d0).unwrap_or([0.0; 3]), unit(d3).unwrap_or([0.0; 3]));
                 bezier(
                     &[p0, plus(p0, t0, chord / 3.0), plus(p3, t3, chord / 3.0), p3],
                     None,
@@ -425,11 +426,13 @@ impl Recipe for BlendCrv {
                 // curve it meets, scaled so the blend runs about as fast as its chord.
                 let (s0, s3) = (chord / length(d0).max(1e-12), chord / length(d3).max(1e-12));
                 let q1 = plus(p0, d0, s0 / 5.0);
-                let q2: Point = std::array::from_fn(|k| 2.0 * q1[k] - p0[k] + s0 * s0 * dd0[k] / 20.0);
+                let q2: Point =
+                    std::array::from_fn(|k| 2.0 * q1[k] - p0[k] + s0 * s0 * dd0[k] / 20.0);
                 // At the far end the blend arrives, so its derivative is the other curve's leaving
                 // derivative turned round, and its second derivative is unchanged.
                 let q4 = plus(p3, d3, s3 / 5.0);
-                let q3: Point = std::array::from_fn(|k| 2.0 * q4[k] - p3[k] + s3 * s3 * dd3[k] / 20.0);
+                let q3: Point =
+                    std::array::from_fn(|k| 2.0 * q4[k] - p3[k] + s3 * s3 * dd3[k] / 20.0);
                 bezier(&[p0, q1, q2, q3, q4, p3], None).to_curve()
             }
         }
@@ -544,7 +547,8 @@ enum Reach {
 fn extended(curve: &Curve, by: f64, reach: Reach) -> Result<(Curve, Curve), KernelError> {
     let spline = Spline::of(curve)?;
     let (end, d1, d2) = spline.end_derivatives();
-    let t = unit(d1).ok_or_else(|| KernelError("the curve has no direction at its end".to_owned()))?;
+    let t =
+        unit(d1).ok_or_else(|| KernelError("the curve has no direction at its end".to_owned()))?;
     let line = || Curve::line(end, plus(end, t, by));
     let piece = match reach {
         Reach::Line => line()?,
@@ -560,7 +564,11 @@ fn extended(curve: &Curve, by: f64, reach: Reach) -> Result<(Curve, Curve), Kern
                 let centre = plus(end, inward, radius);
                 let x = unit(sub(end, centre)).unwrap_or([1.0, 0.0, 0.0]);
                 let angle = (by / radius).min(std::f64::consts::PI * 1.9);
-                let tip = plus(plus(centre, x, radius * angle.cos()), t, radius * angle.sin());
+                let tip = plus(
+                    plus(centre, x, radius * angle.cos()),
+                    t,
+                    radius * angle.sin(),
+                );
                 Curve::arc(centre, end, tip, x, t)?
             }
         }
@@ -624,7 +632,11 @@ impl Recipe for Extend {
     ];
 
     fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
-        let mut steps = vec![StepDef::objects("prompt.extend.boundary").curves().optional()];
+        let mut steps = vec![
+            StepDef::objects("prompt.extend.boundary")
+                .curves()
+                .optional(),
+        ];
         if !cx.values.is_empty() {
             steps.push(StepDef::objects("prompt.extend.curves").curves());
         }
@@ -673,7 +685,11 @@ impl Recipe for Extend {
 }
 
 /// The curve extended at whichever end reaches a boundary soonest, up to that boundary.
-fn to_boundary(curve: &Curve, boundaries: &[Curve], reach: Reach) -> Result<Option<Curve>, Message> {
+fn to_boundary(
+    curve: &Curve,
+    boundaries: &[Curve],
+    reach: Reach,
+) -> Result<Option<Curve>, Message> {
     // Far enough to cross any boundary: twenty times the size of everything involved.
     let mut low = [f64::INFINITY; 3];
     let mut high = [f64::NEG_INFINITY; 3];
@@ -840,7 +856,11 @@ impl Recipe for CurveBoolean {
         }
         if clicks.last() != Some(&Value::Empty) {
             let step = StepDef::point("prompt.curveboolean.inside");
-            steps.push(if clicks.is_empty() { step } else { step.optional() });
+            steps.push(if clicks.is_empty() {
+                step
+            } else {
+                step.optional()
+            });
         }
         steps
     }
@@ -901,7 +921,9 @@ impl Recipe for CurveBoolean {
             let edges: Vec<Curve> = pieces
                 .iter()
                 .filter(|piece| {
-                    let Ok(points) = piece.sample() else { return false };
+                    let Ok(points) = piece.sample() else {
+                        return false;
+                    };
                     let middle = points.len() / 2;
                     let (a, b) = (
                         points[middle.saturating_sub(1)],
@@ -912,7 +934,8 @@ impl Recipe for CurveBoolean {
                     let n = (along[0].hypot(along[1])).max(1e-12);
                     let side = [-along[1] / n * nudge, along[0] / n * nudge];
                     let at = flat(m, origin, x, y);
-                    held([at[0] + side[0], at[1] + side[1]]) != held([at[0] - side[0], at[1] - side[1]])
+                    held([at[0] + side[0], at[1] + side[1]])
+                        != held([at[0] - side[0], at[1] - side[1]])
                 })
                 .cloned()
                 .collect();
@@ -999,7 +1022,10 @@ impl Recipe for Match {
     }
 
     fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
-        let (first, second) = (curves_of(cx.doc, objects(cx, 0)), curves_of(cx.doc, objects(cx, 1)));
+        let (first, second) = (
+            curves_of(cx.doc, objects(cx, 0)),
+            curves_of(cx.doc, objects(cx, 1)),
+        );
         let (Some((id, a)), Some((_, b))) = (first.first(), second.first()) else {
             return Ok(Made::default());
         };
@@ -1040,12 +1066,19 @@ fn circle_through(a: Point, b: Point, c: Point) -> Option<Point> {
     }
     let term1 = scaled(cross(n, ab), dot(ac, ac));
     let term2 = scaled(cross(ac, n), dot(ab, ab));
-    Some(plus(a, std::array::from_fn(|k| (term1[k] + term2[k]) / (2.0 * nn)), 1.0))
+    Some(plus(
+        a,
+        std::array::from_fn(|k| (term1[k] + term2[k]) / (2.0 * nn)),
+        1.0,
+    ))
 }
 
 /// A piece as a line or an arc, when it is one within `tolerance`.
 fn simpler(piece: &Curve, tolerance: f64) -> Option<Curve> {
-    if matches!(piece, Curve::Line { .. } | Curve::Arc { .. } | Curve::Circle { .. }) {
+    if matches!(
+        piece,
+        Curve::Line { .. } | Curve::Arc { .. } | Curve::Circle { .. }
+    ) {
         return None;
     }
     let points = piece.divided(64).ok()?;
@@ -1066,7 +1099,10 @@ fn simpler(piece: &Curve, tolerance: f64) -> Option<Curve> {
     let middle = points[points.len() / 2];
     let centre = circle_through(start, middle, end)?;
     let radius = gap(centre, start);
-    if points.iter().all(|p| (gap(*p, centre) - radius).abs() <= tolerance) {
+    if points
+        .iter()
+        .all(|p| (gap(*p, centre) - radius).abs() <= tolerance)
+    {
         let x = unit(sub(start, centre))?;
         let n = unit(cross(x, sub(middle, centre)))?;
         let y = cross(n, x);
@@ -1273,7 +1309,10 @@ mod tests {
     #[test]
     fn handle_curve_leaves_each_point_towards_its_handle() {
         let mut doc = Document::default();
-        run(&mut doc, &["handlecurve", "0,0", "0,5", "10,0", "10,-5", ""]);
+        run(
+            &mut doc,
+            &["handlecurve", "0,0", "0,5", "10,0", "10,-5", ""],
+        );
         let spline = Spline::of(&only_curve(&doc)).unwrap();
         let (a, b) = spline.domain();
         assert!(gap(spline.point(a), [0.0; 3]) < 1e-9);
@@ -1316,7 +1355,10 @@ mod tests {
         let spline = Spline::of(&only_curve(&doc)).unwrap();
         for i in 0..=20 {
             let p = spline.point(f64::from(i) / 20.0);
-            assert!((p[0] * p[0] / 4.0 - p[1] * p[1] / 5.0 - 1.0).abs() < 1e-9, "{p:?}");
+            assert!(
+                (p[0] * p[0] / 4.0 - p[1] * p[1] / 5.0 - 1.0).abs() < 1e-9,
+                "{p:?}"
+            );
         }
     }
 
@@ -1359,7 +1401,10 @@ mod tests {
             .iter()
             .map(|o| o.curve().unwrap().sample().unwrap()[0][1])
             .collect();
-        assert!(ys.iter().any(|y| (y - 1.0).abs() < 1e-9) && ys.iter().any(|y| (y - 6.0).abs() < 1e-9), "{ys:?}");
+        assert!(
+            ys.iter().any(|y| (y - 1.0).abs() < 1e-9) && ys.iter().any(|y| (y - 6.0).abs() < 1e-9),
+            "{ys:?}"
+        );
     }
 
     #[test]
@@ -1394,15 +1439,36 @@ mod tests {
         processor.submit(&mut doc, "");
         doc.select(&[line]);
         processor.submit(&mut doc, "");
-        let extended = doc.state().objects.iter().find(|o| o.id == line).unwrap().curve().unwrap().clone();
-        assert!((extended.length().unwrap() - 12.0).abs() < 1e-6, "{}", extended.length().unwrap());
+        let extended = doc
+            .state()
+            .objects
+            .iter()
+            .find(|o| o.id == line)
+            .unwrap()
+            .curve()
+            .unwrap()
+            .clone();
+        assert!(
+            (extended.length().unwrap() - 12.0).abs() < 1e-6,
+            "{}",
+            extended.length().unwrap()
+        );
     }
 
     #[test]
     fn smooth_and_arc_extensions_carry_the_curve_on() {
         for kind in ["Smooth", "Arc"] {
             let mut doc = Document::default();
-            let arc = doc.add(Curve::arc([0.0; 3], [5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]).unwrap());
+            let arc = doc.add(
+                Curve::arc(
+                    [0.0; 3],
+                    [5.0, 0.0, 0.0],
+                    [0.0, 5.0, 0.0],
+                    [1.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0],
+                )
+                .unwrap(),
+            );
             let mut processor = crate::Processor::default();
             processor.submit(&mut doc, "extend");
             processor.submit(&mut doc, kind);
@@ -1411,7 +1477,10 @@ mod tests {
             processor.submit(&mut doc, "");
             processor.submit(&mut doc, "2");
             let longer = only_curve(&doc);
-            assert!(longer.length().unwrap() > 5.0 * std::f64::consts::FRAC_PI_2 + 1.5, "{kind}");
+            assert!(
+                longer.length().unwrap() > 5.0 * std::f64::consts::FRAC_PI_2 + 1.5,
+                "{kind}"
+            );
             // An arc carried on as an arc stays on its circle.
             if kind == "Arc" {
                 let (_, end) = ends(&longer);
@@ -1424,7 +1493,14 @@ mod tests {
     fn fair_stays_within_its_tolerance() {
         let mut doc = Document::default();
         let wiggly = Curve::control_point(
-            vec![[0.0; 3], [1.0, 0.3, 0.0], [2.0, -0.3, 0.0], [3.0, 0.3, 0.0], [4.0, -0.3, 0.0], [5.0, 0.0, 0.0]],
+            vec![
+                [0.0; 3],
+                [1.0, 0.3, 0.0],
+                [2.0, -0.3, 0.0],
+                [3.0, 0.3, 0.0],
+                [4.0, -0.3, 0.0],
+                [5.0, 0.0, 0.0],
+            ],
             3,
             false,
         )
@@ -1442,29 +1518,76 @@ mod tests {
     #[test]
     fn curve_boolean_outlines_the_regions_picked() {
         let mut doc = Document::default();
-        let a = doc.add(Curve::polyline(vec![[0.0; 3], [4.0, 0.0, 0.0], [4.0, 4.0, 0.0], [0.0, 4.0, 0.0]], true).unwrap());
-        let b = doc.add(Curve::polyline(vec![[2.0, 2.0, 0.0], [6.0, 2.0, 0.0], [6.0, 6.0, 0.0], [2.0, 6.0, 0.0]], true).unwrap());
+        let a = doc.add(
+            Curve::polyline(
+                vec![[0.0; 3], [4.0, 0.0, 0.0], [4.0, 4.0, 0.0], [0.0, 4.0, 0.0]],
+                true,
+            )
+            .unwrap(),
+        );
+        let b = doc.add(
+            Curve::polyline(
+                vec![
+                    [2.0, 2.0, 0.0],
+                    [6.0, 2.0, 0.0],
+                    [6.0, 6.0, 0.0],
+                    [2.0, 6.0, 0.0],
+                ],
+                true,
+            )
+            .unwrap(),
+        );
         doc.select(&[a, b]);
         // The overlap only: a 2 × 2 square.
         run(&mut doc, &["curveboolean", "3,3", ""]);
         let outline = only_curve(&doc);
         assert!(outline.is_closed().unwrap());
-        assert!((outline.length().unwrap() - 8.0).abs() < 1e-6, "{}", outline.length().unwrap());
+        assert!(
+            (outline.length().unwrap() - 8.0).abs() < 1e-6,
+            "{}",
+            outline.length().unwrap()
+        );
         // Both squares together: the union's outline, 24 long.
         let mut doc = Document::default();
-        let a = doc.add(Curve::polyline(vec![[0.0; 3], [4.0, 0.0, 0.0], [4.0, 4.0, 0.0], [0.0, 4.0, 0.0]], true).unwrap());
-        let b = doc.add(Curve::polyline(vec![[2.0, 2.0, 0.0], [6.0, 2.0, 0.0], [6.0, 6.0, 0.0], [2.0, 6.0, 0.0]], true).unwrap());
+        let a = doc.add(
+            Curve::polyline(
+                vec![[0.0; 3], [4.0, 0.0, 0.0], [4.0, 4.0, 0.0], [0.0, 4.0, 0.0]],
+                true,
+            )
+            .unwrap(),
+        );
+        let b = doc.add(
+            Curve::polyline(
+                vec![
+                    [2.0, 2.0, 0.0],
+                    [6.0, 2.0, 0.0],
+                    [6.0, 6.0, 0.0],
+                    [2.0, 6.0, 0.0],
+                ],
+                true,
+            )
+            .unwrap(),
+        );
         doc.select(&[a, b]);
         run(&mut doc, &["curveboolean", "1,1", "3,3", "5,5", ""]);
         let union = only_curve(&doc);
-        assert!((union.length().unwrap() - 24.0).abs() < 1e-6, "{}", union.length().unwrap());
+        assert!(
+            (union.length().unwrap() - 24.0).abs() < 1e-6,
+            "{}",
+            union.length().unwrap()
+        );
     }
 
     #[test]
     fn match_moves_the_nearest_end_onto_the_other_curve() {
         let mut doc = Document::default();
         let a = doc.add(
-            Curve::control_point(vec![[0.0; 3], [2.0, 2.0, 0.0], [4.0, 0.0, 0.0], [6.0, 1.0, 0.0]], 3, false).unwrap(),
+            Curve::control_point(
+                vec![[0.0; 3], [2.0, 2.0, 0.0], [4.0, 0.0, 0.0], [6.0, 1.0, 0.0]],
+                3,
+                false,
+            )
+            .unwrap(),
         );
         let b = doc.add(Curve::line([7.0, 0.0, 0.0], [12.0, 0.0, 0.0]).unwrap());
         let mut processor = crate::Processor::default();
@@ -1474,7 +1597,15 @@ mod tests {
         processor.submit(&mut doc, "");
         doc.select(&[b]);
         processor.submit(&mut doc, "");
-        let matched = doc.state().objects.iter().find(|o| o.id == a).unwrap().curve().unwrap().clone();
+        let matched = doc
+            .state()
+            .objects
+            .iter()
+            .find(|o| o.id == a)
+            .unwrap()
+            .curve()
+            .unwrap()
+            .clone();
         let spline = Spline::of(&matched).unwrap();
         let (s, e) = spline.domain();
         assert!(gap(spline.point(e), [7.0, 0.0, 0.0]) < 1e-9);
@@ -1487,21 +1618,63 @@ mod tests {
     #[test]
     fn simplify_turns_straight_and_round_nurbs_into_lines_and_arcs() {
         let mut doc = Document::default();
-        let straight = doc.add(Curve::control_point(vec![[0.0; 3], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0], [3.0, 0.0, 0.0]], 3, false).unwrap());
-        let round = doc.add(Spline::of(&Curve::arc([0.0; 3], [5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]).unwrap()).unwrap().to_curve().unwrap());
+        let straight = doc.add(
+            Curve::control_point(
+                vec![[0.0; 3], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0], [3.0, 0.0, 0.0]],
+                3,
+                false,
+            )
+            .unwrap(),
+        );
+        let round = doc.add(
+            Spline::of(
+                &Curve::arc(
+                    [0.0; 3],
+                    [5.0, 0.0, 0.0],
+                    [0.0, 5.0, 0.0],
+                    [1.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0],
+                )
+                .unwrap(),
+            )
+            .unwrap()
+            .to_curve()
+            .unwrap(),
+        );
         doc.select(&[straight, round]);
         run(&mut doc, &["simplifycrv"]);
-        let kinds: Vec<bool> = doc.state().objects.iter().map(|o| matches!(o.curve(), Some(Curve::Line { .. } | Curve::Arc { .. }))).collect();
+        let kinds: Vec<bool> = doc
+            .state()
+            .objects
+            .iter()
+            .map(|o| matches!(o.curve(), Some(Curve::Line { .. } | Curve::Arc { .. })))
+            .collect();
         assert_eq!(kinds, vec![true, true]);
     }
 
     #[test]
     fn reparameterize_and_make_uniform() {
         let mut doc = Document::default();
-        let id = doc.add(Curve::control_point(vec![[0.0; 3], [1.0, 2.0, 0.0], [3.0, 2.0, 0.0], [4.0, 0.0, 0.0], [6.0, 1.0, 0.0]], 3, false).unwrap());
+        let id = doc.add(
+            Curve::control_point(
+                vec![
+                    [0.0; 3],
+                    [1.0, 2.0, 0.0],
+                    [3.0, 2.0, 0.0],
+                    [4.0, 0.0, 0.0],
+                    [6.0, 1.0, 0.0],
+                ],
+                3,
+                false,
+            )
+            .unwrap(),
+        );
         doc.select(&[id]);
         run(&mut doc, &["reparameterize", "10", "20"]);
-        assert_eq!(Spline::of(&only_curve(&doc)).unwrap().domain(), (10.0, 20.0));
+        assert_eq!(
+            Spline::of(&only_curve(&doc)).unwrap().domain(),
+            (10.0, 20.0)
+        );
         run(&mut doc, &["makeuniform"]);
         let spline = Spline::of(&only_curve(&doc)).unwrap();
         let inner = &spline.knots[4..spline.knots.len() - 4];
@@ -1511,7 +1684,10 @@ mod tests {
     #[test]
     fn weight_pulls_the_curve_to_the_point() {
         let mut doc = Document::default();
-        let id = doc.add(Curve::control_point(vec![[0.0; 3], [5.0, 5.0, 0.0], [10.0, 0.0, 0.0]], 2, false).unwrap());
+        let id = doc.add(
+            Curve::control_point(vec![[0.0; 3], [5.0, 5.0, 0.0], [10.0, 0.0, 0.0]], 2, false)
+                .unwrap(),
+        );
         doc.select(&[id]);
         run(&mut doc, &["pointson"]);
         doc.select_grips(&[(id, 1)]);

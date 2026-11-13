@@ -70,7 +70,8 @@ impl Document {
             .collect();
         let mut out = ids.to_vec();
         for object in &self.state.objects {
-            if object.group.is_some_and(|group| groups.contains(&group)) && !out.contains(&object.id)
+            if object.group.is_some_and(|group| groups.contains(&group))
+                && !out.contains(&object.id)
             {
                 out.push(object.id);
             }
@@ -86,7 +87,8 @@ mod tests {
 
     fn three() -> (Document, [u64; 3]) {
         let mut doc = Document::default();
-        let ids = [0.0, 1.0, 2.0].map(|y| doc.add(Curve::line([0.0, y, 0.0], [1.0, y, 0.0]).unwrap()));
+        let ids =
+            [0.0, 1.0, 2.0].map(|y| doc.add(Curve::line([0.0, y, 0.0], [1.0, y, 0.0]).unwrap()));
         (doc, ids)
     }
 

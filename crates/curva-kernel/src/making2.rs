@@ -85,8 +85,8 @@ impl Body {
 
     /// A pyramid on a closed polygon of lines, to `apex`.
     pub fn pyramid(base: &Curve, apex: Point) -> Result<Self, KernelError> {
-        let made = loft_to_point(&sweep_pieces(base)?, apex)
-            .map_err(|e| failed("making a pyramid", e))?;
+        let made =
+            loft_to_point(&sweep_pieces(base)?, apex).map_err(|e| failed("making a pyramid", e))?;
         Self::made(&made)
     }
 
@@ -126,16 +126,14 @@ impl Body {
         touch: Point,
         stations: usize,
     ) -> Result<Self, KernelError> {
-        let axis =
-            unit(axis).ok_or_else(|| KernelError("the axis has no length".to_owned()))?;
+        let axis = unit(axis).ok_or_else(|| KernelError("the axis has no length".to_owned()))?;
         let radial = |p: Point| {
             let d = sub(p, origin);
             sub(d, axis.map(|v| v * dot(d, axis)))
         };
         let from = radial(touch);
         let start_radius = dot(from, from).sqrt();
-        let x = unit(from)
-            .ok_or_else(|| KernelError("the profile touches the axis".to_owned()))?;
+        let x = unit(from).ok_or_else(|| KernelError("the profile touches the axis".to_owned()))?;
         let y = cross(axis, x);
         let rail_points = rail.sample()?;
         let count = stations.clamp(4, 720);
@@ -204,7 +202,12 @@ mod tests {
 
     fn square(size: f64) -> Curve {
         Curve::polyline(
-            vec![[0.0, 0.0, 0.0], [size, 0.0, 0.0], [size, size, 0.0], [0.0, size, 0.0]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [size, 0.0, 0.0],
+                [size, size, 0.0],
+                [0.0, size, 0.0],
+            ],
             true,
         )
         .unwrap()
@@ -223,7 +226,11 @@ mod tests {
         )
         .unwrap();
         let expected = 2.0 / 3.0 * (100.0 + 36.0 + 60.0);
-        assert!((solid.volume().unwrap() - expected).abs() < 1e-3, "{}", solid.volume().unwrap());
+        assert!(
+            (solid.volume().unwrap() - expected).abs() < 1e-3,
+            "{}",
+            solid.volume().unwrap()
+        );
     }
 
     #[test]
@@ -231,7 +238,11 @@ mod tests {
         let path = Curve::line([0.0; 3], [3.0, 0.0, 4.0]).unwrap();
         let solid = Body::swept_translated(&[square(2.0)], &path, true).unwrap();
         // Base 4, height 4: a slanted prism.
-        assert!((solid.volume().unwrap() - 16.0).abs() < 1e-3, "{}", solid.volume().unwrap());
+        assert!(
+            (solid.volume().unwrap() - 16.0).abs() < 1e-3,
+            "{}",
+            solid.volume().unwrap()
+        );
     }
 
     #[test]
@@ -263,16 +274,31 @@ mod tests {
     fn a_rail_revolve_on_a_circle_rail_is_a_revolve() {
         // A profile from the axis out to radius 3 and up, following a circle of radius 3: the
         // same as revolving it, a cylinder of radius 3 and height 2.
-        let profile =
-            Curve::polyline(vec![[0.0, 0.0, 0.0], [3.0, 0.0, 0.0], [3.0, 0.0, 2.0], [0.0, 0.0, 2.0]], false)
-                .unwrap();
+        let profile = Curve::polyline(
+            vec![
+                [0.0, 0.0, 0.0],
+                [3.0, 0.0, 0.0],
+                [3.0, 0.0, 2.0],
+                [0.0, 0.0, 2.0],
+            ],
+            false,
+        )
+        .unwrap();
         let rail = Curve::circle([0.0; 3], 3.0).unwrap();
-        let body =
-            Body::rail_revolved(&profile, &rail, [0.0; 3], [0.0, 0.0, 1.0], [3.0, 0.0, 0.0], 72)
-                .unwrap();
+        let body = Body::rail_revolved(
+            &profile,
+            &rail,
+            [0.0; 3],
+            [0.0, 0.0, 1.0],
+            [3.0, 0.0, 0.0],
+            72,
+        )
+        .unwrap();
         let area = body.area().unwrap();
         let expected = 2.0 * std::f64::consts::PI * 9.0 + 2.0 * std::f64::consts::PI * 3.0 * 2.0;
-        assert!((area - expected).abs() < 0.01 * expected, "{area} against {expected}");
+        assert!(
+            (area - expected).abs() < 0.01 * expected,
+            "{area} against {expected}"
+        );
     }
 }
-

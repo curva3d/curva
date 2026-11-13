@@ -1190,6 +1190,214 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
             pen.line_in((9.0, 12.0), (13.0, 12.0), pen.accent());
             pen.line_in((11.0, 10.0), (11.0, 14.0), pen.accent());
         }
+        "handlecurve" => {
+            pen.cubic((3.0, 17.0), (6.0, 5.0), (14.0, 5.0), (19.0, 15.0));
+            pen.line_in((2.0, 9.0), (10.0, 5.0), thin(1.2));
+            pen.dot(6.0, 7.0);
+            pen.ring(2.0, 9.0);
+            pen.ring(10.0, 5.0);
+        }
+        "sketch" => {
+            pen.path(
+                &[
+                    (3.0, 15.0),
+                    (5.0, 11.0),
+                    (7.0, 13.0),
+                    (9.0, 8.0),
+                    (12.0, 11.0),
+                    (14.0, 6.0),
+                    (17.0, 9.0),
+                ],
+                false,
+            );
+            pen.line_in((15.0, 15.0), (19.0, 11.0), pen.accent());
+            pen.line_in((19.0, 11.0), (20.0, 12.0), pen.accent());
+        }
+        "conic" => {
+            pen.dashed_in(&[(3.0, 18.0), (11.0, 3.0), (19.0, 18.0)], thin(1.2));
+            pen.quad((3.0, 18.0), (11.0, 3.0), (19.0, 18.0));
+            pen.dot(11.0, 3.0);
+        }
+        "hyperbola" => {
+            pen.quad((18.0, 3.0), (6.0, 11.0), (18.0, 19.0));
+            pen.line_in((4.0, 11.0), (20.0, 11.0), thin(1.0));
+            pen.dot(9.0, 11.0);
+        }
+        "blendcrv" => {
+            pen.line((2.0, 16.0), (8.0, 16.0));
+            pen.line((14.0, 6.0), (20.0, 6.0));
+            pen.cubic_in(
+                (8.0, 16.0),
+                (12.0, 16.0),
+                (10.0, 6.0),
+                (14.0, 6.0),
+                pen.accent(),
+            );
+        }
+        "offsetmultiple" => {
+            pen.quad((3.0, 18.0), (11.0, 10.0), (19.0, 14.0));
+            pen.line((3.0, 8.0), (10.0, 4.0));
+            pen.dashed_in(&[(3.0, 13.0), (11.0, 5.0), (19.0, 9.0)], thin(1.2));
+            pen.dashed_in(&[(5.0, 11.0), (12.0, 7.0)], thin(1.2));
+        }
+        "dupborder" => {
+            let outline = [(5.0, 5.0), (17.0, 4.0), (18.0, 17.0), (4.0, 18.0)];
+            pen.filled(&outline, fill);
+            pen.path_in(&outline, true, pen.accent());
+        }
+        "extend" => {
+            pen.line((3.0, 15.0), (11.0, 11.0));
+            pen.dashed_in(&[(11.0, 11.0), (17.0, 8.0)], thin(1.4));
+            pen.line_in((18.0, 3.0), (18.0, 19.0), pen.accent());
+        }
+        "fair" => {
+            pen.path_in(
+                &[
+                    (3.0, 13.0),
+                    (6.0, 9.0),
+                    (8.0, 14.0),
+                    (11.0, 8.0),
+                    (14.0, 14.0),
+                    (19.0, 10.0),
+                ],
+                false,
+                thin(1.0),
+            );
+            pen.quad_in((3.0, 13.0), (11.0, 7.0), (19.0, 10.0), pen.accent());
+        }
+        "curveboolean" => {
+            pen.rect(3.0, 3.0, 10.0, 10.0);
+            pen.rect(9.0, 9.0, 10.0, 10.0);
+            pen.filled(
+                &[(9.0, 9.0), (13.0, 9.0), (13.0, 13.0), (9.0, 13.0)],
+                pen.accent().color,
+            );
+        }
+        "match" => {
+            pen.cubic((2.0, 17.0), (6.0, 6.0), (10.0, 12.0), (12.0, 9.0));
+            pen.line_in((12.0, 9.0), (20.0, 9.0), pen.accent());
+            pen.dot(12.0, 9.0);
+        }
+        "simplifycrv" => {
+            pen.line((3.0, 17.0), (9.0, 17.0));
+            pen.arc((7.0, 7.0, 12.0, 20.0), 180.0, 90.0);
+            pen.dot(9.0, 17.0);
+        }
+        "reparameterize" => {
+            pen.line((3.0, 14.0), (19.0, 14.0));
+            for x in [3.0, 8.0, 14.0, 19.0] {
+                pen.line_in((x, 11.0), (x, 17.0), thin(1.2));
+            }
+            pen.line_in((3.0, 6.0), (19.0, 6.0), pen.accent());
+        }
+        "makeuniform" => {
+            pen.quad((3.0, 15.0), (11.0, 3.0), (19.0, 15.0));
+            for x in [3.0, 7.0, 11.0, 15.0, 19.0] {
+                pen.line_in((x, 18.0), (x, 20.0), pen.accent());
+            }
+        }
+        "weight" => {
+            pen.dashed_in(&[(3.0, 18.0), (11.0, 3.0), (19.0, 18.0)], thin(1.0));
+            pen.quad((3.0, 18.0), (11.0, 3.0), (19.0, 18.0));
+            pen.filled(
+                &[(9.0, 1.5), (13.0, 1.5), (14.0, 6.0), (8.0, 6.0)],
+                pen.accent().color,
+            );
+        }
+        "extrudecrvtapered" => {
+            pen.path(&[(3.0, 18.0), (19.0, 18.0), (15.0, 6.0), (7.0, 6.0)], true);
+            pen.line_in((11.0, 16.0), (11.0, 2.0), pen.accent());
+        }
+        "extrudecrvalongcrv" => {
+            pen.rect(3.0, 13.0, 6.0, 6.0);
+            pen.rect(13.0, 3.0, 6.0, 6.0);
+            pen.quad_in((6.0, 13.0), (6.0, 6.0), (13.0, 6.0), pen.accent());
+        }
+        "extrudecrvtopoint" => {
+            pen.ellipse((3.0, 14.0, 16.0, 5.0));
+            pen.line((3.0, 16.5), (11.0, 3.0));
+            pen.line((19.0, 16.5), (11.0, 3.0));
+            pen.dot(11.0, 3.0);
+        }
+        "railrevolve" => {
+            pen.line_in((11.0, 2.0), (11.0, 20.0), thin(1.0));
+            pen.ellipse((2.0, 12.0, 18.0, 7.0));
+            pen.quad_in((15.0, 4.0), (19.0, 9.0), (17.0, 14.0), pen.accent());
+        }
+        "pyramid" => {
+            pen.path(&[(3.0, 16.0), (13.0, 19.0), (19.0, 14.0)], false);
+            pen.dashed_in(&[(3.0, 16.0), (9.0, 12.0), (19.0, 14.0)], thin(1.0));
+            pen.line((11.0, 3.0), (3.0, 16.0));
+            pen.line((11.0, 3.0), (13.0, 19.0));
+            pen.line((11.0, 3.0), (19.0, 14.0));
+        }
+        "extractsrf" => {
+            pen.cube(3.0, 7.0, 10.0);
+            let face = [(12.0, 2.0), (20.0, 2.0), (20.0, 10.0), (12.0, 10.0)];
+            pen.filled(&face, fill);
+            pen.path_in(&face, true, pen.accent());
+        }
+        "mergeallfaces" => {
+            pen.rect(3.0, 6.0, 16.0, 10.0);
+            pen.dashed_in(&[(11.0, 6.0), (11.0, 16.0)], thin(1.2));
+            pen.line_in((7.0, 11.0), (15.0, 11.0), pen.accent());
+        }
+        "wirecut" => {
+            pen.cube(4.0, 5.0, 11.0);
+            pen.quad_in((2.0, 4.0), (12.0, 12.0), (20.0, 20.0), pen.accent());
+        }
+        "distribute" => {
+            for x in [3.0, 9.5, 16.0] {
+                pen.rect(x, 7.0, 3.0, 8.0);
+            }
+            pen.line_in((3.0, 18.0), (19.0, 18.0), pen.accent());
+        }
+        "selcolor" => {
+            pen.pointer();
+            pen.filled(
+                &[(13.0, 13.0), (19.0, 13.0), (19.0, 19.0), (13.0, 19.0)],
+                pen.accent().color,
+            );
+        }
+        "lock" | "unlock" => {
+            pen.rect(5.0, 10.0, 12.0, 9.0);
+            if name.eq_ignore_ascii_case("lock") {
+                pen.arc((7.0, 4.0, 8.0, 12.0), 180.0, 180.0);
+            } else {
+                pen.arc((11.0, 2.0, 8.0, 12.0), 180.0, 180.0);
+            }
+            pen.dot(11.0, 14.5);
+        }
+        "group" | "ungroup" => {
+            pen.rect(4.0, 4.0, 6.0, 6.0);
+            pen.ellipse((12.0, 12.0, 7.0, 7.0));
+            let frame = [(2.0, 2.0), (20.0, 2.0), (20.0, 20.0), (2.0, 20.0)];
+            if name.eq_ignore_ascii_case("group") {
+                pen.path_in(&frame, true, pen.accent());
+            } else {
+                pen.dashed_in(
+                    &[
+                        (2.0, 2.0),
+                        (20.0, 2.0),
+                        (20.0, 20.0),
+                        (2.0, 20.0),
+                        (2.0, 2.0),
+                    ],
+                    pen.accent(),
+                );
+            }
+        }
+        "showedges" => {
+            pen.cube(4.0, 4.0, 10.0);
+            pen.line_in((4.0, 18.0), (14.0, 18.0), pen.accent());
+            pen.line_in((14.0, 18.0), (18.0, 14.0), pen.accent());
+        }
+        "plan" => {
+            pen.rect(4.0, 4.0, 14.0, 14.0);
+            pen.line_in((4.0, 11.0), (18.0, 11.0), thin(1.0));
+            pen.line_in((11.0, 4.0), (11.0, 18.0), thin(1.0));
+            pen.arrow((11.0, 1.0), (11.0, 8.0));
+        }
         _ => return false,
     }
     true

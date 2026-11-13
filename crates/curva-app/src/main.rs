@@ -114,12 +114,26 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "Helix",
             "Spiral",
             "Parabola",
+            "Conic",
+            "Hyperbola",
+            "HandleCurve",
+            "Sketch",
             "Point",
             "Points",
             "Lines",
             "Offset",
             "Fillet",
             "Chamfer",
+            "BlendCrv",
+            "OffsetMultiple",
+            "Extend",
+            "Match",
+            "Fair",
+            "SimplifyCrv",
+            "CurveBoolean",
+            "MakeUniform",
+            "Reparameterize",
+            "Weight",
         ],
     ),
     (
@@ -134,7 +148,13 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "Sweep1",
             "OffsetSrf",
             "ExtrudeSrf",
+            "ExtrudeCrvTapered",
+            "ExtrudeCrvAlongCrv",
+            "ExtrudeCrvToPoint",
+            "RailRevolve",
             "DupEdge",
+            "DupBorder",
+            "ExtractSrf",
         ],
     ),
     (
@@ -149,10 +169,13 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "Tube",
             "Ellipsoid",
             "Paraboloid",
+            "Pyramid",
             "Pipe",
             "FilletEdge",
             "ChamferEdge",
             "Shell",
+            "MergeAllFaces",
+            "Wirecut",
             "Volume",
         ],
     ),
@@ -175,6 +198,11 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "Array",
             "ArrayLinear",
             "Align",
+            "Distribute",
+            "Group",
+            "Ungroup",
+            "Lock",
+            "Unlock",
         ],
     ),
     (
@@ -191,6 +219,8 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "BoundingBox",
             "AreaCentroid",
             "VolumeCentroid",
+            "ShowEdges",
+            "Plan",
         ],
     ),
     (
@@ -209,6 +239,7 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "SelSrf",
             "SelSolid",
             "SelPt",
+            "SelColor",
             "Hide",
             "Show",
             "HideSwap",
@@ -216,6 +247,8 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
     ),
 ];
 const PICTURE_SIZE: [u32; 2] = [1200, 800];
+/// How far the pointer moves, in points, between the points Sketch takes while drawing.
+const SKETCH_STEP: f32 = 4.0;
 /// The specializations in the top bar's dial; only Freeform has commands yet.
 const SPECIALIZATIONS: [&str; 4] = [
     "ui.specialization.freeform",
@@ -257,6 +290,8 @@ struct Curva {
     agent: Option<curva_mcp::Listener>,
     waiting_approval: Option<(curva_mcp::AgentRequest, String)>,
     gumball_drag: Option<GumballDrag>,
+    /// While Sketch draws with the button held: where the last point was fed, and how many.
+    sketch_stroke: Option<(egui::Pos2, usize)>,
     /// A gumball handle clicked without a drag, and the value being typed for it.
     gumball_typing: Option<(Handle, String)>,
     /// Whether Alt is held this frame, which turns object snaps off for the moment.
@@ -836,6 +871,7 @@ impl Curva {
             agent: None,
             waiting_approval: None,
             gumball_drag: None,
+            sketch_stroke: None,
             gumball_typing: None,
             alt_held: false,
             snaps: SnapSet::default(),
@@ -1427,6 +1463,60 @@ impl Curva {
             && shapes
                 .iter()
                 .all(|(_, shape)| shape.body().is_some_and(curva_kernel::Body::is_solid))
+    }
+
+    /// Sketch draws while the mouse button is held: a point each few pixels the pointer moves,
+    /// and letting go ends the curve. Returns whether it took the mouse.
+    fn sketch_mouse(
+        &mut self,
+        ui: &egui::Ui,
+        pane: usize,
+        response: &egui::Response,
+        size: [f64; 2],
+    ) -> bool {
+        let sketching = self
+            .processor
+            .current_request()
+            .is_some_and(|request| request.prompt.key == "prompt.sketch.point");
+        if !sketching {
+            self.sketch_stroke = None;
+            return false;
+        }
+        let (down, released, at) = ui.input(|input| {
+            (
+                input.pointer.primary_down(),
+                input.pointer.primary_released(),
+                input.pointer.latest_pos(),
+            )
+        });
+        if released {
+            if let Some((_, fed)) = self.sketch_stroke.take()
+                && fed >= 2
+            {
+                self.processor.submit(&mut self.doc, "");
+            }
+            return true;
+        }
+        let Some(at) = at.filter(|p| response.rect.contains(*p)) else {
+            return self.sketch_stroke.is_some();
+        };
+        if !down {
+            return false;
+        }
+        let far_enough = self
+            .sketch_stroke
+            .is_none_or(|(last, _)| last.distance(at) >= SKETCH_STEP);
+        if far_enough {
+            let offset = at - response.rect.min;
+            let local = [f64::from(offset.x), f64::from(offset.y)];
+            if let Some((point, _)) = self.aim(ui, pane, local, size) {
+                self.active = pane;
+                self.processor.click(&mut self.doc, point);
+                let fed = self.sketch_stroke.map_or(0, |(_, n)| n) + 1;
+                self.sketch_stroke = Some((at, fed));
+            }
+        }
+        true
     }
 
     /// Runs the gumball for one viewport. Returns whether it took the mouse.
@@ -4004,6 +4094,11 @@ impl Curva {
                 self.panes[self.active] = Pane::new(standard_view(name));
                 self.panes[self.active].display = display;
             }
+            ViewRequest::Plan => {
+                let pane = &mut self.panes[self.active];
+                let plane = pane.plane;
+                pane.camera.plan(&plane);
+            }
             ViewRequest::Display(mode) => self.panes[self.active].display = mode,
             ViewRequest::ShowSelectionFilter => self.filter_row = !self.filter_row,
             ViewRequest::ToggleSelectionFilter => self.pick_filter.on = !self.pick_filter.on,
@@ -4074,6 +4169,9 @@ impl Curva {
                 && ui.ctx().layer_id_at(position) == Some(response.layer_id)
         };
         if self.gumball_mouse(ui, pane, response, size, &events) {
+            return;
+        }
+        if self.sketch_mouse(ui, pane, response, size) {
             return;
         }
         let gestures = self.panes[pane].gestures.take(&events, on_viewport);

@@ -111,8 +111,15 @@ impl Recipe for ExtrudeCrvTapered {
             if !curve.is_closed().unwrap_or(false) {
                 return Err(Message::new("error.tapered_closed"));
             }
-            let body = Body::extruded_tapered(&curve, up(cx), distance, draft, corners, cx.toggle("Solid"))
-                .map_err(|e| failed(&e))?;
+            let body = Body::extruded_tapered(
+                &curve,
+                up(cx),
+                distance,
+                draft,
+                corners,
+                cx.toggle("Solid"),
+            )
+            .map_err(|e| failed(&e))?;
             made.derived.push(Derived {
                 shape: Shape::Body(body),
                 from: id,
@@ -145,7 +152,11 @@ impl Recipe for ExtrudeCrvAlongCrv {
                 .offering(&[]),
         ];
         if !cx.values.is_empty() {
-            steps.push(StepDef::objects("prompt.extrudecrvalongcrv.path").curves().one());
+            steps.push(
+                StepDef::objects("prompt.extrudecrvalongcrv.path")
+                    .curves()
+                    .one(),
+            );
         }
         steps
     }
@@ -233,7 +244,11 @@ impl Recipe for RailRevolve {
     const NAME: &'static str = "railrevolve";
 
     fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
-        let mut steps = vec![StepDef::objects("prompt.railrevolve.profile").curves().one()];
+        let mut steps = vec![
+            StepDef::objects("prompt.railrevolve.profile")
+                .curves()
+                .one(),
+        ];
         if !cx.values.is_empty() {
             steps.push(StepDef::objects("prompt.railrevolve.rail").curves().one());
         }
@@ -247,7 +262,10 @@ impl Recipe for RailRevolve {
     }
 
     fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
-        let (profiles, rails) = (curves_of(cx.doc, objects(cx, 0)), curves_of(cx.doc, objects(cx, 1)));
+        let (profiles, rails) = (
+            curves_of(cx.doc, objects(cx, 0)),
+            curves_of(cx.doc, objects(cx, 1)),
+        );
         let (Some((id, profile)), Some((_, rail)), Some(a), Some(b)) =
             (profiles.first(), rails.first(), point(cx, 2), point(cx, 3))
         else {
@@ -421,7 +439,10 @@ impl Recipe for MergeAllFaces {
                 made.replace.push((id, Shape::Body(after_body)));
             }
         }
-        made.message = Some(Message::with("done.mergeallfaces", vec![merged.to_string()]));
+        made.message = Some(Message::with(
+            "done.mergeallfaces",
+            vec![merged.to_string()],
+        ));
         Ok(made)
     }
 }
@@ -561,7 +582,10 @@ impl Recipe for Distribute {
 /// The colour an object shows in: its layer's.
 fn colour_of(doc: &Document, id: u64) -> Option<[f32; 3]> {
     let layer = doc.layer_of(id)?;
-    doc.layers().iter().find(|l| l.id == layer).map(|l| l.colour)
+    doc.layers()
+        .iter()
+        .find(|l| l.id == layer)
+        .map(|l| l.colour)
 }
 
 /// `SelColor`: selects every object showing in the same colour as the one picked.
@@ -727,7 +751,12 @@ mod tests {
     fn square(doc: &mut Document, size: f64) -> u64 {
         doc.add(
             Curve::polyline(
-                vec![[0.0; 3], [size, 0.0, 0.0], [size, size, 0.0], [0.0, size, 0.0]],
+                vec![
+                    [0.0; 3],
+                    [size, 0.0, 0.0],
+                    [size, size, 0.0],
+                    [0.0, size, 0.0],
+                ],
                 true,
             )
             .unwrap(),
@@ -753,7 +782,11 @@ mod tests {
         doc.select(&[id]);
         run(&mut doc, &["extrudecrvtapered", "DraftAngle", "45", "2"]);
         let expected = 2.0 / 3.0 * (100.0 + 36.0 + 60.0);
-        assert!((last_volume(&doc) - expected).abs() < 1e-3, "{}", last_volume(&doc));
+        assert!(
+            (last_volume(&doc) - expected).abs() < 1e-3,
+            "{}",
+            last_volume(&doc)
+        );
         // Open curves are refused.
         let mut doc = Document::default();
         let line = doc.add(Curve::line([0.0; 3], [1.0, 0.0, 0.0]).unwrap());
@@ -794,13 +827,34 @@ mod tests {
         processor.submit(&mut doc, "");
         processor.submit(&mut doc, "0,0,0");
         processor.submit(&mut doc, "0,0,1");
-        let wall = doc.state().objects.last().unwrap().shape.body().unwrap().area().unwrap();
+        let wall = doc
+            .state()
+            .objects
+            .last()
+            .unwrap()
+            .shape
+            .body()
+            .unwrap()
+            .area()
+            .unwrap();
         let perimeter = rail_length(&doc, rail);
-        assert!((wall - 2.0 * perimeter).abs() < 0.01 * wall, "{wall} against {}", 2.0 * perimeter);
+        assert!(
+            (wall - 2.0 * perimeter).abs() < 0.01 * wall,
+            "{wall} against {}",
+            2.0 * perimeter
+        );
     }
 
     fn rail_length(doc: &Document, id: u64) -> f64 {
-        doc.state().objects.iter().find(|o| o.id == id).unwrap().curve().unwrap().length().unwrap()
+        doc.state()
+            .objects
+            .iter()
+            .find(|o| o.id == id)
+            .unwrap()
+            .curve()
+            .unwrap()
+            .length()
+            .unwrap()
     }
 
     #[test]
@@ -808,11 +862,30 @@ mod tests {
         let mut doc = Document::default();
         run(&mut doc, &["pyramid", "NumSides", "4", "0,0", "1,0", "3"]);
         // A square of diagonal 2 (area 2), 3 high: volume 2.
-        assert!((last_volume(&doc) - 2.0).abs() < 1e-6, "{}", last_volume(&doc));
+        assert!(
+            (last_volume(&doc) - 2.0).abs() < 1e-6,
+            "{}",
+            last_volume(&doc)
+        );
         let mut doc = Document::default();
-        run(&mut doc, &["pyramid", "NumSides", "4", "Circumscribed", "0,0", "1,0", "3"]);
+        run(
+            &mut doc,
+            &[
+                "pyramid",
+                "NumSides",
+                "4",
+                "Circumscribed",
+                "0,0",
+                "1,0",
+                "3",
+            ],
+        );
         // Sides touching radius 1: a 2 × 2 square, volume 4.
-        assert!((last_volume(&doc) - 4.0).abs() < 1e-6, "{}", last_volume(&doc));
+        assert!(
+            (last_volume(&doc) - 4.0).abs() < 1e-6,
+            "{}",
+            last_volume(&doc)
+        );
     }
 
     #[test]
@@ -833,11 +906,22 @@ mod tests {
         let mut doc = Document::default();
         let a = Body::cuboid([0.0; 3], [1.0, 1.0, 1.0]).unwrap();
         let b = Body::cuboid([1.0, 0.0, 0.0], [1.0, 1.0, 1.0]).unwrap();
-        let joined = a.combined(&b, curva_kernel::Combine::Union).unwrap().unwrap();
+        let joined = a
+            .combined(&b, curva_kernel::Combine::Union)
+            .unwrap()
+            .unwrap();
         let id = doc.add_body(joined);
         doc.select(&[id]);
         run(&mut doc, &["mergeallfaces"]);
-        assert_eq!(doc.state().objects[0].shape.body().unwrap().face_count().unwrap(), 6);
+        assert_eq!(
+            doc.state().objects[0]
+                .shape
+                .body()
+                .unwrap()
+                .face_count()
+                .unwrap(),
+            6
+        );
     }
 
     #[test]
@@ -858,7 +942,10 @@ mod tests {
             .map(|b| b.volume().unwrap())
             .collect();
         assert_eq!(volumes.len(), 2, "{volumes:?}");
-        assert!(volumes.iter().all(|v| (v - 4.0).abs() < 1e-6), "{volumes:?}");
+        assert!(
+            volumes.iter().all(|v| (v - 4.0).abs() < 1e-6),
+            "{volumes:?}"
+        );
     }
 
     #[test]
@@ -919,7 +1006,14 @@ mod tests {
         run(&mut doc, &["plane", "0,0", "4,3"]);
         doc.select(&[doc.state().objects[0].id]);
         let processor = run(&mut doc, &["showedges", ""]);
-        assert!(processor.log().iter().any(|line| line.contains("4 edges, 4 of them naked")), "{:?}", processor.log());
+        assert!(
+            processor
+                .log()
+                .iter()
+                .any(|line| line.contains("4 edges, 4 of them naked")),
+            "{:?}",
+            processor.log()
+        );
         let mut processor = run(&mut doc, &["plan"]);
         assert_eq!(processor.take_view_request(), Some(ViewRequest::Plan));
     }

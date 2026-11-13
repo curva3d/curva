@@ -611,7 +611,6 @@ impl Spline {
     }
 }
 
-
 impl Spline {
     /// The same curve run the other way.
     #[must_use]
@@ -657,8 +656,7 @@ impl Spline {
         let w = h0[3];
         let c: Point = std::array::from_fn(|k| h0[k] / w);
         let c1: Point = std::array::from_fn(|k| (h1[k] - h1[3] * c[k]) / w);
-        let c2: Point =
-            std::array::from_fn(|k| (h2[k] - 2.0 * h1[3] * c1[k] - h2[3] * c[k]) / w);
+        let c2: Point = std::array::from_fn(|k| (h2[k] - 2.0 * h1[3] * c1[k] - h2[3] * c[k]) / w);
         (c, c1, c2)
     }
 
@@ -828,8 +826,14 @@ mod tests {
         for k in 0..3 {
             let numeric1 = (3.0 * end[k] - 4.0 * p1[k] + p2[k]) / (2.0 * h);
             let numeric2 = (end[k] - 2.0 * p1[k] + p2[k]) / (h * h);
-            assert!((d1[k] - numeric1).abs() < 1e-3 * d1[k].abs().max(1.0), "{d1:?}");
-            assert!((d2[k] - numeric2).abs() < 1e-2 * d2[k].abs().max(1.0), "{d2:?}");
+            assert!(
+                (d1[k] - numeric1).abs() < 1e-3 * d1[k].abs().max(1.0),
+                "{d1:?}"
+            );
+            assert!(
+                (d2[k] - numeric2).abs() < 1e-2 * d2[k].abs().max(1.0),
+                "{d2:?}"
+            );
         }
     }
 

@@ -1186,7 +1186,10 @@ mod tests {
 
     #[test]
     fn completion_finds_aliases_and_puts_an_exact_match_first() {
-        assert_eq!(completions("pl"), ["Polyline", "Plane", "Plan", "PlanarSrf"]);
+        assert_eq!(
+            completions("pl"),
+            ["Polyline", "Plane", "Plan", "PlanarSrf"]
+        );
         assert_eq!(
             completions("c"),
             [

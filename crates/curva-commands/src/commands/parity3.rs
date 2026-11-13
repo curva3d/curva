@@ -76,8 +76,8 @@ impl Recipe for Parabola {
         if half <= 1e-9 {
             return Err(Message::new("error.reference_point"));
         }
-        let curve = parabola_piece(v, axis, side, gap(v, f), -half, half)
-            .map_err(|e| failed(&e))?;
+        let curve =
+            parabola_piece(v, axis, side, gap(v, f), -half, half).map_err(|e| failed(&e))?;
         Ok(Made {
             add: vec![Shape::Curve(curve)],
             message: Some(Message::new("done.parabola")),
