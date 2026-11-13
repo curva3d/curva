@@ -12,6 +12,7 @@ the release notes. Then update "Checked at".
 | Operation | Code | Used by | solidcore today | Checked at |
 |---|---|---|---|---|
 | spline-toolkit | `curva-kernel/src/spline.rs` | Match, Weight, Reparameterize, MakeUniform, SimplifyCrv, HandleCurve, Conic, Hyperbola, the arc extension | `curve_knots::insert_knot`, `remove_knot`, `set_degree` and `curve::extend_curve` cover parts on record curves; reparameterizing, uniform knots, weights, reversing and end derivatives are not there | `377457d` |
+| surface-toolkit | `curva-kernel/src/surface.rs` (`NurbsSurface`) | BlendSrf, MatchSrf, ShrinkTrimmedSrf, ExtractIsocurve, the deformations | solidcore makes sheets from surfaces only inside itself (`surface::sheet` is private); `face_surface::FaceSurface` evaluates faces, which Curva uses where it can | `377457d` |
 | face-assembly | `curva-kernel/src/assemble.rs` (`Body::assembled`) | ExtrudeSrf, the gumball's extrusion, RailRevolve's seam | `stitch::stitch` sews one body; merging several bodies' records into one is Curva's | `377457d` |
 | straight-extrusion | `curva-kernel/src/assemble.rs` (`Body::extruded_straight`) | ExtrudeSrf, the gumball | `thicken` and `offset_sheet` push along the normal, not along a direction | `377457d` |
 | cone-to-point | `curva-kernel/src/making2.rs` (`Body::extruded_to_point`) | ExtrudeCrvToPoint for smooth curves | `loft_to_point` takes polygons of lines only; `surface::ruled` takes two curves | `377457d` |
