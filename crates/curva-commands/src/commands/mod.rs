@@ -256,7 +256,7 @@ pub static COMMANDS: [CommandDef; 232] = [
     recipe!("Join", ["j"], true, join::Join),
     recipe!("Explode", ["x"], true, explode::Explode),
     recipe!("Split", [], true, split::Split),
-    listed!("Trim", ["tr"], true, true, trim::Trim),
+    recipe!("Trim", ["tr"], true, trim::Trim),
     recipe!("Offset", [], true, offset::Offset),
     recipe!("Fillet", [], true, fillet::Fillet),
     listed!(
@@ -337,13 +337,13 @@ pub static COMMANDS: [CommandDef; 232] = [
     recipe!("MergeAllFaces", [], true, parity5::MergeAllFaces),
     recipe!("Wirecut", [], true, parity5::Wirecut),
     recipe!("Distribute", [], true, parity5::Distribute),
-    listed!("SelColor", [], false, false, parity5::SelColor),
-    listed!("Lock", [], true, true, parity5::Lock),
-    listed!("Unlock", [], true, true, parity5::Unlock),
-    listed!("Group", [], true, true, parity5::Group),
-    listed!("Ungroup", [], true, true, parity5::Ungroup),
+    recipe!("SelColor", [], false, parity5::SelColor),
+    recipe!("Lock", [], true, parity5::Lock),
+    recipe!("Unlock", [], true, parity5::Unlock),
+    recipe!("Group", [], true, parity5::Group),
+    recipe!("Ungroup", [], true, parity5::Ungroup),
     recipe!("ShowEdges", [], true, parity5::ShowEdges),
-    listed!("Plan", [], false, false, parity5::Plan),
+    recipe!("Plan", [], false, parity5::Plan),
     listed!("Zebra", [], false, false, parity5::Zebra),
     listed!("EditBoolean", [], true, true, live::EditBoolean),
     listed!("BreakBoolean", [], true, true, live::BreakBoolean),
@@ -754,7 +754,7 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 54] = [
+    const NOTHING_TO_PREVIEW: [&str; 56] = [
         "ChangeLayer",
         "MatchProperties",
         "Linetype",
@@ -787,6 +787,8 @@ mod tests {
         "MergeAllFaces",
         "SimplifyCrv",
         "MakeUniform",
+        "SelColor",
+        "Plan",
         "Lock",
         "Unlock",
         "Group",

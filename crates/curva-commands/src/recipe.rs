@@ -396,6 +396,10 @@ pub struct Made {
     pub message: Option<Message>,
     /// A live boolean: the one result made keeps these inputs, hidden, and follows them.
     pub live: Option<(curva_document::LiveHow, Vec<u64>, Vec<u64>)>,
+    /// Changes to objects' state rather than their shapes, made after everything else.
+    pub edits: Vec<Edit>,
+    /// A change of view to ask the interface for when done, as Plan asks.
+    pub view: Option<crate::ViewRequest>,
 }
 
 impl Made {
@@ -406,6 +410,21 @@ impl Made {
             .chain(self.replace.iter().map(|(_, s)| s))
             .chain(self.derived.iter().map(|d| &d.shape))
     }
+}
+
+/// A change to objects' state rather than their shapes.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Edit {
+    /// Locks these objects.
+    Lock(Vec<u64>),
+    /// Unlocks every locked object.
+    UnlockAll,
+    /// Puts these objects in one new group.
+    Group(Vec<u64>),
+    /// Breaks up the groups of these objects.
+    Ungroup(Vec<u64>),
+    /// Selects these objects, and only these.
+    Select(Vec<u64>),
 }
 
 /// A new object made from an existing one, such as an offset.
@@ -539,6 +558,11 @@ pub trait Recipe: Default + 'static {
     /// Whether what the answers make goes into the model after each answer, as Rhino's Copy
     /// places each copy at once, so later answers can snap to it. Off by default.
     const PLACES_AS_IT_GOES: bool = false;
+    /// Whether what each answer makes goes into the model for good as soon as it is given, as
+    /// Rhino's Trim cuts at each click. `make` then makes only what the last answer changes, from
+    /// the model as it now is; the run stays one undo step and Escape keeps what was done. Off by
+    /// default.
+    const APPLIES_EACH_ANSWER: bool = false;
 
     /// The steps to ask, given the answers and mode so far. The list may change as they come in,
     /// and the command finishes once every step in it is answered.
@@ -586,6 +610,8 @@ pub struct RecipeCommand<R: Recipe> {
     plane: Option<[Point; 2]>,
     /// What a recipe that places as it goes has put in the model so far.
     placed: Vec<u64>,
+    /// Whether a recipe that applies each answer has changed the model yet.
+    applied: bool,
 }
 
 impl<R: Recipe> RecipeCommand<R> {
@@ -736,8 +762,12 @@ impl<R: Recipe> RecipeCommand<R> {
             Err(message) => return Step::Failed(message),
         };
         let message = made.message.clone();
+        let view = made.view.clone();
         Self::apply(doc, made);
-        Step::Done(message)
+        match view {
+            Some(view) => Step::View(view),
+            None => Step::Done(message),
+        }
     }
 
     /// Puts what was made into the model, and returns the ids of the objects added.
@@ -763,6 +793,23 @@ impl<R: Recipe> RecipeCommand<R> {
         }
         if let (Some((how, first, second)), [result]) = (made.live, added.as_slice()) {
             doc.make_live(*result, how, first, second);
+        }
+        for edit in made.edits {
+            match edit {
+                Edit::Lock(ids) => {
+                    doc.lock(&ids);
+                }
+                Edit::UnlockAll => {
+                    doc.unlock_all();
+                }
+                Edit::Group(ids) => {
+                    doc.group(&ids);
+                }
+                Edit::Ungroup(ids) => {
+                    doc.ungroup(&ids);
+                }
+                Edit::Select(ids) => doc.select(&ids),
+            }
         }
         added
     }
@@ -884,6 +931,18 @@ impl<R: Recipe> Command for RecipeCommand<R> {
         if let Err(message) = self.recipe.check(&self.context(doc, &self.values)) {
             return Step::Failed(message);
         }
+        if R::APPLIES_EACH_ANSWER && self.steps(doc).len() > self.values.len() {
+            match self.recipe.make(&self.context(doc, &self.values)) {
+                Ok(made) => {
+                    self.applied |= !(made.add.is_empty()
+                        && made.replace.is_empty()
+                        && made.remove.is_empty()
+                        && made.derived.is_empty());
+                    Self::apply(doc, made);
+                }
+                Err(message) => return Step::Failed(message),
+            }
+        }
         if R::PLACES_AS_IT_GOES && self.steps(doc).len() > self.values.len() {
             doc.remove(&std::mem::take(&mut self.placed));
             match self.recipe.make(&self.context(doc, &self.values)) {
@@ -895,7 +954,7 @@ impl<R: Recipe> Command for RecipeCommand<R> {
     }
 
     fn keeps_on_cancel(&self) -> bool {
-        !self.placed.is_empty()
+        !self.placed.is_empty() || self.applied
     }
 
     fn preview_replaces(&self, doc: &Document, live: &Live) -> Vec<u64> {

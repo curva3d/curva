@@ -1,118 +1,159 @@
-//! `Trim`: cuts curves with chosen cutters and removes the part clicked, as in Rhino.
+//! `Trim`: cuts curves with chosen cutters and removes the part clicked, as in Rhino. Each click
+//! trims at once, so later clicks see the curves as they now are; Enter ends it.
 
-use super::{ask_objects, curve_at, curves_of, cut_by, geometry_failed, unexpected};
-use crate::{Answer, Command, Kind, Live, Message, Request, Step};
-use curva_document::Document;
-use curva_kernel::{Curve, KernelError, Point, gap};
+use super::{curve_at, curves_of, cut_by};
+use crate::Message;
+use crate::recipe::{Context, Derived, Made, ON_CURVE, Recipe, StepDef, Value};
+use curva_document::{Document, Shape};
+use curva_kernel::{Curve, Point, gap};
+use std::cell::RefCell;
 
-/// How far from a curve a picked point may be, in millimetres, to mean that curve.
-const ON_CURVE: f64 = 1e-3;
-
-/// The running command.
+/// The command. It keeps its cutters as curves, so a cutter that is itself trimmed goes on
+/// cutting with whatever is left of it.
 #[derive(Default)]
 pub struct Trim {
-    cutters: Option<Vec<u64>>,
-    trimmed: usize,
+    cutters: RefCell<Option<Vec<Curve>>>,
 }
 
 /// What clicking a point would trim.
 struct Cut {
     id: u64,
+    curve: Curve,
     pieces: Vec<Curve>,
     doomed: usize,
 }
 
-fn ask_part(key: &'static str) -> Step {
-    Step::Ask(Request {
-        allow_empty: true,
-        ..Request::new(key, Kind::PickPart)
-    })
-}
-
 impl Trim {
-    /// The curve under a picked point cut by every cutter but itself, or `None` if no curve is there.
-    fn cut_under(&self, doc: &Document, at: Point) -> Result<Option<Cut>, KernelError> {
-        let cutter_ids = self.cutters.as_deref().unwrap_or_default();
-        let under = curve_at(doc, at, ON_CURVE)?;
-        let Some((id, curve)) = under else {
+    /// The cutters: the curves chosen at the first step, as they now are.
+    fn cutters(&self, cx: &Context<'_>) -> Vec<Curve> {
+        let mut kept = self.cutters.borrow_mut();
+        kept.get_or_insert_with(|| match cx.values.first() {
+            Some(Value::Objects(ids)) => {
+                curves_of(cx.doc, ids).into_iter().map(|(_, c)| c).collect()
+            }
+            _ => Vec::new(),
+        })
+        .clone()
+    }
+
+    /// The curve under `at` cut by every cutter but itself, if it is crossed.
+    fn cut_under(
+        &self,
+        cx: &Context<'_>,
+        doc: &Document,
+        at: Point,
+    ) -> Result<Option<Cut>, Message> {
+        let failed =
+            |e: &curva_kernel::KernelError| Message::with("error.geometry", vec![e.to_string()]);
+        let Some((id, curve)) = curve_at(doc, at, ON_CURVE).map_err(|e| failed(&e))? else {
             return Ok(None);
         };
-        let others: Vec<u64> = cutter_ids.iter().copied().filter(|c| *c != id).collect();
-        let cutters: Vec<Curve> = curves_of(doc, &others)
+        let others: Vec<Curve> = self
+            .cutters(cx)
             .into_iter()
-            .map(|(_, c)| c)
+            .filter(|c| *c != curve)
             .collect();
-        let pieces = cut_by(&curve, &cutters)?;
+        let pieces = cut_by(&curve, &others).map_err(|e| failed(&e))?;
+        if pieces.len() < 2 {
+            return Ok(None);
+        }
         let mut doomed = 0;
         let mut nearest = f64::INFINITY;
         for (index, piece) in pieces.iter().enumerate() {
-            let distance = gap(piece.closest_point(at)?, at);
+            let distance = gap(piece.closest_point(at).map_err(|e| failed(&e))?, at);
             if distance < nearest {
                 nearest = distance;
                 doomed = index;
             }
         }
-        Ok(Some(Cut { id, pieces, doomed }))
+        Ok(Some(Cut {
+            id,
+            curve,
+            pieces,
+            doomed,
+        }))
     }
 }
 
-impl Command for Trim {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        if self.cutters.is_none() {
-            let chosen = match answer {
-                Some(Answer::Objects(list)) => list,
-                _ => doc.selection(),
-            };
-            if chosen.is_empty() {
-                return ask_objects("prompt.trim.cutters");
-            }
-            self.cutters = Some(chosen);
-            doc.select(&[]);
-            return ask_part("prompt.trim.part");
+impl Recipe for Trim {
+    const NAME: &'static str = "Trim";
+    const APPLIES_EACH_ANSWER: bool = true;
+
+    fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
+        let mut steps = vec![StepDef::objects("prompt.trim.cutters").curves()];
+        steps.extend(
+            cx.values
+                .iter()
+                .skip(1)
+                .map(|_| StepDef::pick("prompt.trim.part").optional()),
+        );
+        if !cx.values.is_empty() && cx.values.last() != Some(&Value::Empty) {
+            steps.push(StepDef::pick("prompt.trim.part").optional());
         }
-        match answer {
-            Some(Answer::Empty) => Step::Done(Some(Message::with(
-                "done.trim",
-                vec![self.trimmed.to_string()],
-            ))),
-            Some(Answer::Number(_)) => ask_part("prompt.trim.part"),
-            Some(Answer::Point(at)) => {
-                let cut = match self.cut_under(doc, at) {
-                    Ok(cut) => cut,
-                    Err(error) => return geometry_failed(&error),
+        steps
+    }
+
+    /// A click trims only where it lands on a crossed curve; anything else asks again.
+    fn accepts(&self, cx: &Context<'_>) -> bool {
+        match cx.values.last() {
+            Some(Value::Point(at)) if cx.values.len() > 1 => {
+                matches!(self.cut_under(cx, cx.doc, *at), Ok(Some(_)))
+            }
+            Some(Value::Objects(_) | Value::Empty) => true,
+            _ => false,
+        }
+    }
+
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        match cx.values.last() {
+            Some(Value::Empty) => {
+                let trimmed = cx.values.iter().filter(|v| v.point().is_some()).count();
+                Ok(Made {
+                    message: Some(Message::with("done.trim", vec![trimmed.to_string()])),
+                    ..Made::default()
+                })
+            }
+            // The answers already given are in the model; the preview shows only the part the
+            // pointer would remove.
+            Some(Value::Point(at)) if cx.values.len() > 1 => {
+                if cx.previewing && cx.answered == cx.values.len() {
+                    return Ok(Made::default());
+                }
+                let Some(mut cut) = self.cut_under(cx, cx.doc, *at)? else {
+                    return Ok(Made::default());
                 };
-                let Some(cut) = cut.filter(|cut| cut.pieces.len() >= 2) else {
-                    return ask_part("prompt.trim.not_crossed");
-                };
-                let was_cutter = self.cutters.as_ref().is_some_and(|c| c.contains(&cut.id));
-                let layer = doc.layer_of(cut.id);
-                doc.remove(&[cut.id]);
-                let kept: Vec<u64> = cut
+                if cx.previewing {
+                    return Ok(Made {
+                        guides: vec![cut.pieces.swap_remove(cut.doomed)],
+                        ..Made::default()
+                    });
+                }
+                let kept: Vec<Curve> = cut
                     .pieces
                     .into_iter()
                     .enumerate()
                     .filter(|(index, _)| *index != cut.doomed)
-                    .map(|(_, piece)| doc.add_on(piece, layer))
+                    .map(|(_, piece)| piece)
                     .collect();
-                // A trimmed cutter goes on cutting with whatever is left of it.
-                if was_cutter && let Some(cutters) = self.cutters.as_mut() {
-                    cutters.retain(|c| *c != cut.id);
-                    cutters.extend(kept);
+                if let Some(cutters) = self.cutters.borrow_mut().as_mut()
+                    && let Some(at) = cutters.iter().position(|c| *c == cut.curve)
+                {
+                    cutters.splice(at..=at, kept.iter().cloned());
                 }
-                self.trimmed += 1;
-                ask_part("prompt.trim.part")
+                Ok(Made {
+                    remove: vec![cut.id],
+                    derived: kept
+                        .into_iter()
+                        .map(|piece| Derived {
+                            shape: Shape::Curve(piece),
+                            from: cut.id,
+                            history: None,
+                        })
+                        .collect(),
+                    ..Made::default()
+                })
             }
-            _ => unexpected(),
-        }
-    }
-
-    fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
-        let (Some(_), Some(at)) = (&self.cutters, live.cursor) else {
-            return Vec::new();
-        };
-        match self.cut_under(doc, at) {
-            Ok(Some(mut cut)) if cut.pieces.len() >= 2 => vec![cut.pieces.swap_remove(cut.doomed)],
-            _ => Vec::new(),
+            _ => Ok(Made::default()),
         }
     }
 }
@@ -209,6 +250,16 @@ mod tests {
         assert_eq!(shown.len(), 1);
         assert!((shown[0].length().unwrap() - 7.0).abs() < 1e-9);
         assert_eq!(doc.state().objects.len(), 2);
+    }
+
+    #[test]
+    fn escape_keeps_what_was_trimmed_as_one_undo_step() {
+        let (mut doc, mut processor, _) = start();
+        processor.click(&mut doc, [8.0, 0.0, 0.0]);
+        processor.cancel(&mut doc);
+        assert!((length_of_all(&doc) - 13.0).abs() < 1e-9);
+        processor.submit(&mut doc, "undo");
+        assert!((length_of_all(&doc) - 20.0).abs() < 1e-9);
     }
 
     #[test]

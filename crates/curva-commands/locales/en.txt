@@ -119,7 +119,6 @@ done.split = Split into {0} pieces.
 error.nothing_to_cut = Those cutters do not cross those curves.
 prompt.trim.cutters = Select cutting curves, then press Enter
 prompt.trim.part = Click the part to trim away, Enter when done
-prompt.trim.not_crossed = Nothing to cut there. Click the part to trim away, Enter when done
 done.trim = Trimmed {0} parts.
 error.pick_part = Click the part of a curve in a viewport.
 prompt.offset.objects = Select curves to offset, then press Enter

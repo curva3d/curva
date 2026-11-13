@@ -209,10 +209,10 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | Show | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
 | HideSwap | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
 | Isolate | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
-| Lock | partly | Not yet on the command framework |
-| Unlock | partly | Not yet on the command framework |
-| Group | partly | Not yet on the command framework; groups do not nest yet |
-| Ungroup | partly | Not yet on the command framework |
+| Lock | done |  |
+| Unlock | done |  |
+| Group | partly | Groups do not nest yet |
+| Ungroup | done |  |
 | Rename | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
 | History | partly | Options to come: `Record`, `Update`, `Lock`, `BrokenHistoryWarning` |
 
@@ -252,4 +252,4 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | UndoView | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
 | RedoView | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
 | SetDisplayMode | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
-| Plan | partly | Not yet on the command framework |
+| Plan | done |  |
