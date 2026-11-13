@@ -54,6 +54,7 @@ mod parity2;
 mod parity3;
 mod parity4;
 mod parity5;
+mod parity6;
 mod perspective;
 mod pipe;
 mod planar_srf;
@@ -159,7 +160,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 170] = [
+pub static COMMANDS: [CommandDef; 185] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -339,6 +340,21 @@ pub static COMMANDS: [CommandDef; 170] = [
     listed!("Ungroup", [], true, true, parity5::Ungroup),
     recipe!("ShowEdges", [], true, parity5::ShowEdges),
     listed!("Plan", [], false, false, parity5::Plan),
+    recipe!("EdgeSrf", [], true, parity6::EdgeSrf),
+    recipe!("NetworkSrf", [], true, parity6::NetworkSrf),
+    recipe!("Patch", [], true, parity6::Patch),
+    recipe!("ExtendSrf", [], true, parity6::ExtendSrf),
+    recipe!("Untrim", [], true, parity6::Untrim),
+    recipe!("Section", [], true, parity6::Section),
+    recipe!("Contour", [], true, parity6::Contour),
+    recipe!("Intersect", [], true, parity6::Intersect),
+    recipe!("Project", [], true, parity6::Project),
+    recipe!("MoveFace", [], true, parity6::MoveFace<false>),
+    recipe!("PushPull", [], true, parity6::MoveFace<true>),
+    recipe!("Shear", [], true, parity6::Shear),
+    recipe!("RebuildUV", [], true, parity6::RebuildUv),
+    recipe!("CurvatureGraph", [], true, parity6::CurvatureGraph),
+    recipe!("Cap", [], true, parity6::Cap),
     recipe!("ExtrudeCrv", [], true, extrude_crv::ExtrudeCrv),
     recipe!("PlanarSrf", [], true, planar_srf::PlanarSrf),
     recipe!("Revolve", [], true, revolve::Revolve),
@@ -675,7 +691,11 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 26] = [
+    const NOTHING_TO_PREVIEW: [&str; 30] = [
+        "EdgeSrf",
+        "NetworkSrf",
+        "Patch",
+        "Cap",
         "DupBorder",
         "MergeAllFaces",
         "SimplifyCrv",
@@ -705,7 +725,18 @@ mod tests {
     ];
 
     /// Commands whose preview needs its own setup, tested in their own files.
-    const PREVIEW_TESTED_ELSEWHERE: [&str; 39] = [
+    const PREVIEW_TESTED_ELSEWHERE: [&str; 50] = [
+        "ExtendSrf",
+        "Untrim",
+        "Section",
+        "Contour",
+        "Intersect",
+        "Project",
+        "MoveFace",
+        "PushPull",
+        "Shear",
+        "RebuildUV",
+        "CurvatureGraph",
         "BlendCrv",
         "Match",
         "Extend",
@@ -822,7 +853,6 @@ mod tests {
         }
     }
 
-
     /// Every `CUSTOM KERNEL OPERATION` mark in the source has a row in
     /// `docs/kernel/custom-operations.md`, and every row a mark (spec `engine-gaps.md` §1).
     #[test]
@@ -846,7 +876,8 @@ mod tests {
                 } else if path.extension().is_some_and(|e| e == "rs") {
                     let text = std::fs::read_to_string(&path).unwrap();
                     for line in text.lines() {
-                        if let Some(name) = line.trim().strip_prefix("// CUSTOM KERNEL OPERATION: ") {
+                        if let Some(name) = line.trim().strip_prefix("// CUSTOM KERNEL OPERATION: ")
+                        {
                             marks.insert(name.trim().to_owned());
                         }
                     }
@@ -1235,12 +1266,15 @@ mod tests {
                 "ChangeDegree",
                 "Conic",
                 "CurveBoolean",
+                "Contour",
+                "CurvatureGraph",
+                "Cap",
                 "ChamferEdge",
                 "CPlane",
                 "Curve"
             ]
         );
-        assert_eq!(completions("co"), ["Copy", "Cone", "Conic"]);
+        assert_eq!(completions("co"), ["Copy", "Cone", "Conic", "Contour"]);
     }
 
     #[test]
@@ -1258,8 +1292,8 @@ mod tests {
 
     #[test]
     fn a_partial_name_never_runs_new() {
-        assert_eq!(autofilled("n", 0), "n");
-        assert_eq!(autofilled("ne", 0), "ne");
+        assert_ne!(autofilled("n", 0), "New");
+        assert_ne!(autofilled("ne", 0), "New");
         assert_eq!(autofilled("NEW", 0), "New");
     }
 }

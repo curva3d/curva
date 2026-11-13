@@ -1398,6 +1398,124 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
             pen.line_in((11.0, 4.0), (11.0, 18.0), thin(1.0));
             pen.arrow((11.0, 1.0), (11.0, 8.0));
         }
+        "edgesrf" => {
+            let outline = [(4.0, 4.0), (18.0, 6.0), (17.0, 18.0), (3.0, 16.0)];
+            pen.filled(&outline, fill);
+            for pair in outline.windows(2) {
+                pen.line_in(pair[0], pair[1], pen.accent());
+            }
+            pen.line_in(outline[3], outline[0], pen.accent());
+        }
+        "networksrf" => {
+            for y in [5.0, 11.0, 17.0] {
+                pen.quad((3.0, y), (11.0, y - 3.0), (19.0, y));
+            }
+            for x in [4.0, 11.0, 18.0] {
+                pen.line_in((x, 3.0), (x, 19.0), pen.accent());
+            }
+        }
+        "patch" => {
+            let outline = [
+                (5.0, 4.0),
+                (17.0, 5.0),
+                (19.0, 15.0),
+                (10.0, 19.0),
+                (3.0, 13.0),
+            ];
+            pen.filled(&outline, fill);
+            pen.path_in(&outline, true, pen.accent());
+            pen.dot(11.0, 11.0);
+        }
+        "extendsrf" => {
+            pen.path(&[(3.0, 6.0), (12.0, 6.0), (12.0, 16.0), (3.0, 16.0)], true);
+            pen.dashed_in(
+                &[(12.0, 6.0), (19.0, 6.0), (19.0, 16.0), (12.0, 16.0)],
+                thin(1.3),
+            );
+            pen.line_in((12.0, 6.0), (12.0, 16.0), pen.accent());
+        }
+        "untrim" => {
+            pen.rect(3.0, 3.0, 16.0, 16.0);
+            pen.dashed_in(
+                &[
+                    (8.0, 8.0),
+                    (14.0, 8.0),
+                    (14.0, 14.0),
+                    (8.0, 14.0),
+                    (8.0, 8.0),
+                ],
+                pen.accent(),
+            );
+        }
+        "section" | "contour" => {
+            pen.cube(4.0, 6.0, 10.0);
+            if name.eq_ignore_ascii_case("section") {
+                pen.line_in((11.0, 2.0), (11.0, 20.0), pen.accent());
+            } else {
+                for y in [8.0, 12.0, 16.0] {
+                    pen.line_in((2.0, y), (20.0, y), pen.accent());
+                }
+            }
+        }
+        "intersect" => {
+            pen.ellipse((2.0, 5.0, 12.0, 12.0));
+            pen.ellipse((8.0, 5.0, 12.0, 12.0));
+            pen.line_in((11.0, 6.0), (11.0, 16.0), pen.accent());
+        }
+        "project" => {
+            pen.line((5.0, 4.0), (17.0, 4.0));
+            pen.arrow((11.0, 6.0), (11.0, 13.0));
+            pen.path(
+                &[(2.0, 16.0), (16.0, 16.0), (20.0, 19.0), (6.0, 19.0)],
+                true,
+            );
+            pen.line_in((6.0, 17.5), (16.0, 17.5), pen.accent());
+        }
+        "moveface" | "pushpull" => {
+            pen.cube(4.0, 8.0, 10.0);
+            let top = [(4.0, 8.0), (10.0, 4.0), (20.0, 4.0), (14.0, 8.0)];
+            pen.filled(&top, pen.accent().color.gamma_multiply(0.5));
+            pen.arrow((12.0, 7.0), (12.0, 1.0));
+        }
+        "shear" => {
+            pen.dashed_in(
+                &[(4.0, 18.0), (4.0, 6.0), (14.0, 6.0), (14.0, 18.0)],
+                thin(1.0),
+            );
+            pen.path(&[(4.0, 18.0), (9.0, 6.0), (19.0, 6.0), (14.0, 18.0)], true);
+        }
+        "rebuilduv" => {
+            pen.path(&[(3.0, 5.0), (19.0, 5.0), (19.0, 17.0), (3.0, 17.0)], true);
+            for x in [7.0, 11.0, 15.0] {
+                pen.line_in((x, 5.0), (x, 17.0), thin(1.0));
+            }
+            for y in [9.0, 13.0] {
+                pen.line_in((3.0, y), (19.0, y), thin(1.0));
+            }
+            pen.dot(11.0, 9.0);
+        }
+        "curvaturegraph" => {
+            pen.quad((3.0, 17.0), (11.0, 5.0), (19.0, 17.0));
+            for (x, y, tx, ty) in [
+                (6.0, 13.0, 4.0, 9.0),
+                (9.0, 10.5, 8.0, 5.0),
+                (11.0, 10.0, 11.0, 3.0),
+                (13.0, 10.5, 14.0, 5.0),
+                (16.0, 13.0, 18.0, 9.0),
+            ] {
+                pen.line_in((x, y), (tx, ty), pen.accent());
+            }
+        }
+        "cap" => {
+            pen.ellipse((4.0, 3.0, 14.0, 5.0));
+            pen.line((4.0, 5.5), (4.0, 16.5));
+            pen.line((18.0, 5.5), (18.0, 16.5));
+            pen.arc((4.0, 14.0, 14.0, 5.0), 0.0, 180.0);
+            pen.filled(
+                &pen.arc_points((4.0, 3.0, 14.0, 5.0), 0.0, 360.0),
+                pen.accent().color.gamma_multiply(0.6),
+            );
+        }
         _ => return false,
     }
     true

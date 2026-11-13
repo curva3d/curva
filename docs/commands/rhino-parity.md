@@ -50,12 +50,12 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | Fillet | partly | Options to come: `Join`, `Trim`, `ExtendArcsBy`, `ExtendOtherCurvesBy`, `Dynamic` |
 | FilletCorners | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
 | Chamfer | partly | Options to come: `Join`, `Trim`, `ExtendArcsBy`, `ExtendOtherCurvesBy` |
-| Project | blocked | needs projection onto surfaces |
+| Project | partly | Along the construction plane's normal; `Loose` and `DeleteInput` to come |
 | Pull | blocked | needs projection onto surfaces |
 | ProjectToCPlane | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
-| Contour | blocked | needs plane–surface intersections |
-| Section | blocked | needs plane–surface intersections |
-| Intersect | blocked | needs surface intersections |
+| Contour | partly | Options to come: `GroupOutput`, `JoinCurves` |
+| Section | done |  |
+| Intersect | done |  |
 | DupEdge | done | |
 | DupBorder | done |  |
 | Silhouette | blocked | needs silhouettes from the engine |
@@ -98,7 +98,7 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | PlanarSrf | done | |
 | Plane | partly | Options to come: `Deformable`, `Vertical`, `Center`, `3Point` |
 | SrfPt | done | |
-| EdgeSrf | blocked | needs Coons patches |
+| EdgeSrf | done |  |
 | ExtrudeCrv | partly | Options to come: `Direction`, `ToBoundary`, `SplitAtTangents`, `SetBasePoint` |
 | ExtrudeCrvTapered | partly | Options to come: `Direction`, `DeleteInput`, `FlipAngle` |
 | ExtrudeCrvAlongCrv | partly | Options to come: `DeleteInput`, `SubCurve` |
@@ -108,19 +108,19 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | Loft | partly | Options to come: `Point`, `Style`, `Closed`, `MatchStartTangent`, `MatchEndTangent`, `SplitAtTangents`, `AlignCurves`, `Rebuild`, `Refit` |
 | Sweep1 | partly | Options to come: `ChainEdges`, `Point`, `FrameStyle`, `Closed`, `GlobalShapeBlending`, `UntrimmedMiters`, `RefitRail`, `AlignCrossSections` |
 | Sweep2 | blocked | needs two-rail sweeps |
-| NetworkSrf | blocked | needs network surfaces |
-| Patch | blocked | needs patch fitting |
+| NetworkSrf | partly | Sorts the curves into their two families itself; `EdgeMatching` and `Tolerances` to come; rational curves (arcs) are refused by the engine |
+| Patch | partly | Fills a closed chain of curves; points, `UVSpans`, `Stiffness` and the other options to come |
 | BlendSrf | blocked | needs surface blending |
 | Pipe | partly | Options to come: `ChainEdges`, `Multiple`, `FitRail`, `ShapeBlending`, `WallThickness` |
 | OffsetSrf | partly | Options to come: `Distance`, `Corner`, `ThroughPoint`, `FlipAll`, `Loose`, `Tolerance`, `BothSides` |
-| ExtendSrf | blocked | needs surface extension |
+| ExtendSrf | done |  |
 | MatchSrf | blocked | needs surface matching |
 | FilletSrf | blocked | needs surface fillets |
 | ChamferSrf | blocked | needs surface chamfers |
-| Untrim | blocked | needs trim removal |
+| Untrim | partly | Options to come: `KeepTrimObjects`, `All` |
 | ShrinkTrimmedSrf | blocked | |
 | SplitSrf | blocked | needs surface splitting |
-| RebuildUV | blocked | |
+| RebuildUV | partly | Untrimmed one-face surfaces only; `DeleteInput` to come |
 | UnrollSrf | blocked | needs developing surfaces |
 
 ## Solids
@@ -138,7 +138,7 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | Ellipsoid | partly | Options to come: `Corner`, `Diameter`, `FromFoci`, `AroundCurve` |
 | Paraboloid | partly | Options to come: `Vertex`, `MarkFocus`, `Solid` |
 | ExtrudeSrf | partly | Straight out of the construction plane; `Direction`, `Solid=No`, `ToBoundary` and `SetBasePoint` to come |
-| Cap | blocked | the engine leaves capped solids hollow (tangency-labs/solidcore#3266) |
+| Cap | done | Curva's own (`planar-capping`): solidcore leaves capped shells hollow |
 | BooleanUnion | partly | Options to come: `MergeCoplanarFaces` |
 | BooleanDifference | partly | Options to come: `DeleteCutters` |
 | BooleanIntersection | done | |
@@ -148,7 +148,8 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | Shell | partly | Options to come: `Thickness`, `EditThickness` |
 | ExtractSrf | done |  |
 | MergeAllFaces | done |  |
-| MoveFace | blocked | needs face editing |
+| MoveFace | partly | Moves faces along their normals by a distance, not by any vector |
+| PushPull | done | |
 | ExtrudeFace | blocked | needs face editing |
 | Wirecut | partly | Cuts straight through out of the construction plane; `Direction`, `BothSides` and `DeleteInput` to come |
 
@@ -173,7 +174,7 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | ArrayLinear | done | |
 | Align | partly | Options to come: `ToPoint`, `ToLine` |
 | Distribute | done |  |
-| Shear | blocked | needs shear transforms in the engine |
+| Shear | partly | Options to come: `Copy` |
 | Twist | blocked | needs deformations |
 | Bend | blocked | needs deformations |
 | Taper | blocked | needs deformations |
@@ -230,7 +231,7 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | BoundingBox | partly | Options to come: `CoordinateSystem`, `Cumulative`, `Output` |
 | AreaCentroid | partly | A solid's area centre is worked out from its mesh; closed curves to come |
 | VolumeCentroid | done | |
-| CurvatureGraph | blocked | needs curvature from the engine |
+| CurvatureGraph | done |  |
 | Zebra | blocked | needs analysis display |
 | ShowEdges | partly | Shows naked edges or all; `NonManifoldEdges` to come |
 

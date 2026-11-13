@@ -142,6 +142,38 @@ impl Body {
         Self::made(&made)
     }
 
+    /// The faces the edge `edge` borders.
+    pub fn faces_of_edge(&self, edge: usize) -> Result<Vec<usize>, KernelError> {
+        let record = self.record()?;
+        let edge = record
+            .edges
+            .get(edge)
+            .ok_or_else(|| KernelError(format!("the body has no edge {edge}")))?;
+        Ok(edge.uses.iter().map(|used| used.face as usize).collect())
+    }
+
+    /// The trim the edge `edge` lies on taken away (Rhino's Untrim): a hole filled, or, for an
+    /// edge of a face's outer boundary, the face back to its whole surface.
+    pub fn untrimmed_at(&self, edge: usize) -> Result<Self, KernelError> {
+        use solidcore_ops::untrim::{Holes, untrim_face};
+        let record = self.record()?;
+        let used = record
+            .edges
+            .get(edge)
+            .and_then(|e| e.uses.first().copied())
+            .ok_or_else(|| KernelError(format!("the body has no edge {edge}")))?;
+        let outer = used.r#loop == 0;
+        let (body, order) = self.engine_with_order()?;
+        let along = [edge];
+        let holes = if outer {
+            Holes::Along(&[])
+        } else {
+            Holes::Along(&along)
+        };
+        let made = untrim_face(&body, &order, used.face as usize, holes, outer, false)
+            .map_err(|e| failed("untrimming", e))?;
+        Self::made(&made)
+    }
     /// The face `face` with its holes filled and, with `outer`, its outer trim dropped back to
     /// its surface's own edges (Rhino's Untrim).
     pub fn untrimmed(&self, face: usize, outer: bool) -> Result<Self, KernelError> {
@@ -298,7 +330,7 @@ impl Body {
             degrees[1],
             spans[0],
             spans[1],
-            f64::INFINITY,
+            1e6,
         )
         .map_err(|e| failed("rebuilding the surface", e))?;
         Ok((Self::from_record(&made)?, off))
@@ -339,10 +371,32 @@ impl Curve {
         from_record_curve(&made, None)
     }
 
-
+    /// The curve under any affine map: rows are the images of x, y and z, then the move. Exact,
+    /// on its NURBS control points.
+    pub fn mapped_affine(&self, map: [[f64; 4]; 4]) -> Result<Curve, KernelError> {
+        let apply = |p: Point| -> Point {
+            std::array::from_fn(|j| {
+                p[0] * map[0][j] + p[1] * map[1][j] + p[2] * map[2][j] + map[3][j]
+            })
+        };
+        if let Curve::Point { at } = self {
+            return Ok(Curve::Point { at: apply(*at) });
+        }
+        let mut spline = crate::Spline::of(self)?;
+        for q in &mut spline.points {
+            let w = q[3];
+            let p = apply([q[0] / w, q[1] / w, q[2] / w]);
+            *q = [p[0] * w, p[1] * w, p[2] * w, w];
+        }
+        spline.to_curve()
+    }
     /// The curve at degree `degree` through the engine: raised exactly, or lowered when it stays
     /// within `tolerance` (then with how far it moved).
-    pub fn with_degree(&self, degree: usize, tolerance: f64) -> Result<(Curve, Option<f64>), KernelError> {
+    pub fn with_degree(
+        &self,
+        degree: usize,
+        tolerance: f64,
+    ) -> Result<(Curve, Option<f64>), KernelError> {
         let (made, off) =
             solidcore_ops::curve_knots::set_degree(&to_record_spline(self)?, degree, tolerance)
                 .map_err(|e| failed("changing the degree", e))?;

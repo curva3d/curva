@@ -236,3 +236,23 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | Ungroup | Objects | none | none | partly |
 | ShowEdges | Objects | `All` `NakedEdges` `NonManifoldEdges` | `NakedEdges` | partly |
 | Plan | none | none | none | partly |
+
+## Added in 0.4.2: commands that waited on the geometry engine
+
+| Command | Rhino's steps | Rhino's options | In Curva | Status |
+|---|---|---|---|---|
+| EdgeSrf | Two to four edge curves | none | none | done |
+| NetworkSrf | Curves both ways | `EdgeMatching` `Tolerances` | none | partly |
+| Patch | Curves and points to fit | `PointSpacing` `UVSpans` `Stiffness` `AdjustTangency` `AutomaticTrim` | none | partly |
+| ExtendSrf | Edge; distance | `Line` `Smooth` | `Smooth` `Line` | done |
+| Untrim | Trim edge | `KeepTrimObjects` `All` | none | partly |
+| Section | Objects; section line | none | none | done |
+| Contour | Objects; base point; direction; distance | `GroupOutput` `JoinCurves` | none | partly |
+| Intersect | Objects | none | none | done |
+| Project | Curves; surfaces | `Loose` `DeleteInput` | none | partly |
+| MoveFace | Faces; move | `BothSides` | none | partly |
+| PushPull | Faces; distance | none | none | done |
+| Shear | Objects; origin; reference; angle | `Copy` | none | partly |
+| RebuildUV | Surfaces | `PointCountU` `PointCountV` `DegreeU` `DegreeV` `DeleteInput` | `PointCountU` `PointCountV` `DegreeU` `DegreeV` | partly |
+| CurvatureGraph | Curves | `Scale` `Density` | `Scale` `Density` | done |
+| Cap | Surfaces | none | none | done |

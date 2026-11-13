@@ -127,6 +127,11 @@ impl Body {
         self.without_faces(&others)
     }
 
+    /// How many edges its record has.
+    pub fn record_edge_count(&self) -> usize {
+        self.record().map_or(0, |r| r.edges.len())
+    }
+
     /// How many faces it has.
     pub fn face_count(&self) -> Result<usize, KernelError> {
         Ok(self.record()?.faces.len())
@@ -184,9 +189,51 @@ impl Body {
     }
 }
 
+impl Body {
+    /// The open borders of a surface or polysurface closed with flat faces where they are flat,
+    /// as Rhino's Cap; a closed result is a solid.
+    pub fn capped(&self) -> Result<Body, KernelError> {
+        // CUSTOM KERNEL OPERATION: planar-capping
+        let edges = self.naked_edges()?;
+        if edges.is_empty() {
+            return Ok(self.clone());
+        }
+        let curves = edges
+            .into_iter()
+            .map(|edge| self.edge_curve(edge))
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut parts = vec![self.clone()];
+        for outline in crate::join_all(&curves)? {
+            if outline.is_closed()?
+                && let Ok(lid) = Body::planar(&[outline])
+            {
+                parts.push(lid);
+            }
+        }
+        if parts.len() == 1 {
+            return Err(KernelError(
+                "no open border is flat, so nothing was capped".to_owned(),
+            ));
+        }
+        Body::assembled(&parts)
+    }
+}
 #[cfg(test)]
 mod tests {
     use crate::{Body, Curve};
+
+    fn square_curve(size: f64) -> Curve {
+        Curve::polyline(
+            vec![
+                [0.0, 0.0, 0.0],
+                [size, 0.0, 0.0],
+                [size, size, 0.0],
+                [0.0, size, 0.0],
+            ],
+            true,
+        )
+        .unwrap()
+    }
 
     fn square(size: f64) -> Body {
         let outline = Curve::polyline(
@@ -235,6 +282,19 @@ mod tests {
         // Every vertical line through the base meets 3 of material: 10 × 8 × 3.
         let volume = solid.volume().unwrap();
         assert!((volume - 240.0).abs() < 0.5, "{volume}");
+    }
+
+    #[test]
+    fn an_open_tube_is_capped_into_a_solid() {
+        let tube = Body::extruded(&[square_curve(2.0)], [0.0, 0.0, 1.0], 3.0, false).unwrap();
+        assert!(!tube.is_solid());
+        let closed = tube.capped().unwrap();
+        assert!(closed.is_solid());
+        assert!(
+            (closed.volume().unwrap() - 12.0).abs() < 1e-6,
+            "{}",
+            closed.volume().unwrap()
+        );
     }
 
     #[test]
