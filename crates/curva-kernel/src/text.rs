@@ -85,7 +85,7 @@ impl Tracer {
     }
 }
 
-impl ttf_parser::OutlineBuilder for Tracer {
+impl skrifa::outline::OutlinePen for Tracer {
     fn move_to(&mut self, x: f32, y: f32) {
         self.at = self.place(x, y);
         self.start = Some(self.at);
@@ -151,17 +151,24 @@ pub fn text_outlines(
     x: Point,
     y: Point,
 ) -> Result<Vec<Vec<Curve>>, KernelError> {
-    let face = ttf_parser::Face::parse(font, 0)
-        .map_err(|e| KernelError(format!("the font could not be read: {e}")))?;
-    let capital = face
-        .capital_height()
-        .map_or(f64::from(face.units_per_em()) * 0.7, f64::from);
+    use skrifa::instance::{LocationRef, Size};
+    use skrifa::outline::DrawSettings;
+    use skrifa::{FontRef, MetadataProvider};
+    let face =
+        FontRef::new(font).map_err(|e| KernelError(format!("the font could not be read: {e}")))?;
+    // Everything in font units: the outlines are scaled to the height asked by `scale`.
+    let metrics = face.metrics(Size::unscaled(), LocationRef::default());
+    let per_em = f64::from(metrics.units_per_em);
+    let capital = metrics.cap_height.map_or(per_em * 0.7, f64::from);
+    let outlines = face.outline_glyphs();
+    let widths = face.glyph_metrics(Size::unscaled(), LocationRef::default());
+    let charmap = face.charmap();
     let scale = height / capital.max(1.0);
     let mut advance = 0.0;
     let mut glyphs = Vec::new();
     for ch in text.chars() {
-        let Some(glyph) = face.glyph_index(ch) else {
-            advance += f64::from(face.units_per_em()) * 0.5;
+        let Some(glyph) = charmap.map(ch) else {
+            advance += per_em * 0.5;
             continue;
         };
         let mut tracer = Tracer {
@@ -175,11 +182,14 @@ pub fn text_outlines(
             pieces: Vec::new(),
             contours: Vec::new(),
         };
-        let _ = face.outline_glyph(glyph, &mut tracer);
+        if let Some(outline) = outlines.get(glyph) {
+            let unscaled = DrawSettings::unhinted(Size::unscaled(), LocationRef::default());
+            let _ = outline.draw(unscaled, &mut tracer);
+        }
         if !tracer.contours.is_empty() {
             glyphs.push(tracer.contours);
         }
-        advance += f64::from(face.glyph_hor_advance(glyph).unwrap_or(0));
+        advance += f64::from(widths.advance_width(glyph).unwrap_or(0.0));
     }
     Ok(glyphs)
 }
