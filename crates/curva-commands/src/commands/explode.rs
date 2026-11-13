@@ -24,6 +24,30 @@ impl Recipe for Explode {
             if !chosen.contains(&object.id) {
                 continue;
             }
+            // An instance opens into its definition's objects, placed (one level), as in Rhino.
+            if let Shape::Instance(instance) = &object.shape {
+                let Some(definition) = cx
+                    .doc
+                    .definitions()
+                    .iter()
+                    .find(|d| d.id == instance.definition)
+                else {
+                    continue;
+                };
+                made.remove.push(object.id);
+                for part in &definition.objects {
+                    if let Some(shape) =
+                        curva_document::blocks::shape_placed(&part.shape, &instance.placement)
+                    {
+                        made.derived.push(Derived {
+                            shape,
+                            from: object.id,
+                            history: None,
+                        });
+                    }
+                }
+                continue;
+            }
             let Some(parts) = object.curve().and_then(curva_kernel::Curve::exploded) else {
                 continue;
             };

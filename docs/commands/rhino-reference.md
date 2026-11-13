@@ -278,3 +278,10 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | Zebra | Objects | `Stripe direction` `Stripe size` `Stripe colour` | none | partly |
 | EditBoolean | A live boolean | none | none | partly |
 | BreakBoolean | Live booleans | none | none | partly |
+| Block | Objects; base point; name | `Description` `URL` | none | partly |
+| Insert | Name or file; point; scale; rotation | `Linked` `Embedded` `Group` `Explode` | none | partly |
+| BlockManager | none | none | none | partly |
+| BlockEdit | An instance | none | none | partly |
+| ExplodeBlock | Instances | none | none | partly |
+| ReplaceBlock | Instances; name | none | none | partly |
+| SelBlockInstanceNamed | Name | none | none | partly |

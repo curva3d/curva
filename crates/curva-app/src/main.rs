@@ -232,6 +232,11 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "Ungroup",
             "EditBoolean",
             "BreakBoolean",
+            "Block",
+            "Insert",
+            "BlockManager",
+            "BlockEdit",
+            "ExplodeBlock",
             "Lock",
             "Unlock",
         ],
@@ -329,6 +334,10 @@ struct Curva {
     gumball_drag: Option<GumballDrag>,
     /// While Sketch draws with the button held: where the last point was fed, and how many.
     sketch_stroke: Option<(egui::Pos2, usize)>,
+    /// When each linked block's file was last read, to read it again when it changes.
+    linked_seen: std::collections::HashMap<String, std::time::SystemTime>,
+    /// Whether the window had focus last frame.
+    window_had_focus: bool,
     /// A gumball handle clicked without a drag, and the value being typed for it.
     gumball_typing: Option<(Handle, String)>,
     /// Whether Alt is held this frame, which turns object snaps off for the moment.
@@ -912,6 +921,8 @@ impl Curva {
             waiting_approval: None,
             gumball_drag: None,
             sketch_stroke: None,
+            linked_seen: std::collections::HashMap::new(),
+            window_had_focus: false,
             gumball_typing: None,
             alt_held: false,
             snaps: SnapSet::default(),
@@ -1970,6 +1981,117 @@ impl Curva {
             });
         chosen
     }
+
+    /// The Blocks panel (spec `docs/specs/blocks.md` §3): each definition with its instance
+    /// count and, if linked, its file; buttons to insert, select, update, embed and delete.
+    fn blocks_panel(&mut self, ui: &mut egui::Ui) {
+        let definitions = self.doc.definitions().to_vec();
+        if definitions.is_empty() {
+            ui.label(self.text.render(&Message::new("ui.blocks.none")));
+            return;
+        }
+        let mut run: Option<(String, String)> = None;
+        for definition in &definitions {
+            let count = self.doc.instances_of(definition.id).len();
+            ui.group(|ui| {
+                ui.horizontal(|ui| {
+                    let mut name = definition.name.clone();
+                    let edit = ui.add(egui::TextEdit::singleline(&mut name).desired_width(120.0));
+                    if edit.lost_focus()
+                        && name.trim() != definition.name
+                        && !name.trim().is_empty()
+                    {
+                        let id = definition.id;
+                        let name = name.trim().to_owned();
+                        self.undoable(|doc| doc.rename_definition(id, name));
+                    }
+                    ui.label(
+                        self.text
+                            .render(&Message::with("ui.blocks.count", vec![count.to_string()])),
+                    );
+                });
+                if let Some(path) = &definition.linked {
+                    ui.label(
+                        self.text
+                            .render(&Message::with("ui.blocks.linked", vec![path.clone()])),
+                    );
+                }
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .button(self.text.render(&Message::new("ui.blocks.insert")))
+                        .clicked()
+                    {
+                        run = Some(("insert".to_owned(), definition.name.clone()));
+                    }
+                    if ui
+                        .button(self.text.render(&Message::new("ui.blocks.select")))
+                        .clicked()
+                    {
+                        run = Some(("selblockinstancenamed".to_owned(), definition.name.clone()));
+                    }
+                    if definition.linked.is_some() {
+                        if ui
+                            .button(self.text.render(&Message::new("ui.blocks.update")))
+                            .clicked()
+                        {
+                            self.reload_linked(true);
+                        }
+                        if ui
+                            .button(self.text.render(&Message::new("ui.blocks.embed")))
+                            .clicked()
+                        {
+                            let id = definition.id;
+                            self.undoable(|doc| doc.embed_definition(id));
+                        }
+                    }
+                    let unused = count == 0;
+                    let delete = ui.add_enabled(
+                        unused,
+                        egui::Button::new(self.text.render(&Message::new("ui.blocks.delete"))),
+                    );
+                    if delete.clicked() {
+                        let id = definition.id;
+                        self.undoable(|doc| {
+                            doc.delete_definition(id);
+                        });
+                    }
+                });
+            });
+        }
+        if let Some((command, name)) = run {
+            self.run_from_button(&command);
+            self.processor.submit(&mut self.doc, &name);
+        }
+    }
+
+    /// Reads linked block definitions again from their files: those whose file changed since it
+    /// was last read, or all with `force`.
+    fn reload_linked(&mut self, force: bool) {
+        let linked: Vec<(u64, String)> = self
+            .doc
+            .definitions()
+            .iter()
+            .filter_map(|d| d.linked.clone().map(|path| (d.id, path)))
+            .collect();
+        for (id, path) in linked {
+            let modified = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
+            let seen = self.linked_seen.get(&path).copied();
+            if !force && modified.is_some() && seen == modified {
+                continue;
+            }
+            match Document::open(std::path::Path::new(&path)) {
+                Ok(opened) => {
+                    self.doc
+                        .set_definition_objects(id, opened.state().objects.clone());
+                    if let Some(when) = modified {
+                        self.linked_seen.insert(path.clone(), when);
+                    }
+                }
+                Err(error) => self.processor.note(format!("{path}: {}", error.0)),
+            }
+        }
+    }
+
     fn layers_panel(&mut self, ui: &mut egui::Ui) {
         let layers = self.doc.layers().to_vec();
         let current = self.doc.current_layer();
@@ -2911,6 +3033,11 @@ impl Curva {
                         }
                         layout::Piece::Display => self.display_piece(ui),
                         layout::Piece::Settings => self.settings_piece(ui),
+                        layout::Piece::Blocks => {
+                            egui::ScrollArea::both()
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| self.blocks_panel(ui));
+                        }
                     }
                 });
                 // Added after the contents, so these sit above the panel's own controls.
@@ -3362,6 +3489,24 @@ impl Curva {
             ui.close();
         }
         chosen
+    }
+
+    /// Brings a closed or hidden panel piece out, as Settings is.
+    fn open_piece(&mut self, piece: layout::Piece) {
+        let window = self.window_rect;
+        self.layout = self.layout.restored(piece, window);
+        if let Some(panel) = self.layout.panel_of(piece)
+            && let Some(index) = self
+                .layout
+                .place(panel)
+                .and_then(|p| p.pieces.iter().position(|p| *p == piece))
+        {
+            self.layout = self
+                .layout
+                .with_active(panel, index)
+                .with_hidden(panel, false);
+        }
+        self.save_layout();
     }
 
     /// Brings the Settings panel out at a tab: back from closed, floating in the centre of the
@@ -4160,6 +4305,7 @@ impl Curva {
                 self.panes[self.active] = Pane::new(standard_view(name));
                 self.panes[self.active].display = display;
             }
+            ViewRequest::ShowBlocks => self.open_piece(layout::Piece::Blocks),
             ViewRequest::Zebra => {
                 let pane = &mut self.panes[self.active];
                 pane.zebra = !pane.zebra;
@@ -4642,6 +4788,12 @@ impl eframe::App for Curva {
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.apply_theme(ui.ctx());
+        // Linked blocks are read again when Curva gets focus back, in case their files changed.
+        let has_focus = ui.ctx().input(|input| input.focused);
+        if has_focus && !self.window_had_focus && !self.doc.definitions().is_empty() {
+            self.reload_linked(false);
+        }
+        self.window_had_focus = has_focus;
         // Keys go to whichever field has focus; the command line takes them when no other does.
         let focused = ui.ctx().memory(|memory| memory.focused());
         self.naming_layer = focused.is_some() && focused != self.command_field;

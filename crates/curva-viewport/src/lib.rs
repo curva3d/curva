@@ -1278,6 +1278,31 @@ pub const STANDARD_INK: [f32; 3] = curva_document::STANDARD_COLOUR;
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn block_instances_draw_their_definition_under_their_own_id() {
+        let mut doc = curva_document::Document::default();
+        let leg = doc.add(Curve::line([0.0; 3], [0.0, 0.0, 1.0]).unwrap());
+        let seat = doc.add_body(curva_kernel::Body::cuboid([0.0; 3], [1.0, 1.0, 0.2]).unwrap());
+        let (definition, first) = doc.define_block("Chair".to_owned(), [0.0; 3], &[leg, seat]);
+        let second = doc.insert_block(
+            definition,
+            curva_document::blocks::moved_by([5.0, 0.0, 0.0]),
+        );
+        let outlines = Outlines::of(doc.state());
+        let ids: std::collections::BTreeSet<u64> =
+            outlines.objects.iter().map(|(id, _)| *id).collect();
+        assert_eq!(ids, [first, second].into_iter().collect());
+        // The second chair's lines are 5 along.
+        let far = outlines
+            .objects
+            .iter()
+            .filter(|(id, _)| *id == second)
+            .flat_map(|(_, points)| points.iter())
+            .map(|p| p[0])
+            .fold(f64::INFINITY, f64::min);
+        assert!((far - 5.0).abs() < 1e-9, "{far}");
+    }
+
     use curva_document::Document;
 
     const SIZE: [f64; 2] = [800.0, 600.0];

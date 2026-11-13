@@ -1642,6 +1642,34 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
                 pen.line_in(a, b, pen.accent());
             }
         }
+        "block"
+        | "insert"
+        | "blockmanager"
+        | "blockedit"
+        | "explodeblock"
+        | "replaceblock"
+        | "selblockinstancenamed" => {
+            let lower = name.to_lowercase();
+            pen.rect(3.0, 6.0, 9.0, 9.0);
+            pen.rect(10.0, 9.0, 9.0, 9.0);
+            match lower.as_str() {
+                "insert" => pen.arrow((16.0, 2.0), (16.0, 8.0)),
+                "blockedit" => pen.line_in((13.0, 13.0), (19.0, 7.0), pen.accent()),
+                "explodeblock" => {
+                    for (a, b) in [((11.0, 4.0), (13.0, 1.0)), ((20.0, 8.0), (21.0, 5.0))] {
+                        pen.line_in(a, b, pen.accent());
+                    }
+                }
+                "replaceblock" => pen.arrow((4.0, 20.0), (12.0, 20.0)),
+                "selblockinstancenamed" => pen.dot(14.5, 13.5),
+                "blockmanager" => {
+                    for y in [3.0, 19.0] {
+                        pen.line_in((3.0, y), (19.0, y), pen.accent());
+                    }
+                }
+                _ => pen.line_in((3.0, 6.0), (12.0, 15.0), pen.accent()),
+            }
+        }
         "editboolean" | "breakboolean" => {
             pen.ellipse((2.0, 5.0, 12.0, 12.0));
             pen.ellipse((8.0, 5.0, 12.0, 12.0));

@@ -5,6 +5,7 @@ mod area;
 mod array;
 mod array_crv;
 mod array_polar;
+mod blocks;
 mod boolean_difference;
 mod boolean_intersection;
 mod boolean_union;
@@ -162,7 +163,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 207] = [
+pub static COMMANDS: [CommandDef; 214] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -345,6 +346,19 @@ pub static COMMANDS: [CommandDef; 207] = [
     listed!("Zebra", [], false, false, parity5::Zebra),
     listed!("EditBoolean", [], true, true, live::EditBoolean),
     listed!("BreakBoolean", [], true, true, live::BreakBoolean),
+    listed!("Block", [], true, true, blocks::Block),
+    listed!("Insert", [], true, true, blocks::Insert),
+    listed!("BlockManager", [], false, false, blocks::BlockManager),
+    listed!("BlockEdit", [], true, true, blocks::BlockEdit),
+    listed!("ExplodeBlock", [], true, true, blocks::ExplodeBlock),
+    listed!("ReplaceBlock", [], true, true, blocks::ReplaceBlock),
+    listed!(
+        "SelBlockInstanceNamed",
+        [],
+        false,
+        false,
+        blocks::SelBlockInstanceNamed
+    ),
     recipe!("EdgeSrf", [], true, parity6::EdgeSrf),
     recipe!("NetworkSrf", [], true, parity6::NetworkSrf),
     recipe!("Patch", [], true, parity6::Patch),
@@ -715,7 +729,12 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 35] = [
+    const NOTHING_TO_PREVIEW: [&str; 40] = [
+        "Block",
+        "Insert",
+        "BlockEdit",
+        "ExplodeBlock",
+        "ReplaceBlock",
         "EditBoolean",
         "BreakBoolean",
         "ShrinkTrimmedSrf",
