@@ -134,8 +134,8 @@ const LINE_DEPTH_BIAS: wgpu::DepthBiasState = wgpu::DepthBiasState {
 };
 /// Faces are pushed slightly back, so edges on them are drawn in front.
 const FACE_DEPTH_BIAS: wgpu::DepthBiasState = wgpu::DepthBiasState {
-    constant: 4,
-    slope_scale: 2.0,
+    constant: 16,
+    slope_scale: 6.0,
     clamp: 0.0,
 };
 const PICTURE_BACKGROUND: wgpu::Color = wgpu::Color {
