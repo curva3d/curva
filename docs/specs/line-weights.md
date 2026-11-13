@@ -24,7 +24,7 @@ gaps at corners.
 
 The grid stays 1 pixel. Highlighted (selected) lines draw one pixel wider than their weight.
 
-**Checked by:** a benchmark test draws 200,000 segments; the frame time in the line pass is no more than
+**Checked by:** `--orbit-benchmark` with 5,000 and 20,000 circles; frame times are no more than
 that of 0.4.0 with one pass (recorded in `docs/performance.md`).
 
 ## 3. Weights in the model

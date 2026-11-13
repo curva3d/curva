@@ -126,6 +126,12 @@ const FACE_VERTEX_SIZE: u64 = 36;
 const UNIFORM_SIZE: u64 = 96;
 /// Pixels per millimetre on a 96 dpi screen at 100 %.
 const PIXELS_PER_MM: f32 = 96.0 / 25.4;
+/// Lines are pulled slightly forward, so they win ties with what lies at their depth.
+const LINE_DEPTH_BIAS: wgpu::DepthBiasState = wgpu::DepthBiasState {
+    constant: -2,
+    slope_scale: -1.0,
+    clamp: 0.0,
+};
 /// Faces are pushed slightly back, so edges on them are drawn in front.
 const FACE_DEPTH_BIAS: wgpu::DepthBiasState = wgpu::DepthBiasState {
     constant: 4,
@@ -486,7 +492,9 @@ impl LineRenderer {
                 attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3],
                 topology: wgpu::PrimitiveTopology::LineList,
                 bias: wgpu::DepthBiasState::default(),
-                see_through: false,
+                // Writes no depth, so model lines lying on it always draw over it. Blending at full
+                // strength changes nothing else.
+                see_through: true,
                 per_instance: false,
             },
         );
@@ -503,7 +511,8 @@ impl LineRenderer {
                     3 => Float32x3, 4 => Float32x3, 5 => Float32
                 ],
                 topology: wgpu::PrimitiveTopology::TriangleList,
-                bias: wgpu::DepthBiasState::default(),
+                // Pulled a little toward the camera, so a line wins over a face or grid at its own depth.
+                bias: LINE_DEPTH_BIAS,
                 see_through: false,
                 per_instance: true,
             },
@@ -871,10 +880,15 @@ pub fn save_picture(
     let mut renderer = LineRenderer::new(&device, format);
     let empty = Arc::new(Vec::new());
     let shaded = !picture.faces.is_empty();
+    // The grid is drawn as in a window: thin and under the model's lines.
+    let (grid, lines): (Vec<Vertex>, Vec<Vertex>) = picture
+        .lines
+        .into_iter()
+        .partition(|vertex| vertex.width == crate::GRID_WIDTH);
     let drawing = Drawing {
         slot: 0,
-        grid: Arc::clone(&empty),
-        scene: Arc::new(picture.lines),
+        grid: Arc::new(grid),
+        scene: Arc::new(lines),
         faces: Arc::new(picture.faces),
         overlay: Arc::clone(&empty),
         preview_faces: Arc::new(Vec::new()),

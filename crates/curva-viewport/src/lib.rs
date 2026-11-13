@@ -107,7 +107,7 @@ pub const DEFAULT_LINE_PIXELS: f32 = 2.0;
 const MM_PER_PIXEL: f32 = 25.4 / 96.0;
 
 /// The grid and axes stay a pixel thick.
-const GRID_WIDTH: f32 = -1.0;
+pub(crate) const GRID_WIDTH: f32 = -1.0;
 
 /// The [`Vertex::width`] of a line: millimetres, or the default line when `None`. Selected lines
 /// draw a pixel thicker, so they stand out.
