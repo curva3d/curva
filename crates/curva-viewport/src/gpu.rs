@@ -1097,8 +1097,7 @@ mod tests {
     #[test]
     fn lines_draw_at_their_own_width() {
         // The default line is 2 pixels; 1 mm is about 3.8 pixels at 96 dpi; 2 mm about 7.6.
-        let (Some(default), Some(one), Some(two)) =
-            (rows_lit(-2.0), rows_lit(1.0), rows_lit(2.0))
+        let (Some(default), Some(one), Some(two)) = (rows_lit(-2.0), rows_lit(1.0), rows_lit(2.0))
         else {
             return;
         };

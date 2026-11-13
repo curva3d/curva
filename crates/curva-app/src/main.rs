@@ -1775,7 +1775,6 @@ impl Curva {
         }
     }
 
-
     /// A drop-down of print widths (spec `line-weights.md` §5): `By layer` when `by_layer`,
     /// `Default`, Rhino's common widths, and a field for any other. `shown` is what it shows;
     /// returns the width chosen, if one was.
@@ -1791,9 +1790,9 @@ impl Curva {
         let named = |width: PrintWidth| match width {
             PrintWidth::ByLayer => text("ui.width.by_layer"),
             PrintWidth::Default => text("ui.width.default"),
-            PrintWidth::Millimetres(mm) => {
-                self.text.render(&Message::with("ui.width.mm", vec![format!("{mm:.2}")]))
-            }
+            PrintWidth::Millimetres(mm) => self
+                .text
+                .render(&Message::with("ui.width.mm", vec![format!("{mm:.2}")])),
         };
         let mut chosen = None;
         egui::ComboBox::from_id_salt(id)
@@ -4680,7 +4679,7 @@ fn run() -> Result<(), String> {
 }
 
 /// What the gumball's extrude circle makes of one object: a curve becomes a surface (a closed
-/// one a solid), a flat surface thickens into a solid along its normal, which the axis should be;
+/// one a solid), a surface is pulled straight along the axis into a solid, as ExtrudeSrf does;
 /// a solid makes nothing.
 fn gumball_extruded(
     shape: &Shape,
@@ -4697,7 +4696,7 @@ fn gumball_extruded(
                 closed,
             ))
         }
-        Shape::Body(body) if !body.is_solid() => Some(body.offset(distance, true)),
+        Shape::Body(body) if !body.is_solid() => Some(body.extruded_straight(axis, distance)),
         Shape::Body(_) => None,
     }
 }
@@ -4878,9 +4877,7 @@ fn lerp_colour(from: egui::Color32, to: egui::Color32, amount: f32) -> egui::Col
 /// Opens a page in the system's browser.
 fn open_link(url: &str) {
     let result = if cfg!(target_os = "windows") {
-        quiet_command("cmd")
-            .args(["/C", "start", "", url])
-            .spawn()
+        quiet_command("cmd").args(["/C", "start", "", url]).spawn()
     } else if cfg!(target_os = "macos") {
         std::process::Command::new("open").arg(url).spawn()
     } else {

@@ -11,6 +11,8 @@ use solidcore::{Kernel, Point3};
 use std::f64::consts::TAU;
 
 mod area;
+mod assemble;
+pub use assemble::SEW_TOLERANCE;
 mod body;
 mod boolean;
 pub use boolean::Combine;
@@ -24,6 +26,8 @@ mod knots;
 mod making;
 pub use making::nested_groups;
 mod offset;
+mod spline;
+pub use spline::Spline;
 mod tween;
 pub use body::{Body, BodyMesh};
 pub use conic::{Chamfered, chamfer_lines};

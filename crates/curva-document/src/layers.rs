@@ -77,7 +77,11 @@ impl Document {
     #[must_use]
     pub fn print_width_of(&self, id: u64) -> Option<f64> {
         let object = self.state.objects.iter().find(|object| object.id == id)?;
-        let layer = self.state.layers.iter().find(|layer| layer.id == object.layer);
+        let layer = self
+            .state
+            .layers
+            .iter()
+            .find(|layer| layer.id == object.layer);
         object.print_width.resolved(layer)
     }
 

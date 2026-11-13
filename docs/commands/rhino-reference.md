@@ -175,7 +175,7 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | Spiral | Start of axis; end; first radius; second radius | `Flat` `Vertical` `AroundCurve` `Turns` `Pitch` `ReverseTwist` `Diameter` | `Turns` `Flat` | partly |
 | Plane | First corner; other corner | `Deformable` `Vertical` `Center` `3Point` | none | partly |
 | SrfPt | Three or four corner points | none | none | done |
-| ExtrudeSrf | Select surfaces; distance | `Direction` `BothSides` `Solid` `DeleteInput` `ToBoundary` `SetBasePoint` | `DeleteInput` | partly |
+| ExtrudeSrf | Select surfaces; distance | `Direction` `BothSides` `Solid` `DeleteInput` `ToBoundary` `SetBasePoint` | `BothSides` `DeleteInput` | partly |
 | ArrayLinear | Select objects; number of elements; first and second reference points | none | none | done |
 | Angle | Corner; point on first side; point on second side | `TwoObjects` | none | partly |
 | EvaluatePt | Point to evaluate | none | none | done |
@@ -197,6 +197,6 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | Parabola | Focus or vertex; direction; end | `Vertex` `Marks` `FocusMarks` `HalfParabola` | none | partly |
 | Paraboloid | Focus or vertex; direction; end | `Vertex` `MarkFocus` `Solid` | none | partly |
 | Align | Select objects; how | `Bottom` `HorizontalCenter` `Left` `Right` `Top` `VerticalCenter` `ToPoint` `ToLine` | `Bottom` `Top` `Left` `Right` `HorizontalCenter` `VerticalCenter` | partly |
-| ChangeDegree | Select curves; new degree | `Deformable` | `Degree` | partly |
+| ChangeDegree | Select curves; new degree | `Deformable` | `Degree` `Deformable` | partly |
 | AreaCentroid | Select surfaces or closed curves | none | none | partly |
 | VolumeCentroid | Select solids | none | none | done |

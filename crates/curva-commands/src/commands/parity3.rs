@@ -233,13 +233,18 @@ impl Recipe for Align {
     }
 }
 
-/// `ChangeDegree`: gives control-point curves a new degree, keeping their control points.
+/// `ChangeDegree`: gives curves a new degree. Raising it keeps the shape exactly (Rhino's
+/// `Deformable=No`, adding control points); lowering it, or `Deformable=Yes`, keeps the control
+/// points and lets the shape change. Closed curves stay closed.
 #[derive(Default)]
 pub struct ChangeDegree;
 
 impl Recipe for ChangeDegree {
     const NAME: &'static str = "changedegree";
-    const OPTIONS: &'static [OptionDef] = &[OptionDef::whole("Degree", 3, 1, 11)];
+    const OPTIONS: &'static [OptionDef] = &[
+        OptionDef::whole("Degree", 3, 1, 11),
+        OptionDef::toggle("Deformable", false),
+    ];
 
     fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
         let mut steps = vec![
@@ -251,7 +256,7 @@ impl Recipe for ChangeDegree {
             steps.push(
                 StepDef::number("prompt.changedegree.degree")
                     .remembered("Degree", 3.0)
-                    .offering(&[]),
+                    .offering(&["Deformable"]),
             );
         }
         steps
@@ -273,10 +278,26 @@ impl Recipe for ChangeDegree {
         let degree = degree as usize;
         let mut made = Made::default();
         for (id, curve) in curves_of(cx.doc, ids) {
-            let Curve::Nurbs { points, .. } = curve.to_nurbs().map_err(|e| failed(&e))? else {
+            let spline = curva_kernel::Spline::of(&curve).map_err(|e| failed(&e))?;
+            if spline.degree == degree {
                 continue;
+            }
+            let changed = if degree > spline.degree && !cx.toggle("Deformable") {
+                spline
+                    .elevated(degree - spline.degree)
+                    .to_curve()
+                    .map_err(|e| failed(&e))?
+            } else {
+                let mut points = spline.control_points();
+                let closed = curve.is_closed().unwrap_or(false);
+                if closed
+                    && points.len() > 2
+                    && curva_kernel::gap(points[0], points[points.len() - 1]) < 1e-9
+                {
+                    points.pop();
+                }
+                Curve::control_point(points, degree, closed).map_err(|e| failed(&e))?
             };
-            let changed = Curve::control_point(points, degree, false).map_err(|e| failed(&e))?;
             made.replace.push((id, Shape::Curve(changed)));
         }
         made.message = Some(Message::with(
@@ -342,10 +363,18 @@ impl<const VOLUME: bool> Recipe for Centroid<VOLUME> {
         let mut made = Made::default();
         let mut said = Vec::new();
         for (_, body) in bodies_of(cx.doc, ids) {
-            let found = if VOLUME {
-                volume_centroid(&body)
-            } else {
-                area_centroid(&body)
+            // Exact from the engine: a solid's volume, or a surface's area. A solid's area
+            // centre comes from its mesh, which the engine does not give.
+            let found = match (VOLUME, body.is_solid()) {
+                (true, true) | (false, false) => body.centroid().ok().or_else(|| {
+                    if VOLUME {
+                        volume_centroid(&body)
+                    } else {
+                        area_centroid(&body)
+                    }
+                }),
+                (true, false) => None,
+                (false, true) => area_centroid(&body),
             };
             if let Some(at) = found {
                 said.push(format!("{:.4}, {:.4}, {:.4}", at[0], at[1], at[2]));
@@ -439,5 +468,44 @@ mod tests {
             doc.state().objects[0].curve(),
             Some(Curve::Nurbs { degree: 2, .. })
         ));
+    }
+
+    #[test]
+    fn raising_the_degree_keeps_the_shape_and_closed_curves_stay_closed() {
+        let wavy = Curve::control_point(
+            vec![
+                [0.0; 3],
+                [5.0, 5.0, 0.0],
+                [10.0, 0.0, 0.0],
+                [15.0, 5.0, 0.0],
+                [20.0, 0.0, 0.0],
+            ],
+            3,
+            false,
+        )
+        .unwrap();
+        let mut doc = Document::default();
+        let id = doc.add(wavy.clone());
+        doc.select(&[id]);
+        run(&mut doc, &["changedegree", "5"]);
+        let raised = doc.state().objects[0].curve().unwrap().clone();
+        assert!(matches!(raised, Curve::Nurbs { degree: 5, .. }));
+        let (before, after) = (
+            curva_kernel::Spline::of(&wavy).unwrap(),
+            curva_kernel::Spline::of(&raised).unwrap(),
+        );
+        for i in 0..=20 {
+            let u = f64::from(i) / 20.0;
+            assert!(curva_kernel::gap(before.point(u), after.point(u)) < 1e-9);
+        }
+        // Closed curves stay closed, raised or lowered.
+        for degree in ["4", "2"] {
+            let mut doc = Document::default();
+            let id = doc.add(Curve::circle([0.0; 3], 5.0).unwrap());
+            doc.select(&[id]);
+            run(&mut doc, &["changedegree", degree]);
+            let changed = doc.state().objects[0].curve().unwrap();
+            assert!(changed.is_closed().unwrap(), "degree {degree}");
+        }
     }
 }

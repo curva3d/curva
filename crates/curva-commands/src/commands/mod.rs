@@ -770,6 +770,11 @@ mod tests {
         {
             let cells: Vec<&str> = line.split('|').map(str::trim).collect();
             let (name, status) = (cells[1], cells[2]);
+            // Every command that differs from Rhino says how (spec `rhino-parity-0.4.1.md` §1).
+            assert!(
+                status != "partly" || !cells[3].is_empty(),
+                "{name} is partly done but its note does not say how it differs"
+            );
             assert!(
                 ["done", "partly", "missing", "blocked"].contains(&status),
                 "{name}: unknown status {status}"

@@ -310,10 +310,11 @@ impl Recipe for DupEdge {
             let Some((_, body)) = bodies_of(cx.doc, &[*id]).into_iter().next() else {
                 continue;
             };
-            let curves = body.edge_curves().map_err(|e| failed(&e))?;
-            if let Some(curve) = curves.get(*edge) {
+            // The exact edge picked: a line, arc or NURBS, not the drawn polyline.
+            let curve = body.edge_curve(*edge).map_err(|e| failed(&e))?;
+            {
                 made.derived.push(Derived {
-                    shape: Shape::Curve(curve.clone()),
+                    shape: Shape::Curve(curve),
                     from: *id,
                     history: None,
                 });

@@ -236,7 +236,9 @@ impl<'a> Session<'a> {
         use curva_document::PrintWidth;
         let width = match arguments.get("width") {
             Some(Value::Number(mm)) => PrintWidth::Millimetres(mm.as_f64().unwrap_or(0.0)),
-            Some(Value::String(word)) if word.eq_ignore_ascii_case("default") => PrintWidth::Default,
+            Some(Value::String(word)) if word.eq_ignore_ascii_case("default") => {
+                PrintWidth::Default
+            }
             Some(Value::String(word)) if word.to_lowercase().replace(' ', "") == "bylayer" => {
                 PrintWidth::ByLayer
             }
