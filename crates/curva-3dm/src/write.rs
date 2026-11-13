@@ -347,13 +347,23 @@ fn write_plane(w: &mut Writer, p: &Plane) {
 }
 
 fn write_curve(w: &mut Writer, c: &Curve) {
+    write_curve_in(w, c, 3);
+}
+
+/// A trim curve, in a face's parameters.
+fn write_curve2(w: &mut Writer, c: &Curve) {
+    write_curve_in(w, c, 2);
+}
+
+/// A curve of dimension `dim` (2 for trims, 3 otherwise; NURBS curves carry their own).
+fn write_curve_in(w: &mut Writer, c: &Curve, dim: i32) {
     match c {
         Curve::Line { ends, domain } => class_object(w, class::LINE_CURVE, |w| {
             w.chunk_version(1, 0);
             w.f64s(&ends[0]);
             w.f64s(&ends[1]);
             w.f64s(domain);
-            w.i32(3);
+            w.i32(dim);
         }),
         Curve::Polyline { points, params } => class_object(w, class::POLYLINE_CURVE, |w| {
             w.chunk_version(1, 0);
@@ -363,7 +373,7 @@ fn write_curve(w: &mut Writer, c: &Curve) {
             }
             w.count(params.len());
             w.f64s(params);
-            w.i32(3);
+            w.i32(dim);
         }),
         Curve::Arc {
             plane,
@@ -382,7 +392,7 @@ fn write_curve(w: &mut Writer, c: &Curve) {
             }
             w.f64s(angles);
             w.f64s(domain);
-            w.i32(3);
+            w.i32(dim);
         }),
         Curve::Nurbs(n) => class_object(w, class::NURBS_CURVE, |w| write_nurbs_curve(w, n)),
         Curve::Poly { segments, params } => class_object(w, class::POLY_CURVE, |w| {
@@ -394,7 +404,7 @@ fn write_curve(w: &mut Writer, c: &Curve) {
             w.count(params.len());
             w.f64s(params);
             for s in segments {
-                write_curve(w, s);
+                write_curve_in(w, s, dim);
             }
         }),
     }
@@ -493,7 +503,7 @@ fn ints(w: &mut Writer, list: &[i32]) {
 
 fn write_brep(w: &mut Writer, b: &Brep) {
     w.chunk_version(3, 3);
-    optional_array(w, &b.curves2, write_curve);
+    optional_array(w, &b.curves2, write_curve2);
     optional_array(w, &b.curves3, write_curve);
     optional_array(w, &b.surfaces, write_surface);
 
@@ -603,4 +613,29 @@ fn write_brep(w: &mut Writer, b: &Brep) {
     w.begin_anonymous(1);
     w.bool(false); // no region topology
     w.end();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The dimension a curve ends with, the last `i32` before its class end mark.
+    fn last_dimension(write: fn(&mut Writer, &Curve), c: &Curve) -> i32 {
+        let mut w = Writer::default();
+        write(&mut w, c);
+        // The class wrapper ends with a short chunk (a tcode and an 8-byte value); before it, the
+        // data chunk ends with its CRC, and the dimension comes just before that.
+        let at = w.out.len() - 12 - 4 - 4;
+        i32::from_le_bytes(w.out[at..at + 4].try_into().unwrap())
+    }
+
+    #[test]
+    fn trim_curves_are_two_dimensional() {
+        let line = Curve::Line {
+            ends: [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
+            domain: [0.0, 1.0],
+        };
+        assert_eq!(last_dimension(write_curve2, &line), 2);
+        assert_eq!(last_dimension(write_curve, &line), 3);
+    }
 }
