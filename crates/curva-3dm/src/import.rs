@@ -936,9 +936,7 @@ type Placed = (RecordSurface, [Warp; 2], [[f64; 2]; 2]);
 
 /// A file surface as the engine's record surface, with how the file's (u, v) become the
 /// record's, and the record's domain.
-fn record_surface(
-    s: &model::Surface,
-) -> Result<Placed, KernelError> {
+fn record_surface(s: &model::Surface) -> Result<Placed, KernelError> {
     match s {
         model::Surface::Plane {
             plane,

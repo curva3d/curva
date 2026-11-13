@@ -5,6 +5,7 @@ pub mod archive;
 pub mod import;
 pub mod model;
 pub mod read;
+pub mod write;
 
 pub use archive::{Error, Result};
 use archive::{Reader, bad, tcode};
