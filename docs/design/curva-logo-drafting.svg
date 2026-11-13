@@ -1,56 +1,65 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Curva logo, "Drafting", refined (spec docs/specs/logo-drafting-refined.md). 256 x 256 artboard.
-     Each top-level group opens as a layer in Adobe Illustrator, named by its id; sublayers likewise.
-     Everything is plain paths, with no symbols or references, so every element can be edited.
+<!-- Curva logo, "Drafting". 256 x 256 artboard. Each top-level group opens as a layer in Adobe
+     Illustrator, named by its id; sublayers likewise. Everything is plain paths, with no symbols
+     or references, so every element can be edited directly.
 
-     The construction is the real geometry of the C:
-       - the C is a 270 degree arc of radius 68 about (142, 128), from 45 degrees round to -45, 36 wide;
-       - as a NURBS curve that arc is three quadratic pieces whose control points are the corners
-         of the diamond around the circle (half-diagonal 68 x 1.4142 = 96.167): top (142, 31.833),
-         left (45.833, 128), bottom (142, 224.167); its ends (190.083, 79.917) and
-         (190.083, 176.083) are the first and last control points. The orange polygon is that
-         control polygon, and the points are its control points;
-       - the guides are the C's centre line (r 68), the edges of its stroke (r 50 and r 86), the
-         45 degree rays through its ends, the full diamond, the axis and the centre.
-     The whole is centred in the tile: the diamond's left corner and the C's right end are equally
-     far from the sides.
-     Colours: tile #FAF9F5 with edge #E2DFD5, guides #1F1E1D at 14% opacity, C #1F1E1D,
-     control polygon and points #E0782F. -->
+     The C, the orange control polygon and the points are the original Drafting mark, unchanged.
+     The grey construction is drawn as an architectural drafting sheet would set it out:
+       - centre lines (long dash, dot) through the C's centre (139.4, 128), running past it;
+       - the C's centre line, a circle of radius 78, also dash-dot;
+       - the two edges of its 38-wide stroke, circles of radius 59 and 97, as thin solid lines;
+       - the 45 degree rays from the centre through the C's ends, which set its opening;
+       - the control polygon's two sides carried on past the points, as construction lines are;
+       - the chord between the ends, and a dimension on it: extension lines, a dimension line
+         and 45 degree tick marks at its ends.
+     Colours: tile #FAF9F5 with edge #E2DFD5, construction #1F1E1D at 15% opacity (dimension at
+     22%), C #1F1E1D, control polygon and points #E0782F. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
   <g id="Tile" data-name="Tile">
     <rect id="Tile_fill" data-name="Tile fill" x="8.5" y="8.5" width="239" height="239" rx="52" ry="52" fill="#FAF9F5" stroke="#E2DFD5" stroke-width="1"/>
   </g>
 
-  <g id="Construction" data-name="Construction" fill="none" stroke="#1F1E1D" stroke-opacity="0.14" stroke-width="1">
-    <g id="Circles" data-name="Circles">
-      <circle id="Centre_line" data-name="Centre line r68" cx="142" cy="128" r="68"/>
-      <circle id="Stroke_inner" data-name="Stroke inner r50" cx="142" cy="128" r="50"/>
-      <circle id="Stroke_outer" data-name="Stroke outer r86" cx="142" cy="128" r="86"/>
+  <g id="Construction" data-name="Construction" fill="none" stroke="#1F1E1D" stroke-opacity="0.15" stroke-width="1">
+    <g id="Centre_lines" data-name="Centre lines" stroke-dasharray="14 3 2 3">
+      <line id="Centre_horizontal" data-name="Centre horizontal" x1="24" y1="128" x2="232" y2="128"/>
+      <line id="Centre_vertical" data-name="Centre vertical" x1="139.4" y1="22" x2="139.4" y2="234"/>
+      <circle id="Stroke_centre" data-name="Stroke centre r78" cx="139.4" cy="128" r="78"/>
+    </g>
+    <g id="Stroke_edges" data-name="Stroke edges">
+      <circle id="Stroke_inner" data-name="Stroke inner r59" cx="139.4" cy="128" r="59"/>
+      <circle id="Stroke_outer" data-name="Stroke outer r97" cx="139.4" cy="128" r="97"/>
     </g>
     <g id="Rays" data-name="Rays at 45 degrees">
-      <line id="Ray_top" data-name="Ray top" x1="142" y1="128" x2="219.782" y2="50.218"/>
-      <line id="Ray_bottom" data-name="Ray bottom" x1="142" y1="128" x2="219.782" y2="205.782"/>
+      <line id="Ray_top" data-name="Ray top" x1="132.33" y1="135.07" x2="219.3" y2="48.1"/>
+      <line id="Ray_bottom" data-name="Ray bottom" x1="132.33" y1="120.93" x2="219.3" y2="207.9"/>
     </g>
-    <polygon id="Diamond" data-name="Diamond" points="142,31.833 238.167,128 142,224.167 45.833,128"/>
-    <g id="Axes" data-name="Axes">
-      <line id="Axis" data-name="Axis" x1="30" y1="128" x2="242" y2="128"/>
-      <line id="Centre_v" data-name="Centre vertical" x1="142" y1="120" x2="142" y2="136"/>
+    <g id="Polygon_lines" data-name="Control polygon carried on">
+      <line id="Side_top" data-name="Side top" x1="48.47" y1="133.36" x2="207.48" y2="67.49"/>
+      <line id="Side_bottom" data-name="Side bottom" x1="48.47" y1="122.64" x2="207.48" y2="188.51"/>
     </g>
+    <line id="Chord" data-name="Chord between the ends" x1="194.55" y1="62" x2="194.55" y2="194"/>
   </g>
 
-  <g id="C" data-name="C">
-    <path d="M 190.083 79.917 A 68 68 0 1 0 190.083 176.083" fill="none" stroke="#1F1E1D" stroke-width="36" stroke-linecap="round"/>
+  <g id="Dimension" data-name="Dimension" fill="none" stroke="#1F1E1D" stroke-opacity="0.22" stroke-width="1">
+    <line id="Extension_top" data-name="Extension top" x1="208" y1="72.85" x2="232" y2="72.85"/>
+    <line id="Extension_bottom" data-name="Extension bottom" x1="208" y1="183.15" x2="232" y2="183.15"/>
+    <line id="Dimension_line" data-name="Dimension line" x1="226" y1="66" x2="226" y2="190"/>
+    <line id="Tick_top" data-name="Tick top" x1="222" y1="76.85" x2="230" y2="68.85" stroke-width="1.5"/>
+    <line id="Tick_bottom" data-name="Tick bottom" x1="222" y1="187.15" x2="230" y2="179.15" stroke-width="1.5"/>
   </g>
 
   <g id="Control_polygon" data-name="Control polygon">
-    <polyline points="190.083,79.917 142,31.833 45.833,128 142,224.167 190.083,176.083" fill="none" stroke="#E0782F" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+    <polyline points="194.55,72.85 61.4,128 194.55,183.15" fill="none" stroke="#E0782F" stroke-width="3" stroke-linejoin="round"/>
+  </g>
+
+  <g id="C" data-name="C">
+    <!-- An arc of radius 78 about (139.4, 128), from +45° round to -45°, 38 wide with round caps. -->
+    <path d="M 194.55 72.85 A 78 78 0 1 0 194.55 183.15" fill="none" stroke="#1F1E1D" stroke-width="38" stroke-linecap="round"/>
   </g>
 
   <g id="Control_points" data-name="Control points" fill="#E0782F">
-    <circle id="Point_top" data-name="Point top" cx="142" cy="31.833" r="9"/>
-    <circle id="Point_left" data-name="Point left" cx="45.833" cy="128" r="9"/>
-    <circle id="Point_bottom" data-name="Point bottom" cx="142" cy="224.167" r="9"/>
-    <circle id="End_top" data-name="End top" cx="190.083" cy="79.917" r="6"/>
-    <circle id="End_bottom" data-name="End bottom" cx="190.083" cy="176.083" r="6"/>
+    <circle id="Point_top" data-name="Point top" cx="194.55" cy="72.85" r="10"/>
+    <circle id="Point_left" data-name="Point left" cx="61.4" cy="128" r="10"/>
+    <circle id="Point_bottom" data-name="Point bottom" cx="194.55" cy="183.15" r="10"/>
   </g>
 </svg>
