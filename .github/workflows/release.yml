@@ -76,8 +76,11 @@ jobs:
           $setup = Get-ChildItem dist\*-setup.exe | Select-Object -First 1
           $target = "$env:RUNNER_TEMP\installed"
           Start-Process -Wait -FilePath $setup.FullName -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', "/DIR=$target", '/NOICONS'
-          & "$target\curva.exe" --picture "$env:RUNNER_TEMP\check.png" --run 'Box;0,0,0;10,10,0;10'
-          if ($LASTEXITCODE -ne 0) { throw 'The installed Curva did not run.' }
+          # Curva is a GUI program on Windows, so PowerShell does not wait for it on its own.
+          $run = Start-Process -FilePath "$target\curva.exe" -Wait -PassThru -NoNewWindow `
+            -ArgumentList '--picture', "$env:RUNNER_TEMP\check.png", '--run', 'Box;0,0,0;10,10,0;10'
+          if ($run.ExitCode -ne 0) { throw "The installed Curva did not run (exit code $($run.ExitCode))." }
+          if (-not (Test-Path "$env:RUNNER_TEMP\check.png")) { throw 'The installed Curva drew no picture.' }
 
       - name: Linux AppImage
         if: runner.os == 'Linux'
