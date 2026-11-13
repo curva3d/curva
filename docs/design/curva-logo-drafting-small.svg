@@ -1,21 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Curva logo, "Drafting", for small sizes (16 to 48 px: favicon, task bar). 256 x 256 artboard,
-     drawn to be scaled down. No guides; a heavier C; the control polygon and its three corner
-     points kept, thicker, so they still read at 32 px. Same geometry as the master: a 270° arc of
-     radius 66 about (142, 128), its control points the corners of the diamond around it. -->
+     drawn to be scaled down. The original Drafting mark without its construction: the same C
+     (an arc of radius 78 about (128, 128), centred, from +45 degrees round to -45), the same control
+     polygon and points, a little heavier so they still read at 32 px. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
   <g id="Tile" data-name="Tile">
     <rect id="Tile_fill" data-name="Tile fill" x="8" y="8" width="240" height="240" rx="56" ry="56" fill="#FAF9F5"/>
   </g>
-  <g id="C" data-name="C">
-    <path d="M 188.669 81.331 A 66 66 0 1 0 188.669 174.669" fill="none" stroke="#1F1E1D" stroke-width="48" stroke-linecap="round"/>
-  </g>
   <g id="Control_polygon" data-name="Control polygon">
-    <polyline points="188.669,81.331 142,34.662 48.662,128 142,221.338 188.669,174.669" fill="none" stroke="#E0782F" stroke-width="10" stroke-linejoin="round" stroke-linecap="round"/>
+    <polyline points="183.15,72.85 50,128 183.15,183.15" fill="none" stroke="#E0782F" stroke-width="7" stroke-linejoin="round"/>
+  </g>
+  <g id="C" data-name="C">
+    <path d="M 183.15 72.85 A 78 78 0 1 0 183.15 183.15" fill="none" stroke="#1F1E1D" stroke-width="44" stroke-linecap="round"/>
   </g>
   <g id="Control_points" data-name="Control points" fill="#E0782F">
-    <circle id="Point_top" data-name="Point top" cx="142" cy="34.662" r="17"/>
-    <circle id="Point_left" data-name="Point left" cx="48.662" cy="128" r="17"/>
-    <circle id="Point_bottom" data-name="Point bottom" cx="142" cy="221.338" r="17"/>
+    <circle id="Point_top" data-name="Point top" cx="183.15" cy="72.85" r="14"/>
+    <circle id="Point_left" data-name="Point left" cx="50" cy="128" r="14"/>
+    <circle id="Point_bottom" data-name="Point bottom" cx="183.15" cy="183.15" r="14"/>
   </g>
 </svg>

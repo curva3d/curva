@@ -120,6 +120,8 @@
 
 **0.1.1 (12 November 2026):** at the owner's request, releases come as a Windows installer (`.exe`, Inno Setup, per-user, no administrator rights), a Linux AppImage (built on Ubuntu 22.04 for older systems) and a macOS `.dmg` holding `Curva.app` (ad-hoc signed only). Packaging files are in `packaging/`. Pull requests that change the packaging build and check all three without publishing. The icon is a C drawn as an arc, with a thin yellow line joining its three yellow control points, chosen by the owner on 12 November 2026. Its source and the files made from it are in `packaging/icons/` (`curva.svg`, PNGs at 256 and 1024 px, `curva.ico`); it is in the Windows program and installer, the AppImage, the macOS app (an `.icns` made by the release workflow), the window's title bar and task bar, and the README.
 
+**Icon (13 November 2026):** the owner chose the Drafting mark with its architectural construction (`docs/design/curva-logo-drafting.svg`, centred on its circle). `packaging/icons/` holds it as `curva.svg`, PNGs at 256 and 1024 px, and `curva.ico` (16 to 256 px; the sizes up to 48 from `curva-logo-drafting-small.svg`, which leaves the construction out). The PNGs are rendered from the SVGs with headless Edge, and the `.ico` packs them as PNG entries.
+
 **Waiting for the owner**
 - Nothing yet. The engine is solidcore, with Serpentine3D's commands as the base (decision 0010). SolidCraft
   reuse is parked (0009).
