@@ -42,6 +42,9 @@ const BOX_MIN_DRAG: f32 = 6.0;
 const BOX_EDGE: egui::Color32 = egui::Color32::from_rgb(230, 230, 235);
 const BOX_FILL: egui::Color32 = egui::Color32::from_rgba_premultiplied(30, 40, 60, 40);
 const SNAP_MARKER_SIZE: f32 = 10.0;
+/// What Curva puts on the system clipboard when it copies objects, so that the next Ctrl+V
+/// (which the window only reports as a paste of text) is known to be theirs.
+const CLIPBOARD_MARK: &str = "Curva objects (paste them into Curva with Ctrl+V)";
 /// How long the pointer rests on a snap point to hold it, or let it go, in seconds.
 const HOLD_AFTER: f64 = 0.5;
 /// Spacing and size of the circles in a benchmark scene, in millimetres.
@@ -2698,14 +2701,21 @@ impl Curva {
         if let Some(name) = file_command {
             self.run_from_button(name);
         }
-        // The clipboard keys every program has, on the selected objects.
+        // The clipboard keys every program has, on the selected objects. The window turns them
+        // into egui's Copy, Cut and Paste events rather than key presses, so those are taken here,
+        // before the command line could; a paste is the objects' only while the system clipboard
+        // still holds the mark their copy put there.
+        let anything_selected = !self.doc.selection().is_empty();
         let (copy, cut, paste, all) = ctx.input_mut(|input| {
-            (
+            let (mut copy, mut cut, mut paste) = (
                 input.consume_shortcut(&shortcut(Modifiers::COMMAND, Key::C)),
                 input.consume_shortcut(&shortcut(Modifiers::COMMAND, Key::X)),
                 input.consume_shortcut(&shortcut(Modifiers::COMMAND, Key::V)),
-                input.consume_shortcut(&shortcut(Modifiers::COMMAND, Key::A)),
-            )
+            );
+            let (c, x, v) = clipboard_requests(&mut input.events, anything_selected);
+            (copy, cut, paste) = (copy || c, cut || x, paste || v);
+            let all = input.consume_shortcut(&shortcut(Modifiers::COMMAND, Key::A));
+            (copy, cut, paste, all)
         });
         if copy || cut {
             self.clipboard = self
@@ -2713,6 +2723,9 @@ impl Curva {
                 .into_iter()
                 .map(|(id, shape)| (shape, self.doc.layer_of(id)))
                 .collect();
+            if !self.clipboard.is_empty() {
+                ctx.copy_text(CLIPBOARD_MARK.to_owned());
+            }
         }
         if cut && !self.clipboard.is_empty() {
             self.run_from_button("delete");
@@ -5439,6 +5452,32 @@ pub(crate) fn quiet_command(program: impl AsRef<std::ffi::OsStr>) -> std::proces
     command
 }
 
+/// The window's Copy, Cut and Paste events that are Curva's to act on, taken out of `events`:
+/// copy and cut while objects are selected, and a paste of the mark Curva's own copy left on
+/// the system clipboard. Anything else stays for the command line.
+fn clipboard_requests(
+    events: &mut Vec<egui::Event>,
+    anything_selected: bool,
+) -> (bool, bool, bool) {
+    let (mut copy, mut cut, mut paste) = (false, false, false);
+    events.retain(|event| match event {
+        egui::Event::Copy if anything_selected => {
+            copy = true;
+            false
+        }
+        egui::Event::Cut if anything_selected => {
+            cut = true;
+            false
+        }
+        egui::Event::Paste(text) if text == CLIPBOARD_MARK => {
+            paste = true;
+            false
+        }
+        _ => true,
+    });
+    (copy, cut, paste)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -5800,5 +5839,32 @@ mod tests {
                 "{display:?}"
             );
         }
+    }
+
+    #[test]
+    fn copy_and_cut_are_taken_for_a_selection_and_left_for_the_command_line_otherwise() {
+        let mut events = vec![Event::Copy, Event::Cut, Event::Text("x".to_owned())];
+        assert_eq!(clipboard_requests(&mut events, true), (true, true, false));
+        assert_eq!(events, [Event::Text("x".to_owned())]);
+        let mut events = vec![Event::Copy, Event::Cut];
+        assert_eq!(
+            clipboard_requests(&mut events, false),
+            (false, false, false)
+        );
+        assert_eq!(events, [Event::Copy, Event::Cut]);
+    }
+
+    #[test]
+    fn only_curvas_own_mark_pastes_objects() {
+        let mut events = vec![Event::Paste(CLIPBOARD_MARK.to_owned())];
+        assert_eq!(clipboard_requests(&mut events, false), (false, false, true));
+        assert!(events.is_empty(), "the mark never reaches the command line");
+        let mut events = vec![Event::Paste(r"C:\models\house.3dm".to_owned())];
+        assert_eq!(clipboard_requests(&mut events, true), (false, false, false));
+        assert_eq!(
+            events.len(),
+            1,
+            "other text is pasted into the command line"
+        );
     }
 }
