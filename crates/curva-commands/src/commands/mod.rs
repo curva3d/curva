@@ -25,6 +25,7 @@ mod divide;
 mod ellipse;
 mod explode;
 mod extrude_crv;
+mod files;
 mod fillet;
 mod fillet_corners;
 mod fillet_edge;
@@ -164,7 +165,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 232] = [
+pub static COMMANDS: [CommandDef; 235] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -447,6 +448,9 @@ pub static COMMANDS: [CommandDef; 232] = [
     listed!("Save", [], false, false, save::Save),
     listed!("SaveAs", [], false, false, save_as::SaveAs),
     listed!("Open", [], false, false, open::Open),
+    listed!("Import", [], false, true, files::Import),
+    listed!("Export", [], false, false, files::Export),
+    listed!("ExportSelected", [], false, false, files::ExportSelected),
     listed!("New", [], false, false, new::New),
     listed!(
         "ZoomExtents",
@@ -754,7 +758,8 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 56] = [
+    const NOTHING_TO_PREVIEW: [&str; 57] = [
+        "Import",
         "ChangeLayer",
         "MatchProperties",
         "Linetype",

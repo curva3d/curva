@@ -3531,8 +3531,8 @@ impl Curva {
         self.processor.submit(&mut self.doc, name);
     }
 
-    /// The File menu: New, Open, Save and Save As run their commands; Import and Export wait for
-    /// a format to offer; About opens Settings at its About tab. Returns a command to run.
+    /// The File menu: New, Open, Save, Save As, Import, Export and Export Selected run their
+    /// commands; About opens Settings at its About tab. Returns a command to run.
     fn file_items(&mut self, ui: &mut egui::Ui) -> Option<&'static str> {
         let mut chosen = None;
         for (name, key) in [
@@ -3547,12 +3547,16 @@ impl Curva {
             }
         }
         ui.separator();
-        for key in ["ui.file.import", "ui.file.export"] {
-            ui.add_enabled(
-                false,
-                egui::Button::new(self.text.render(&Message::new(key))),
-            )
-            .on_disabled_hover_text(self.text.render(&Message::new("ui.file.later")));
+        // Rhino files: Import adds one to the model, Export and ExportSelected write one.
+        for (name, key) in [
+            ("Import", "ui.file.import"),
+            ("Export", "ui.file.export"),
+            ("ExportSelected", "ui.file.export_selected"),
+        ] {
+            if ui.button(self.text.render(&Message::new(key))).clicked() {
+                chosen = Some(name);
+                ui.close();
+            }
         }
         ui.separator();
         if ui

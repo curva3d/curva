@@ -327,7 +327,16 @@ impl<'a> Session<'a> {
 }
 
 /// The commands that an agent cannot run on the open window without the user's say-so.
-const NEEDS_APPROVAL: [&str; 4] = ["Delete", "New", "Open", "Save"];
+const NEEDS_APPROVAL: [&str; 8] = [
+    "Delete",
+    "New",
+    "Open",
+    "Save",
+    "SaveAs",
+    "Import",
+    "Export",
+    "ExportSelected",
+];
 
 /// If this message would do something the user should approve first, the line that would do it.
 #[must_use]
