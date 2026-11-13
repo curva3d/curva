@@ -516,8 +516,8 @@ impl Recipe for DupBorder {
                 .map(|edge| body.edge_curve(edge))
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| failed(&e))?;
-            let joined = curva_kernel::join(&curves).map_err(|e| failed(&e))?;
-            for (_, curve) in joined {
+            let joined = curva_kernel::join_all(&curves).map_err(|e| failed(&e))?;
+            for curve in joined {
                 made.derived.push(Derived {
                     shape: Shape::Curve(curve),
                     from: id,
@@ -939,7 +939,7 @@ impl Recipe for CurveBoolean {
                 })
                 .cloned()
                 .collect();
-            for (_, outline) in curva_kernel::join(&edges).map_err(|e| failed(&e))? {
+            for outline in curva_kernel::join_all(&edges).map_err(|e| failed(&e))? {
                 made.add.push(Shape::Curve(outline));
             }
         }

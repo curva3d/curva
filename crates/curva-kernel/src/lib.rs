@@ -19,15 +19,19 @@ pub use boolean::Combine;
 mod conic;
 mod corners;
 mod cut;
+mod engine_ops;
 mod fillet;
 mod finishing;
 mod grips;
 mod knots;
+pub use engine_ops::{Carry, Contact};
 mod making;
 mod making2;
 pub use making::nested_groups;
 pub use making2::TaperCorners;
 mod offset;
+mod record_io;
+pub use record_io::{from_record_curve, to_record_curve, to_record_spline};
 mod spline;
 pub use spline::Spline;
 mod tween;
@@ -417,6 +421,27 @@ pub fn join(curves: &[Curve]) -> Result<Vec<(Vec<usize>, Curve)>, KernelError> {
         made.push((replaced, curve));
     }
     Ok(made)
+}
+
+/// The curves joined where they meet end to end, with the ones that join nothing kept as they
+/// are: every curve given is in the result once.
+pub fn join_all(curves: &[Curve]) -> Result<Vec<Curve>, KernelError> {
+    let joined = join(curves)?;
+    let mut used = vec![false; curves.len()];
+    for (indices, _) in &joined {
+        for &i in indices {
+            used[i] = true;
+        }
+    }
+    let mut out: Vec<Curve> = joined.into_iter().map(|(_, curve)| curve).collect();
+    out.extend(
+        curves
+            .iter()
+            .zip(&used)
+            .filter(|(_, used)| !**used)
+            .map(|(curve, _)| curve.clone()),
+    );
+    Ok(out)
 }
 
 /// `a` minus `b`.

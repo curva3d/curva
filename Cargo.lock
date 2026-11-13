@@ -2428,7 +2428,7 @@ dependencies = [
 [[package]]
 name = "solidcore"
 version = "1.0.1"
-source = "git+https://github.com/tangency-labs/solidcore?rev=c440e5f892452a9654aee8f3030de6095fdb1415#c440e5f892452a9654aee8f3030de6095fdb1415"
+source = "git+https://github.com/tangency-labs/solidcore?rev=377457d24b3d8398c81b072dd1401b02b04d67b0#377457d24b3d8398c81b072dd1401b02b04d67b0"
 dependencies = [
  "serde",
  "thiserror 2.0.21",
@@ -2437,7 +2437,7 @@ dependencies = [
 [[package]]
 name = "solidcore-convert"
 version = "0.1.0"
-source = "git+https://github.com/tangency-labs/solidcore?rev=c440e5f892452a9654aee8f3030de6095fdb1415#c440e5f892452a9654aee8f3030de6095fdb1415"
+source = "git+https://github.com/tangency-labs/solidcore?rev=377457d24b3d8398c81b072dd1401b02b04d67b0#377457d24b3d8398c81b072dd1401b02b04d67b0"
 dependencies = [
  "solidcore",
  "solidcore-record",
@@ -2446,7 +2446,7 @@ dependencies = [
 [[package]]
 name = "solidcore-ops"
 version = "0.1.0"
-source = "git+https://github.com/tangency-labs/solidcore?rev=c440e5f892452a9654aee8f3030de6095fdb1415#c440e5f892452a9654aee8f3030de6095fdb1415"
+source = "git+https://github.com/tangency-labs/solidcore?rev=377457d24b3d8398c81b072dd1401b02b04d67b0#377457d24b3d8398c81b072dd1401b02b04d67b0"
 dependencies = [
  "solidcore",
  "solidcore-convert",
@@ -2456,7 +2456,7 @@ dependencies = [
 [[package]]
 name = "solidcore-record"
 version = "0.1.0"
-source = "git+https://github.com/tangency-labs/solidcore?rev=c440e5f892452a9654aee8f3030de6095fdb1415#c440e5f892452a9654aee8f3030de6095fdb1415"
+source = "git+https://github.com/tangency-labs/solidcore?rev=377457d24b3d8398c81b072dd1401b02b04d67b0#377457d24b3d8398c81b072dd1401b02b04d67b0"
 dependencies = [
  "serde",
  "serde_json",
@@ -2466,7 +2466,7 @@ dependencies = [
 [[package]]
 name = "solidcore-tess"
 version = "0.1.0"
-source = "git+https://github.com/tangency-labs/solidcore?rev=c440e5f892452a9654aee8f3030de6095fdb1415#c440e5f892452a9654aee8f3030de6095fdb1415"
+source = "git+https://github.com/tangency-labs/solidcore?rev=377457d24b3d8398c81b072dd1401b02b04d67b0#377457d24b3d8398c81b072dd1401b02b04d67b0"
 dependencies = [
  "rayon",
  "serde",
