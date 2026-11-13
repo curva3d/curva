@@ -35,6 +35,7 @@ pub use record_io::{from_record_curve, to_record_curve, to_record_spline};
 mod spline;
 mod surface;
 mod surface_ops;
+mod surface_ops2;
 pub use spline::Spline;
 pub use surface::NurbsSurface;
 mod tween;

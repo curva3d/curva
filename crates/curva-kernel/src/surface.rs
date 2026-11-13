@@ -258,6 +258,31 @@ impl NurbsSurface {
         }
     }
 
+    /// The surface carried on past every side by `by` (in its own parameters), each row and
+    /// column continuing as its end spans do.
+    #[must_use]
+    pub fn extended(&self, by: f64) -> Self {
+        let grow = |c: Spline| -> Spline {
+            let c = c.extended_end(by);
+            c.reversed().extended_end(by).reversed()
+        };
+        let mut s = self.clone();
+        let cols: Vec<Spline> = (0..s.points[0].len()).map(|j| grow(s.column(j))).collect();
+        s.u_knots = cols[0].knots.clone();
+        s.points = (0..cols[0].points.len())
+            .map(|i| cols.iter().map(|c| c.points[i]).collect())
+            .collect();
+        let rows: Vec<Spline> = (0..s.points.len()).map(|i| grow(s.row(i))).collect();
+        s.v_knots = rows[0].knots.clone();
+        s.points = rows.into_iter().map(|r| r.points).collect();
+        s
+    }
+
+    /// The surface as the engine's record surface.
+    #[must_use]
+    pub fn as_record(&self) -> Surface {
+        self.record_surface()
+    }
     fn record_surface(&self) -> Surface {
         let rational = self
             .points

@@ -20,6 +20,10 @@ the release notes. Then update "Checked at".
 | two-rail-sweep | `curva-kernel/src/surface_ops.rs` (`Body::swept_two_rails`) | Sweep2 | `sweep::sweep_stations` skins the placed profiles (engine); placing them along two rails is Curva's | `377457d` |
 | space-deformation | `curva-kernel/src/surface_ops.rs` (`Body::deformed`, `Curve::deformed`) | Twist, Bend, Taper, Flow, CageEdit | `surface_cvs::move_net` moves one untrimmed surface's points; deforming whole trimmed bodies is Curva's | `377457d` |
 | curves-on-surfaces | `curva-kernel/src/surface_ops.rs` (`Body::pulled`, `curve_on_face`, `offset_on_surface`) | Pull, InterpCrvOnSrf, OffsetCrvOnSrf | `face_surface::FaceSurface` evaluates and finds nearest points (engine); the curves are fitted by Curva | `377457d` |
+| silhouettes | `curva-kernel/src/surface_ops2.rs` (`Body::silhouette`) | Silhouette | none; Curva reads its display mesh | `377457d` |
+| unrolling | `curva-kernel/src/surface_ops2.rs` (`Body::unrolled`) | UnrollSrf | none | `377457d` |
+| face-extrusion | `curva-kernel/src/surface_ops2.rs` (`Body::face_extruded`) | ExtrudeFace | `offset_faces` moves faces; extruding one face's outline and joining it is Curva's (with the engine's extrusion and boolean) | `377457d` |
+| surface-fillets | `curva-kernel/src/surface_ops2.rs` (`Body::filleted_with`) | FilletSrf, ChamferSrf | `offset_sheet` and `split_faces` (engine) find the spine; the sections and skin are Curva's | `377457d` |
 | face-assembly | `curva-kernel/src/assemble.rs` (`Body::assembled`) | ExtrudeSrf, the gumball's extrusion, RailRevolve's seam | `stitch::stitch` sews one body; merging several bodies' records into one is Curva's | `377457d` |
 | straight-extrusion | `curva-kernel/src/assemble.rs` (`Body::extruded_straight`) | ExtrudeSrf, the gumball | `thicken` and `offset_sheet` push along the normal, not along a direction | `377457d` |
 | cone-to-point | `curva-kernel/src/making2.rs` (`Body::extruded_to_point`) | ExtrudeCrvToPoint for smooth curves | `loft_to_point` takes polygons of lines only; `surface::ruled` takes two curves | `377457d` |

@@ -253,25 +253,93 @@ impl Body {
     /// Where two bodies meet, as curves (Rhino's Intersect): the edges imprinting one on the
     /// other adds.
     pub fn intersections(&self, other: &Body) -> Result<Vec<Curve>, KernelError> {
+        let found = self.new_edges_after(other, true)?;
+        if !found.is_empty() {
+            return crate::join_all(&found);
+        }
+        crate::join_all(&self.new_edges_after(other, false)?)
+    }
+
+    /// The edges this body gains where `other` cuts it: by imprinting, or (for open sheets) by
+    /// splitting its faces with the other's surfaces, planes widened past their edges.
+    pub(crate) fn new_edges_after(
+        &self,
+        other: &Body,
+        imprint: bool,
+    ) -> Result<Vec<Curve>, KernelError> {
         let old: Vec<Curve> = (0..self.record()?.edges.len())
             .map(|edge| self.edge_curve(edge))
             .collect::<Result<_, _>>()?;
-        let (imprinted, changed) =
+        let imprinted = if imprint {
             solidcore_ops::boolean::imprint(self.engine_body()?, other.engine_body()?)
-                .map_err(|e| failed("intersecting", e))?;
-        if !changed {
+                .ok()
+                .filter(|(_, changed)| *changed)
+                .map(|(body, _)| body)
+        } else {
+            None
+        };
+        if imprint && imprinted.is_none() {
             return Ok(Vec::new());
         }
-        let after = Self::made(&imprinted)?;
+        let after = match imprinted {
+            Some(body) => Self::made(&body)?,
+            // Open sheets: split this body's faces with the other's surfaces instead.
+            None => {
+                let (body, order) = self.engine_with_order()?;
+                let other_record = other.record()?;
+                let tools: Vec<solidcore_ops::split::Tool> = other_record
+                    .faces
+                    .iter()
+                    .enumerate()
+                    .map(|(index, face)| {
+                        // A spline surface carried on past its sides, so a cut reaching its edge
+                        // is decided.
+                        if !matches!(face.surface, solidcore_record::brep::Surface::Plane { .. })
+                            && let Ok(surface) = crate::NurbsSurface::of_face(&other_record, index)
+                        {
+                            let [[u0, u1], [v0, v1]] = surface.domain();
+                            let grown = surface.extended(0.5 * (u1 - u0).max(v1 - v0));
+                            return solidcore_ops::split::Tool {
+                                surface: grown.as_record(),
+                                domain: grown.domain(),
+                            };
+                        }
+                        let mut domain = face.domain;
+                        if matches!(face.surface, solidcore_record::brep::Surface::Plane { .. }) {
+                            let reach = 10.0
+                                * (domain[0][1] - domain[0][0])
+                                    .abs()
+                                    .max((domain[1][1] - domain[1][0]).abs())
+                                    .max(1.0);
+                            domain = [
+                                [domain[0][0] - reach, domain[0][1] + reach],
+                                [domain[1][0] - reach, domain[1][1] + reach],
+                            ];
+                        }
+                        solidcore_ops::split::Tool {
+                            surface: face.surface.clone(),
+                            domain,
+                        }
+                    })
+                    .collect();
+                let faces: Vec<usize> = (0..order.faces.len()).collect();
+                match solidcore_ops::split::split_faces(&body, &order, &faces, &tools)
+                    .map_err(|e| failed("intersecting", e))?
+                {
+                    Some((split, _)) => Self::made(&split)?,
+                    None => return Ok(Vec::new()),
+                }
+            }
+        };
         // The new edges: those of the imprinted body not lying on one of its old edges.
         let record = after.record()?;
         let mut found = Vec::new();
         for index in 0..record.edges.len() {
             let curve = after.edge_curve(index)?;
-            let mid = curve
-                .sample()
-                .ok()
-                .and_then(|p| p.get(p.len() / 2).copied());
+            let mid = crate::Spline::of(&curve).ok().map(|s| {
+                let (a, b) = s.domain();
+                s.point((a + b) / 2.0)
+            });
             let on_old = |p: Point| {
                 old.iter()
                     .any(|edge| edge.closest_point(p).is_ok_and(|q| crate::gap(p, q) < 1e-6))
@@ -282,7 +350,7 @@ impl Body {
                 found.push(curve);
             }
         }
-        crate::join_all(&found)
+        Ok(found)
     }
 
     /// The faces numbered `faces` moved along their normals by `distance`, the solid around
