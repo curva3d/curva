@@ -611,6 +611,120 @@ impl Spline {
     }
 }
 
+
+impl Spline {
+    /// The same curve run the other way.
+    #[must_use]
+    pub fn reversed(&self) -> Self {
+        let (a, b) = self.domain();
+        let mut knots: Vec<f64> = self.knots.iter().map(|k| a + b - k).collect();
+        knots.reverse();
+        let mut points = self.points.clone();
+        points.reverse();
+        Self {
+            degree: self.degree,
+            knots,
+            points,
+        }
+    }
+
+    /// The point, first and second derivatives at the end of the curve, exact from the control
+    /// points: on the weighted points, then by the quotient rule for a weighted curve.
+    #[must_use]
+    pub fn end_derivatives(&self) -> (Point, Point, Point) {
+        let (p, n, u, deg) = (
+            self.degree as f64,
+            self.points.len() - 1,
+            &self.knots,
+            self.degree,
+        );
+        let at = |i: usize| self.points[i];
+        // The derivative's control points (on the weighted points).
+        let q = |i: usize| -> [f64; 4] {
+            let span = u[i + deg + 1] - u[i + 1];
+            let (a, b) = (at(i + 1), at(i));
+            std::array::from_fn(|k| p * (a[k] - b[k]) / span)
+        };
+        let h0 = at(n);
+        let h1 = q(n - 1);
+        let h2: [f64; 4] = if deg >= 2 && n >= 2 {
+            let q0 = q(n - 2);
+            let span = u[n + deg - 1] - u[n];
+            std::array::from_fn(|k| (p - 1.0) * (h1[k] - q0[k]) / span)
+        } else {
+            [0.0; 4]
+        };
+        let w = h0[3];
+        let c: Point = std::array::from_fn(|k| h0[k] / w);
+        let c1: Point = std::array::from_fn(|k| (h1[k] - h1[3] * c[k]) / w);
+        let c2: Point =
+            std::array::from_fn(|k| (h2[k] - 2.0 * h1[3] * c1[k] - h2[3] * c[k]) / w);
+        (c, c1, c2)
+    }
+
+    /// The curve carried on past its end by `by` (in its own parameter) as the polynomial of its
+    /// last span continues, as Rhino's smooth Extend.
+    #[must_use]
+    pub fn extended_end(&self, by: f64) -> Self {
+        let p = self.degree;
+        let (a, b) = self.domain();
+        // The last span on its own, as a Bézier piece.
+        let last_inner = self.knots[p + 1..self.points.len()]
+            .iter()
+            .rev()
+            .find(|k| **k > a && **k < b)
+            .copied();
+        let (before, span) = match last_inner {
+            Some(u) => match self.split(u) {
+                Some((left, right)) => (Some(left), right),
+                None => (None, self.clone()),
+            },
+            None => (None, self.clone()),
+        };
+        // De Casteljau at t > 1 gives the control points of the span stretched on to t.
+        let (s0, s1) = span.domain();
+        let t = (s1 - s0 + by) / (s1 - s0);
+        let mut work = span.points.clone();
+        let mut left = vec![work[0]];
+        for r in 1..=p {
+            for j in 0..=p - r {
+                work[j] = lerp(work[j], work[j + 1], t);
+            }
+            left.push(work[0]);
+        }
+        let mut knots = vec![s0; p + 1];
+        knots.extend(std::iter::repeat_n(s1 + by, p + 1));
+        let stretched = Self {
+            degree: p,
+            knots,
+            points: left,
+        };
+        match before {
+            None => stretched,
+            Some(before) => {
+                // Joined on, keeping both parts' parameters.
+                let mut joined = before.clone();
+                joined.knots.truncate(joined.knots.len() - 1);
+                joined.knots.extend_from_slice(&stretched.knots[p + 1..]);
+                joined.points.extend_from_slice(&stretched.points[1..]);
+                match joined.check().map(|()| joined) {
+                    Ok(mut joined) => {
+                        // Back to the smoothness the curve had at that knot.
+                        let size = joined
+                            .points
+                            .iter()
+                            .flat_map(|q| q.iter().map(|v| v.abs()))
+                            .fold(1.0, f64::max);
+                        let at = joined.knots[before.points.len()];
+                        joined.remove(at, p, 1e-9 * size);
+                        joined
+                    }
+                    Err(_) => stretched,
+                }
+            }
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::Spline;
@@ -693,5 +807,43 @@ mod tests {
         assert!(gap(left.point(left.domain().1), right.point(right.domain().0)) < 1e-12);
         assert!(gap(left.point(0.15), curve.point(0.15)) < 1e-9);
         assert!(gap(right.point(0.8), curve.point(0.8)) < 1e-9);
+    }
+
+    #[test]
+    fn reversing_runs_the_same_points_backwards() {
+        let curve = wavy();
+        let back = curve.reversed();
+        for i in 0..=10 {
+            let u = f64::from(i) / 10.0;
+            assert!(gap(curve.point(u), back.point(1.0 - u)) < 1e-9);
+        }
+    }
+
+    #[test]
+    fn end_derivatives_agree_with_small_differences() {
+        let curve = wavy();
+        let (end, d1, d2) = curve.end_derivatives();
+        let h = 1e-4;
+        let (p1, p2) = (curve.point(1.0 - h), curve.point(1.0 - 2.0 * h));
+        for k in 0..3 {
+            let numeric1 = (3.0 * end[k] - 4.0 * p1[k] + p2[k]) / (2.0 * h);
+            let numeric2 = (end[k] - 2.0 * p1[k] + p2[k]) / (h * h);
+            assert!((d1[k] - numeric1).abs() < 1e-3 * d1[k].abs().max(1.0), "{d1:?}");
+            assert!((d2[k] - numeric2).abs() < 1e-2 * d2[k].abs().max(1.0), "{d2:?}");
+        }
+    }
+
+    #[test]
+    fn extending_keeps_the_curve_and_carries_on_smoothly() {
+        let curve = wavy();
+        let longer = curve.extended_end(0.2);
+        assert_eq!(longer.domain(), (0.0, 1.2));
+        for i in 0..=20 {
+            let u = f64::from(i) / 20.0;
+            assert!(gap(curve.point(u), longer.point(u)) < 1e-9, "at {u}");
+        }
+        // No kink where the old end was.
+        let (before, after) = (longer.derivative(1.0 - 1e-3), longer.derivative(1.0 + 1e-3));
+        assert!(gap(before, after) < 1e-1 * gap(before, [0.0; 3]));
     }
 }

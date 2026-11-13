@@ -200,3 +200,39 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | ChangeDegree | Select curves; new degree | `Deformable` | `Degree` `Deformable` | partly |
 | AreaCentroid | Select surfaces or closed curves | none | none | partly |
 | VolumeCentroid | Select solids | none | none | done |
+
+## Added in 0.4.1: the last missing commands
+
+| Command | Rhino's steps | Rhino's options | In Curva | Status |
+|---|---|---|---|---|
+| HandleCurve | Points, each with its handle; Enter | `Close` | none | partly |
+| Sketch | Drag to draw | none | none | done |
+| Conic | Start; end; apex; rho or a point on it | `Perpendicular` `Tangent` | none | partly |
+| Hyperbola | Centre; vertex; focus; end | `FromFocus` `Coefficients` `Vertices` `Marks` | none | partly |
+| BlendCrv | Two curves, near the ends to join | `Position` `Tangency` `Curvature` `G3` `G4` `Edges` | `Position` `Tangency` `Curvature` | partly |
+| OffsetMultiple | Curves; distance; side | `Corner` `BothSides` | none | partly |
+| DupBorder | Select surfaces | none | none | done |
+| Extend | Boundaries (Enter: by length); curves | `Line` `Arc` `Smooth` | `Line` `Arc` `Smooth` `AtStart` | done |
+| Fair | Curves; tolerance | none | none | done |
+| CurveBoolean | Curves; clicks inside regions | `DeleteInput` `CombineRegions` `AllRegions` | `CombineRegions` `DeleteInput` | partly |
+| Match | Curve to change; curve to match | `Position` `Tangency` `Curvature` `AverageCurves` `PreserveOtherEnd` | `Position` `Tangency` `Curvature` | partly |
+| SimplifyCrv | Select curves | none | none | done |
+| Reparameterize | Curves; start; end | `Automatic` | none | partly |
+| MakeUniform | Select curves | none | none | done |
+| Weight | Control points picked; weight | none | none | done |
+| ExtrudeCrvTapered | Closed curves; distance | `DraftAngle` `Solid` `Sharp` `Round` `Smooth` `Direction` `DeleteInput` `FlipAngle` | `DraftAngle` `Solid` `Sharp` `Round` `Smooth` | partly |
+| ExtrudeCrvAlongCrv | Curves; path | `Solid` `DeleteInput` `SubCurve` | `Solid` | partly |
+| ExtrudeCrvToPoint | Curves; point | `Solid` `DeleteInput` | `Solid` | partly |
+| RailRevolve | Profile; rail; axis | `ScaleHeight` | none | partly |
+| Pyramid | Centre; corner; height | `NumSides` `Circumscribed` `Star` `Edge` `Vertical` | `NumSides` `Circumscribed` | partly |
+| ExtractSrf | Faces | `Copy` | `Copy` | done |
+| MergeAllFaces | Polysurfaces | none | none | done |
+| Wirecut | Cutting curve; objects; depth | `KeepAll` `Direction` `BothSides` `DeleteInput` | `KeepAll` | partly |
+| Distribute | Objects | `X` `Y` `Z` `Gap` | `X` `Y` `Z` `Gap` | done |
+| SelColor | A colour | none | none | partly |
+| Lock | Objects | none | none | partly |
+| Unlock | none | none | none | partly |
+| Group | Objects | none | none | partly |
+| Ungroup | Objects | none | none | partly |
+| ShowEdges | Objects | `All` `NakedEdges` `NonManifoldEdges` | `NakedEdges` | partly |
+| Plan | none | none | none | partly |

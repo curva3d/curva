@@ -4153,6 +4153,8 @@ impl Curva {
                 let hit = self.outlines.pick(&camera, local(from), size, PICK_REACH);
                 hit.into_iter().collect()
             };
+            // Picking one member of a group picks the whole group, as in Rhino.
+            let hits = self.doc.with_groups(&hits);
             let chosen = combined_selection(self.doc.selection(), hits, shift, remove);
             self.doc.select(&chosen);
         }

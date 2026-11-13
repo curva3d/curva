@@ -242,6 +242,8 @@ pub enum ViewRequest {
     Show(ViewName),
     /// Draw the last-used viewport this way.
     Display(DisplayMode),
+    /// Turn the last-used viewport to look straight down on its construction plane.
+    Plan,
     /// Show or hide the selection filter row in the status bar.
     ShowSelectionFilter,
     /// Turn the selection filter off or back on, keeping its ticks.

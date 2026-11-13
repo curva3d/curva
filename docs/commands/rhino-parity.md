@@ -26,8 +26,8 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | Curve | partly | Options to come: `AutoClose`, `PersistentClose`, `Sharp` |
 | InterpCrv | partly | Options to come: `AutoClose`, `Degree`, `PersistentClose`, `Knots`, `StartTangent`, `EndTangent`, `Sharp` |
 | InterpCrvOnSrf | blocked | needs curves on surfaces |
-| HandleCurve | missing | |
-| Sketch | missing | |
+| HandleCurve | partly | Handles are placed by clicking, not dragging; `Close` to come |
+| Sketch | done |  |
 | Circle | partly | Options to come: `Deformable`, `Radius`, `AroundCurve`, `FitPoints`, `Tangent`, `Vertical`, `Orientation`, `Circumference`, `Area` |
 | Arc | partly | Options to come: `Center`, `Tilted`, `Length`, `Midpoint`, `Deformable`, `Direction`, `ThroughPoint`, `Tangent`, `Extension` |
 | Ellipse | partly | Options to come: `Deformable`, `Vertical`, `FromFoci`, `MarkFoci`, `AroundCurve` |
@@ -37,15 +37,15 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | Points | partly | Options to come: `MarkPoints` |
 | Helix | partly | Options to come: `Vertical`, `AroundCurve`, `Pitch`, `ReverseTwist`, `Diameter` |
 | Spiral | partly | Options to come: `Vertical`, `AroundCurve`, `Pitch`, `ReverseTwist`, `Diameter` |
-| Conic | missing | |
+| Conic | partly | Rho is typed; `Perpendicular`, `Tangent` and a point to pass through to come |
 | Parabola | partly | Options to come: `Vertex`, `Marks`, `FocusMarks`, `HalfParabola` |
-| Hyperbola | missing | |
+| Hyperbola | partly | From the centre only; `FromFocus`, `Coefficients`, `Vertices` and `Marks` to come |
 | Slot | partly | Options to come: `Vertical` |
 | TweenCurves | partly | Options to come: `Number`, `OutputLayer`, `MatchMethod`, `SampleNumber`, `Flip` |
-| BlendCrv | missing | |
+| BlendCrv | partly | Joins the nearest ends; `G3`, `G4` and `Edges` to come |
 | Divide | partly | Options to come: `Length`, `EqualChordLength`, `Split`, `DeleteRemainder`, `MarkEnds`, `GroupOutput` |
 | Offset | partly | Options to come: `Loose`, `Corner`, `Trim`, `Tolerance`, `InCPlane`, `Cap`, `OutputLayer` |
-| OffsetMultiple | missing | |
+| OffsetMultiple | partly | Options to come: `Corner`, `BothSides` |
 | OffsetCrvOnSrf | blocked | needs curves on surfaces |
 | Fillet | partly | Options to come: `Join`, `Trim`, `ExtendArcsBy`, `ExtendOtherCurvesBy`, `Dynamic` |
 | FilletCorners | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
@@ -57,7 +57,7 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | Section | blocked | needs plane–surface intersections |
 | Intersect | blocked | needs surface intersections |
 | DupEdge | done | |
-| DupBorder | missing | |
+| DupBorder | done |  |
 | Silhouette | blocked | needs silhouettes from the engine |
 | ExtractIsocurve | blocked | needs surface isocurves |
 
@@ -69,7 +69,7 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | Explode | done | |
 | Trim | partly | Options to come: `ExtendCuttingLines`, `ApparentIntersections`, `Line` |
 | Split | partly | Options to come: `Point`, `Isocurve`, `Shrink` |
-| Extend | missing | |
+| Extend | done |  |
 | Rebuild | partly | Options to come: `PointCount`, `Degree`, `DeleteInput`, `CurrentLayer`, `PreserveTangents` |
 | ChangeDegree | partly | Lowering the degree keeps the control points instead of fitting the old shape |
 | InsertKnot | partly | Options to come: `Automatic`, `Midpoints`, `Symmetrical`, `Undo`, `Direction`, `Toggle` |
@@ -80,16 +80,16 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | PointsOff | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
 | SetPt | partly | Options to come: `Copy` |
 | Smooth | partly | Options to come: `SmoothX`, `SmoothY`, `SmoothZ`, `FixBoundaries`, `CoordinateSystem`, `SmoothFactor`, `Steps` |
-| Fair | missing | |
+| Fair | done |  |
 | Dir | partly | Options to come: `FlipAll`, `UReverse`, `VReverse`, `SwapUV` |
 | Flip | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
 | CloseCrv | partly | Options to come: `CloseWideGapsWithLine`, `Tolerance` |
-| CurveBoolean | missing | |
-| Match | missing | |
-| SimplifyCrv | missing | |
-| Reparameterize | missing | |
-| MakeUniform | missing | |
-| Weight | missing | |
+| CurveBoolean | partly | Options to come: `AllRegions` |
+| Match | partly | Matches the nearest ends; weighted curves match only approximately; `AverageCurves` and `PreserveOtherEnd` to come |
+| SimplifyCrv | done |  |
+| Reparameterize | partly | Lines and arcs become NURBS curves to take a range; `Automatic` to come |
+| MakeUniform | done |  |
+| Weight | done |  |
 
 ## Surfaces
 
@@ -100,11 +100,11 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | SrfPt | done | |
 | EdgeSrf | blocked | needs Coons patches |
 | ExtrudeCrv | partly | Options to come: `Direction`, `ToBoundary`, `SplitAtTangents`, `SetBasePoint` |
-| ExtrudeCrvTapered | missing | |
-| ExtrudeCrvAlongCrv | missing | |
-| ExtrudeCrvToPoint | missing | |
+| ExtrudeCrvTapered | partly | Options to come: `Direction`, `DeleteInput`, `FlipAngle` |
+| ExtrudeCrvAlongCrv | partly | Options to come: `DeleteInput`, `SubCurve` |
+| ExtrudeCrvToPoint | partly | Smooth curves close to a tip a ten-thousandth of their size, not a single point; `DeleteInput` to come |
 | Revolve | partly | Options to come: `AskForStartAngle`, `Deformable`, `PointCount`, `SplitAtTangents` |
-| RailRevolve | missing | |
+| RailRevolve | partly | The surface passes through the profile at 72 angles and is skinned between them; `ScaleHeight` to come |
 | Loft | partly | Options to come: `Point`, `Style`, `Closed`, `MatchStartTangent`, `MatchEndTangent`, `SplitAtTangents`, `AlignCurves`, `Rebuild`, `Refit` |
 | Sweep1 | partly | Options to come: `ChainEdges`, `Point`, `FrameStyle`, `Closed`, `GlobalShapeBlending`, `UntrimmedMiters`, `RefitRail`, `AlignCrossSections` |
 | Sweep2 | blocked | needs two-rail sweeps |
@@ -134,7 +134,7 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | TruncatedCone | partly | Options to come: `DirectionConstraint`, `Solid`, `2Point`, `3Point`, `Tangent`, `FitPoints` |
 | Torus | partly | Options to come: `Vertical`, `2Point`, `3Point`, `Tangent`, `AroundCurve`, `Diameter`, `FixInnerRadius` |
 | Tube | partly | Options to come: `DirectionConstraint`, `Diameter`, `WallThickness`, `Cap` |
-| Pyramid | missing | |
+| Pyramid | partly | Options to come: `Star`, `Edge`, `Vertical` |
 | Ellipsoid | partly | Options to come: `Corner`, `Diameter`, `FromFoci`, `AroundCurve` |
 | Paraboloid | partly | Options to come: `Vertex`, `MarkFocus`, `Solid` |
 | ExtrudeSrf | partly | Straight out of the construction plane; `Direction`, `Solid=No`, `ToBoundary` and `SetBasePoint` to come |
@@ -146,11 +146,11 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | FilletEdge | partly | Options to come: `ShowRadius`, `NextRadius`, `ChainEdges`, `FaceEdges`, `PreviousEdgeSelection`, `TrimAndJoin`, `RailType`, `AddHandle`, `RemoveHandle`, `SetAll`, `LinkHandles` |
 | ChamferEdge | partly | Options to come: `ShowChamferDistance`, `NextChamferDistance`, `ChainEdges`, `FaceEdges`, `PreviousEdgeSelection`, `TrimAndJoin`, `RailType`, `AddHandle`, `RemoveHandle`, `SetAll`, `LinkHandles` |
 | Shell | partly | Options to come: `Thickness`, `EditThickness` |
-| ExtractSrf | missing | |
-| MergeAllFaces | missing | |
+| ExtractSrf | done |  |
+| MergeAllFaces | done |  |
 | MoveFace | blocked | needs face editing |
 | ExtrudeFace | blocked | needs face editing |
-| Wirecut | missing | |
+| Wirecut | partly | Cuts straight through out of the construction plane; `Direction`, `BothSides` and `DeleteInput` to come |
 
 ## Transforming
 
@@ -172,7 +172,7 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | ArrayCrv | partly | Options to come: `Basepoint`, `Items`, `Distance`, `Orientation` |
 | ArrayLinear | done | |
 | Align | partly | Options to come: `ToPoint`, `ToLine` |
-| Distribute | missing | |
+| Distribute | done |  |
 | Shear | blocked | needs shear transforms in the engine |
 | Twist | blocked | needs deformations |
 | Bend | blocked | needs deformations |
@@ -202,16 +202,16 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | SelDup | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
 | SelLast | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
 | SelPrev | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
-| SelColor | missing | |
+| SelColor | partly | Picks the colour from an object (its layer's), not from a colour list |
 | SelFilter | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
 | Hide | partly | Options to come: `-Hide` |
 | Show | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
 | HideSwap | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
 | Isolate | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
-| Lock | missing | |
-| Unlock | missing | |
-| Group | missing | |
-| Ungroup | missing | |
+| Lock | partly | Not yet on the command framework |
+| Unlock | partly | Not yet on the command framework |
+| Group | partly | Not yet on the command framework; groups do not nest yet |
+| Ungroup | partly | Not yet on the command framework |
 | Rename | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
 | History | partly | Options to come: `Record`, `Update`, `Lock`, `BrokenHistoryWarning` |
 
@@ -232,7 +232,7 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | VolumeCentroid | done | |
 | CurvatureGraph | blocked | needs curvature from the engine |
 | Zebra | blocked | needs analysis display |
-| ShowEdges | missing | |
+| ShowEdges | partly | Shows naked edges or all; `NonManifoldEdges` to come |
 
 ## Construction planes and views
 
@@ -251,4 +251,4 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | UndoView | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
 | RedoView | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
 | SetDisplayMode | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
-| Plan | missing | |
+| Plan | partly | Not yet on the command framework |

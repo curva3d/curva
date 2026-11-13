@@ -21,15 +21,24 @@ fn failed(error: &curva_kernel::KernelError) -> Message {
     Message::with("error.geometry", vec![error.to_string()])
 }
 
-/// Points along the parabola with its vertex at `vertex`, opening along `axis` towards its focus
-/// `focal` away, out to `half` either side along `side`.
-fn parabola_points(vertex: Point, axis: Point, side: Point, focal: f64, half: f64) -> Vec<Point> {
-    (0..=24)
-        .map(|i| {
-            let s = -half + 2.0 * half * f64::from(i) / 24.0;
-            plus(plus(vertex, side, s), axis, s * s / (4.0 * focal))
-        })
-        .collect()
+/// The exact piece of the parabola with its vertex at `vertex`, opening along `axis` towards
+/// its focus `focal` away, from `from` to `to` along `side`: a quadratic whose middle control
+/// point is where the end tangents meet.
+fn parabola_piece(
+    vertex: Point,
+    axis: Point,
+    side: Point,
+    focal: f64,
+    from: f64,
+    to: f64,
+) -> Result<Curve, curva_kernel::KernelError> {
+    let at = |s: f64, height: f64| plus(plus(vertex, side, s), axis, height);
+    let points = vec![
+        at(from, from * from / (4.0 * focal)),
+        at((from + to) / 2.0, from * to / (4.0 * focal)),
+        at(to, to * to / (4.0 * focal)),
+    ];
+    Curve::nurbs(2, vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0], points, Vec::new())
 }
 
 /// `Parabola`: its vertex, its focus, then an end point, which sets how far it reaches.
@@ -67,7 +76,7 @@ impl Recipe for Parabola {
         if half <= 1e-9 {
             return Err(Message::new("error.reference_point"));
         }
-        let curve = Curve::interpolated(parabola_points(v, axis, side, gap(v, f), half), false)
+        let curve = parabola_piece(v, axis, side, gap(v, f), -half, half)
             .map_err(|e| failed(&e))?;
         Ok(Made {
             add: vec![Shape::Curve(curve)],
@@ -117,11 +126,15 @@ impl Recipe for Paraboloid {
             .ok_or_else(|| Message::new("error.reference_point"))?;
         let focal = gap(v, f);
         let half = (4.0 * focal * depth).sqrt();
-        // Half the parabola, then across the top and back down the axis, spun a whole turn.
-        let mut profile: Vec<Point> = parabola_points(v, axis, side, focal, half).split_off(12);
-        profile.push(plus(v, axis, depth));
-        let outline = Curve::polyline(profile, true).map_err(|e| failed(&e))?;
-        let body = Body::revolved(&[outline], v, axis, TAU, true).map_err(|e| failed(&e))?;
+        // Half the parabola, exact, then across the top to the axis, spun a whole turn: both
+        // ends on the axis, so it closes into a solid.
+        let rim = plus(plus(v, side, half), axis, depth);
+        let outline = Curve::compound(vec![
+            parabola_piece(v, axis, side, focal, 0.0, half).map_err(|e| failed(&e))?,
+            Curve::line(rim, plus(v, axis, depth)).map_err(|e| failed(&e))?,
+        ])
+        .map_err(|e| failed(&e))?;
+        let body = Body::revolved(&[outline], v, axis, TAU, false).map_err(|e| failed(&e))?;
         Ok(Made {
             add: vec![Shape::Body(body)],
             message: Some(Message::new("done.paraboloid")),
@@ -422,7 +435,7 @@ mod tests {
         // The volume of a paraboloid is half the cylinder around it: π r² h / 2, with r² = 4fh.
         let expected = std::f64::consts::PI * 16.0 * 4.0 / 2.0;
         assert!(
-            (volume - expected).abs() < 0.02 * expected,
+            (volume - expected).abs() < 1e-4 * expected,
             "{volume} against {expected}"
         );
         let mut doc = Document::default();

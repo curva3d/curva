@@ -12,6 +12,7 @@ mod grips;
 mod history;
 pub use grips::Grip;
 mod layers;
+mod organise;
 mod shape;
 pub use shape::Shape;
 mod views;
@@ -439,7 +440,7 @@ impl Document {
         self.state
             .objects
             .iter()
-            .filter(|object| !object.hidden && open(object.layer))
+            .filter(|object| !object.hidden && !object.locked && open(object.layer))
             .map(|object| object.id)
             .collect()
     }
