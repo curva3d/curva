@@ -468,6 +468,7 @@ dependencies = [
 name = "curva-commands"
 version = "0.4.1"
 dependencies = [
+ "curva-3dm",
  "curva-document",
  "curva-kernel",
 ]
