@@ -9,7 +9,7 @@ to the questions are in decision 0018.
 2. Line weights set in millimetres, per layer and per object, as in Rhino's Print Width, shown in every
    view.
 
-## Commands (`rhino-parity-0.5.0.md`)
+## Commands (`rhino-parity-0.4.1.md`)
 
 3. Write the 31 Rhino commands still `missing` in `docs/commands/rhino-parity.md`.
 4. Note the approximations on the command list (ExtrudeSrf, DupEdge, ChangeDegree, AreaCentroid,

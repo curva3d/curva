@@ -9,7 +9,7 @@ how it is checked), which still applies.
 `docs/commands/rhino-parity.md` gains a *Notes* column. Every command that differs from Rhino says how,
 in one line, until it is fixed; a test fails if a `partly` command has no note.
 
-| Command | 0.4.0 | Fix in 0.5.0 |
+| Command | 0.4.0 | Fix in 0.4.1 |
 |---|---|---|
 | ExtrudeSrf | Thickens along the surface normal | As Rhino: straight along a direction (default the construction plane's normal; `Direction` option), sides and caps added; `BothSides`, `Solid`. Planar faces exactly; curved surfaces too, through their boundary and a moved copy, where the engine can join them (otherwise `blocked`, noted). |
 | DupEdge | Assumes edges come in the engine's order | Uses the document's edge identities (the same as edge picking), so the copied curve is always the edge picked. |

@@ -39,6 +39,7 @@ impl Document {
             colour: crate::STANDARD_COLOUR,
             visible: true,
             locked: false,
+            print_width: None,
         });
         id
     }
@@ -48,6 +49,36 @@ impl Document {
         if let Some(layer) = self.layer_mut(id) {
             layer.name = name;
         }
+    }
+
+    /// Sets how thick a layer's objects are drawn, in millimetres, or `None` for the default line.
+    pub fn set_layer_print_width(&mut self, id: u64, width: Option<f64>) {
+        if let Some(layer) = self.layer_mut(id) {
+            layer.print_width = width.map(crate::PrintWidth::clamped);
+        }
+    }
+
+    /// Sets how thick some objects are drawn.
+    pub fn set_print_width(&mut self, ids: &[u64], width: crate::PrintWidth) {
+        let width = match width {
+            crate::PrintWidth::Millimetres(mm) => {
+                crate::PrintWidth::Millimetres(crate::PrintWidth::clamped(mm))
+            }
+            other => other,
+        };
+        for object in &mut self.state.objects {
+            if ids.contains(&object.id) {
+                object.print_width = width;
+            }
+        }
+    }
+
+    /// The width in millimetres an object draws at, or `None` for the default line.
+    #[must_use]
+    pub fn print_width_of(&self, id: u64) -> Option<f64> {
+        let object = self.state.objects.iter().find(|object| object.id == id)?;
+        let layer = self.state.layers.iter().find(|layer| layer.id == object.layer);
+        object.print_width.resolved(layer)
     }
 
     /// Sets a layer's colour.

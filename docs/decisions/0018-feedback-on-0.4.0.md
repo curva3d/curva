@@ -15,6 +15,6 @@ The owner's feedback (`docs/specs/feedback-0.4.0.md`) left these open; the owner
 
 Decided by Claude, as the owner asked to keep going:
 
-4. **The next version is 0.5.0**, released when the specs here are built and checked in the app.
+4. **The next version is 0.4.1** (the owner: each release adds 0.0.1), released when the specs here are built and checked in the app.
 5. **Order of work:** the console (smallest), line drawing and weights, the approximations, the 31
    commands, the logo.

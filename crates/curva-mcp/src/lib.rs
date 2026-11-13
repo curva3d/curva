@@ -110,6 +110,19 @@ fn tools() -> Value {
             }
         },
         {
+            "name": "set_print_width",
+            "description": "Sets how thick lines draw and print, as Rhino's Print Width: give object ids, or a layer id, and a width that is a number of millimetres, \"default\" (the thin default line) or, for objects only, \"by layer\". One undo step.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "ids": { "type": "array", "items": { "type": "integer" } },
+                    "layer": { "type": "integer" },
+                    "width": { "type": ["number", "string"] }
+                },
+                "required": ["width"]
+            }
+        },
+        {
             "name": "render_view",
             "description": "Returns a picture of the model, so that an agent can check its own work. In a Curva window it shows the last-used viewport as it is; otherwise the whole model is fitted in a perspective view.",
             "inputSchema": no_arguments
@@ -174,6 +187,9 @@ impl<'a> Session<'a> {
                     "length": length,
                     "volume": volume,
                     "hidden": object.hidden,
+                    "print_width": self.doc.print_width_of(object.id),
+                    "locked": object.locked,
+                    "group": object.group,
                     "selected": selected.contains(&object.id),
                 })
             })
@@ -192,6 +208,7 @@ impl<'a> Session<'a> {
                     "name": layer.name,
                     "visible": layer.visible,
                     "locked": layer.locked,
+                    "print_width": layer.print_width,
                     "current": layer.id == self.doc.current_layer(),
                 })
             })
@@ -215,6 +232,43 @@ impl<'a> Session<'a> {
         )))
     }
 
+    fn set_print_width(&mut self, arguments: &Value) -> Result<Value, String> {
+        use curva_document::PrintWidth;
+        let width = match arguments.get("width") {
+            Some(Value::Number(mm)) => PrintWidth::Millimetres(mm.as_f64().unwrap_or(0.0)),
+            Some(Value::String(word)) if word.eq_ignore_ascii_case("default") => PrintWidth::Default,
+            Some(Value::String(word)) if word.to_lowercase().replace(' ', "") == "bylayer" => {
+                PrintWidth::ByLayer
+            }
+            _ => return Err("width must be millimetres, \"default\" or \"by layer\"".to_owned()),
+        };
+        let before = self.doc.state().clone();
+        if let Some(layer) = arguments.get("layer").and_then(Value::as_u64) {
+            let mm = match width {
+                PrintWidth::Millimetres(mm) => Some(mm),
+                PrintWidth::Default => None,
+                PrintWidth::ByLayer => return Err("a layer cannot be \"by layer\"".to_owned()),
+            };
+            if !self.doc.layers().iter().any(|l| l.id == layer) {
+                return Err(format!("no layer {layer}"));
+            }
+            self.doc.set_layer_print_width(layer, mm);
+        } else {
+            let ids: Vec<u64> = arguments
+                .get("ids")
+                .and_then(Value::as_array)
+                .ok_or("give ids or a layer")?
+                .iter()
+                .filter_map(Value::as_u64)
+                .collect();
+            self.doc.set_print_width(&ids, width);
+        }
+        if self.doc.state() != &before {
+            self.doc.record_change(before);
+        }
+        Ok(text_result("Print width set."))
+    }
+
     fn render_view(&self) -> Result<Value, String> {
         let png = (self.renderer)(self.doc)?;
         Ok(json!({
@@ -232,6 +286,7 @@ impl<'a> Session<'a> {
             Some("list_objects") => Ok(self.list_objects()),
             Some("list_layers") => Ok(self.list_layers()),
             Some("select_objects") => self.select_objects(&arguments),
+            Some("set_print_width") => self.set_print_width(&arguments),
             Some("render_view") => self.render_view(),
             other => Err(format!("unknown tool: {}", other.unwrap_or("(none)"))),
         };

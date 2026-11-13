@@ -4,18 +4,63 @@ use crate::{MeshVertex, Vertex};
 use egui_wgpu::wgpu;
 use std::sync::Arc;
 
+/// The grid: true one-pixel lines, two vertices a segment.
+const GRID_SHADER: &str = "
+struct Uniforms { matrix: mat4x4<f32>, light: vec4<f32>, pixel: vec4<f32> };
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+struct Out { @builtin(position) position: vec4<f32>, @location(0) colour: vec3<f32> };
+@vertex fn vertex_main(@location(0) p: vec3<f32>, @location(1) c: vec3<f32>) -> Out {
+    return Out(uniforms.matrix * vec4<f32>(p, 1.0), c);
+}
+@fragment fn fragment_main(input: Out) -> @location(0) vec4<f32> {
+    return vec4<f32>(input.colour, 1.0);
+}";
+
+/// The model's lines (spec `line-weights.md` §2): each segment is one instance, drawn as a quad of
+/// two triangles facing the screen, as wide as its own width, and lengthened by half that width at
+/// each end so the segments of a curve overlap at their joins. `pixel.xy` is a pixel's size in
+/// clip space, `pixel.z` the screen's pixels per millimetre.
 const LINE_SHADER: &str = "
 struct Uniforms { matrix: mat4x4<f32>, light: vec4<f32>, pixel: vec4<f32> };
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 struct Out { @builtin(position) position: vec4<f32>, @location(0) colour: vec3<f32> };
-// Lines are drawn LINE_PASSES times, each a pixel to the side, so they are two pixels wide.
+fn pixels(width: f32) -> f32 {
+    return max(select(-width, width * uniforms.pixel.z, width > 0.0), 1.0);
+}
 @vertex fn vertex_main(
-    @location(0) p: vec3<f32>, @location(1) c: vec3<f32>, @builtin(instance_index) copy: u32,
+    @builtin(vertex_index) corner: u32,
+    @location(0) a: vec3<f32>, @location(1) ca: vec3<f32>, @location(2) wa: f32,
+    @location(3) b: vec3<f32>, @location(4) cb: vec3<f32>, @location(5) wb: f32,
 ) -> Out {
-    var at = uniforms.matrix * vec4<f32>(p, 1.0);
-    let side = vec2<f32>(f32(copy == 1u), f32(copy == 2u));
-    at = vec4<f32>(at.xy + side * uniforms.pixel.xy * at.w, at.zw);
-    return Out(at, c);
+    var pa = uniforms.matrix * vec4<f32>(a, 1.0);
+    var pb = uniforms.matrix * vec4<f32>(b, 1.0);
+    // Behind the camera: cut the segment where it crosses the near plane.
+    if (pa.z < 0.0 && pb.z < 0.0) {
+        return Out(vec4<f32>(2.0, 2.0, 2.0, 1.0), ca);
+    }
+    if (pa.z < 0.0) { pa = mix(pa, pb, pa.z / (pa.z - pb.z)); }
+    if (pb.z < 0.0) { pb = mix(pb, pa, pb.z / (pb.z - pa.z)); }
+    let px = uniforms.pixel.xy;
+    var along = (pb.xy / pb.w - pa.xy / pa.w) / px;
+    let length_px = length(along);
+    if (length_px > 1e-6) { along = along / length_px; } else { along = vec2<f32>(1.0, 0.0); }
+    let across = vec2<f32>(-along.y, along.x);
+    // Corners 0-5 make two triangles: which end, and which side.
+    var ends = array<f32, 6>(0.0, 0.0, 1.0, 0.0, 1.0, 1.0);
+    var sides = array<f32, 6>(-1.0, 1.0, -1.0, 1.0, 1.0, -1.0);
+    let end = ends[corner];
+    let side = sides[corner];
+    var at = pa;
+    var colour = ca;
+    var half = pixels(wa) * 0.5;
+    if (end > 0.5) {
+        at = pb;
+        colour = cb;
+        half = pixels(wb) * 0.5;
+    }
+    let offset = across * side * half + along * (end * 2.0 - 1.0) * half;
+    at = vec4<f32>(at.xy + offset * px * at.w, at.zw);
+    return Out(at, colour);
 }
 @fragment fn fragment_main(input: Out) -> @location(0) vec4<f32> {
     return vec4<f32>(input.colour, 1.0);
@@ -71,11 +116,16 @@ pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
 /// Bits of depth to ask the window for, matching [`DEPTH_FORMAT`].
 pub const DEPTH_BITS: u8 = 24;
 
-const LINE_VERTEX_SIZE: u64 = 24;
+/// A line vertex: position, colour and width.
+const LINE_VERTEX_SIZE: u64 = 28;
+/// A segment, both its ends, read as one instance by [`LINE_SHADER`].
+const SEGMENT_SIZE: u64 = 2 * LINE_VERTEX_SIZE;
+/// The corners of the two triangles of a segment's quad.
+const SEGMENT_CORNERS: u32 = 6;
 const FACE_VERTEX_SIZE: u64 = 36;
 const UNIFORM_SIZE: u64 = 96;
-/// How many times each line is drawn, a pixel apart, to make it two pixels wide.
-const LINE_PASSES: u32 = 3;
+/// Pixels per millimetre on a 96 dpi screen at 100 %.
+const PIXELS_PER_MM: f32 = 96.0 / 25.4;
 /// Faces are pushed slightly back, so edges on them are drawn in front.
 const FACE_DEPTH_BIAS: wgpu::DepthBiasState = wgpu::DepthBiasState {
     constant: 4,
@@ -93,7 +143,12 @@ const PICTURE_BACKGROUND: wgpu::Color = wgpu::Color {
 fn line_bytes(lines: &[Vertex]) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(lines.len() * LINE_VERTEX_SIZE as usize);
     for vertex in lines {
-        for value in vertex.position.iter().chain(&vertex.colour) {
+        for value in vertex
+            .position
+            .iter()
+            .chain(&vertex.colour)
+            .chain(std::iter::once(&vertex.width))
+        {
             bytes.extend(value.to_le_bytes());
         }
     }
@@ -115,14 +170,15 @@ fn face_bytes(faces: &[MeshVertex]) -> Vec<u8> {
     bytes
 }
 
-fn uniform_bytes(matrix: &[[f32; 4]; 4], light: [f32; 3], pixel: [f32; 2]) -> Vec<u8> {
+/// `pixel`: a pixel's width and height in clip space, and the screen's pixels per millimetre.
+fn uniform_bytes(matrix: &[[f32; 4]; 4], light: [f32; 3], pixel: [f32; 3]) -> Vec<u8> {
     matrix
         .iter()
         .flatten()
         .chain(&light)
         .chain(&[0.0])
         .chain(&pixel)
-        .chain(&[0.0, 0.0])
+        .chain(&[0.0])
         .flat_map(|value| value.to_le_bytes())
         .collect()
 }
@@ -177,6 +233,7 @@ struct ViewSlot {
 
 /// The graphics card's side of the viewport.
 pub struct LineRenderer {
+    grid: wgpu::RenderPipeline,
     lines: wgpu::RenderPipeline,
     faces: wgpu::RenderPipeline,
     ghost_faces: wgpu::RenderPipeline,
@@ -309,6 +366,8 @@ struct PipelineParts<'a> {
     bias: wgpu::DepthBiasState,
     /// See-through: blended over what is already drawn, and not hiding what comes after.
     see_through: bool,
+    /// Whether the buffer is read once per instance (a segment) rather than per vertex.
+    per_instance: bool,
 }
 
 fn pipeline(
@@ -330,7 +389,11 @@ fn pipeline(
             compilation_options: wgpu::PipelineCompilationOptions::default(),
             buffers: &[Some(wgpu::VertexBufferLayout {
                 array_stride: parts.stride,
-                step_mode: wgpu::VertexStepMode::Vertex,
+                step_mode: if parts.per_instance {
+                    wgpu::VertexStepMode::Instance
+                } else {
+                    wgpu::VertexStepMode::Vertex
+                },
                 attributes: parts.attributes,
             })],
         },
@@ -412,6 +475,21 @@ impl LineRenderer {
             bind_group_layouts: &[Some(&layout)],
             immediate_size: 0,
         });
+        let grid = pipeline(
+            device,
+            format,
+            &pipeline_layout,
+            &PipelineParts {
+                label: "curva grid",
+                shader: GRID_SHADER,
+                stride: LINE_VERTEX_SIZE,
+                attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3],
+                topology: wgpu::PrimitiveTopology::LineList,
+                bias: wgpu::DepthBiasState::default(),
+                see_through: false,
+                per_instance: false,
+            },
+        );
         let lines = pipeline(
             device,
             format,
@@ -419,11 +497,15 @@ impl LineRenderer {
             &PipelineParts {
                 label: "curva lines",
                 shader: LINE_SHADER,
-                stride: LINE_VERTEX_SIZE,
-                attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3],
-                topology: wgpu::PrimitiveTopology::LineList,
+                stride: SEGMENT_SIZE,
+                attributes: &wgpu::vertex_attr_array![
+                    0 => Float32x3, 1 => Float32x3, 2 => Float32,
+                    3 => Float32x3, 4 => Float32x3, 5 => Float32
+                ],
+                topology: wgpu::PrimitiveTopology::TriangleList,
                 bias: wgpu::DepthBiasState::default(),
                 see_through: false,
+                per_instance: true,
             },
         );
         let face_attributes = wgpu::vertex_attr_array![
@@ -441,6 +523,7 @@ impl LineRenderer {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 bias: FACE_DEPTH_BIAS,
                 see_through: false,
+                per_instance: false,
             },
         );
         let ghost_faces = pipeline(
@@ -455,10 +538,12 @@ impl LineRenderer {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 bias: FACE_DEPTH_BIAS,
                 see_through: true,
+                per_instance: false,
             },
         );
         let background = Background::new(device, format);
         Self {
+            grid,
             lines,
             faces,
             ghost_faces,
@@ -483,7 +568,7 @@ impl LineRenderer {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         drawing: &Drawing,
-        pixel: [f32; 2],
+        pixel: [f32; 3],
     ) {
         let Some(slot) = self.slots.get_mut(drawing.slot) else {
             return;
@@ -562,14 +647,14 @@ impl LineRenderer {
         {
             draw_faces(pass, &self.faces, faces);
         }
-        pass.set_pipeline(&self.lines);
-        // The grid stays a pixel wide; the model's lines are drawn two pixels wide.
-        for (lines, copies) in [(&slot.grid, 1), (&slot.scene, LINE_PASSES)] {
-            let Some(lines) = lines else { continue };
-            if lines.count > 0 {
-                pass.set_vertex_buffer(0, lines.buffer.slice(..));
-                pass.draw(0..lines.count, 0..copies);
-            }
+        // The grid stays a pixel wide; the model's lines have their own widths.
+        if let Some(grid) = slot.grid.as_ref().filter(|lines| lines.count > 0) {
+            pass.set_pipeline(&self.grid);
+            pass.set_vertex_buffer(0, grid.buffer.slice(..));
+            pass.draw(0..grid.count, 0..1);
+        }
+        if let Some(scene) = slot.scene.as_ref() {
+            self.draw_segments(pass, scene);
         }
         // Ghosted faces go over the lines, so lines behind a face show through it, dimmed,
         // while lines on its near side stay in front.
@@ -583,10 +668,18 @@ impl LineRenderer {
         if let Some(preview) = self.preview_faces.as_ref().filter(|faces| faces.count > 0) {
             draw_faces(pass, &self.ghost_faces, preview);
         }
-        if let Some(overlay) = self.overlay.as_ref().filter(|lines| lines.count > 0) {
+        if let Some(overlay) = self.overlay.as_ref() {
+            self.draw_segments(pass, overlay);
+        }
+    }
+
+    /// Draws lines as quads, one instance a segment.
+    fn draw_segments(&self, pass: &mut wgpu::RenderPass<'_>, lines: &Uploaded<Vertex>) {
+        let segments = lines.count / 2;
+        if segments > 0 {
             pass.set_pipeline(&self.lines);
-            pass.set_vertex_buffer(0, overlay.buffer.slice(..));
-            pass.draw(0..overlay.count, 0..LINE_PASSES);
+            pass.set_vertex_buffer(0, lines.buffer.slice(..));
+            pass.draw(0..SEGMENT_CORNERS, 0..segments);
         }
     }
 }
@@ -636,9 +729,13 @@ impl egui_wgpu::CallbackTrait for Drawing {
         let Some(renderer) = resources.get_mut::<LineRenderer>() else {
             return Vec::new();
         };
-        // The size of a pixel in the view's clip space, for drawing lines two pixels wide.
+        // The size of a pixel in the view's clip space, and of a millimetre in pixels, for widths.
         let pixels = self.area.size() * screen.pixels_per_point;
-        let pixel = [2.0 / pixels.x.max(1.0), 2.0 / pixels.y.max(1.0)];
+        let pixel = [
+            2.0 / pixels.x.max(1.0),
+            2.0 / pixels.y.max(1.0),
+            PIXELS_PER_MM * screen.pixels_per_point,
+        ];
         renderer.update(device, queue, self, pixel);
         renderer
             .background
@@ -794,7 +891,7 @@ pub fn save_picture(
         &device,
         &queue,
         &drawing,
-        [2.0 / width as f32, 2.0 / height as f32],
+        [2.0 / width as f32, 2.0 / height as f32, PIXELS_PER_MM],
     );
     let row = (width * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
     let readback = device.create_buffer(&wgpu::BufferDescriptor {
@@ -890,10 +987,12 @@ mod tests {
                     Vertex {
                         position: [-0.5, y, 0.8],
                         colour: [1.0; 3],
+                        width: -1.0,
                     },
                     Vertex {
                         position: [0.5, y, 0.8],
                         colour: [1.0; 3],
+                        width: -1.0,
                     },
                 ]
             })
@@ -937,5 +1036,60 @@ mod tests {
             return;
         };
         assert!(ghosted > shaded + 40, "shaded {shaded}, ghosted {ghosted}");
+    }
+
+    /// How many rows of the centre column a horizontal line of `width` lights up, or `None`
+    /// without a graphics adapter.
+    fn rows_lit(width: f32) -> Option<usize> {
+        let end = |x: f32| Vertex {
+            position: [x, 0.0, 0.5],
+            colour: [1.0; 3],
+            width,
+        };
+        let identity = [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ];
+        let picture = Picture {
+            lines: vec![end(-0.8), end(0.8)],
+            faces: Vec::new(),
+            matrix: identity,
+            light: [0.0, 0.0, 1.0],
+            ghosted: false,
+        };
+        let path = std::env::temp_dir().join(format!(
+            "curva-width-test-{}-{}.png",
+            width.to_bits(),
+            std::process::id()
+        ));
+        if save_picture(picture, SIZE, &path).is_err() {
+            return None;
+        }
+        let decoder = png::Decoder::new(std::io::BufReader::new(std::fs::File::open(&path).ok()?));
+        let mut reader = decoder.read_info().ok()?;
+        let mut pixels = vec![0; reader.output_buffer_size()?];
+        reader.next_frame(&mut pixels).ok()?;
+        let _ = std::fs::remove_file(&path);
+        let w = SIZE[0] as usize;
+        Some(
+            (0..SIZE[1] as usize)
+                .filter(|row| pixels[(row * w + w / 2) * 4] > 200)
+                .count(),
+        )
+    }
+
+    #[test]
+    fn lines_draw_at_their_own_width() {
+        // The default line is 2 pixels; 1 mm is about 3.8 pixels at 96 dpi; 2 mm about 7.6.
+        let (Some(default), Some(one), Some(two)) =
+            (rows_lit(-2.0), rows_lit(1.0), rows_lit(2.0))
+        else {
+            return;
+        };
+        assert_eq!(default, 2);
+        assert!((3..=5).contains(&one), "1 mm lit {one} rows");
+        assert!((7..=9).contains(&two), "2 mm lit {two} rows");
     }
 }

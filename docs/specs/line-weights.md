@@ -15,7 +15,7 @@ widths in Print Display mode, and always in print. Widths are paper millimetres:
 0.4.0 draws every curve and edge three times, a pixel apart, to make them 2 pixels wide. That triples
 the line work on the graphics card and cannot give other widths.
 
-From 0.5.0 each line segment is drawn **once as a thin quad** (two triangles) turned to face the
+From 0.4.1 each line segment is drawn **once as a thin quad** (two triangles) turned to face the
 screen, widened in the vertex shader by its own width in pixels, with smooth (antialiased) edges. One
 draw for all the lines of a view, as before. The work per segment is the same for any width, so the
 cost is that of the 1-pixel lines of 0.3.0, and drawing many weights costs nothing more than drawing

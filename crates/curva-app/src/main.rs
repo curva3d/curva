@@ -1775,6 +1775,65 @@ impl Curva {
         }
     }
 
+
+    /// A drop-down of print widths (spec `line-weights.md` §5): `By layer` when `by_layer`,
+    /// `Default`, Rhino's common widths, and a field for any other. `shown` is what it shows;
+    /// returns the width chosen, if one was.
+    fn width_choice(
+        &self,
+        ui: &mut egui::Ui,
+        id: egui::Id,
+        shown: Option<curva_document::PrintWidth>,
+        by_layer: bool,
+    ) -> Option<curva_document::PrintWidth> {
+        use curva_document::PrintWidth;
+        let text = |key: &'static str| self.text.render(&Message::new(key));
+        let named = |width: PrintWidth| match width {
+            PrintWidth::ByLayer => text("ui.width.by_layer"),
+            PrintWidth::Default => text("ui.width.default"),
+            PrintWidth::Millimetres(mm) => {
+                self.text.render(&Message::with("ui.width.mm", vec![format!("{mm:.2}")]))
+            }
+        };
+        let mut chosen = None;
+        egui::ComboBox::from_id_salt(id)
+            .selected_text(shown.map_or_else(|| text("ui.width.varies"), named))
+            .width(84.0)
+            .show_ui(ui, |ui| {
+                let mut choices = Vec::new();
+                if by_layer {
+                    choices.push(PrintWidth::ByLayer);
+                }
+                choices.push(PrintWidth::Default);
+                choices.extend(PrintWidth::COMMON.map(PrintWidth::Millimetres));
+                for choice in choices {
+                    if ui
+                        .selectable_label(shown == Some(choice), named(choice))
+                        .clicked()
+                    {
+                        chosen = Some(choice);
+                    }
+                }
+                ui.horizontal(|ui| {
+                    ui.label(text("ui.width.custom"));
+                    let mut mm = match shown {
+                        Some(PrintWidth::Millimetres(mm)) => mm,
+                        _ => 0.25,
+                    };
+                    let field = ui.add(
+                        egui::DragValue::new(&mut mm)
+                            .range(0.01..=PrintWidth::MOST)
+                            .speed(0.01)
+                            .fixed_decimals(2)
+                            .suffix(" mm"),
+                    );
+                    if field.changed() {
+                        chosen = Some(PrintWidth::Millimetres(mm));
+                    }
+                });
+            });
+        chosen
+    }
     fn layers_panel(&mut self, ui: &mut egui::Ui) {
         let layers = self.doc.layers().to_vec();
         let current = self.doc.current_layer();
@@ -1791,6 +1850,18 @@ impl Curva {
                 let mut colour = layer.colour;
                 if ui.color_edit_button_rgb(&mut colour).changed() {
                     self.doc.set_layer_colour(layer.id, colour);
+                }
+                let shown = Some(layer.print_width.map_or(
+                    curva_document::PrintWidth::Default,
+                    curva_document::PrintWidth::Millimetres,
+                ));
+                let id = ui.scope_id().with(("layer width", layer.id));
+                if let Some(width) = self.width_choice(ui, id, shown, false) {
+                    let mm = match width {
+                        curva_document::PrintWidth::Millimetres(mm) => Some(mm),
+                        _ => None,
+                    };
+                    self.undoable(|doc| doc.set_layer_print_width(layer.id, mm));
                 }
                 let mut visible = layer.visible;
                 let shown =
@@ -1912,6 +1983,25 @@ impl Curva {
         if let Some(layer) = chosen {
             self.undoable(|doc| doc.move_to_layer(&selection, layer));
         }
+        let widths: Vec<curva_document::PrintWidth> = self
+            .doc
+            .state()
+            .objects
+            .iter()
+            .filter(|object| selection.contains(&object.id))
+            .map(|object| object.print_width)
+            .collect();
+        let shown = widths
+            .first()
+            .copied()
+            .filter(|first| widths.iter().all(|width| width == first));
+        ui.horizontal(|ui| {
+            ui.label(self.text.render(&Message::new("ui.properties.width")));
+            let id = ui.scope_id().with("object width");
+            if let Some(width) = self.width_choice(ui, id, shown, true) {
+                self.undoable(|doc| doc.set_print_width(&selection, width));
+            }
+        });
     }
 
     /// Point objects and point previews, which have no lines to draw.
