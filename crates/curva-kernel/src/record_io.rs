@@ -133,6 +133,31 @@ pub fn from_record_curve(
 }
 
 impl Body {
+    /// A body from a record another program made, such as a Rhino file's B-rep turned into the
+    /// engine's record: the engine's healer runs on it, as its rules may not all be kept.
+    pub fn from_foreign_record(record: &Record) -> Result<Self, KernelError> {
+        let canonical = record
+            .canonical()
+            .map_err(|e| KernelError(format!("a B-rep Curva cannot read: {e}")))?;
+        // The healer first; where it has to change the topology, the record as it is.
+        let body = match EngineBody::from_record(&canonical.brep, false) {
+            Ok((body, _)) => body,
+            Err(_) => {
+                EngineBody::from_record(&canonical.brep, true)
+                    .map_err(|e| failed("reading a B-rep", e))?
+                    .0
+            }
+        };
+        Self::made(&body)
+    }
+
+    /// The body as the engine's portable record, for writing it in another format.
+    pub fn portable_record(&self) -> Result<Record, KernelError> {
+        self.record()
+    }
+}
+
+impl Body {
     /// A body from the engine's record, as engine operations give them.
     pub fn from_record(record: &Record) -> Result<Self, KernelError> {
         let (body, _) =

@@ -1,0 +1,18 @@
+[package]
+name = "curva-3dm"
+description = "Rhino .3dm files read and written in Rust, from the format openNURBS documents."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+crc32fast = "1.5"
+# Compressed buffers in .3dm files are zlib streams; zlib-rs is pure Rust.
+flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }
+curva-document = { path = "../curva-document" }
+curva-kernel = { path = "../curva-kernel" }
