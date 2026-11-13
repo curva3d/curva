@@ -14,12 +14,12 @@ workspace = true
 # Reads font outlines for TextObject. MIT OR Apache-2.0.
 ttf-parser = "0.25"
 serde = { version = "1", features = ["derive"] }
-solidcore = { git = "https://github.com/tangency-labs/solidcore", rev = "377457d24b3d8398c81b072dd1401b02b04d67b0" }
+solidcore = { git = "https://github.com/tangency-labs/solidcore", rev = "9342f32c0770aeaa570dba596e4ed2b7fe327849" }
 # The engine's body operations, its portable record of bodies (which files store) and its
 # display meshes. Same project and licence as solidcore.
-solidcore-ops = { git = "https://github.com/tangency-labs/solidcore", rev = "377457d24b3d8398c81b072dd1401b02b04d67b0" }
-solidcore-record = { git = "https://github.com/tangency-labs/solidcore", rev = "377457d24b3d8398c81b072dd1401b02b04d67b0" }
-solidcore-tess = { git = "https://github.com/tangency-labs/solidcore", rev = "377457d24b3d8398c81b072dd1401b02b04d67b0" }
+solidcore-ops = { git = "https://github.com/tangency-labs/solidcore", rev = "9342f32c0770aeaa570dba596e4ed2b7fe327849" }
+solidcore-record = { git = "https://github.com/tangency-labs/solidcore", rev = "9342f32c0770aeaa570dba596e4ed2b7fe327849" }
+solidcore-tess = { git = "https://github.com/tangency-labs/solidcore", rev = "9342f32c0770aeaa570dba596e4ed2b7fe327849" }
 
 [dev-dependencies]
 serde_json = { version = "1", features = ["float_roundtrip"] }

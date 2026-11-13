@@ -12,6 +12,10 @@ use crate::{Curve, KernelError, Point, Spline, cross, dot, gap, sub, unit};
 use solidcore_ops::face_surface::FaceSurface;
 use solidcore_record::brep::{Curve2, Surface};
 
+/// The tolerance solidcore certifies a two-rail sweep within, in model units: Rhino's default
+/// absolute tolerance.
+const MODEL_TOLERANCE: f64 = 0.001;
+
 /// Which side of its surface's parameter box an edge runs along.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Side {
@@ -443,78 +447,62 @@ impl Body {
     }
 
     /// `profile` swept along two rails, its ends held on them and scaled to span them (Rhino's
-    /// Sweep2), exact at `stations` places along the rails and skinned between.
+    /// Sweep2): solidcore's two-rail sweep, certified within the model tolerance. Rails may be
+    /// picked either way round; each starts at the profile end it touches.
     pub fn swept_two_rails(
         rail_a: &Curve,
         rail_b: &Curve,
         profile: &Curve,
-        stations: usize,
     ) -> Result<Body, KernelError> {
-        // CUSTOM KERNEL OPERATION: two-rail-sweep
-        use solidcore_ops::sweep::{Affine, Ends, sweep_stations};
-        let (a, b) = (Spline::of(rail_a)?, Spline::of(rail_b)?);
+        use solidcore_ops::sweep::{Curve as SweepCurve, birail::sweep_two_rails, railed::RailFit};
         let points = profile.sample()?;
         let (ps, pe) = (points[0], points[points.len() - 1]);
-        let chord = sub(pe, ps);
-        let length = dot(chord, chord).sqrt();
-        let x = unit(chord).ok_or_else(|| KernelError("the profile's ends meet".to_owned()))?;
-        // The profile's plane, from a point off its chord, or the first rail's direction.
-        let off = points
-            .iter()
-            .map(|p| sub(*p, ps))
-            .map(|d| sub(d, x.map(|v| v * dot(d, x))))
-            .max_by(|d, e| dot(*d, *d).total_cmp(&dot(*e, *e)));
-        let rail_dir = a.derivative(a.domain().0);
-        let y0 = off
-            .filter(|d| dot(*d, *d) > 1e-12)
-            .and_then(unit)
-            .or_else(|| unit(cross(rail_dir, x)))
-            .ok_or_else(|| {
-                KernelError("the profile and rails do not span a direction".to_owned())
-            })?;
-        let z0 = cross(x, y0);
-        let count = stations.clamp(4, 400);
-        let mut maps = Vec::with_capacity(count + 1);
-        for i in 0..=count {
-            let t = i as f64 / count as f64;
-            let at = |s: &Spline| s.point(s.domain().0 + (s.domain().1 - s.domain().0) * t);
-            let (ra, rb) = (at(&a), at(&b));
-            let along = sub(rb, ra);
-            let scale = dot(along, along).sqrt() / length;
-            let xs = unit(along).ok_or_else(|| KernelError("the rails touch".to_owned()))?;
-            // The station's frame keeps the sweep direction (the rails' mean tangent) as z.
-            let tangent = {
-                let ta = a.derivative(a.domain().0 + (a.domain().1 - a.domain().0) * t);
-                let tb = b.derivative(b.domain().0 + (b.domain().1 - b.domain().0) * t);
-                std::array::from_fn::<f64, 3, _>(|k| ta[k] + tb[k])
-            };
-            let zs = unit(sub(tangent, xs.map(|v| v * dot(tangent, xs)))).unwrap_or(z0);
-            let zs = if dot(zs, z0) < 0.0 && i == 0 {
-                zs.map(|v| -v)
+        let ends = |c: &Curve| -> Result<(Point, Point), KernelError> {
+            let s = c.sample()?;
+            Ok((s[0], s[s.len() - 1]))
+        };
+        // The rail nearer the profile's start takes it; each rail runs away from the profile.
+        let (a0, a1) = ends(rail_a)?;
+        let (b0, b1) = ends(rail_b)?;
+        let near = |p: Point, q: Point, r: Point| gap(p, q).min(gap(p, r));
+        let (first, second) =
+            if near(ps, a0, a1) + near(pe, b0, b1) <= near(ps, b0, b1) + near(pe, a0, a1) {
+                (rail_a, rail_b)
             } else {
-                zs
+                (rail_b, rail_a)
             };
-            let ys = cross(zs, xs);
-            // v (relative to ps) = a x + b y + c z  ->  ra + scale (a xs + b ys + c zs).
-            let image = |axis: Point| -> Point {
-                let (ca, cb, cc) = (dot(axis, x), dot(axis, y0), dot(axis, z0));
-                std::array::from_fn(|k| scale * (ca * xs[k] + cb * ys[k] + cc * zs[k]))
-            };
-            let m = [
-                image([1.0, 0.0, 0.0]),
-                image([0.0, 1.0, 0.0]),
-                image([0.0, 0.0, 1.0]),
-            ];
-            let moved_ps: Point =
-                std::array::from_fn(|k| ps[0] * m[0][k] + ps[1] * m[1][k] + ps[2] * m[2][k]);
-            maps.push(Affine {
-                m,
-                t: sub(ra, moved_ps),
-            });
-        }
+        let starting_at = |rail: &Curve, p: Point| -> Result<Curve, KernelError> {
+            let (s, e) = ends(rail)?;
+            Ok(if gap(e, p) < gap(s, p) {
+                rail.reversed()
+            } else {
+                rail.clone()
+            })
+        };
+        let as_sweep = |rail: &Curve| -> Result<SweepCurve, KernelError> {
+            let s = Spline::of(rail)?;
+            Ok(SweepCurve::Nurbs {
+                degree: s.degree,
+                points: s
+                    .points
+                    .iter()
+                    .map(|p| [p[0] / p[3], p[1] / p[3], p[2] / p[3], p[3]])
+                    .collect(),
+                knots: s.knots,
+            })
+        };
+        let rails = [
+            as_sweep(&starting_at(first, ps)?)?,
+            as_sweep(&starting_at(second, pe)?)?,
+        ];
         let pieces = crate::making::sweep_pieces(profile)?;
-        let made = sweep_stations(&pieces, &maps, Ends::Open)
-            .map_err(|e| failed("sweeping along two rails", e))?;
+        let (made, _bound) = sweep_two_rails(
+            &pieces,
+            [&rails[0], &rails[1]],
+            RailFit::Scale,
+            MODEL_TOLERANCE,
+        )
+        .map_err(|e| failed("sweeping along two rails", e))?;
         Body::made(&made)
     }
 
@@ -847,7 +835,7 @@ mod tests {
             [0.0, 0.0, 1.0],
         )
         .unwrap();
-        let body = Body::swept_two_rails(&rail_a, &rail_b, &profile, 32).unwrap();
+        let body = Body::swept_two_rails(&rail_a, &rail_b, &profile).unwrap();
         let mesh = body.mesh().unwrap();
         let far = mesh
             .positions

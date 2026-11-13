@@ -952,6 +952,45 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
                 Stroke::new(1.5 * pen.scale(), Color32::from_rgb(90, 130, 230)),
             );
         }
+        // NamedCPlane: the construction plane, with the saved mark NamedView has.
+        "namedcplane" => {
+            pen.path(&[(2.0, 15.0), (8.0, 9.0), (20.0, 9.0), (14.0, 15.0)], true);
+            pen.line_in(
+                (11.0, 12.0),
+                (17.0, 12.0),
+                Stroke::new(1.5 * pen.scale(), Color32::from_rgb(220, 90, 80)),
+            );
+            pen.line_in(
+                (11.0, 12.0),
+                (11.0, 3.0),
+                Stroke::new(1.5 * pen.scale(), Color32::from_rgb(90, 130, 230)),
+            );
+            pen.dot(17.0, 4.0);
+        }
+        // Import, Export, ExportSelected: a folder, a Rhino file going into it or out of it.
+        "import" | "export" | "exportselected" => {
+            pen.path(
+                &[
+                    (2.0, 8.0),
+                    (7.0, 8.0),
+                    (9.0, 10.0),
+                    (17.0, 10.0),
+                    (17.0, 20.0),
+                    (2.0, 20.0),
+                ],
+                true,
+            );
+            if name.eq_ignore_ascii_case("import") {
+                pen.line_in((14.0, 2.0), (14.0, 13.0), pen.accent());
+                pen.arrow_head((14.0, 14.0), (14.0, 9.0), pen.accent());
+            } else {
+                pen.line_in((14.0, 14.0), (14.0, 3.0), pen.accent());
+                pen.arrow_head((14.0, 2.0), (14.0, 7.0), pen.accent());
+            }
+            if name.eq_ignore_ascii_case("exportselected") {
+                pen.dot(6.0, 15.0);
+            }
+        }
         "namedview" | "undoview" | "redoview" => {
             pen.camera();
             match name.to_lowercase().as_str() {

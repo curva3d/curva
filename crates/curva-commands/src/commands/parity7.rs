@@ -287,7 +287,7 @@ impl Recipe for Sweep2 {
         else {
             return Ok(Made::default());
         };
-        let body = Body::swept_two_rails(&a, &b, &profile, 64).map_err(|e| failed(&e))?;
+        let body = Body::swept_two_rails(&a, &b, &profile).map_err(|e| failed(&e))?;
         Ok(Made {
             derived: vec![Derived {
                 shape: Shape::Body(body),
