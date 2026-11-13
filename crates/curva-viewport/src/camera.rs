@@ -389,6 +389,13 @@ impl Camera {
         }
     }
 
+    /// Looks straight down on `plane`, flat, its X to the right and its Y up, as Rhino's Plan.
+    pub fn plan(&mut self, plane: &CPlane) {
+        self.fixed_axes = Some([plane.normal.map(|v| -v), plane.x, plane.y]);
+        self.distance = self.distance.max(PARALLEL_DISTANCE);
+        self.parallel = true;
+    }
+
     /// Moves closer (factor below 1) or further away.
     pub fn zoom(&mut self, factor: f64) {
         self.distance = (self.distance * factor).clamp(0.01, 1e8);

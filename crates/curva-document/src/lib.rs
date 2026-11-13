@@ -12,6 +12,7 @@ mod grips;
 mod history;
 pub use grips::Grip;
 mod layers;
+mod organise;
 mod shape;
 pub use shape::Shape;
 mod views;
@@ -44,6 +45,12 @@ pub struct Object {
     /// How it was made from another object, if it follows one.
     #[serde(default)]
     pub recipe: Option<Recipe>,
+    /// How thick its lines are drawn and printed (spec `line-weights.md`).
+    pub print_width: PrintWidth,
+    /// Whether it shows but cannot be picked or changed, until `Unlock`.
+    pub locked: bool,
+    /// The group it belongs to, if any: picking one member picks them all.
+    pub group: Option<u64>,
 }
 
 impl Object {
@@ -71,6 +78,12 @@ struct StoredObject {
     name: String,
     #[serde(default)]
     recipe: Option<Recipe>,
+    #[serde(default, skip_serializing_if = "PrintWidth::is_by_layer")]
+    print_width: PrintWidth,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    locked: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    group: Option<u64>,
 }
 
 impl TryFrom<StoredObject> for Object {
@@ -89,6 +102,9 @@ impl TryFrom<StoredObject> for Object {
             hidden: stored.hidden,
             name: stored.name,
             recipe: stored.recipe,
+            print_width: stored.print_width,
+            locked: stored.locked,
+            group: stored.group,
         })
     }
 }
@@ -107,6 +123,9 @@ impl From<Object> for StoredObject {
             hidden: object.hidden,
             name: object.name,
             recipe: object.recipe,
+            print_width: object.print_width,
+            locked: object.locked,
+            group: object.group,
         }
     }
 }
@@ -127,6 +146,50 @@ pub struct Layer {
     pub visible: bool,
     /// Whether its objects can be selected.
     pub locked: bool,
+    /// How thick its objects are drawn and printed, in millimetres; `None` is the default thin line.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub print_width: Option<f64>,
+}
+
+/// How thick an object's lines are, as Rhino's Print Width (spec `line-weights.md`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub enum PrintWidth {
+    /// As its layer says.
+    #[default]
+    ByLayer,
+    /// The default thin line, whatever the layer says.
+    Default,
+    /// This many millimetres.
+    Millimetres(f64),
+}
+
+impl PrintWidth {
+    /// The widths Rhino offers in its list, in millimetres.
+    pub const COMMON: [f64; 9] = [0.13, 0.18, 0.25, 0.35, 0.5, 0.7, 1.0, 1.4, 2.0];
+    /// The thickest width that can be set, in millimetres.
+    pub const MOST: f64 = 5.0;
+
+    /// Whether it follows the layer, which files leave unwritten.
+    #[must_use]
+    pub fn is_by_layer(&self) -> bool {
+        matches!(self, Self::ByLayer)
+    }
+
+    /// The width in millimetres an object on `layer` draws at, or `None` for the default line.
+    #[must_use]
+    pub fn resolved(self, layer: Option<&Layer>) -> Option<f64> {
+        match self {
+            Self::ByLayer => layer.and_then(|layer| layer.print_width),
+            Self::Default => None,
+            Self::Millimetres(mm) => Some(mm),
+        }
+    }
+
+    /// A width kept to what can be set: 0 to [`Self::MOST`] millimetres, two decimals.
+    #[must_use]
+    pub fn clamped(mm: f64) -> f64 {
+        (mm.clamp(0.0, Self::MOST) * 100.0).round() / 100.0
+    }
 }
 
 /// The layer every model starts with. Files from before layers put everything on it.
@@ -137,6 +200,7 @@ fn standard_layers() -> Vec<Layer> {
         colour: STANDARD_COLOUR,
         visible: true,
         locked: false,
+        print_width: None,
     }]
 }
 
@@ -163,6 +227,9 @@ pub struct State {
     /// The model's unit; files from before units were kept are in millimetres.
     #[serde(default)]
     pub unit: Unit,
+    /// The id the next group receives.
+    #[serde(default)]
+    pub next_group: u64,
 }
 
 /// The unit a model is drawn in (spec `docs/specs/ui-look-and-layout.md` §7).
@@ -204,6 +271,7 @@ impl Default for State {
             current_layer: 0,
             next_layer: first_new_layer(),
             unit: Unit::Millimetres,
+            next_group: 0,
         }
     }
 }
@@ -330,6 +398,9 @@ impl Document {
             hidden: false,
             name: String::new(),
             recipe: None,
+            print_width: PrintWidth::ByLayer,
+            locked: false,
+            group: None,
         });
         id
     }
@@ -369,7 +440,7 @@ impl Document {
         self.state
             .objects
             .iter()
-            .filter(|object| !object.hidden && open(object.layer))
+            .filter(|object| !object.hidden && !object.locked && open(object.layer))
             .map(|object| object.id)
             .collect()
     }
@@ -723,6 +794,45 @@ mod tests {
         doc.select(&[id]);
         doc.undo();
         assert!(doc.selection().is_empty());
+    }
+
+    #[test]
+    fn print_widths_follow_the_layer_unless_set_and_are_saved() {
+        let mut doc = Document::default();
+        let a = doc.add(line(1.0));
+        let b = doc.add(line(2.0));
+        let c = doc.add(line(3.0));
+        assert_eq!(doc.print_width_of(a), None);
+        doc.set_layer_print_width(0, Some(0.35));
+        doc.set_print_width(&[b], PrintWidth::Millimetres(1.4));
+        doc.set_print_width(&[c], PrintWidth::Default);
+        assert_eq!(doc.print_width_of(a), Some(0.35));
+        assert_eq!(doc.print_width_of(b), Some(1.4));
+        assert_eq!(doc.print_width_of(c), None);
+        // Kept within what can be set, to two decimals.
+        doc.set_print_width(&[a], PrintWidth::Millimetres(9.123));
+        assert_eq!(doc.print_width_of(a), Some(PrintWidth::MOST));
+        let folder = std::env::temp_dir().join(format!("curva-widths-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let path = folder.join("widths.curva");
+        doc.save(&path).unwrap();
+        assert_eq!(Document::open(&path).unwrap().state(), doc.state());
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn objects_and_layers_from_before_widths_open_with_the_default_line() {
+        let object: Object =
+            serde_json::from_str(r#"{"id":3,"curve":{"Line":{"start":[0,0,0],"end":[1,0,0]}}}"#)
+                .unwrap();
+        assert_eq!(object.print_width, PrintWidth::ByLayer);
+        assert!(!object.locked);
+        assert_eq!(object.group, None);
+        let layer: Layer = serde_json::from_str(
+            r#"{"id":0,"name":"Default","colour":[1,1,1],"visible":true,"locked":false}"#,
+        )
+        .unwrap();
+        assert_eq!(layer.print_width, None);
     }
 
     #[test]

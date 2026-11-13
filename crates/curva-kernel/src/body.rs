@@ -39,7 +39,7 @@ fn is_in_place(placement: &Placement) -> bool {
     *placement == IN_PLACE
 }
 
-fn failed(what: &str, error: impl std::fmt::Debug) -> KernelError {
+pub(crate) fn failed(what: &str, error: impl std::fmt::Debug) -> KernelError {
     KernelError(format!("{what} failed: {error:?}"))
 }
 
@@ -99,7 +99,7 @@ impl From<Body> for StoredBody {
     }
 }
 
-fn native_of(body: &EngineBody) -> Result<String, KernelError> {
+pub(crate) fn native_of(body: &EngineBody) -> Result<String, KernelError> {
     let bytes = body
         .to_smb(TEXT_FORMAT)
         .map_err(|e| failed("storing a body", e))?;
@@ -139,6 +139,14 @@ impl Body {
     /// The body as the engine holds it, in its place, for operations elsewhere in the kernel.
     pub(crate) fn engine_body(&self) -> Result<EngineBody, KernelError> {
         self.engine()
+    }
+
+    /// A body from the engine's native text, in place.
+    pub(crate) fn from_native(native: String) -> Self {
+        Self {
+            native,
+            placement: IN_PLACE,
+        }
     }
 
     /// The faces in place, as the engine's portable record, for reading their edges.
@@ -299,6 +307,16 @@ impl Body {
         Ok(volume * self.scale().powi(3))
     }
 
+    /// The centre of its volume, or for a surface (no volume) of its area, integrated from the
+    /// exact faces by the engine.
+    pub fn centroid(&self) -> Result<Point, KernelError> {
+        let properties = self
+            .engine()?
+            .mass_properties(MEASURE_ACCURACY)
+            .map_err(|e| failed("finding the centroid", e))?;
+        Ok(properties.centroid)
+    }
+
     /// The area of all its faces.
     pub fn area(&self) -> Result<f64, KernelError> {
         let area = self
@@ -401,6 +419,98 @@ impl Body {
         })
     }
 
+    /// The edge numbered `index` (as in [`BodyMesh::edge_ids`]) as an exact curve: a line, an
+    /// arc, an ellipse's part or the NURBS it lies on, trimmed to the edge. Edges the engine
+    /// holds only as a traced intersection come back as the polyline through their mesh points.
+    pub fn edge_curve(&self, index: usize) -> Result<Curve, KernelError> {
+        use solidcore_record::brep::Curve as Kind;
+        let record = self.record()?;
+        let edge = record
+            .edges
+            .get(index)
+            .ok_or_else(|| KernelError(format!("the body has no edge {index}")))?;
+        let mesh = self.mesh()?;
+        let traced = mesh
+            .edge_ids
+            .iter()
+            .position(|id| *id == index)
+            .and_then(|at| mesh.edges.get(at))
+            .cloned()
+            .unwrap_or_default();
+        let corner = |at: usize| {
+            record
+                .vertices
+                .get(edge.vertices[at] as usize)
+                .map(|v| v.point)
+                .ok_or_else(|| KernelError("an edge without its vertices".to_owned()))
+        };
+        let (start, end) = (corner(0)?, corner(1)?);
+        let spline = |knots: &[f64], points: Vec<Point>, weights: Vec<f64>| {
+            let degree = knots.len().saturating_sub(points.len() + 1);
+            Curve::nurbs(degree, knots.to_vec(), points, weights)
+        };
+        let shape = edge.nurbs.as_ref().unwrap_or(&edge.curve);
+        let whole = match shape {
+            Kind::Line { .. } => return Curve::line(start, end),
+            Kind::Circle { frame, radius } => {
+                Curve::circle_on(frame.origin, *radius, frame.x_axis, frame.y_axis)?
+            }
+            Kind::Ellipse { frame, radii } => Curve::ellipse(
+                frame.origin,
+                frame.x_axis.map(|v| v * radii[0]),
+                frame.y_axis.map(|v| v * radii[1]),
+            )?,
+            Kind::Polyline { points } => Curve::polyline(points.clone(), false)?,
+            Kind::Spline { knots, points } => spline(knots, points.clone(), Vec::new())?,
+            Kind::RationalSpline { knots, homogeneous } => spline(
+                knots,
+                homogeneous
+                    .iter()
+                    .map(|h| [h[0] / h[3], h[1] / h[3], h[2] / h[3]])
+                    .collect(),
+                homogeneous.iter().map(|h| h[3]).collect(),
+            )?,
+            Kind::SurfaceIntersection { .. } => return Curve::polyline(traced, false),
+        };
+        // The piece of the whole curve between the edge's ends that runs where the edge's mesh
+        // points do.
+        let closed_edge = crate::gap(start, end) < 1e-9;
+        let pieces = if closed_edge {
+            whole.cut_at(&[start])?
+        } else {
+            whole.cut_at(&[start, end])?
+        };
+        let middle = traced.get(traced.len() / 2).copied();
+        let off = |piece: &Curve| -> f64 {
+            let Some(middle) = middle else { return 0.0 };
+            piece
+                .sample()
+                .map(|points| {
+                    points
+                        .iter()
+                        .map(|p| crate::gap(*p, middle))
+                        .fold(f64::INFINITY, f64::min)
+                })
+                .unwrap_or(f64::INFINITY)
+        };
+        let ends_match = |piece: &Curve| {
+            piece.sample().is_ok_and(|points| {
+                let (Some(a), Some(b)) = (points.first(), points.last()) else {
+                    return false;
+                };
+                let near =
+                    |p: Point, q: Point| crate::gap(p, q) < 1e-6 * (1.0 + crate::gap(start, end));
+                closed_edge
+                    || (near(*a, start) && near(*b, end))
+                    || (near(*a, end) && near(*b, start))
+            })
+        };
+        pieces
+            .into_iter()
+            .filter(ends_match)
+            .min_by(|a, b| off(a).total_cmp(&off(b)))
+            .ok_or_else(|| KernelError("could not trim the edge's curve".to_owned()))
+    }
     /// The edges as curves, for drawing in wireframe, picking and snapping.
     pub fn edge_curves(&self) -> Result<Vec<Curve>, KernelError> {
         Ok(self
@@ -423,6 +533,62 @@ mod tests {
 
     fn close(a: f64, b: f64) -> bool {
         (a - b).abs() <= 1e-6 * b.abs().max(1.0)
+    }
+
+    #[test]
+    fn a_cones_centroid_is_a_quarter_up_from_its_base() {
+        // A right triangle turned about the z axis: a cone of radius 3 and height 8, then moved.
+        let outline = crate::Curve::polyline(
+            vec![[0.0, 0.0, 0.0], [3.0, 0.0, 0.0], [0.0, 0.0, 8.0]],
+            false,
+        )
+        .unwrap();
+        let cone = Body::revolved(
+            std::slice::from_ref(&outline),
+            [0.0; 3],
+            [0.0, 0.0, 1.0],
+            std::f64::consts::TAU,
+            false,
+        )
+        .unwrap()
+        .translated([5.0, 0.0, 0.0]);
+        let at = cone.centroid().unwrap();
+        assert!(gap(at, [5.0, 0.0, 2.0]) < 1e-6, "{at:?}");
+    }
+
+    #[test]
+    fn each_edge_comes_back_exact_and_the_one_asked_for() {
+        // A box moved away from the origin: every edge is a straight line of its true length,
+        // and runs where the mesh draws that edge.
+        let cube = Body::cuboid([0.0; 3], [2.0, 3.0, 5.0])
+            .unwrap()
+            .translated([10.0, 0.0, 0.0]);
+        let mesh = cube.mesh().unwrap();
+        for (run, id) in mesh.edges.iter().zip(&mesh.edge_ids) {
+            let curve = cube.edge_curve(*id).unwrap();
+            assert!(matches!(curve, crate::Curve::Line { .. }), "{curve:?}");
+            let points = curve.sample().unwrap();
+            let (a, b) = (run[0], run[run.len() - 1]);
+            assert!(
+                (gap(points[0], a) < 1e-9 && gap(points[1], b) < 1e-9)
+                    || (gap(points[0], b) < 1e-9 && gap(points[1], a) < 1e-9)
+            );
+        }
+        // A cylinder's rims are whole circles, exactly 2πr long.
+        let circle = crate::Curve::circle([0.0; 3], 4.0).unwrap();
+        let cylinder = Body::extruded(&[circle], [0.0, 0.0, 1.0], 6.0, true).unwrap();
+        let mesh = cylinder.mesh().unwrap();
+        let rims = mesh
+            .edge_ids
+            .iter()
+            .filter_map(|id| cylinder.edge_curve(*id).ok())
+            .filter(|curve| curve.is_closed().unwrap_or(false))
+            .collect::<Vec<_>>();
+        assert_eq!(rims.len(), 2);
+        for rim in rims {
+            let length = rim.length().unwrap();
+            assert!(close(length, 8.0 * std::f64::consts::PI), "{length}");
+        }
     }
 
     #[test]

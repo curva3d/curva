@@ -52,6 +52,8 @@ mod orient3pt;
 mod parity;
 mod parity2;
 mod parity3;
+mod parity4;
+mod parity5;
 mod perspective;
 mod pipe;
 mod planar_srf;
@@ -157,7 +159,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 139] = [
+pub static COMMANDS: [CommandDef; 170] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -306,6 +308,37 @@ pub static COMMANDS: [CommandDef; 139] = [
     recipe!("ChangeDegree", [], true, parity3::ChangeDegree),
     recipe!("AreaCentroid", [], true, parity3::AreaCentroid),
     recipe!("VolumeCentroid", [], true, parity3::VolumeCentroid),
+    recipe!("HandleCurve", [], true, parity4::HandleCurve),
+    recipe!("Sketch", [], true, parity4::Sketch),
+    recipe!("Conic", [], true, parity4::Conic),
+    recipe!("Hyperbola", [], true, parity4::Hyperbola),
+    recipe!("BlendCrv", ["blend"], true, parity4::BlendCrv),
+    recipe!("OffsetMultiple", [], true, parity4::OffsetMultiple),
+    recipe!("DupBorder", [], true, parity4::DupBorder),
+    recipe!("Extend", ["ex"], true, parity4::Extend),
+    recipe!("Fair", [], true, parity4::Fair),
+    recipe!("CurveBoolean", [], true, parity4::CurveBoolean),
+    recipe!("Match", ["matchcrv"], true, parity4::Match),
+    recipe!("SimplifyCrv", [], true, parity4::SimplifyCrv),
+    recipe!("Reparameterize", [], true, parity4::Reparameterize),
+    recipe!("MakeUniform", [], true, parity4::MakeUniform),
+    recipe!("Weight", [], true, parity4::Weight),
+    recipe!("ExtrudeCrvTapered", [], true, parity5::ExtrudeCrvTapered),
+    recipe!("ExtrudeCrvAlongCrv", [], true, parity5::ExtrudeCrvAlongCrv),
+    recipe!("ExtrudeCrvToPoint", [], true, parity5::ExtrudeCrvToPoint),
+    recipe!("RailRevolve", [], true, parity5::RailRevolve),
+    recipe!("Pyramid", [], true, parity5::Pyramid),
+    recipe!("ExtractSrf", [], true, parity5::ExtractSrf),
+    recipe!("MergeAllFaces", [], true, parity5::MergeAllFaces),
+    recipe!("Wirecut", [], true, parity5::Wirecut),
+    recipe!("Distribute", [], true, parity5::Distribute),
+    listed!("SelColor", [], false, false, parity5::SelColor),
+    listed!("Lock", [], true, true, parity5::Lock),
+    listed!("Unlock", [], true, true, parity5::Unlock),
+    listed!("Group", [], true, true, parity5::Group),
+    listed!("Ungroup", [], true, true, parity5::Ungroup),
+    recipe!("ShowEdges", [], true, parity5::ShowEdges),
+    listed!("Plan", [], false, false, parity5::Plan),
     recipe!("ExtrudeCrv", [], true, extrude_crv::ExtrudeCrv),
     recipe!("PlanarSrf", [], true, planar_srf::PlanarSrf),
     recipe!("Revolve", [], true, revolve::Revolve),
@@ -581,7 +614,14 @@ mod tests {
 
     /// For each command that changes geometry, the typed steps that reach its live preview.
     /// A new command must be added here, which is how the preview rule in AGENTS.md is enforced.
-    const PREVIEW_STEPS: [(&str, &[&str]); 50] = [
+    const PREVIEW_STEPS: [(&str, &[&str]); 57] = [
+        ("HandleCurve", &["0,0", "1,1", "5,0"]),
+        ("Sketch", &["0,0"]),
+        ("Conic", &["0,0", "10,0"]),
+        ("Hyperbola", &["0,0", "2,0"]),
+        ("OffsetMultiple", &["1"]),
+        ("Pyramid", &["0,0", "2,0"]),
+        ("ExtrudeCrvToPoint", &[]),
         ("Parabola", &["0,0"]),
         ("Paraboloid", &["0,0"]),
         ("Points", &[]),
@@ -635,7 +675,15 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 18] = [
+    const NOTHING_TO_PREVIEW: [&str; 26] = [
+        "DupBorder",
+        "MergeAllFaces",
+        "SimplifyCrv",
+        "MakeUniform",
+        "Lock",
+        "Unlock",
+        "Group",
+        "Ungroup",
         "Delete",
         "HideSwap",
         "EvaluatePt",
@@ -657,7 +705,21 @@ mod tests {
     ];
 
     /// Commands whose preview needs its own setup, tested in their own files.
-    const PREVIEW_TESTED_ELSEWHERE: [&str; 25] = [
+    const PREVIEW_TESTED_ELSEWHERE: [&str; 39] = [
+        "BlendCrv",
+        "Match",
+        "Extend",
+        "Fair",
+        "CurveBoolean",
+        "Reparameterize",
+        "Weight",
+        "ExtrudeCrvTapered",
+        "ExtrudeCrvAlongCrv",
+        "RailRevolve",
+        "ExtractSrf",
+        "Wirecut",
+        "Distribute",
+        "ShowEdges",
         "Align",
         "ChangeDegree",
         "AreaCentroid",
@@ -770,6 +832,11 @@ mod tests {
         {
             let cells: Vec<&str> = line.split('|').map(str::trim).collect();
             let (name, status) = (cells[1], cells[2]);
+            // Every command that differs from Rhino says how (spec `rhino-parity-0.4.1.md` §1).
+            assert!(
+                status != "partly" || !cells[3].is_empty(),
+                "{name} is partly done but its note does not say how it differs"
+            );
             assert!(
                 ["done", "partly", "missing", "blocked"].contains(&status),
                 "{name}: unknown status {status}"
@@ -1119,7 +1186,10 @@ mod tests {
 
     #[test]
     fn completion_finds_aliases_and_puts_an_exact_match_first() {
-        assert_eq!(completions("pl"), ["Polyline", "Plane", "PlanarSrf"]);
+        assert_eq!(
+            completions("pl"),
+            ["Polyline", "Plane", "Plan", "PlanarSrf"]
+        );
         assert_eq!(
             completions("c"),
             [
@@ -1130,12 +1200,14 @@ mod tests {
                 "Cylinder",
                 "Cone",
                 "ChangeDegree",
+                "Conic",
+                "CurveBoolean",
                 "ChamferEdge",
                 "CPlane",
                 "Curve"
             ]
         );
-        assert_eq!(completions("co"), ["Copy", "Cone"]);
+        assert_eq!(completions("co"), ["Copy", "Cone", "Conic"]);
     }
 
     #[test]

@@ -283,14 +283,26 @@ impl Recipe for SrfPt {
     }
 }
 
-/// `ExtrudeSrf`: pulls surfaces into solids by a distance, straight out of each surface; Enter
-/// uses the last distance.
+/// `ExtrudeSrf`, as in Rhino: pulls surfaces straight out of the plane being drawn on into
+/// solids, the sides swept by their open edges; curved surfaces too. The distance follows the
+/// mouse, or is typed; Enter uses the last one. `BothSides` goes as far each way; `DeleteInput`
+/// takes the surfaces away.
 #[derive(Default)]
 pub struct ExtrudeSrf;
 
+impl ExtrudeSrf {
+    fn up(cx: &Context<'_>) -> Point {
+        let [x, y] = cx.plane();
+        curva_kernel::unit(cross(x, y)).unwrap_or([0.0, 0.0, 1.0])
+    }
+}
+
 impl Recipe for ExtrudeSrf {
     const NAME: &'static str = "extrudesrf";
-    const OPTIONS: &'static [OptionDef] = &[OptionDef::toggle("DeleteInput", true)];
+    const OPTIONS: &'static [OptionDef] = &[
+        OptionDef::toggle("BothSides", false),
+        OptionDef::toggle("DeleteInput", true),
+    ];
 
     fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
         let mut steps = vec![
@@ -298,8 +310,18 @@ impl Recipe for ExtrudeSrf {
                 .bodies()
                 .offering(&[]),
         ];
-        if !cx.values.is_empty() {
-            steps.push(StepDef::number("prompt.extrudecrv.distance").remembered("Distance", 10.0));
+        let base = match cx.values.first() {
+            Some(Value::Objects(ids)) => bodies_of(cx.doc, ids)
+                .first()
+                .and_then(|(_, body)| body.bounds().ok())
+                .map(|(low, high)| std::array::from_fn(|i| (low[i] + high[i]) / 2.0)),
+            _ => None,
+        };
+        if let Some(base) = base {
+            steps.push(
+                StepDef::along("prompt.extrudecrv.distance", base, Self::up(cx))
+                    .remembered("Distance", 10.0),
+            );
         }
         steps
     }
@@ -311,12 +333,21 @@ impl Recipe for ExtrudeSrf {
         if distance.abs() < 1e-9 {
             return Err(Message::new("error.bad_distance"));
         }
+        let up = Self::up(cx);
+        let (lift, length) = if cx.toggle("BothSides") {
+            (-distance, 2.0 * distance)
+        } else {
+            (0.0, distance)
+        };
         let mut made = Made::default();
         for (id, body) in bodies_of(cx.doc, ids) {
             if body.is_solid() {
                 continue;
             }
-            let solid = body.offset(distance, true).map_err(|e| failed(&e))?;
+            let start = body.translated(up.map(|v| v * lift));
+            let solid = start
+                .extruded_straight(up, length)
+                .map_err(|e| failed(&e))?;
             made.derived.push(Derived {
                 shape: Shape::Body(solid),
                 from: id,
@@ -689,6 +720,34 @@ mod tests {
         let mut doc = Document::default();
         run(&mut doc, &["srfpt", "0,0", "4,0", "4,4", "0,4"]);
         assert!((doc.state().objects[0].shape.body().unwrap().area().unwrap() - 16.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn extrudesrf_goes_straight_up_as_rhino_does_not_along_the_surface() {
+        // A tilted square, 4 by 4 on the ground, rising 3 along y: pulled straight up by 2, its
+        // volume is its footprint times 2, and the top is 2 above the highest corner.
+        let mut doc = Document::default();
+        run(&mut doc, &["srfpt", "0,0,0", "4,0,0", "4,4,3", "0,4,3"]);
+        doc.select(&[doc.state().objects[0].id]);
+        run(&mut doc, &["extrudesrf", "2"]);
+        let solid = doc.state().objects[0].shape.body().unwrap();
+        assert!(
+            (solid.volume().unwrap() - 32.0).abs() < 1e-3,
+            "{}",
+            solid.volume().unwrap()
+        );
+        let (low, high) = solid.bounds().unwrap();
+        assert!(
+            (high[2] - 5.0).abs() < 1e-6 && low[2].abs() < 1e-6,
+            "{low:?} {high:?}"
+        );
+        // BothSides goes as far down as up.
+        let mut doc = Document::default();
+        run(&mut doc, &["plane", "0,0", "4,5"]);
+        doc.select(&[doc.state().objects[0].id]);
+        run(&mut doc, &["extrudesrf", "BothSides", "2"]);
+        let solid = doc.state().objects[0].shape.body().unwrap();
+        assert!((solid.volume().unwrap() - 80.0).abs() < 1e-3);
     }
 
     #[test]

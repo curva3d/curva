@@ -95,6 +95,28 @@ pub struct Vertex {
     pub position: [f32; 3],
     /// Colour, red, green and blue from 0 to 1.
     pub colour: [f32; 3],
+    /// How thick its line is drawn: millimetres on the screen when positive, or that many
+    /// pixels, negated, when zero or negative ([`line_width`]).
+    pub width: f32,
+}
+
+/// How thick the default line is, in pixels.
+pub const DEFAULT_LINE_PIXELS: f32 = 2.0;
+
+/// A pixel of a 96 dpi screen, in millimetres.
+const MM_PER_PIXEL: f32 = 25.4 / 96.0;
+
+/// The grid and axes stay a pixel thick.
+pub(crate) const GRID_WIDTH: f32 = -1.0;
+
+/// The [`Vertex::width`] of a line: millimetres, or the default line when `None`. Selected lines
+/// draw a pixel thicker, so they stand out.
+#[must_use]
+pub fn line_width(mm: Option<f64>, selected: bool) -> f32 {
+    match mm {
+        Some(mm) if mm > 0.0 => mm as f32 + if selected { MM_PER_PIXEL } else { 0.0 },
+        _ => -(DEFAULT_LINE_PIXELS + if selected { 1.0 } else { 0.0 }),
+    }
 }
 
 /// One corner of a shaded triangle.
@@ -132,6 +154,8 @@ pub struct Outlines {
     colours: Vec<[f32; 3]>,
     /// Whether each object is locked, in the same order.
     locked: Vec<bool>,
+    /// How thick each object draws, in millimetres or `None` for the default line, in the same order.
+    widths: Vec<Option<f64>>,
     /// Whether each entry is an edge of a surface or solid, in the same order.
     on_faces: Vec<bool>,
     /// For an edge of a surface or solid, its number among the body's edges, in the same order.
@@ -212,7 +236,8 @@ impl Outlines {
                 continue;
             }
             let colour = layer.map_or(CURVE_COLOUR, |l| l.colour);
-            let locked = layer.is_some_and(|l| l.locked);
+            let locked = object.locked || layer.is_some_and(|l| l.locked);
+            let width = object.print_width.resolved(layer);
             // A body is meshed once: its triangles for shading, and its edges, each listed
             // under the body's id, for wireframe, picking and snapping.
             let mut kind = PickKind::Curve;
@@ -264,6 +289,7 @@ impl Outlines {
                 outlines.boxes.push(around);
                 outlines.colours.push(colour);
                 outlines.locked.push(locked);
+                outlines.widths.push(width);
                 outlines.on_faces.push(object.shape.body().is_some());
                 outlines.edge_of.push(edge);
                 outlines.kinds.push(kind);
@@ -783,14 +809,20 @@ fn to_segment(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> f64 {
     ((p[0] - a[0] - t * dx).powi(2) + (p[1] - a[1] - t * dy).powi(2)).sqrt()
 }
 
-fn segment(out: &mut Vec<Vertex>, a: [f32; 3], b: [f32; 3], colour: [f32; 3]) {
+fn grid_segment(out: &mut Vec<Vertex>, a: [f32; 3], b: [f32; 3], colour: [f32; 3]) {
+    segment_with(out, a, b, colour, GRID_WIDTH);
+}
+
+fn segment_with(out: &mut Vec<Vertex>, a: [f32; 3], b: [f32; 3], colour: [f32; 3], width: f32) {
     out.push(Vertex {
         position: a,
         colour,
+        width,
     });
     out.push(Vertex {
         position: b,
         colour,
+        width,
     });
 }
 
@@ -799,8 +831,12 @@ fn narrow(p: Point) -> [f32; 3] {
 }
 
 fn polyline(out: &mut Vec<Vertex>, points: &[Point], colour: [f32; 3]) {
+    polyline_with(out, points, colour, -DEFAULT_LINE_PIXELS);
+}
+
+fn polyline_with(out: &mut Vec<Vertex>, points: &[Point], colour: [f32; 3], width: f32) {
     for pair in points.windows(2) {
-        segment(out, narrow(pair[0]), narrow(pair[1]), colour);
+        segment_with(out, narrow(pair[0]), narrow(pair[1]), colour, width);
     }
 }
 
@@ -816,13 +852,13 @@ pub fn grid_lines(plane: &CPlane) -> Vec<Vertex> {
     for step in (-GRID_HALF_SIZE..=GRID_HALF_SIZE).step_by(GRID_STEP as usize) {
         let at = f64::from(step);
         if step != 0 {
-            segment(
+            grid_segment(
                 &mut out,
                 on_plane(at, -reach),
                 on_plane(at, reach),
                 GRID_COLOUR,
             );
-            segment(
+            grid_segment(
                 &mut out,
                 on_plane(-reach, at),
                 on_plane(reach, at),
@@ -830,13 +866,13 @@ pub fn grid_lines(plane: &CPlane) -> Vec<Vertex> {
             );
         }
     }
-    segment(
+    grid_segment(
         &mut out,
         on_plane(-reach, 0.0),
         on_plane(reach, 0.0),
         X_AXIS_COLOUR,
     );
-    segment(
+    grid_segment(
         &mut out,
         on_plane(0.0, -reach),
         on_plane(0.0, reach),
@@ -877,6 +913,10 @@ pub fn shaded_object_lines(outlines: &Outlines, selected: &[u64]) -> Vec<Vertex>
 fn lines_of(outlines: &Outlines, selected: &[u64], shaded: bool) -> Vec<Vertex> {
     let mut out = Vec::new();
     for (index, (id, points)) in outlines.objects.iter().enumerate() {
+        let width = line_width(
+            outlines.widths.get(index).copied().flatten(),
+            selected.contains(id),
+        );
         let on_faces = outlines.on_faces.get(index).copied().unwrap_or(false);
         let colour = if selected.contains(id) {
             SELECTED_COLOUR
@@ -887,7 +927,7 @@ fn lines_of(outlines: &Outlines, selected: &[u64], shaded: bool) -> Vec<Vertex> 
         } else {
             outlines.colours.get(index).copied().unwrap_or(CURVE_COLOUR)
         };
-        polyline(&mut out, points, colour);
+        polyline_with(&mut out, points, colour, width);
     }
     out
 }
@@ -1165,17 +1205,17 @@ pub fn grid_lines_in(plane: &CPlane, palette: &Palette) -> Vec<Vertex> {
             }
             let colour = if major { palette.major } else { palette.minor };
             let at = f64::from(step);
-            segment(&mut out, on_plane(at, -reach), on_plane(at, reach), colour);
-            segment(&mut out, on_plane(-reach, at), on_plane(reach, at), colour);
+            grid_segment(&mut out, on_plane(at, -reach), on_plane(at, reach), colour);
+            grid_segment(&mut out, on_plane(-reach, at), on_plane(reach, at), colour);
         }
     }
-    segment(
+    grid_segment(
         &mut out,
         on_plane(-reach, 0.0),
         on_plane(reach, 0.0),
         palette.x_axis,
     );
-    segment(
+    grid_segment(
         &mut out,
         on_plane(0.0, -reach),
         on_plane(0.0, reach),

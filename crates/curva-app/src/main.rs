@@ -6,6 +6,14 @@
 //! its own. `curva --mcp --connect` connects an agent to the window that is open instead.
 //! `curva --orbit-benchmark --curves 5000` opens the window on a scene of that many circles, spins
 //! the view and prints how fast it drew and snapped. `--solids 500` adds that many cylinders.
+//!
+//! On Windows Curva is a GUI program, so no console opens beside it. Output from the command-line
+//! modes reaches a terminal when it is piped (`curva --picture out.png --run line | more`), and the
+//! MCP modes talk through the pipes the agent opens. An error that stops Curva starting is also kept
+//! in `curva.log` in its settings folder.
+
+// No console window beside Curva on Windows (spec `windows-no-console.md`).
+#![cfg_attr(windows, windows_subsystem = "windows")]
 
 mod assistant;
 mod icons;
@@ -106,12 +114,26 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "Helix",
             "Spiral",
             "Parabola",
+            "Conic",
+            "Hyperbola",
+            "HandleCurve",
+            "Sketch",
             "Point",
             "Points",
             "Lines",
             "Offset",
             "Fillet",
             "Chamfer",
+            "BlendCrv",
+            "OffsetMultiple",
+            "Extend",
+            "Match",
+            "Fair",
+            "SimplifyCrv",
+            "CurveBoolean",
+            "MakeUniform",
+            "Reparameterize",
+            "Weight",
         ],
     ),
     (
@@ -126,7 +148,13 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "Sweep1",
             "OffsetSrf",
             "ExtrudeSrf",
+            "ExtrudeCrvTapered",
+            "ExtrudeCrvAlongCrv",
+            "ExtrudeCrvToPoint",
+            "RailRevolve",
             "DupEdge",
+            "DupBorder",
+            "ExtractSrf",
         ],
     ),
     (
@@ -141,10 +169,13 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "Tube",
             "Ellipsoid",
             "Paraboloid",
+            "Pyramid",
             "Pipe",
             "FilletEdge",
             "ChamferEdge",
             "Shell",
+            "MergeAllFaces",
+            "Wirecut",
             "Volume",
         ],
     ),
@@ -167,6 +198,11 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "Array",
             "ArrayLinear",
             "Align",
+            "Distribute",
+            "Group",
+            "Ungroup",
+            "Lock",
+            "Unlock",
         ],
     ),
     (
@@ -183,6 +219,8 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "BoundingBox",
             "AreaCentroid",
             "VolumeCentroid",
+            "ShowEdges",
+            "Plan",
         ],
     ),
     (
@@ -201,6 +239,7 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "SelSrf",
             "SelSolid",
             "SelPt",
+            "SelColor",
             "Hide",
             "Show",
             "HideSwap",
@@ -208,6 +247,8 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
     ),
 ];
 const PICTURE_SIZE: [u32; 2] = [1200, 800];
+/// How far the pointer moves, in points, between the points Sketch takes while drawing.
+const SKETCH_STEP: f32 = 4.0;
 /// The specializations in the top bar's dial; only Freeform has commands yet.
 const SPECIALIZATIONS: [&str; 4] = [
     "ui.specialization.freeform",
@@ -249,6 +290,8 @@ struct Curva {
     agent: Option<curva_mcp::Listener>,
     waiting_approval: Option<(curva_mcp::AgentRequest, String)>,
     gumball_drag: Option<GumballDrag>,
+    /// While Sketch draws with the button held: where the last point was fed, and how many.
+    sketch_stroke: Option<(egui::Pos2, usize)>,
     /// A gumball handle clicked without a drag, and the value being typed for it.
     gumball_typing: Option<(Handle, String)>,
     /// Whether Alt is held this frame, which turns object snaps off for the moment.
@@ -828,6 +871,7 @@ impl Curva {
             agent: None,
             waiting_approval: None,
             gumball_drag: None,
+            sketch_stroke: None,
             gumball_typing: None,
             alt_held: false,
             snaps: SnapSet::default(),
@@ -1421,6 +1465,60 @@ impl Curva {
                 .all(|(_, shape)| shape.body().is_some_and(curva_kernel::Body::is_solid))
     }
 
+    /// Sketch draws while the mouse button is held: a point each few pixels the pointer moves,
+    /// and letting go ends the curve. Returns whether it took the mouse.
+    fn sketch_mouse(
+        &mut self,
+        ui: &egui::Ui,
+        pane: usize,
+        response: &egui::Response,
+        size: [f64; 2],
+    ) -> bool {
+        let sketching = self
+            .processor
+            .current_request()
+            .is_some_and(|request| request.prompt.key == "prompt.sketch.point");
+        if !sketching {
+            self.sketch_stroke = None;
+            return false;
+        }
+        let (down, released, at) = ui.input(|input| {
+            (
+                input.pointer.primary_down(),
+                input.pointer.primary_released(),
+                input.pointer.latest_pos(),
+            )
+        });
+        if released {
+            if let Some((_, fed)) = self.sketch_stroke.take()
+                && fed >= 2
+            {
+                self.processor.submit(&mut self.doc, "");
+            }
+            return true;
+        }
+        let Some(at) = at.filter(|p| response.rect.contains(*p)) else {
+            return self.sketch_stroke.is_some();
+        };
+        if !down {
+            return false;
+        }
+        let far_enough = self
+            .sketch_stroke
+            .is_none_or(|(last, _)| last.distance(at) >= SKETCH_STEP);
+        if far_enough {
+            let offset = at - response.rect.min;
+            let local = [f64::from(offset.x), f64::from(offset.y)];
+            if let Some((point, _)) = self.aim(ui, pane, local, size) {
+                self.active = pane;
+                self.processor.click(&mut self.doc, point);
+                let fed = self.sketch_stroke.map_or(0, |(_, n)| n) + 1;
+                self.sketch_stroke = Some((at, fed));
+            }
+        }
+        true
+    }
+
     /// Runs the gumball for one viewport. Returns whether it took the mouse.
     fn gumball_mouse(
         &mut self,
@@ -1767,6 +1865,64 @@ impl Curva {
         }
     }
 
+    /// A drop-down of print widths (spec `line-weights.md` §5): `By layer` when `by_layer`,
+    /// `Default`, Rhino's common widths, and a field for any other. `shown` is what it shows;
+    /// returns the width chosen, if one was.
+    fn width_choice(
+        &self,
+        ui: &mut egui::Ui,
+        id: egui::Id,
+        shown: Option<curva_document::PrintWidth>,
+        by_layer: bool,
+    ) -> Option<curva_document::PrintWidth> {
+        use curva_document::PrintWidth;
+        let text = |key: &'static str| self.text.render(&Message::new(key));
+        let named = |width: PrintWidth| match width {
+            PrintWidth::ByLayer => text("ui.width.by_layer"),
+            PrintWidth::Default => text("ui.width.default"),
+            PrintWidth::Millimetres(mm) => self
+                .text
+                .render(&Message::with("ui.width.mm", vec![format!("{mm:.2}")])),
+        };
+        let mut chosen = None;
+        egui::ComboBox::from_id_salt(id)
+            .selected_text(shown.map_or_else(|| text("ui.width.varies"), named))
+            .width(84.0)
+            .show_ui(ui, |ui| {
+                let mut choices = Vec::new();
+                if by_layer {
+                    choices.push(PrintWidth::ByLayer);
+                }
+                choices.push(PrintWidth::Default);
+                choices.extend(PrintWidth::COMMON.map(PrintWidth::Millimetres));
+                for choice in choices {
+                    if ui
+                        .selectable_label(shown == Some(choice), named(choice))
+                        .clicked()
+                    {
+                        chosen = Some(choice);
+                    }
+                }
+                ui.horizontal(|ui| {
+                    ui.label(text("ui.width.custom"));
+                    let mut mm = match shown {
+                        Some(PrintWidth::Millimetres(mm)) => mm,
+                        _ => 0.25,
+                    };
+                    let field = ui.add(
+                        egui::DragValue::new(&mut mm)
+                            .range(0.01..=PrintWidth::MOST)
+                            .speed(0.01)
+                            .fixed_decimals(2)
+                            .suffix(" mm"),
+                    );
+                    if field.changed() {
+                        chosen = Some(PrintWidth::Millimetres(mm));
+                    }
+                });
+            });
+        chosen
+    }
     fn layers_panel(&mut self, ui: &mut egui::Ui) {
         let layers = self.doc.layers().to_vec();
         let current = self.doc.current_layer();
@@ -1783,6 +1939,18 @@ impl Curva {
                 let mut colour = layer.colour;
                 if ui.color_edit_button_rgb(&mut colour).changed() {
                     self.doc.set_layer_colour(layer.id, colour);
+                }
+                let shown = Some(layer.print_width.map_or(
+                    curva_document::PrintWidth::Default,
+                    curva_document::PrintWidth::Millimetres,
+                ));
+                let id = ui.scope_id().with(("layer width", layer.id));
+                if let Some(width) = self.width_choice(ui, id, shown, false) {
+                    let mm = match width {
+                        curva_document::PrintWidth::Millimetres(mm) => Some(mm),
+                        _ => None,
+                    };
+                    self.undoable(|doc| doc.set_layer_print_width(layer.id, mm));
                 }
                 let mut visible = layer.visible;
                 let shown =
@@ -1904,6 +2072,25 @@ impl Curva {
         if let Some(layer) = chosen {
             self.undoable(|doc| doc.move_to_layer(&selection, layer));
         }
+        let widths: Vec<curva_document::PrintWidth> = self
+            .doc
+            .state()
+            .objects
+            .iter()
+            .filter(|object| selection.contains(&object.id))
+            .map(|object| object.print_width)
+            .collect();
+        let shown = widths
+            .first()
+            .copied()
+            .filter(|first| widths.iter().all(|width| width == first));
+        ui.horizontal(|ui| {
+            ui.label(self.text.render(&Message::new("ui.properties.width")));
+            let id = ui.scope_id().with("object width");
+            if let Some(width) = self.width_choice(ui, id, shown, true) {
+                self.undoable(|doc| doc.set_print_width(&selection, width));
+            }
+        });
     }
 
     /// Point objects and point previews, which have no lines to draw.
@@ -3907,6 +4094,11 @@ impl Curva {
                 self.panes[self.active] = Pane::new(standard_view(name));
                 self.panes[self.active].display = display;
             }
+            ViewRequest::Plan => {
+                let pane = &mut self.panes[self.active];
+                let plane = pane.plane;
+                pane.camera.plan(&plane);
+            }
             ViewRequest::Display(mode) => self.panes[self.active].display = mode,
             ViewRequest::ShowSelectionFilter => self.filter_row = !self.filter_row,
             ViewRequest::ToggleSelectionFilter => self.pick_filter.on = !self.pick_filter.on,
@@ -3977,6 +4169,9 @@ impl Curva {
                 && ui.ctx().layer_id_at(position) == Some(response.layer_id)
         };
         if self.gumball_mouse(ui, pane, response, size, &events) {
+            return;
+        }
+        if self.sketch_mouse(ui, pane, response, size) {
             return;
         }
         let gestures = self.panes[pane].gestures.take(&events, on_viewport);
@@ -4056,6 +4251,8 @@ impl Curva {
                 let hit = self.outlines.pick(&camera, local(from), size, PICK_REACH);
                 hit.into_iter().collect()
             };
+            // Picking one member of a group picks the whole group, as in Rhino.
+            let hits = self.doc.with_groups(&hits);
             let chosen = combined_selection(self.doc.selection(), hits, shift, remove);
             self.doc.select(&chosen);
         }
@@ -4500,6 +4697,21 @@ fn picture(path: &str, script: &str) -> Result<(), String> {
 }
 
 fn main() -> Result<(), String> {
+    let result = run();
+    if let Err(error) = &result {
+        // Without a console the error would be lost, so it is kept where a user can find it.
+        if let Some(folder) = recovery::app_folder() {
+            let _ = std::fs::create_dir_all(&folder);
+            let _ = std::fs::write(
+                folder.join("curva.log"),
+                format!("Curva could not run: {error}\n"),
+            );
+        }
+    }
+    result
+}
+
+fn run() -> Result<(), String> {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     let value = |flag: &str| {
         arguments
@@ -4567,7 +4779,7 @@ fn main() -> Result<(), String> {
 }
 
 /// What the gumball's extrude circle makes of one object: a curve becomes a surface (a closed
-/// one a solid), a flat surface thickens into a solid along its normal, which the axis should be;
+/// one a solid), a surface is pulled straight along the axis into a solid, as ExtrudeSrf does;
 /// a solid makes nothing.
 fn gumball_extruded(
     shape: &Shape,
@@ -4584,7 +4796,7 @@ fn gumball_extruded(
                 closed,
             ))
         }
-        Shape::Body(body) if !body.is_solid() => Some(body.offset(distance, true)),
+        Shape::Body(body) if !body.is_solid() => Some(body.extruded_straight(axis, distance)),
         Shape::Body(_) => None,
     }
 }
@@ -4765,9 +4977,7 @@ fn lerp_colour(from: egui::Color32, to: egui::Color32, amount: f32) -> egui::Col
 /// Opens a page in the system's browser.
 fn open_link(url: &str) {
     let result = if cfg!(target_os = "windows") {
-        std::process::Command::new("cmd")
-            .args(["/C", "start", "", url])
-            .spawn()
+        quiet_command("cmd").args(["/C", "start", "", url]).spawn()
     } else if cfg!(target_os = "macos") {
         std::process::Command::new("open").arg(url).spawn()
     } else {
@@ -4887,6 +5097,20 @@ fn resize_handles(ui: &egui::Ui, place: &layout::Place, rect: egui::Rect) -> Opt
         }
     }
     event
+}
+
+/// A program to run without a console window of its own: on Windows, a console program started
+/// from Curva (a GUI program) would otherwise flash one up.
+pub(crate) fn quiet_command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
+    #[allow(unused_mut)]
+    let mut command = std::process::Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // CREATE_NO_WINDOW.
+        command.creation_flags(0x0800_0000);
+    }
+    command
 }
 
 #[cfg(test)]
