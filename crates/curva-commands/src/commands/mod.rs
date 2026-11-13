@@ -822,6 +822,39 @@ mod tests {
         }
     }
 
+
+    /// Every `CUSTOM KERNEL OPERATION` mark in the source has a row in
+    /// `docs/kernel/custom-operations.md`, and every row a mark (spec `engine-gaps.md` §1).
+    #[test]
+    fn custom_operations_match_their_list() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let list = std::fs::read_to_string(root.join("docs/kernel/custom-operations.md")).unwrap();
+        let rows: std::collections::BTreeSet<String> = list
+            .lines()
+            .skip_while(|line| !line.starts_with("| Operation"))
+            .skip(2)
+            .take_while(|line| line.starts_with("| "))
+            .map(|line| line.split('|').nth(1).unwrap().trim().to_owned())
+            .collect();
+        let mut marks = std::collections::BTreeSet::new();
+        let mut stack = vec![root.join("crates")];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().is_some_and(|e| e == "rs") {
+                    let text = std::fs::read_to_string(&path).unwrap();
+                    for line in text.lines() {
+                        if let Some(name) = line.trim().strip_prefix("// CUSTOM KERNEL OPERATION: ") {
+                            marks.insert(name.trim().to_owned());
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(marks, rows, "marks in the code and rows in the list differ");
+    }
     #[test]
     fn rhino_parity_lists_only_real_commands() {
         let table = include_str!("../../../../docs/commands/rhino-parity.md");

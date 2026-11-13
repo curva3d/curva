@@ -339,6 +339,15 @@ impl Curve {
         from_record_curve(&made, None)
     }
 
+
+    /// The curve at degree `degree` through the engine: raised exactly, or lowered when it stays
+    /// within `tolerance` (then with how far it moved).
+    pub fn with_degree(&self, degree: usize, tolerance: f64) -> Result<(Curve, Option<f64>), KernelError> {
+        let (made, off) =
+            solidcore_ops::curve_knots::set_degree(&to_record_spline(self)?, degree, tolerance)
+                .map_err(|e| failed("changing the degree", e))?;
+        Ok((from_record_curve(&made, None)?, off))
+    }
     /// The curve carried on by `length` at its start or end (Rhino's Extend, by length): as its
     /// own shape (`Natural`) or straight along its end tangent (`Tangent`).
     pub fn extended_by(

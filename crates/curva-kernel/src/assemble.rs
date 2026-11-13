@@ -100,107 +100,11 @@ fn merged(records: &[Record]) -> Result<Record, KernelError> {
     Ok(out)
 }
 
-/// Only the faces `keep` of a record, with the edges and points they use, as one open shell.
-fn subset(record: &Record, keep: &[usize]) -> Result<Record, KernelError> {
-    let mut face_map = vec![None; record.faces.len()];
-    let mut kept_faces = Vec::new();
-    for &index in keep {
-        if index < record.faces.len() && face_map[index].is_none() {
-            face_map[index] = Some(kept_faces.len() as u32);
-            kept_faces.push(index);
-        }
-    }
-    if kept_faces.is_empty() {
-        return Err(KernelError("no faces to keep".to_owned()));
-    }
-    // Which way each kept face is used, from the shell that held it.
-    let mut forward = vec![true; record.faces.len()];
-    for shell in &record.shells {
-        if let Shell::Faces { faces, .. } = shell {
-            for f in faces {
-                forward[f.face as usize] = f.forward;
-            }
-        }
-    }
-    let mut edge_map = vec![None; record.edges.len()];
-    let mut vertex_map = vec![None; record.vertices.len()];
-    let mut out = Record {
-        version: record.version,
-        tolerance: record.tolerance,
-        regions: vec![Region {
-            shells: vec![0],
-            void: false,
-        }],
-        shells: Vec::new(),
-        faces: Vec::new(),
-        edges: Vec::new(),
-        vertices: Vec::new(),
-    };
-    let vertex = |old: u32, out: &mut Record, map: &mut Vec<Option<u32>>| -> u32 {
-        if let Some(new) = map[old as usize] {
-            return new;
-        }
-        let new = out.vertices.len() as u32;
-        out.vertices.push(record.vertices[old as usize].clone());
-        map[old as usize] = Some(new);
-        new
-    };
-    for &index in &kept_faces {
-        let mut face = record.faces[index].clone();
-        for lp in &mut face.loops {
-            match lp {
-                Loop::Edges { edges } => {
-                    for e in edges {
-                        let old = e.edge as usize;
-                        let new = if let Some(new) = edge_map[old] {
-                            new
-                        } else {
-                            let mut edge = record.edges[old].clone();
-                            for v in &mut edge.vertices {
-                                *v = vertex(*v, &mut out, &mut vertex_map);
-                            }
-                            edge.uses = edge
-                                .uses
-                                .iter()
-                                .filter_map(|used| {
-                                    face_map[used.face as usize].map(|face| {
-                                        let mut used = *used;
-                                        used.face = face;
-                                        used
-                                    })
-                                })
-                                .collect();
-                            let new = out.edges.len() as u32;
-                            out.edges.push(edge);
-                            edge_map[old] = Some(new);
-                            new
-                        };
-                        e.edge = new;
-                    }
-                }
-                Loop::Vertex { vertex: v } => *v = vertex(*v, &mut out, &mut vertex_map),
-            }
-        }
-        out.faces.push(face);
-    }
-    out.shells.push(Shell::Faces {
-        faces: kept_faces
-            .iter()
-            .enumerate()
-            .map(|(new, &old)| solidcore_record::brep::OrientedFace {
-                face: new as u32,
-                forward: forward[old],
-            })
-            .collect(),
-        wires: Vec::new(),
-    });
-    Ok(out)
-}
-
 impl Body {
     /// The faces of all `parts` as one body, sewn where their edges meet within
     /// [`SEW_TOLERANCE`]; faces that close round a space make a solid.
     pub fn assembled(parts: &[Body]) -> Result<Body, KernelError> {
+        // CUSTOM KERNEL OPERATION: face-assembly
         let records = parts
             .iter()
             .map(Body::record)
@@ -214,10 +118,13 @@ impl Body {
     /// Only the faces numbered `keep` (as in [`crate::BodyMesh::triangle_faces`]), as a surface
     /// of their own.
     pub fn faces_only(&self, keep: &[usize]) -> Result<Body, KernelError> {
-        let body = engine_body(&subset(&self.record()?, keep)?)?;
-        let (sewn, _) = solidcore_ops::stitch::stitch(body, SEW_TOLERANCE)
-            .map_err(|e| failed("sewing faces", e))?;
-        Ok(Body::from_native(native_of(&sewn)?))
+        // The engine's face removal, of every face not kept.
+        let count = self.face_count()?;
+        let others: Vec<usize> = (0..count).filter(|face| !keep.contains(face)).collect();
+        if others.is_empty() {
+            return Ok(self.clone());
+        }
+        self.without_faces(&others)
     }
 
     /// How many faces it has.
@@ -258,6 +165,7 @@ impl Body {
         direction: crate::Point,
         distance: f64,
     ) -> Result<Body, KernelError> {
+        // CUSTOM KERNEL OPERATION: straight-extrusion
         let along = crate::unit(direction)
             .ok_or_else(|| KernelError("the direction has no length".to_owned()))?;
         let by = along.map(|v| v * distance);

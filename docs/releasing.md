@@ -17,5 +17,11 @@ in the running app (the owner asked for this after 0.3.0 shipped with curve snap
 7. **Gumball:** move along an arrow with a snap; extrude a curve with the circle.
 8. **Clipboard:** Ctrl+C, Ctrl+V on a selected object.
 
+And, before every release (the owner's rule, decision 0019): **check the custom kernel operations
+against the latest solidcore.** Move solidcore to its latest revision on a branch, run the tests, and
+for each row of `docs/kernel/custom-operations.md` see whether solidcore now covers the operation
+fully. Switch those to solidcore's, delete Curva's code and the row, note it in the release notes, and
+update "Checked at" on the rest.
+
 Then: bump the version in `Cargo.toml`, write `docs/releases/vX.Y.Z.md`, merge, tag `vX.Y.Z` and push the
 tag; the release workflow builds the Windows installer, the Linux AppImage and the macOS disk image.
