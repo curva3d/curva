@@ -58,6 +58,15 @@ impl Recipe for BooleanDifference {
         } else {
             made.remove.clear();
         }
+        // One solid cut: it and its cutters are kept inside the result, which follows them.
+        if cx.toggle(DELETE_INPUT) && made.derived.len() == 1 && from.len() == 1 {
+            made.remove.clear();
+            made.live = Some((
+                curva_document::LiveHow::Difference,
+                from.clone(),
+                cutters.iter().map(|(id, _)| *id).collect(),
+            ));
+        }
         made.message = Some(Message::with(
             "done.booleandifference",
             vec![from.len().to_string()],
@@ -83,8 +92,13 @@ mod tests {
         doc.select(&[b]);
         processor.submit(&mut doc, "");
         assert!(!processor.is_running());
-        assert_eq!(doc.state().objects.len(), 1);
-        let volume = doc.state().objects[0]
+        assert_eq!(doc.state().objects.iter().filter(|o| !o.hidden).count(), 1);
+        let volume = doc
+            .state()
+            .objects
+            .iter()
+            .find(|o| !o.hidden)
+            .unwrap()
             .shape
             .body()
             .unwrap()
@@ -92,6 +106,6 @@ mod tests {
             .unwrap();
         assert!((volume - 4.0).abs() < 1e-6);
         processor.submit(&mut doc, "undo");
-        assert_eq!(doc.state().objects.len(), 2);
+        assert_eq!(doc.state().objects.iter().filter(|o| !o.hidden).count(), 2);
     }
 }

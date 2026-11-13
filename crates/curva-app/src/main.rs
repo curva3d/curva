@@ -230,6 +230,8 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "CageEdit",
             "Group",
             "Ungroup",
+            "EditBoolean",
+            "BreakBoolean",
             "Lock",
             "Unlock",
         ],
@@ -1665,8 +1667,13 @@ impl Curva {
         }
         let selection = self.doc.selection();
         match change {
-            GumballChange::Move(by) => self.doc.translate(&selection, by),
-            GumballChange::Turn(turn) => self.doc.transform(&selection, &turn),
+            // Live booleans' inputs move with them, so they stay live.
+            GumballChange::Move(by) => self
+                .doc
+                .translate(&self.doc.with_live_inputs(&selection), by),
+            GumballChange::Turn(turn) => self
+                .doc
+                .transform(&self.doc.with_live_inputs(&selection), &turn),
             GumballChange::Stretch {
                 origin,
                 axis,
@@ -2074,6 +2081,13 @@ impl Curva {
                     }
                     if let Some((_, _, (kind, key, value))) = &self.measured {
                         ui.label(self.text.render(&Message::new(kind)));
+                        if object.live.is_some() {
+                            let inputs = self.doc.inputs_of(object.id).len();
+                            ui.label(self.text.render(&Message::with(
+                                "ui.properties.live",
+                                vec![inputs.to_string()],
+                            )));
+                        }
                         ui.label(
                             self.text
                                 .render(&Message::with(key, vec![format!("{value:.3}")])),

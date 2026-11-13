@@ -12,6 +12,8 @@ mod grips;
 mod history;
 pub use grips::Grip;
 mod layers;
+mod live;
+pub use live::{LiveBoolean, LiveHow};
 mod organise;
 mod shape;
 pub use shape::Shape;
@@ -51,6 +53,10 @@ pub struct Object {
     pub locked: bool,
     /// The group it belongs to, if any: picking one member picks them all.
     pub group: Option<u64>,
+    /// For a live boolean's result: how it is made and from what.
+    pub live: Option<crate::live::LiveBoolean>,
+    /// For an input kept by a live boolean: the result it belongs to.
+    pub input_of: Option<u64>,
 }
 
 impl Object {
@@ -84,6 +90,10 @@ struct StoredObject {
     locked: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     group: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    live: Option<crate::live::LiveBoolean>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    input_of: Option<u64>,
 }
 
 impl TryFrom<StoredObject> for Object {
@@ -105,6 +115,8 @@ impl TryFrom<StoredObject> for Object {
             print_width: stored.print_width,
             locked: stored.locked,
             group: stored.group,
+            live: stored.live,
+            input_of: stored.input_of,
         })
     }
 }
@@ -126,6 +138,8 @@ impl From<Object> for StoredObject {
             print_width: object.print_width,
             locked: object.locked,
             group: object.group,
+            live: object.live,
+            input_of: object.input_of,
         }
     }
 }
@@ -401,6 +415,8 @@ impl Document {
             print_width: PrintWidth::ByLayer,
             locked: false,
             group: None,
+            live: None,
+            input_of: None,
         });
         id
     }
@@ -459,7 +475,7 @@ impl Document {
     pub fn show_all(&mut self) -> usize {
         let mut shown = 0;
         for object in &mut self.state.objects {
-            if object.hidden {
+            if object.hidden && object.input_of.is_none() {
                 object.hidden = false;
                 shown += 1;
             }

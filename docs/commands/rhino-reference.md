@@ -276,3 +276,5 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | ChamferSrf | Two surfaces; distances | `Trim` `Extend` | none | partly |
 | SplitSrf | Surface; curves | none | none | done |
 | Zebra | Objects | `Stripe direction` `Stripe size` `Stripe colour` | none | partly |
+| EditBoolean | A live boolean | none | none | partly |
+| BreakBoolean | Live booleans | none | none | partly |

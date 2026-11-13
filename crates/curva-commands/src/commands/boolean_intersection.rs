@@ -46,9 +46,20 @@ impl Recipe for BooleanIntersection {
         if left.is_none() {
             return Err(Message::new("error.boolean.empty"));
         }
-        let used: Vec<u64> = firsts.iter().chain(&seconds).map(|(id, _)| *id).collect();
+        let ids =
+            |list: &[(u64, curva_kernel::Body)]| list.iter().map(|(id, _)| *id).collect::<Vec<_>>();
         let message = Message::new("done.booleanintersection");
-        Ok(result(cx, left, used[0], used, message))
+        Ok(result(
+            cx,
+            left,
+            firsts[0].0,
+            (
+                curva_document::LiveHow::Intersection,
+                ids(&firsts),
+                ids(&seconds),
+            ),
+            message,
+        ))
     }
 }
 
@@ -73,8 +84,13 @@ mod tests {
     fn only_the_overlap_is_kept() {
         let mut doc = Document::default();
         let mut processor = start(&mut doc, 1.0);
-        assert_eq!(doc.state().objects.len(), 1);
-        let volume = doc.state().objects[0]
+        assert_eq!(doc.state().objects.iter().filter(|o| !o.hidden).count(), 1);
+        let volume = doc
+            .state()
+            .objects
+            .iter()
+            .find(|o| !o.hidden)
+            .unwrap()
             .shape
             .body()
             .unwrap()
@@ -82,13 +98,13 @@ mod tests {
             .unwrap();
         assert!((volume - 4.0).abs() < 1e-6);
         processor.submit(&mut doc, "undo");
-        assert_eq!(doc.state().objects.len(), 2);
+        assert_eq!(doc.state().objects.iter().filter(|o| !o.hidden).count(), 2);
     }
 
     #[test]
     fn solids_apart_are_left_as_they_were() {
         let mut doc = Document::default();
         start(&mut doc, 10.0);
-        assert_eq!(doc.state().objects.len(), 2);
+        assert_eq!(doc.state().objects.iter().filter(|o| !o.hidden).count(), 2);
     }
 }

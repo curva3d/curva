@@ -83,6 +83,12 @@ impl Document {
     /// recipe and stays as it is. A source that can no longer give a result leaves the object as
     /// it was. Objects are in order of making, so a chain of recipes updates in one pass.
     pub fn refresh_history(&mut self) {
+        self.refresh_curve_history();
+        self.refresh_live();
+    }
+
+    /// Remakes the curves made with History from the curves they follow.
+    fn refresh_curve_history(&mut self) {
         for index in 0..self.state.objects.len() {
             let Some(recipe) = self.state.objects[index].recipe else {
                 continue;

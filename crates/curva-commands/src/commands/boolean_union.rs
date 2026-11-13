@@ -35,15 +35,14 @@ pub(super) fn result(
     cx: &Context<'_>,
     body: Option<Body>,
     from: u64,
-    used: Vec<u64>,
+    (how, first, second): (curva_document::LiveHow, Vec<u64>, Vec<u64>),
     message: Message,
 ) -> Made {
+    // With `DeleteInput` the inputs are kept inside the result, which follows them (live
+    // booleans, spec `live-booleans.md`); without it they stay as they are.
+    let live = (cx.toggle(DELETE_INPUT) && body.is_some()).then_some((how, first, second));
     Made {
-        remove: if cx.toggle(DELETE_INPUT) {
-            used
-        } else {
-            Vec::new()
-        },
+        live,
         derived: body
             .map(|body| Derived {
                 shape: Shape::Body(body),
@@ -84,7 +83,13 @@ impl Recipe for BooleanUnion {
         };
         let ids: Vec<u64> = bodies.iter().map(|(id, _)| *id).collect();
         let message = Message::with("done.booleanunion", vec![ids.len().to_string()]);
-        Ok(result(cx, Some(whole), ids[0], ids, message))
+        Ok(result(
+            cx,
+            Some(whole),
+            ids[0],
+            (curva_document::LiveHow::Union, ids, Vec::new()),
+            message,
+        ))
     }
 }
 
@@ -101,8 +106,13 @@ mod tests {
         let b = doc.add_body(Body::cuboid([1.0, 0.0, 0.0], [2.0, 2.0, 2.0]).unwrap());
         doc.select(&[a, b]);
         let mut processor = run(&mut doc, &["booleanunion"]);
-        assert_eq!(doc.state().objects.len(), 1);
-        let volume = doc.state().objects[0]
+        assert_eq!(doc.state().objects.iter().filter(|o| !o.hidden).count(), 1);
+        let volume = doc
+            .state()
+            .objects
+            .iter()
+            .find(|o| !o.hidden)
+            .unwrap()
             .shape
             .body()
             .unwrap()
@@ -110,7 +120,7 @@ mod tests {
             .unwrap();
         assert!((volume - 12.0).abs() < 1e-6);
         processor.submit(&mut doc, "undo");
-        assert_eq!(doc.state().objects.len(), 2);
+        assert_eq!(doc.state().objects.iter().filter(|o| !o.hidden).count(), 2);
     }
 
     #[test]
@@ -121,6 +131,73 @@ mod tests {
         let b = doc.add_body(Body::cuboid([1.0, 0.0, 0.0], [2.0, 2.0, 2.0]).unwrap());
         doc.select(&[a, b]);
         run(&mut doc, &["booleanunion"]);
-        assert_eq!(doc.state().objects.len(), 3);
+        assert_eq!(doc.state().objects.iter().filter(|o| !o.hidden).count(), 3);
+    }
+}
+
+#[cfg(test)]
+mod live_tests {
+    use super::super::run;
+    use curva_document::Document;
+    use curva_kernel::Body;
+
+    fn visible_volume(doc: &Document) -> f64 {
+        doc.state()
+            .objects
+            .iter()
+            .find(|o| !o.hidden)
+            .unwrap()
+            .shape
+            .body()
+            .unwrap()
+            .volume()
+            .unwrap()
+    }
+
+    #[test]
+    fn a_union_follows_its_inputs_and_moves_with_them() {
+        let mut doc = Document::default();
+        let a = doc.add_body(Body::cuboid([0.0; 3], [2.0, 2.0, 2.0]).unwrap());
+        let b = doc.add_body(Body::cuboid([1.0, 0.0, 0.0], [2.0, 2.0, 2.0]).unwrap());
+        doc.select(&[a, b]);
+        run(&mut doc, &["booleanunion"]);
+        let result = doc.state().objects.iter().find(|o| !o.hidden).unwrap().id;
+        assert!((visible_volume(&doc) - 12.0).abs() < 1e-6);
+        // EditBoolean shows the inputs; moving one remakes the union.
+        doc.select(&[result]);
+        run(&mut doc, &["editboolean"]);
+        doc.select(&[b]);
+        run(&mut doc, &["move", "0,0", "1,0"]);
+        let union = doc
+            .state()
+            .objects
+            .iter()
+            .find(|o| o.id == result)
+            .unwrap()
+            .shape
+            .body()
+            .unwrap()
+            .volume()
+            .unwrap();
+        assert!((union - 16.0).abs() < 1e-6, "{union}");
+        // Moving the result moves its inputs, so it stays live.
+        doc.select(&[result]);
+        run(&mut doc, &["editboolean"]);
+        doc.select(&[result]);
+        run(&mut doc, &["move", "0,0", "0,5"]);
+        assert!(
+            doc.state()
+                .objects
+                .iter()
+                .find(|o| o.id == result)
+                .unwrap()
+                .live
+                .is_some()
+        );
+        // BreakBoolean leaves a plain solid.
+        doc.select(&[result]);
+        run(&mut doc, &["breakboolean"]);
+        assert_eq!(doc.state().objects.len(), 1);
+        assert!(doc.state().objects[0].live.is_none());
     }
 }

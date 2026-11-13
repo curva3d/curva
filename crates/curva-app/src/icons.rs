@@ -1642,6 +1642,16 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
                 pen.line_in(a, b, pen.accent());
             }
         }
+        "editboolean" | "breakboolean" => {
+            pen.ellipse((2.0, 5.0, 12.0, 12.0));
+            pen.ellipse((8.0, 5.0, 12.0, 12.0));
+            if name.eq_ignore_ascii_case("editboolean") {
+                pen.dashed_in(&[(8.0, 6.0), (8.0, 16.0)], pen.accent());
+                pen.dot(14.0, 11.0);
+            } else {
+                pen.line_in((3.0, 19.0), (19.0, 3.0), pen.accent());
+            }
+        }
         _ => return false,
     }
     true

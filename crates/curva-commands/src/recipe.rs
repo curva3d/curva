@@ -394,6 +394,8 @@ pub struct Made {
     pub guides: Vec<Curve>,
     /// What to report when done.
     pub message: Option<Message>,
+    /// A live boolean: the one result made keeps these inputs, hidden, and follows them.
+    pub live: Option<(curva_document::LiveHow, Vec<u64>, Vec<u64>)>,
 }
 
 impl Made {
@@ -758,6 +760,9 @@ impl<R: Recipe> RecipeCommand<R> {
                 doc.record_recipe(id, history);
             }
             added.push(id);
+        }
+        if let (Some((how, first, second)), [result]) = (made.live, added.as_slice()) {
+            doc.make_live(*result, how, first, second);
         }
         added
     }

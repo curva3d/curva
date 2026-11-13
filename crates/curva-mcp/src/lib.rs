@@ -188,6 +188,7 @@ impl<'a> Session<'a> {
                     "volume": volume,
                     "hidden": object.hidden,
                     "print_width": self.doc.print_width_of(object.id),
+                    "live_boolean_inputs": self.doc.inputs_of(object.id),
                     "locked": object.locked,
                     "group": object.group,
                     "selected": selected.contains(&object.id),

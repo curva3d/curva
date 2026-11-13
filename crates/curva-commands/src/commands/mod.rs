@@ -39,6 +39,7 @@ mod isolate;
 mod join;
 mod length;
 mod line;
+mod live;
 mod loft;
 mod mirror;
 mod move_objects;
@@ -161,7 +162,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 205] = [
+pub static COMMANDS: [CommandDef; 207] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -342,6 +343,8 @@ pub static COMMANDS: [CommandDef; 205] = [
     recipe!("ShowEdges", [], true, parity5::ShowEdges),
     listed!("Plan", [], false, false, parity5::Plan),
     listed!("Zebra", [], false, false, parity5::Zebra),
+    listed!("EditBoolean", [], true, true, live::EditBoolean),
+    listed!("BreakBoolean", [], true, true, live::BreakBoolean),
     recipe!("EdgeSrf", [], true, parity6::EdgeSrf),
     recipe!("NetworkSrf", [], true, parity6::NetworkSrf),
     recipe!("Patch", [], true, parity6::Patch),
@@ -712,7 +715,9 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 33] = [
+    const NOTHING_TO_PREVIEW: [&str; 35] = [
+        "EditBoolean",
+        "BreakBoolean",
         "ShrinkTrimmedSrf",
         "Silhouette",
         "UnrollSrf",
@@ -1409,6 +1414,18 @@ pub(crate) fn changed(
                 });
             } else {
                 made.replace.push((object.id, shape));
+                // A live boolean's inputs move with it, so it stays live.
+                if object.live.is_some() && !cx.previewing {
+                    for input in cx
+                        .doc
+                        .state()
+                        .objects
+                        .iter()
+                        .filter(|o| o.input_of == Some(object.id))
+                    {
+                        made.replace.push((input.id, change.shape(&input.shape)));
+                    }
+                }
             }
         }
     }
