@@ -11,6 +11,8 @@ pub use edges::{EdgePick, FacePick};
 mod grips;
 mod history;
 pub use grips::Grip;
+pub mod blocks;
+pub use blocks::{BlockDefinition, BlockEdit, Instance, PLACED_AS_IS, Placement};
 mod layers;
 mod live;
 pub use live::{LiveBoolean, LiveHow};
@@ -76,6 +78,8 @@ struct StoredObject {
     curve: Option<Curve>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     body: Option<Body>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    instance: Option<crate::blocks::Instance>,
     #[serde(default)]
     layer: u64,
     #[serde(default)]
@@ -100,9 +104,10 @@ impl TryFrom<StoredObject> for Object {
     type Error = String;
 
     fn try_from(stored: StoredObject) -> Result<Self, String> {
-        let shape = match (stored.curve, stored.body) {
-            (Some(curve), None) => Shape::Curve(curve),
-            (None, Some(body)) => Shape::Body(body),
+        let shape = match (stored.curve, stored.body, stored.instance) {
+            (Some(curve), None, None) => Shape::Curve(curve),
+            (None, Some(body), None) => Shape::Body(body),
+            (None, None, Some(instance)) => Shape::Instance(instance),
             _ => return Err(format!("object {} needs a curve or a body", stored.id)),
         };
         Ok(Self {
@@ -123,14 +128,16 @@ impl TryFrom<StoredObject> for Object {
 
 impl From<Object> for StoredObject {
     fn from(object: Object) -> Self {
-        let (curve, body) = match object.shape {
-            Shape::Curve(curve) => (Some(curve), None),
-            Shape::Body(body) => (None, Some(body)),
+        let (curve, body, instance) = match object.shape {
+            Shape::Curve(curve) => (Some(curve), None, None),
+            Shape::Body(body) => (None, Some(body), None),
+            Shape::Instance(instance) => (None, None, Some(instance)),
         };
         Self {
             id: object.id,
             curve,
             body,
+            instance,
             layer: object.layer,
             hidden: object.hidden,
             name: object.name,
@@ -244,6 +251,15 @@ pub struct State {
     /// The id the next group receives.
     #[serde(default)]
     pub next_group: u64,
+    /// The block definitions.
+    #[serde(default)]
+    pub blocks: Vec<crate::blocks::BlockDefinition>,
+    /// The id the next block definition receives.
+    #[serde(default)]
+    pub next_block: u64,
+    /// A block definition being edited in place.
+    #[serde(default)]
+    pub block_edit: Option<crate::blocks::BlockEdit>,
 }
 
 /// The unit a model is drawn in (spec `docs/specs/ui-look-and-layout.md` §7).
@@ -286,6 +302,9 @@ impl Default for State {
             next_layer: first_new_layer(),
             unit: Unit::Millimetres,
             next_group: 0,
+            blocks: Vec::new(),
+            next_block: 0,
+            block_edit: None,
         }
     }
 }

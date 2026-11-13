@@ -146,6 +146,8 @@ impl Recipe for Paraboloid {
 /// The lowest and highest corners around an object.
 fn bounds_of(shape: &Shape) -> Option<(Point, Point)> {
     match shape {
+        // An instance's extent needs its definition; commands that use this leave it out.
+        Shape::Instance(_) => None,
         Shape::Body(body) => body.bounds().ok(),
         Shape::Curve(curve) => {
             let points = curve.sample().ok()?;

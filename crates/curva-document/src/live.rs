@@ -40,6 +40,7 @@ fn print_of(shapes: &[&Shape]) -> u64 {
         let text = match shape {
             Shape::Curve(c) => serde_json::to_string(c),
             Shape::Body(b) => serde_json::to_string(b),
+            Shape::Instance(i) => serde_json::to_string(i),
         };
         text.unwrap_or_default().hash(&mut hasher);
     }

@@ -168,6 +168,9 @@ pub struct Outlines {
     filter: PickFilter,
 }
 
+/// Mesh-cache keys from here up are instances' parts.
+const INSTANCE_KEYS: u64 = 1 << 52;
+
 /// Meshes of bodies already worked out, so a body is meshed again only when it changes.
 #[derive(Debug, Default)]
 pub struct MeshCache {
@@ -197,8 +200,15 @@ impl MeshCache {
     /// core, so that opening a model of many solids does not mesh them one by one.
     fn refresh(&mut self, state: &State) {
         use rayon::prelude::*;
-        self.held
-            .retain(|id, _| state.objects.iter().any(|object| object.id == *id));
+        // Keys at or above INSTANCE_KEYS are the parts of instances, keyed by their object.
+        self.held.retain(|key, _| {
+            let id = if *key >= INSTANCE_KEYS {
+                (*key - INSTANCE_KEYS) >> 12
+            } else {
+                *key
+            };
+            state.objects.iter().any(|object| object.id == id)
+        });
         let wanted: Vec<(u64, &curva_kernel::Body)> = state
             .objects
             .iter()
@@ -238,62 +248,78 @@ impl Outlines {
             let colour = layer.map_or(CURVE_COLOUR, |l| l.colour);
             let locked = object.locked || layer.is_some_and(|l| l.locked);
             let width = object.print_width.resolved(layer);
-            // A body is meshed once: its triangles for shading, and its edges, each listed
-            // under the body's id, for wireframe, picking and snapping.
-            let mut kind = PickKind::Curve;
-            let pieces: Vec<(Curve, Option<usize>)> = match &object.shape {
-                Shape::Curve(curve) => {
-                    if matches!(curve, Curve::Point { .. }) {
-                        kind = PickKind::Point;
+            // An instance draws its definition's objects, placed, all under its own id.
+            let parts: Vec<(Shape, u64)> = match &object.shape {
+                Shape::Instance(instance) => state
+                    .instance_shapes(instance)
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, (shape, _))| {
+                        (shape, INSTANCE_KEYS + (object.id << 12) + index as u64)
+                    })
+                    .collect(),
+                shape => vec![(shape.clone(), object.id)],
+            };
+            for (shape, key) in &parts {
+                // A body is meshed once: its triangles for shading, and its edges, each listed
+                // under the body's id, for wireframe, picking and snapping.
+                let mut kind = PickKind::Curve;
+                let pieces: Vec<(Curve, Option<usize>)> = match shape {
+                    Shape::Curve(curve) => {
+                        if matches!(curve, Curve::Point { .. }) {
+                            kind = PickKind::Point;
+                        }
+                        vec![(curve.clone(), None)]
                     }
-                    vec![(curve.clone(), None)]
-                }
-                Shape::Body(body) => {
-                    let Some((mesh, solid)) = cache.mesh(object.id, body) else {
+                    Shape::Body(body) => {
+                        let Some((mesh, solid)) = cache.mesh(*key, body) else {
+                            continue;
+                        };
+                        kind = if solid {
+                            PickKind::Solid
+                        } else {
+                            PickKind::Surface
+                        };
+                        let edges = mesh
+                            .edges
+                            .iter()
+                            .zip(&mesh.edge_ids)
+                            .filter_map(|(run, id)| match run.len() {
+                                0 | 1 => None,
+                                2 => Curve::line(run[0], run[1]).ok().map(|c| (c, Some(*id))),
+                                _ => Curve::polyline(run.clone(), false)
+                                    .ok()
+                                    .map(|c| (c, Some(*id))),
+                            })
+                            .collect();
+                        outlines.faces.push(Faces {
+                            id: object.id,
+                            colour,
+                            locked,
+                            around: mesh_box(&mesh),
+                            mesh,
+                        });
+                        edges
+                    }
+                    // Instances inside definitions are opened before this.
+                    Shape::Instance(_) => continue,
+                };
+                for (outline, edge) in pieces {
+                    let Ok(points) = outline.sample() else {
                         continue;
                     };
-                    kind = if solid {
-                        PickKind::Solid
-                    } else {
-                        PickKind::Surface
-                    };
-                    let edges = mesh
-                        .edges
-                        .iter()
-                        .zip(&mesh.edge_ids)
-                        .filter_map(|(run, id)| match run.len() {
-                            0 | 1 => None,
-                            2 => Curve::line(run[0], run[1]).ok().map(|c| (c, Some(*id))),
-                            _ => Curve::polyline(run.clone(), false)
-                                .ok()
-                                .map(|c| (c, Some(*id))),
-                        })
-                        .collect();
-                    outlines.faces.push(Faces {
-                        id: object.id,
-                        colour,
-                        locked,
-                        around: mesh_box(&mesh),
-                        mesh,
-                    });
-                    edges
+                    outlines.sites.extend(snap::sites_of(&outline, &points));
+                    let first = points.first().copied().unwrap_or_default();
+                    let around = snap::box_around(&points).unwrap_or((first, first));
+                    outlines.boxes.push(around);
+                    outlines.colours.push(colour);
+                    outlines.locked.push(locked);
+                    outlines.widths.push(width);
+                    outlines.on_faces.push(shape.body().is_some());
+                    outlines.edge_of.push(edge);
+                    outlines.kinds.push(kind);
+                    outlines.objects.push((object.id, points));
                 }
-            };
-            for (outline, edge) in pieces {
-                let Ok(points) = outline.sample() else {
-                    continue;
-                };
-                outlines.sites.extend(snap::sites_of(&outline, &points));
-                let first = points.first().copied().unwrap_or_default();
-                let around = snap::box_around(&points).unwrap_or((first, first));
-                outlines.boxes.push(around);
-                outlines.colours.push(colour);
-                outlines.locked.push(locked);
-                outlines.widths.push(width);
-                outlines.on_faces.push(object.shape.body().is_some());
-                outlines.edge_of.push(edge);
-                outlines.kinds.push(kind);
-                outlines.objects.push((object.id, points));
             }
         }
         outlines

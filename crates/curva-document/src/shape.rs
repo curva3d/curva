@@ -9,6 +9,8 @@ pub enum Shape {
     Curve(Curve),
     /// A surface or solid.
     Body(Body),
+    /// A placed copy of a block definition.
+    Instance(crate::blocks::Instance),
 }
 
 impl Shape {
@@ -17,7 +19,7 @@ impl Shape {
     pub fn curve(&self) -> Option<&Curve> {
         match self {
             Self::Curve(curve) => Some(curve),
-            Self::Body(_) => None,
+            Self::Body(_) | Self::Instance(_) => None,
         }
     }
 
@@ -26,7 +28,7 @@ impl Shape {
     pub fn body(&self) -> Option<&Body> {
         match self {
             Self::Body(body) => Some(body),
-            Self::Curve(_) => None,
+            Self::Curve(_) | Self::Instance(_) => None,
         }
     }
 
@@ -36,6 +38,10 @@ impl Shape {
         match self {
             Self::Curve(curve) => Self::Curve(curve.translated(by)),
             Self::Body(body) => Self::Body(body.translated(by)),
+            Self::Instance(i) => Self::Instance(crate::blocks::Instance {
+                definition: i.definition,
+                placement: crate::blocks::followed_by(&i.placement, &crate::blocks::moved_by(by)),
+            }),
         }
     }
 
@@ -45,6 +51,13 @@ impl Shape {
         match self {
             Self::Curve(curve) => Self::Curve(curve.mapped(change)),
             Self::Body(body) => Self::Body(body.mapped(change)),
+            Self::Instance(i) => Self::Instance(crate::blocks::Instance {
+                definition: i.definition,
+                placement: crate::blocks::followed_by(
+                    &i.placement,
+                    &crate::blocks::of_similarity(change),
+                ),
+            }),
         }
     }
 
@@ -54,6 +67,8 @@ impl Shape {
         match self {
             Self::Curve(curve) => vec![curve.clone()],
             Self::Body(body) => body.edge_curves().unwrap_or_default(),
+            // An instance's lines come from its definition, which the document resolves.
+            Self::Instance(_) => Vec::new(),
         }
     }
 }

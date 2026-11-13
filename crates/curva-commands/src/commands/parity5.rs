@@ -48,6 +48,8 @@ fn first_point(cx: &Context<'_>, index: usize) -> Option<Point> {
 /// The lowest and highest corners of a shape.
 fn bounds_of(shape: &Shape) -> Option<(Point, Point)> {
     match shape {
+        // An instance's extent needs its definition; commands that use this leave it out.
+        Shape::Instance(_) => None,
         Shape::Body(body) => body.bounds().ok(),
         Shape::Curve(curve) => {
             let points = curve.sample().ok()?;

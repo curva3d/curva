@@ -179,6 +179,7 @@ impl<'a> Session<'a> {
                     Shape::Curve(curve) => (kind_of(curve), curve.length().ok(), None),
                     Shape::Body(body) if body.is_solid() => ("solid", None, body.volume().ok()),
                     Shape::Body(_) => ("surface", None, None),
+                    Shape::Instance(_) => ("block instance", None, None),
                 };
                 json!({
                     "id": object.id,

@@ -76,6 +76,8 @@ fn deform_all(
         let shape = match &object.shape {
             Shape::Curve(c) => Shape::Curve(c.deformed(map).map_err(|e| failed(&e))?),
             Shape::Body(b) => Shape::Body(b.deformed(map).map_err(|e| failed(&e))?),
+            // A block is deformed by exploding it first, as in Rhino.
+            Shape::Instance(_) => continue,
         };
         made.replace.push((object.id, shape));
     }
@@ -555,6 +557,7 @@ impl Recipe for CageEdit {
             let points: Vec<Point> = match &object.shape {
                 Shape::Curve(c) => c.sample().unwrap_or_default(),
                 Shape::Body(b) => b.bounds().map(|(l, h)| vec![l, h]).unwrap_or_default(),
+                Shape::Instance(_) => Vec::new(),
             };
             for p in points {
                 for k in 0..3 {

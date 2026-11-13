@@ -576,10 +576,8 @@ impl Recipe for Shear {
             .iter()
             .filter(|o| objects(cx, 0).contains(&o.id))
         {
-            let shape = match &object.shape {
-                Shape::Curve(c) => Shape::Curve(c.mapped_affine(map).map_err(|e| failed(&e))?),
-                Shape::Body(b) => Shape::Body(b.transformed(map).map_err(|e| failed(&e))?),
-            };
+            let shape = curva_document::blocks::shape_placed(&object.shape, &map)
+                .ok_or_else(|| Message::new("error.shear_failed"))?;
             made.replace.push((object.id, shape));
         }
         made.message = Some(Message::with(

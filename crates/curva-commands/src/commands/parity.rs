@@ -534,6 +534,15 @@ impl Recipe for What {
             .iter()
             .filter(|o| ids.contains(&o.id))
             .map(|o| match &o.shape {
+                Shape::Instance(i) => {
+                    let name = cx
+                        .doc
+                        .definitions()
+                        .iter()
+                        .find(|d| d.id == i.definition)
+                        .map_or("?", |d| d.name.as_str());
+                    format!("block instance of {name}")
+                }
                 Shape::Curve(curve) => {
                     let kind = match curve {
                         Curve::Point { at } => {

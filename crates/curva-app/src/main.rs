@@ -1685,6 +1685,8 @@ impl Curva {
                             curve.stretched(origin, axis, factor).map(Shape::Curve)
                         }
                         Shape::Body(body) => body.stretched(origin, axis, factor).map(Shape::Body),
+                        // A block stays a block: its stretch is skipped.
+                        Shape::Instance(_) => continue,
                     };
                     match stretched {
                         Ok(made) => self.doc.replace_shape(id, made),
@@ -2052,6 +2054,18 @@ impl Curva {
             && let Some(object) = self.doc.state().objects.iter().find(|o| o.id == *only)
         {
             match &object.shape {
+                Shape::Instance(instance) => {
+                    let name = self
+                        .doc
+                        .definitions()
+                        .iter()
+                        .find(|d| d.id == instance.definition)
+                        .map_or_else(String::new, |d| d.name.clone());
+                    ui.label(
+                        self.text
+                            .render(&Message::with("ui.properties.instance", vec![name])),
+                    );
+                }
                 Shape::Curve(curve) => {
                     ui.label(self.text.render(&Message::new(curve_kind(curve))));
                     if let Ok(length) = curve.length() {
@@ -4858,6 +4872,7 @@ fn gumball_extruded(
         }
         Shape::Body(body) if !body.is_solid() => Some(body.extruded_straight(axis, distance)),
         Shape::Body(_) => None,
+        Shape::Instance(_) => None,
     }
 }
 
