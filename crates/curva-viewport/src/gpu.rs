@@ -89,6 +89,56 @@ struct Out {
     return vec4<f32>(input.colour * (0.25 + 0.5 * facing + 0.2 * above), 1.0);
 }";
 
+/// Draft analysis: faces coloured by their angle to the horizontal, against world up: green with
+/// more than 5° of draft, red undercut by more than 5°, yellow between, lit as usual.
+const DRAFT_FACE_SHADER: &str = "
+struct Uniforms { matrix: mat4x4<f32>, light: vec4<f32> };
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+struct Out {
+    @builtin(position) position: vec4<f32>,
+    @location(0) normal: vec3<f32>,
+    @location(1) colour: vec3<f32>,
+};
+@vertex fn vertex_main(
+    @location(0) p: vec3<f32>, @location(1) n: vec3<f32>, @location(2) c: vec3<f32>,
+) -> Out {
+    return Out(uniforms.matrix * vec4<f32>(p, 1.0), n, c);
+}
+@fragment fn fragment_main(input: Out) -> @location(0) vec4<f32> {
+    let n = normalize(input.normal);
+    let angle = degrees(asin(clamp(n.z, -1.0, 1.0)));
+    var colour = vec3<f32>(0.95, 0.8, 0.2);
+    if (angle >= 5.0) { colour = vec3<f32>(0.3, 0.8, 0.35); }
+    if (angle <= -5.0) { colour = vec3<f32>(0.9, 0.25, 0.2); }
+    let facing = abs(dot(n, uniforms.light.xyz));
+    return vec4<f32>(colour * (0.45 + 0.55 * facing), 1.0);
+}";
+
+/// Zebra stripes: black and white bands from the reflection of the view in each face, so a break
+/// in smoothness shows as a kink in the bands.
+const ZEBRA_FACE_SHADER: &str = "
+struct Uniforms { matrix: mat4x4<f32>, light: vec4<f32> };
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+struct Out {
+    @builtin(position) position: vec4<f32>,
+    @location(0) normal: vec3<f32>,
+    @location(1) colour: vec3<f32>,
+};
+@vertex fn vertex_main(
+    @location(0) p: vec3<f32>, @location(1) n: vec3<f32>, @location(2) c: vec3<f32>,
+) -> Out {
+    return Out(uniforms.matrix * vec4<f32>(p, 1.0), n, c);
+}
+@fragment fn fragment_main(input: Out) -> @location(0) vec4<f32> {
+    var n = normalize(input.normal);
+    let view = uniforms.light.xyz;
+    if (dot(n, view) > 0.0) { n = -n; }
+    let r = reflect(view, n);
+    let band = fract(r.z * 5.0);
+    let shade = select(0.08, 0.95, band < 0.5);
+    return vec4<f32>(vec3<f32>(shade), 1.0);
+}";
+
 /// As [`FACE_SHADER`], but see-through at half strength, for the Ghosted display mode.
 const GHOST_FACE_SHADER: &str = "
 struct Uniforms { matrix: mat4x4<f32>, light: vec4<f32> };
@@ -235,6 +285,8 @@ struct ViewSlot {
     scene: Option<Uploaded<Vertex>>,
     shaded: bool,
     ghosted: bool,
+    zebra: bool,
+    draft: bool,
 }
 
 /// The graphics card's side of the viewport.
@@ -243,6 +295,8 @@ pub struct LineRenderer {
     lines: wgpu::RenderPipeline,
     faces: wgpu::RenderPipeline,
     ghost_faces: wgpu::RenderPipeline,
+    zebra_faces: wgpu::RenderPipeline,
+    draft_faces: wgpu::RenderPipeline,
     slots: Vec<ViewSlot>,
     surfaces: Option<Uploaded<MeshVertex>>,
     overlay: Option<Uploaded<Vertex>>,
@@ -473,6 +527,8 @@ impl LineRenderer {
                     scene: None,
                     shaded: false,
                     ghosted: false,
+                    zebra: false,
+                    draft: false,
                 }
             })
             .collect();
@@ -550,12 +606,44 @@ impl LineRenderer {
                 per_instance: false,
             },
         );
+        let zebra_faces = pipeline(
+            device,
+            format,
+            &pipeline_layout,
+            &PipelineParts {
+                label: "curva zebra faces",
+                shader: ZEBRA_FACE_SHADER,
+                stride: FACE_VERTEX_SIZE,
+                attributes: &face_attributes,
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                bias: FACE_DEPTH_BIAS,
+                see_through: false,
+                per_instance: false,
+            },
+        );
+        let draft_faces = pipeline(
+            device,
+            format,
+            &pipeline_layout,
+            &PipelineParts {
+                label: "curva draft faces",
+                shader: DRAFT_FACE_SHADER,
+                stride: FACE_VERTEX_SIZE,
+                attributes: &face_attributes,
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                bias: FACE_DEPTH_BIAS,
+                see_through: false,
+                per_instance: false,
+            },
+        );
         let background = Background::new(device, format);
         Self {
             grid,
             lines,
             faces,
             ghost_faces,
+            zebra_faces,
+            draft_faces,
             background,
             slots,
             surfaces: None,
@@ -589,6 +677,8 @@ impl LineRenderer {
         );
         slot.shaded = drawing.shaded;
         slot.ghosted = drawing.ghosted;
+        slot.zebra = drawing.zebra;
+        slot.draft = drawing.draft;
         if stale(&slot.grid, &drawing.grid) {
             slot.grid = Some(upload(
                 device,
@@ -654,7 +744,17 @@ impl LineRenderer {
             && !slot.ghosted
             && let Some(faces) = faces
         {
-            draw_faces(pass, &self.faces, faces);
+            draw_faces(
+                pass,
+                if slot.zebra {
+                    &self.zebra_faces
+                } else if slot.draft {
+                    &self.draft_faces
+                } else {
+                    &self.faces
+                },
+                faces,
+            );
         }
         // The grid stays a pixel wide; the model's lines have their own widths.
         if let Some(grid) = slot.grid.as_ref().filter(|lines| lines.count > 0) {
@@ -715,6 +815,10 @@ pub struct Drawing {
     pub shaded: bool,
     /// Whether shaded faces are see-through, for the Ghosted display mode.
     pub ghosted: bool,
+    /// Whether shaded faces show zebra stripes.
+    pub zebra: bool,
+    /// Whether shaded faces show their draft angles.
+    pub draft: bool,
     /// Where the view is in the window, in points.
     pub area: epaint::Rect,
     /// The window's frame number, so the first view drawn in a frame clears the scene texture.
@@ -896,6 +1000,8 @@ pub fn save_picture(
         light: picture.light,
         shaded,
         ghosted: picture.ghosted,
+        zebra: false,
+        draft: false,
         area: epaint::Rect::NOTHING,
         frame: 0,
         background: epaint::Color32::BLACK,

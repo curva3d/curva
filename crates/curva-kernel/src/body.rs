@@ -376,7 +376,7 @@ impl Body {
     /// The body with the edges numbered `edges` (as in [`BodyMesh::edge_ids`]) rounded to
     /// `size`, or with `chamfer`, bevelled by it.
     pub fn blended(&self, edges: &[usize], size: f64, chamfer: bool) -> Result<Self, KernelError> {
-        use solidcore_ops::{Blend, Corners, Turn, blend_ordered};
+        use solidcore_ops::{Blend, BlendOptions, Corners, Turn, blend_ordered};
         let unplaced = self.unplaced().engine()?;
         let (_, order) = unplaced
             .to_record()
@@ -394,7 +394,10 @@ impl Body {
             &[size],
             &[],
             Corners::Filled,
-            Turn::Mitre,
+            BlendOptions {
+                turn: Turn::Mitre,
+                ..BlendOptions::default()
+            },
         )
         .map_err(|e| failed(if chamfer { "chamfering" } else { "filleting" }, e))?;
         Ok(Self {

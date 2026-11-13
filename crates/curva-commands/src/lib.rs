@@ -217,6 +217,8 @@ pub enum ViewRequest {
     SaveView(String),
     /// Show the view saved under this name in the last-used viewport.
     RestoreView(String),
+    /// Save the last-used viewport's construction plane under this name.
+    SaveCPlane(String),
     /// Go back to the last-used viewport's view before the latest camera move.
     UndoView,
     /// Go forward again through views stepped back from.
@@ -244,6 +246,12 @@ pub enum ViewRequest {
     Display(DisplayMode),
     /// Turn the last-used viewport to look straight down on its construction plane.
     Plan,
+    /// Open the Blocks panel.
+    ShowBlocks,
+    /// Show or stop showing draft analysis colours on the last-used viewport.
+    DraftAnalysis,
+    /// Show or stop showing zebra stripes on the last-used viewport's shaded faces.
+    Zebra,
     /// Show or hide the selection filter row in the status bar.
     ShowSelectionFilter,
     /// Turn the selection filter off or back on, keeping its ticks.

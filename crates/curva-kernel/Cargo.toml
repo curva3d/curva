@@ -12,12 +12,13 @@ workspace = true
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-solidcore = { git = "https://github.com/tangency-labs/solidcore", rev = "c440e5f892452a9654aee8f3030de6095fdb1415" }
+solidcore = { git = "https://github.com/tangency-labs/solidcore", rev = "9342f32c0770aeaa570dba596e4ed2b7fe327849" }
 # The engine's body operations, its portable record of bodies (which files store) and its
 # display meshes. Same project and licence as solidcore.
-solidcore-ops = { git = "https://github.com/tangency-labs/solidcore", rev = "c440e5f892452a9654aee8f3030de6095fdb1415" }
-solidcore-record = { git = "https://github.com/tangency-labs/solidcore", rev = "c440e5f892452a9654aee8f3030de6095fdb1415" }
-solidcore-tess = { git = "https://github.com/tangency-labs/solidcore", rev = "c440e5f892452a9654aee8f3030de6095fdb1415" }
+solidcore-ops = { git = "https://github.com/tangency-labs/solidcore", rev = "9342f32c0770aeaa570dba596e4ed2b7fe327849" }
+solidcore-record = { git = "https://github.com/tangency-labs/solidcore", rev = "9342f32c0770aeaa570dba596e4ed2b7fe327849" }
+solidcore-tess = { git = "https://github.com/tangency-labs/solidcore", rev = "9342f32c0770aeaa570dba596e4ed2b7fe327849" }
+skrifa = "0.50.0"
 
 [dev-dependencies]
 serde_json = { version = "1", features = ["float_roundtrip"] }

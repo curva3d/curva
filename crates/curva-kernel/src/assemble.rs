@@ -100,107 +100,11 @@ fn merged(records: &[Record]) -> Result<Record, KernelError> {
     Ok(out)
 }
 
-/// Only the faces `keep` of a record, with the edges and points they use, as one open shell.
-fn subset(record: &Record, keep: &[usize]) -> Result<Record, KernelError> {
-    let mut face_map = vec![None; record.faces.len()];
-    let mut kept_faces = Vec::new();
-    for &index in keep {
-        if index < record.faces.len() && face_map[index].is_none() {
-            face_map[index] = Some(kept_faces.len() as u32);
-            kept_faces.push(index);
-        }
-    }
-    if kept_faces.is_empty() {
-        return Err(KernelError("no faces to keep".to_owned()));
-    }
-    // Which way each kept face is used, from the shell that held it.
-    let mut forward = vec![true; record.faces.len()];
-    for shell in &record.shells {
-        if let Shell::Faces { faces, .. } = shell {
-            for f in faces {
-                forward[f.face as usize] = f.forward;
-            }
-        }
-    }
-    let mut edge_map = vec![None; record.edges.len()];
-    let mut vertex_map = vec![None; record.vertices.len()];
-    let mut out = Record {
-        version: record.version,
-        tolerance: record.tolerance,
-        regions: vec![Region {
-            shells: vec![0],
-            void: false,
-        }],
-        shells: Vec::new(),
-        faces: Vec::new(),
-        edges: Vec::new(),
-        vertices: Vec::new(),
-    };
-    let vertex = |old: u32, out: &mut Record, map: &mut Vec<Option<u32>>| -> u32 {
-        if let Some(new) = map[old as usize] {
-            return new;
-        }
-        let new = out.vertices.len() as u32;
-        out.vertices.push(record.vertices[old as usize].clone());
-        map[old as usize] = Some(new);
-        new
-    };
-    for &index in &kept_faces {
-        let mut face = record.faces[index].clone();
-        for lp in &mut face.loops {
-            match lp {
-                Loop::Edges { edges } => {
-                    for e in edges {
-                        let old = e.edge as usize;
-                        let new = if let Some(new) = edge_map[old] {
-                            new
-                        } else {
-                            let mut edge = record.edges[old].clone();
-                            for v in &mut edge.vertices {
-                                *v = vertex(*v, &mut out, &mut vertex_map);
-                            }
-                            edge.uses = edge
-                                .uses
-                                .iter()
-                                .filter_map(|used| {
-                                    face_map[used.face as usize].map(|face| {
-                                        let mut used = *used;
-                                        used.face = face;
-                                        used
-                                    })
-                                })
-                                .collect();
-                            let new = out.edges.len() as u32;
-                            out.edges.push(edge);
-                            edge_map[old] = Some(new);
-                            new
-                        };
-                        e.edge = new;
-                    }
-                }
-                Loop::Vertex { vertex: v } => *v = vertex(*v, &mut out, &mut vertex_map),
-            }
-        }
-        out.faces.push(face);
-    }
-    out.shells.push(Shell::Faces {
-        faces: kept_faces
-            .iter()
-            .enumerate()
-            .map(|(new, &old)| solidcore_record::brep::OrientedFace {
-                face: new as u32,
-                forward: forward[old],
-            })
-            .collect(),
-        wires: Vec::new(),
-    });
-    Ok(out)
-}
-
 impl Body {
     /// The faces of all `parts` as one body, sewn where their edges meet within
     /// [`SEW_TOLERANCE`]; faces that close round a space make a solid.
     pub fn assembled(parts: &[Body]) -> Result<Body, KernelError> {
+        // CUSTOM KERNEL OPERATION: face-assembly
         let records = parts
             .iter()
             .map(Body::record)
@@ -214,10 +118,18 @@ impl Body {
     /// Only the faces numbered `keep` (as in [`crate::BodyMesh::triangle_faces`]), as a surface
     /// of their own.
     pub fn faces_only(&self, keep: &[usize]) -> Result<Body, KernelError> {
-        let body = engine_body(&subset(&self.record()?, keep)?)?;
-        let (sewn, _) = solidcore_ops::stitch::stitch(body, SEW_TOLERANCE)
-            .map_err(|e| failed("sewing faces", e))?;
-        Ok(Body::from_native(native_of(&sewn)?))
+        // The engine's face removal, of every face not kept.
+        let count = self.face_count()?;
+        let others: Vec<usize> = (0..count).filter(|face| !keep.contains(face)).collect();
+        if others.is_empty() {
+            return Ok(self.clone());
+        }
+        self.without_faces(&others)
+    }
+
+    /// How many edges its record has.
+    pub fn record_edge_count(&self) -> usize {
+        self.record().map_or(0, |r| r.edges.len())
     }
 
     /// How many faces it has.
@@ -258,6 +170,7 @@ impl Body {
         direction: crate::Point,
         distance: f64,
     ) -> Result<Body, KernelError> {
+        // CUSTOM KERNEL OPERATION: straight-extrusion
         let along = crate::unit(direction)
             .ok_or_else(|| KernelError("the direction has no length".to_owned()))?;
         let by = along.map(|v| v * distance);
@@ -276,9 +189,51 @@ impl Body {
     }
 }
 
+impl Body {
+    /// The open borders of a surface or polysurface closed with flat faces where they are flat,
+    /// as Rhino's Cap; a closed result is a solid.
+    pub fn capped(&self) -> Result<Body, KernelError> {
+        // CUSTOM KERNEL OPERATION: planar-capping
+        let edges = self.naked_edges()?;
+        if edges.is_empty() {
+            return Ok(self.clone());
+        }
+        let curves = edges
+            .into_iter()
+            .map(|edge| self.edge_curve(edge))
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut parts = vec![self.clone()];
+        for outline in crate::join_all(&curves)? {
+            if outline.is_closed()?
+                && let Ok(lid) = Body::planar(&[outline])
+            {
+                parts.push(lid);
+            }
+        }
+        if parts.len() == 1 {
+            return Err(KernelError(
+                "no open border is flat, so nothing was capped".to_owned(),
+            ));
+        }
+        Body::assembled(&parts)
+    }
+}
 #[cfg(test)]
 mod tests {
     use crate::{Body, Curve};
+
+    fn square_curve(size: f64) -> Curve {
+        Curve::polyline(
+            vec![
+                [0.0, 0.0, 0.0],
+                [size, 0.0, 0.0],
+                [size, size, 0.0],
+                [0.0, size, 0.0],
+            ],
+            true,
+        )
+        .unwrap()
+    }
 
     fn square(size: f64) -> Body {
         let outline = Curve::polyline(
@@ -327,6 +282,19 @@ mod tests {
         // Every vertical line through the base meets 3 of material: 10 × 8 × 3.
         let volume = solid.volume().unwrap();
         assert!((volume - 240.0).abs() < 0.5, "{volume}");
+    }
+
+    #[test]
+    fn an_open_tube_is_capped_into_a_solid() {
+        let tube = Body::extruded(&[square_curve(2.0)], [0.0, 0.0, 1.0], 3.0, false).unwrap();
+        assert!(!tube.is_solid());
+        let closed = tube.capped().unwrap();
+        assert!(closed.is_solid());
+        assert!(
+            (closed.volume().unwrap() - 12.0).abs() < 1e-6,
+            "{}",
+            closed.volume().unwrap()
+        );
     }
 
     #[test]

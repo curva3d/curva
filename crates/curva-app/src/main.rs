@@ -42,6 +42,9 @@ const BOX_MIN_DRAG: f32 = 6.0;
 const BOX_EDGE: egui::Color32 = egui::Color32::from_rgb(230, 230, 235);
 const BOX_FILL: egui::Color32 = egui::Color32::from_rgba_premultiplied(30, 40, 60, 40);
 const SNAP_MARKER_SIZE: f32 = 10.0;
+/// What Curva puts on the system clipboard when it copies objects, so that the next Ctrl+V
+/// (which the window only reports as a paste of text) is known to be theirs.
+const CLIPBOARD_MARK: &str = "Curva objects (paste them into Curva with Ctrl+V)";
 /// How long the pointer rests on a snap point to hold it, or let it go, in seconds.
 const HOLD_AFTER: f64 = 0.5;
 /// Spacing and size of the circles in a benchmark scene, in millimetres.
@@ -115,6 +118,7 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "Spiral",
             "Parabola",
             "Conic",
+            "TextObject",
             "Hyperbola",
             "HandleCurve",
             "Sketch",
@@ -155,6 +159,26 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "DupEdge",
             "DupBorder",
             "ExtractSrf",
+            "EdgeSrf",
+            "NetworkSrf",
+            "Patch",
+            "ExtendSrf",
+            "Untrim",
+            "RebuildUV",
+            "Project",
+            "Pull",
+            "DupFaceBorder",
+            "Sweep2",
+            "BlendSrf",
+            "MatchSrf",
+            "SplitSrf",
+            "ShrinkTrimmedSrf",
+            "ExtractIsocurve",
+            "InterpCrvOnSrf",
+            "OffsetCrvOnSrf",
+            "UnrollSrf",
+            "FilletSrf",
+            "ChamferSrf",
         ],
     ),
     (
@@ -176,6 +200,10 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "Shell",
             "MergeAllFaces",
             "Wirecut",
+            "MoveFace",
+            "PushPull",
+            "Cap",
+            "ExtrudeFace",
             "Volume",
         ],
     ),
@@ -199,8 +227,31 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "ArrayLinear",
             "Align",
             "Distribute",
+            "Shear",
+            "Twist",
+            "Bend",
+            "Taper",
+            "Flow",
+            "CageEdit",
             "Group",
             "Ungroup",
+            "EditBoolean",
+            "BreakBoolean",
+            "Block",
+            "Insert",
+            "BlockManager",
+            "BlockEdit",
+            "ExplodeBlock",
+            "ChangeLayer",
+            "MatchProperties",
+            "Linetype",
+            "PrintWidth",
+            "SetUserText",
+            "GetUserText",
+            "Purge",
+            "LockSwap",
+            "BringToFront",
+            "SendToBack",
             "Lock",
             "Unlock",
         ],
@@ -220,6 +271,15 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "AreaCentroid",
             "VolumeCentroid",
             "ShowEdges",
+            "CurvatureGraph",
+            "Section",
+            "Contour",
+            "Intersect",
+            "Silhouette",
+            "Zebra",
+            "DraftAnalysis",
+            "Count",
+            "Audit",
             "Plan",
         ],
     ),
@@ -292,6 +352,10 @@ struct Curva {
     gumball_drag: Option<GumballDrag>,
     /// While Sketch draws with the button held: where the last point was fed, and how many.
     sketch_stroke: Option<(egui::Pos2, usize)>,
+    /// When each linked block's file was last read, to read it again when it changes.
+    linked_seen: std::collections::HashMap<String, std::time::SystemTime>,
+    /// Whether the window had focus last frame.
+    window_had_focus: bool,
     /// A gumball handle clicked without a drag, and the value being typed for it.
     gumball_typing: Option<(Handle, String)>,
     /// Whether Alt is held this frame, which turns object snaps off for the moment.
@@ -577,6 +641,10 @@ struct Pane {
     named: Option<String>,
     /// How it draws surfaces and solids: by their edges, filled in and lit, or see-through.
     display: DisplayMode,
+    /// Whether shaded faces show zebra stripes (`Zebra`).
+    zebra: bool,
+    /// Whether shaded faces show draft angles (`DraftAnalysis`).
+    draft: bool,
     /// Views to step back to with `UndoView`, newest last, and the view they were left from.
     views_back: Vec<Camera>,
     /// Views stepped back from, for `RedoView`, newest last.
@@ -636,6 +704,8 @@ impl Pane {
             } else {
                 DisplayMode::Wireframe
             },
+            zebra: false,
+            draft: false,
         }
     }
 }
@@ -872,6 +942,8 @@ impl Curva {
             waiting_approval: None,
             gumball_drag: None,
             sketch_stroke: None,
+            linked_seen: std::collections::HashMap::new(),
+            window_had_focus: false,
             gumball_typing: None,
             alt_held: false,
             snaps: SnapSet::default(),
@@ -1627,8 +1699,13 @@ impl Curva {
         }
         let selection = self.doc.selection();
         match change {
-            GumballChange::Move(by) => self.doc.translate(&selection, by),
-            GumballChange::Turn(turn) => self.doc.transform(&selection, &turn),
+            // Live booleans' inputs move with them, so they stay live.
+            GumballChange::Move(by) => self
+                .doc
+                .translate(&self.doc.with_live_inputs(&selection), by),
+            GumballChange::Turn(turn) => self
+                .doc
+                .transform(&self.doc.with_live_inputs(&selection), &turn),
             GumballChange::Stretch {
                 origin,
                 axis,
@@ -1640,6 +1717,8 @@ impl Curva {
                             curve.stretched(origin, axis, factor).map(Shape::Curve)
                         }
                         Shape::Body(body) => body.stretched(origin, axis, factor).map(Shape::Body),
+                        // A block stays a block: its stretch is skipped.
+                        Shape::Instance(_) => continue,
                     };
                     match stretched {
                         Ok(made) => self.doc.replace_shape(id, made),
@@ -1865,6 +1944,39 @@ impl Curva {
         }
     }
 
+    /// A drop-down of linetypes, with `ByLayer` when `by_layer`; returns the one chosen.
+    fn linetype_choice(
+        &self,
+        ui: &mut egui::Ui,
+        id: egui::Id,
+        shown: Option<curva_document::Linetype>,
+        by_layer: bool,
+    ) -> Option<curva_document::Linetype> {
+        use curva_document::Linetype;
+        let mut chosen = None;
+        let label = shown.map_or_else(
+            || self.text.render(&Message::new("ui.width.varies")),
+            |l| l.name().to_owned(),
+        );
+        egui::ComboBox::from_id_salt(id)
+            .selected_text(label)
+            .width(96.0)
+            .show_ui(ui, |ui| {
+                let choices = by_layer
+                    .then_some(Linetype::ByLayer)
+                    .into_iter()
+                    .chain(Linetype::ALL);
+                for choice in choices {
+                    if ui
+                        .selectable_label(shown == Some(choice), choice.name())
+                        .clicked()
+                    {
+                        chosen = Some(choice);
+                    }
+                }
+            });
+        chosen
+    }
     /// A drop-down of print widths (spec `line-weights.md` §5): `By layer` when `by_layer`,
     /// `Default`, Rhino's common widths, and a field for any other. `shown` is what it shows;
     /// returns the width chosen, if one was.
@@ -1923,6 +2035,117 @@ impl Curva {
             });
         chosen
     }
+
+    /// The Blocks panel (spec `docs/specs/blocks.md` §3): each definition with its instance
+    /// count and, if linked, its file; buttons to insert, select, update, embed and delete.
+    fn blocks_panel(&mut self, ui: &mut egui::Ui) {
+        let definitions = self.doc.definitions().to_vec();
+        if definitions.is_empty() {
+            ui.label(self.text.render(&Message::new("ui.blocks.none")));
+            return;
+        }
+        let mut run: Option<(String, String)> = None;
+        for definition in &definitions {
+            let count = self.doc.instances_of(definition.id).len();
+            ui.group(|ui| {
+                ui.horizontal(|ui| {
+                    let mut name = definition.name.clone();
+                    let edit = ui.add(egui::TextEdit::singleline(&mut name).desired_width(120.0));
+                    if edit.lost_focus()
+                        && name.trim() != definition.name
+                        && !name.trim().is_empty()
+                    {
+                        let id = definition.id;
+                        let name = name.trim().to_owned();
+                        self.undoable(|doc| doc.rename_definition(id, name));
+                    }
+                    ui.label(
+                        self.text
+                            .render(&Message::with("ui.blocks.count", vec![count.to_string()])),
+                    );
+                });
+                if let Some(path) = &definition.linked {
+                    ui.label(
+                        self.text
+                            .render(&Message::with("ui.blocks.linked", vec![path.clone()])),
+                    );
+                }
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .button(self.text.render(&Message::new("ui.blocks.insert")))
+                        .clicked()
+                    {
+                        run = Some(("insert".to_owned(), definition.name.clone()));
+                    }
+                    if ui
+                        .button(self.text.render(&Message::new("ui.blocks.select")))
+                        .clicked()
+                    {
+                        run = Some(("selblockinstancenamed".to_owned(), definition.name.clone()));
+                    }
+                    if definition.linked.is_some() {
+                        if ui
+                            .button(self.text.render(&Message::new("ui.blocks.update")))
+                            .clicked()
+                        {
+                            self.reload_linked(true);
+                        }
+                        if ui
+                            .button(self.text.render(&Message::new("ui.blocks.embed")))
+                            .clicked()
+                        {
+                            let id = definition.id;
+                            self.undoable(|doc| doc.embed_definition(id));
+                        }
+                    }
+                    let unused = count == 0;
+                    let delete = ui.add_enabled(
+                        unused,
+                        egui::Button::new(self.text.render(&Message::new("ui.blocks.delete"))),
+                    );
+                    if delete.clicked() {
+                        let id = definition.id;
+                        self.undoable(|doc| {
+                            doc.delete_definition(id);
+                        });
+                    }
+                });
+            });
+        }
+        if let Some((command, name)) = run {
+            self.run_from_button(&command);
+            self.processor.submit(&mut self.doc, &name);
+        }
+    }
+
+    /// Reads linked block definitions again from their files: those whose file changed since it
+    /// was last read, or all with `force`.
+    fn reload_linked(&mut self, force: bool) {
+        let linked: Vec<(u64, String)> = self
+            .doc
+            .definitions()
+            .iter()
+            .filter_map(|d| d.linked.clone().map(|path| (d.id, path)))
+            .collect();
+        for (id, path) in linked {
+            let modified = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
+            let seen = self.linked_seen.get(&path).copied();
+            if !force && modified.is_some() && seen == modified {
+                continue;
+            }
+            match Document::open(std::path::Path::new(&path)) {
+                Ok(opened) => {
+                    self.doc
+                        .set_definition_objects(id, opened.state().objects.clone());
+                    if let Some(when) = modified {
+                        self.linked_seen.insert(path.clone(), when);
+                    }
+                }
+                Err(error) => self.processor.note(format!("{path}: {}", error.0)),
+            }
+        }
+    }
+
     fn layers_panel(&mut self, ui: &mut egui::Ui) {
         let layers = self.doc.layers().to_vec();
         let current = self.doc.current_layer();
@@ -1951,6 +2174,10 @@ impl Curva {
                         _ => None,
                     };
                     self.undoable(|doc| doc.set_layer_print_width(layer.id, mm));
+                }
+                let id = ui.scope_id().with(("layer linetype", layer.id));
+                if let Some(linetype) = self.linetype_choice(ui, id, Some(layer.linetype), false) {
+                    self.undoable(|doc| doc.set_layer_linetype(layer.id, linetype));
                 }
                 let mut visible = layer.visible;
                 let shown =
@@ -2007,6 +2234,18 @@ impl Curva {
             && let Some(object) = self.doc.state().objects.iter().find(|o| o.id == *only)
         {
             match &object.shape {
+                Shape::Instance(instance) => {
+                    let name = self
+                        .doc
+                        .definitions()
+                        .iter()
+                        .find(|d| d.id == instance.definition)
+                        .map_or_else(String::new, |d| d.name.clone());
+                    ui.label(
+                        self.text
+                            .render(&Message::with("ui.properties.instance", vec![name])),
+                    );
+                }
                 Shape::Curve(curve) => {
                     ui.label(self.text.render(&Message::new(curve_kind(curve))));
                     if let Ok(length) = curve.length() {
@@ -2036,6 +2275,13 @@ impl Curva {
                     }
                     if let Some((_, _, (kind, key, value))) = &self.measured {
                         ui.label(self.text.render(&Message::new(kind)));
+                        if object.live.is_some() {
+                            let inputs = self.doc.inputs_of(object.id).len();
+                            ui.label(self.text.render(&Message::with(
+                                "ui.properties.live",
+                                vec![inputs.to_string()],
+                            )));
+                        }
                         ui.label(
                             self.text
                                 .render(&Message::with(key, vec![format!("{value:.3}")])),
@@ -2089,6 +2335,25 @@ impl Curva {
             let id = ui.scope_id().with("object width");
             if let Some(width) = self.width_choice(ui, id, shown, true) {
                 self.undoable(|doc| doc.set_print_width(&selection, width));
+            }
+        });
+        let linetypes: Vec<curva_document::Linetype> = self
+            .doc
+            .state()
+            .objects
+            .iter()
+            .filter(|object| selection.contains(&object.id))
+            .map(|object| object.linetype)
+            .collect();
+        let shown = linetypes
+            .first()
+            .copied()
+            .filter(|first| linetypes.iter().all(|l| l == first));
+        ui.horizontal(|ui| {
+            ui.label(self.text.render(&Message::new("ui.properties.linetype")));
+            let id = ui.scope_id().with("object linetype");
+            if let Some(linetype) = self.linetype_choice(ui, id, shown, true) {
+                self.undoable(|doc| doc.set_linetype(&selection, linetype));
             }
         });
     }
@@ -2436,14 +2701,21 @@ impl Curva {
         if let Some(name) = file_command {
             self.run_from_button(name);
         }
-        // The clipboard keys every program has, on the selected objects.
+        // The clipboard keys every program has, on the selected objects. The window turns them
+        // into egui's Copy, Cut and Paste events rather than key presses, so those are taken here,
+        // before the command line could; a paste is the objects' only while the system clipboard
+        // still holds the mark their copy put there.
+        let anything_selected = !self.doc.selection().is_empty();
         let (copy, cut, paste, all) = ctx.input_mut(|input| {
-            (
+            let (mut copy, mut cut, mut paste) = (
                 input.consume_shortcut(&shortcut(Modifiers::COMMAND, Key::C)),
                 input.consume_shortcut(&shortcut(Modifiers::COMMAND, Key::X)),
                 input.consume_shortcut(&shortcut(Modifiers::COMMAND, Key::V)),
-                input.consume_shortcut(&shortcut(Modifiers::COMMAND, Key::A)),
-            )
+            );
+            let (c, x, v) = clipboard_requests(&mut input.events, anything_selected);
+            (copy, cut, paste) = (copy || c, cut || x, paste || v);
+            let all = input.consume_shortcut(&shortcut(Modifiers::COMMAND, Key::A));
+            (copy, cut, paste, all)
         });
         if copy || cut {
             self.clipboard = self
@@ -2451,6 +2723,9 @@ impl Curva {
                 .into_iter()
                 .map(|(id, shape)| (shape, self.doc.layer_of(id)))
                 .collect();
+            if !self.clipboard.is_empty() {
+                ctx.copy_text(CLIPBOARD_MARK.to_owned());
+            }
         }
         if cut && !self.clipboard.is_empty() {
             self.run_from_button("delete");
@@ -2845,6 +3120,11 @@ impl Curva {
                         }
                         layout::Piece::Display => self.display_piece(ui),
                         layout::Piece::Settings => self.settings_piece(ui),
+                        layout::Piece::Blocks => {
+                            egui::ScrollArea::both()
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| self.blocks_panel(ui));
+                        }
                     }
                 });
                 // Added after the contents, so these sit above the panel's own controls.
@@ -3264,8 +3544,8 @@ impl Curva {
         self.processor.submit(&mut self.doc, name);
     }
 
-    /// The File menu: New, Open, Save and Save As run their commands; Import and Export wait for
-    /// a format to offer; About opens Settings at its About tab. Returns a command to run.
+    /// The File menu: New, Open, Save, Save As, Import, Export and Export Selected run their
+    /// commands; About opens Settings at its About tab. Returns a command to run.
     fn file_items(&mut self, ui: &mut egui::Ui) -> Option<&'static str> {
         let mut chosen = None;
         for (name, key) in [
@@ -3280,12 +3560,16 @@ impl Curva {
             }
         }
         ui.separator();
-        for key in ["ui.file.import", "ui.file.export"] {
-            ui.add_enabled(
-                false,
-                egui::Button::new(self.text.render(&Message::new(key))),
-            )
-            .on_disabled_hover_text(self.text.render(&Message::new("ui.file.later")));
+        // Rhino files: Import adds one to the model, Export and ExportSelected write one.
+        for (name, key) in [
+            ("Import", "ui.file.import"),
+            ("Export", "ui.file.export"),
+            ("ExportSelected", "ui.file.export_selected"),
+        ] {
+            if ui.button(self.text.render(&Message::new(key))).clicked() {
+                chosen = Some(name);
+                ui.close();
+            }
         }
         ui.separator();
         if ui
@@ -3296,6 +3580,24 @@ impl Curva {
             ui.close();
         }
         chosen
+    }
+
+    /// Brings a closed or hidden panel piece out, as Settings is.
+    fn open_piece(&mut self, piece: layout::Piece) {
+        let window = self.window_rect;
+        self.layout = self.layout.restored(piece, window);
+        if let Some(panel) = self.layout.panel_of(piece)
+            && let Some(index) = self
+                .layout
+                .place(panel)
+                .and_then(|p| p.pieces.iter().position(|p| *p == piece))
+        {
+            self.layout = self
+                .layout
+                .with_active(panel, index)
+                .with_hidden(panel, false);
+        }
+        self.save_layout();
     }
 
     /// Brings the Settings panel out at a tab: back from closed, floating in the centre of the
@@ -4044,6 +4346,19 @@ impl Curva {
                     .render(&Message::with("done.namedview.save", vec![name]));
                 self.processor.note(said);
             }
+            ViewRequest::SaveCPlane(name) => {
+                let plane = self.panes[self.active].plane;
+                self.doc.save_cplane(curva_document::SavedCPlane {
+                    name: name.clone(),
+                    origin: plane.origin,
+                    x: plane.x,
+                    y: plane.y,
+                });
+                let said = self
+                    .text
+                    .render(&Message::with("done.namedcplane.save", vec![name]));
+                self.processor.note(said);
+            }
             ViewRequest::RestoreView(name) => {
                 if let Some(saved) = self.doc.saved_view(&name).cloned() {
                     let pane = &mut self.panes[self.active];
@@ -4093,6 +4408,21 @@ impl Curva {
                 let display = self.panes[self.active].display;
                 self.panes[self.active] = Pane::new(standard_view(name));
                 self.panes[self.active].display = display;
+            }
+            ViewRequest::ShowBlocks => self.open_piece(layout::Piece::Blocks),
+            ViewRequest::DraftAnalysis => {
+                let pane = &mut self.panes[self.active];
+                pane.draft = !pane.draft;
+                if pane.display == DisplayMode::Wireframe {
+                    pane.display = DisplayMode::Shaded;
+                }
+            }
+            ViewRequest::Zebra => {
+                let pane = &mut self.panes[self.active];
+                pane.zebra = !pane.zebra;
+                if pane.display == DisplayMode::Wireframe {
+                    pane.display = DisplayMode::Shaded;
+                }
             }
             ViewRequest::Plan => {
                 let pane = &mut self.panes[self.active];
@@ -4497,6 +4827,8 @@ impl Curva {
                 light: camera.forward().map(|value| value as f32),
                 shaded: display != DisplayMode::Wireframe,
                 ghosted: display == DisplayMode::Ghosted,
+                zebra: self.panes[*pane].zebra,
+                draft: self.panes[*pane].draft,
                 area: *rect,
                 frame: ui.ctx().cumulative_frame_nr(),
                 background: theme::current().window,
@@ -4568,6 +4900,12 @@ impl eframe::App for Curva {
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.apply_theme(ui.ctx());
+        // Linked blocks are read again when Curva gets focus back, in case their files changed.
+        let has_focus = ui.ctx().input(|input| input.focused);
+        if has_focus && !self.window_had_focus && !self.doc.definitions().is_empty() {
+            self.reload_linked(false);
+        }
+        self.window_had_focus = has_focus;
         // Keys go to whichever field has focus; the command line takes them when no other does.
         let focused = ui.ctx().memory(|memory| memory.focused());
         self.naming_layer = focused.is_some() && focused != self.command_field;
@@ -4798,6 +5136,7 @@ fn gumball_extruded(
         }
         Shape::Body(body) if !body.is_solid() => Some(body.extruded_straight(axis, distance)),
         Shape::Body(_) => None,
+        Shape::Instance(_) => None,
     }
 }
 
@@ -5111,6 +5450,32 @@ pub(crate) fn quiet_command(program: impl AsRef<std::ffi::OsStr>) -> std::proces
         command.creation_flags(0x0800_0000);
     }
     command
+}
+
+/// The window's Copy, Cut and Paste events that are Curva's to act on, taken out of `events`:
+/// copy and cut while objects are selected, and a paste of the mark Curva's own copy left on
+/// the system clipboard. Anything else stays for the command line.
+fn clipboard_requests(
+    events: &mut Vec<egui::Event>,
+    anything_selected: bool,
+) -> (bool, bool, bool) {
+    let (mut copy, mut cut, mut paste) = (false, false, false);
+    events.retain(|event| match event {
+        egui::Event::Copy if anything_selected => {
+            copy = true;
+            false
+        }
+        egui::Event::Cut if anything_selected => {
+            cut = true;
+            false
+        }
+        egui::Event::Paste(text) if text == CLIPBOARD_MARK => {
+            paste = true;
+            false
+        }
+        _ => true,
+    });
+    (copy, cut, paste)
 }
 
 #[cfg(test)]
@@ -5474,5 +5839,32 @@ mod tests {
                 "{display:?}"
             );
         }
+    }
+
+    #[test]
+    fn copy_and_cut_are_taken_for_a_selection_and_left_for_the_command_line_otherwise() {
+        let mut events = vec![Event::Copy, Event::Cut, Event::Text("x".to_owned())];
+        assert_eq!(clipboard_requests(&mut events, true), (true, true, false));
+        assert_eq!(events, [Event::Text("x".to_owned())]);
+        let mut events = vec![Event::Copy, Event::Cut];
+        assert_eq!(
+            clipboard_requests(&mut events, false),
+            (false, false, false)
+        );
+        assert_eq!(events, [Event::Copy, Event::Cut]);
+    }
+
+    #[test]
+    fn only_curvas_own_mark_pastes_objects() {
+        let mut events = vec![Event::Paste(CLIPBOARD_MARK.to_owned())];
+        assert_eq!(clipboard_requests(&mut events, false), (false, false, true));
+        assert!(events.is_empty(), "the mark never reaches the command line");
+        let mut events = vec![Event::Paste(r"C:\models\house.3dm".to_owned())];
+        assert_eq!(clipboard_requests(&mut events, true), (false, false, false));
+        assert_eq!(
+            events.len(),
+            1,
+            "other text is pasted into the command line"
+        );
     }
 }

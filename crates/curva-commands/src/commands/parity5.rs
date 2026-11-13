@@ -3,8 +3,8 @@
 //! `ExtrudeCrvToPoint`, `RailRevolve`, `Pyramid`, `ExtractSrf`, `MergeAllFaces`, `Wirecut`,
 //! `Distribute`, `SelColor`, `Lock`, `Unlock`, `Group`, `Ungroup`, `ShowEdges` and `Plan`.
 
-use super::{ask_objects, bodies_of, curves_of};
-use crate::recipe::{Context, Derived, Made, OptionDef, Recipe, StepDef, Value};
+use super::{bodies_of, curves_of};
+use crate::recipe::{Context, Derived, Edit, Made, OptionDef, Recipe, StepDef, Value};
 use crate::{Answer, Command, Message, Step, ViewRequest};
 use curva_document::{Document, Shape};
 use curva_kernel::{Body, Curve, KernelError, Point, TaperCorners, cross, dot, gap, sub, unit};
@@ -48,6 +48,8 @@ fn first_point(cx: &Context<'_>, index: usize) -> Option<Point> {
 /// The lowest and highest corners of a shape.
 fn bounds_of(shape: &Shape) -> Option<(Point, Point)> {
     match shape {
+        // An instance's extent needs its definition; commands that use this leave it out.
+        Shape::Instance(_) => None,
         Shape::Body(body) => body.bounds().ok(),
         Shape::Curve(curve) => {
             let points = curve.sample().ok()?;
@@ -592,25 +594,29 @@ fn colour_of(doc: &Document, id: u64) -> Option<[f32; 3]> {
 #[derive(Default)]
 pub struct SelColor;
 
-impl Command for SelColor {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let chosen = match answer {
-            Some(Answer::Objects(list)) => list,
-            _ => doc.selection(),
+impl Recipe for SelColor {
+    const NAME: &'static str = "SelColor";
+
+    fn steps(&self, _cx: &Context<'_>) -> Vec<StepDef> {
+        vec![StepDef::objects("prompt.selcolor.object").one()]
+    }
+
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let colour = objects(cx, 0).first().and_then(|id| colour_of(cx.doc, *id));
+        let found: Vec<u64> = match colour {
+            Some(colour) => cx
+                .doc
+                .selectable()
+                .into_iter()
+                .filter(|id| colour_of(cx.doc, *id) == Some(colour))
+                .collect(),
+            None => Vec::new(),
         };
-        let Some(colour) = chosen.first().and_then(|id| colour_of(doc, *id)) else {
-            return ask_objects("prompt.selcolor.object");
-        };
-        let found: Vec<u64> = doc
-            .selectable()
-            .into_iter()
-            .filter(|id| colour_of(doc, *id) == Some(colour))
-            .collect();
-        doc.select(&found);
-        Step::Done(Some(Message::with(
-            "done.select",
-            vec![found.len().to_string()],
-        )))
+        Ok(Made {
+            message: Some(Message::with("done.select", vec![found.len().to_string()])),
+            edits: vec![Edit::Select(found)],
+            ..Made::default()
+        })
     }
 }
 
@@ -618,17 +624,20 @@ impl Command for SelColor {
 #[derive(Default)]
 pub struct Lock;
 
-impl Command for Lock {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let chosen = match answer {
-            Some(Answer::Objects(list)) => list,
-            _ => doc.selection(),
-        };
-        if chosen.is_empty() {
-            return ask_objects("prompt.lock.objects");
-        }
-        let count = doc.lock(&chosen);
-        Step::Done(Some(Message::with("done.lock", vec![count.to_string()])))
+impl Recipe for Lock {
+    const NAME: &'static str = "Lock";
+
+    fn steps(&self, _cx: &Context<'_>) -> Vec<StepDef> {
+        vec![StepDef::objects("prompt.lock.objects")]
+    }
+
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let chosen = objects(cx, 0).to_vec();
+        Ok(Made {
+            message: Some(Message::with("done.lock", vec![chosen.len().to_string()])),
+            edits: vec![Edit::Lock(chosen)],
+            ..Made::default()
+        })
     }
 }
 
@@ -636,10 +645,20 @@ impl Command for Lock {
 #[derive(Default)]
 pub struct Unlock;
 
-impl Command for Unlock {
-    fn step(&mut self, doc: &mut Document, _answer: Option<Answer>) -> Step {
-        let count = doc.unlock_all();
-        Step::Done(Some(Message::with("done.unlock", vec![count.to_string()])))
+impl Recipe for Unlock {
+    const NAME: &'static str = "Unlock";
+
+    fn steps(&self, _cx: &Context<'_>) -> Vec<StepDef> {
+        Vec::new()
+    }
+
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let count = cx.doc.state().objects.iter().filter(|o| o.locked).count();
+        Ok(Made {
+            message: Some(Message::with("done.unlock", vec![count.to_string()])),
+            edits: vec![Edit::UnlockAll],
+            ..Made::default()
+        })
     }
 }
 
@@ -647,20 +666,20 @@ impl Command for Unlock {
 #[derive(Default)]
 pub struct Group;
 
-impl Command for Group {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let chosen = match answer {
-            Some(Answer::Objects(list)) => list,
-            _ => doc.selection(),
-        };
-        if chosen.len() < 2 {
-            return ask_objects("prompt.group.objects");
-        }
-        doc.group(&chosen);
-        Step::Done(Some(Message::with(
-            "done.group",
-            vec![chosen.len().to_string()],
-        )))
+impl Recipe for Group {
+    const NAME: &'static str = "Group";
+
+    fn steps(&self, _cx: &Context<'_>) -> Vec<StepDef> {
+        vec![StepDef::objects("prompt.group.objects").at_least(2)]
+    }
+
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let chosen = objects(cx, 0).to_vec();
+        Ok(Made {
+            message: Some(Message::with("done.group", vec![chosen.len().to_string()])),
+            edits: vec![Edit::Group(chosen)],
+            ..Made::default()
+        })
     }
 }
 
@@ -668,17 +687,31 @@ impl Command for Group {
 #[derive(Default)]
 pub struct Ungroup;
 
-impl Command for Ungroup {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let chosen = match answer {
-            Some(Answer::Objects(list)) => list,
-            _ => doc.selection(),
-        };
-        if chosen.is_empty() {
-            return ask_objects("prompt.ungroup.objects");
-        }
-        let count = doc.ungroup(&chosen);
-        Step::Done(Some(Message::with("done.ungroup", vec![count.to_string()])))
+impl Recipe for Ungroup {
+    const NAME: &'static str = "Ungroup";
+
+    fn steps(&self, _cx: &Context<'_>) -> Vec<StepDef> {
+        vec![StepDef::objects("prompt.ungroup.objects")]
+    }
+
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        let chosen = objects(cx, 0).to_vec();
+        let groups: std::collections::BTreeSet<u64> = cx
+            .doc
+            .state()
+            .objects
+            .iter()
+            .filter(|o| chosen.contains(&o.id))
+            .filter_map(|o| o.group)
+            .collect();
+        Ok(Made {
+            message: Some(Message::with(
+                "done.ungroup",
+                vec![groups.len().to_string()],
+            )),
+            edits: vec![Edit::Ungroup(chosen)],
+            ..Made::default()
+        })
     }
 }
 
@@ -731,13 +764,33 @@ impl Recipe for ShowEdges {
     }
 }
 
+/// `Zebra`: shows black and white stripes on the shaded faces of the last-used viewport, so
+/// breaks in smoothness show as kinks in them; run again to stop.
+#[derive(Default)]
+pub struct Zebra;
+
+impl Command for Zebra {
+    fn step(&mut self, _doc: &mut Document, _answer: Option<Answer>) -> Step {
+        Step::View(ViewRequest::Zebra)
+    }
+}
+
 /// `Plan`: turns the last-used viewport to look straight down on its construction plane.
 #[derive(Default)]
 pub struct Plan;
 
-impl Command for Plan {
-    fn step(&mut self, _doc: &mut Document, _answer: Option<Answer>) -> Step {
-        Step::View(ViewRequest::Plan)
+impl Recipe for Plan {
+    const NAME: &'static str = "Plan";
+
+    fn steps(&self, _cx: &Context<'_>) -> Vec<StepDef> {
+        Vec::new()
+    }
+
+    fn make(&self, _cx: &Context<'_>) -> Result<Made, Message> {
+        Ok(Made {
+            view: Some(ViewRequest::Plan),
+            ..Made::default()
+        })
     }
 }
 
@@ -1016,5 +1069,7 @@ mod tests {
         );
         let mut processor = run(&mut doc, &["plan"]);
         assert_eq!(processor.take_view_request(), Some(ViewRequest::Plan));
+        let mut processor = run(&mut doc, &["zebra"]);
+        assert_eq!(processor.take_view_request(), Some(ViewRequest::Zebra));
     }
 }

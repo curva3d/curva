@@ -154,11 +154,15 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | ZoomExtents | none | none | none | partly |
 | ZoomSelected | none | none | none | partly |
 | NamedView | A panel in Rhino: save, restore, delete views | `Save` `Restore` `Delete` | `Save` `Restore` `Delete` | partly |
+| NamedCPlane | A panel in Rhino: save, restore, delete construction planes | `Save` `Restore` `Delete` | `Save` `Restore` `Delete` | partly |
 | SetDisplayMode | Not read: Rhino's page redirected; complete from Rhino | to confirm | `Wireframe` `Shaded` `Ghosted` | partly |
 | New | Choose a template | none | none | partly |
 | Open | Choose a file | none | none | partly |
 | Save | File name | `Version` `SaveSmall` `GeometryOnly` `SaveTextures` `SavePlugInData` `Browse` | none | partly |
 | SaveAs | Asks for a file name; saves there and keeps saving there | none | none | partly |
+| Import | Choose a file (.3dm or .curva); its contents join the model, layers merged by name | none | none | partly |
+| Export | Choose a file; the model is written as .3dm | none | none | partly |
+| ExportSelected | Select objects; choose a file; they are written as .3dm | none | none | partly |
 
 ## Added for Rhino parity (after 0.3.0)
 
@@ -236,3 +240,70 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | Ungroup | Objects | none | none | partly |
 | ShowEdges | Objects | `All` `NakedEdges` `NonManifoldEdges` | `NakedEdges` | partly |
 | Plan | none | none | none | partly |
+
+## Added in 0.4.2: commands that waited on the geometry engine
+
+| Command | Rhino's steps | Rhino's options | In Curva | Status |
+|---|---|---|---|---|
+| EdgeSrf | Two to four edge curves | none | none | done |
+| NetworkSrf | Curves both ways | `EdgeMatching` `Tolerances` | none | partly |
+| Patch | Curves and points to fit | `PointSpacing` `UVSpans` `Stiffness` `AdjustTangency` `AutomaticTrim` | none | partly |
+| ExtendSrf | Edge; distance | `Line` `Smooth` | `Smooth` `Line` | done |
+| Untrim | Trim edge | `KeepTrimObjects` `All` | none | partly |
+| Section | Objects; section line | none | none | done |
+| Contour | Objects; base point; direction; distance | `GroupOutput` `JoinCurves` | none | partly |
+| Intersect | Objects | none | none | done |
+| Project | Curves; surfaces | `Loose` `DeleteInput` | none | partly |
+| MoveFace | Faces; move | `BothSides` | none | partly |
+| PushPull | Faces; distance | none | none | done |
+| Shear | Objects; origin; reference; angle | `Copy` | none | partly |
+| RebuildUV | Surfaces | `PointCountU` `PointCountV` `DegreeU` `DegreeV` `DeleteInput` | `PointCountU` `PointCountV` `DegreeU` `DegreeV` | partly |
+| CurvatureGraph | Curves | `Scale` `Density` | `Scale` `Density` | done |
+| Cap | Surfaces | none | none | done |
+| ExtractIsocurve | Surface; point | `Direction` `Toggle` | `U` `V` `Both` | partly |
+| ShrinkTrimmedSrf | Surfaces | none | none | done |
+| BlendSrf | Two edges | `Position` `Tangency` `Curvature` `Bulge` `Planar Sections` | `Position` `Tangency` `Curvature` `Bulge` | partly |
+| MatchSrf | Edge to change; edge to match | `Position` `Tangency` `Curvature` `AverageSurfaces` | `Position` `Tangency` | partly |
+| Sweep2 | Two rails; cross sections | `MaintainHeight` `Simplify` | none | partly |
+| Twist | Objects; axis; angle | `Infinite` `PreserveStructure` | none | partly |
+| Bend | Objects; spine; bend point | `Symmetric` `Copy` `Straight` | none | partly |
+| Taper | Objects; axis; sizes | `Flat` `Infinite` | none | partly |
+| Flow | Objects; base curve; target curve | `Copy` `Rigid` `Stretch` | none | partly |
+| CageEdit | Objects; cage | `BoundingBox` `Line` `Rectangle` | none | partly |
+| Pull | Curves; surface | `Loose` | none | partly |
+| InterpCrvOnSrf | Surface; points | none | none | done |
+| OffsetCrvOnSrf | Curve; surface; distance | `ThroughPoint` | none | partly |
+| Silhouette | Objects | none | none | done |
+| UnrollSrf | Surfaces | `Explode` `Labels` | none | partly |
+| ExtrudeFace | Face; distance | `Direction` `BothSides` | none | partly |
+| FilletSrf | Two surfaces; radius | `Trim` `Extend` | none | partly |
+| ChamferSrf | Two surfaces; distances | `Trim` `Extend` | none | partly |
+| SplitSrf | Surface; curves | none | none | done |
+| Zebra | Objects | `Stripe direction` `Stripe size` `Stripe colour` | none | partly |
+| EditBoolean | A live boolean | none | none | partly |
+| BreakBoolean | Live booleans | none | none | partly |
+| Block | Objects; base point; name | `Description` `URL` | none | partly |
+| Insert | Name or file; point; scale; rotation | `Linked` `Embedded` `Group` `Explode` | none | partly |
+| BlockManager | none | none | none | partly |
+| BlockEdit | An instance | none | none | partly |
+| ExplodeBlock | Instances | none | none | partly |
+| ReplaceBlock | Instances; name | none | none | partly |
+| SelBlockInstanceNamed | Name | none | none | partly |
+| Count | Objects | none | none | partly |
+| ChangeLayer | Objects; layer | none | none | partly |
+| MatchProperties | Objects; object to match | `MatchAll` `Linetype` `PrintWidth` `Layer` `Name` | none | partly |
+| Linetype | Objects; linetype | none | none | partly |
+| PrintWidth | Objects; width | none | none | partly |
+| SetUserText | Objects; key; text | none | none | partly |
+| GetUserText | Object | none | none | partly |
+| Purge | none | `Layers` `BlockDefinitions` `Linetypes` | none | partly |
+| Audit | none | none | none | partly |
+| LockSwap | none | none | none | partly |
+| UnlockSelected | Locked objects | none | none | partly |
+| BringToFront | Objects | none | none | partly |
+| SendToBack | Objects | none | none | partly |
+| BringForward | Objects | none | none | partly |
+| SendBackward | Objects | none | none | partly |
+| DupFaceBorder | Faces | none | none | done |
+| TextObject | Text; point; height | `Curves` `Surfaces` `Solids` `Font` | none | partly |
+| DraftAnalysis | Objects | `DraftAngle` `PullDirection` | none | partly |

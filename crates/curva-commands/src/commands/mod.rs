@@ -5,6 +5,7 @@ mod area;
 mod array;
 mod array_crv;
 mod array_polar;
+mod blocks;
 mod boolean_difference;
 mod boolean_intersection;
 mod boolean_union;
@@ -24,6 +25,7 @@ mod divide;
 mod ellipse;
 mod explode;
 mod extrude_crv;
+mod files;
 mod fillet;
 mod fillet_corners;
 mod fillet_edge;
@@ -39,14 +41,17 @@ mod isolate;
 mod join;
 mod length;
 mod line;
+mod live;
 mod loft;
 mod mirror;
 mod move_objects;
+mod named_cplane;
 mod named_view;
 mod new;
 mod offset;
 mod offset_srf;
 mod open;
+mod organise;
 mod orient;
 mod orient3pt;
 mod parity;
@@ -54,6 +59,8 @@ mod parity2;
 mod parity3;
 mod parity4;
 mod parity5;
+mod parity6;
+mod parity7;
 mod perspective;
 mod pipe;
 mod planar_srf;
@@ -159,7 +166,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 170] = [
+pub static COMMANDS: [CommandDef; 236] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -251,7 +258,7 @@ pub static COMMANDS: [CommandDef; 170] = [
     recipe!("Join", ["j"], true, join::Join),
     recipe!("Explode", ["x"], true, explode::Explode),
     recipe!("Split", [], true, split::Split),
-    listed!("Trim", ["tr"], true, true, trim::Trim),
+    recipe!("Trim", ["tr"], true, trim::Trim),
     recipe!("Offset", [], true, offset::Offset),
     recipe!("Fillet", [], true, fillet::Fillet),
     listed!(
@@ -332,13 +339,87 @@ pub static COMMANDS: [CommandDef; 170] = [
     recipe!("MergeAllFaces", [], true, parity5::MergeAllFaces),
     recipe!("Wirecut", [], true, parity5::Wirecut),
     recipe!("Distribute", [], true, parity5::Distribute),
-    listed!("SelColor", [], false, false, parity5::SelColor),
-    listed!("Lock", [], true, true, parity5::Lock),
-    listed!("Unlock", [], true, true, parity5::Unlock),
-    listed!("Group", [], true, true, parity5::Group),
-    listed!("Ungroup", [], true, true, parity5::Ungroup),
+    recipe!("SelColor", [], false, parity5::SelColor),
+    recipe!("Lock", [], true, parity5::Lock),
+    recipe!("Unlock", [], true, parity5::Unlock),
+    recipe!("Group", [], true, parity5::Group),
+    recipe!("Ungroup", [], true, parity5::Ungroup),
     recipe!("ShowEdges", [], true, parity5::ShowEdges),
-    listed!("Plan", [], false, false, parity5::Plan),
+    recipe!("Plan", [], false, parity5::Plan),
+    listed!("Zebra", [], false, false, parity5::Zebra),
+    listed!("EditBoolean", [], true, true, live::EditBoolean),
+    listed!("BreakBoolean", [], true, true, live::BreakBoolean),
+    listed!("Block", [], true, true, blocks::Block),
+    listed!("Insert", [], true, true, blocks::Insert),
+    listed!("BlockManager", [], false, false, blocks::BlockManager),
+    listed!("BlockEdit", [], true, true, blocks::BlockEdit),
+    listed!("ExplodeBlock", [], true, true, blocks::ExplodeBlock),
+    listed!("ReplaceBlock", [], true, true, blocks::ReplaceBlock),
+    listed!(
+        "SelBlockInstanceNamed",
+        [],
+        false,
+        false,
+        blocks::SelBlockInstanceNamed
+    ),
+    listed!("Count", [], false, false, organise::Count),
+    listed!("ChangeLayer", [], true, true, organise::ChangeLayer),
+    listed!(
+        "MatchProperties",
+        ["matchprop"],
+        true,
+        true,
+        organise::MatchProperties
+    ),
+    listed!("Linetype", [], true, true, organise::LinetypeCommand),
+    listed!("PrintWidth", [], true, true, organise::PrintWidthCommand),
+    listed!("SetUserText", [], true, true, organise::SetUserText),
+    listed!("GetUserText", [], false, false, organise::GetUserText),
+    listed!("Purge", [], true, true, organise::Purge),
+    listed!("Audit", [], false, false, organise::Audit),
+    listed!("LockSwap", [], true, true, organise::LockSwap),
+    listed!("UnlockSelected", [], true, true, organise::UnlockSelected),
+    listed!("BringToFront", [], true, true, organise::DrawOrder<true, true>),
+    listed!("SendToBack", [], true, true, organise::DrawOrder<false, true>),
+    listed!("BringForward", [], true, true, organise::DrawOrder<true, false>),
+    listed!("SendBackward", [], true, true, organise::DrawOrder<false, false>),
+    recipe!("DupFaceBorder", [], true, organise::DupFaceBorder),
+    listed!("TextObject", ["text"], true, true, organise::TextObject),
+    listed!("DraftAnalysis", [], false, false, organise::DraftAnalysis),
+    recipe!("EdgeSrf", [], true, parity6::EdgeSrf),
+    recipe!("NetworkSrf", [], true, parity6::NetworkSrf),
+    recipe!("Patch", [], true, parity6::Patch),
+    recipe!("ExtendSrf", [], true, parity6::ExtendSrf),
+    recipe!("Untrim", [], true, parity6::Untrim),
+    recipe!("Section", [], true, parity6::Section),
+    recipe!("Contour", [], true, parity6::Contour),
+    recipe!("Intersect", [], true, parity6::Intersect),
+    recipe!("Project", [], true, parity6::Project),
+    recipe!("MoveFace", [], true, parity6::MoveFace<false>),
+    recipe!("PushPull", [], true, parity6::MoveFace<true>),
+    recipe!("Shear", [], true, parity6::Shear),
+    recipe!("RebuildUV", [], true, parity6::RebuildUv),
+    recipe!("CurvatureGraph", [], true, parity6::CurvatureGraph),
+    recipe!("Cap", [], true, parity6::Cap),
+    recipe!("ExtractIsocurve", [], true, parity7::ExtractIsocurve),
+    recipe!("ShrinkTrimmedSrf", [], true, parity7::ShrinkTrimmedSrf),
+    recipe!("BlendSrf", [], true, parity7::BlendSrf),
+    recipe!("MatchSrf", [], true, parity7::MatchSrf),
+    recipe!("Sweep2", [], true, parity7::Sweep2),
+    recipe!("Twist", [], true, parity7::Twist),
+    recipe!("Bend", [], true, parity7::Bend),
+    recipe!("Taper", [], true, parity7::Taper),
+    recipe!("Flow", [], true, parity7::Flow),
+    recipe!("CageEdit", [], true, parity7::CageEdit),
+    recipe!("Pull", [], true, parity7::Pull),
+    recipe!("InterpCrvOnSrf", [], true, parity7::InterpCrvOnSrf),
+    recipe!("OffsetCrvOnSrf", [], true, parity7::OffsetCrvOnSrf),
+    recipe!("Silhouette", [], true, parity7::Silhouette),
+    recipe!("UnrollSrf", [], true, parity7::UnrollSrf),
+    recipe!("ExtrudeFace", [], true, parity7::ExtrudeFace),
+    recipe!("FilletSrf", [], true, parity7::FilletSrf<false>),
+    recipe!("ChamferSrf", [], true, parity7::FilletSrf<true>),
+    recipe!("SplitSrf", [], true, parity7::SplitSrf),
     recipe!("ExtrudeCrv", [], true, extrude_crv::ExtrudeCrv),
     recipe!("PlanarSrf", [], true, planar_srf::PlanarSrf),
     recipe!("Revolve", [], true, revolve::Revolve),
@@ -368,6 +449,9 @@ pub static COMMANDS: [CommandDef; 170] = [
     listed!("Save", [], false, false, save::Save),
     listed!("SaveAs", [], false, false, save_as::SaveAs),
     listed!("Open", [], false, false, open::Open),
+    listed!("Import", [], false, true, files::Import),
+    listed!("Export", [], false, false, files::Export),
+    listed!("ExportSelected", [], false, false, files::ExportSelected),
     listed!("New", [], false, false, new::New),
     listed!(
         "ZoomExtents",
@@ -387,6 +471,13 @@ pub static COMMANDS: [CommandDef; 170] = [
     recipe!("Curve", [], true, curve::CurveCommand),
     listed!("Zoom", [], false, false, zoom::Zoom),
     listed!("NamedView", ["nv"], false, false, named_view::NamedView),
+    listed!(
+        "NamedCPlane",
+        ["ncp"],
+        false,
+        false,
+        named_cplane::NamedCPlane
+    ),
     listed!(
         "SetDisplayMode",
         [],
@@ -675,11 +766,42 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 26] = [
+    const NOTHING_TO_PREVIEW: [&str; 57] = [
+        "Import",
+        "ChangeLayer",
+        "MatchProperties",
+        "Linetype",
+        "PrintWidth",
+        "SetUserText",
+        "Purge",
+        "LockSwap",
+        "UnlockSelected",
+        "BringToFront",
+        "SendToBack",
+        "BringForward",
+        "SendBackward",
+        "DupFaceBorder",
+        "TextObject",
+        "Block",
+        "Insert",
+        "BlockEdit",
+        "ExplodeBlock",
+        "ReplaceBlock",
+        "EditBoolean",
+        "BreakBoolean",
+        "ShrinkTrimmedSrf",
+        "Silhouette",
+        "UnrollSrf",
+        "EdgeSrf",
+        "NetworkSrf",
+        "Patch",
+        "Cap",
         "DupBorder",
         "MergeAllFaces",
         "SimplifyCrv",
         "MakeUniform",
+        "SelColor",
+        "Plan",
         "Lock",
         "Unlock",
         "Group",
@@ -705,7 +827,34 @@ mod tests {
     ];
 
     /// Commands whose preview needs its own setup, tested in their own files.
-    const PREVIEW_TESTED_ELSEWHERE: [&str; 39] = [
+    const PREVIEW_TESTED_ELSEWHERE: [&str; 66] = [
+        "ExtractIsocurve",
+        "BlendSrf",
+        "MatchSrf",
+        "Sweep2",
+        "Twist",
+        "Bend",
+        "Taper",
+        "Flow",
+        "CageEdit",
+        "Pull",
+        "InterpCrvOnSrf",
+        "OffsetCrvOnSrf",
+        "ExtrudeFace",
+        "FilletSrf",
+        "ChamferSrf",
+        "SplitSrf",
+        "ExtendSrf",
+        "Untrim",
+        "Section",
+        "Contour",
+        "Intersect",
+        "Project",
+        "MoveFace",
+        "PushPull",
+        "Shear",
+        "RebuildUV",
+        "CurvatureGraph",
         "BlendCrv",
         "Match",
         "Extend",
@@ -822,6 +971,39 @@ mod tests {
         }
     }
 
+    /// Every `CUSTOM KERNEL OPERATION` mark in the source has a row in
+    /// `docs/kernel/custom-operations.md`, and every row a mark (spec `engine-gaps.md` §1).
+    #[test]
+    fn custom_operations_match_their_list() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let list = std::fs::read_to_string(root.join("docs/kernel/custom-operations.md")).unwrap();
+        let rows: std::collections::BTreeSet<String> = list
+            .lines()
+            .skip_while(|line| !line.starts_with("| Operation"))
+            .skip(2)
+            .take_while(|line| line.starts_with("| "))
+            .map(|line| line.split('|').nth(1).unwrap().trim().to_owned())
+            .collect();
+        let mut marks = std::collections::BTreeSet::new();
+        let mut stack = vec![root.join("crates")];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().is_some_and(|e| e == "rs") {
+                    let text = std::fs::read_to_string(&path).unwrap();
+                    for line in text.lines() {
+                        if let Some(name) = line.trim().strip_prefix("// CUSTOM KERNEL OPERATION: ")
+                        {
+                            marks.insert(name.trim().to_owned());
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(marks, rows, "marks in the code and rows in the list differ");
+    }
     #[test]
     fn rhino_parity_lists_only_real_commands() {
         let table = include_str!("../../../../docs/commands/rhino-parity.md");
@@ -1202,12 +1384,22 @@ mod tests {
                 "ChangeDegree",
                 "Conic",
                 "CurveBoolean",
+                "Count",
+                "ChangeLayer",
+                "Contour",
+                "CurvatureGraph",
+                "Cap",
+                "CageEdit",
+                "ChamferSrf",
                 "ChamferEdge",
                 "CPlane",
                 "Curve"
             ]
         );
-        assert_eq!(completions("co"), ["Copy", "Cone", "Conic"]);
+        assert_eq!(
+            completions("co"),
+            ["Copy", "Cone", "Conic", "Count", "Contour"]
+        );
     }
 
     #[test]
@@ -1225,8 +1417,8 @@ mod tests {
 
     #[test]
     fn a_partial_name_never_runs_new() {
-        assert_eq!(autofilled("n", 0), "n");
-        assert_eq!(autofilled("ne", 0), "ne");
+        assert_ne!(autofilled("n", 0), "New");
+        assert_ne!(autofilled("ne", 0), "New");
         assert_eq!(autofilled("NEW", 0), "New");
     }
 }
@@ -1300,6 +1492,18 @@ pub(crate) fn changed(
                 });
             } else {
                 made.replace.push((object.id, shape));
+                // A live boolean's inputs move with it, so it stays live.
+                if object.live.is_some() && !cx.previewing {
+                    for input in cx
+                        .doc
+                        .state()
+                        .objects
+                        .iter()
+                        .filter(|o| o.input_of == Some(object.id))
+                    {
+                        made.replace.push((input.id, change.shape(&input.shape)));
+                    }
+                }
             }
         }
     }

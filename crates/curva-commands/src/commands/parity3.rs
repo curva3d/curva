@@ -146,6 +146,8 @@ impl Recipe for Paraboloid {
 /// The lowest and highest corners around an object.
 fn bounds_of(shape: &Shape) -> Option<(Point, Point)> {
     match shape {
+        // An instance's extent needs its definition; commands that use this leave it out.
+        Shape::Instance(_) => None,
         Shape::Body(body) => body.bounds().ok(),
         Shape::Curve(curve) => {
             let points = curve.sample().ok()?;
@@ -247,7 +249,8 @@ impl Recipe for Align {
 }
 
 /// `ChangeDegree`: gives curves a new degree. Raising it keeps the shape exactly (Rhino's
-/// `Deformable=No`, adding control points); lowering it, or `Deformable=Yes`, keeps the control
+/// `Deformable=No`, adding control points) and lowering it keeps it within 0.01, both through
+/// the engine; `Deformable=Yes` keeps the control
 /// points and lets the shape change. Closed curves stay closed.
 #[derive(Default)]
 pub struct ChangeDegree;
@@ -295,11 +298,15 @@ impl Recipe for ChangeDegree {
             if spline.degree == degree {
                 continue;
             }
-            let changed = if degree > spline.degree && !cx.toggle("Deformable") {
-                spline
-                    .elevated(degree - spline.degree)
-                    .to_curve()
-                    .map_err(|e| failed(&e))?
+            // The engine: raised exactly, or lowered keeping the shape within 0.01; a curve that
+            // cannot be lowered that closely keeps its control points instead (`Deformable`).
+            let exact = if cx.toggle("Deformable") {
+                None
+            } else {
+                curve.with_degree(degree, 0.01).ok().map(|(c, _)| c)
+            };
+            let changed = if let Some(exact) = exact {
+                exact
             } else {
                 let mut points = spline.control_points();
                 let closed = curve.is_closed().unwrap_or(false);
@@ -338,6 +345,7 @@ fn volume_centroid(body: &Body) -> Option<Point> {
 }
 
 /// The centre of a surface's area, from its mesh.
+// CUSTOM KERNEL OPERATION: mesh-area-centroid
 fn area_centroid(body: &Body) -> Option<Point> {
     let mesh = body.mesh().ok()?;
     let (mut area, mut moment) = (0.0, [0.0; 3]);

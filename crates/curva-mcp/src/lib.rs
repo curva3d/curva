@@ -179,6 +179,7 @@ impl<'a> Session<'a> {
                     Shape::Curve(curve) => (kind_of(curve), curve.length().ok(), None),
                     Shape::Body(body) if body.is_solid() => ("solid", None, body.volume().ok()),
                     Shape::Body(_) => ("surface", None, None),
+                    Shape::Instance(_) => ("block instance", None, None),
                 };
                 json!({
                     "id": object.id,
@@ -188,6 +189,7 @@ impl<'a> Session<'a> {
                     "volume": volume,
                     "hidden": object.hidden,
                     "print_width": self.doc.print_width_of(object.id),
+                    "live_boolean_inputs": self.doc.inputs_of(object.id),
                     "locked": object.locked,
                     "group": object.group,
                     "selected": selected.contains(&object.id),
@@ -325,7 +327,16 @@ impl<'a> Session<'a> {
 }
 
 /// The commands that an agent cannot run on the open window without the user's say-so.
-const NEEDS_APPROVAL: [&str; 4] = ["Delete", "New", "Open", "Save"];
+const NEEDS_APPROVAL: [&str; 8] = [
+    "Delete",
+    "New",
+    "Open",
+    "Save",
+    "SaveAs",
+    "Import",
+    "Export",
+    "ExportSelected",
+];
 
 /// If this message would do something the user should approve first, the line that would do it.
 #[must_use]

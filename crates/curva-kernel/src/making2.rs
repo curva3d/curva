@@ -97,6 +97,7 @@ impl Body {
         if cap && matches!(curve, Curve::Polyline { closed: true, .. }) {
             return Self::pyramid(curve, apex);
         }
+        // CUSTOM KERNEL OPERATION: cone-to-point
         let ends = if cap { Ends::Capped } else { Ends::Open };
         let profile = pieces(std::slice::from_ref(curve))?;
         // The smallest tip the engine closes reliably, then a larger one if it will not.
@@ -126,6 +127,7 @@ impl Body {
         touch: Point,
         stations: usize,
     ) -> Result<Self, KernelError> {
+        // CUSTOM KERNEL OPERATION: rail-revolve
         let axis = unit(axis).ok_or_else(|| KernelError("the axis has no length".to_owned()))?;
         let radial = |p: Point| {
             let d = sub(p, origin);

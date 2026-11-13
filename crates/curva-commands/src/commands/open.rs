@@ -13,6 +13,20 @@ impl Command for Open {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
         match answer {
             None => Step::Ask(Request::new("prompt.open.path", Kind::Path)),
+            Some(Answer::Path(text))
+                if super::files::is_3dm(Path::new(text.trim().trim_matches('"'))) =>
+            {
+                match super::files::open_3dm(Path::new(text.trim().trim_matches('"'))) {
+                    Ok((opened, report)) => {
+                        *doc = opened;
+                        Step::Done(Some(Message::with(
+                            "done.open_3dm",
+                            vec![text, report.summary()],
+                        )))
+                    }
+                    Err(error) => Step::Failed(Message::with("error.file", vec![error])),
+                }
+            }
             Some(Answer::Path(text)) => match Document::open(Path::new(&text)) {
                 Ok(opened) => {
                     *doc = opened;

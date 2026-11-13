@@ -32,11 +32,13 @@ pub enum Piece {
     Display,
     /// The settings, in tabs.
     Settings,
+    /// The block definitions (`BlockManager`).
+    Blocks,
 }
 
 impl Piece {
     /// Every piece, in their standard order.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::CommandTabs,
         Self::Layers,
         Self::Properties,
@@ -44,6 +46,7 @@ impl Piece {
         Self::Agent,
         Self::Display,
         Self::Settings,
+        Self::Blocks,
     ];
 
     /// Its name's key in the translation file.
@@ -57,6 +60,7 @@ impl Piece {
             Self::Agent => "ui.piece.assistant",
             Self::Display => "ui.piece.display",
             Self::Settings => "ui.file.settings",
+            Self::Blocks => "ui.piece.blocks",
         }
     }
 }
@@ -206,7 +210,7 @@ impl Default for Layout {
                     [180.0, 64.0],
                 ),
             ],
-            closed: vec![Piece::Settings],
+            closed: vec![Piece::Settings, Piece::Blocks],
         }
     }
 }

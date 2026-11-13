@@ -25,7 +25,7 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | Polyline | partly | Options to come: `Helpers`, `Length`, `Mode`, `Direction`, `ThroughPoint`, `Center`, `PersistentClose` |
 | Curve | partly | Options to come: `AutoClose`, `PersistentClose`, `Sharp` |
 | InterpCrv | partly | Options to come: `AutoClose`, `Degree`, `PersistentClose`, `Knots`, `StartTangent`, `EndTangent`, `Sharp` |
-| InterpCrvOnSrf | blocked | needs curves on surfaces |
+| InterpCrvOnSrf | done | Fitted through points of the surface along the curve |
 | HandleCurve | partly | Handles are placed by clicking, not dragging; `Close` to come |
 | Sketch | done |  |
 | Circle | partly | Options to come: `Deformable`, `Radius`, `AroundCurve`, `FitPoints`, `Tangent`, `Vertical`, `Orientation`, `Circumference`, `Area` |
@@ -46,20 +46,20 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | Divide | partly | Options to come: `Length`, `EqualChordLength`, `Split`, `DeleteRemainder`, `MarkEnds`, `GroupOutput` |
 | Offset | partly | Options to come: `Loose`, `Corner`, `Trim`, `Tolerance`, `InCPlane`, `Cap`, `OutputLayer` |
 | OffsetMultiple | partly | Options to come: `Corner`, `BothSides` |
-| OffsetCrvOnSrf | blocked | needs curves on surfaces |
+| OffsetCrvOnSrf | partly | The offset curve is refitted through 49 points on the surface |
 | Fillet | partly | Options to come: `Join`, `Trim`, `ExtendArcsBy`, `ExtendOtherCurvesBy`, `Dynamic` |
 | FilletCorners | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
 | Chamfer | partly | Options to come: `Join`, `Trim`, `ExtendArcsBy`, `ExtendOtherCurvesBy` |
-| Project | blocked | needs projection onto surfaces |
-| Pull | blocked | needs projection onto surfaces |
+| Project | partly | Along the construction plane's normal; `Loose` and `DeleteInput` to come |
+| Pull | partly | The curve refitted through pulled points (48 a curve) |
 | ProjectToCPlane | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
-| Contour | blocked | needs plane–surface intersections |
-| Section | blocked | needs plane–surface intersections |
-| Intersect | blocked | needs surface intersections |
+| Contour | partly | Options to come: `GroupOutput`, `JoinCurves` |
+| Section | done |  |
+| Intersect | done |  |
 | DupEdge | done | |
 | DupBorder | done |  |
-| Silhouette | blocked | needs silhouettes from the engine |
-| ExtractIsocurve | blocked | needs surface isocurves |
+| Silhouette | done | Seen down the construction plane's normal, from the display mesh |
+| ExtractIsocurve | partly | Faces with a NURBS form only (planes and splines); `Toggle` to come |
 
 ## Curves: editing
 
@@ -98,7 +98,7 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | PlanarSrf | done | |
 | Plane | partly | Options to come: `Deformable`, `Vertical`, `Center`, `3Point` |
 | SrfPt | done | |
-| EdgeSrf | blocked | needs Coons patches |
+| EdgeSrf | done |  |
 | ExtrudeCrv | partly | Options to come: `Direction`, `ToBoundary`, `SplitAtTangents`, `SetBasePoint` |
 | ExtrudeCrvTapered | partly | Options to come: `Direction`, `DeleteInput`, `FlipAngle` |
 | ExtrudeCrvAlongCrv | partly | Options to come: `DeleteInput`, `SubCurve` |
@@ -107,21 +107,21 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | RailRevolve | partly | The surface passes through the profile at 72 angles and is skinned between them; `ScaleHeight` to come |
 | Loft | partly | Options to come: `Point`, `Style`, `Closed`, `MatchStartTangent`, `MatchEndTangent`, `SplitAtTangents`, `AlignCurves`, `Rebuild`, `Refit` |
 | Sweep1 | partly | Options to come: `ChainEdges`, `Point`, `FrameStyle`, `Closed`, `GlobalShapeBlending`, `UntrimmedMiters`, `RefitRail`, `AlignCrossSections` |
-| Sweep2 | blocked | needs two-rail sweeps |
-| NetworkSrf | blocked | needs network surfaces |
-| Patch | blocked | needs patch fitting |
-| BlendSrf | blocked | needs surface blending |
+| Sweep2 | partly | One cross section, placed exactly at 64 stations and skinned between; `MaintainHeight` to come |
+| NetworkSrf | partly | Sorts the curves into their two families itself; `EdgeMatching` and `Tolerances` to come; rational curves (arcs) are refused by the engine |
+| Patch | partly | Fills a closed chain of curves; points, `UVSpans`, `Stiffness` and the other options to come |
+| BlendSrf | partly | Edges that are sides of untrimmed surfaces only; `Planar Sections` to come |
 | Pipe | partly | Options to come: `ChainEdges`, `Multiple`, `FitRail`, `ShapeBlending`, `WallThickness` |
 | OffsetSrf | partly | Options to come: `Distance`, `Corner`, `ThroughPoint`, `FlipAll`, `Loose`, `Tolerance`, `BothSides` |
-| ExtendSrf | blocked | needs surface extension |
-| MatchSrf | blocked | needs surface matching |
-| FilletSrf | blocked | needs surface fillets |
-| ChamferSrf | blocked | needs surface chamfers |
-| Untrim | blocked | needs trim removal |
-| ShrinkTrimmedSrf | blocked | |
-| SplitSrf | blocked | needs surface splitting |
-| RebuildUV | blocked | |
-| UnrollSrf | blocked | needs developing surfaces |
+| ExtendSrf | done |  |
+| MatchSrf | partly | Untrimmed edges, position and tangency; `Curvature` and `AverageSurfaces` to come |
+| FilletSrf | partly | Arcs placed at 25 stations along the spine and skinned; the surfaces are not trimmed back yet |
+| ChamferSrf | partly | As FilletSrf, with straight sections |
+| Untrim | partly | Options to come: `KeepTrimObjects`, `All` |
+| ShrinkTrimmedSrf | done |  |
+| SplitSrf | done |  |
+| RebuildUV | partly | Untrimmed one-face surfaces only; `DeleteInput` to come |
+| UnrollSrf | partly | Ruled developable surfaces only; outlines unrolled as polylines of 96 steps |
 
 ## Solids
 
@@ -138,7 +138,7 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | Ellipsoid | partly | Options to come: `Corner`, `Diameter`, `FromFoci`, `AroundCurve` |
 | Paraboloid | partly | Options to come: `Vertex`, `MarkFocus`, `Solid` |
 | ExtrudeSrf | partly | Straight out of the construction plane; `Direction`, `Solid=No`, `ToBoundary` and `SetBasePoint` to come |
-| Cap | blocked | the engine leaves capped solids hollow (tangency-labs/solidcore#3266) |
+| Cap | done | Curva's own (`planar-capping`): solidcore leaves capped shells hollow |
 | BooleanUnion | partly | Options to come: `MergeCoplanarFaces` |
 | BooleanDifference | partly | Options to come: `DeleteCutters` |
 | BooleanIntersection | done | |
@@ -148,8 +148,9 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | Shell | partly | Options to come: `Thickness`, `EditThickness` |
 | ExtractSrf | done |  |
 | MergeAllFaces | done |  |
-| MoveFace | blocked | needs face editing |
-| ExtrudeFace | blocked | needs face editing |
+| MoveFace | partly | Moves faces along their normals by a distance, not by any vector |
+| PushPull | done | |
+| ExtrudeFace | partly | Flat faces along their normal |
 | Wirecut | partly | Cuts straight through out of the construction plane; `Direction`, `BothSides` and `DeleteInput` to come |
 
 ## Transforming
@@ -173,12 +174,12 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | ArrayLinear | done | |
 | Align | partly | Options to come: `ToPoint`, `ToLine` |
 | Distribute | done |  |
-| Shear | blocked | needs shear transforms in the engine |
-| Twist | blocked | needs deformations |
-| Bend | blocked | needs deformations |
-| Taper | blocked | needs deformations |
-| Flow | blocked | needs deformations |
-| CageEdit | blocked | needs deformations |
+| Shear | partly | Options to come: `Copy` |
+| Twist | partly | Surfaces are refined and their control points moved (exact for flat faces, close for curved ones); `Infinite` to come |
+| Bend | partly | Bends along a circular arc from the spine's start; control points moved as for Twist; `Symmetric` to come |
+| Taper | partly | Sizes as a factor at the axis's end; `Flat` and `Infinite` to come |
+| Flow | partly | Stretches along the target curve; `Rigid` and `Copy` to come |
+| CageEdit | partly | A box cage moved by its eight corners, by clicks |
 
 ## Selecting, showing and grouping
 
@@ -208,10 +209,10 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | Show | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
 | HideSwap | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
 | Isolate | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
-| Lock | partly | Not yet on the command framework |
-| Unlock | partly | Not yet on the command framework |
-| Group | partly | Not yet on the command framework; groups do not nest yet |
-| Ungroup | partly | Not yet on the command framework |
+| Lock | done |  |
+| Unlock | done |  |
+| Group | partly | Groups do not nest yet |
+| Ungroup | done |  |
 | Rename | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
 | History | partly | Options to come: `Record`, `Update`, `Lock`, `BrokenHistoryWarning` |
 
@@ -230,8 +231,8 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | BoundingBox | partly | Options to come: `CoordinateSystem`, `Cumulative`, `Output` |
 | AreaCentroid | partly | A solid's area centre is worked out from its mesh; closed curves to come |
 | VolumeCentroid | done | |
-| CurvatureGraph | blocked | needs curvature from the engine |
-| Zebra | blocked | needs analysis display |
+| CurvatureGraph | done |  |
+| Zebra | partly | Stripes on the whole viewport, run again to stop; stripe direction, size and colour to come |
 | ShowEdges | partly | Shows naked edges or all; `NonManifoldEdges` to come |
 
 ## Construction planes and views
@@ -251,4 +252,4 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | UndoView | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
 | RedoView | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
 | SetDisplayMode | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
-| Plan | partly | Not yet on the command framework |
+| Plan | done |  |

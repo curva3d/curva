@@ -63,6 +63,35 @@ fn stretched_shape(
             }
             Ok(Shape::Body(made))
         }
+        Shape::Instance(_) => {
+            // The stretch as one affine map, placed on the instance.
+            let stretch = |v: Point| -> Point {
+                let mut p = v;
+                for (axis, factor) in axes.iter().zip(factors) {
+                    let along = curva_kernel::dot(p, *axis) * (factor - 1.0);
+                    p = std::array::from_fn(|k| p[k] + axis[k] * along);
+                }
+                p
+            };
+            let image = |v: Point| -> [f64; 4] {
+                let p = stretch(v);
+                [p[0], p[1], p[2], 0.0]
+            };
+            let moved = stretch(origin);
+            let map = [
+                image([1.0, 0.0, 0.0]),
+                image([0.0, 1.0, 0.0]),
+                image([0.0, 0.0, 1.0]),
+                [
+                    origin[0] - moved[0],
+                    origin[1] - moved[1],
+                    origin[2] - moved[2],
+                    1.0,
+                ],
+            ];
+            curva_document::blocks::shape_placed(shape, &map)
+                .ok_or_else(|| KernelError("could not stretch the block".to_owned()))
+        }
     }
 }
 

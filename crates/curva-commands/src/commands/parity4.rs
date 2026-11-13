@@ -400,43 +400,25 @@ impl Recipe for BlendCrv {
         let (Some((_, a)), Some((_, b))) = (first.first(), second.first()) else {
             return Ok(Made::default());
         };
-        let (a, b) = (
+        let (sa, sb) = (
             Spline::of(a).map_err(|e| failed(&e))?,
             Spline::of(b).map_err(|e| failed(&e))?,
         );
-        let (a_end, b_end) = nearest_ends(&a, &b);
-        let (p0, d0, dd0) = leaving(&a, a_end);
-        let (p3, d3, dd3) = leaving(&b, b_end);
-        let chord = gap(p0, p3);
-        if chord <= 1e-9 {
+        let (a_end, b_end) = nearest_ends(&sa, &sb);
+        let (p0, _, _) = leaving(&sa, a_end);
+        let (p3, _, _) = leaving(&sb, b_end);
+        if gap(p0, p3) <= 1e-9 {
             return Err(Message::new("error.blend_touching"));
         }
-        let curve = match continuity(cx, Continuity::Curvature) {
-            Continuity::Position => Curve::line(p0, p3),
-            Continuity::Tangency => {
-                let (t0, t3) = (unit(d0).unwrap_or([0.0; 3]), unit(d3).unwrap_or([0.0; 3]));
-                bezier(
-                    &[p0, plus(p0, t0, chord / 3.0), plus(p3, t3, chord / 3.0), p3],
-                    None,
-                )
-                .to_curve()
-            }
-            Continuity::Curvature => {
-                // A quintic whose first and second derivatives at each end are those of the
-                // curve it meets, scaled so the blend runs about as fast as its chord.
-                let (s0, s3) = (chord / length(d0).max(1e-12), chord / length(d3).max(1e-12));
-                let q1 = plus(p0, d0, s0 / 5.0);
-                let q2: Point =
-                    std::array::from_fn(|k| 2.0 * q1[k] - p0[k] + s0 * s0 * dd0[k] / 20.0);
-                // At the far end the blend arrives, so its derivative is the other curve's leaving
-                // derivative turned round, and its second derivative is unchanged.
-                let q4 = plus(p3, d3, s3 / 5.0);
-                let q3: Point =
-                    std::array::from_fn(|k| 2.0 * q4[k] - p3[k] + s3 * s3 * dd3[k] / 20.0);
-                bezier(&[p0, q1, q2, q3, q4, p3], None).to_curve()
-            }
-        }
-        .map_err(|e| failed(&e))?;
+        // The engine's blend: the least-degree Bézier meeting each end as asked.
+        let contact = match continuity(cx, Continuity::Curvature) {
+            Continuity::Position => curva_kernel::Contact::Position,
+            Continuity::Tangency => curva_kernel::Contact::Tangency,
+            Continuity::Curvature => curva_kernel::Contact::Curvature,
+        };
+        let curve = a
+            .blended_with(a_end, contact, b, b_end, contact, 1.0 / 3.0)
+            .map_err(|e| failed(&e))?;
         Ok(Made {
             add: vec![Shape::Curve(curve)],
             message: Some(Message::new("done.blendcrv")),
@@ -516,8 +498,8 @@ impl Recipe for DupBorder {
                 .map(|edge| body.edge_curve(edge))
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| failed(&e))?;
-            let joined = curva_kernel::join(&curves).map_err(|e| failed(&e))?;
-            for (_, curve) in joined {
+            let joined = curva_kernel::join_all(&curves).map_err(|e| failed(&e))?;
+            for curve in joined {
                 made.derived.push(Derived {
                     shape: Shape::Curve(curve),
                     from: id,
@@ -545,48 +527,50 @@ enum Reach {
 
 /// The curve carried on past its end by about `by` (a length), and the added piece alone.
 fn extended(curve: &Curve, by: f64, reach: Reach) -> Result<(Curve, Curve), KernelError> {
+    if reach != Reach::Arc {
+        // The engine's extension: straight along the end tangent, or the curve's own end span
+        // carried on, joined into one curve.
+        let how = if reach == Reach::Line {
+            curva_kernel::Carry::Tangent
+        } else {
+            curva_kernel::Carry::Natural
+        };
+        let whole = curve.extended_by(false, by, how)?;
+        let end = curve
+            .sample()?
+            .last()
+            .copied()
+            .ok_or_else(|| KernelError("an empty curve".to_owned()))?;
+        let piece = whole
+            .cut_at(&[end])?
+            .pop()
+            .ok_or_else(|| KernelError("could not extend the curve".to_owned()))?;
+        return Ok((whole, piece));
+    }
+    // CUSTOM KERNEL OPERATION: arc-extension
+    // The engine has no arc extension: an arc keeping the end's curvature, or a line where the
+    // curve is straight there.
     let spline = Spline::of(curve)?;
     let (end, d1, d2) = spline.end_derivatives();
     let t =
         unit(d1).ok_or_else(|| KernelError("the curve has no direction at its end".to_owned()))?;
-    let line = || Curve::line(end, plus(end, t, by));
-    let piece = match reach {
-        Reach::Line => line()?,
-        Reach::Arc => {
-            let speed = length(d1);
-            let bend = cross(d1, d2);
-            let curvature = length(bend) / speed.powi(3);
-            if curvature < 1e-9 {
-                line()?
-            } else {
-                let radius = 1.0 / curvature;
-                let inward = unit(cross(bend, d1)).unwrap_or([0.0; 3]);
-                let centre = plus(end, inward, radius);
-                let x = unit(sub(end, centre)).unwrap_or([1.0, 0.0, 0.0]);
-                let angle = (by / radius).min(std::f64::consts::PI * 1.9);
-                let tip = plus(
-                    plus(centre, x, radius * angle.cos()),
-                    t,
-                    radius * angle.sin(),
-                );
-                Curve::arc(centre, end, tip, x, t)?
-            }
-        }
-        Reach::Smooth => {
-            if spline.degree == 1 {
-                line()?
-            } else {
-                // Carry the parameter on in proportion to the length wanted.
-                let (a, b) = spline.domain();
-                let along = by * (b - a) / curve.length()?.max(1e-12);
-                let longer = spline.extended_end(along);
-                let (_, piece) = longer
-                    .split(b)
-                    .ok_or_else(|| KernelError("could not extend the curve".to_owned()))?;
-                let whole = longer.to_curve()?;
-                return Ok((whole, piece.to_curve()?));
-            }
-        }
+    let speed = length(d1);
+    let bend = cross(d1, d2);
+    let curvature = length(bend) / speed.powi(3);
+    let piece = if curvature < 1e-9 {
+        Curve::line(end, plus(end, t, by))?
+    } else {
+        let radius = 1.0 / curvature;
+        let inward = unit(cross(bend, d1)).unwrap_or([0.0; 3]);
+        let centre = plus(end, inward, radius);
+        let x = unit(sub(end, centre)).unwrap_or([1.0, 0.0, 0.0]);
+        let angle = (by / radius).min(std::f64::consts::PI * 1.9);
+        let tip = plus(
+            plus(centre, x, radius * angle.cos()),
+            t,
+            radius * angle.sin(),
+        );
+        Curve::arc(centre, end, tip, x, t)?
     };
     Ok((Curve::compound(vec![curve.clone(), piece.clone()])?, piece))
 }
@@ -755,6 +739,7 @@ fn deviation(a: &Curve, b: &Curve) -> f64 {
 #[derive(Default)]
 pub struct Fair;
 
+// CUSTOM KERNEL OPERATION: curve-fairing
 impl Recipe for Fair {
     const NAME: &'static str = "fair";
 
@@ -836,6 +821,7 @@ fn inside(p: [f64; 2], ring: &[[f64; 2]]) -> bool {
 #[derive(Default)]
 pub struct CurveBoolean;
 
+// CUSTOM KERNEL OPERATION: curve-boolean-regions
 impl Recipe for CurveBoolean {
     const NAME: &'static str = "curveboolean";
     const OPTIONS: &'static [OptionDef] = &[
@@ -939,7 +925,7 @@ impl Recipe for CurveBoolean {
                 })
                 .cloned()
                 .collect();
-            for (_, outline) in curva_kernel::join(&edges).map_err(|e| failed(&e))? {
+            for outline in curva_kernel::join_all(&edges).map_err(|e| failed(&e))? {
                 made.add.push(Shape::Curve(outline));
             }
         }
@@ -977,6 +963,7 @@ fn with_room(mut spline: Spline, needed: usize) -> Spline {
 
 /// The spline with its end moved to `end`, and, as asked, its end derivative `d1` and second
 /// derivative `d2`.
+// CUSTOM KERNEL OPERATION: curve-matching
 fn matched_end(spline: Spline, end: Point, d1: Point, d2: Point, how: Continuity) -> Spline {
     let needed = match how {
         Continuity::Position => 1,
@@ -1074,6 +1061,7 @@ fn circle_through(a: Point, b: Point, c: Point) -> Option<Point> {
 }
 
 /// A piece as a line or an arc, when it is one within `tolerance`.
+// CUSTOM KERNEL OPERATION: curve-simplifying
 fn simpler(piece: &Curve, tolerance: f64) -> Option<Curve> {
     if matches!(
         piece,

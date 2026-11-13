@@ -10,6 +10,7 @@
     clippy::explicit_counter_loop
 )]
 
+// CUSTOM KERNEL OPERATION: spline-toolkit
 use crate::{Curve, KernelError, Point};
 
 /// A clamped NURBS curve with homogeneous control points `[x w, y w, z w, w]`.

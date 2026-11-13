@@ -11,12 +11,16 @@ pub use edges::{EdgePick, FacePick};
 mod grips;
 mod history;
 pub use grips::Grip;
+pub mod blocks;
+pub use blocks::{BlockDefinition, BlockEdit, Instance, PLACED_AS_IS, Placement};
 mod layers;
+mod live;
+pub use live::{LiveBoolean, LiveHow};
 mod organise;
 mod shape;
 pub use shape::Shape;
 mod views;
-pub use views::SavedView;
+pub use views::{SavedCPlane, SavedView};
 
 pub use history::Recipe;
 
@@ -51,6 +55,14 @@ pub struct Object {
     pub locked: bool,
     /// The group it belongs to, if any: picking one member picks them all.
     pub group: Option<u64>,
+    /// For a live boolean's result: how it is made and from what.
+    pub live: Option<crate::live::LiveBoolean>,
+    /// For an input kept by a live boolean: the result it belongs to.
+    pub input_of: Option<u64>,
+    /// How its lines are drawn: continuous, dashed and so on, or as its layer says.
+    pub linetype: Linetype,
+    /// Key–value text kept with it (`SetUserText`).
+    pub user_text: std::collections::BTreeMap<String, String>,
 }
 
 impl Object {
@@ -70,6 +82,8 @@ struct StoredObject {
     curve: Option<Curve>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     body: Option<Body>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    instance: Option<crate::blocks::Instance>,
     #[serde(default)]
     layer: u64,
     #[serde(default)]
@@ -84,15 +98,24 @@ struct StoredObject {
     locked: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     group: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    live: Option<crate::live::LiveBoolean>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    input_of: Option<u64>,
+    #[serde(default, skip_serializing_if = "Linetype::is_by_layer")]
+    linetype: Linetype,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    user_text: std::collections::BTreeMap<String, String>,
 }
 
 impl TryFrom<StoredObject> for Object {
     type Error = String;
 
     fn try_from(stored: StoredObject) -> Result<Self, String> {
-        let shape = match (stored.curve, stored.body) {
-            (Some(curve), None) => Shape::Curve(curve),
-            (None, Some(body)) => Shape::Body(body),
+        let shape = match (stored.curve, stored.body, stored.instance) {
+            (Some(curve), None, None) => Shape::Curve(curve),
+            (None, Some(body), None) => Shape::Body(body),
+            (None, None, Some(instance)) => Shape::Instance(instance),
             _ => return Err(format!("object {} needs a curve or a body", stored.id)),
         };
         Ok(Self {
@@ -105,20 +128,26 @@ impl TryFrom<StoredObject> for Object {
             print_width: stored.print_width,
             locked: stored.locked,
             group: stored.group,
+            live: stored.live,
+            input_of: stored.input_of,
+            linetype: stored.linetype,
+            user_text: stored.user_text,
         })
     }
 }
 
 impl From<Object> for StoredObject {
     fn from(object: Object) -> Self {
-        let (curve, body) = match object.shape {
-            Shape::Curve(curve) => (Some(curve), None),
-            Shape::Body(body) => (None, Some(body)),
+        let (curve, body, instance) = match object.shape {
+            Shape::Curve(curve) => (Some(curve), None, None),
+            Shape::Body(body) => (None, Some(body), None),
+            Shape::Instance(instance) => (None, None, Some(instance)),
         };
         Self {
             id: object.id,
             curve,
             body,
+            instance,
             layer: object.layer,
             hidden: object.hidden,
             name: object.name,
@@ -126,6 +155,10 @@ impl From<Object> for StoredObject {
             print_width: object.print_width,
             locked: object.locked,
             group: object.group,
+            live: object.live,
+            input_of: object.input_of,
+            linetype: object.linetype,
+            user_text: object.user_text,
         }
     }
 }
@@ -149,6 +182,12 @@ pub struct Layer {
     /// How thick its objects are drawn and printed, in millimetres; `None` is the default thin line.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub print_width: Option<f64>,
+    /// How its objects' lines are drawn.
+    #[serde(
+        default = "continuous",
+        skip_serializing_if = "Linetype::is_continuous"
+    )]
+    pub linetype: Linetype,
 }
 
 /// How thick an object's lines are, as Rhino's Print Width (spec `line-weights.md`).
@@ -192,6 +231,105 @@ impl PrintWidth {
     }
 }
 
+/// How a line is drawn, as Rhino's linetypes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Linetype {
+    /// As its layer says (objects only).
+    #[default]
+    ByLayer,
+    /// A solid line.
+    Continuous,
+    /// Long dashes.
+    Dashed,
+    /// Dots.
+    Dotted,
+    /// Dashes and dots.
+    DashDot,
+    /// Short dashes, for hidden lines.
+    Hidden,
+    /// Long and short dashes, for centre lines.
+    Center,
+    /// Two dashes and a dot.
+    Border,
+}
+
+impl Linetype {
+    /// The linetypes offered, after `ByLayer`.
+    pub const ALL: [Self; 7] = [
+        Self::Continuous,
+        Self::Dashed,
+        Self::Dotted,
+        Self::DashDot,
+        Self::Hidden,
+        Self::Center,
+        Self::Border,
+    ];
+
+    /// Whether it follows the layer, which files leave unwritten.
+    #[must_use]
+    pub fn is_by_layer(&self) -> bool {
+        matches!(self, Self::ByLayer)
+    }
+
+    /// Whether it is a solid line, which files leave unwritten for layers.
+    #[must_use]
+    pub fn is_continuous(&self) -> bool {
+        matches!(self, Self::Continuous)
+    }
+
+    /// Its name, as Rhino names it.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::ByLayer => "ByLayer",
+            Self::Continuous => "Continuous",
+            Self::Dashed => "Dashed",
+            Self::Dotted => "Dots",
+            Self::DashDot => "DashDot",
+            Self::Hidden => "Hidden",
+            Self::Center => "Center",
+            Self::Border => "Border",
+        }
+    }
+
+    /// The linetype with this name, ignoring case.
+    #[must_use]
+    pub fn named(name: &str) -> Option<Self> {
+        std::iter::once(Self::ByLayer).chain(Self::ALL).find(|t| {
+            t.name().eq_ignore_ascii_case(name)
+                || (name.eq_ignore_ascii_case("dotted") && *t == Self::Dotted)
+        })
+    }
+
+    /// Its pattern in model units: lengths drawn and left out in turn; empty for a solid line.
+    #[must_use]
+    pub fn pattern(self) -> &'static [f64] {
+        match self {
+            Self::ByLayer | Self::Continuous => &[],
+            Self::Dashed => &[3.0, 1.5],
+            Self::Dotted => &[0.25, 1.0],
+            Self::DashDot => &[3.0, 1.0, 0.25, 1.0],
+            Self::Hidden => &[1.5, 1.0],
+            Self::Center => &[6.0, 1.0, 1.5, 1.0],
+            Self::Border => &[3.0, 1.0, 3.0, 1.0, 0.25, 1.0],
+        }
+    }
+
+    /// The linetype an object on `layer` draws with.
+    #[must_use]
+    pub fn resolved(self, layer: Option<&Layer>) -> Self {
+        match self {
+            Self::ByLayer => layer.map_or(Self::Continuous, |l| l.linetype),
+            other => other,
+        }
+    }
+}
+
+/// A layer's linetype when its file names none.
+fn continuous() -> Linetype {
+    Linetype::Continuous
+}
+
 /// The layer every model starts with. Files from before layers put everything on it.
 fn standard_layers() -> Vec<Layer> {
     vec![Layer {
@@ -201,6 +339,7 @@ fn standard_layers() -> Vec<Layer> {
         visible: true,
         locked: false,
         print_width: None,
+        linetype: Linetype::Continuous,
     }]
 }
 
@@ -230,6 +369,15 @@ pub struct State {
     /// The id the next group receives.
     #[serde(default)]
     pub next_group: u64,
+    /// The block definitions.
+    #[serde(default)]
+    pub blocks: Vec<crate::blocks::BlockDefinition>,
+    /// The id the next block definition receives.
+    #[serde(default)]
+    pub next_block: u64,
+    /// A block definition being edited in place.
+    #[serde(default)]
+    pub block_edit: Option<crate::blocks::BlockEdit>,
 }
 
 /// The unit a model is drawn in (spec `docs/specs/ui-look-and-layout.md` §7).
@@ -272,6 +420,9 @@ impl Default for State {
             next_layer: first_new_layer(),
             unit: Unit::Millimetres,
             next_group: 0,
+            blocks: Vec::new(),
+            next_block: 0,
+            block_edit: None,
         }
     }
 }
@@ -282,6 +433,8 @@ struct FileContents {
     state: State,
     #[serde(default)]
     views: Vec<SavedView>,
+    #[serde(default)]
+    cplanes: Vec<SavedCPlane>,
 }
 
 /// Why a file could not be saved or opened.
@@ -320,6 +473,8 @@ pub struct Document {
     previous_selection: Vec<u64>,
     /// Views saved under a name. Saved in the file, but not part of undo.
     views: Vec<SavedView>,
+    /// Construction planes saved under a name. Saved in the file, but not part of undo.
+    cplanes: Vec<SavedCPlane>,
     /// Objects showing their control points. Not saved, and not part of undo.
     showing_points: BTreeSet<u64>,
     /// The picked control points. Not saved, and not part of undo.
@@ -401,6 +556,10 @@ impl Document {
             print_width: PrintWidth::ByLayer,
             locked: false,
             group: None,
+            live: None,
+            input_of: None,
+            linetype: Linetype::ByLayer,
+            user_text: std::collections::BTreeMap::new(),
         });
         id
     }
@@ -459,7 +618,7 @@ impl Document {
     pub fn show_all(&mut self) -> usize {
         let mut shown = 0;
         for object in &mut self.state.objects {
-            if object.hidden {
+            if object.hidden && object.input_of.is_none() {
                 object.hidden = false;
                 shown += 1;
             }
@@ -677,6 +836,7 @@ impl Document {
             format: FORMAT.to_owned(),
             state: self.state.clone(),
             views: self.views.clone(),
+            cplanes: self.cplanes.clone(),
         };
         let failed = |e: &dyn std::fmt::Display| FileError(e.to_string());
         let json = serde_json::to_vec(&contents).map_err(|e| failed(&e))?;
@@ -728,6 +888,7 @@ impl Document {
         Ok(Self {
             state: contents.state,
             views: contents.views,
+            cplanes: contents.cplanes,
             path: Some(path.to_owned()),
             ..Self::default()
         })
@@ -869,6 +1030,7 @@ mod tests {
             format: FORMAT.to_owned(),
             state: doc.state().clone(),
             views: Vec::new(),
+            cplanes: Vec::new(),
         })
         .unwrap();
         std::fs::write(&old, &text).unwrap();

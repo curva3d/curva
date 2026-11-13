@@ -40,6 +40,7 @@ impl Document {
             visible: true,
             locked: false,
             print_width: None,
+            linetype: crate::Linetype::Continuous,
         });
         id
     }

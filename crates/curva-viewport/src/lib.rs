@@ -156,6 +156,8 @@ pub struct Outlines {
     locked: Vec<bool>,
     /// How thick each object draws, in millimetres or `None` for the default line, in the same order.
     widths: Vec<Option<f64>>,
+    /// The dash pattern each draws with (empty for a solid line), in the same order.
+    dashes: Vec<&'static [f64]>,
     /// Whether each entry is an edge of a surface or solid, in the same order.
     on_faces: Vec<bool>,
     /// For an edge of a surface or solid, its number among the body's edges, in the same order.
@@ -167,6 +169,9 @@ pub struct Outlines {
     /// Which kinds clicking and boxing may pick.
     filter: PickFilter,
 }
+
+/// Mesh-cache keys from here up are instances' parts.
+const INSTANCE_KEYS: u64 = 1 << 52;
 
 /// Meshes of bodies already worked out, so a body is meshed again only when it changes.
 #[derive(Debug, Default)]
@@ -197,8 +202,15 @@ impl MeshCache {
     /// core, so that opening a model of many solids does not mesh them one by one.
     fn refresh(&mut self, state: &State) {
         use rayon::prelude::*;
-        self.held
-            .retain(|id, _| state.objects.iter().any(|object| object.id == *id));
+        // Keys at or above INSTANCE_KEYS are the parts of instances, keyed by their object.
+        self.held.retain(|key, _| {
+            let id = if *key >= INSTANCE_KEYS {
+                (*key - INSTANCE_KEYS) >> 12
+            } else {
+                *key
+            };
+            state.objects.iter().any(|object| object.id == id)
+        });
         let wanted: Vec<(u64, &curva_kernel::Body)> = state
             .objects
             .iter()
@@ -238,62 +250,80 @@ impl Outlines {
             let colour = layer.map_or(CURVE_COLOUR, |l| l.colour);
             let locked = object.locked || layer.is_some_and(|l| l.locked);
             let width = object.print_width.resolved(layer);
-            // A body is meshed once: its triangles for shading, and its edges, each listed
-            // under the body's id, for wireframe, picking and snapping.
-            let mut kind = PickKind::Curve;
-            let pieces: Vec<(Curve, Option<usize>)> = match &object.shape {
-                Shape::Curve(curve) => {
-                    if matches!(curve, Curve::Point { .. }) {
-                        kind = PickKind::Point;
+            let dashes = object.linetype.resolved(layer).pattern();
+            // An instance draws its definition's objects, placed, all under its own id.
+            let parts: Vec<(Shape, u64)> = match &object.shape {
+                Shape::Instance(instance) => state
+                    .instance_shapes(instance)
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, (shape, _))| {
+                        (shape, INSTANCE_KEYS + (object.id << 12) + index as u64)
+                    })
+                    .collect(),
+                shape => vec![(shape.clone(), object.id)],
+            };
+            for (shape, key) in &parts {
+                // A body is meshed once: its triangles for shading, and its edges, each listed
+                // under the body's id, for wireframe, picking and snapping.
+                let mut kind = PickKind::Curve;
+                let pieces: Vec<(Curve, Option<usize>)> = match shape {
+                    Shape::Curve(curve) => {
+                        if matches!(curve, Curve::Point { .. }) {
+                            kind = PickKind::Point;
+                        }
+                        vec![(curve.clone(), None)]
                     }
-                    vec![(curve.clone(), None)]
-                }
-                Shape::Body(body) => {
-                    let Some((mesh, solid)) = cache.mesh(object.id, body) else {
+                    Shape::Body(body) => {
+                        let Some((mesh, solid)) = cache.mesh(*key, body) else {
+                            continue;
+                        };
+                        kind = if solid {
+                            PickKind::Solid
+                        } else {
+                            PickKind::Surface
+                        };
+                        let edges = mesh
+                            .edges
+                            .iter()
+                            .zip(&mesh.edge_ids)
+                            .filter_map(|(run, id)| match run.len() {
+                                0 | 1 => None,
+                                2 => Curve::line(run[0], run[1]).ok().map(|c| (c, Some(*id))),
+                                _ => Curve::polyline(run.clone(), false)
+                                    .ok()
+                                    .map(|c| (c, Some(*id))),
+                            })
+                            .collect();
+                        outlines.faces.push(Faces {
+                            id: object.id,
+                            colour,
+                            locked,
+                            around: mesh_box(&mesh),
+                            mesh,
+                        });
+                        edges
+                    }
+                    // Instances inside definitions are opened before this.
+                    Shape::Instance(_) => continue,
+                };
+                for (outline, edge) in pieces {
+                    let Ok(points) = outline.sample() else {
                         continue;
                     };
-                    kind = if solid {
-                        PickKind::Solid
-                    } else {
-                        PickKind::Surface
-                    };
-                    let edges = mesh
-                        .edges
-                        .iter()
-                        .zip(&mesh.edge_ids)
-                        .filter_map(|(run, id)| match run.len() {
-                            0 | 1 => None,
-                            2 => Curve::line(run[0], run[1]).ok().map(|c| (c, Some(*id))),
-                            _ => Curve::polyline(run.clone(), false)
-                                .ok()
-                                .map(|c| (c, Some(*id))),
-                        })
-                        .collect();
-                    outlines.faces.push(Faces {
-                        id: object.id,
-                        colour,
-                        locked,
-                        around: mesh_box(&mesh),
-                        mesh,
-                    });
-                    edges
+                    outlines.sites.extend(snap::sites_of(&outline, &points));
+                    let first = points.first().copied().unwrap_or_default();
+                    let around = snap::box_around(&points).unwrap_or((first, first));
+                    outlines.boxes.push(around);
+                    outlines.colours.push(colour);
+                    outlines.locked.push(locked);
+                    outlines.widths.push(width);
+                    outlines.dashes.push(dashes);
+                    outlines.on_faces.push(shape.body().is_some());
+                    outlines.edge_of.push(edge);
+                    outlines.kinds.push(kind);
+                    outlines.objects.push((object.id, points));
                 }
-            };
-            for (outline, edge) in pieces {
-                let Ok(points) = outline.sample() else {
-                    continue;
-                };
-                outlines.sites.extend(snap::sites_of(&outline, &points));
-                let first = points.first().copied().unwrap_or_default();
-                let around = snap::box_around(&points).unwrap_or((first, first));
-                outlines.boxes.push(around);
-                outlines.colours.push(colour);
-                outlines.locked.push(locked);
-                outlines.widths.push(width);
-                outlines.on_faces.push(object.shape.body().is_some());
-                outlines.edge_of.push(edge);
-                outlines.kinds.push(kind);
-                outlines.objects.push((object.id, points));
             }
         }
         outlines
@@ -834,6 +864,31 @@ fn polyline(out: &mut Vec<Vertex>, points: &[Point], colour: [f32; 3]) {
     polyline_with(out, points, colour, -DEFAULT_LINE_PIXELS);
 }
 
+/// A run of points drawn with a dash pattern (lengths drawn and left out in turn, in model units).
+fn dashed(out: &mut Vec<Vertex>, points: &[Point], pattern: &[f64], colour: [f32; 3], width: f32) {
+    let mut slot = 0;
+    let mut left = pattern[0];
+    for pair in points.windows(2) {
+        let (mut a, b) = (pair[0], pair[1]);
+        let mut length = curva_kernel::gap(a, b);
+        while length > 1e-12 {
+            let step = left.min(length);
+            let t = step / length;
+            let c: Point = std::array::from_fn(|k| a[k] + (b[k] - a[k]) * t);
+            if slot % 2 == 0 {
+                segment_with(out, narrow(a), narrow(c), colour, width);
+            }
+            left -= step;
+            length -= step;
+            a = c;
+            if left <= 1e-12 {
+                slot = (slot + 1) % pattern.len();
+                left = pattern[slot];
+            }
+        }
+    }
+}
+
 fn polyline_with(out: &mut Vec<Vertex>, points: &[Point], colour: [f32; 3], width: f32) {
     for pair in points.windows(2) {
         segment_with(out, narrow(pair[0]), narrow(pair[1]), colour, width);
@@ -927,7 +982,12 @@ fn lines_of(outlines: &Outlines, selected: &[u64], shaded: bool) -> Vec<Vertex> 
         } else {
             outlines.colours.get(index).copied().unwrap_or(CURVE_COLOUR)
         };
-        polyline_with(&mut out, points, colour, width);
+        let dashes = outlines.dashes.get(index).copied().unwrap_or(&[]);
+        if dashes.is_empty() {
+            polyline_with(&mut out, points, colour, width);
+        } else {
+            dashed(&mut out, points, dashes, colour, width);
+        }
     }
     out
 }
@@ -1252,6 +1312,31 @@ pub const STANDARD_INK: [f32; 3] = curva_document::STANDARD_COLOUR;
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn block_instances_draw_their_definition_under_their_own_id() {
+        let mut doc = curva_document::Document::default();
+        let leg = doc.add(Curve::line([0.0; 3], [0.0, 0.0, 1.0]).unwrap());
+        let seat = doc.add_body(curva_kernel::Body::cuboid([0.0; 3], [1.0, 1.0, 0.2]).unwrap());
+        let (definition, first) = doc.define_block("Chair".to_owned(), [0.0; 3], &[leg, seat]);
+        let second = doc.insert_block(
+            definition,
+            curva_document::blocks::moved_by([5.0, 0.0, 0.0]),
+        );
+        let outlines = Outlines::of(doc.state());
+        let ids: std::collections::BTreeSet<u64> =
+            outlines.objects.iter().map(|(id, _)| *id).collect();
+        assert_eq!(ids, [first, second].into_iter().collect());
+        // The second chair's lines are 5 along.
+        let far = outlines
+            .objects
+            .iter()
+            .filter(|(id, _)| *id == second)
+            .flat_map(|(_, points)| points.iter())
+            .map(|p| p[0])
+            .fold(f64::INFINITY, f64::min);
+        assert!((far - 5.0).abs() < 1e-9, "{far}");
+    }
+
     use curva_document::Document;
 
     const SIZE: [f64; 2] = [800.0, 600.0];

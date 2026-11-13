@@ -220,9 +220,10 @@ impl Recipe for Plane {
         if w.abs() < 1e-9 || h.abs() < 1e-9 {
             return Err(Message::new("error.flat_rectangle"));
         }
-        let ring = vec![a, plus(a, x, w), plus(plus(a, x, w), y, h), plus(a, y, h)];
-        let outline = Curve::polyline(ring, true).map_err(|e| failed(&e))?;
-        let body = Body::planar(&[outline]).map_err(|e| failed(&e))?;
+        // As Rhino's Plane: an untrimmed surface, ruled between two opposite sides.
+        let near = Curve::line(a, plus(a, x, w)).map_err(|e| failed(&e))?;
+        let far = Curve::line(plus(a, y, h), plus(plus(a, x, w), y, h)).map_err(|e| failed(&e))?;
+        let body = Body::ruled(&near, &far, false).map_err(|e| failed(&e))?;
         Ok(Made {
             add: vec![Shape::Body(body)],
             message: Some(Message::new("done.planarsrf_one")),
@@ -533,6 +534,15 @@ impl Recipe for What {
             .iter()
             .filter(|o| ids.contains(&o.id))
             .map(|o| match &o.shape {
+                Shape::Instance(i) => {
+                    let name = cx
+                        .doc
+                        .definitions()
+                        .iter()
+                        .find(|d| d.id == i.definition)
+                        .map_or("?", |d| d.name.as_str());
+                    format!("block instance of {name}")
+                }
                 Shape::Curve(curve) => {
                     let kind = match curve {
                         Curve::Point { at } => {
