@@ -2,7 +2,9 @@
 
 use crate::model::{self, Brep, Geometry, Model, P3};
 use curva_document::blocks::{BlockDefinition, Instance};
-use curva_document::{Document, Layer, Linetype, Object, PrintWidth, Shape, State, Unit};
+use curva_document::{
+    Document, Layer, Linetype, Object, PrintWidth, SavedCPlane, SavedView, Shape, State, Unit,
+};
 use curva_kernel::record::{
     Brep as Record, Curve as RecordCurve, Curve2, Edge, Face, Loop, OrientedEdge, OrientedFace,
     Region, Shell, Surface as RecordSurface, Vertex,
@@ -121,6 +123,7 @@ pub fn open(model: &Model) -> (Document, Report) {
     state.current_layer = state.layers[0].id;
     let mut doc = Document::default();
     doc.restore(state);
+    add_views_and_planes(model, &mut doc, &mut report);
     (doc, report)
 }
 
@@ -131,6 +134,7 @@ pub fn import(model: &Model, doc: &mut Document) -> Report {
     let mut state = doc.state().clone();
     bring_in(model, &mut state, &mut report);
     doc.restore(state);
+    add_views_and_planes(model, doc, &mut report);
     report
 }
 
@@ -1410,4 +1414,134 @@ fn extrusion_body(e: &model::Extrusion) -> Result<Body, KernelError> {
         parts.push(bottom);
     }
     Body::assembled(&parts)
+}
+
+/// Curva's field of view, by which a view's distance gives how much of the model it shows.
+pub(crate) const HALF_FIELD: f64 = 0.35;
+
+fn dot3(a: P3, b: P3) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+fn cross3(a: P3, b: P3) -> P3 {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+
+fn unit3(a: P3) -> Option<P3> {
+    let length = dot3(a, a).sqrt();
+    (length > 1e-12 && length.is_finite()).then(|| a.map(|v| v / length))
+}
+
+/// A file's view as a Curva saved view, its sizes multiplied by `scale`.
+fn saved_view(v: &model::View, scale: f64) -> Option<SavedView> {
+    let forward = unit3(v.direction)?;
+    // Rhino keeps the up it was given, such as Z for a view looking down at an angle: squared
+    // to the line of sight here.
+    let up = unit3(sub(v.up, forward.map(|c| c * dot3(v.up, forward))))?;
+    let eye = v.location.map(|c| c * scale);
+    let target = v.target.map(|c| c * scale);
+    // Curva's target lies on the line of sight.
+    let along = dot3(sub(target, eye), forward);
+    let along = if along > 1e-12 {
+        along
+    } else {
+        0.5 * (v.frustum[4] + v.frustum[5]) * scale
+    };
+    let target: P3 = std::array::from_fn(|k| eye[k] + along * forward[k]);
+    let distance = if v.parallel {
+        // A flat view's zoom is its frustum's height.
+        (v.frustum[3] - v.frustum[2]).abs() * 0.5 * scale / HALF_FIELD.tan()
+    } else {
+        along
+    };
+    if !(distance.is_finite() && distance > 0.0) {
+        return None;
+    }
+    let pitch = (-forward[2]).clamp(-1.0, 1.0).asin();
+    let yaw = (-forward[1]).atan2(-forward[0]);
+    let looks = |axis: usize, sign: f64| v.parallel && forward[axis] * sign > 1.0 - 1e-9;
+    let kind = if looks(2, -1.0) {
+        "Top"
+    } else if looks(1, 1.0) {
+        "Front"
+    } else if looks(0, -1.0) {
+        "Right"
+    } else {
+        "Perspective"
+    };
+    // Yaw and pitch hold views with Z up; flat views along an axis keep their own directions, as
+    // Curva's standard views do, and so does any view that is not upright.
+    let right = unit3(cross3(forward, [0.0, 0.0, 1.0]));
+    let z_up = kind == "Perspective"
+        && right.is_some_and(|r| dot3(cross3(r, forward), up) > 1.0 - 1e-6)
+        && pitch.abs() < 1.55;
+    let axes = if z_up {
+        None
+    } else {
+        let right = unit3(cross3(forward, up))?;
+        Some([forward, right, cross3(right, forward)])
+    };
+    Some(SavedView {
+        name: v.name.clone(),
+        kind: kind.to_owned(),
+        target,
+        yaw,
+        pitch,
+        distance,
+        axes,
+        parallel: v.parallel,
+    })
+}
+
+/// A file's named views and construction planes for a Curva model of `unit`; views Curva cannot
+/// use (no name, a broken camera) are counted in the report.
+fn views_and_planes(
+    model: &Model,
+    unit: Unit,
+    report: &mut Report,
+) -> (Vec<SavedView>, Vec<SavedCPlane>) {
+    let scale = millimetres_per(model.unit).unwrap_or(1.0) / unit.millimetres();
+    let mut views = Vec::new();
+    for v in &model.views {
+        match saved_view(v, scale).filter(|s| !s.name.trim().is_empty()) {
+            Some(saved) => views.push(saved),
+            None => Report::count(&mut report.skipped, "unusable named views"),
+        }
+    }
+    let planes = model
+        .cplanes
+        .iter()
+        .filter_map(|c| {
+            let x = unit3(c.plane.x)?;
+            let y = unit3(sub(c.plane.y, x.map(|v| v * dot3(c.plane.y, x))))?;
+            Some(SavedCPlane {
+                name: c.name.clone(),
+                origin: c.plane.origin.map(|v| v * scale),
+                x,
+                y,
+            })
+        })
+        .collect();
+    (views, planes)
+}
+
+/// Adds a file's named views and planes to a document, keeping any it already has by that name.
+fn add_views_and_planes(model: &Model, doc: &mut Document, report: &mut Report) {
+    let (views, planes) = views_and_planes(model, doc.state().unit, report);
+    for v in views {
+        if doc.saved_view(&v.name).is_none() {
+            Report::count(&mut report.brought, "named views");
+            doc.save_view(v);
+        }
+    }
+    for p in planes {
+        if doc.saved_cplane(&p.name).is_none() {
+            Report::count(&mut report.brought, "named construction planes");
+            doc.save_cplane(p);
+        }
+    }
 }

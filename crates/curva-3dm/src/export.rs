@@ -710,3 +710,64 @@ fn brep(r: &Record) -> Result<Brep, String> {
     }
     Ok(out)
 }
+
+/// The document as a file's model: [`export`]'s objects, with its named views and construction
+/// planes.
+#[must_use]
+pub fn export_document(doc: &curva_document::Document, only: Option<&[u64]>) -> (Model, Report) {
+    let (mut model, report) = export(doc.state(), only);
+    model.views = doc.views().iter().map(view_of).collect();
+    model.cplanes = doc
+        .cplanes()
+        .iter()
+        .map(|c| model::NamedCPlane {
+            name: c.name.clone(),
+            plane: Plane {
+                origin: c.origin,
+                x: c.x,
+                y: c.y,
+                z: cross(c.x, c.y),
+            },
+        })
+        .collect();
+    (model, report)
+}
+
+fn unit3(a: P3) -> P3 {
+    let length = (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]).sqrt().max(1e-300);
+    a.map(|v| v / length)
+}
+
+/// A Curva saved view as a file's: the camera Curva's viewport would have, with a frustum that
+/// shows as much at the target.
+fn view_of(v: &curva_document::SavedView) -> model::View {
+    let (forward, up, eye) = match v.axes {
+        Some([forward, _, up]) => (
+            forward,
+            up,
+            std::array::from_fn(|k| v.target[k] - forward[k] * v.distance),
+        ),
+        None => {
+            let (cp, sp) = (v.pitch.cos(), v.pitch.sin());
+            let eye: P3 = [
+                v.target[0] + v.distance * cp * v.yaw.cos(),
+                v.target[1] + v.distance * cp * v.yaw.sin(),
+                v.target[2] + v.distance * sp,
+            ];
+            let forward = unit3(std::array::from_fn(|k| v.target[k] - eye[k]));
+            let right = unit3(cross(forward, [0.0, 0.0, 1.0]));
+            (forward, cross(right, forward), eye)
+        }
+    };
+    let (near, far) = (0.01 * v.distance, 100.0 * v.distance);
+    let half = crate::import::HALF_FIELD.tan() * if v.parallel { v.distance } else { near };
+    model::View {
+        name: v.name.clone(),
+        location: eye,
+        direction: forward,
+        up,
+        target: v.target,
+        parallel: v.parallel,
+        frustum: [-half, half, -half, half, near, far],
+    }
+}

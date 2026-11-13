@@ -35,7 +35,7 @@ pub fn open_3dm(path: &Path) -> Result<(Document, Report), String> {
 
 /// The model, or the objects in `only`, written to a `.3dm` file.
 pub fn write_3dm(doc: &Document, only: Option<&[u64]>, path: &Path) -> Result<Report, String> {
-    let (model, report) = curva_3dm::export::export(doc.state(), only);
+    let (model, report) = curva_3dm::export::export_document(doc, only);
     let bytes = curva_3dm::write::write(&model);
     // A half-written file never replaces a whole one, as with `.curva` files.
     let mut partial = path.as_os_str().to_owned();
@@ -91,7 +91,7 @@ impl Command for Import {
                 } else {
                     // A Curva file comes in the same way, as plain geometry.
                     match Document::open(&path) {
-                        Ok(other) => curva_3dm::export::export(other.state(), None).0,
+                        Ok(other) => curva_3dm::export::export_document(&other, None).0,
                         Err(e) => return failed(e),
                     }
                 };

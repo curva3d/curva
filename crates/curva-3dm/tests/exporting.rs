@@ -291,3 +291,154 @@ fn every_edge_runs_between_its_vertices() {
     }
     assert!(checked > 20);
 }
+
+#[test]
+fn named_views_and_construction_planes_come_back() {
+    use curva_document::{Document, SavedCPlane, SavedView};
+    let mut doc = Document::default();
+    doc.restore(sample());
+    let views = [
+        SavedView {
+            name: "Corner".to_owned(),
+            kind: "Perspective".to_owned(),
+            target: [1.0, 2.0, 3.0],
+            yaw: -1.0,
+            pitch: 0.6,
+            distance: 150.0,
+            axes: None,
+            parallel: false,
+        },
+        SavedView {
+            name: "Plan".to_owned(),
+            kind: "Top".to_owned(),
+            target: [10.0, 5.0, 0.0],
+            yaw: 0.0,
+            pitch: 0.0,
+            distance: 330.0,
+            axes: Some([[0.0, 0.0, -1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]),
+            parallel: true,
+        },
+        SavedView {
+            name: "Elevation".to_owned(),
+            kind: "Front".to_owned(),
+            target: [0.0, 0.0, 4.0],
+            yaw: 0.0,
+            pitch: 0.0,
+            distance: 80.0,
+            axes: Some([[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]),
+            parallel: true,
+        },
+    ];
+    for v in &views {
+        doc.save_view(v.clone());
+    }
+    let planes = [
+        SavedCPlane {
+            name: "Level 2".to_owned(),
+            origin: [0.0, 0.0, 3.0],
+            x: [1.0, 0.0, 0.0],
+            y: [0.0, 1.0, 0.0],
+        },
+        SavedCPlane {
+            name: "Slope".to_owned(),
+            origin: [5.0, 0.0, 0.0],
+            x: [0.0, 1.0, 0.0],
+            y: [-0.6, 0.0, 0.8],
+        },
+    ];
+    for p in &planes {
+        doc.save_cplane(p.clone());
+    }
+
+    let (model, _) = curva_3dm::export::export_document(&doc, None);
+    let bytes = curva_3dm::write::write(&model);
+    if let Ok(path) = std::env::var("CURVA_3DM_VIEWS") {
+        std::fs::write(path, &bytes).unwrap();
+    }
+    let (back, report) = curva_3dm::import::open(&curva_3dm::read::read(&bytes).unwrap());
+    assert!(report.skipped.is_empty(), "{}", report.summary());
+
+    let near = |a: &[f64], b: &[f64]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-9);
+    assert_eq!(back.views().len(), views.len());
+    for (a, b) in back.views().iter().zip(&views) {
+        assert_eq!(a.name, b.name);
+        assert_eq!(a.kind, b.kind, "{}", b.name);
+        assert_eq!(a.parallel, b.parallel, "{}", b.name);
+        assert!(near(&a.target, &b.target), "{}: {:?}", b.name, a.target);
+        assert!(
+            (a.distance - b.distance).abs() < 1e-9,
+            "{}: {}",
+            b.name,
+            a.distance
+        );
+        match (a.axes, b.axes) {
+            (None, None) => {
+                assert!((a.yaw - b.yaw).abs() < 1e-9 && (a.pitch - b.pitch).abs() < 1e-9);
+            }
+            (Some(x), Some(y)) => {
+                for k in 0..3 {
+                    assert!(near(&x[k], &y[k]), "{}: {x:?}", b.name);
+                }
+            }
+            other => panic!("{}: {other:?}", b.name),
+        }
+    }
+    assert_eq!(back.cplanes().len(), planes.len());
+    for (a, b) in back.cplanes().iter().zip(&planes) {
+        assert_eq!(a.name, b.name);
+        assert!(
+            near(&a.origin, &b.origin) && near(&a.x, &b.x) && near(&a.y, &b.y),
+            "{a:?}"
+        );
+    }
+}
+
+#[test]
+fn rhinos_own_named_view_comes_in() {
+    let path = format!("{}/tests/files/v5_teacup.3dm", env!("CARGO_MANIFEST_DIR"));
+    let model = curva_3dm::read::read(&std::fs::read(path).unwrap()).unwrap();
+    let (doc, _) = curva_3dm::import::open(&model);
+    let view = doc
+        .saved_view("Perspective1")
+        .expect("the teacup's named view");
+    assert!(!view.parallel && view.distance > 0.0);
+}
+
+#[test]
+fn named_views_and_planes_saved_by_rhino_come_in() {
+    let path = format!(
+        "{}/tests/files/v7_named_views.3dm",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let model = curva_3dm::read::read(&std::fs::read(path).unwrap()).unwrap();
+    let (doc, report) = curva_3dm::import::open(&model);
+    assert!(report.skipped.is_empty(), "{}", report.summary());
+    let near = |a: &[f64], b: &[f64]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-9);
+
+    // A flat view looking down: Curva's Top, its zoom from Rhino's frustum height.
+    let plan = doc.saved_view("Plan from above").unwrap();
+    assert_eq!(plan.kind, "Top");
+    assert!(plan.parallel);
+    assert!(near(&plan.target, &[50.0, 20.0, 0.0]));
+    let axes = plan.axes.unwrap();
+    assert!(near(&axes[0], &[0.0, 0.0, -1.0]) && near(&axes[2], &[0.0, 1.0, 0.0]));
+    let half = 128.124_939_024_375_66;
+    assert!((plan.distance - half / 0.35f64.tan()).abs() < 1e-6);
+
+    // An upright perspective view: yaw and pitch, from the same eye.
+    let bird = doc.saved_view("Bird's eye").unwrap();
+    assert_eq!(bird.kind, "Perspective");
+    assert!(bird.axes.is_none() && !bird.parallel);
+    let eye: Vec<f64> = (0..3)
+        .map(|k| {
+            let (cp, sp) = (bird.pitch.cos(), bird.pitch.sin());
+            bird.target[k] + bird.distance * [cp * bird.yaw.cos(), cp * bird.yaw.sin(), sp][k]
+        })
+        .collect();
+    assert!(near(&eye, &[300.0, -400.0, 250.0]), "{eye:?}");
+
+    let level = doc.saved_cplane("Level 1").unwrap();
+    assert!(near(&level.origin, &[0.0, 0.0, 3000.0]));
+    let wall = doc.saved_cplane("Wall A").unwrap();
+    assert!(near(&wall.y, &[0.0, 0.0, 1.0]));
+}

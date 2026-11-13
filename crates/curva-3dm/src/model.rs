@@ -26,6 +26,10 @@ pub struct Model {
     pub blocks: Vec<Block>,
     /// Objects, those of block definitions included (their attributes say so).
     pub objects: Vec<Object>,
+    /// Named views, in the file's order.
+    pub views: Vec<View>,
+    /// Named construction planes, in the file's order.
+    pub cplanes: Vec<NamedCPlane>,
     /// What was skipped and how many of each, for the report.
     pub skipped: Vec<(String, usize)>,
 }
@@ -409,4 +413,32 @@ pub enum Geometry {
         /// Where it is placed.
         xform: [[f64; 4]; 4],
     },
+}
+
+/// A named view: a camera, as openNURBS' viewport holds one.
+#[derive(Clone, Debug, PartialEq)]
+pub struct View {
+    /// Its name.
+    pub name: String,
+    /// Where the camera is.
+    pub location: P3,
+    /// The direction it looks along.
+    pub direction: P3,
+    /// Its up direction.
+    pub up: P3,
+    /// The point it looks at, which orbiting turns about.
+    pub target: P3,
+    /// Whether it has no perspective.
+    pub parallel: bool,
+    /// The frustum: left, right, bottom, top, near and far.
+    pub frustum: [f64; 6],
+}
+
+/// A named construction plane.
+#[derive(Clone, Debug, PartialEq)]
+pub struct NamedCPlane {
+    /// Its name.
+    pub name: String,
+    /// The plane.
+    pub plane: Plane,
 }

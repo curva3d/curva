@@ -16,6 +16,14 @@ fn main() {
                         .collect::<Vec<_>>()
                 );
                 println!(
+                    "  views {:?} cplanes {:?}",
+                    m.views
+                        .iter()
+                        .map(|v| (&v.name, v.parallel))
+                        .collect::<Vec<_>>(),
+                    m.cplanes.iter().map(|c| &c.name).collect::<Vec<_>>()
+                );
+                println!(
                     "  groups {} blocks {:?}",
                     m.groups.len(),
                     m.blocks

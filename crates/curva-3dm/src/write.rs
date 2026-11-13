@@ -4,7 +4,7 @@
 use crate::archive::{Uuid, Writer, tcode};
 use crate::model::{
     Attributes, Block, Brep, Curve, Geometry, Group, Layer, Model, NurbsCurve, NurbsSurface,
-    Object, P3, Plane, Source, Surface,
+    Object, P3, Plane, Source, Surface, View,
 };
 use crate::read::class;
 
@@ -44,6 +44,22 @@ pub fn write(model: &Model) -> Vec<u8> {
         w.i32(3);
         w.f64(metres_per(model.unit));
         w.wstring("");
+        w.end();
+        w.begin(tcode::SETTINGS_NAMED_CPLANE_LIST);
+        w.count(model.cplanes.len());
+        for c in &model.cplanes {
+            w.begin(tcode::VIEW_CPLANE);
+            write_cplane(w, &c.plane, &c.name);
+            w.end();
+        }
+        w.end();
+        w.begin(tcode::SETTINGS_NAMED_VIEW_LIST);
+        w.count(model.views.len());
+        for (i, v) in model.views.iter().enumerate() {
+            w.begin(tcode::VIEW_RECORD);
+            write_view(w, v, i);
+            w.end();
+        }
         w.end();
     });
     for empty in [
@@ -344,6 +360,89 @@ fn write_plane(w: &mut Writer, p: &Plane) {
     w.f64s(&p.y);
     w.f64s(&p.z);
     w.f64s(&p.equation());
+}
+
+/// A construction plane as openNURBS writes one, with Rhino's default grid.
+fn write_cplane(w: &mut Writer, plane: &Plane, name: &str) {
+    w.chunk_version(1, 1);
+    write_plane(w, plane);
+    w.f64(1.0); // grid spacing
+    w.f64(1.0); // snap spacing
+    w.i32(70); // grid lines
+    w.i32(5); // every fifth line thick
+    w.wstring(name);
+    w.bool(false); // not drawn into the depth buffer
+}
+
+fn cross(a: P3, b: P3) -> P3 {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+
+fn unit(a: P3) -> P3 {
+    let length = (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]).sqrt().max(1e-300);
+    a.map(|v| v / length)
+}
+
+/// A named view: its viewport (camera and frustum), the construction plane its kind of view
+/// has, its target and its name.
+fn write_view(w: &mut Writer, v: &View, index: usize) {
+    let direction = unit(v.direction);
+    let x = unit(cross(direction, v.up));
+    let y = cross(x, direction);
+    w.begin(tcode::VIEW_VIEWPORT);
+    w.chunk_version(1, 5);
+    w.i32(1); // camera valid
+    w.i32(1); // frustum valid
+    w.i32(1); // port valid
+    w.i32(if v.parallel { 1 } else { 2 });
+    w.f64s(&v.location);
+    w.f64s(&direction);
+    w.f64s(&y);
+    w.f64s(&x);
+    w.f64s(&y);
+    w.f64s(&direction.map(|c| -c));
+    w.f64s(&v.frustum);
+    // A square port, as the frustum is: left, right, bottom, top (pixels run down), near, far.
+    for p in [0, 1000, 1000, 0, 0, 255] {
+        w.i32(p);
+    }
+    w.uuid(Uuid::fresh(0x5649_4557 + index as u64));
+    for locked in [false, false, false, true, true] {
+        w.bool(locked);
+    }
+    w.f64s(&v.target);
+    w.bool(true); // the camera frame is valid
+    w.f64s(&[1.0, 1.0, 1.0]);
+    w.end();
+    // A flat view looking along an axis draws on that axis' plane, as Rhino's standard views do.
+    let along = |axis: usize, sign: f64| v.parallel && direction[axis] * sign > 1.0 - 1e-9;
+    let (px, py) = if along(1, 1.0) {
+        ([1.0, 0.0, 0.0], [0.0, 0.0, 1.0])
+    } else if along(0, -1.0) {
+        ([0.0, 1.0, 0.0], [0.0, 0.0, 1.0])
+    } else {
+        ([1.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+    };
+    let plane = Plane {
+        origin: [0.0; 3],
+        x: px,
+        y: py,
+        z: cross(px, py),
+    };
+    w.begin(tcode::VIEW_CPLANE);
+    write_cplane(w, &plane, "");
+    w.end();
+    w.begin(tcode::VIEW_TARGET);
+    w.f64s(&v.target);
+    w.end();
+    w.begin(tcode::VIEW_NAME);
+    w.wstring(&v.name);
+    w.end();
+    w.short(tcode::ENDOFTABLE, 0);
 }
 
 fn write_curve(w: &mut Writer, c: &Curve) {

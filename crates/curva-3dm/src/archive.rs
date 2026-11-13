@@ -69,6 +69,11 @@ pub mod tcode {
     pub const SETTINGS_UNITSANDTOLS: u32 = TABLEREC | CRC | 0x0031;
     pub const SETTINGS_NAMED_CPLANE_LIST: u32 = TABLEREC | CRC | 0x0035;
     pub const SETTINGS_NAMED_VIEW_LIST: u32 = TABLEREC | CRC | 0x0036;
+    pub const VIEW_RECORD: u32 = TABLEREC | CRC | 0x003B;
+    pub const VIEW_CPLANE: u32 = TABLEREC | CRC | 0x013B;
+    pub const VIEW_VIEWPORT: u32 = TABLEREC | CRC | 0x023B;
+    pub const VIEW_TARGET: u32 = TABLEREC | CRC | 0x083B;
+    pub const VIEW_NAME: u32 = TABLEREC | CRC | 0x0A3B;
     pub const SETTINGS_CURRENT_LAYER_INDEX: u32 = TABLEREC | SHORT | 0x0038;
 
     pub const LAYER_RECORD: u32 = TABLEREC | CRC | 0x0050;

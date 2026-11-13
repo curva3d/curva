@@ -3,7 +3,8 @@
 use crate::archive::{Reader, Result, Uuid, bad, tcode};
 use crate::model::{
     Attributes, Block, Brep, BrepEdge, BrepFace, BrepLoop, BrepTrim, BrepVertex, Curve, Extrusion,
-    Geometry, Group, Layer, Model, NurbsCurve, NurbsSurface, Object, P3, Plane, Source, Surface,
+    Geometry, Group, Layer, Model, NamedCPlane, NurbsCurve, NurbsSurface, Object, P3, Plane,
+    Source, Surface, View,
 };
 
 /// Class ids of the objects Curva reads and writes (openNURBS `ON_OBJECT_IMPLEMENT`).
@@ -161,10 +162,139 @@ fn settings(table: &mut Reader<'_>, model: &mut Model) -> Result<()> {
                     model.angle_tolerance = body.f64()?;
                 }
             }
+            // A damaged list loses its views or planes, not the file.
+            tcode::SETTINGS_NAMED_CPLANE_LIST => {
+                if let Ok(planes) = named_cplanes(&mut chunk.body) {
+                    model.cplanes = planes;
+                }
+            }
+            tcode::SETTINGS_NAMED_VIEW_LIST => {
+                if let Ok(views) = named_views(&mut chunk.body) {
+                    model.views = views;
+                }
+            }
             _ => {}
         }
     }
     Ok(())
+}
+
+/// A list's count, which must fit in what is left (each item takes at least a chunk's 12 bytes).
+fn list_count(r: &mut Reader<'_>) -> Result<usize> {
+    let count = usize::try_from(r.i32()?).map_err(|_| bad("a list of a negative count"))?;
+    if count > r.left() / 12 {
+        return Err(bad("a list longer than its chunk"));
+    }
+    Ok(count)
+}
+
+/// A construction plane as openNURBS writes one: its plane, grid settings and name.
+fn cplane(r: &mut Reader<'_>) -> Result<NamedCPlane> {
+    r.chunk_version()?;
+    let plane = plane(r)?;
+    let _grid_spacing = r.f64()?;
+    let _snap_spacing = r.f64()?;
+    let _grid_lines = r.i32()?;
+    let _thick_every = r.i32()?;
+    let name = r.wstring()?;
+    Ok(NamedCPlane { name, plane })
+}
+
+fn named_cplanes(r: &mut Reader<'_>) -> Result<Vec<NamedCPlane>> {
+    let count = list_count(r)?;
+    let mut out = Vec::with_capacity(count);
+    for _ in 0..count {
+        let mut chunk = r.expect(tcode::VIEW_CPLANE)?;
+        out.push(cplane(&mut chunk.body)?);
+    }
+    Ok(out)
+}
+
+fn named_views(r: &mut Reader<'_>) -> Result<Vec<View>> {
+    let count = list_count(r)?;
+    let mut out = Vec::with_capacity(count);
+    for _ in 0..count {
+        let mut chunk = r.expect(tcode::VIEW_RECORD)?;
+        out.push(view(&mut chunk.body)?);
+    }
+    Ok(out)
+}
+
+/// A view: tagged parts, of which Curva takes the camera, the target and the name.
+fn view(r: &mut Reader<'_>) -> Result<View> {
+    let mut camera = None;
+    let mut target = None;
+    let mut name = String::new();
+    while !r.is_done() {
+        let mut part = r.chunk()?;
+        match part.tcode {
+            tcode::ENDOFTABLE => break,
+            tcode::VIEW_VIEWPORT => camera = Some(viewport(&mut part.body)?),
+            // Files before the viewport held its own target keep it here.
+            tcode::VIEW_TARGET => target = Some(point(&mut part.body)?),
+            tcode::VIEW_NAME => name = part.body.wstring()?,
+            _ => {}
+        }
+    }
+    let (mut view, own_target) = camera.ok_or_else(|| bad("a view without its camera"))?;
+    view.name = name;
+    view.target = own_target.or(target).unwrap_or_else(|| {
+        // No target at all: a point in front of the camera, halfway through its depth.
+        let depth = 0.5 * (view.frustum[4] + view.frustum[5]);
+        std::array::from_fn(|k| view.location[k] + depth * view.direction[k])
+    });
+    Ok(view)
+}
+
+/// openNURBS' viewport: projection, camera frame and frustum, and in later versions its own
+/// target point.
+fn viewport(r: &mut Reader<'_>) -> Result<(View, Option<P3>)> {
+    let (major, minor) = r.chunk_version()?;
+    if major != 1 {
+        return Err(bad("a viewport of an unknown version"));
+    }
+    let _valid_camera = r.i32()?;
+    let _valid_frustum = r.i32()?;
+    let _valid_port = r.i32()?;
+    let projection = r.i32()?;
+    let location = point(r)?;
+    let direction = point(r)?;
+    let up = point(r)?;
+    for _ in 0..3 {
+        point(r)?; // the camera's frame, worked out again from direction and up
+    }
+    let frustum = r.f64s::<6>()?;
+    r.skip(6 * 4)?; // the port, in pixels
+    let mut target = None;
+    if minor >= 1 {
+        r.uuid()?;
+        if minor >= 2 {
+            r.skip(5)?; // locks and symmetry
+            if minor >= 3 {
+                let t = point(r)?;
+                // openNURBS writes an unset point as -1.23432101234321e308.
+                if t.iter().all(|v| v.is_finite() && v.abs() < 1e300) {
+                    target = Some(t);
+                }
+            }
+        }
+    }
+    let usable = |v: P3| v.iter().all(|c| c.is_finite()) && v.iter().any(|c| *c != 0.0);
+    if !location.iter().all(|c| c.is_finite()) || !usable(direction) || !usable(up) {
+        return Err(bad("a view with a broken camera"));
+    }
+    Ok((
+        View {
+            name: String::new(),
+            location,
+            direction,
+            up,
+            target: location,
+            parallel: projection == 1,
+            frustum,
+        },
+        target,
+    ))
 }
 
 /// An object written with openNURBS' `WriteObject`: its class id and the reader of its data.
