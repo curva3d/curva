@@ -24,6 +24,8 @@ mod finishing;
 mod grips;
 mod knots;
 mod making;
+mod making2;
+pub use making2::TaperCorners;
 pub use making::nested_groups;
 mod offset;
 mod spline;
