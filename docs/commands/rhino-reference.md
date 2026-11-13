@@ -256,3 +256,22 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | RebuildUV | Surfaces | `PointCountU` `PointCountV` `DegreeU` `DegreeV` `DeleteInput` | `PointCountU` `PointCountV` `DegreeU` `DegreeV` | partly |
 | CurvatureGraph | Curves | `Scale` `Density` | `Scale` `Density` | done |
 | Cap | Surfaces | none | none | done |
+| ExtractIsocurve | Surface; point | `Direction` `Toggle` | `U` `V` `Both` | partly |
+| ShrinkTrimmedSrf | Surfaces | none | none | done |
+| BlendSrf | Two edges | `Position` `Tangency` `Curvature` `Bulge` `Planar Sections` | `Position` `Tangency` `Curvature` `Bulge` | partly |
+| MatchSrf | Edge to change; edge to match | `Position` `Tangency` `Curvature` `AverageSurfaces` | `Position` `Tangency` | partly |
+| Sweep2 | Two rails; cross sections | `MaintainHeight` `Simplify` | none | partly |
+| Twist | Objects; axis; angle | `Infinite` `PreserveStructure` | none | partly |
+| Bend | Objects; spine; bend point | `Symmetric` `Copy` `Straight` | none | partly |
+| Taper | Objects; axis; sizes | `Flat` `Infinite` | none | partly |
+| Flow | Objects; base curve; target curve | `Copy` `Rigid` `Stretch` | none | partly |
+| CageEdit | Objects; cage | `BoundingBox` `Line` `Rectangle` | none | partly |
+| Pull | Curves; surface | `Loose` | none | partly |
+| InterpCrvOnSrf | Surface; points | none | none | done |
+| OffsetCrvOnSrf | Curve; surface; distance | `ThroughPoint` | none | partly |
+| Silhouette | Objects | none | none | done |
+| UnrollSrf | Surfaces | `Explode` `Labels` | none | partly |
+| ExtrudeFace | Face; distance | `Direction` `BothSides` | none | partly |
+| FilletSrf | Two surfaces; radius | `Trim` `Extend` | none | partly |
+| ChamferSrf | Two surfaces; distances | `Trim` `Extend` | none | partly |
+| SplitSrf | Surface; curves | none | none | done |

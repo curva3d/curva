@@ -63,9 +63,9 @@ mod tests {
                     let is_key = ["prompt.", "done.", "note.", "error."]
                         .iter()
                         .any(|prefix| part.starts_with(prefix));
-                    let plain = part
-                        .chars()
-                        .all(|c| c.is_ascii_lowercase() || c == '.' || c == '_');
+                    let plain = part.chars().all(|c| {
+                        c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '_'
+                    });
                     (is_key && plain && !part.ends_with('.')).then(|| part.to_owned())
                 }));
             }

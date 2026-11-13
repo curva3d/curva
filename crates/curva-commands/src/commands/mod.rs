@@ -55,6 +55,7 @@ mod parity3;
 mod parity4;
 mod parity5;
 mod parity6;
+mod parity7;
 mod perspective;
 mod pipe;
 mod planar_srf;
@@ -160,7 +161,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 185] = [
+pub static COMMANDS: [CommandDef; 204] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -355,6 +356,25 @@ pub static COMMANDS: [CommandDef; 185] = [
     recipe!("RebuildUV", [], true, parity6::RebuildUv),
     recipe!("CurvatureGraph", [], true, parity6::CurvatureGraph),
     recipe!("Cap", [], true, parity6::Cap),
+    recipe!("ExtractIsocurve", [], true, parity7::ExtractIsocurve),
+    recipe!("ShrinkTrimmedSrf", [], true, parity7::ShrinkTrimmedSrf),
+    recipe!("BlendSrf", [], true, parity7::BlendSrf),
+    recipe!("MatchSrf", [], true, parity7::MatchSrf),
+    recipe!("Sweep2", [], true, parity7::Sweep2),
+    recipe!("Twist", [], true, parity7::Twist),
+    recipe!("Bend", [], true, parity7::Bend),
+    recipe!("Taper", [], true, parity7::Taper),
+    recipe!("Flow", [], true, parity7::Flow),
+    recipe!("CageEdit", [], true, parity7::CageEdit),
+    recipe!("Pull", [], true, parity7::Pull),
+    recipe!("InterpCrvOnSrf", [], true, parity7::InterpCrvOnSrf),
+    recipe!("OffsetCrvOnSrf", [], true, parity7::OffsetCrvOnSrf),
+    recipe!("Silhouette", [], true, parity7::Silhouette),
+    recipe!("UnrollSrf", [], true, parity7::UnrollSrf),
+    recipe!("ExtrudeFace", [], true, parity7::ExtrudeFace),
+    recipe!("FilletSrf", [], true, parity7::FilletSrf<false>),
+    recipe!("ChamferSrf", [], true, parity7::FilletSrf<true>),
+    recipe!("SplitSrf", [], true, parity7::SplitSrf),
     recipe!("ExtrudeCrv", [], true, extrude_crv::ExtrudeCrv),
     recipe!("PlanarSrf", [], true, planar_srf::PlanarSrf),
     recipe!("Revolve", [], true, revolve::Revolve),
@@ -691,7 +711,10 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 30] = [
+    const NOTHING_TO_PREVIEW: [&str; 33] = [
+        "ShrinkTrimmedSrf",
+        "Silhouette",
+        "UnrollSrf",
         "EdgeSrf",
         "NetworkSrf",
         "Patch",
@@ -725,7 +748,23 @@ mod tests {
     ];
 
     /// Commands whose preview needs its own setup, tested in their own files.
-    const PREVIEW_TESTED_ELSEWHERE: [&str; 50] = [
+    const PREVIEW_TESTED_ELSEWHERE: [&str; 66] = [
+        "ExtractIsocurve",
+        "BlendSrf",
+        "MatchSrf",
+        "Sweep2",
+        "Twist",
+        "Bend",
+        "Taper",
+        "Flow",
+        "CageEdit",
+        "Pull",
+        "InterpCrvOnSrf",
+        "OffsetCrvOnSrf",
+        "ExtrudeFace",
+        "FilletSrf",
+        "ChamferSrf",
+        "SplitSrf",
         "ExtendSrf",
         "Untrim",
         "Section",
@@ -1269,6 +1308,8 @@ mod tests {
                 "Contour",
                 "CurvatureGraph",
                 "Cap",
+                "CageEdit",
+                "ChamferSrf",
                 "ChamferEdge",
                 "CPlane",
                 "Curve"

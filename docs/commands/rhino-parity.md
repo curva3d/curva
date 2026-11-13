@@ -25,7 +25,7 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | Polyline | partly | Options to come: `Helpers`, `Length`, `Mode`, `Direction`, `ThroughPoint`, `Center`, `PersistentClose` |
 | Curve | partly | Options to come: `AutoClose`, `PersistentClose`, `Sharp` |
 | InterpCrv | partly | Options to come: `AutoClose`, `Degree`, `PersistentClose`, `Knots`, `StartTangent`, `EndTangent`, `Sharp` |
-| InterpCrvOnSrf | blocked | needs curves on surfaces |
+| InterpCrvOnSrf | done | Fitted through points of the surface along the curve |
 | HandleCurve | partly | Handles are placed by clicking, not dragging; `Close` to come |
 | Sketch | done |  |
 | Circle | partly | Options to come: `Deformable`, `Radius`, `AroundCurve`, `FitPoints`, `Tangent`, `Vertical`, `Orientation`, `Circumference`, `Area` |
@@ -46,20 +46,20 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | Divide | partly | Options to come: `Length`, `EqualChordLength`, `Split`, `DeleteRemainder`, `MarkEnds`, `GroupOutput` |
 | Offset | partly | Options to come: `Loose`, `Corner`, `Trim`, `Tolerance`, `InCPlane`, `Cap`, `OutputLayer` |
 | OffsetMultiple | partly | Options to come: `Corner`, `BothSides` |
-| OffsetCrvOnSrf | blocked | needs curves on surfaces |
+| OffsetCrvOnSrf | partly | The offset curve is refitted through 49 points on the surface |
 | Fillet | partly | Options to come: `Join`, `Trim`, `ExtendArcsBy`, `ExtendOtherCurvesBy`, `Dynamic` |
 | FilletCorners | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
 | Chamfer | partly | Options to come: `Join`, `Trim`, `ExtendArcsBy`, `ExtendOtherCurvesBy` |
 | Project | partly | Along the construction plane's normal; `Loose` and `DeleteInput` to come |
-| Pull | blocked | needs projection onto surfaces |
+| Pull | partly | The curve refitted through pulled points (48 a curve) |
 | ProjectToCPlane | partly | Some of Rhino's steps differ (see `rhino-reference.md`) |
 | Contour | partly | Options to come: `GroupOutput`, `JoinCurves` |
 | Section | done |  |
 | Intersect | done |  |
 | DupEdge | done | |
 | DupBorder | done |  |
-| Silhouette | blocked | needs silhouettes from the engine |
-| ExtractIsocurve | blocked | needs surface isocurves |
+| Silhouette | done | Seen down the construction plane's normal, from the display mesh |
+| ExtractIsocurve | partly | Faces with a NURBS form only (planes and splines); `Toggle` to come |
 
 ## Curves: editing
 
@@ -107,21 +107,21 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | RailRevolve | partly | The surface passes through the profile at 72 angles and is skinned between them; `ScaleHeight` to come |
 | Loft | partly | Options to come: `Point`, `Style`, `Closed`, `MatchStartTangent`, `MatchEndTangent`, `SplitAtTangents`, `AlignCurves`, `Rebuild`, `Refit` |
 | Sweep1 | partly | Options to come: `ChainEdges`, `Point`, `FrameStyle`, `Closed`, `GlobalShapeBlending`, `UntrimmedMiters`, `RefitRail`, `AlignCrossSections` |
-| Sweep2 | blocked | needs two-rail sweeps |
+| Sweep2 | partly | One cross section, placed exactly at 64 stations and skinned between; `MaintainHeight` to come |
 | NetworkSrf | partly | Sorts the curves into their two families itself; `EdgeMatching` and `Tolerances` to come; rational curves (arcs) are refused by the engine |
 | Patch | partly | Fills a closed chain of curves; points, `UVSpans`, `Stiffness` and the other options to come |
-| BlendSrf | blocked | needs surface blending |
+| BlendSrf | partly | Edges that are sides of untrimmed surfaces only; `Planar Sections` to come |
 | Pipe | partly | Options to come: `ChainEdges`, `Multiple`, `FitRail`, `ShapeBlending`, `WallThickness` |
 | OffsetSrf | partly | Options to come: `Distance`, `Corner`, `ThroughPoint`, `FlipAll`, `Loose`, `Tolerance`, `BothSides` |
 | ExtendSrf | done |  |
-| MatchSrf | blocked | needs surface matching |
-| FilletSrf | blocked | needs surface fillets |
-| ChamferSrf | blocked | needs surface chamfers |
+| MatchSrf | partly | Untrimmed edges, position and tangency; `Curvature` and `AverageSurfaces` to come |
+| FilletSrf | partly | Arcs placed at 25 stations along the spine and skinned; the surfaces are not trimmed back yet |
+| ChamferSrf | partly | As FilletSrf, with straight sections |
 | Untrim | partly | Options to come: `KeepTrimObjects`, `All` |
-| ShrinkTrimmedSrf | blocked | |
-| SplitSrf | blocked | needs surface splitting |
+| ShrinkTrimmedSrf | done |  |
+| SplitSrf | done |  |
 | RebuildUV | partly | Untrimmed one-face surfaces only; `DeleteInput` to come |
-| UnrollSrf | blocked | needs developing surfaces |
+| UnrollSrf | partly | Ruled developable surfaces only; outlines unrolled as polylines of 96 steps |
 
 ## Solids
 
@@ -150,7 +150,7 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | MergeAllFaces | done |  |
 | MoveFace | partly | Moves faces along their normals by a distance, not by any vector |
 | PushPull | done | |
-| ExtrudeFace | blocked | needs face editing |
+| ExtrudeFace | partly | Flat faces along their normal |
 | Wirecut | partly | Cuts straight through out of the construction plane; `Direction`, `BothSides` and `DeleteInput` to come |
 
 ## Transforming
@@ -175,11 +175,11 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | Align | partly | Options to come: `ToPoint`, `ToLine` |
 | Distribute | done |  |
 | Shear | partly | Options to come: `Copy` |
-| Twist | blocked | needs deformations |
-| Bend | blocked | needs deformations |
-| Taper | blocked | needs deformations |
-| Flow | blocked | needs deformations |
-| CageEdit | blocked | needs deformations |
+| Twist | partly | Surfaces are refined and their control points moved (exact for flat faces, close for curved ones); `Infinite` to come |
+| Bend | partly | Bends along a circular arc from the spine's start; control points moved as for Twist; `Symmetric` to come |
+| Taper | partly | Sizes as a factor at the axis's end; `Flat` and `Infinite` to come |
+| Flow | partly | Stretches along the target curve; `Rigid` and `Copy` to come |
+| CageEdit | partly | A box cage moved by its eight corners, by clicks |
 
 ## Selecting, showing and grouping
 

@@ -3,6 +3,9 @@
 //! deforming surfaces and curves, and curves on surfaces (pulling, interpolating, offsetting).
 //! All flagged as custom (`docs/kernel/custom-operations.md`) unless the engine does the work.
 
+// The net is built by index, column by column, as the construction reads.
+#![allow(clippy::needless_range_loop)]
+
 use crate::body::{Body, failed};
 use crate::surface::NurbsSurface;
 use crate::{Curve, KernelError, Point, Spline, cross, dot, gap, sub, unit};
