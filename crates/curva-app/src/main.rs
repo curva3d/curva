@@ -4912,6 +4912,20 @@ fn resize_handles(ui: &egui::Ui, place: &layout::Place, rect: egui::Rect) -> Opt
     event
 }
 
+/// A program to run without a console window of its own: on Windows, a console program started
+/// from Curva (a GUI program) would otherwise flash one up.
+pub(crate) fn quiet_command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
+    #[allow(unused_mut)]
+    let mut command = std::process::Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // CREATE_NO_WINDOW.
+        command.creation_flags(0x0800_0000);
+    }
+    command
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -5274,18 +5288,4 @@ mod tests {
             );
         }
     }
-}
-
-/// A program to run without a console window of its own: on Windows, a console program started
-/// from Curva (a GUI program) would otherwise flash one up.
-pub(crate) fn quiet_command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
-    #[allow(unused_mut)]
-    let mut command = std::process::Command::new(program);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        // CREATE_NO_WINDOW.
-        command.creation_flags(0x0800_0000);
-    }
-    command
 }
