@@ -1642,6 +1642,92 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
                 pen.line_in(a, b, pen.accent());
             }
         }
+        "count" => {
+            for (x, y) in [
+                (5.0, 6.0),
+                (11.0, 6.0),
+                (17.0, 6.0),
+                (5.0, 12.0),
+                (11.0, 12.0),
+            ] {
+                pen.dot(x, y);
+            }
+            pen.line_in((3.0, 18.0), (19.0, 18.0), pen.accent());
+        }
+        "changelayer" | "matchproperties" => {
+            pen.path(&[(2.0, 8.0), (11.0, 4.0), (20.0, 8.0), (11.0, 12.0)], true);
+            pen.path_in(
+                &[(2.0, 14.0), (11.0, 10.0), (20.0, 14.0), (11.0, 18.0)],
+                true,
+                pen.accent(),
+            );
+            if name.eq_ignore_ascii_case("matchproperties") {
+                pen.dot(11.0, 8.0);
+            }
+        }
+        "linetype" => {
+            pen.dashed_in(&[(3.0, 7.0), (19.0, 7.0)], pen.accent());
+            pen.line((3.0, 12.0), (19.0, 12.0));
+            pen.dashed_in(&[(3.0, 17.0), (19.0, 17.0)], thin(1.0));
+        }
+        "printwidth" => {
+            pen.line_in((3.0, 6.0), (19.0, 6.0), thin(1.0));
+            pen.line((3.0, 11.0), (19.0, 11.0));
+            pen.line_in((3.0, 17.0), (19.0, 17.0), thin(3.5));
+        }
+        "setusertext" | "getusertext" => {
+            pen.rect(4.0, 4.0, 14.0, 14.0);
+            for y in [8.0, 11.0, 14.0] {
+                pen.line_in((7.0, y), (15.0, y), pen.accent());
+            }
+        }
+        "purge" => {
+            pen.path(&[(6.0, 7.0), (16.0, 7.0), (15.0, 19.0), (7.0, 19.0)], true);
+            pen.line((4.0, 6.0), (18.0, 6.0));
+            pen.line((9.0, 4.0), (13.0, 4.0));
+        }
+        "audit" => {
+            pen.magnifier();
+        }
+        "lockswap" | "unlockselected" => {
+            pen.rect(5.0, 10.0, 12.0, 9.0);
+            pen.arc((7.0, 4.0, 8.0, 12.0), 180.0, 180.0);
+            pen.line_in((3.0, 3.0), (19.0, 19.0), pen.accent());
+        }
+        "bringtofront" | "sendtoback" | "bringforward" | "sendbackward" => {
+            let front = name.to_lowercase().starts_with("bring");
+            let (back, top) = if front {
+                ((4.0, 4.0), (8.0, 8.0))
+            } else {
+                ((8.0, 8.0), (4.0, 4.0))
+            };
+            pen.rect(back.0, back.1, 10.0, 10.0);
+            let face = [
+                (top.0, top.1),
+                (top.0 + 10.0, top.1),
+                (top.0 + 10.0, top.1 + 10.0),
+                (top.0, top.1 + 10.0),
+            ];
+            pen.filled(&face, fill);
+            pen.path_in(&face, true, pen.accent());
+        }
+        "dupfaceborder" => {
+            pen.cube(4.0, 6.0, 11.0);
+            pen.path_in(
+                &[(4.0, 6.0), (10.0, 2.0), (21.0, 2.0), (15.0, 6.0)],
+                true,
+                pen.accent(),
+            );
+        }
+        "textobject" => {
+            pen.path(&[(4.0, 18.0), (9.0, 4.0), (14.0, 18.0)], false);
+            pen.line((6.0, 13.0), (12.0, 13.0));
+            pen.line_in((16.0, 10.0), (16.0, 18.0), pen.accent());
+        }
+        "draftanalysis" => {
+            pen.path(&[(4.0, 19.0), (18.0, 19.0), (15.0, 4.0), (7.0, 4.0)], true);
+            pen.line_in((15.0, 4.0), (18.0, 19.0), pen.accent());
+        }
         "block"
         | "insert"
         | "blockmanager"

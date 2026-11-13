@@ -156,6 +156,8 @@ pub struct Outlines {
     locked: Vec<bool>,
     /// How thick each object draws, in millimetres or `None` for the default line, in the same order.
     widths: Vec<Option<f64>>,
+    /// The dash pattern each draws with (empty for a solid line), in the same order.
+    dashes: Vec<&'static [f64]>,
     /// Whether each entry is an edge of a surface or solid, in the same order.
     on_faces: Vec<bool>,
     /// For an edge of a surface or solid, its number among the body's edges, in the same order.
@@ -248,6 +250,7 @@ impl Outlines {
             let colour = layer.map_or(CURVE_COLOUR, |l| l.colour);
             let locked = object.locked || layer.is_some_and(|l| l.locked);
             let width = object.print_width.resolved(layer);
+            let dashes = object.linetype.resolved(layer).pattern();
             // An instance draws its definition's objects, placed, all under its own id.
             let parts: Vec<(Shape, u64)> = match &object.shape {
                 Shape::Instance(instance) => state
@@ -315,6 +318,7 @@ impl Outlines {
                     outlines.colours.push(colour);
                     outlines.locked.push(locked);
                     outlines.widths.push(width);
+                    outlines.dashes.push(dashes);
                     outlines.on_faces.push(shape.body().is_some());
                     outlines.edge_of.push(edge);
                     outlines.kinds.push(kind);
@@ -860,6 +864,31 @@ fn polyline(out: &mut Vec<Vertex>, points: &[Point], colour: [f32; 3]) {
     polyline_with(out, points, colour, -DEFAULT_LINE_PIXELS);
 }
 
+/// A run of points drawn with a dash pattern (lengths drawn and left out in turn, in model units).
+fn dashed(out: &mut Vec<Vertex>, points: &[Point], pattern: &[f64], colour: [f32; 3], width: f32) {
+    let mut slot = 0;
+    let mut left = pattern[0];
+    for pair in points.windows(2) {
+        let (mut a, b) = (pair[0], pair[1]);
+        let mut length = curva_kernel::gap(a, b);
+        while length > 1e-12 {
+            let step = left.min(length);
+            let t = step / length;
+            let c: Point = std::array::from_fn(|k| a[k] + (b[k] - a[k]) * t);
+            if slot % 2 == 0 {
+                segment_with(out, narrow(a), narrow(c), colour, width);
+            }
+            left -= step;
+            length -= step;
+            a = c;
+            if left <= 1e-12 {
+                slot = (slot + 1) % pattern.len();
+                left = pattern[slot];
+            }
+        }
+    }
+}
+
 fn polyline_with(out: &mut Vec<Vertex>, points: &[Point], colour: [f32; 3], width: f32) {
     for pair in points.windows(2) {
         segment_with(out, narrow(pair[0]), narrow(pair[1]), colour, width);
@@ -953,7 +982,12 @@ fn lines_of(outlines: &Outlines, selected: &[u64], shaded: bool) -> Vec<Vertex> 
         } else {
             outlines.colours.get(index).copied().unwrap_or(CURVE_COLOUR)
         };
-        polyline_with(&mut out, points, colour, width);
+        let dashes = outlines.dashes.get(index).copied().unwrap_or(&[]);
+        if dashes.is_empty() {
+            polyline_with(&mut out, points, colour, width);
+        } else {
+            dashed(&mut out, points, dashes, colour, width);
+        }
     }
     out
 }

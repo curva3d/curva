@@ -115,6 +115,7 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "Spiral",
             "Parabola",
             "Conic",
+            "TextObject",
             "Hyperbola",
             "HandleCurve",
             "Sketch",
@@ -163,6 +164,7 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "RebuildUV",
             "Project",
             "Pull",
+            "DupFaceBorder",
             "Sweep2",
             "BlendSrf",
             "MatchSrf",
@@ -237,6 +239,16 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "BlockManager",
             "BlockEdit",
             "ExplodeBlock",
+            "ChangeLayer",
+            "MatchProperties",
+            "Linetype",
+            "PrintWidth",
+            "SetUserText",
+            "GetUserText",
+            "Purge",
+            "LockSwap",
+            "BringToFront",
+            "SendToBack",
             "Lock",
             "Unlock",
         ],
@@ -262,6 +274,9 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "Intersect",
             "Silhouette",
             "Zebra",
+            "DraftAnalysis",
+            "Count",
+            "Audit",
             "Plan",
         ],
     ),
@@ -625,6 +640,8 @@ struct Pane {
     display: DisplayMode,
     /// Whether shaded faces show zebra stripes (`Zebra`).
     zebra: bool,
+    /// Whether shaded faces show draft angles (`DraftAnalysis`).
+    draft: bool,
     /// Views to step back to with `UndoView`, newest last, and the view they were left from.
     views_back: Vec<Camera>,
     /// Views stepped back from, for `RedoView`, newest last.
@@ -685,6 +702,7 @@ impl Pane {
                 DisplayMode::Wireframe
             },
             zebra: false,
+            draft: false,
         }
     }
 }
@@ -1923,6 +1941,39 @@ impl Curva {
         }
     }
 
+    /// A drop-down of linetypes, with `ByLayer` when `by_layer`; returns the one chosen.
+    fn linetype_choice(
+        &self,
+        ui: &mut egui::Ui,
+        id: egui::Id,
+        shown: Option<curva_document::Linetype>,
+        by_layer: bool,
+    ) -> Option<curva_document::Linetype> {
+        use curva_document::Linetype;
+        let mut chosen = None;
+        let label = shown.map_or_else(
+            || self.text.render(&Message::new("ui.width.varies")),
+            |l| l.name().to_owned(),
+        );
+        egui::ComboBox::from_id_salt(id)
+            .selected_text(label)
+            .width(96.0)
+            .show_ui(ui, |ui| {
+                let choices = by_layer
+                    .then_some(Linetype::ByLayer)
+                    .into_iter()
+                    .chain(Linetype::ALL);
+                for choice in choices {
+                    if ui
+                        .selectable_label(shown == Some(choice), choice.name())
+                        .clicked()
+                    {
+                        chosen = Some(choice);
+                    }
+                }
+            });
+        chosen
+    }
     /// A drop-down of print widths (spec `line-weights.md` §5): `By layer` when `by_layer`,
     /// `Default`, Rhino's common widths, and a field for any other. `shown` is what it shows;
     /// returns the width chosen, if one was.
@@ -2121,6 +2172,10 @@ impl Curva {
                     };
                     self.undoable(|doc| doc.set_layer_print_width(layer.id, mm));
                 }
+                let id = ui.scope_id().with(("layer linetype", layer.id));
+                if let Some(linetype) = self.linetype_choice(ui, id, Some(layer.linetype), false) {
+                    self.undoable(|doc| doc.set_layer_linetype(layer.id, linetype));
+                }
                 let mut visible = layer.visible;
                 let shown =
                     ui.checkbox(&mut visible, self.text.render(&Message::new("ui.layer.on")));
@@ -2277,6 +2332,25 @@ impl Curva {
             let id = ui.scope_id().with("object width");
             if let Some(width) = self.width_choice(ui, id, shown, true) {
                 self.undoable(|doc| doc.set_print_width(&selection, width));
+            }
+        });
+        let linetypes: Vec<curva_document::Linetype> = self
+            .doc
+            .state()
+            .objects
+            .iter()
+            .filter(|object| selection.contains(&object.id))
+            .map(|object| object.linetype)
+            .collect();
+        let shown = linetypes
+            .first()
+            .copied()
+            .filter(|first| linetypes.iter().all(|l| l == first));
+        ui.horizontal(|ui| {
+            ui.label(self.text.render(&Message::new("ui.properties.linetype")));
+            let id = ui.scope_id().with("object linetype");
+            if let Some(linetype) = self.linetype_choice(ui, id, shown, true) {
+                self.undoable(|doc| doc.set_linetype(&selection, linetype));
             }
         });
     }
@@ -4306,6 +4380,13 @@ impl Curva {
                 self.panes[self.active].display = display;
             }
             ViewRequest::ShowBlocks => self.open_piece(layout::Piece::Blocks),
+            ViewRequest::DraftAnalysis => {
+                let pane = &mut self.panes[self.active];
+                pane.draft = !pane.draft;
+                if pane.display == DisplayMode::Wireframe {
+                    pane.display = DisplayMode::Shaded;
+                }
+            }
             ViewRequest::Zebra => {
                 let pane = &mut self.panes[self.active];
                 pane.zebra = !pane.zebra;
@@ -4717,6 +4798,7 @@ impl Curva {
                 shaded: display != DisplayMode::Wireframe,
                 ghosted: display == DisplayMode::Ghosted,
                 zebra: self.panes[*pane].zebra,
+                draft: self.panes[*pane].draft,
                 area: *rect,
                 frame: ui.ctx().cumulative_frame_nr(),
                 background: theme::current().window,

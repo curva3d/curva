@@ -11,6 +11,8 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+# Reads font outlines for TextObject. MIT OR Apache-2.0.
+ttf-parser = "0.25"
 serde = { version = "1", features = ["derive"] }
 solidcore = { git = "https://github.com/tangency-labs/solidcore", rev = "377457d24b3d8398c81b072dd1401b02b04d67b0" }
 # The engine's body operations, its portable record of bodies (which files store) and its

@@ -49,6 +49,7 @@ mod new;
 mod offset;
 mod offset_srf;
 mod open;
+mod organise;
 mod orient;
 mod orient3pt;
 mod parity;
@@ -163,7 +164,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 214] = [
+pub static COMMANDS: [CommandDef; 232] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -359,6 +360,30 @@ pub static COMMANDS: [CommandDef; 214] = [
         false,
         blocks::SelBlockInstanceNamed
     ),
+    listed!("Count", [], false, false, organise::Count),
+    listed!("ChangeLayer", [], true, true, organise::ChangeLayer),
+    listed!(
+        "MatchProperties",
+        ["matchprop"],
+        true,
+        true,
+        organise::MatchProperties
+    ),
+    listed!("Linetype", [], true, true, organise::LinetypeCommand),
+    listed!("PrintWidth", [], true, true, organise::PrintWidthCommand),
+    listed!("SetUserText", [], true, true, organise::SetUserText),
+    listed!("GetUserText", [], false, false, organise::GetUserText),
+    listed!("Purge", [], true, true, organise::Purge),
+    listed!("Audit", [], false, false, organise::Audit),
+    listed!("LockSwap", [], true, true, organise::LockSwap),
+    listed!("UnlockSelected", [], true, true, organise::UnlockSelected),
+    listed!("BringToFront", [], true, true, organise::DrawOrder<true, true>),
+    listed!("SendToBack", [], true, true, organise::DrawOrder<false, true>),
+    listed!("BringForward", [], true, true, organise::DrawOrder<true, false>),
+    listed!("SendBackward", [], true, true, organise::DrawOrder<false, false>),
+    recipe!("DupFaceBorder", [], true, organise::DupFaceBorder),
+    listed!("TextObject", ["text"], true, true, organise::TextObject),
+    listed!("DraftAnalysis", [], false, false, organise::DraftAnalysis),
     recipe!("EdgeSrf", [], true, parity6::EdgeSrf),
     recipe!("NetworkSrf", [], true, parity6::NetworkSrf),
     recipe!("Patch", [], true, parity6::Patch),
@@ -729,7 +754,21 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 40] = [
+    const NOTHING_TO_PREVIEW: [&str; 54] = [
+        "ChangeLayer",
+        "MatchProperties",
+        "Linetype",
+        "PrintWidth",
+        "SetUserText",
+        "Purge",
+        "LockSwap",
+        "UnlockSelected",
+        "BringToFront",
+        "SendToBack",
+        "BringForward",
+        "SendBackward",
+        "DupFaceBorder",
+        "TextObject",
         "Block",
         "Insert",
         "BlockEdit",
@@ -1330,6 +1369,8 @@ mod tests {
                 "ChangeDegree",
                 "Conic",
                 "CurveBoolean",
+                "Count",
+                "ChangeLayer",
                 "Contour",
                 "CurvatureGraph",
                 "Cap",
@@ -1340,7 +1381,10 @@ mod tests {
                 "Curve"
             ]
         );
-        assert_eq!(completions("co"), ["Copy", "Cone", "Conic", "Contour"]);
+        assert_eq!(
+            completions("co"),
+            ["Copy", "Cone", "Conic", "Count", "Contour"]
+        );
     }
 
     #[test]

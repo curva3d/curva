@@ -38,6 +38,8 @@ mod surface_ops;
 mod surface_ops2;
 pub use spline::Spline;
 pub use surface::NurbsSurface;
+mod text;
+pub use text::{font_bytes, text_outlines};
 mod tween;
 pub use body::{Body, BodyMesh};
 pub use conic::{Chamfered, chamfer_lines};

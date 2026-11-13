@@ -285,3 +285,21 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | ExplodeBlock | Instances | none | none | partly |
 | ReplaceBlock | Instances; name | none | none | partly |
 | SelBlockInstanceNamed | Name | none | none | partly |
+| Count | Objects | none | none | partly |
+| ChangeLayer | Objects; layer | none | none | partly |
+| MatchProperties | Objects; object to match | `MatchAll` `Linetype` `PrintWidth` `Layer` `Name` | none | partly |
+| Linetype | Objects; linetype | none | none | partly |
+| PrintWidth | Objects; width | none | none | partly |
+| SetUserText | Objects; key; text | none | none | partly |
+| GetUserText | Object | none | none | partly |
+| Purge | none | `Layers` `BlockDefinitions` `Linetypes` | none | partly |
+| Audit | none | none | none | partly |
+| LockSwap | none | none | none | partly |
+| UnlockSelected | Locked objects | none | none | partly |
+| BringToFront | Objects | none | none | partly |
+| SendToBack | Objects | none | none | partly |
+| BringForward | Objects | none | none | partly |
+| SendBackward | Objects | none | none | partly |
+| DupFaceBorder | Faces | none | none | done |
+| TextObject | Text; point; height | `Curves` `Surfaces` `Solids` `Font` | none | partly |
+| DraftAnalysis | Objects | `DraftAngle` `PullDirection` | none | partly |

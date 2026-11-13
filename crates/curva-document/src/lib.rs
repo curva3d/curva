@@ -59,6 +59,10 @@ pub struct Object {
     pub live: Option<crate::live::LiveBoolean>,
     /// For an input kept by a live boolean: the result it belongs to.
     pub input_of: Option<u64>,
+    /// How its lines are drawn: continuous, dashed and so on, or as its layer says.
+    pub linetype: Linetype,
+    /// Key–value text kept with it (`SetUserText`).
+    pub user_text: std::collections::BTreeMap<String, String>,
 }
 
 impl Object {
@@ -98,6 +102,10 @@ struct StoredObject {
     live: Option<crate::live::LiveBoolean>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     input_of: Option<u64>,
+    #[serde(default, skip_serializing_if = "Linetype::is_by_layer")]
+    linetype: Linetype,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    user_text: std::collections::BTreeMap<String, String>,
 }
 
 impl TryFrom<StoredObject> for Object {
@@ -122,6 +130,8 @@ impl TryFrom<StoredObject> for Object {
             group: stored.group,
             live: stored.live,
             input_of: stored.input_of,
+            linetype: stored.linetype,
+            user_text: stored.user_text,
         })
     }
 }
@@ -147,6 +157,8 @@ impl From<Object> for StoredObject {
             group: object.group,
             live: object.live,
             input_of: object.input_of,
+            linetype: object.linetype,
+            user_text: object.user_text,
         }
     }
 }
@@ -170,6 +182,12 @@ pub struct Layer {
     /// How thick its objects are drawn and printed, in millimetres; `None` is the default thin line.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub print_width: Option<f64>,
+    /// How its objects' lines are drawn.
+    #[serde(
+        default = "continuous",
+        skip_serializing_if = "Linetype::is_continuous"
+    )]
+    pub linetype: Linetype,
 }
 
 /// How thick an object's lines are, as Rhino's Print Width (spec `line-weights.md`).
@@ -213,6 +231,105 @@ impl PrintWidth {
     }
 }
 
+/// How a line is drawn, as Rhino's linetypes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Linetype {
+    /// As its layer says (objects only).
+    #[default]
+    ByLayer,
+    /// A solid line.
+    Continuous,
+    /// Long dashes.
+    Dashed,
+    /// Dots.
+    Dotted,
+    /// Dashes and dots.
+    DashDot,
+    /// Short dashes, for hidden lines.
+    Hidden,
+    /// Long and short dashes, for centre lines.
+    Center,
+    /// Two dashes and a dot.
+    Border,
+}
+
+impl Linetype {
+    /// The linetypes offered, after `ByLayer`.
+    pub const ALL: [Self; 7] = [
+        Self::Continuous,
+        Self::Dashed,
+        Self::Dotted,
+        Self::DashDot,
+        Self::Hidden,
+        Self::Center,
+        Self::Border,
+    ];
+
+    /// Whether it follows the layer, which files leave unwritten.
+    #[must_use]
+    pub fn is_by_layer(&self) -> bool {
+        matches!(self, Self::ByLayer)
+    }
+
+    /// Whether it is a solid line, which files leave unwritten for layers.
+    #[must_use]
+    pub fn is_continuous(&self) -> bool {
+        matches!(self, Self::Continuous)
+    }
+
+    /// Its name, as Rhino names it.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::ByLayer => "ByLayer",
+            Self::Continuous => "Continuous",
+            Self::Dashed => "Dashed",
+            Self::Dotted => "Dots",
+            Self::DashDot => "DashDot",
+            Self::Hidden => "Hidden",
+            Self::Center => "Center",
+            Self::Border => "Border",
+        }
+    }
+
+    /// The linetype with this name, ignoring case.
+    #[must_use]
+    pub fn named(name: &str) -> Option<Self> {
+        std::iter::once(Self::ByLayer).chain(Self::ALL).find(|t| {
+            t.name().eq_ignore_ascii_case(name)
+                || (name.eq_ignore_ascii_case("dotted") && *t == Self::Dotted)
+        })
+    }
+
+    /// Its pattern in model units: lengths drawn and left out in turn; empty for a solid line.
+    #[must_use]
+    pub fn pattern(self) -> &'static [f64] {
+        match self {
+            Self::ByLayer | Self::Continuous => &[],
+            Self::Dashed => &[3.0, 1.5],
+            Self::Dotted => &[0.25, 1.0],
+            Self::DashDot => &[3.0, 1.0, 0.25, 1.0],
+            Self::Hidden => &[1.5, 1.0],
+            Self::Center => &[6.0, 1.0, 1.5, 1.0],
+            Self::Border => &[3.0, 1.0, 3.0, 1.0, 0.25, 1.0],
+        }
+    }
+
+    /// The linetype an object on `layer` draws with.
+    #[must_use]
+    pub fn resolved(self, layer: Option<&Layer>) -> Self {
+        match self {
+            Self::ByLayer => layer.map_or(Self::Continuous, |l| l.linetype),
+            other => other,
+        }
+    }
+}
+
+/// A layer's linetype when its file names none.
+fn continuous() -> Linetype {
+    Linetype::Continuous
+}
+
 /// The layer every model starts with. Files from before layers put everything on it.
 fn standard_layers() -> Vec<Layer> {
     vec![Layer {
@@ -222,6 +339,7 @@ fn standard_layers() -> Vec<Layer> {
         visible: true,
         locked: false,
         print_width: None,
+        linetype: Linetype::Continuous,
     }]
 }
 
@@ -436,6 +554,8 @@ impl Document {
             group: None,
             live: None,
             input_of: None,
+            linetype: Linetype::ByLayer,
+            user_text: std::collections::BTreeMap::new(),
         });
         id
     }
