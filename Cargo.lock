@@ -439,7 +439,7 @@ checksum = "f27ae1dd37df86211c42e150270f82743308803d90a6f6e6651cd730d5e1732f"
 
 [[package]]
 name = "curva-3dm"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "crc32fast",
  "curva-document",
@@ -449,7 +449,7 @@ dependencies = [
 
 [[package]]
 name = "curva-app"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "curva-commands",
  "curva-document",
@@ -466,7 +466,7 @@ dependencies = [
 
 [[package]]
 name = "curva-commands"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "curva-3dm",
  "curva-document",
@@ -475,7 +475,7 @@ dependencies = [
 
 [[package]]
 name = "curva-document"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "curva-kernel",
  "serde",
@@ -485,7 +485,7 @@ dependencies = [
 
 [[package]]
 name = "curva-kernel"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -498,7 +498,7 @@ dependencies = [
 
 [[package]]
 name = "curva-mcp"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "curva-commands",
  "curva-document",
@@ -508,11 +508,11 @@ dependencies = [
 
 [[package]]
 name = "curva-placeholder"
-version = "0.4.1"
+version = "0.4.2"
 
 [[package]]
 name = "curva-viewport"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "curva-document",
  "curva-kernel",
@@ -1247,7 +1247,7 @@ dependencies = [
 
 [[package]]
 name = "kernel-eval"
-version = "0.4.1"
+version = "0.4.2"
 
 [[package]]
 name = "khronos-egl"
