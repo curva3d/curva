@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Curva logo, "Drafting", square grid version. 256 x 256 artboard. Each top-level group opens as
+     a layer in Adobe Illustrator, named by its id. The C, the orange control polygon and the points
+     are the original Drafting mark, centred: an arc of radius 78 about (128, 128), 38 wide. Behind
+     it, one square grid the C fits in: the square around the C's outer edge (31 to 225, side 194),
+     in eight bays of 24.25 each way, its outline and middle lines a little stronger.
+     Colours: tile #FAF9F5 with edge #E2DFD5, grid #1F1E1D at 15% opacity (outline and middle 22%),
+     C #1F1E1D, control polygon and points #E0782F. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <g id="Tile" data-name="Tile">
+    <rect id="Tile_fill" data-name="Tile fill" x="8.5" y="8.5" width="239" height="239" rx="52" ry="52" fill="#FAF9F5" stroke="#E2DFD5" stroke-width="1"/>
+  </g>
+
+  <g id="Square_grid" data-name="Square grid" fill="none" stroke="#1F1E1D" stroke-opacity="0.15" stroke-width="1">
+    <rect id="Square" data-name="Square" x="31" y="31" width="194" height="194" stroke-opacity="0.22"/>
+    <g id="Verticals" data-name="Verticals">
+      <line x1="55.25" y1="31" x2="55.25" y2="225"/>
+      <line x1="79.5" y1="31" x2="79.5" y2="225"/>
+      <line x1="103.75" y1="31" x2="103.75" y2="225"/>
+      <line id="Middle_vertical" data-name="Middle vertical" x1="128" y1="31" x2="128" y2="225" stroke-opacity="0.22"/>
+      <line x1="152.25" y1="31" x2="152.25" y2="225"/>
+      <line x1="176.5" y1="31" x2="176.5" y2="225"/>
+      <line x1="200.75" y1="31" x2="200.75" y2="225"/>
+    </g>
+    <g id="Horizontals" data-name="Horizontals">
+      <line x1="31" y1="55.25" x2="225" y2="55.25"/>
+      <line x1="31" y1="79.5" x2="225" y2="79.5"/>
+      <line x1="31" y1="103.75" x2="225" y2="103.75"/>
+      <line id="Middle_horizontal" data-name="Middle horizontal" x1="31" y1="128" x2="225" y2="128" stroke-opacity="0.22"/>
+      <line x1="31" y1="152.25" x2="225" y2="152.25"/>
+      <line x1="31" y1="176.5" x2="225" y2="176.5"/>
+      <line x1="31" y1="200.75" x2="225" y2="200.75"/>
+    </g>
+  </g>
+
+  <g id="Control_polygon" data-name="Control polygon">
+    <polyline points="183.15,72.85 50,128 183.15,183.15" fill="none" stroke="#E0782F" stroke-width="3" stroke-linejoin="round"/>
+  </g>
+
+  <g id="C" data-name="C">
+    <path d="M 183.15 72.85 A 78 78 0 1 0 183.15 183.15" fill="none" stroke="#1F1E1D" stroke-width="38" stroke-linecap="round"/>
+  </g>
+
+  <g id="Control_points" data-name="Control points" fill="#E0782F">
+    <circle id="Point_top" data-name="Point top" cx="183.15" cy="72.85" r="10"/>
+    <circle id="Point_left" data-name="Point left" cx="50" cy="128" r="10"/>
+    <circle id="Point_bottom" data-name="Point bottom" cx="183.15" cy="183.15" r="10"/>
+  </g>
+</svg>

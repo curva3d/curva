@@ -2,8 +2,8 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap">
 <style>
-  /* Layout: a short header, then the master large beside its construction notes, then the mark
-     at the sizes it is used, on light and dark. */
+  /* Layout: a short header, then a wrapping grid of version cards, each the mark large and at the
+     sizes it is used, on light and dark. */
   :root {
     --bg: #f3f2ee;
     --surface: #fbfaf7;
@@ -28,7 +28,7 @@
   }
   body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; }
   .wrap {
-    max-width: 1080px; margin: 0 auto; display: grid; gap: 32px;
+    max-width: 1180px; margin: 0 auto; display: grid; gap: 32px;
     padding-left: max(16px, env(safe-area-inset-left, 0px));
     padding-right: max(16px, env(safe-area-inset-right, 0px));
     padding-block: 40px 64px;
@@ -37,63 +37,152 @@
   .eyebrow { font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
   h1 { font-family: var(--display); font-weight: 600; font-size: 2rem; line-height: 1.15; margin: 0; text-wrap: balance; }
   p { margin: 0; color: var(--quiet); }
-  .main { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 28px; align-items: center; }
-  @media (max-width: 760px) { .main { grid-template-columns: minmax(0, 1fr); } }
-  .main img { width: 100%; max-width: 480px; aspect-ratio: 1; display: block; justify-self: center; }
-  .notes { display: grid; gap: 12px; }
-  .notes h2 { font-family: var(--display); font-weight: 600; font-size: 1.15rem; margin: 0; }
-  .notes ul { margin: 0; padding-left: 1.2em; color: var(--quiet); display: grid; gap: 6px; }
-  .sizes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
-  .chip { border-radius: 12px; padding: 16px; display: flex; align-items: center; justify-content: center; gap: 18px; flex-wrap: wrap; }
-  .chip.light { background: var(--chip-light); border: 1px solid var(--edge); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 18px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--edge); border-radius: 14px; padding: 18px;
+    display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; align-content: start;
+  }
+  .big { width: 100%; max-width: 280px; aspect-ratio: 1; justify-self: center; }
+  .big svg { width: 100%; height: 100%; display: block; }
+  .name { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .name strong { font-family: var(--display); font-weight: 600; font-size: 1.05rem; }
+  .name span { font-size: 0.72rem; color: var(--accent); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+  .note { font-size: 0.86rem; }
+  .sizes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+  .chip { border-radius: 10px; padding: 10px 6px; display: flex; align-items: center; justify-content: center; gap: 10px; }
   .chip.dark { background: var(--chip-dark); }
-  .chip img { display: block; }
-  .label { font-size: 0.8rem; color: var(--quiet); }
+  .chip.light { background: var(--chip-light); border: 1px solid var(--edge); }
+  .chip svg.s48 { width: 40px; height: 40px; }
+  .chip svg.s24 { width: 24px; height: 24px; }
+  .chip svg.s16 { width: 16px; height: 16px; }
   code { font-size: 0.85em; }
 </style>
 
 <div class="wrap">
   <header>
     <div class="eyebrow">Curva logo · Drafting</div>
-    <h1>The Drafting mark, with its construction set out properly</h1>
-    <p>The C, the orange control polygon and the points are exactly the original Drafting mark.
-      Only the grey lines behind it changed: they now set out the C as an architectural drawing would.</p>
+    <h1>The Drafting mark, centred, with and without a square grid</h1>
+    <p>The C, its orange control polygon and points are the original Drafting mark, now centred: its
+      circle's centre sits on the tile's centre, and every line moved with it. The versions differ only
+      in the grey lines behind it: the architectural construction, one square grid the C fits in, or
+      both.</p>
   </header>
-
-  <div class="main">
-    <img src="curva-logo-drafting.svg" alt="The Curva Drafting logo with its construction lines">
-    <div class="notes">
-      <h2>What the grey lines are</h2>
-      <ul>
-        <li>Centre lines, long dash and dot, through the C's centre and running past it.</li>
-        <li>The C's own centre line, a circle of radius 78, also dash-dot.</li>
-        <li>The edges of its 38-wide stroke, circles of radius 59 and 97.</li>
-        <li>The 45° rays through its ends, which set its opening.</li>
-        <li>The control polygon's sides carried on past the points, as construction lines overshoot.</li>
-        <li>The chord between the ends, with a dimension: extension lines, a dimension line and 45° ticks.</li>
-      </ul>
-    </div>
-  </div>
-
-  <div class="sizes">
-    <div>
-      <div class="chip light">
-        <img src="curva-logo-drafting-small.svg" width="64" height="64" alt="Small logo at 64 px">
-        <img src="curva-logo-drafting-small.svg" width="32" height="32" alt="Small logo at 32 px">
-        <img src="curva-logo-drafting-small.svg" width="16" height="16" alt="Small logo at 16 px">
-      </div>
-      <p class="label">Small sizes (64, 32, 16 px), on light: the mark without guides, a little heavier.</p>
-    </div>
-    <div>
-      <div class="chip dark">
-        <img src="curva-logo-drafting-small.svg" width="64" height="64" alt="Small logo at 64 px on dark">
-        <img src="curva-logo-drafting-small.svg" width="32" height="32" alt="Small logo at 32 px on dark">
-        <img src="curva-logo-drafting-small.svg" width="16" height="16" alt="Small logo at 16 px on dark">
-      </div>
-      <p class="label">The same on a dark task bar.</p>
-    </div>
-  </div>
-
-  <p>Editable files for Illustrator, with layers: <code>docs/design/curva-logo-drafting.svg</code> and
-    <code>docs/design/curva-logo-drafting-small.svg</code>.</p>
+  <div class="grid" id="grid"></div>
+  <p>Each version is drawn from the same numbers: the C is an arc of radius 78 about (128, 128) on a
+    256 tile, 38 wide, open 90° to the right. Pick one and it gets its editable Illustrator file, then
+    becomes Curva's icon.</p>
 </div>
+
+<script>
+  // The original mark, centred: arc of radius 78 about (128, 128), ends at ±45°, stroke 38.
+  const C = { x: 128, y: 128, r: 78, w: 38 };
+  const k = Math.SQRT1_2;
+  const E1 = [C.x + C.r * k, C.y - C.r * k];
+  const E2 = [C.x + C.r * k, C.y + C.r * k];
+  const L = [C.x - C.r, C.y];
+  const f = (n) => +n.toFixed(2);
+  const guide = 'stroke="#1F1E1D" stroke-opacity="0.15" stroke-width="1" fill="none"';
+  const dim = 'stroke="#1F1E1D" stroke-opacity="0.24" stroke-width="1" fill="none"';
+  const line = (a, b, extra = "") => `<line x1="${f(a[0])}" y1="${f(a[1])}" x2="${f(b[0])}" y2="${f(b[1])}"${extra}/>`;
+
+  // The architectural construction: centre lines, the stroke's circles, rays, polygon carried on,
+  // the chord and its dimension.
+  function construction() {
+    let s = `<g ${guide}>`;
+    s += `<g stroke-dasharray="14 3 2 3">`;
+    s += line([24, C.y], [232, C.y]) + line([C.x, 22], [C.x, 234]);
+    s += `<circle cx="${C.x}" cy="${C.y}" r="${C.r}"/></g>`;
+    s += `<circle cx="${C.x}" cy="${C.y}" r="${C.r - C.w / 2}"/><circle cx="${C.x}" cy="${C.y}" r="${C.r + C.w / 2}"/>`;
+    const ray = C.r + C.w / 2 + 16;
+    s += line([C.x - 10 * k, C.y + 10 * k], [C.x + ray * k, C.y - ray * k]);
+    s += line([C.x - 10 * k, C.y - 10 * k], [C.x + ray * k, C.y + ray * k]);
+    const d = [E1[0] - L[0], E1[1] - L[1]];
+    const n = Math.hypot(d[0], d[1]);
+    const u = [d[0] / n, d[1] / n];
+    s += line([L[0] - 14 * u[0], L[1] - 14 * u[1]], [E1[0] + 14 * u[0], E1[1] + 14 * u[1]]);
+    s += line([L[0] - 14 * u[0], L[1] + 14 * u[1]], [E2[0] + 14 * u[0], E2[1] - 14 * u[1]]);
+    s += line([E1[0], 62], [E1[0], 194]);
+    s += `</g><g ${dim}>`;
+    const dx = E1[0] + 31.5;
+    s += line([E1[0] + 13.5, E1[1]], [dx + 6, E1[1]]) + line([E2[0] + 13.5, E2[1]], [dx + 6, E2[1]]);
+    s += line([dx, E1[1] - 7], [dx, E2[1] + 7]);
+    s += line([dx - 4, E1[1] + 4], [dx + 4, E1[1] - 4], ' stroke-width="1.5"');
+    s += line([dx - 4, E2[1] + 4], [dx + 4, E2[1] - 4], ' stroke-width="1.5"');
+    return s + `</g>`;
+  }
+
+  // One square grid the C fits in: the square around its outer edge (side 194), divided `cells`
+  // times each way. `diagonals` adds the square's diagonals.
+  function square(cells, opts = {}) {
+    const side = 2 * (C.r + C.w / 2) + (opts.margin || 0) * 2;
+    const x0 = C.x - side / 2, y0 = C.y - side / 2;
+    let s = `<g ${guide}>`;
+    s += `<rect x="${f(x0)}" y="${f(y0)}" width="${f(side)}" height="${f(side)}" stroke-opacity="0.22"/>`;
+    for (let i = 1; i < cells; i++) {
+      const t = (side * i) / cells;
+      const heavy = opts.heavyMiddle && i * 2 === cells ? ' stroke-opacity="0.22"' : "";
+      s += line([x0 + t, y0], [x0 + t, y0 + side], heavy) + line([x0, y0 + t], [x0 + side, y0 + t], heavy);
+    }
+    if (opts.diagonals) {
+      s += line([x0, y0], [x0 + side, y0 + side]) + line([x0 + side, y0], [x0, y0 + side]);
+    }
+    if (opts.ticks) {
+      // Short ticks past the square's corners, as a sheet's crop marks.
+      for (const [cx, cy, sx, sy] of [[x0, y0, -1, -1], [x0 + side, y0, 1, -1], [x0, y0 + side, -1, 1], [x0 + side, y0 + side, 1, 1]]) {
+        s += line([cx, cy], [cx + 8 * sx, cy]) + line([cx, cy], [cx, cy + 8 * sy]);
+      }
+    }
+    return s + `</g>`;
+  }
+
+  function circles() {
+    return `<g ${guide}><g stroke-dasharray="14 3 2 3"><circle cx="${C.x}" cy="${C.y}" r="${C.r}"/></g>` +
+      `<circle cx="${C.x}" cy="${C.y}" r="${C.r - C.w / 2}"/></g>`;
+  }
+
+  function mark(back, light = true) {
+    const tile = light ? "#FAF9F5" : "#1F1E1D";
+    const ink = light ? "#1F1E1D" : "#F3F2EE";
+    let s = `<svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Curva logo">`;
+    s += `<rect x="8.5" y="8.5" width="239" height="239" rx="52" fill="${tile}" stroke="${light ? "#E2DFD5" : tile}"/>`;
+    s += light ? back : back.replaceAll("#1F1E1D", "#F3F2EE");
+    s += `<polyline points="${f(E1[0])},${f(E1[1])} ${L[0]},${L[1]} ${f(E2[0])},${f(E2[1])}" fill="none" stroke="#E0782F" stroke-width="3" stroke-linejoin="round"/>`;
+    s += `<path d="M ${f(E1[0])} ${f(E1[1])} A ${C.r} ${C.r} 0 1 0 ${f(E2[0])} ${f(E2[1])}" fill="none" stroke="${ink}" stroke-width="${C.w}" stroke-linecap="round"/>`;
+    for (const p of [E1, L, E2]) s += `<circle cx="${f(p[0])}" cy="${f(p[1])}" r="10" fill="#E0782F"/>`;
+    return s + "</svg>";
+  }
+
+  const versions = [
+    { name: "Centred construction", tag: "Architectural", back: construction(),
+      note: "The construction set out as an architectural drawing, now crossing at the tile's centre." },
+    { name: "Square grid, 8 × 8", tag: "One grid", back: square(8, { heavyMiddle: true }),
+      note: "The square around the C's outer edge, in eight bays each way; the middle lines a little stronger." },
+    { name: "Square grid, 6 × 6", tag: "One grid", back: square(6, { diagonals: true }),
+      note: "Six bays each way and the square's diagonals, which pass through the C's ends." },
+    { name: "Square grid, 4 × 4", tag: "Quiet", back: square(4, { ticks: true }),
+      note: "Four bays only, with crop-mark ticks at the corners: the lightest grid." },
+    { name: "Grid and circles", tag: "Grid + construction", back: square(8, { heavyMiddle: true }) + circles(),
+      note: "The 8 × 8 square with the C's centre line and inner edge drawn in." },
+    { name: "Grid and construction", tag: "Everything", back: square(4) + construction(),
+      note: "The full architectural construction over a four-bay square." },
+    { name: "Square grid, dark", tag: "Dark tile", back: square(8, { heavyMiddle: true }), light: false,
+      note: "The 8 × 8 version on a dark tile, for dark task bars and docks." },
+  ];
+
+  const grid = document.getElementById("grid");
+  for (const v of versions) {
+    const svg = mark(v.back, v.light !== false);
+    const sized = (cls) => svg.replace("<svg ", `<svg class="${cls}" `);
+    const card = document.createElement("article");
+    card.className = "card";
+    card.innerHTML = `
+      <div class="big">${svg}</div>
+      <div class="name"><strong>${v.name}</strong><span>${v.tag}</span></div>
+      <p class="note">${v.note}</p>
+      <div class="sizes">
+        <div class="chip light">${sized("s48")}${sized("s24")}${sized("s16")}</div>
+        <div class="chip dark">${sized("s48")}${sized("s24")}${sized("s16")}</div>
+      </div>`;
+    grid.appendChild(card);
+  }
+</script>
