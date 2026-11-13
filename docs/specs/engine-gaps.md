@@ -1,6 +1,6 @@
 # Spec: the engine's gaps, built in Curva and flagged
 
-**Status:** Draft, for the owner's approval · 13 November 2026.
+**Status:** Approved by the owner in chat · 13 November 2026.
 **Covers:** `milestone-2-in-0.4.2.md`, points 4 and 5; decision 0019 (4).
 
 ## 1. The rule

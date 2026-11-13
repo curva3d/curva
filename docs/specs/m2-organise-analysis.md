@@ -1,6 +1,6 @@
 # Spec: the rest of phases F2 and F3
 
-**Status:** Draft, for the owner's approval · 13 November 2026.
+**Status:** Approved by the owner in chat · 13 November 2026.
 **Covers:** `milestone-2-in-0.4.2.md`, points 6 to 9.
 
 All with Rhino's steps and options, on the command framework, with tests, icons, reference rows and

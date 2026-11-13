@@ -1,6 +1,6 @@
 # Spec: blocks
 
-**Status:** Draft, for the owner's approval · 13 November 2026.
+**Status:** Approved by the owner in chat · 13 November 2026.
 **Covers:** `milestone-2-in-0.4.2.md`, point 2; decision 0019 (3).
 
 ## 1. What they are
