@@ -11,16 +11,16 @@ diagonals. None of them passes through the C, its ends or its control points.
 
 ## 2. The guides become the construction
 
-Only lines that build the C are drawn, in the same pale grey:
+The owner's choice (13 November 2026): the C, the orange control polygon and the points stay exactly
+as in the original Drafting mark; only the grey lines change. They are drawn as an architectural
+drafting sheet sets out a part, and every one of them builds the C:
 
-- the C's centre line: its circle (r 78) about its own centre, with a cross at the centre;
-- the stroke's inner and outer circles (r 59 and r 97), where the thick C starts and ends;
-- the two 45° rays from the centre through the C's ends, which set its opening;
-- the control polygon's two sides, extended past the left point so the tangents read;
-- one horizontal axis through the centre and the left control point.
-
-The C is placed so the whole construction is centred optically in the tile, and its numbers are kept
-round (radius, stroke, angle) so the file is easy to edit.
+- centre lines (long dash, dot) through the C's centre, running past it, and the C's own centre
+  line (r 78) dash-dot;
+- the edges of its stroke (r 59 and r 97) as thin solid lines;
+- the 45° rays from the centre through its ends, which set its opening;
+- the control polygon's sides carried on past the points, as construction lines overshoot;
+- the chord between the ends, dimensioned with extension lines, a dimension line and 45° ticks.
 
 ## 3. Deliverables
 

@@ -2,8 +2,8 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap">
 <style>
-  /* Layout: a short header with the construction explained, then a wrapping grid of variant cards,
-     each the mark large and at the sizes it will be used, on light and dark. */
+  /* Layout: a short header, then a wrapping grid of version cards, each the mark large and at the
+     sizes it is used, on light and dark. */
   :root {
     --bg: #f3f2ee;
     --surface: #fbfaf7;
@@ -28,7 +28,7 @@
   }
   body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; }
   .wrap {
-    max-width: 1180px; margin: 0 auto; display: grid; gap: 36px;
+    max-width: 1180px; margin: 0 auto; display: grid; gap: 32px;
     padding-left: max(16px, env(safe-area-inset-left, 0px));
     padding-right: max(16px, env(safe-area-inset-right, 0px));
     padding-block: 40px 64px;
@@ -37,134 +37,151 @@
   .eyebrow { font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
   h1 { font-family: var(--display); font-weight: 600; font-size: 2rem; line-height: 1.15; margin: 0; text-wrap: balance; }
   p { margin: 0; color: var(--quiet); }
-  .facts { display: flex; flex-wrap: wrap; gap: 8px; }
-  .facts span {
-    font-size: 0.8rem; font-variant-numeric: tabular-nums; border: 1px solid var(--edge);
-    border-radius: 999px; padding: 3px 10px; color: var(--quiet); background: var(--surface);
-  }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 18px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 18px; }
   .card {
-    background: var(--surface); border: 1px solid var(--edge); border-radius: 14px;
-    padding: 18px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0;
-    align-content: start;
+    background: var(--surface); border: 1px solid var(--edge); border-radius: 14px; padding: 18px;
+    display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; align-content: start;
   }
-  .card.pick { border-color: var(--accent); }
-  .big { width: 100%; max-width: 230px; aspect-ratio: 1; justify-self: center; }
+  .big { width: 100%; max-width: 280px; aspect-ratio: 1; justify-self: center; }
   .big svg { width: 100%; height: 100%; display: block; }
-  .name { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .name { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
   .name strong { font-family: var(--display); font-weight: 600; font-size: 1.05rem; }
-  .name span { font-size: 0.75rem; color: var(--accent); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+  .name span { font-size: 0.72rem; color: var(--accent); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
   .note { font-size: 0.86rem; }
-  .sizes { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
-  .chip { border-radius: 10px; padding: 10px 6px; display: flex; align-items: center; justify-content: center; gap: 12px; }
+  .sizes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+  .chip { border-radius: 10px; padding: 10px 6px; display: flex; align-items: center; justify-content: center; gap: 10px; }
   .chip.dark { background: var(--chip-dark); }
   .chip.light { background: var(--chip-light); border: 1px solid var(--edge); }
-  .chip svg.s64 { width: 48px; height: 48px; }
-  .chip svg.s32 { width: 32px; height: 32px; }
+  .chip svg.s48 { width: 40px; height: 40px; }
+  .chip svg.s24 { width: 24px; height: 24px; }
   .chip svg.s16 { width: 16px; height: 16px; }
-  footer p { font-size: 0.86rem; }
+  code { font-size: 0.85em; }
 </style>
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">Curva logo · Drafting, refined</div>
-    <h1>Drafting variations, built on the C's real construction</h1>
-    <p>The C is a 270° arc. As a NURBS curve it is three quadratic pieces, and their control points
-      sit on the corners of the diamond around its circle. The orange polygon and points are that
-      control polygon, so the chevron is now true geometry. The grey guides are only the lines that
-      build the C: its centre line, the two edges of its stroke, the 45° rays to its ends, the
-      diamond and the axis.</p>
-    <div class="facts">
-      <span>radius 68</span><span>stroke 36</span><span>opening 90°</span>
-      <span>diamond half-diagonal 96.17</span><span>centre (142, 128) on 256</span>
-    </div>
+    <div class="eyebrow">Curva logo · Drafting</div>
+    <h1>The Drafting mark, centred, with and without a square grid</h1>
+    <p>The C, its orange control polygon and points are the original Drafting mark, now centred: its
+      circle's centre sits on the tile's centre, and every line moved with it. The versions differ only
+      in the grey lines behind it: the architectural construction, one square grid the C fits in, or
+      both.</p>
   </header>
   <div class="grid" id="grid"></div>
-  <footer>
-    <p>Editable files for Illustrator, with layers: <code>docs/design/curva-logo-drafting.svg</code>
-      (the refined master) and <code>docs/design/curva-logo-drafting-small.svg</code> (16 to 48 px).
-      Pick one and it becomes Curva's icon everywhere.</p>
-  </footer>
+  <p>Each version is drawn from the same numbers: the C is an arc of radius 78 about (128, 128) on a
+    256 tile, 38 wide, open 90° to the right. Pick one and it gets its editable Illustrator file, then
+    becomes Curva's icon.</p>
 </div>
 
 <script>
-  // Geometry shared by every variant: a 270° arc about (cx, cy), its NURBS control points on the
-  // diamond around the circle.
-  function geometry(r) {
-    const cx = 142, cy = 128, k = Math.SQRT1_2, d = r * Math.SQRT2;
-    const f = (n) => +n.toFixed(3);
-    return {
-      cx, cy, r,
-      end1: [f(cx + r * k), f(cy - r * k)],
-      end2: [f(cx + r * k), f(cy + r * k)],
-      top: [cx, f(cy - d)], left: [f(cx - d), cy], bottom: [cx, f(cy + d)], right: [f(cx + d), cy],
-    };
+  // The original mark, centred: arc of radius 78 about (128, 128), ends at ±45°, stroke 38.
+  const C = { x: 128, y: 128, r: 78, w: 38 };
+  const k = Math.SQRT1_2;
+  const E1 = [C.x + C.r * k, C.y - C.r * k];
+  const E2 = [C.x + C.r * k, C.y + C.r * k];
+  const L = [C.x - C.r, C.y];
+  const f = (n) => +n.toFixed(2);
+  const guide = 'stroke="#1F1E1D" stroke-opacity="0.15" stroke-width="1" fill="none"';
+  const dim = 'stroke="#1F1E1D" stroke-opacity="0.24" stroke-width="1" fill="none"';
+  const line = (a, b, extra = "") => `<line x1="${f(a[0])}" y1="${f(a[1])}" x2="${f(b[0])}" y2="${f(b[1])}"${extra}/>`;
+
+  // The architectural construction: centre lines, the stroke's circles, rays, polygon carried on,
+  // the chord and its dimension.
+  function construction() {
+    let s = `<g ${guide}>`;
+    s += `<g stroke-dasharray="14 3 2 3">`;
+    s += line([24, C.y], [232, C.y]) + line([C.x, 22], [C.x, 234]);
+    s += `<circle cx="${C.x}" cy="${C.y}" r="${C.r}"/></g>`;
+    s += `<circle cx="${C.x}" cy="${C.y}" r="${C.r - C.w / 2}"/><circle cx="${C.x}" cy="${C.y}" r="${C.r + C.w / 2}"/>`;
+    const ray = C.r + C.w / 2 + 16;
+    s += line([C.x - 10 * k, C.y + 10 * k], [C.x + ray * k, C.y - ray * k]);
+    s += line([C.x - 10 * k, C.y - 10 * k], [C.x + ray * k, C.y + ray * k]);
+    const d = [E1[0] - L[0], E1[1] - L[1]];
+    const n = Math.hypot(d[0], d[1]);
+    const u = [d[0] / n, d[1] / n];
+    s += line([L[0] - 14 * u[0], L[1] - 14 * u[1]], [E1[0] + 14 * u[0], E1[1] + 14 * u[1]]);
+    s += line([L[0] - 14 * u[0], L[1] + 14 * u[1]], [E2[0] + 14 * u[0], E2[1] - 14 * u[1]]);
+    s += line([E1[0], 62], [E1[0], 194]);
+    s += `</g><g ${dim}>`;
+    const dx = E1[0] + 31.5;
+    s += line([E1[0] + 13.5, E1[1]], [dx + 6, E1[1]]) + line([E2[0] + 13.5, E2[1]], [dx + 6, E2[1]]);
+    s += line([dx, E1[1] - 7], [dx, E2[1] + 7]);
+    s += line([dx - 4, E1[1] + 4], [dx + 4, E1[1] - 4], ' stroke-width="1.5"');
+    s += line([dx - 4, E2[1] + 4], [dx + 4, E2[1] - 4], ' stroke-width="1.5"');
+    return s + `</g>`;
   }
 
-  function mark(v) {
-    const g = geometry(v.r);
-    const pt = (p) => p.join(",");
-    const arc = `M ${g.end1[0]} ${g.end1[1]} A ${g.r} ${g.r} 0 1 0 ${g.end2[0]} ${g.end2[1]}`;
-    let s = `<svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${v.name}">`;
-    s += `<rect x="8.5" y="8.5" width="239" height="239" rx="52" fill="${v.tile}" stroke="${v.tileEdge}"/>`;
-    if (v.guides) {
-      const dash = v.dashed ? ' stroke-dasharray="4 4"' : "";
-      s += `<g fill="none" stroke="${v.guide}" stroke-width="1"${dash}>`;
-      s += `<circle cx="${g.cx}" cy="${g.cy}" r="${g.r}"/>`;
-      s += `<circle cx="${g.cx}" cy="${g.cy}" r="${g.r - v.stroke / 2}"/>`;
-      s += `<circle cx="${g.cx}" cy="${g.cy}" r="${g.r + v.stroke / 2}"/>`;
-      const ray = g.r + v.stroke / 2 + 24;
-      s += `<line x1="${g.cx}" y1="${g.cy}" x2="${(g.cx + ray * Math.SQRT1_2).toFixed(2)}" y2="${(g.cy - ray * Math.SQRT1_2).toFixed(2)}"/>`;
-      s += `<line x1="${g.cx}" y1="${g.cy}" x2="${(g.cx + ray * Math.SQRT1_2).toFixed(2)}" y2="${(g.cy + ray * Math.SQRT1_2).toFixed(2)}"/>`;
-      s += `<polygon points="${pt(g.top)} ${pt(g.right)} ${pt(g.bottom)} ${pt(g.left)}"/>`;
-      s += `<line x1="30" y1="${g.cy}" x2="242" y2="${g.cy}"/>`;
-      s += `<line x1="${g.cx}" y1="${g.cy - 8}" x2="${g.cx}" y2="${g.cy + 8}"/></g>`;
+  // One square grid the C fits in: the square around its outer edge (side 194), divided `cells`
+  // times each way. `diagonals` adds the square's diagonals.
+  function square(cells, opts = {}) {
+    const side = 2 * (C.r + C.w / 2) + (opts.margin || 0) * 2;
+    const x0 = C.x - side / 2, y0 = C.y - side / 2;
+    let s = `<g ${guide}>`;
+    s += `<rect x="${f(x0)}" y="${f(y0)}" width="${f(side)}" height="${f(side)}" stroke-opacity="0.22"/>`;
+    for (let i = 1; i < cells; i++) {
+      const t = (side * i) / cells;
+      const heavy = opts.heavyMiddle && i * 2 === cells ? ' stroke-opacity="0.22"' : "";
+      s += line([x0 + t, y0], [x0 + t, y0 + side], heavy) + line([x0, y0 + t], [x0 + side, y0 + t], heavy);
     }
-    if (v.outline) {
-      s += `<path d="${arc}" fill="none" stroke="${v.c}" stroke-width="${v.stroke}" stroke-linecap="round"/>`;
-      s += `<path d="${arc}" fill="none" stroke="${v.tile}" stroke-width="${v.stroke - 5}" stroke-linecap="round"/>`;
-    } else {
-      s += `<path d="${arc}" fill="none" stroke="${v.c}" stroke-width="${v.stroke}" stroke-linecap="round"/>`;
+    if (opts.diagonals) {
+      s += line([x0, y0], [x0 + side, y0 + side]) + line([x0 + side, y0], [x0, y0 + side]);
     }
-    s += `<polyline points="${pt(g.end1)} ${pt(g.top)} ${pt(g.left)} ${pt(g.bottom)} ${pt(g.end2)}" fill="none" stroke="${v.poly}" stroke-width="${v.polyWidth}" stroke-linejoin="round" stroke-linecap="round"/>`;
-    for (const p of [g.top, g.left, g.bottom]) s += `<circle cx="${p[0]}" cy="${p[1]}" r="${v.point}" fill="${v.poly}"/>`;
-    if (v.ends) for (const p of [g.end1, g.end2]) s += `<circle cx="${p[0]}" cy="${p[1]}" r="${v.point * 0.66}" fill="${v.poly}"/>`;
+    if (opts.ticks) {
+      // Short ticks past the square's corners, as a sheet's crop marks.
+      for (const [cx, cy, sx, sy] of [[x0, y0, -1, -1], [x0 + side, y0, 1, -1], [x0, y0 + side, -1, 1], [x0 + side, y0 + side, 1, 1]]) {
+        s += line([cx, cy], [cx + 8 * sx, cy]) + line([cx, cy], [cx, cy + 8 * sy]);
+      }
+    }
+    return s + `</g>`;
+  }
+
+  function circles() {
+    return `<g ${guide}><g stroke-dasharray="14 3 2 3"><circle cx="${C.x}" cy="${C.y}" r="${C.r}"/></g>` +
+      `<circle cx="${C.x}" cy="${C.y}" r="${C.r - C.w / 2}"/></g>`;
+  }
+
+  function mark(back, light = true) {
+    const tile = light ? "#FAF9F5" : "#1F1E1D";
+    const ink = light ? "#1F1E1D" : "#F3F2EE";
+    let s = `<svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Curva logo">`;
+    s += `<rect x="8.5" y="8.5" width="239" height="239" rx="52" fill="${tile}" stroke="${light ? "#E2DFD5" : tile}"/>`;
+    s += light ? back : back.replaceAll("#1F1E1D", "#F3F2EE");
+    s += `<polyline points="${f(E1[0])},${f(E1[1])} ${L[0]},${L[1]} ${f(E2[0])},${f(E2[1])}" fill="none" stroke="#E0782F" stroke-width="3" stroke-linejoin="round"/>`;
+    s += `<path d="M ${f(E1[0])} ${f(E1[1])} A ${C.r} ${C.r} 0 1 0 ${f(E2[0])} ${f(E2[1])}" fill="none" stroke="${ink}" stroke-width="${C.w}" stroke-linecap="round"/>`;
+    for (const p of [E1, L, E2]) s += `<circle cx="${f(p[0])}" cy="${f(p[1])}" r="10" fill="#E0782F"/>`;
     return s + "</svg>";
   }
 
-  const ink = "#1F1E1D", paper = "#FAF9F5", orange = "#E0782F";
-  const base = { r: 68, stroke: 36, tile: paper, tileEdge: "#E2DFD5", c: ink, poly: orange,
-    polyWidth: 3, point: 9, ends: true, guides: true, guide: "rgba(31,30,29,0.14)" };
-  const variants = [
-    { ...base, name: "Refined master", tag: "Recommended", pick: true,
-      note: "The master file: real construction in pale grey, the control polygon over the C." },
-    { ...base, name: "Small sizes", tag: "16–48 px", r: 66, stroke: 48, guides: false, polyWidth: 10, point: 17, ends: false,
-      tileEdge: paper, note: "No guides, a heavier C and bolder points, so the mark holds at 32 and 16 px." },
-    { ...base, name: "Night", tag: "Dark tile", tile: "#1F1E1D", tileEdge: "#1F1E1D", c: "#F3F2EE",
-      guide: "rgba(243,242,238,0.18)", note: "The same drawing reversed, for dark task bars and app docks." },
-    { ...base, name: "Blueprint", tag: "Dashed guides", stroke: 30, polyWidth: 2, point: 7, dashed: true,
-      guide: "rgba(31,30,29,0.22)", note: "Lighter C and dashed construction, closer to a drawing sheet." },
-    { ...base, name: "Orange C", tag: "Accent swap", c: orange, poly: ink,
-      note: "The curve carries the colour and the control polygon is ink, as an edited curve shows in Curva." },
-    { ...base, name: "Outline", tag: "Drawn edge", outline: true,
-      note: "The C as its outline only, so the construction shows through the stroke." },
-    { ...base, name: "Clean", tag: "No guides", guides: false,
-      note: "The master without its construction: the C and its control polygon alone." },
+  const versions = [
+    { name: "Centred construction", tag: "Architectural", back: construction(),
+      note: "The construction set out as an architectural drawing, now crossing at the tile's centre." },
+    { name: "Square grid, 8 × 8", tag: "One grid", back: square(8, { heavyMiddle: true }),
+      note: "The square around the C's outer edge, in eight bays each way; the middle lines a little stronger." },
+    { name: "Square grid, 6 × 6", tag: "One grid", back: square(6, { diagonals: true }),
+      note: "Six bays each way and the square's diagonals, which pass through the C's ends." },
+    { name: "Square grid, 4 × 4", tag: "Quiet", back: square(4, { ticks: true }),
+      note: "Four bays only, with crop-mark ticks at the corners: the lightest grid." },
+    { name: "Grid and circles", tag: "Grid + construction", back: square(8, { heavyMiddle: true }) + circles(),
+      note: "The 8 × 8 square with the C's centre line and inner edge drawn in." },
+    { name: "Grid and construction", tag: "Everything", back: square(4) + construction(),
+      note: "The full architectural construction over a four-bay square." },
+    { name: "Square grid, dark", tag: "Dark tile", back: square(8, { heavyMiddle: true }), light: false,
+      note: "The 8 × 8 version on a dark tile, for dark task bars and docks." },
   ];
 
   const grid = document.getElementById("grid");
-  for (const v of variants) {
-    const card = document.createElement("article");
-    card.className = "card" + (v.pick ? " pick" : "");
-    const svg = mark(v);
+  for (const v of versions) {
+    const svg = mark(v.back, v.light !== false);
     const sized = (cls) => svg.replace("<svg ", `<svg class="${cls}" `);
+    const card = document.createElement("article");
+    card.className = "card";
     card.innerHTML = `
       <div class="big">${svg}</div>
       <div class="name"><strong>${v.name}</strong><span>${v.tag}</span></div>
       <p class="note">${v.note}</p>
       <div class="sizes">
-        <div class="chip light">${sized("s64")}${sized("s32")}${sized("s16")}</div>
-        <div class="chip dark">${sized("s64")}${sized("s32")}${sized("s16")}</div>
+        <div class="chip light">${sized("s48")}${sized("s24")}${sized("s16")}</div>
+        <div class="chip dark">${sized("s48")}${sized("s24")}${sized("s16")}</div>
       </div>`;
     grid.appendChild(card);
   }
