@@ -217,6 +217,8 @@ pub enum ViewRequest {
     SaveView(String),
     /// Show the view saved under this name in the last-used viewport.
     RestoreView(String),
+    /// Save the last-used viewport's construction plane under this name.
+    SaveCPlane(String),
     /// Go back to the last-used viewport's view before the latest camera move.
     UndoView,
     /// Go forward again through views stepped back from.

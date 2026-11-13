@@ -4333,6 +4333,19 @@ impl Curva {
                     .render(&Message::with("done.namedview.save", vec![name]));
                 self.processor.note(said);
             }
+            ViewRequest::SaveCPlane(name) => {
+                let plane = self.panes[self.active].plane;
+                self.doc.save_cplane(curva_document::SavedCPlane {
+                    name: name.clone(),
+                    origin: plane.origin,
+                    x: plane.x,
+                    y: plane.y,
+                });
+                let said = self
+                    .text
+                    .render(&Message::with("done.namedcplane.save", vec![name]));
+                self.processor.note(said);
+            }
             ViewRequest::RestoreView(name) => {
                 if let Some(saved) = self.doc.saved_view(&name).cloned() {
                     let pane = &mut self.panes[self.active];

@@ -154,6 +154,7 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | ZoomExtents | none | none | none | partly |
 | ZoomSelected | none | none | none | partly |
 | NamedView | A panel in Rhino: save, restore, delete views | `Save` `Restore` `Delete` | `Save` `Restore` `Delete` | partly |
+| NamedCPlane | A panel in Rhino: save, restore, delete construction planes | `Save` `Restore` `Delete` | `Save` `Restore` `Delete` | partly |
 | SetDisplayMode | Not read: Rhino's page redirected; complete from Rhino | to confirm | `Wireframe` `Shaded` `Ghosted` | partly |
 | New | Choose a template | none | none | partly |
 | Open | Choose a file | none | none | partly |

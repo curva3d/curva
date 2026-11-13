@@ -45,6 +45,7 @@ mod live;
 mod loft;
 mod mirror;
 mod move_objects;
+mod named_cplane;
 mod named_view;
 mod new;
 mod offset;
@@ -165,7 +166,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 235] = [
+pub static COMMANDS: [CommandDef; 236] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -470,6 +471,13 @@ pub static COMMANDS: [CommandDef; 235] = [
     recipe!("Curve", [], true, curve::CurveCommand),
     listed!("Zoom", [], false, false, zoom::Zoom),
     listed!("NamedView", ["nv"], false, false, named_view::NamedView),
+    listed!(
+        "NamedCPlane",
+        ["ncp"],
+        false,
+        false,
+        named_cplane::NamedCPlane
+    ),
     listed!(
         "SetDisplayMode",
         [],

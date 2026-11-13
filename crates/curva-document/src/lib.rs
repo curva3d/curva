@@ -20,7 +20,7 @@ mod organise;
 mod shape;
 pub use shape::Shape;
 mod views;
-pub use views::SavedView;
+pub use views::{SavedCPlane, SavedView};
 
 pub use history::Recipe;
 
@@ -433,6 +433,8 @@ struct FileContents {
     state: State,
     #[serde(default)]
     views: Vec<SavedView>,
+    #[serde(default)]
+    cplanes: Vec<SavedCPlane>,
 }
 
 /// Why a file could not be saved or opened.
@@ -471,6 +473,8 @@ pub struct Document {
     previous_selection: Vec<u64>,
     /// Views saved under a name. Saved in the file, but not part of undo.
     views: Vec<SavedView>,
+    /// Construction planes saved under a name. Saved in the file, but not part of undo.
+    cplanes: Vec<SavedCPlane>,
     /// Objects showing their control points. Not saved, and not part of undo.
     showing_points: BTreeSet<u64>,
     /// The picked control points. Not saved, and not part of undo.
@@ -832,6 +836,7 @@ impl Document {
             format: FORMAT.to_owned(),
             state: self.state.clone(),
             views: self.views.clone(),
+            cplanes: self.cplanes.clone(),
         };
         let failed = |e: &dyn std::fmt::Display| FileError(e.to_string());
         let json = serde_json::to_vec(&contents).map_err(|e| failed(&e))?;
@@ -883,6 +888,7 @@ impl Document {
         Ok(Self {
             state: contents.state,
             views: contents.views,
+            cplanes: contents.cplanes,
             path: Some(path.to_owned()),
             ..Self::default()
         })
@@ -1024,6 +1030,7 @@ mod tests {
             format: FORMAT.to_owned(),
             state: doc.state().clone(),
             views: Vec::new(),
+            cplanes: Vec::new(),
         })
         .unwrap();
         std::fs::write(&old, &text).unwrap();
