@@ -161,7 +161,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 204] = [
+pub static COMMANDS: [CommandDef; 205] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -341,6 +341,7 @@ pub static COMMANDS: [CommandDef; 204] = [
     listed!("Ungroup", [], true, true, parity5::Ungroup),
     recipe!("ShowEdges", [], true, parity5::ShowEdges),
     listed!("Plan", [], false, false, parity5::Plan),
+    listed!("Zebra", [], false, false, parity5::Zebra),
     recipe!("EdgeSrf", [], true, parity6::EdgeSrf),
     recipe!("NetworkSrf", [], true, parity6::NetworkSrf),
     recipe!("Patch", [], true, parity6::Patch),

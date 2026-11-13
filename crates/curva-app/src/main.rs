@@ -254,6 +254,7 @@ const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "Contour",
             "Intersect",
             "Silhouette",
+            "Zebra",
             "Plan",
         ],
     ),
@@ -611,6 +612,8 @@ struct Pane {
     named: Option<String>,
     /// How it draws surfaces and solids: by their edges, filled in and lit, or see-through.
     display: DisplayMode,
+    /// Whether shaded faces show zebra stripes (`Zebra`).
+    zebra: bool,
     /// Views to step back to with `UndoView`, newest last, and the view they were left from.
     views_back: Vec<Camera>,
     /// Views stepped back from, for `RedoView`, newest last.
@@ -670,6 +673,7 @@ impl Pane {
             } else {
                 DisplayMode::Wireframe
             },
+            zebra: false,
         }
     }
 }
@@ -4128,6 +4132,13 @@ impl Curva {
                 self.panes[self.active] = Pane::new(standard_view(name));
                 self.panes[self.active].display = display;
             }
+            ViewRequest::Zebra => {
+                let pane = &mut self.panes[self.active];
+                pane.zebra = !pane.zebra;
+                if pane.display == DisplayMode::Wireframe {
+                    pane.display = DisplayMode::Shaded;
+                }
+            }
             ViewRequest::Plan => {
                 let pane = &mut self.panes[self.active];
                 let plane = pane.plane;
@@ -4531,6 +4542,7 @@ impl Curva {
                 light: camera.forward().map(|value| value as f32),
                 shaded: display != DisplayMode::Wireframe,
                 ghosted: display == DisplayMode::Ghosted,
+                zebra: self.panes[*pane].zebra,
                 area: *rect,
                 frame: ui.ctx().cumulative_frame_nr(),
                 background: theme::current().window,

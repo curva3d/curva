@@ -232,7 +232,7 @@ Written on 12 November 2026 from the Rhino 8 command list.
 | AreaCentroid | partly | A solid's area centre is worked out from its mesh; closed curves to come |
 | VolumeCentroid | done | |
 | CurvatureGraph | done |  |
-| Zebra | blocked | needs analysis display |
+| Zebra | partly | Stripes on the whole viewport, run again to stop; stripe direction, size and colour to come |
 | ShowEdges | partly | Shows naked edges or all; `NonManifoldEdges` to come |
 
 ## Construction planes and views

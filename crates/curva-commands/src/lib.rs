@@ -244,6 +244,8 @@ pub enum ViewRequest {
     Display(DisplayMode),
     /// Turn the last-used viewport to look straight down on its construction plane.
     Plan,
+    /// Show or stop showing zebra stripes on the last-used viewport's shaded faces.
+    Zebra,
     /// Show or hide the selection filter row in the status bar.
     ShowSelectionFilter,
     /// Turn the selection filter off or back on, keeping its ticks.

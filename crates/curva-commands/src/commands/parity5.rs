@@ -731,6 +731,17 @@ impl Recipe for ShowEdges {
     }
 }
 
+/// `Zebra`: shows black and white stripes on the shaded faces of the last-used viewport, so
+/// breaks in smoothness show as kinks in them; run again to stop.
+#[derive(Default)]
+pub struct Zebra;
+
+impl Command for Zebra {
+    fn step(&mut self, _doc: &mut Document, _answer: Option<Answer>) -> Step {
+        Step::View(ViewRequest::Zebra)
+    }
+}
+
 /// `Plan`: turns the last-used viewport to look straight down on its construction plane.
 #[derive(Default)]
 pub struct Plan;
@@ -1016,5 +1027,7 @@ mod tests {
         );
         let mut processor = run(&mut doc, &["plan"]);
         assert_eq!(processor.take_view_request(), Some(ViewRequest::Plan));
+        let mut processor = run(&mut doc, &["zebra"]);
+        assert_eq!(processor.take_view_request(), Some(ViewRequest::Zebra));
     }
 }
