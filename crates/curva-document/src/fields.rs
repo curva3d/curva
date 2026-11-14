@@ -517,7 +517,10 @@ mod tests {
     use curva_kernel::Curve;
 
     fn context() -> FieldContext {
-        let when: jiff::Zoned = "2020-12-17T16:48:00[UTC]".parse().unwrap();
+        // 17 December 2020, 4:48 pm, in UTC, which needs no zone database.
+        let when = jiff::Timestamp::from_second(1_608_223_680)
+            .unwrap()
+            .to_zoned(jiff::tz::TimeZone::UTC);
         FieldContext {
             file: Some(std::path::PathBuf::from("/projects/tower.curva")),
             saved: Some(when.clone()),

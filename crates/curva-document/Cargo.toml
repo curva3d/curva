@@ -19,6 +19,6 @@ serde_json = { version = "1", features = ["float_roundtrip"] }
 # Rust; none of the C compressors.
 zip = { version = "9.5", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 # The date and time in the computer's time zone for text fields (spec `annotation.md` §2): the
-# standard library has no time zones. Pure Rust; Unlicense OR MIT. The zone data is bundled only on
-# Windows, which has none in the form needed.
-jiff = { version = "0.2", default-features = false, features = ["std", "tz-system", "tzdb-bundle-platform"] }
+# standard library has no time zones. Pure Rust; Unlicense OR MIT. Zones come from the system's zone
+# database on Linux and macOS, and are bundled on Windows, which has none in the form needed.
+jiff = { version = "0.2", default-features = false, features = ["std", "tz-system", "tzdb-bundle-platform", "tzdb-zoneinfo"] }
