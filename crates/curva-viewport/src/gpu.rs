@@ -829,7 +829,15 @@ impl LineRenderer {
                 pass.set_vertex_buffer(0, faces.buffer.slice(..));
                 pass.draw(0..faces.count, 0..1);
             };
-        // Solid faces go first and hide the lines behind them.
+        // The grid goes first, writing no depth, so whatever lies on it or near it draws over
+        // it, as in Rhino; drawn after faces, it showed through faces lying exactly on it. It
+        // stays a pixel wide; the model's lines have their own widths.
+        if let Some(grid) = slot.grid.as_ref().filter(|lines| lines.count > 0) {
+            pass.set_pipeline(&self.grid);
+            pass.set_vertex_buffer(0, grid.buffer.slice(..));
+            pass.draw(0..grid.count, 0..1);
+        }
+        // Solid faces go next and hide the lines behind them.
         if slot.shaded
             && !slot.ghosted
             && let Some(faces) = faces
@@ -845,12 +853,6 @@ impl LineRenderer {
                 },
                 faces,
             );
-        }
-        // The grid stays a pixel wide; the model's lines have their own widths.
-        if let Some(grid) = slot.grid.as_ref().filter(|lines| lines.count > 0) {
-            pass.set_pipeline(&self.grid);
-            pass.set_vertex_buffer(0, grid.buffer.slice(..));
-            pass.draw(0..grid.count, 0..1);
         }
         if let Some(scene) = slot.scene.as_ref() {
             self.draw_segments(pass, scene);
