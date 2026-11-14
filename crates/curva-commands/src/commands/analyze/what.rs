@@ -44,6 +44,9 @@ impl Recipe for What {
                 Shape::Annotation(curva_document::annotation::Annotation::Leader(l)) => {
                     format!("leader \"{}\"", l.content.replace('\n', " "))
                 }
+                Shape::Annotation(curva_document::annotation::Annotation::Dot(d)) => {
+                    format!("dot \"{}\"", d.content.replace('\n', " "))
+                }
                 Shape::Instance(i) => {
                     let name = cx
                         .doc

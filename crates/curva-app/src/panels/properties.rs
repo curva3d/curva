@@ -152,6 +152,36 @@ impl Curva {
         }
     }
 
+    /// A selected dot's text, secondary text and height, as Rhino's Dot Properties; each change
+    /// is one undo step.
+    fn dot_properties(
+        &mut self,
+        ui: &mut egui::Ui,
+        id: u64,
+        dot: &curva_document::annotation::Dot,
+    ) {
+        use curva_document::annotation::Annotation;
+        let say = |key: &'static str| self.text.render(&Message::new(key));
+        ui.label(egui::RichText::new(say("ui.dot")).strong());
+        let mut changed = dot.clone();
+        ui.add(
+            egui::TextEdit::multiline(&mut changed.content)
+                .desired_rows(2)
+                .desired_width(f32::INFINITY),
+        );
+        ui.label(say("ui.dot.secondary"));
+        ui.add(egui::TextEdit::singleline(&mut changed.secondary).desired_width(f32::INFINITY));
+        ui.horizontal(|ui| {
+            ui.label(say("ui.dot.height"));
+            ui.add(egui::DragValue::new(&mut changed.height).range(4.0..=144.0));
+        });
+        if changed != *dot && !changed.content.trim().is_empty() {
+            self.undoable(|doc| {
+                doc.replace_shape(id, Shape::Annotation(Annotation::Dot(changed)));
+            });
+        }
+    }
+
     /// A selected dimension's value and its text, which can replace the value with typed text
     /// where `<>` stands for it, as in Rhino (spec `annotation.md` §3).
     fn dimension_properties(
@@ -161,14 +191,15 @@ impl Curva {
         dimension: &curva_document::annotation::Annotation,
     ) {
         use curva_document::annotation::Annotation;
-        if let Annotation::Leader(leader) = dimension {
-            self.leader_properties(ui, id, leader);
-            return;
+        match dimension {
+            Annotation::Leader(leader) => return self.leader_properties(ui, id, leader),
+            Annotation::Dot(dot) => return self.dot_properties(ui, id, dot),
+            _ => {}
         }
         let say = |key: &'static str| self.text.render(&Message::new(key));
         ui.label(egui::RichText::new(say("ui.dimension")).strong());
         let value = match dimension {
-            Annotation::Text(_) | Annotation::Leader(_) => return,
+            Annotation::Text(_) | Annotation::Leader(_) | Annotation::Dot(_) => return,
             Annotation::Dimension(d) => self.doc.length_text(d.value()),
             Annotation::Radial(r) => {
                 let mark = if r.diameter { "Ø" } else { "R" };

@@ -125,6 +125,7 @@ pub fn annotation_curves(annotation: &crate::annotation::Annotation) -> Vec<Curv
         crate::annotation::Annotation::Leader(l) => Curve::polyline(l.points.clone(), false)
             .into_iter()
             .collect(),
+        crate::annotation::Annotation::Dot(d) => vec![Curve::Point { at: d.at }],
     }
 }
 
@@ -153,8 +154,16 @@ pub fn annotation_drawing(
         }
     };
     use crate::annotation::Annotation;
-    if let Annotation::Text(text) = annotation {
-        return text_drawing(text);
+    match annotation {
+        Annotation::Text(text) => return text_drawing(text),
+        // A dot is drawn on the screen; in the model it is its point, to pick and snap to.
+        Annotation::Dot(d) => {
+            return AnnotationDrawing {
+                lines: vec![Curve::Point { at: d.at }],
+                fills: Vec::new(),
+            };
+        }
+        _ => {}
     }
     let styles = if state.annotation_styles.is_empty() {
         crate::annotation::standard_styles(matches!(
@@ -188,7 +197,7 @@ pub fn annotation_drawing(
         None => shown,
     };
     let parts = match annotation {
-        Annotation::Text(_) => return AnnotationDrawing::default(),
+        Annotation::Text(_) | Annotation::Dot(_) => return AnnotationDrawing::default(),
         Annotation::Dimension(d) => d.parts(&style, scale, typed(&d.text, length(d.value()))),
         Annotation::Radial(r) => {
             let mark = if r.diameter { "Ø" } else { "R" };

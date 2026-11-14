@@ -396,6 +396,12 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
             pen.line((3.0, 19.0), (15.0, 4.0));
             pen.arc((-9.0, 7.0, 24.0, 24.0), 0.0, 51.0);
         }
+        // A label box with a word in it, at a point.
+        "dot" => {
+            pen.path(&[(4.0, 6.0), (18.0, 6.0), (18.0, 15.0), (4.0, 15.0)], true);
+            pen.line((8.0, 10.5), (14.0, 10.5));
+            pen.dot(11.0, 19.0);
+        }
         // An arrow up to a bend, then on to lines of a note.
         "leader" => {
             pen.path(&[(3.0, 19.0), (9.0, 8.0), (12.0, 8.0)], false);

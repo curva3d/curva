@@ -19,6 +19,8 @@ pub enum Annotation {
     Angle(AngleDimension),
     /// A leader: an arrow and line to a note (spec `annotation.md` §4).
     Leader(Leader),
+    /// A dot: a label at a point that keeps its size on screen (spec `annotation.md` §4).
+    Dot(Dot),
 }
 
 impl Annotation {
@@ -31,6 +33,10 @@ impl Annotation {
             Self::Radial(r) => Self::Radial(r.transformed(&|p| plus(p, by, 1.0), &|d| d)),
             Self::Angle(a) => Self::Angle(a.transformed(&|p| plus(p, by, 1.0), &|d| d)),
             Self::Leader(l) => Self::Leader(l.transformed(&|p| plus(p, by, 1.0), &|d| d)),
+            Self::Dot(d) => Self::Dot(Dot {
+                at: plus(d.at, by, 1.0),
+                ..d.clone()
+            }),
         }
     }
 
@@ -46,6 +52,10 @@ impl Annotation {
             Self::Radial(r) => Self::Radial(r.transformed(&point, &direction)),
             Self::Angle(a) => Self::Angle(a.transformed(&point, &direction)),
             Self::Leader(l) => Self::Leader(l.transformed(&point, &direction)),
+            Self::Dot(d) => Self::Dot(Dot {
+                at: point(d.at),
+                ..d.clone()
+            }),
         }
     }
 
@@ -66,6 +76,10 @@ impl Annotation {
             Self::Radial(r) => Self::Radial(r.transformed(&point, &direction)),
             Self::Angle(a) => Self::Angle(a.transformed(&point, &direction)),
             Self::Leader(l) => Self::Leader(l.transformed(&point, &direction)),
+            Self::Dot(d) => Self::Dot(Dot {
+                at: point(d.at),
+                ..d.clone()
+            }),
         }
     }
 
@@ -78,6 +92,7 @@ impl Annotation {
             Self::Radial(r) => r.style,
             Self::Angle(a) => a.style,
             Self::Leader(l) => l.style,
+            Self::Dot(_) => 0,
         }
     }
 
@@ -85,7 +100,7 @@ impl Annotation {
     #[must_use]
     pub fn dimension_text(&self) -> Option<&Option<String>> {
         match self {
-            Self::Text(_) | Self::Leader(_) => None,
+            Self::Text(_) | Self::Leader(_) | Self::Dot(_) => None,
             Self::Dimension(d) => Some(&d.text),
             Self::Radial(r) => Some(&r.text),
             Self::Angle(a) => Some(&a.text),
@@ -97,7 +112,7 @@ impl Annotation {
     pub fn with_dimension_text(&self, text: Option<String>) -> Self {
         let mut changed = self.clone();
         match &mut changed {
-            Self::Text(_) | Self::Leader(_) => {}
+            Self::Text(_) | Self::Leader(_) | Self::Dot(_) => {}
             Self::Dimension(d) => d.text = text,
             Self::Radial(r) => r.text = text,
             Self::Angle(a) => a.text = text,
@@ -513,6 +528,34 @@ impl Leader {
             arrows,
             text,
         }
+    }
+}
+
+/// A dot (Rhino's Dot): a label at a point, drawn on the screen rather than in the model, so it
+/// keeps its size and faces the viewer however the view turns, and shows in front of everything.
+/// Its colour is its layer's or its own.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Dot {
+    /// The point it labels.
+    pub at: Point,
+    /// What it shows; a new line starts a new line.
+    pub content: String,
+    /// Further words it holds without showing them (Rhino's secondary text).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub secondary: String,
+    /// Its letters' height on screen, in points.
+    #[serde(default = "Dot::usual_height")]
+    pub height: f64,
+    /// A font installed on the computer, by name; Curva's own type when `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font: Option<String>,
+}
+
+impl Dot {
+    /// Rhino's usual dot height.
+    #[must_use]
+    pub fn usual_height() -> f64 {
+        14.0
     }
 }
 

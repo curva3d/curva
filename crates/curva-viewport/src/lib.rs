@@ -186,6 +186,7 @@ fn has_fields(shape: &Shape) -> bool {
         Shape::Annotation(curva_document::annotation::Annotation::Leader(leader)) => {
             leader.content.contains("%<")
         }
+        Shape::Annotation(curva_document::annotation::Annotation::Dot(_)) => false,
         Shape::Annotation(_) => true,
         _ => false,
     }
@@ -464,6 +465,9 @@ impl Outlines {
                     // Annotation: its letters and arrowheads filled for shading, and its lines
                     // and outlines for wireframe, picking and snapping.
                     Shape::Annotation(annotation) => {
+                        if matches!(annotation, curva_document::annotation::Annotation::Dot(_)) {
+                            kind = PickKind::Point;
+                        }
                         // Fields are worked out for showing; the object keeps them as typed.
                         let annotation =
                             &shown_annotation(annotation, state, object.space, &cache.fields);
@@ -625,6 +629,20 @@ impl Outlines {
                 _ => None,
             })
             .collect()
+    }
+
+    /// The colour to show an object in, as its points are marked: the selection's, locked
+    /// grey, or its own; `None` when it is not drawn here (hidden, or in another space).
+    #[must_use]
+    pub fn colour_of(&self, id: u64, selected: &[u64]) -> Option<[f32; 3]> {
+        let index = self.objects.iter().position(|(held, _)| *held == id)?;
+        Some(if selected.contains(&id) {
+            SELECTED_COLOUR
+        } else if self.locked.get(index).copied().unwrap_or(false) {
+            LOCKED_COLOUR
+        } else {
+            self.colours.get(index).copied().unwrap_or(CURVE_COLOUR)
+        })
     }
 
     /// The lowest and highest corners around chosen objects, if any of them can be drawn.

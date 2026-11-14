@@ -21,7 +21,7 @@ use analyze::{
     distance, draft_analysis, evaluate_pt, intersect, length, plan, radius, section, show_edges,
     silhouette, volume_centroid, what, zebra,
 };
-use annotate::{dimension, leader, radial, styles, text};
+use annotate::{dimension, dot, leader, radial, styles, text};
 use curva_kernel::{KernelError, Point};
 use curves::{
     arc, blend_crv, chamfer, circle, close_crv, conic, curve, curve_boolean, divide, ellipse,
@@ -115,7 +115,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 254] = [
+pub static COMMANDS: [CommandDef; 255] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -491,6 +491,7 @@ pub static COMMANDS: [CommandDef; 254] = [
     listed!("DimDiameter", [], true, true, radial::DimDiameter),
     listed!("DimAngle", [], true, true, radial::DimAngle),
     listed!("Leader", [], true, true, leader::Leader),
+    listed!("Dot", [], true, true, dot::Dot),
     listed!(
         "AnnotationStyle",
         ["dimstyle"],
@@ -867,8 +868,9 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 66] = [
+    const NOTHING_TO_PREVIEW: [&str; 67] = [
         "SetCurrentAnnotationStyle",
+        "Dot",
         "DupAnnotationStyle",
         "Import",
         "Text",

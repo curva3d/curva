@@ -762,6 +762,7 @@ impl Curva {
             self.paint_picked_faces(ui, *pane, *rect, size);
             self.paint_gumball(ui, *pane, *rect, size);
             self.paint_guides(ui, *pane, *rect, size);
+            self.paint_dots(ui, *pane, *rect, size);
             if let Some((hover_pane, ..)) = hovered
                 && hover_pane == *pane
                 && let Some(hit) = aimed.and_then(|(_, hit)| hit)
