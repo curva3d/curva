@@ -65,7 +65,7 @@ impl Document {
             return;
         }
         if let Some(object) = self.state.objects.iter_mut().find(|o| o.id == id) {
-            object.recipe = Some(recipe);
+            std::sync::Arc::make_mut(object).recipe = Some(recipe);
         }
     }
 
@@ -100,10 +100,11 @@ impl Document {
                 .find(|object| object.id == recipe.source())
                 .and_then(|object| object.curve().cloned());
             match source {
-                None => self.state.objects[index].recipe = None,
+                None => std::sync::Arc::make_mut(&mut self.state.objects[index]).recipe = None,
                 Some(curve) => {
                     if let Some(made) = recipe.make(&curve) {
-                        self.state.objects[index].shape = crate::Shape::Curve(made);
+                        std::sync::Arc::make_mut(&mut self.state.objects[index]).shape =
+                            crate::Shape::Curve(made);
                     }
                 }
             }

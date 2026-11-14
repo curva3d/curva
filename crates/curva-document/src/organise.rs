@@ -8,7 +8,7 @@ impl Document {
         let mut count = 0;
         for object in &mut self.state.objects {
             if ids.contains(&object.id) && !object.locked {
-                object.locked = true;
+                std::sync::Arc::make_mut(object).locked = true;
                 count += 1;
             }
         }
@@ -21,7 +21,7 @@ impl Document {
         let mut count = 0;
         for object in &mut self.state.objects {
             if object.locked {
-                object.locked = false;
+                std::sync::Arc::make_mut(object).locked = false;
                 count += 1;
             }
         }
@@ -34,7 +34,7 @@ impl Document {
         self.state.next_group += 1;
         for object in &mut self.state.objects {
             if ids.contains(&object.id) {
-                object.group = Some(group);
+                std::sync::Arc::make_mut(object).group = Some(group);
             }
         }
         group
@@ -51,7 +51,7 @@ impl Document {
             .collect();
         for object in &mut self.state.objects {
             if object.group.is_some_and(|group| groups.contains(&group)) {
-                object.group = None;
+                std::sync::Arc::make_mut(object).group = None;
             }
         }
         groups.len()
@@ -61,7 +61,7 @@ impl Document {
     pub fn set_linetype(&mut self, ids: &[u64], linetype: crate::Linetype) {
         for object in &mut self.state.objects {
             if ids.contains(&object.id) {
-                object.linetype = linetype;
+                std::sync::Arc::make_mut(object).linetype = linetype;
             }
         }
     }
@@ -83,9 +83,11 @@ impl Document {
         for object in &mut self.state.objects {
             if ids.contains(&object.id) {
                 if value.is_empty() {
-                    object.user_text.remove(key);
+                    std::sync::Arc::make_mut(object).user_text.remove(key);
                 } else {
-                    object.user_text.insert(key.to_owned(), value.to_owned());
+                    std::sync::Arc::make_mut(object)
+                        .user_text
+                        .insert(key.to_owned(), value.to_owned());
                 }
             }
         }
@@ -99,6 +101,7 @@ impl Document {
         let mut count = 0;
         for object in &mut self.state.objects {
             if to.contains(&object.id) && object.id != from {
+                let object = std::sync::Arc::make_mut(object);
                 object.layer = source.layer;
                 object.print_width = source.print_width;
                 object.linetype = source.linetype;
@@ -114,7 +117,7 @@ impl Document {
         let mut count = 0;
         for object in &mut self.state.objects {
             if !object.hidden && object.input_of.is_none() {
-                object.locked = !object.locked;
+                std::sync::Arc::make_mut(object).locked = !object.locked;
                 count += 1;
             }
         }
@@ -128,7 +131,7 @@ impl Document {
         let mut count = 0;
         for object in &mut self.state.objects {
             if ids.contains(&object.id) && object.locked {
-                object.locked = false;
+                std::sync::Arc::make_mut(object).locked = false;
                 count += 1;
             }
         }

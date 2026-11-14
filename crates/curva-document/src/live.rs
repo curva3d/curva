@@ -71,6 +71,7 @@ impl Document {
     pub fn make_live(&mut self, result: u64, how: LiveHow, first: Vec<u64>, second: Vec<u64>) {
         for object in &mut self.state.objects {
             if first.contains(&object.id) || second.contains(&object.id) {
+                let object = std::sync::Arc::make_mut(object);
                 object.hidden = true;
                 object.input_of = Some(result);
             }
@@ -88,7 +89,7 @@ impl Document {
         live.inputs_print = self.inputs_print(&live).unwrap_or(0);
         live.result_print = self.shape_of(result).map_or(0, |s| print_of(&[s]));
         if let Some(object) = self.state.objects.iter_mut().find(|o| o.id == result) {
-            object.live = Some(live);
+            std::sync::Arc::make_mut(object).live = Some(live);
         }
     }
 
@@ -128,7 +129,7 @@ impl Document {
             .any(|o| o.hidden);
         for object in &mut self.state.objects {
             if inputs.contains(&object.id) {
-                object.hidden = !show;
+                std::sync::Arc::make_mut(object).hidden = !show;
             }
         }
         if !show {
@@ -142,7 +143,7 @@ impl Document {
         let inputs = self.inputs_of(result);
         self.remove(&inputs);
         if let Some(object) = self.state.objects.iter_mut().find(|o| o.id == result) {
-            object.live = None;
+            std::sync::Arc::make_mut(object).live = None;
         }
     }
 
@@ -211,16 +212,16 @@ impl Document {
             let Some(object) = object else { continue };
             match remade {
                 Some(body) => {
-                    object.shape = Shape::Body(body);
+                    std::sync::Arc::make_mut(object).shape = Shape::Body(body);
                     let print = print_of(&[&object.shape]);
-                    if let Some(l) = object.live.as_mut() {
+                    if let Some(l) = std::sync::Arc::make_mut(object).live.as_mut() {
                         l.inputs_print = inputs_now;
                         l.result_print = print;
                         l.stale = false;
                     }
                 }
                 None => {
-                    if let Some(l) = object.live.as_mut() {
+                    if let Some(l) = std::sync::Arc::make_mut(object).live.as_mut() {
                         l.inputs_print = inputs_now;
                         l.stale = true;
                     }

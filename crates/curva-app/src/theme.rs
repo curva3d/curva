@@ -112,6 +112,10 @@ pub struct Settings {
     pub check_updates: bool,
     /// The AI Assistant's connection.
     pub assistant: crate::assistant::Connection,
+    /// Undo steps kept whatever they hold, as Rhino's "Minimum undo steps".
+    pub undo_min_steps: usize,
+    /// Megabytes undo may hold beyond those, as Rhino's "Maximum memory used".
+    pub undo_max_megabytes: usize,
 }
 
 impl Default for Settings {
@@ -122,11 +126,25 @@ impl Default for Settings {
             grid: true,
             check_updates: true,
             assistant: crate::assistant::Connection::default(),
+            undo_min_steps: curva_document::UndoLimits::default().min_steps,
+            undo_max_megabytes: curva_document::UndoLimits::default().max_bytes / MEGABYTE,
         }
     }
 }
 
+/// Bytes in a megabyte, as the undo setting counts them.
+pub const MEGABYTE: usize = 1024 * 1024;
+
 impl Settings {
+    /// How much undo may keep.
+    #[must_use]
+    pub fn undo_limits(&self) -> curva_document::UndoLimits {
+        curva_document::UndoLimits {
+            min_steps: self.undo_min_steps,
+            max_bytes: self.undo_max_megabytes.saturating_mul(MEGABYTE),
+        }
+    }
+
     /// Whether the light theme is wanted, given what the system uses.
     #[must_use]
     pub fn light(&self, system: Option<egui::Theme>) -> bool {

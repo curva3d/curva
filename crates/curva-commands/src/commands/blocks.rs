@@ -109,7 +109,12 @@ impl Insert {
 fn objects_of_file(path: &str) -> Result<Vec<curva_document::Object>, Message> {
     let opened = Document::open(std::path::Path::new(path))
         .map_err(|e| Message::with("error.insert_file", vec![path.to_owned(), e.0]))?;
-    Ok(opened.state().objects.clone())
+    Ok(opened
+        .state()
+        .objects
+        .iter()
+        .map(|o| curva_document::Object::clone(o))
+        .collect())
 }
 
 impl Command for Insert {

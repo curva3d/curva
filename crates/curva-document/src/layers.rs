@@ -69,7 +69,7 @@ impl Document {
         };
         for object in &mut self.state.objects {
             if ids.contains(&object.id) {
-                object.print_width = width;
+                std::sync::Arc::make_mut(object).print_width = width;
             }
         }
     }
@@ -146,7 +146,7 @@ impl Document {
         }
         for object in &mut self.state.objects {
             if objects.contains(&object.id) {
-                object.layer = layer;
+                std::sync::Arc::make_mut(object).layer = layer;
             }
         }
     }

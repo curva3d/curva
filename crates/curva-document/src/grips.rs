@@ -166,6 +166,7 @@ impl Document {
                         .is_ok_and(|p| curva_kernel::gap(p, at) <= reach)
                 })
             })
+            .map(|o| &**o)
             .collect();
         near.iter()
             .find(|o| self.showing_points.contains(&o.id))

@@ -37,3 +37,24 @@ bounds, volume, area). Average of repeated calls on the same body:
 A copy of a body (what each undo step makes) now shares its faces instead of copying the text.
 Bounds of a body that was moved, or scaled or mirrored along the axes, come from the kept box; a
 turned body is still placed and measured exactly.
+
+## Undo shares unchanged objects (0.4.3, `docs/reviews/code-health-2026-11-14.md` fix 2)
+
+14 November 2026, the Windows machine, `cargo run --release -p curva-document --example undo_costs`:
+5,000 circles and 200 rounded boxes (5,200 objects). Objects are now held behind an `Arc`, so an undo
+step copies the list of objects and shares every object a change left alone; only changed objects
+are copied (`Arc::make_mut`).
+
+| | After fix 1 only | After fix 2 |
+|---|---|---|
+| Copy the state (one undo step) | 0.479 ms | 0.037 ms |
+| Compare the state with a copy | 0.187 ms | 0.090 ms |
+| 100 edits, each moving one object: undo holds | every object copied 100 times | about 4.2 MB |
+
+Most of the 4.2 MB is the list of 5,200 pointers each step keeps. In 0.4.2 each step held a full copy
+of every solid's text as well (the model's JSON is 40 MB), so the same 100 edits held several
+gigabytes.
+
+Undo now also has Rhino's two limits, in Settings → General: **Minimum undo steps** (10) are always
+kept, and older steps are dropped once undo holds more than **Maximum memory used** (256 MB). A
+step's size is estimated from what it does not share with the state next to it.
