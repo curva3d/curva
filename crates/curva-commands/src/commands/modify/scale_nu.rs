@@ -63,8 +63,8 @@ fn stretched_shape(
             }
             Ok(Shape::Body(made))
         }
-        Shape::Instance(_) => {
-            // The stretch as one affine map, placed on the instance.
+        Shape::Instance(_) | Shape::Annotation(_) => {
+            // The stretch as one affine map, placed on the instance or the text.
             let stretch = |v: Point| -> Point {
                 let mut p = v;
                 for (axis, factor) in axes.iter().zip(factors) {

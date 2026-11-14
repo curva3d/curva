@@ -357,6 +357,36 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
             pen.line((14.0, 14.0), (20.0, 20.0));
             pen.line((20.0, 14.0), (14.0, 20.0));
         }
+        // A dimension with its text: the look a style sets.
+        "annotationstyle" => {
+            pen.line((3.0, 14.0), (19.0, 14.0));
+            pen.line((3.0, 10.0), (3.0, 18.0));
+            pen.line((19.0, 10.0), (19.0, 18.0));
+            pen.line((7.0, 4.0), (15.0, 4.0));
+            pen.line((11.0, 4.0), (11.0, 10.0));
+        }
+        // The style marked as current.
+        "setcurrentannotationstyle" => {
+            pen.line((3.0, 14.0), (15.0, 14.0));
+            pen.line((3.0, 10.0), (3.0, 18.0));
+            pen.line((15.0, 10.0), (15.0, 18.0));
+            pen.path(&[(14.0, 5.0), (16.5, 7.5), (20.0, 2.0)], false);
+        }
+        // Two styles, one a copy of the other.
+        "dupannotationstyle" => {
+            pen.line((2.0, 9.0), (12.0, 9.0));
+            pen.line((2.0, 6.0), (2.0, 12.0));
+            pen.line((12.0, 6.0), (12.0, 12.0));
+            pen.line((9.0, 16.0), (19.0, 16.0));
+            pen.line((9.0, 13.0), (9.0, 19.0));
+            pen.line((19.0, 13.0), (19.0, 19.0));
+        }
+        // A capital T over a line of text.
+        "text" => {
+            pen.line((5.0, 4.0), (17.0, 4.0));
+            pen.line((11.0, 4.0), (11.0, 14.0));
+            pen.line((4.0, 18.0), (18.0, 18.0));
+        }
         // A frame with a view of the model inside.
         "detail" => {
             pen.rect(3.0, 4.0, 16.0, 14.0);

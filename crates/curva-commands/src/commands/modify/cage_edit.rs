@@ -67,6 +67,11 @@ impl Recipe for CageEdit {
                 Shape::Curve(c) => c.sample().unwrap_or_default(),
                 Shape::Body(b) => b.bounds().map(|(l, h)| vec![l, h]).unwrap_or_default(),
                 Shape::Instance(_) => Vec::new(),
+                Shape::Annotation(_) => object
+                    .shape
+                    .bounds()
+                    .map(|(l, h)| vec![l, h])
+                    .unwrap_or_default(),
             };
             for p in points {
                 for k in 0..3 {

@@ -180,6 +180,7 @@ impl<'a> Session<'a> {
                     Shape::Body(body) if body.is_solid() => ("solid", None, body.volume().ok()),
                     Shape::Body(_) => ("surface", None, None),
                     Shape::Instance(_) => ("block instance", None, None),
+                    Shape::Annotation(_) => ("text", None, None),
                 };
                 json!({
                     "id": object.id,

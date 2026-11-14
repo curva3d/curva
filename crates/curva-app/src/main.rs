@@ -41,6 +41,7 @@ mod panels;
 mod recovery;
 mod settings;
 mod sheets;
+mod text_edit;
 mod theme;
 mod top_bar;
 mod updates;
@@ -49,8 +50,8 @@ mod viewports;
 #[allow(clippy::wildcard_imports)]
 use {
     agent::*, assistant_panel::*, benchmark::*, clipping::*, command_line::*, file_dialogs::*,
-    gumball::*, mouse::*, notices::*, panels::frames::*, settings::*, sheets::*, top_bar::*,
-    viewports::*,
+    gumball::*, mouse::*, notices::*, panels::frames::*, settings::*, sheets::*, text_edit::*,
+    top_bar::*, viewports::*,
 };
 
 use curva_commands::{DisplayMode, Kind, Message, Processor, Translations, ViewName, ViewRequest};
@@ -124,6 +125,8 @@ struct Curva {
     pane_areas: [Option<(egui::Rect, egui::Rect)>; VIEW_SLOTS],
     /// Section fills where clipping planes cut closed solids.
     section_fills: SectionFills,
+    /// The note being edited in place, if any.
+    text_editing: TextEditing,
     text: Translations,
     typed: String,
     highlight: usize,
@@ -238,6 +241,7 @@ impl Curva {
             sheets: Sheets::default(),
             pane_areas: [None; VIEW_SLOTS],
             section_fills: SectionFills::default(),
+            text_editing: TextEditing::default(),
             text: Translations::english(),
             typed: String::new(),
             highlight: 0,
@@ -337,6 +341,7 @@ impl eframe::App for Curva {
         self.apply_theme(ui.ctx());
         self.serve_file_dialogs(frame);
         self.follow_space();
+        self.text_editor(ui.ctx());
         // Opening or starting a model makes a new document, so its undo limits are set here.
         let limits = self.settings.undo_limits();
         if self.doc.undo_limits() != limits {

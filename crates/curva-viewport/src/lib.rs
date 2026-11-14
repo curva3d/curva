@@ -176,6 +176,32 @@ pub struct Outlines {
 /// Mesh-cache keys from here up are instances' parts.
 const INSTANCE_KEYS: u64 = 1 << 52;
 
+/// Whether a shape is text holding fields (`%<...>%`), which read other things and so are drawn
+/// again each time.
+fn has_fields(shape: &Shape) -> bool {
+    matches!(
+        shape,
+        Shape::Annotation(curva_document::annotation::Annotation::Text(text)) if text.content.contains("%<")
+    )
+}
+
+/// An annotation as it shows: its fields worked out.
+fn shown_annotation(
+    annotation: &curva_document::annotation::Annotation,
+    state: &State,
+    space: Option<u64>,
+    fields: &curva_document::fields::FieldContext,
+) -> curva_document::annotation::Annotation {
+    let curva_document::annotation::Annotation::Text(text) = annotation;
+    if !text.content.contains("%<") {
+        return annotation.clone();
+    }
+    curva_document::annotation::Annotation::Text(curva_document::annotation::Text {
+        content: curva_document::fields::resolve(&text.content, state, space, fields),
+        ..text.clone()
+    })
+}
+
 /// Meshes of bodies already worked out, so a body is meshed again only when it changes.
 #[derive(Debug, Default)]
 pub struct MeshCache {
@@ -186,6 +212,16 @@ pub struct MeshCache {
             curva_kernel::Body,
             std::sync::Arc<curva_kernel::BodyMesh>,
             bool,
+        ),
+    >,
+    /// What text fields read besides the model: the file and the time. The interface sets it.
+    pub fields: curva_document::fields::FieldContext,
+    /// Annotation's filled letters, with the annotation they were made for.
+    annotations: std::collections::HashMap<
+        u64,
+        (
+            curva_document::annotation::Annotation,
+            std::sync::Arc<curva_kernel::BodyMesh>,
         ),
     >,
     /// Each object as last drawn, with its layer then and what it drew as, so an object that
@@ -210,6 +246,45 @@ impl MeshCache {
         self.held
             .insert(id, (body.clone(), std::sync::Arc::clone(&mesh), solid));
         Some((mesh, solid))
+    }
+
+    /// An annotation's letters filled: each glyph's contours made into a flat face and meshed,
+    /// all in one mesh, made once while the annotation is unchanged.
+    fn annotation_mesh(
+        &mut self,
+        id: u64,
+        annotation: &curva_document::annotation::Annotation,
+    ) -> Option<std::sync::Arc<curva_kernel::BodyMesh>> {
+        if let Some((held, mesh)) = self.annotations.get(&id)
+            && held == annotation
+        {
+            return Some(std::sync::Arc::clone(mesh));
+        }
+        let curva_document::annotation::Annotation::Text(text) = annotation;
+        let mut all = curva_kernel::BodyMesh::default();
+        for glyph in curva_document::shape::text_glyphs(text) {
+            let Ok(face) = curva_kernel::Body::planar(&glyph) else {
+                continue;
+            };
+            let Ok(mesh) = face.mesh() else {
+                continue;
+            };
+            #[allow(clippy::cast_possible_truncation)]
+            let base = all.positions.len() as u32;
+            all.positions.extend(&mesh.positions);
+            all.normals.extend(&mesh.normals);
+            all.triangles
+                .extend(mesh.triangles.iter().map(|t| t.map(|i| i + base)));
+            all.triangle_faces
+                .extend(std::iter::repeat_n(0, mesh.triangles.len()));
+        }
+        if all.triangles.is_empty() {
+            return None;
+        }
+        let mesh = std::sync::Arc::new(all);
+        self.annotations
+            .insert(id, (annotation.clone(), std::sync::Arc::clone(&mesh)));
+        Some(mesh)
     }
 
     /// Forgets bodies that are gone, and meshes new or changed ones all at once, on every
@@ -272,13 +347,15 @@ impl Outlines {
         let mut earlier = std::mem::take(&mut cache.drawn);
         for object in state.objects.iter().filter(|o| o.space == space) {
             let layer = state.layers.iter().find(|l| l.id == object.layer);
-            // An instance draws its definition, which can change without it, so it is always
-            // drawn again; any other object only when it or its layer changed.
+            // An instance draws its definition, and text with fields reads other things, which
+            // can change without them, so those are always drawn again; any other object only
+            // when it or its layer changed.
             let part = match earlier.remove(&object.id) {
                 Some((was, was_layer, part))
                     if std::sync::Arc::ptr_eq(&was, object)
                         && was_layer.as_ref() == layer
-                        && !matches!(object.shape, Shape::Instance(_)) =>
+                        && !matches!(object.shape, Shape::Instance(_))
+                        && !has_fields(&object.shape) =>
                 {
                     part
                 }
@@ -379,6 +456,26 @@ impl Outlines {
                     }
                     // Instances inside definitions are opened before this.
                     Shape::Instance(_) => continue,
+                    // Text: its letters filled for shading, and their outlines for wireframe,
+                    // picking and snapping.
+                    Shape::Annotation(annotation) => {
+                        // Fields are worked out for showing; the object keeps them as typed.
+                        let annotation =
+                            &shown_annotation(annotation, state, object.space, &cache.fields);
+                        if let Some(mesh) = cache.annotation_mesh(*key, annotation) {
+                            outlines.faces.push(Faces {
+                                id: object.id,
+                                colour,
+                                locked,
+                                around: mesh_box(&mesh),
+                                mesh,
+                            });
+                        }
+                        curva_document::shape::annotation_curves(annotation)
+                            .into_iter()
+                            .map(|c| (c, None))
+                            .collect()
+                    }
                 };
                 for (outline, edge) in pieces {
                     let Ok(points) = outline.sample() else {
@@ -1706,6 +1803,30 @@ mod tests {
         doc.move_to_layer(&[line], layer);
         let lines = object_lines(&Outlines::of(doc.state()), &[line]);
         assert!(lines.iter().all(|v| v.colour == SELECTED_COLOUR));
+    }
+
+    #[test]
+    fn a_click_inside_a_letter_picks_its_text() {
+        use curva_document::annotation::{Annotation, Text, TextAlign};
+        let mut doc = Document::default();
+        let id = doc.add_annotation(Annotation::Text(Text {
+            content: "I".to_owned(),
+            origin: [0.0; 3],
+            x: [1.0, 0.0, 0.0],
+            y: [0.0, 1.0, 0.0],
+            height: 40.0,
+            font: None,
+            align: TextAlign::Left,
+            style: 0,
+        }));
+        let (low, high) = doc.state().objects[0].shape.bounds().unwrap();
+        let middle = [(low[0] + high[0]) / 2.0, (low[1] + high[1]) / 2.0, 0.0];
+        let outlines = Outlines::of(doc.state());
+        let mut camera = StandardView::Top.camera();
+        camera.frame([-20.0, -20.0, 0.0], [60.0, 60.0, 0.0]);
+        let at = camera.project(middle, SIZE).unwrap();
+        // Far from the letter's outline, but on it.
+        assert_eq!(outlines.pick(&camera, at, SIZE, 1.0), Some(id));
     }
 
     fn one_point() -> (Outlines, u64) {

@@ -265,6 +265,7 @@ impl Curva {
                     layer.visible = false;
                 }
             }
+            scene.meshes.fields = curva_document::fields::FieldContext::now(self.doc.path());
             let outlines = Outlines::of_space(&seen, None, &mut scene.meshes).inked(PAPER_INK);
             scene.scene = Arc::new(object_lines(&outlines, &[]));
             scene.shaded_scene = Arc::new(shaded_object_lines(&outlines, &[]));

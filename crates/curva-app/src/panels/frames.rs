@@ -584,6 +584,11 @@ impl Curva {
                                 .auto_shrink([false, false])
                                 .show(ui, |ui| self.layouts_panel(ui));
                         }
+                        layout::Piece::AnnotationStyles => {
+                            egui::ScrollArea::vertical()
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| self.annotation_styles_panel(ui));
+                        }
                     }
                 });
                 // Added after the contents, so these sit above the panel's own controls.

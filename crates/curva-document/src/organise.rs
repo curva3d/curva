@@ -219,6 +219,7 @@ impl Document {
                     (!self.state.blocks.iter().any(|d| d.id == i.definition))
                         .then(|| "a block instance of a missing definition".to_owned())
                 }
+                crate::Shape::Annotation(_) => None,
             };
             if let Some(why) = problem {
                 found.push((object.id, why));

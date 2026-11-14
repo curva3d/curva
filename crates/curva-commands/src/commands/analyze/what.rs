@@ -28,6 +28,9 @@ impl Recipe for What {
             .iter()
             .filter(|o| ids.contains(&o.id))
             .map(|o| match &o.shape {
+                Shape::Annotation(curva_document::annotation::Annotation::Text(text)) => {
+                    format!("text \"{}\"", text.content.replace('\n', " "))
+                }
                 Shape::Instance(i) => {
                     let name = cx
                         .doc

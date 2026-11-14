@@ -198,6 +198,8 @@ impl Curva {
         // A changed model is drawn again, reusing what unchanged objects drew as; a changed
         // selection only recolours.
         if !model_same {
+            // Text fields read the file and the time as well as the model.
+            self.drawing.meshes.fields = curva_document::fields::FieldContext::now(self.doc.path());
             self.outlines =
                 Outlines::of_space(self.doc.state(), self.doc.space(), &mut self.drawing.meshes)
                     .inked(if self.sheets.open.is_some() {
@@ -435,6 +437,7 @@ impl Curva {
             }
             ViewRequest::ShowBlocks => self.open_piece(layout::Piece::Blocks),
             ViewRequest::ShowLayouts => self.open_piece(layout::Piece::Layouts),
+            ViewRequest::ShowAnnotationStyles => self.open_piece(layout::Piece::AnnotationStyles),
             ViewRequest::ClipIn(frames, on) => self.clip_in(&frames, on),
             ViewRequest::DraftAnalysis => {
                 let pane = &mut self.panes[self.active];

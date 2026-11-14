@@ -127,6 +127,43 @@ impl Curva {
         }
     }
 
+    /// A selected text's words, height and alignment, changed in place (spec `annotation.md`
+    /// §2); each change is one undo step.
+    fn text_properties(
+        &mut self,
+        ui: &mut egui::Ui,
+        id: u64,
+        text: &curva_document::annotation::Text,
+    ) {
+        use curva_document::annotation::{Annotation, TextAlign};
+        let say = |key: &'static str| self.text.render(&Message::new(key));
+        ui.label(egui::RichText::new(say("ui.text")).strong());
+        let mut changed = text.clone();
+        ui.add(
+            egui::TextEdit::multiline(&mut changed.content)
+                .desired_rows(3)
+                .desired_width(f32::INFINITY),
+        );
+        ui.horizontal(|ui| {
+            ui.label(say("ui.text.height"));
+            ui.add(
+                egui::DragValue::new(&mut changed.height)
+                    .range(1e-6..=1e9)
+                    .speed(0.05 * text.height.max(1e-3)),
+            );
+        });
+        ui.horizontal(|ui| {
+            ui.radio_value(&mut changed.align, TextAlign::Left, say("ui.text.left"));
+            ui.radio_value(&mut changed.align, TextAlign::Centre, say("ui.text.centre"));
+            ui.radio_value(&mut changed.align, TextAlign::Right, say("ui.text.right"));
+        });
+        if changed != *text && !changed.content.trim().is_empty() {
+            self.undoable(|doc| {
+                doc.replace_shape(id, Shape::Annotation(Annotation::Text(changed)));
+            });
+        }
+    }
+
     pub(crate) fn properties_panel(&mut self, ui: &mut egui::Ui) {
         ui.heading(self.text.render(&Message::new("ui.properties")));
         let selection = self.doc.selection();
@@ -146,6 +183,10 @@ impl Curva {
             && let Some(object) = self.doc.state().objects.iter().find(|o| o.id == *only)
         {
             match &object.shape {
+                Shape::Annotation(curva_document::annotation::Annotation::Text(text)) => {
+                    let (id, text) = (object.id, text.clone());
+                    self.text_properties(ui, id, &text);
+                }
                 Shape::Instance(instance) => {
                     let name = self
                         .doc

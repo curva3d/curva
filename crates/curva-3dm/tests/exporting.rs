@@ -181,6 +181,7 @@ fn measure(shape: &Shape) -> (f64, f64) {
         Shape::Curve(c) => (c.length().unwrap(), 0.0),
         Shape::Body(b) => (b.area().unwrap(), b.volume().unwrap_or(0.0)),
         Shape::Instance(i) => (i.placement[3][0], i.definition as f64),
+        Shape::Annotation(_) => unreachable!("the sample has no annotation"),
     }
 }
 

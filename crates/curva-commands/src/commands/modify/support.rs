@@ -29,8 +29,8 @@ pub(crate) fn deform_all(
         let shape = match &object.shape {
             Shape::Curve(c) => Shape::Curve(c.deformed(map).map_err(|e| failed(&e))?),
             Shape::Body(b) => Shape::Body(b.deformed(map).map_err(|e| failed(&e))?),
-            // A block is deformed by exploding it first, as in Rhino.
-            Shape::Instance(_) => continue,
+            // A block is deformed by exploding it first, as in Rhino; text keeps its shape.
+            Shape::Instance(_) | Shape::Annotation(_) => continue,
         };
         made.replace.push((object.id, shape));
     }
