@@ -1805,6 +1805,30 @@ mod tests {
         assert!(lines.iter().all(|v| v.colour == SELECTED_COLOUR));
     }
 
+    #[test]
+    fn a_click_inside_a_letter_picks_its_text() {
+        use curva_document::annotation::{Annotation, Text, TextAlign};
+        let mut doc = Document::default();
+        let id = doc.add_annotation(Annotation::Text(Text {
+            content: "I".to_owned(),
+            origin: [0.0; 3],
+            x: [1.0, 0.0, 0.0],
+            y: [0.0, 1.0, 0.0],
+            height: 40.0,
+            font: None,
+            align: TextAlign::Left,
+            style: 0,
+        }));
+        let (low, high) = doc.state().objects[0].shape.bounds().unwrap();
+        let middle = [(low[0] + high[0]) / 2.0, (low[1] + high[1]) / 2.0, 0.0];
+        let outlines = Outlines::of(doc.state());
+        let mut camera = StandardView::Top.camera();
+        camera.frame([-20.0, -20.0, 0.0], [60.0, 60.0, 0.0]);
+        let at = camera.project(middle, SIZE).unwrap();
+        // Far from the letter's outline, but on it.
+        assert_eq!(outlines.pick(&camera, at, SIZE, 1.0), Some(id));
+    }
+
     fn one_point() -> (Outlines, u64) {
         let mut doc = Document::default();
         let id = doc.add(Curve::Point {
