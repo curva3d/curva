@@ -142,7 +142,7 @@ mod tests {
     }
 
     #[test]
-    fn a_circle_from_before_planes_lies_on_the_ground() {
+    fn a_circle_stored_without_a_plane_lies_flat() {
         let state = read(old_file(json!({
             "objects": [{"id": 0, "curve": {"Circle": {"centre": [1.0, 2.0, 0.0], "radius": 3.0}}}],
             "next_id": 1
@@ -154,7 +154,7 @@ mod tests {
     }
 
     #[test]
-    fn a_body_saved_as_a_portable_record_opens_where_it_was() {
+    fn a_body_saved_as_a_portable_record_still_opens() {
         let body = Body::cuboid([1.0, 2.0, 3.0], [4.0, 5.0, 6.0]).unwrap();
         let placed = body.translated([10.0, 0.0, 0.0]);
         let stored = serde_json::to_value(&placed).unwrap();

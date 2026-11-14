@@ -1352,13 +1352,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn a_circle_stored_without_a_plane_lies_flat() {
-        let text = r#"{"Circle":{"centre":[1.0,2.0,0.0],"radius":4.0}}"#;
-        let circle: Curve = serde_json::from_str(text).unwrap();
-        assert_eq!(circle, Curve::circle([1.0, 2.0, 0.0], 4.0).unwrap());
-    }
-
     fn points_near(a: Point, b: Point) -> bool {
         gap(a, b) < CLOSE
     }
