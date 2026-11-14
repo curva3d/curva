@@ -338,12 +338,16 @@ completed from Rhino itself.
 
 ### Text and annotation styles
 
-Written on 14 November 2026 from `commands/text.htm` and `information/text_fields.htm`. The annotation style
-pages (`commands/dimstyle.htm`, `options/annotation_styles.htm`) refused to load (HTTP 403); that row is to be
-completed from Rhino itself. Rhino's Text has no command-line options besides its scriptable `-Text`; its
-settings are in the text editor and the Properties panel, listed here as its options.
+Written on 14 November 2026 from `commands/text.htm` and `information/text_fields.htm`, and for annotation
+styles from `documentproperties/annotation.htm`, which the owner provided (the other style pages refused to
+load); every style setting is listed in `rhino-annotation-styles.md`. Rhino's Text has no command-line options
+besides its scriptable `-Text`; its settings are in the text editor and the Properties panel, listed here as its
+options. Rhino edits styles in Document Properties; Curva's AnnotationStyle opens them in a panel.
 
 | Command | Rhino's steps | Rhino's options | In Curva | Status |
 |---|---|---|---|---|
 | Text | Type the text; specify the properties; pick the location. Double-click text to edit it | `Style` `Height` `Mask` `ModelSpaceScale` `Frame` `Font` `Bold` `Italic` `Underline` `TextAlignment` `TextField` `Stacking` `Symbols` `Match` `HorizontalToView` | `Height` `Font` `TextAlignment` (as `Alignment`, left, centre, right); words, height and alignment edited in Properties | partly |
-| AnnotationStyle | Not read: Rhino's DimStyle help page refused to load | not read | none | missing |
+| AnnotationStyle | Rhino's Document Properties > Annotation Styles: Current, the list, New, Match, Import, Edit, Delete (also deleting annotations in the style), Enable model space scaling, Enable layout space scaling | `Current` `New` `Match` `Import` `Edit` `Delete` `EnableModelSpaceScaling` `EnableLayoutSpaceScaling` | none (a panel: Current, New as Copy, Edit of font and height, Delete of unused styles) | partly |
+| SetCurrentAnnotationStyle | Sets the current annotation style | none | none (by name) | partly |
+| DupAnnotationStyle | The style to copy; the new style's name; whether to make it current | `SetCurrent` | none (styles named at the prompt; `SetCurrent` as an option, not on the command framework yet) | partly |
+| ImportAnnotationStyles | Annotation styles from a `.3dm` file | none | none | missing |

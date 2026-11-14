@@ -407,6 +407,9 @@ pub struct State {
     /// The document's own annotation styles; empty means the standard ones for its unit.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub annotation_styles: Vec<annotation::AnnotationStyle>,
+    /// The annotation style new annotation takes, by id.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub current_annotation_style: u64,
 }
 
 fn is_zero(value: &u64) -> bool {
@@ -437,6 +440,7 @@ impl State {
             next_layout,
             clipping_planes,
             annotation_styles,
+            current_annotation_style,
         } = self;
         objects.len() == other.objects.len()
             && objects
@@ -457,6 +461,7 @@ impl State {
             && *next_layout == other.next_layout
             && *clipping_planes == other.clipping_planes
             && *annotation_styles == other.annotation_styles
+            && *current_annotation_style == other.current_annotation_style
     }
 }
 
@@ -530,6 +535,7 @@ impl Default for State {
             next_layout: 0,
             clipping_planes: Vec::new(),
             annotation_styles: Vec::new(),
+            current_annotation_style: 0,
         }
     }
 }

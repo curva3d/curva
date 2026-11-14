@@ -195,6 +195,87 @@ impl Document {
     pub fn add_annotation(&mut self, annotation: Annotation) -> u64 {
         self.add_shape(crate::Shape::Annotation(annotation))
     }
+
+    /// The style new annotation takes.
+    #[must_use]
+    pub fn current_annotation_style(&self) -> u64 {
+        let id = self.state.current_annotation_style;
+        if self.annotation_styles().iter().any(|s| s.id == id) {
+            id
+        } else {
+            self.annotation_styles().first().map_or(0, |s| s.id)
+        }
+    }
+
+    /// Sets the style new annotation takes.
+    pub fn set_current_annotation_style(&mut self, id: u64) {
+        self.state.current_annotation_style = id;
+    }
+
+    /// The document's own styles, made from the standard ones the first time one is changed.
+    fn own_styles(&mut self) -> &mut Vec<AnnotationStyle> {
+        if self.state.annotation_styles.is_empty() {
+            self.state.annotation_styles = self.annotation_styles();
+        }
+        &mut self.state.annotation_styles
+    }
+
+    /// Adds a copy of style `from`, named `name`; returns its id.
+    pub fn copy_annotation_style(&mut self, from: u64, name: String) -> u64 {
+        let mut style = self.annotation_style(from);
+        let styles = self.own_styles();
+        let id = styles.iter().map(|s| s.id).max().map_or(0, |m| m + 1);
+        style.id = id;
+        style.name = name;
+        styles.push(style);
+        id
+    }
+
+    /// Changes style `id`. Text in it keeps its size relative to the style: a note at the
+    /// style's height follows a new height.
+    pub fn change_annotation_style(&mut self, id: u64, change: impl FnOnce(&mut AnnotationStyle)) {
+        let before = self.annotation_style(id);
+        let unit = self.state.unit;
+        let Some(style) = self.own_styles().iter_mut().find(|s| s.id == id) else {
+            return;
+        };
+        change(style);
+        let after = style.clone();
+        let (old, new) = (before.height_in(unit), after.height_in(unit));
+        if (old - new).abs() < 1e-12 && before.font == after.font {
+            return;
+        }
+        for object in &mut self.state.objects {
+            let crate::Shape::Annotation(Annotation::Text(text)) = &object.shape else {
+                continue;
+            };
+            if text.style != id || object.space.is_some() {
+                continue;
+            }
+            let mut text = text.clone();
+            if (text.height - old).abs() < 1e-9 {
+                text.height = new;
+            }
+            if text.font == before.font {
+                text.font.clone_from(&after.font);
+            }
+            std::sync::Arc::make_mut(object).shape =
+                crate::Shape::Annotation(Annotation::Text(text));
+        }
+    }
+
+    /// Deletes style `id` if no annotation uses it and it is not the last; returns whether it
+    /// was deleted.
+    pub fn delete_annotation_style(&mut self, id: u64) -> bool {
+        let used = self.state.objects.iter().any(
+            |o| matches!(&o.shape, crate::Shape::Annotation(Annotation::Text(t)) if t.style == id),
+        );
+        if used || self.annotation_styles().len() <= 1 {
+            return false;
+        }
+        self.own_styles().retain(|s| s.id != id);
+        true
+    }
 }
 
 #[cfg(test)]
@@ -238,5 +319,28 @@ mod tests {
         let ansi = doc.annotation_style(0);
         assert_eq!(ansi.name, "ANSI 1/8\"");
         assert!((ansi.height_in(Unit::Feet) - 0.125 / 12.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn styles_are_copied_made_current_changed_and_deleted_when_unused() {
+        let mut doc = Document::default();
+        let copy = doc.copy_annotation_style(0, "Titles".to_owned());
+        assert_eq!(doc.annotation_style(copy).name, "Titles");
+        doc.set_current_annotation_style(copy);
+        assert_eq!(doc.current_annotation_style(), copy);
+        let mut text = note();
+        text.style = copy;
+        let id = doc.add_annotation(Annotation::Text(text));
+        // A note at the style's height follows the style's new height.
+        doc.change_annotation_style(copy, |s| s.text_height = 7.0);
+        let crate::Shape::Annotation(Annotation::Text(changed)) = &doc.state().objects[0].shape
+        else {
+            panic!("text");
+        };
+        assert!((changed.height - 7.0).abs() < 1e-12);
+        assert!(!doc.delete_annotation_style(copy), "in use");
+        doc.remove(&[id]);
+        assert!(doc.delete_annotation_style(copy));
+        assert_eq!(doc.current_annotation_style(), 0);
     }
 }

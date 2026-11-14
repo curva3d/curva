@@ -25,6 +25,12 @@ Rhino.
   annotation at the size it would print.
 - **AnnotationStyle** (Rhino's DimStyle; Serpentine's DimStyle is an alias) opens the styles in a
   panel: add, copy, rename, delete unused, edit every setting with a live preview.
+- **Rhino's settings:** every style setting, by Rhino's names and sections, is in
+  `docs/commands/rhino-annotation-styles.md`, from Rhino 8's `documentproperties/annotation.htm`;
+  settings arrive with what uses them (text now, arrows and units with dimensions, leader settings
+  with leaders). Rhino's SetCurrentAnnotationStyle and DupAnnotationStyle are Curva's too.
+  **Differs from Rhino:** Rhino's Delete also deletes every annotation in the style; Curva only
+  deletes unused styles, as this spec says.
 - Text height is measured on capital letters, as drafting standards do (taken from Serpentine).
 
 ## 2. Text

@@ -308,6 +308,8 @@ pub enum ViewRequest {
     ShowBlocks,
     /// Open the Layouts panel.
     ShowLayouts,
+    /// Open the Annotation Styles panel.
+    ShowAnnotationStyles,
     /// Clipping planes, by their rectangles, cut (`true`) or stop cutting the active viewport,
     /// or the detail being worked in.
     ClipIn(Vec<u64>, bool),

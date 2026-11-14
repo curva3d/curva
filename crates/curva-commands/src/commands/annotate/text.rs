@@ -33,7 +33,7 @@ pub struct Text {
 /// The style's text height where the text goes: a paper size on a layout, else in the model's
 /// unit.
 fn usual_height(doc: &Document) -> f64 {
-    let style = doc.annotation_style(0);
+    let style = doc.annotation_style(doc.current_annotation_style());
     match doc.space().and_then(|id| doc.layout(id)) {
         Some(layout) => {
             let millimetres = if style.imperial {
@@ -140,7 +140,7 @@ impl Command for Text {
                     height,
                     font: self.font.clone(),
                     align: self.align,
-                    style: 0,
+                    style: doc.current_annotation_style(),
                 }));
                 Step::Done(Some(Message::new("done.text")))
             }
