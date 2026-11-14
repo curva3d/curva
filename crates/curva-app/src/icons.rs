@@ -339,6 +339,14 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
             pen.rect(4.0, 7.0, 9.0, 8.0);
             pen.line((15.0, 14.0), (18.0, 14.0));
         }
+        // A frame with a view of the model inside.
+        "detail" => {
+            pen.rect(3.0, 4.0, 16.0, 14.0);
+            pen.path(
+                &[(6.0, 15.0), (10.0, 8.0), (13.0, 12.0), (16.0, 7.0)],
+                false,
+            );
+        }
         // A list of sheets.
         "layouts" => {
             pen.rect(3.0, 3.0, 7.0, 5.0);

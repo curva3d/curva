@@ -35,6 +35,73 @@ pub struct Layout {
     pub size: [f64; 2],
     /// The unit the sheet is measured and drawn in.
     pub unit: PaperUnit,
+    /// Its detail views; files leave out an empty list.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub details: Vec<Detail>,
+}
+
+impl PaperUnit {
+    /// How many millimetres one of it is.
+    #[must_use]
+    pub fn millimetres(self) -> f64 {
+        match self {
+            Self::Millimetres => 1.0,
+            Self::Inches => 25.4,
+        }
+    }
+}
+
+/// A detail view: a window on a layout that shows the model live (spec `layouts.md` §2). Its
+/// frame is an ordinary rectangle on the sheet, so it moves, resizes, sits on a layer and is
+/// picked like any curve; this holds what it shows.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Detail {
+    /// The rectangle on the sheet that frames it.
+    pub frame: u64,
+    /// The standard view it looks from, by key: `Top`, `Front`, `Right` or `Perspective`.
+    pub projection: String,
+    /// The model point at the frame's centre.
+    pub target: curva_kernel::Point,
+    /// For a perspective detail, its distance from the target; a scaled detail's follows from
+    /// its scale and its frame's height.
+    pub distance: f64,
+    /// Paper length per model length, both in millimetres (1:50 is 0.02); `None` for a
+    /// perspective detail, which has no scale.
+    pub scale: Option<f64>,
+    /// How it draws the model, by display mode name (`Wireframe`, `Shaded`, `Ghosted`).
+    pub display: String,
+    /// Whether it cannot be panned or zoomed.
+    pub locked: bool,
+    /// Layers hidden in this detail only.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hidden_layers: Vec<u64>,
+}
+
+/// A typed detail scale as paper length per model length: `1:50`, `2:1`, `1/4" = 1'-0"` or
+/// `1" = 20'` (spec `layouts.md` §2). Lengths with units are compared as lengths; plain numbers
+/// as a ratio.
+#[must_use]
+pub fn parse_scale(text: &str) -> Option<f64> {
+    let (paper, model) = text.split_once(':').or_else(|| text.split_once('='))?;
+    let read = |part: &str| crate::units::parse_length(part, crate::Unit::Millimetres);
+    let (paper, model) = (read(paper)?, read(model)?);
+    (paper > 0.0 && model > 0.0).then(|| paper / model)
+}
+
+/// A scale as it is usually written: `1:50` below 1:1, `2:1` above.
+#[must_use]
+pub fn scale_text(scale: f64) -> String {
+    let tidy = |v: f64| {
+        let text = format!("{v:.3}");
+        text.trim_end_matches('0').trim_end_matches('.').to_owned()
+    };
+    if scale <= 0.0 {
+        String::new()
+    } else if scale < 1.0 {
+        format!("1:{}", tidy(1.0 / scale))
+    } else {
+        format!("{}:1", tidy(scale))
+    }
 }
 
 impl Layout {
@@ -140,6 +207,7 @@ impl Document {
             name,
             size,
             unit,
+            details: Vec::new(),
         });
         id
     }
@@ -160,11 +228,25 @@ impl Document {
             .filter(|o| o.space == Some(id))
             .map(|o| Object::clone(o))
             .collect();
+        let mut renamed = std::collections::BTreeMap::new();
         for mut object in on_it {
+            renamed.insert(object.id, self.state.next_id);
             object.id = self.state.next_id;
             self.state.next_id += 1;
             object.space = Some(copy);
             self.state.objects.push(std::sync::Arc::new(object));
+        }
+        // The copy's details follow the copies of their frames.
+        if let Some(layout) = self.state.layouts.iter_mut().find(|l| l.id == copy) {
+            layout
+                .details
+                .retain_mut(|detail| match renamed.get(&detail.frame) {
+                    Some(frame) => {
+                        detail.frame = *frame;
+                        true
+                    }
+                    None => false,
+                });
         }
         Some(copy)
     }
@@ -203,6 +285,60 @@ impl Document {
         self.drop_missing_selection();
     }
 
+    /// The details on a layout whose frames are still there, with the frame's corners on the
+    /// sheet (lowest, highest).
+    #[must_use]
+    pub fn details_on(&self, layout: u64) -> Vec<(Detail, [[f64; 2]; 2])> {
+        let Some(layout) = self.layout(layout) else {
+            return Vec::new();
+        };
+        layout
+            .details
+            .iter()
+            .filter_map(|detail| {
+                let frame = self.state.objects.iter().find(|o| o.id == detail.frame)?;
+                let points = frame.curve()?.sample().ok()?;
+                let first = *points.first()?;
+                let (low, high) = points.iter().fold((first, first), |(lo, hi), p| {
+                    (
+                        std::array::from_fn(|k| lo[k].min(p[k])),
+                        std::array::from_fn(|k| hi[k].max(p[k])),
+                    )
+                });
+                Some((detail.clone(), [[low[0], low[1]], [high[0], high[1]]]))
+            })
+            .collect()
+    }
+
+    /// The detail framed by object `frame`, and the layout it is on.
+    #[must_use]
+    pub fn detail_of(&self, frame: u64) -> Option<(u64, &Detail)> {
+        self.state.layouts.iter().find_map(|layout| {
+            layout
+                .details
+                .iter()
+                .find(|d| d.frame == frame)
+                .map(|d| (layout.id, d))
+        })
+    }
+
+    /// Adds a detail on `layout`, framed by the rectangle `frame` already on its sheet.
+    pub fn add_detail(&mut self, layout: u64, detail: Detail) {
+        if let Some(layout) = self.state.layouts.iter_mut().find(|l| l.id == layout) {
+            layout.details.push(detail);
+        }
+    }
+
+    /// Changes the detail framed by `frame`.
+    pub fn change_detail(&mut self, frame: u64, change: impl FnOnce(&mut Detail)) {
+        for layout in &mut self.state.layouts {
+            if let Some(detail) = layout.details.iter_mut().find(|d| d.frame == frame) {
+                change(detail);
+                return;
+            }
+        }
+    }
+
     /// Where new objects go and what can be picked: `None` for the model, or a layout's id.
     #[must_use]
     pub fn space(&self) -> Option<u64> {
@@ -223,6 +359,61 @@ impl Document {
 mod tests {
     use super::*;
     use curva_kernel::Curve;
+
+    #[test]
+    fn scales_are_read_in_every_usual_form() {
+        let close = |a: Option<f64>, b: f64| a.is_some_and(|a| (a - b).abs() < 1e-12);
+        assert!(close(parse_scale("1:50"), 0.02));
+        assert!(close(parse_scale("2:1"), 2.0));
+        assert!(close(parse_scale("1/4\" = 1'-0\""), 0.25 / 12.0));
+        assert!(close(parse_scale("1\" = 20'"), 1.0 / 240.0));
+        assert_eq!(parse_scale("50"), None);
+        assert_eq!(parse_scale("0:5"), None);
+        assert_eq!(scale_text(0.02), "1:50");
+        assert_eq!(scale_text(2.0), "2:1");
+        assert_eq!(scale_text(1.0 / 240.0), "1:240");
+    }
+
+    #[test]
+    fn a_copied_layout_keeps_its_details_on_the_copied_frames() {
+        let mut doc = Document::default();
+        let sheet = doc.add_layout("Sheet".to_owned(), paper_size("A3").unwrap(), true);
+        doc.set_space(Some(sheet));
+        let frame = doc.add(
+            Curve::polyline(
+                vec![
+                    [10.0, 10.0, 0.0],
+                    [100.0, 10.0, 0.0],
+                    [100.0, 80.0, 0.0],
+                    [10.0, 80.0, 0.0],
+                ],
+                true,
+            )
+            .unwrap(),
+        );
+        doc.add_detail(
+            sheet,
+            Detail {
+                frame,
+                projection: "Top".to_owned(),
+                target: [0.0; 3],
+                distance: 100.0,
+                scale: Some(0.02),
+                display: "Wireframe".to_owned(),
+                locked: false,
+                hidden_layers: Vec::new(),
+            },
+        );
+        assert_eq!(doc.details_on(sheet).len(), 1);
+        assert_eq!(doc.details_on(sheet)[0].1, [[10.0, 10.0], [100.0, 80.0]]);
+        let copy = doc.copy_layout(sheet, "Copy".to_owned()).unwrap();
+        let copied = doc.details_on(copy);
+        assert_eq!(copied.len(), 1);
+        assert_ne!(copied[0].0.frame, frame);
+        // A detail whose frame is deleted is gone.
+        doc.remove(&[frame]);
+        assert!(doc.details_on(sheet).is_empty());
+    }
 
     fn line() -> Curve {
         Curve::line([0.0; 3], [10.0, 0.0, 0.0]).unwrap()
