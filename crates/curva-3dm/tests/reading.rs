@@ -35,7 +35,9 @@ fn curves_come_in_with_their_names_layers_and_sizes() {
         .map(|o| o.name.as_str())
         .collect();
     assert!(names.contains(&"radius 3 circle"), "{names:?}");
-    // The file is in inches: a 3 inch circle is 76.2 mm across its radius.
+    // The file is in inches, which Curva keeps (spec `feedback-0.4.2.md` §3): the circle's
+    // radius is 3.
+    assert_eq!(doc.state().unit, curva_document::Unit::Inches);
     let circle = doc
         .state()
         .objects
@@ -47,7 +49,7 @@ fn curves_come_in_with_their_names_layers_and_sizes() {
     };
     let length = c.length().unwrap();
     assert!(
-        (length / (std::f64::consts::TAU * 3.0 * 25.4) - 1.0).abs() < 1e-6,
+        (length / (std::f64::consts::TAU * 3.0) - 1.0).abs() < 1e-6,
         "{length}"
     );
     let layers: Vec<&str> = doc.layers().iter().map(|l| l.name.as_str()).collect();

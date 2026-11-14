@@ -518,9 +518,7 @@ impl Curva {
         {
             let (value, amount) = change.amount();
             let text = match amount {
-                curva_viewport::Amount::Distance => {
-                    format!("{value:.3} {}", self.doc.state().unit.symbol())
-                }
+                curva_viewport::Amount::Distance => self.doc.length_text(value),
                 curva_viewport::Amount::Angle => format!("{value:.2}°"),
                 curva_viewport::Amount::Factor => format!("× {value:.4}"),
             };

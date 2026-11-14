@@ -26,7 +26,7 @@ impl Command for Area {
         }
         Step::Done(Some(Message::with(
             "done.area",
-            vec![format!("{total:.3}")],
+            vec![curva_document::units::format_area(total, doc.state().unit)],
         )))
     }
 }

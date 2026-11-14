@@ -71,6 +71,16 @@ its numbers, as Rhino does.
   0.001 in, 0.0001 ft), grid spacing and the ISO or ANSI drafting set (decision 0020, point 4).
 - **Files:** `.curva` files store the unit; `.3dm` files map to Rhino's units both ways (Rhino's
   feet and inches already exist in the format).
+- **Built so:** formatting and reading live in `curva-document`'s `units` module, so commands,
+  the pointer's tag, the gumball and What all show lengths the same way, and typed numbers,
+  distances and coordinates all accept every form. The fraction precision (default 1/16") and the
+  decimals switch are kept with the model, as Rhino keeps them in its document properties, so a
+  file shows the same everywhere; files leave them out when they are the usual ones. `New` keeps
+  the unit and display of the model it replaces, so the unit for a new model is chosen by setting
+  it on the empty one. The absolute tolerance follows the unit (`Unit::tolerance`, written to
+  `.3dm` files). The grid is drawn in model units, so it already follows the unit. The ISO and
+  ANSI drafting sets come with Milestone 3's layouts, and a new model's set will follow its unit
+  then.
 
 ## 4. The top bar at half height
 

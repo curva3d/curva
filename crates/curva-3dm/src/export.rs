@@ -30,14 +30,14 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
     let mut ids = Ids::default();
     let mut model = Model {
         version: 70,
+        // Rhino's unit codes; its feet and inches are Curva's.
         unit: match state.unit {
             Unit::Millimetres => 2,
             Unit::Metres => 4,
+            Unit::Inches => 8,
+            Unit::Feet => 9,
         },
-        tolerance: match state.unit {
-            Unit::Millimetres => 0.001,
-            Unit::Metres => 0.000_001,
-        },
+        tolerance: state.unit.tolerance(),
         angle_tolerance: 1f64.to_radians(),
         ..Model::default()
     };

@@ -26,7 +26,7 @@ impl Command for Length {
         }
         Step::Done(Some(Message::with(
             "done.length",
-            vec![format!("{total:.3}")],
+            vec![doc.length_text(total)],
         )))
     }
 }

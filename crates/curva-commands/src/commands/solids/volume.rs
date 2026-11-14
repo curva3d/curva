@@ -43,11 +43,15 @@ impl Command for Volume {
             }
         }
         let total: f64 = each.iter().sum();
+        let unit = doc.state().unit.symbol().to_owned();
         let message = if each.len() == 1 {
-            Message::with("done.volume", vec![figures(total)])
+            Message::with("done.volume", vec![figures(total), unit])
         } else {
             let listed: Vec<String> = each.iter().map(|v| figures(*v)).collect();
-            Message::with("done.volumes", vec![listed.join(", "), figures(total)])
+            Message::with(
+                "done.volumes",
+                vec![listed.join(", "), figures(total), unit],
+            )
         };
         Step::Done(Some(message))
     }

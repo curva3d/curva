@@ -149,18 +149,42 @@ impl Curva {
             ui.radio_value(&mut settings.glass, false, say("ui.settings.solid"));
         });
         ui.label(egui::RichText::new(say("ui.settings.units")).strong());
-        ui.horizontal(|ui| {
-            ui.radio_value(
-                &mut unit,
-                curva_document::Unit::Millimetres,
-                say("ui.settings.mm"),
-            );
-            ui.radio_value(
-                &mut unit,
-                curva_document::Unit::Metres,
-                say("ui.settings.m"),
-            );
+        ui.horizontal_wrapped(|ui| {
+            for (choice, key) in curva_document::Unit::ALL.into_iter().zip([
+                "ui.settings.mm",
+                "ui.settings.m",
+                "ui.settings.ft",
+                "ui.settings.in",
+            ]) {
+                ui.radio_value(&mut unit, choice, say(key));
+            }
         });
+        // Feet and inches show as fractions to a chosen precision, or as decimals.
+        let mut display = self.doc.state().length_display;
+        if matches!(
+            self.doc.state().unit,
+            curva_document::Unit::Feet | curva_document::Unit::Inches
+        ) {
+            ui.horizontal(|ui| {
+                ui.radio_value(&mut display.decimals, false, say("ui.settings.fractions"));
+                ui.add_enabled_ui(!display.decimals, |ui| {
+                    egui::ComboBox::from_id_salt("fraction precision")
+                        .selected_text(format!("1/{}\"", display.denominator))
+                        .width(64.0)
+                        .show_ui(ui, |ui| {
+                            for d in curva_document::units::LengthDisplay::DENOMINATORS {
+                                ui.selectable_value(
+                                    &mut display.denominator,
+                                    d,
+                                    format!("1/{d}\""),
+                                );
+                            }
+                        });
+                });
+                ui.radio_value(&mut display.decimals, true, say("ui.settings.decimals"));
+            });
+        }
+        let display_changed = display != self.doc.state().length_display;
         ui.checkbox(&mut settings.grid, say("ui.settings.grid"));
         ui.checkbox(&mut settings.check_updates, say("ui.settings.updates"));
         let mut desktop_change = None;
@@ -193,6 +217,9 @@ impl Curva {
                 format!("{:.1}", bytes as f64 / theme::MEGABYTE as f64),
             ],
         )));
+        if display_changed {
+            self.doc.set_length_display(display);
+        }
         if let Some(wanted) = desktop_change {
             self.set_in_applications(wanted);
         }

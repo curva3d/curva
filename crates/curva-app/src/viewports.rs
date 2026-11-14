@@ -566,23 +566,22 @@ impl Curva {
         {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
             // A rectangle's far corner shows width × depth.
-            let unit = self.doc.state().unit.symbol();
             let corner = cursor.and_then(|at| self.processor.corner_size(&self.doc, at));
             if let Some((wide, deep)) = corner {
-                paint_cursor_tag(
-                    ui,
-                    position,
-                    &format!("{wide:.3} {unit} × {deep:.3} {unit}"),
+                let text = format!(
+                    "{} × {}",
+                    self.doc.length_text(wide),
+                    self.doc.length_text(deep)
                 );
+                paint_cursor_tag(ui, position, &text);
             }
             // A number being typed for a size shows in the tag, as it drives the command.
-            let typed = self.typed.trim().parse::<f64>().ok();
+            let typed = curva_document::units::parse_length(&self.typed, self.doc.state().unit);
             if corner.is_none()
                 && let Some(value) =
                     typed.or_else(|| cursor.and_then(|at| self.processor.measure(&self.doc, at)))
             {
-                let unit = self.doc.state().unit.symbol();
-                paint_cursor_tag(ui, position, &format!("{value:.3} {unit}"));
+                paint_cursor_tag(ui, position, &self.doc.length_text(value));
             }
         }
         // Picking objects, edges or faces shows the pointer with a small box beside it.
