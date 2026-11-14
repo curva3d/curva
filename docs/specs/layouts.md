@@ -44,7 +44,7 @@ or a saved one, parallel or perspective), scale, display mode and layer visibili
   scales, or as Rhino's paper-length = model-length pair. The scale is kept while the frame is
   resized; changing the document's units keeps every detail at its scale.
 - **Display mode** per detail: any of Curva's display modes, including the new Technical and Hidden
-  (`make2d.md` §4).
+  (`make2d.md` §5).
 - **Layer visibility per detail:** a layer can be hidden in one detail only (Rhino's per-detail layer
   visibility, in the Layers panel's detail column).
 - **Border:** a detail's frame is an object on its layer, so it can be hidden by putting details on a
@@ -83,13 +83,19 @@ Curva has no clipping planes yet. Milestone 3 adds them with Rhino 8's behaviour
 
 These are Serpentine's commands; Rhino has none of them, so their steps follow Serpentine's.
 
-## 5. Files
+## 5. Prior work checked
+
+Layouts, details and title blocks are part of Curva's document model; no library applies. Serpentine3D's
+drafting module (MIT) is the starting point for the commands Rhino lacks (§4). Rhino's layout and
+detail objects are matched so `.3dm` files carry them (`drawing-output.md` §5).
+
+## 6. Files
 
 Layouts, details, section styles and title blocks are saved in `.curva` files, and read from and
-written to `.3dm` files as Rhino's layouts and details (`drawing-output.md` §4). Older files open
+written to `.3dm` files as Rhino's layouts and details (`drawing-output.md` §5). Older files open
 unchanged, with no layouts.
 
-## 6. Checks
+## 7. Checks
 
 Tests for each command and option; a detail at 1:50 measured on paper; the scale kept through a
 unit change and a resize; per-detail layer visibility; a clipping plane filling a cut solid with

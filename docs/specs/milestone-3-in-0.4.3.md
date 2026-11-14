@@ -5,7 +5,9 @@
 Milestone 3 is "Layouts and drafting" (`docs/architecture.md` §10: phase F4, layouts, detail views,
 Make2D, dimensions, hatches, PDF and DXF), and becomes the shared views-and-sheets core that every
 specialization uses. This lists every part of it, numbered, with the spec that covers it. The owner's
-answers are in decision 0020. Curva 0.4.3 is released when all of it is built and checked in the app.
+answers are in decisions 0020 and 0021. Each spec lists the libraries and projects checked before
+anything is built from scratch (decision 0021, point 7). The feedback on 0.4.2
+(`feedback-0.4.2.md`) ships in 0.4.3 too. Curva 0.4.3 is released when all of it is built and checked in the app.
 
 Rhino 8 is the target for every command's name, steps and options; Serpentine3D's drafting module
 (`serpentine3d/commands/drafting.py`, MIT) is the starting point, and its command names stay as
@@ -14,8 +16,10 @@ pages before it is built.
 
 ## 0. Clean-up after Milestone 2
 
-1. The clean-up pass `architecture.md` §17 asks for after each milestone: dead code removed,
-   duplicates merged, docs brought up to date, all tests passing. Done first, in its own pull request.
+1. The clean-up pass `architecture.md` §17 asks for after each milestone, with the six fixes of
+   `docs/reviews/code-health-2026-11-14.md` (decision 0021, point 6): solids held parsed, undo that
+   shares unchanged objects, drawing only what changed, `main.rs` split into modules, commands filed
+   by tab, and a format interface. Done first, each fix in its own pull request with numbers.
 
 ## Layouts and detail views (`layouts.md`)
 
@@ -55,7 +59,7 @@ pages before it is built.
 
 14. Print: sheets, the model or a view, to PDF, to an image, or to a printer, with scale, print widths
     and colour or black-and-white.
-15. Export to PDF, SVG and DXF; import DXF.
+15. Export to PDF, SVG, DXF and DWG; import DXF and DWG (decision 0021, point 5).
 16. Layouts, detail views, annotation, hatches and annotation styles kept in `.curva` files, and read
     from and written to `.3dm` files.
 
@@ -65,4 +69,3 @@ pages before it is built.
   in Rhai or WebAssembly come with Milestone 4 (decision 0020).
 - Live plan, section and elevation views that follow the model come with Milestone 4, as
   `architecture.md` §5 says. Make2D stays one-off.
-- DWG files: no maintained pure-Rust reader or writer exists; revisit in Milestone 4.

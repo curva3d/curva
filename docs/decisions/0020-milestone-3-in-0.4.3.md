@@ -1,6 +1,6 @@
 # 0020: Milestone 3 in 0.4.3
 
-**Status:** Decided by the owner in chat · 14 November 2026.
+**Status:** Decided by the owner in chat · 14 November 2026. Points 7 and 8 replaced by 0021.
 
 Milestone 3 ("Layouts and drafting", `docs/specs/milestone-3-in-0.4.3.md`) is planned. The owner chose:
 

@@ -51,14 +51,24 @@ to the screen.
 - **Custom:** listed in `docs/kernel/custom-operations.md` and checked against solidcore before each
   release, as decision 0019 requires.
 
-## 3. Checks against Rhino
+## 3. Prior work checked
+
+Checked 14 November 2026 (decision 0021, points 7 and 10):
+
+| Found | Licence, activity | Verdict |
+|---|---|---|
+| solidcore 9342f32: `surface_silhouette`, ray tracer | Curva's engine | **Use** for steps 1 and 4 |
+| `ogeom-hlr` 0.18 (part of `ogeom`, a B-rep kernel in Rust) | LGPL-2.1-only, first published September 2026 | **Not linked**: LGPL relinking duties don't fit an MIT OR Apache-2.0 program, and it needs its own kernel's B-rep. Its design is read as a reference |
+| `i_overlay` 9.1 (polygon booleans) | MIT OR Apache-2.0, updated October 2026 | **Use** for step 3, splitting projected curves by face outlines where those are polygons |
+
+## 4. Checks against Rhino
 
 Rhino is the automatic reference (`architecture.md` §15): for a set of models (boxes, a cylinder
 through a box, a sphere behind a box, a block, a clipped solid, a perspective view), Rhino's Make2D
 output is saved as a reference, and Curva's is compared: same visible and hidden curves within
 tolerance, same layers. Tests also cover every option, cancelling, and an empty selection.
 
-## 4. Technical and Hidden display modes
+## 5. Technical and Hidden display modes
 
 Two new display modes, as in Rhino, for viewports and detail views, built on the same pieces:
 
@@ -69,7 +79,7 @@ Two new display modes, as in Rhino, for viewports and detail views, built on the
 On screen they use a fast approximation (the GPU's depth buffer to hide lines, so orbiting stays
 smooth), and switch to the exact hidden lines of §2 for printing and PDF, so paper is exact.
 
-## 5. Not in 0.4.3
+## 6. Not in 0.4.3
 
 Make2D results that update when the model changes, and live plan and section views, come with
 Milestone 4.

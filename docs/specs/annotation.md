@@ -95,12 +95,25 @@ points, leader points), takes layer, colour and print width like any object, and
 Copy, Rotate, Scale, Mirror, Delete, Undo, groups and blocks. Mirror keeps text readable (Rhino's
 `MirrorText` setting off by default).
 
-## 7. Files
+## 7. Prior work checked
+
+Checked 14 November 2026 (decision 0021, point 7):
+
+| Need | Found | Licence, activity | Verdict |
+|---|---|---|---|
+| Multi-line text layout (wrapping, alignment, mixed fonts, right-to-left) | `parley` 0.13 (Linebender) | MIT OR Apache-2.0, updated November 2026, built on `skrifa`, which Curva already uses | **Use** |
+| Text layout, alternative | `cosmic-text` 0.19 | MIT OR Apache-2.0 | Not chosen: `parley` shares Curva's font stack |
+| Hatch regions and islands | `i_overlay` 9.1 | MIT OR Apache-2.0, updated October 2026 | **Use** for finding regions to fill and clipping pattern lines to them |
+| Curve flattening for patterns | `kurbo` 0.13 | MIT OR Apache-2.0 | Not needed: the kernel samples curves |
+| `.pat` files | no maintained crate | — | Curva reads them: a short, documented text format |
+| Dimensions, leaders | no Rust library | — | Curva's own, following Rhino |
+
+## 8. Files
 
 Styles, text, dimensions, leaders, dots and hatches are saved in `.curva` files and read from and
-written to `.3dm` files as Rhino's annotation objects (`drawing-output.md` §4).
+written to `.3dm` files as Rhino's annotation objects (`drawing-output.md` §5).
 
-## 8. Checks
+## 9. Checks
 
 Tests for every command and option; associative dimensions following a moved and a reshaped object;
 a dimension through a detail; each text field; annotation scaling in the model and on paper;
