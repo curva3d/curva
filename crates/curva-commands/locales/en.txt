@@ -891,6 +891,7 @@ ui.text.height = Height
 ui.text.left = Left
 ui.text.centre = Centre
 ui.text.right = Right
+ui.text.editing = Ctrl+Enter or click away to keep; Escape to cancel.
 prompt.text.words = Text (type \n to start a new line)
 prompt.text.height = Height of capital letters
 prompt.text.font = Font installed on this computer (empty for Curva's own)

@@ -421,6 +421,11 @@ impl Curva {
             )
         });
         let (dx, dy) = (f64::from(delta.x), f64::from(delta.y));
+        // Double-clicking a note edits it in place.
+        if self.text_double_click(pane, response, size) {
+            self.active = pane;
+            return;
+        }
         // In a detail entered on a sheet, panning and zooming move the detail's view instead.
         if self.detail_mouse(ui, pane, response, size) {
             self.active = pane;
