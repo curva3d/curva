@@ -201,6 +201,9 @@ Each operation has a primary implementation (solidcore) and can have a second Ru
 - **Pure Rust.** Option A is **redb**, an embedded database that saves only what changed and is crash-safe. Option B is a **zip-style package**, simpler and easy to inspect.
 - Decide during Milestone 1 by measuring save and open times.
 - **Versioned from day one.** Newer Curva versions always open older files.
+  Each file records its format version (1 since 0.4.3); `crates/curva-document/src/migrate.rs` brings older
+  files up to date before they are read, one step per version, so the model's types describe only the
+  current format. A file from a newer Curva is refused with a message to update.
 
 ### Exchange formats
 

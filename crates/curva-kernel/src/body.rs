@@ -96,14 +96,11 @@ impl PartialEq for Body {
     }
 }
 
-/// A body as a file holds it. Files from 10 and 11 November 2026 hold the portable record
-/// instead; those are read once through it and saved the new way.
+/// A body as a file holds it: the engine's native text, and where it is placed. (Older files
+/// are brought up to date by `curva-document`'s `migrate` module before they are read.)
 #[derive(Serialize, Deserialize)]
 struct StoredBody {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    native: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    record: Option<Record>,
+    native: String,
     #[serde(default = "in_place", skip_serializing_if = "is_in_place")]
     placement: Placement,
 }
@@ -111,16 +108,7 @@ struct StoredBody {
 impl<'de> Deserialize<'de> for Body {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let stored = StoredBody::deserialize(deserializer)?;
-        let body = match (stored.native, stored.record) {
-            (Some(native), _) => Self::from_native(native),
-            (None, Some(record)) => EngineBody::from_record(&record, true)
-                .map_err(|e| format!("{e:?}"))
-                .map_err(KernelError)
-                .and_then(|(engine, _)| Self::made(&engine))
-                .map_err(|e| e.0),
-            (None, None) => Err("a body without faces".to_owned()),
-        };
-        let mut body = body.map_err(serde::de::Error::custom)?;
+        let mut body = Self::from_native(stored.native).map_err(serde::de::Error::custom)?;
         body.placement = stored.placement;
         Ok(body)
     }
@@ -130,8 +118,7 @@ impl Serialize for Body {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let native = self.native().map_err(serde::ser::Error::custom)?;
         StoredBody {
-            native: Some(native.to_owned()),
-            record: None,
+            native: native.to_owned(),
             placement: self.placement,
         }
         .serialize(serializer)
@@ -912,10 +899,9 @@ mod tests {
     }
 
     #[test]
-    fn a_body_saved_as_a_portable_record_still_opens() {
+    fn a_body_comes_back_from_its_portable_record() {
         let body = Body::cuboid([1.0, 2.0, 3.0], [4.0, 5.0, 6.0]).unwrap();
-        let old = serde_json::json!({ "record": body.record().unwrap() });
-        let back: Body = serde_json::from_value(old).unwrap();
+        let back = Body::from_record(&body.record().unwrap()).unwrap();
         assert!(close(back.volume().unwrap(), 120.0));
     }
 

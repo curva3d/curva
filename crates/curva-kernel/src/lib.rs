@@ -107,11 +107,9 @@ pub enum Curve {
         centre: Point,
         /// The radius.
         radius: f64,
-        /// The plane's X direction, of length 1. Files from before circles had planes lack it.
-        #[serde(default = "world_x")]
+        /// The plane's X direction, of length 1.
         x: Point,
         /// The plane's Y direction, of length 1, at a right angle to `x`.
-        #[serde(default = "world_y")]
         y: Point,
     },
     /// Part of a circle, starting along `x` and turning towards `y`.
@@ -1352,13 +1350,6 @@ mod tests {
             circle.translated([1.0, 2.0, 3.0]),
             Curve::circle_on([1.0, 2.0, 3.0], 3.0, [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]).unwrap()
         );
-    }
-
-    #[test]
-    fn a_circle_stored_without_a_plane_lies_flat() {
-        let text = r#"{"Circle":{"centre":[1.0,2.0,0.0],"radius":4.0}}"#;
-        let circle: Curve = serde_json::from_str(text).unwrap();
-        assert_eq!(circle, Curve::circle([1.0, 2.0, 0.0], 4.0).unwrap());
     }
 
     fn points_near(a: Point, b: Point) -> bool {

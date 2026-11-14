@@ -15,6 +15,7 @@ pub mod blocks;
 pub use blocks::{BlockDefinition, BlockEdit, Instance, PLACED_AS_IS, Placement};
 mod layers;
 mod live;
+mod migrate;
 pub use live::{LiveBoolean, LiveHow};
 mod organise;
 mod shape;
@@ -330,7 +331,7 @@ fn continuous() -> Linetype {
     Linetype::Continuous
 }
 
-/// The layer every model starts with. Files from before layers put everything on it.
+/// The layer every model starts with.
 fn standard_layers() -> Vec<Layer> {
     vec![Layer {
         id: 0,
@@ -355,28 +356,20 @@ pub struct State {
     /// The id the next object receives. Kept so ids are not reused after an undo.
     pub next_id: u64,
     /// The layers, oldest first.
-    #[serde(default = "standard_layers")]
     pub layers: Vec<Layer>,
     /// The layer new objects go on.
-    #[serde(default)]
     pub current_layer: u64,
     /// The id the next layer receives.
-    #[serde(default = "first_new_layer")]
     pub next_layer: u64,
-    /// The model's unit; files from before units were kept are in millimetres.
-    #[serde(default)]
+    /// The model's unit.
     pub unit: Unit,
     /// The id the next group receives.
-    #[serde(default)]
     pub next_group: u64,
     /// The block definitions.
-    #[serde(default)]
     pub blocks: Vec<crate::blocks::BlockDefinition>,
     /// The id the next block definition receives.
-    #[serde(default)]
     pub next_block: u64,
     /// A block definition being edited in place.
-    #[serde(default)]
     pub block_edit: Option<crate::blocks::BlockEdit>,
 }
 
@@ -467,10 +460,10 @@ impl Default for State {
 #[derive(Serialize, Deserialize)]
 struct FileContents {
     format: String,
+    /// The version of the format, which `migrate` brings older files up to.
+    version: u64,
     state: State,
-    #[serde(default)]
     views: Vec<SavedView>,
-    #[serde(default)]
     cplanes: Vec<SavedCPlane>,
 }
 
@@ -1002,6 +995,7 @@ impl Document {
     pub fn write_copy(&self, path: &Path) -> Result<(), FileError> {
         let contents = FileContents {
             format: FORMAT.to_owned(),
+            version: crate::migrate::CURRENT,
             state: self.state.clone(),
             views: self.views.clone(),
             cplanes: self.cplanes.clone(),
@@ -1049,10 +1043,16 @@ impl Document {
         } else {
             bytes
         };
-        let contents: FileContents = serde_json::from_slice(&json).map_err(|e| failed(&e))?;
-        if contents.format != FORMAT {
-            return Err(FileError(format!("unknown format {}", contents.format)));
+        let mut file: serde_json::Value = serde_json::from_slice(&json).map_err(|e| failed(&e))?;
+        let format = file.get("format").and_then(serde_json::Value::as_str);
+        if format != Some(FORMAT) {
+            return Err(FileError(format!(
+                "unknown format {}",
+                format.unwrap_or("(none)")
+            )));
         }
+        crate::migrate::upgrade(&mut file).map_err(FileError)?;
+        let contents: FileContents = serde_json::from_value(file).map_err(|e| failed(&e))?;
         Ok(Self {
             state: contents.state,
             views: contents.views,
@@ -1269,6 +1269,7 @@ mod tests {
         let old = folder.join("old.curva");
         let text = serde_json::to_string_pretty(&FileContents {
             format: FORMAT.to_owned(),
+            version: 0,
             state: doc.state().clone(),
             views: Vec::new(),
             cplanes: Vec::new(),
