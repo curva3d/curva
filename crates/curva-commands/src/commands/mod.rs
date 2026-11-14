@@ -2,6 +2,7 @@
 //! the tab a user finds them on, one command (or a small family) per file.
 
 mod analyze;
+mod annotate;
 mod arguments;
 mod curves;
 mod files;
@@ -20,6 +21,7 @@ use analyze::{
     distance, draft_analysis, evaluate_pt, intersect, length, plan, radius, section, show_edges,
     silhouette, volume_centroid, what, zebra,
 };
+use annotate::text;
 use curva_kernel::{KernelError, Point};
 use curves::{
     arc, blend_crv, chamfer, circle, close_crv, conic, curve, curve_boolean, divide, ellipse,
@@ -113,7 +115,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 243] = [
+pub static COMMANDS: [CommandDef; 244] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -376,7 +378,7 @@ pub static COMMANDS: [CommandDef; 243] = [
     listed!("BringForward", [], true, true, draw_order::DrawOrder<true, false>),
     listed!("SendBackward", [], true, true, draw_order::DrawOrder<false, false>),
     recipe!("DupFaceBorder", [], true, dup_face_border::DupFaceBorder),
-    listed!("TextObject", ["text"], true, true, text_object::TextObject),
+    listed!("TextObject", [], true, true, text_object::TextObject),
     listed!(
         "DraftAnalysis",
         [],
@@ -481,6 +483,7 @@ pub static COMMANDS: [CommandDef; 243] = [
     listed!("CopyLayout", [], false, true, copy_layout::CopyLayout),
     listed!("Layouts", [], false, false, layouts_panel::Layouts),
     listed!("Detail", [], false, true, detail::Detail),
+    listed!("Text", [], true, true, text::Text),
     listed!(
         "ClippingPlane",
         [],
@@ -831,8 +834,9 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 63] = [
+    const NOTHING_TO_PREVIEW: [&str; 64] = [
         "Import",
+        "Text",
         "ClippingPlane",
         "EnableClippingPlane",
         "DisableClippingPlane",

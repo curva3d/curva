@@ -17,10 +17,11 @@ mod layers;
 mod live;
 mod migrate;
 pub use live::{LiveBoolean, LiveHow};
+pub mod annotation;
 pub mod clipping;
 pub mod layouts;
 mod organise;
-mod shape;
+pub mod shape;
 pub mod units;
 pub use shape::Shape;
 mod views;
@@ -90,6 +91,8 @@ struct StoredObject {
     body: Option<Body>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     instance: Option<crate::blocks::Instance>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    annotation: Option<annotation::Annotation>,
     #[serde(default)]
     layer: u64,
     #[serde(default)]
@@ -120,10 +123,16 @@ impl TryFrom<StoredObject> for Object {
     type Error = String;
 
     fn try_from(stored: StoredObject) -> Result<Self, String> {
-        let shape = match (stored.curve, stored.body, stored.instance) {
-            (Some(curve), None, None) => Shape::Curve(curve),
-            (None, Some(body), None) => Shape::Body(body),
-            (None, None, Some(instance)) => Shape::Instance(instance),
+        let shape = match (
+            stored.curve,
+            stored.body,
+            stored.instance,
+            stored.annotation,
+        ) {
+            (Some(curve), None, None, None) => Shape::Curve(curve),
+            (None, Some(body), None, None) => Shape::Body(body),
+            (None, None, Some(instance), None) => Shape::Instance(instance),
+            (None, None, None, Some(annotation)) => Shape::Annotation(annotation),
             _ => return Err(format!("object {} needs a curve or a body", stored.id)),
         };
         Ok(Self {
@@ -147,16 +156,18 @@ impl TryFrom<StoredObject> for Object {
 
 impl From<Object> for StoredObject {
     fn from(object: Object) -> Self {
-        let (curve, body, instance) = match object.shape {
-            Shape::Curve(curve) => (Some(curve), None, None),
-            Shape::Body(body) => (None, Some(body), None),
-            Shape::Instance(instance) => (None, None, Some(instance)),
+        let (curve, body, instance, annotation) = match object.shape {
+            Shape::Curve(curve) => (Some(curve), None, None, None),
+            Shape::Body(body) => (None, Some(body), None, None),
+            Shape::Instance(instance) => (None, None, Some(instance), None),
+            Shape::Annotation(annotation) => (None, None, None, Some(annotation)),
         };
         Self {
             id: object.id,
             curve,
             body,
             instance,
+            annotation,
             layer: object.layer,
             hidden: object.hidden,
             name: object.name,
@@ -392,6 +403,9 @@ pub struct State {
     /// The clipping planes (spec `layouts.md` §3); files leave out an empty list.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub clipping_planes: Vec<clipping::ClippingPlane>,
+    /// The document's own annotation styles; empty means the standard ones for its unit.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub annotation_styles: Vec<annotation::AnnotationStyle>,
 }
 
 fn is_zero(value: &u64) -> bool {
@@ -421,6 +435,7 @@ impl State {
             layouts,
             next_layout,
             clipping_planes,
+            annotation_styles,
         } = self;
         objects.len() == other.objects.len()
             && objects
@@ -440,6 +455,7 @@ impl State {
             && *layouts == other.layouts
             && *next_layout == other.next_layout
             && *clipping_planes == other.clipping_planes
+            && *annotation_styles == other.annotation_styles
     }
 }
 
@@ -512,6 +528,7 @@ impl Default for State {
             layouts: Vec::new(),
             next_layout: 0,
             clipping_planes: Vec::new(),
+            annotation_styles: Vec::new(),
         }
     }
 }
@@ -587,7 +604,7 @@ fn weigh(state: &State, beside: &State) -> usize {
             + match &o.shape {
                 Shape::Curve(curve) => curve.heap_bytes(),
                 Shape::Body(body) if !faces.contains(&body.faces_key()) => body.held_bytes(),
-                Shape::Body(_) | Shape::Instance(_) => 0,
+                Shape::Body(_) | Shape::Instance(_) | Shape::Annotation(_) => 0,
             }
     };
     let own: usize = state

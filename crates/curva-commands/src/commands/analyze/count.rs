@@ -22,6 +22,8 @@ impl Command for Count {
                 Shape::Body(b) if b.is_solid() => solids += 1,
                 Shape::Body(_) => surfaces += 1,
                 Shape::Instance(_) => blocks += 1,
+                // Annotation counts in the total only.
+                Shape::Annotation(_) => {}
             }
         }
         Step::Done(Some(Message::with(

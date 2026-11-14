@@ -357,6 +357,12 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
             pen.line((14.0, 14.0), (20.0, 20.0));
             pen.line((20.0, 14.0), (14.0, 20.0));
         }
+        // A capital T over a line of text.
+        "text" => {
+            pen.line((5.0, 4.0), (17.0, 4.0));
+            pen.line((11.0, 4.0), (11.0, 14.0));
+            pen.line((4.0, 18.0), (18.0, 18.0));
+        }
         // A frame with a view of the model inside.
         "detail" => {
             pen.rect(3.0, 4.0, 16.0, 14.0);

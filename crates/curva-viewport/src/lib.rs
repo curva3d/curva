@@ -188,6 +188,14 @@ pub struct MeshCache {
             bool,
         ),
     >,
+    /// Annotation's filled letters, with the annotation they were made for.
+    annotations: std::collections::HashMap<
+        u64,
+        (
+            curva_document::annotation::Annotation,
+            std::sync::Arc<curva_kernel::BodyMesh>,
+        ),
+    >,
     /// Each object as last drawn, with its layer then and what it drew as, so an object that
     /// has not changed is not sampled again (`docs/reviews/code-health-2026-11-14.md`, fix 3).
     drawn: std::collections::HashMap<u64, (std::sync::Arc<Object>, Option<Layer>, Outlines)>,
@@ -210,6 +218,45 @@ impl MeshCache {
         self.held
             .insert(id, (body.clone(), std::sync::Arc::clone(&mesh), solid));
         Some((mesh, solid))
+    }
+
+    /// An annotation's letters filled: each glyph's contours made into a flat face and meshed,
+    /// all in one mesh, made once while the annotation is unchanged.
+    fn annotation_mesh(
+        &mut self,
+        id: u64,
+        annotation: &curva_document::annotation::Annotation,
+    ) -> Option<std::sync::Arc<curva_kernel::BodyMesh>> {
+        if let Some((held, mesh)) = self.annotations.get(&id)
+            && held == annotation
+        {
+            return Some(std::sync::Arc::clone(mesh));
+        }
+        let curva_document::annotation::Annotation::Text(text) = annotation;
+        let mut all = curva_kernel::BodyMesh::default();
+        for glyph in curva_document::shape::text_glyphs(text) {
+            let Ok(face) = curva_kernel::Body::planar(&glyph) else {
+                continue;
+            };
+            let Ok(mesh) = face.mesh() else {
+                continue;
+            };
+            #[allow(clippy::cast_possible_truncation)]
+            let base = all.positions.len() as u32;
+            all.positions.extend(&mesh.positions);
+            all.normals.extend(&mesh.normals);
+            all.triangles
+                .extend(mesh.triangles.iter().map(|t| t.map(|i| i + base)));
+            all.triangle_faces
+                .extend(std::iter::repeat_n(0, mesh.triangles.len()));
+        }
+        if all.triangles.is_empty() {
+            return None;
+        }
+        let mesh = std::sync::Arc::new(all);
+        self.annotations
+            .insert(id, (annotation.clone(), std::sync::Arc::clone(&mesh)));
+        Some(mesh)
     }
 
     /// Forgets bodies that are gone, and meshes new or changed ones all at once, on every
@@ -379,6 +426,23 @@ impl Outlines {
                     }
                     // Instances inside definitions are opened before this.
                     Shape::Instance(_) => continue,
+                    // Text: its letters filled for shading, and their outlines for wireframe,
+                    // picking and snapping.
+                    Shape::Annotation(annotation) => {
+                        if let Some(mesh) = cache.annotation_mesh(*key, annotation) {
+                            outlines.faces.push(Faces {
+                                id: object.id,
+                                colour,
+                                locked,
+                                around: mesh_box(&mesh),
+                                mesh,
+                            });
+                        }
+                        curva_document::shape::annotation_curves(annotation)
+                            .into_iter()
+                            .map(|c| (c, None))
+                            .collect()
+                    }
                 };
                 for (outline, edge) in pieces {
                     let Ok(points) = outline.sample() else {

@@ -231,6 +231,7 @@ fn kind_of(shape: &Shape) -> &'static str {
         Shape::Curve(_) => "curves",
         Shape::Body(_) => "polysurfaces",
         Shape::Instance(_) => "block instances",
+        Shape::Annotation(_) => "texts",
     }
 }
 
@@ -255,6 +256,10 @@ fn geometry_of(shape: &Shape, blocks: &BTreeMap<u64, Uuid>) -> Result<Geometry, 
             // Curva's placements are rows; openNURBS transforms columns.
             let xform = std::array::from_fn(|i2| std::array::from_fn(|j| i.placement[j][i2]));
             Geometry::Instance { block, xform }
+        }
+        // Annotation goes into .3dm files with the round trip at the end of Milestone 3.
+        Shape::Annotation(_) => {
+            return Err("annotation is not written to .3dm files yet".to_owned());
         }
     })
 }

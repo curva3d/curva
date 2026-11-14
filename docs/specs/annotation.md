@@ -33,9 +33,17 @@ Rhino.
   click away or press Escape to finish. Multi-line, with left, centre and right alignment, nine
   justification points, rotation, bold, italic, underline, font and height per run, as Rhino's
   text editor.
-- **Fields:** Rhino's text fields (`%<DocumentName()>%`, `%<Date(...)>%`, `%<PageName()>%`,
-  `%<DetailScale(...)>%`, `%<Area(...)>%`, `%<CurveLength(...)>%`, `%<UserText(...)>%` and the rest
-  Rhino 8 lists), updated when what they read changes.
+- **Fields:** Rhino 8's text fields, as its help page `information/text_fields.htm` lists them:
+  `%<FileName(...)>%`, `%<Date("Format", "Region")>%`, `%<DateModified(...)>%`, `%<PageName()>%`,
+  `%<PageNumber()>%`, `%<NumPages()>%`, `%<PageWidth()>%`, `%<PageHeight()>%`, `%<PaperName()>%`,
+  `%<DetailScale("DetailID","Format")>%`, `%<Area("ObjectID")>%`, `%<CurveLength("ObjectID")>%`,
+  `%<Volume("ObjectID")>%`, `%<UserText("ObjectID","Key")>%`, `%<DocumentText("Key")>%`,
+  `%<LayoutUserText(...)>%`, `%<LayerName(...)>%`, `%<ObjectLayer(...)>%`, `%<ObjectName(...)>%`,
+  `%<ObjectPageName(...)>%`, `%<ObjectPageNumber(...)>%`, `%<ModelUnits()>%`, `%<Notes()>%`,
+  `%<PointCoordinate(...)>%`, `%<BlockName(...)>%`, `%<BlockDescription(...)>%`,
+  `%<BlockInstanceCount(...)>%`, with arithmetic (`%<NumPages()-1>%`); a field that cannot be
+  worked out shows `####`. Updated when what they read changes. (This list first named a
+  `DocumentName()` field, which Rhino does not have; `FileName` is Rhino's.)
 - **Editing:** double-click text to edit it in place; its words, style and every override are also in
   the Properties panel. Serpentine's AnnotEdit is an alias.
 - **Text in the model** lies on the construction plane, or faces the view if set to (Rhino's

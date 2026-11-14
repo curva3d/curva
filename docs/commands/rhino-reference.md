@@ -335,3 +335,15 @@ completed from Rhino itself.
 | EnableClippingPlane | Turns on selected clipping planes in the active viewport | none | none (in the active viewport, or the detail being worked in) | partly |
 | DisableClippingPlane | Turns off selected clipping planes in the active viewport | none | none (in the active viewport, or the detail being worked in) | partly |
 | SectionStyle | Not read: the help page refused to load | not read | none | missing |
+
+### Text and annotation styles
+
+Written on 14 November 2026 from `commands/text.htm` and `information/text_fields.htm`. The annotation style
+pages (`commands/dimstyle.htm`, `options/annotation_styles.htm`) refused to load (HTTP 403); that row is to be
+completed from Rhino itself. Rhino's Text has no command-line options besides its scriptable `-Text`; its
+settings are in the text editor and the Properties panel, listed here as its options.
+
+| Command | Rhino's steps | Rhino's options | In Curva | Status |
+|---|---|---|---|---|
+| Text | Type the text; specify the properties; pick the location. Double-click text to edit it | `Style` `Height` `Mask` `ModelSpaceScale` `Frame` `Font` `Bold` `Italic` `Underline` `TextAlignment` `TextField` `Stacking` `Symbols` `Match` `HorizontalToView` | `Height` `Font` `TextAlignment` (as `Alignment`, left, centre, right); words, height and alignment edited in Properties | partly |
+| AnnotationStyle | Not read: Rhino's DimStyle help page refused to load | not read | none | missing |
