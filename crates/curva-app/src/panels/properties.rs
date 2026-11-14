@@ -127,6 +127,105 @@ impl Curva {
         }
     }
 
+    /// A selected leader's note and landing, changed in place (spec `annotation.md` §4); each
+    /// change is one undo step.
+    fn leader_properties(
+        &mut self,
+        ui: &mut egui::Ui,
+        id: u64,
+        leader: &curva_document::annotation::Leader,
+    ) {
+        use curva_document::annotation::Annotation;
+        let say = |key: &'static str| self.text.render(&Message::new(key));
+        ui.label(egui::RichText::new(say("ui.leader")).strong());
+        let mut changed = leader.clone();
+        ui.add(
+            egui::TextEdit::multiline(&mut changed.content)
+                .desired_rows(2)
+                .desired_width(f32::INFINITY),
+        );
+        ui.checkbox(&mut changed.landing, say("ui.leader.landing"));
+        if changed != *leader && !changed.content.trim().is_empty() {
+            self.undoable(|doc| {
+                doc.replace_shape(id, Shape::Annotation(Annotation::Leader(changed)));
+            });
+        }
+    }
+
+    /// A selected dot's text, secondary text and height, as Rhino's Dot Properties; each change
+    /// is one undo step.
+    fn dot_properties(
+        &mut self,
+        ui: &mut egui::Ui,
+        id: u64,
+        dot: &curva_document::annotation::Dot,
+    ) {
+        use curva_document::annotation::Annotation;
+        let say = |key: &'static str| self.text.render(&Message::new(key));
+        ui.label(egui::RichText::new(say("ui.dot")).strong());
+        let mut changed = dot.clone();
+        ui.add(
+            egui::TextEdit::multiline(&mut changed.content)
+                .desired_rows(2)
+                .desired_width(f32::INFINITY),
+        );
+        ui.label(say("ui.dot.secondary"));
+        ui.add(egui::TextEdit::singleline(&mut changed.secondary).desired_width(f32::INFINITY));
+        ui.horizontal(|ui| {
+            ui.label(say("ui.dot.height"));
+            ui.add(egui::DragValue::new(&mut changed.height).range(4.0..=144.0));
+        });
+        if changed != *dot && !changed.content.trim().is_empty() {
+            self.undoable(|doc| {
+                doc.replace_shape(id, Shape::Annotation(Annotation::Dot(changed)));
+            });
+        }
+    }
+
+    /// A selected hatch's pattern, scale and rotation, as Rhino's Hatch properties; each change
+    /// is one undo step.
+    fn hatch_properties(
+        &mut self,
+        ui: &mut egui::Ui,
+        id: u64,
+        hatch: &curva_document::annotation::Hatch,
+    ) {
+        use curva_document::annotation::Annotation;
+        let say = |key: &'static str| self.text.render(&Message::new(key));
+        ui.label(egui::RichText::new(say("ui.hatch")).strong());
+        let mut changed = hatch.clone();
+        let patterns = self.doc.state().patterns();
+        egui::ComboBox::from_id_salt(("hatch pattern", id))
+            .selected_text(&changed.pattern)
+            .show_ui(ui, |ui| {
+                for pattern in &patterns {
+                    ui.selectable_value(&mut changed.pattern, pattern.name.clone(), &pattern.name)
+                        .on_hover_text(&pattern.description);
+                }
+            });
+        ui.horizontal(|ui| {
+            ui.label(say("ui.hatch.scale"));
+            ui.add(
+                egui::DragValue::new(&mut changed.scale)
+                    .range(1e-6..=1e6)
+                    .speed(0.01 * hatch.scale),
+            );
+        });
+        let mut degrees = changed.rotation.to_degrees();
+        ui.horizontal(|ui| {
+            ui.label(say("ui.hatch.rotation"));
+            ui.add(egui::DragValue::new(&mut degrees).speed(1.0).suffix("°"));
+        });
+        if (degrees - hatch.rotation.to_degrees()).abs() > 1e-9 {
+            changed.rotation = degrees.to_radians();
+        }
+        if changed != *hatch {
+            self.undoable(|doc| {
+                doc.replace_shape(id, Shape::Annotation(Annotation::Hatch(changed)));
+            });
+        }
+    }
+
     /// A selected dimension's value and its text, which can replace the value with typed text
     /// where `<>` stands for it, as in Rhino (spec `annotation.md` §3).
     fn dimension_properties(
@@ -136,10 +235,21 @@ impl Curva {
         dimension: &curva_document::annotation::Annotation,
     ) {
         use curva_document::annotation::Annotation;
+        match dimension {
+            Annotation::Leader(leader) => return self.leader_properties(ui, id, leader),
+            Annotation::Dot(dot) => return self.dot_properties(ui, id, dot),
+            Annotation::Hatch(hatch) => return self.hatch_properties(ui, id, hatch),
+            _ => {}
+        }
         let say = |key: &'static str| self.text.render(&Message::new(key));
         ui.label(egui::RichText::new(say("ui.dimension")).strong());
         let value = match dimension {
-            Annotation::Text(_) => return,
+            Annotation::Text(_)
+            | Annotation::Leader(_)
+            | Annotation::Dot(_)
+            | Annotation::Hatch(_) => {
+                return;
+            }
             Annotation::Dimension(d) => self.doc.length_text(d.value()),
             Annotation::Radial(r) => {
                 let mark = if r.diameter { "Ø" } else { "R" };

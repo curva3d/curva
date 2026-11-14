@@ -21,7 +21,7 @@ use analyze::{
     distance, draft_analysis, evaluate_pt, intersect, length, plan, radius, section, show_edges,
     silhouette, volume_centroid, what, zebra,
 };
-use annotate::{dimension, radial, styles, text};
+use annotate::{dimension, dot, hatch, leader, radial, styles, text};
 use curva_kernel::{KernelError, Point};
 use curves::{
     arc, blend_crv, chamfer, circle, close_crv, conic, curve, curve_boolean, divide, ellipse,
@@ -115,7 +115,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 253] = [
+pub static COMMANDS: [CommandDef; 256] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -490,6 +490,9 @@ pub static COMMANDS: [CommandDef; 253] = [
     listed!("DimRadius", [], true, true, radial::DimRadius),
     listed!("DimDiameter", [], true, true, radial::DimDiameter),
     listed!("DimAngle", [], true, true, radial::DimAngle),
+    listed!("Leader", [], true, true, leader::Leader),
+    listed!("Dot", [], true, true, dot::Dot),
+    listed!("Hatch", [], true, true, hatch::Hatch),
     listed!(
         "AnnotationStyle",
         ["dimstyle"],
@@ -800,7 +803,7 @@ mod tests {
 
     /// For each command that changes geometry, the typed steps that reach its live preview.
     /// A new command must be added here, which is how the preview rule in AGENTS.md is enforced.
-    const PREVIEW_STEPS: [(&str, &[&str]); 61] = [
+    const PREVIEW_STEPS: [(&str, &[&str]); 62] = [
         ("HandleCurve", &["0,0", "1,1", "5,0"]),
         ("Sketch", &["0,0"]),
         ("Conic", &["0,0", "10,0"]),
@@ -836,6 +839,7 @@ mod tests {
         ("DimAligned", &["0,0", "10,5"]),
         ("DimRotated", &["30", "0,0", "10,0"]),
         ("DimAngle", &["Points", "0,0", "10,0", "0,10"]),
+        ("Leader", &["0,0"]),
         ("Circle", &["0,0"]),
         ("Move", &["0,0"]),
         ("Copy", &["0,0"]),
@@ -865,8 +869,10 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 66] = [
+    const NOTHING_TO_PREVIEW: [&str; 68] = [
+        "Hatch",
         "SetCurrentAnnotationStyle",
+        "Dot",
         "DupAnnotationStyle",
         "Import",
         "Text",
