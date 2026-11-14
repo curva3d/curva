@@ -9,6 +9,33 @@ pub(crate) struct TopBar {
     pub(crate) command_tab: usize,
     /// The specialization selected in the top bar's dial, as an index into [`SPECIALIZATIONS`].
     pub(crate) specialization: usize,
+    /// Curva's mark, made from the window icon the first time the bar is drawn.
+    pub(crate) mark: Option<egui::TextureHandle>,
+}
+
+/// `path` shortened in the middle until `fits` accepts it: the first part and as many of the
+/// last parts as fit, with `…` between (spec `feedback-0.4.2.md` §4).
+pub(crate) fn shortened_path(path: &str, fits: impl Fn(&str) -> bool) -> String {
+    if fits(path) {
+        return path.to_owned();
+    }
+    let separator = if path.contains('\\') { '\\' } else { '/' };
+    let parts: Vec<&str> = path.split(separator).collect();
+    let Some((first, rest)) = parts.split_first() else {
+        return path.to_owned();
+    };
+    let gap = format!("{separator}…{separator}");
+    // Keep the most of the end that fits, always keeping at least the file's own name.
+    for kept in (1..rest.len()).rev() {
+        let tail = rest[rest.len() - kept..].join(&separator.to_string());
+        let candidate = format!("{first}{gap}{tail}");
+        if fits(&candidate) {
+            return candidate;
+        }
+    }
+    let name = rest.last().copied().unwrap_or(first);
+    let short = format!("…{separator}{name}");
+    if fits(&short) { short } else { name.to_owned() }
 }
 
 /// The command tabs at the top, each with its most used commands (spec
@@ -232,7 +259,7 @@ pub(crate) const SPECIALIZATIONS: [&str; 4] = [
 pub(crate) const DIAL_WIDTH: f32 = 440.0;
 
 /// The height of the top bar, in points.
-pub(crate) const TOP_BAR_HEIGHT: f32 = 72.0;
+pub(crate) const TOP_BAR_HEIGHT: f32 = 36.0;
 
 /// The size of a command button with an icon, in points.
 pub(crate) const COMMAND_BUTTON: f32 = 30.0;
@@ -301,45 +328,125 @@ impl Curva {
                     ));
                 }
                 frame.show(ui, |ui| {
-                    let inner = rect.size() - egui::Vec2::splat(2.0 * PANEL_MARGIN);
-                    ui.set_min_size(inner);
-                    ui.set_max_size(inner);
-                    let file = self
-                        .doc
-                        .path()
-                        .and_then(|path| path.file_stem())
-                        .map_or_else(
-                            || self.text.render(&Message::new("ui.untitled")),
-                            |stem| stem.to_string_lossy().into_owned(),
-                        );
-                    ui.vertical_centered(|ui| {
-                        ui.label(
-                            egui::RichText::new(format!("{file}  ·  Curva"))
-                                .color(theme::current().quiet)
-                                .size(13.0),
-                        );
-                    });
-                    ui.horizontal(|ui| {
-                        ui.menu_button(self.text.render(&Message::new("ui.tab.file")), |ui| {
-                            chosen = self.file_items(ui);
-                        });
-                        if ui
-                            .button(self.text.render(&Message::new("ui.file.settings")))
-                            .clicked()
-                        {
-                            self.open_settings(SettingsTab::General);
-                        }
-                    });
+                    let inner = rect.shrink(PANEL_MARGIN);
+                    ui.set_min_size(inner.size());
+                    ui.set_max_size(inner.size());
+                    // Left: Curva's mark and name, then File and Settings.
+                    let left = ui
+                        .horizontal_centered(|ui| {
+                            let mark = self.top_mark(ui.ctx());
+                            if let Some(mark) = mark {
+                                ui.add(
+                                    egui::Image::new(&mark)
+                                        .fit_to_exact_size(egui::Vec2::splat(18.0)),
+                                );
+                            }
+                            ui.label(egui::RichText::new("Curva").strong().size(14.0));
+                            ui.add_space(8.0);
+                            ui.menu_button(self.text.render(&Message::new("ui.tab.file")), |ui| {
+                                chosen = self.file_items(ui);
+                            });
+                            if ui
+                                .button(self.text.render(&Message::new("ui.file.settings")))
+                                .clicked()
+                            {
+                                self.open_settings(SettingsTab::General);
+                            }
+                        })
+                        .response
+                        .rect;
+                    // Centre: the specialization dial, centred on the window.
                     let dial = egui::Rect::from_center_size(
-                        egui::pos2(rect.center().x, rect.max.y - PANEL_MARGIN - 12.0),
+                        egui::pos2(rect.center().x, inner.center().y),
                         egui::vec2(DIAL_WIDTH, 22.0),
                     );
                     self.specialization_dial(ui, dial);
+                    // Right: the file's name over its path, right-aligned.
+                    let room = egui::Rect::from_min_max(
+                        egui::pos2(dial.max.x.max(left.max.x) + 12.0, rect.min.y),
+                        egui::pos2(inner.max.x, rect.max.y),
+                    );
+                    self.file_label(ui, room);
                 });
             });
         if let Some(name) = chosen {
             self.run_from_button(name);
         }
+    }
+
+    /// Curva's mark as a texture, made once from the window icon.
+    fn top_mark(&mut self, ctx: &egui::Context) -> Option<egui::TextureHandle> {
+        if self.bar.mark.is_none() {
+            let icon = window_icon()?;
+            let size = [icon.width as usize, icon.height as usize];
+            let image = egui::ColorImage::from_rgba_unmultiplied(size, &icon.rgba);
+            self.bar.mark =
+                Some(ctx.load_texture("curva mark", image, egui::TextureOptions::LINEAR));
+        }
+        self.bar.mark.clone()
+    }
+
+    /// The model's name on top and its path below, smaller and quieter, both right-aligned in
+    /// `room`; a long path is shortened in the middle and shown in full on hover. An untitled
+    /// model shows its name alone.
+    fn file_label(&self, ui: &egui::Ui, room: egui::Rect) {
+        if room.width() < 24.0 {
+            return;
+        }
+        let path = self.doc.path();
+        let name = path.and_then(|p| p.file_stem()).map_or_else(
+            || self.text.render(&Message::new("ui.untitled")),
+            |stem| stem.to_string_lossy().into_owned(),
+        );
+        let painter = ui.painter_at(room);
+        let colours = theme::current();
+        let right = room.max.x;
+        let middle = room.center().y;
+        let Some(path) = path else {
+            painter.text(
+                egui::pos2(right, middle),
+                egui::Align2::RIGHT_CENTER,
+                name,
+                egui::FontId::proportional(13.0),
+                colours.text,
+            );
+            return;
+        };
+        painter.text(
+            egui::pos2(right, middle - 1.0),
+            egui::Align2::RIGHT_BOTTOM,
+            name,
+            egui::FontId::proportional(12.5),
+            colours.text,
+        );
+        let full = path.to_string_lossy().into_owned();
+        let font = egui::FontId::proportional(10.0);
+        let width = room.width();
+        let shown = shortened_path(&full, |text| {
+            ui.fonts_mut(|fonts| {
+                fonts
+                    .layout_no_wrap(text.to_owned(), font.clone(), colours.quiet)
+                    .size()
+                    .x
+                    <= width
+            })
+        });
+        let drawn = painter.text(
+            egui::pos2(right, middle),
+            egui::Align2::RIGHT_TOP,
+            shown,
+            font,
+            colours.quiet,
+        );
+        let hover = ui.interact(
+            drawn.union(egui::Rect::from_min_max(
+                egui::pos2(drawn.min.x, room.min.y),
+                drawn.max,
+            )),
+            egui::Id::NULL.with("top bar path"),
+            egui::Sense::hover(),
+        );
+        hover.on_hover_text(full);
     }
 
     /// The specializations as a dial that loops: the selected one in the centre, its neighbours
@@ -471,6 +578,23 @@ impl Curva {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_long_path_is_shortened_in_the_middle_keeping_the_file_name() {
+        let fits = |limit: usize| move |text: &str| text.chars().count() <= limit;
+        let path = r"V:\projects\client\2026\tower.curva";
+        assert_eq!(super::shortened_path(path, fits(100)), path);
+        assert_eq!(
+            super::shortened_path(path, fits(26)),
+            r"V:\…\2026\tower.curva"
+        );
+        assert_eq!(super::shortened_path(path, fits(20)), r"V:\…\tower.curva");
+        assert_eq!(super::shortened_path(path, fits(12)), "tower.curva");
+        assert_eq!(
+            super::shortened_path("/home/me/models/tower.curva", fits(22)),
+            "/…/models/tower.curva"
+        );
+    }
+
     use super::*;
 
     #[test]
