@@ -53,7 +53,7 @@ impl Piece {
     #[must_use]
     pub fn name_key(self) -> &'static str {
         match self {
-            Self::CommandTabs => "ui.piece.commands",
+            Self::CommandTabs => "ui.piece.operations",
             Self::Layers => "ui.tab.layers",
             Self::Properties => "ui.tab.properties",
             Self::Command => "ui.piece.command",
@@ -192,12 +192,17 @@ impl Default for Layout {
                     Align::Centre,
                     [COMMAND_WIDTH, 132.0],
                 ),
-                Place::new(vec![Piece::Agent], Dock::Bottom, Align::End, [220.0, 96.0]),
+                Place::new(
+                    vec![Piece::Agent],
+                    Dock::Bottom,
+                    Align::End,
+                    [SIDE_WIDTH, 96.0],
+                ),
                 Place::new(
                     vec![Piece::Layers, Piece::Properties],
                     Dock::Right,
                     Align::Fill,
-                    [260.0, 0.0],
+                    [SIDE_WIDTH, 0.0],
                 ),
                 // The display mode button, below the top-left panel.
                 Place::new(
@@ -220,6 +225,10 @@ pub const FLOATING_STANDARD: Vec2 = vec2(560.0, 460.0);
 
 /// The widest the command bar is in the standard arrangement.
 pub const COMMAND_WIDTH: f32 = 720.0;
+
+/// The width of the Layers and Properties column in the standard layout, which the agent panel
+/// below it shares so their edges line up (spec `feedback-0.4.2.md` §5).
+pub const SIDE_WIDTH: f32 = 260.0;
 
 /// Whether a dock runs along the top or bottom.
 fn across(dock: Dock) -> bool {
@@ -1077,6 +1086,9 @@ mod tests {
             assert!(bar.width() <= COMMAND_WIDTH);
             assert!((bar.center().x - width / 2.0).abs() < 0.5);
             assert_eq!(agent.max, pos2(width - GAP, height - GAP));
+            // The agent panel lines up with the column above it.
+            assert_eq!(agent.min.x, side.min.x);
+            assert_eq!(agent.max.x, side.max.x);
             // The side panel fits between them, against the right edge, 24 points from each.
             assert_eq!(side.max.x, width - GAP);
             assert_eq!(side.min.y, tabs.max.y + GAP);

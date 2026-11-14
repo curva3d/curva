@@ -121,7 +121,7 @@ pub(crate) const COMMAND_TABS: [(&str, &[&str]); 6] = [
         ],
     ),
     (
-        "ui.tab.operations",
+        "ui.tab.modify",
         &[
             "BooleanUnion",
             "BooleanDifference",
