@@ -705,6 +705,22 @@ fn run(doc: &mut curva_document::Document, lines: &[&str]) -> crate::Processor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_model_in_feet_reads_and_shows_feet_and_inches() {
+        let mut doc = curva_document::Document::default();
+        doc.set_unit(curva_document::Unit::Feet, false);
+        run(&mut doc, &["Circle", "0,0", "6in"]);
+        let circle = doc.state().objects[0].curve().cloned().unwrap();
+        let length = circle.length().unwrap();
+        assert!((length - std::f64::consts::PI).abs() < 1e-9, "{length}");
+        let processor = run(&mut doc, &["Distance", "0,0", "5'3\",0"]);
+        assert!(
+            processor.log().iter().any(|line| line.contains("5'-3\"")),
+            "{:?}",
+            processor.log()
+        );
+    }
     use curva_document::Document;
     use curva_kernel::Curve;
 

@@ -71,6 +71,16 @@ its numbers, as Rhino does.
   0.001 in, 0.0001 ft), grid spacing and the ISO or ANSI drafting set (decision 0020, point 4).
 - **Files:** `.curva` files store the unit; `.3dm` files map to Rhino's units both ways (Rhino's
   feet and inches already exist in the format).
+- **Built so:** formatting and reading live in `curva-document`'s `units` module, so commands,
+  the pointer's tag, the gumball and What all show lengths the same way, and typed numbers,
+  distances and coordinates all accept every form. The fraction precision (default 1/16") and the
+  decimals switch are kept with the model, as Rhino keeps them in its document properties, so a
+  file shows the same everywhere; files leave them out when they are the usual ones. `New` keeps
+  the unit and display of the model it replaces, so the unit for a new model is chosen by setting
+  it on the empty one. The absolute tolerance follows the unit (`Unit::tolerance`, written to
+  `.3dm` files). The grid is drawn in model units, so it already follows the unit. The ISO and
+  ANSI drafting sets come with Milestone 3's layouts, and a new model's set will follow its unit
+  then.
 
 ## 4. The top bar at half height
 
@@ -109,6 +119,12 @@ width**.
 - Widths are kept with the panel layout (`layout.json`), so they survive restarts, and Reset layout
   puts them back.
 - The Name column takes any space left over when the panel is widened.
+- **Prior work checked:** `egui_extras`' `TableBuilder` (MIT OR Apache-2.0, part of egui) has
+  resizable columns, but keeps their widths in egui's own memory where they can't be read back,
+  so they could neither go into `layout.json` nor follow Reset layout; it would also be a new
+  dependency. Curva draws the header and its dividers itself (`panels/layers.rs`), about 60 lines.
+- **Built so:** the panel already scrolls both ways, so columns wider than it are reached by
+  scrolling; right-clicking a layer's name offers Delete, which used to be a button on each row.
 
 ## 7. "Operations" for the commands panel; "Modify" for its tab
 

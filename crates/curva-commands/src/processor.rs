@@ -2,7 +2,8 @@
 
 use crate::commands::{CommandDef, autofilled, completions, resolve};
 use crate::{Answer, Command, Kind, Live, Lock, Message, Request, Step, Translations, ViewRequest};
-use curva_document::{Document, State};
+use curva_document::units::parse_length;
+use curva_document::{Document, State, Unit};
 use curva_kernel::{Curve, Point, cross};
 
 struct Active {
@@ -12,6 +13,8 @@ struct Active {
     before: State,
     /// The selection when the command began, which an undo of it brings back.
     selection_before: Vec<u64>,
+    /// Started with a dash, such as `-Open`: file locations are typed, not picked in a dialog.
+    typed: bool,
 }
 
 /// The command line's engine.
@@ -24,6 +27,8 @@ pub struct Processor {
     log: Vec<String>,
     text: Translations,
     view_requests: std::collections::VecDeque<ViewRequest>,
+    /// Whether the interface shows file dialogs; off for scripts and agents.
+    dialogs: bool,
 }
 
 impl Default for Processor {
@@ -36,6 +41,7 @@ impl Default for Processor {
             log: Vec::new(),
             text: Translations::english(),
             view_requests: std::collections::VecDeque::new(),
+            dialogs: false,
         }
     }
 }
@@ -51,25 +57,30 @@ enum TypedLock {
     Both(f64, f64),
 }
 
-/// Reads `25`, `<30` or `25<30`. A positive, finite distance only; any finite angle.
-fn parse_lock(text: &str) -> Option<TypedLock> {
-    let number = |part: &str| part.trim().parse::<f64>().ok().filter(|v| v.is_finite());
+/// Reads `25`, `<30` or `25<30`. A positive, finite distance only, in any typed unit; any
+/// finite angle.
+fn parse_lock(text: &str, unit: Unit) -> Option<TypedLock> {
+    let distance = |part: &str| parse_length(part, unit).filter(|d| *d > 0.0);
+    let angle = |part: &str| part.trim().parse::<f64>().ok().filter(|v| v.is_finite());
     match text.split_once('<') {
-        None => number(text).filter(|d| *d > 0.0).map(TypedLock::Distance),
-        Some((before, after)) if before.trim().is_empty() => number(after).map(TypedLock::Angle),
-        Some((before, after)) => {
-            let distance = number(before).filter(|d| *d > 0.0)?;
-            Some(TypedLock::Both(distance, number(after)?))
-        }
+        None => distance(text).map(TypedLock::Distance),
+        Some((before, after)) if before.trim().is_empty() => angle(after).map(TypedLock::Angle),
+        Some((before, after)) => Some(TypedLock::Both(distance(before)?, angle(after)?)),
     }
 }
 
 /// Where typed coordinates are measured: the origin and the X and Y directions of a plane.
 type Frame = (Point, [Point; 2]);
 
-/// Reads `x,y` or `x,y,z` on the plane, as in Rhino. `r` or `@` in front means relative to the
-/// last point, and `w` means world coordinates whatever the plane.
-fn parse_point(text: &str, last: Option<Point>, (origin, [x, y]): Frame) -> Option<Point> {
+/// Reads `x,y` or `x,y,z` on the plane, as in Rhino, each in any typed unit (`5',3'`). `r` or
+/// `@` in front means relative to the last point, and `w` means world coordinates whatever the
+/// plane.
+fn parse_point(
+    text: &str,
+    last: Option<Point>,
+    (origin, [x, y]): Frame,
+    unit: Unit,
+) -> Option<Point> {
     let lowered = text.trim().to_lowercase();
     let (world, rest) = match lowered.strip_prefix('w') {
         Some(rest) => (true, rest),
@@ -81,7 +92,7 @@ fn parse_point(text: &str, last: Option<Point>, (origin, [x, y]): Frame) -> Opti
     };
     let values: Vec<f64> = body
         .split(',')
-        .map(|part| part.trim().parse::<f64>().ok().filter(|v| v.is_finite()))
+        .map(|part| parse_length(part, unit))
         .collect::<Option<_>>()?;
     let offset = match values.as_slice() {
         [a, b] => [*a, *b, 0.0],
@@ -206,7 +217,7 @@ impl Processor {
     /// number, or the size along the step's direction at the pointer.
     fn live(&self, doc: &Document, cursor: Option<Point>, typed: &str) -> Live {
         let cursor = cursor.map(|at| self.constrained(doc, at));
-        let typed_number = typed.trim().parse().ok().filter(|n: &f64| n.is_finite());
+        let typed_number = parse_length(typed, doc.state().unit);
         // A size measured along a direction follows the pointer until a number is typed.
         let along = cursor.and_then(|at| self.request()?.along_value(at));
         Live {
@@ -307,6 +318,15 @@ impl Processor {
             }
         } else if let Some(def) = resolve(typed) {
             self.start(doc, def);
+        } else if let Some(def) = typed.strip_prefix('-').and_then(resolve) {
+            // As in Rhino, a dash asks for file locations on the command line.
+            self.start(doc, def);
+            if let Some(active) = self.active.as_mut() {
+                active.typed = true;
+                if let Some(request) = active.request.as_mut() {
+                    request.file = None;
+                }
+            }
         } else {
             self.say(&Message::with(
                 "error.unknown_command",
@@ -325,6 +345,7 @@ impl Processor {
             request: None,
             before: doc.state().clone(),
             selection_before: doc.selection(),
+            typed: false,
         });
         self.advance(doc, None);
     }
@@ -363,7 +384,7 @@ impl Processor {
         // A point measured from a base takes a typed distance, angle or both, as in Rhino.
         if request.kind == Kind::Point
             && let Some(base) = request.base()
-            && let Some(typed_lock) = parse_lock(typed)
+            && let Some(typed_lock) = parse_lock(typed, doc.state().unit)
         {
             match typed_lock {
                 TypedLock::Distance(distance) => {
@@ -389,29 +410,26 @@ impl Processor {
             return;
         }
         let answer = match request.kind {
-            Kind::Point => parse_point(typed, self.last_point, doc.work_frame())
+            Kind::Point => parse_point(typed, self.last_point, doc.work_frame(), doc.state().unit)
                 .map(Answer::Point)
                 .ok_or_else(|| Message::with("error.bad_point", vec![typed.to_owned()])),
-            Kind::PointOrNumber => typed
-                .parse::<f64>()
+            Kind::PointOrNumber => parse_length(typed, doc.state().unit)
                 .map(Answer::Number)
-                .ok()
                 .or_else(|| {
-                    parse_point(typed, self.last_point, doc.work_frame()).map(Answer::Point)
+                    parse_point(typed, self.last_point, doc.work_frame(), doc.state().unit)
+                        .map(Answer::Point)
                 })
                 .ok_or_else(|| Message::with("error.bad_point", vec![typed.to_owned()])),
-            Kind::Number => typed
-                .parse::<f64>()
+            Kind::Number => parse_length(typed, doc.state().unit)
                 .map(Answer::Number)
-                .map_err(|_| Message::with("error.bad_number", vec![typed.to_owned()])),
+                .ok_or_else(|| Message::with("error.bad_number", vec![typed.to_owned()])),
             Kind::Path => Ok(Answer::Path(typed.to_owned())),
             Kind::Objects => Err(Message::new("error.pick_objects")),
             Kind::Edges => Err(Message::new("error.pick_edges")),
             Kind::Faces => Err(Message::new("error.pick_faces")),
-            Kind::PickPart => typed
-                .parse::<f64>()
+            Kind::PickPart => parse_length(typed, doc.state().unit)
                 .map(Answer::Number)
-                .map_err(|_| Message::new("error.pick_part")),
+                .ok_or_else(|| Message::new("error.pick_part")),
             Kind::Choice => Err(Message::with(
                 "error.bad_choice",
                 vec![request.options.join(", ")],
@@ -465,6 +483,12 @@ impl Processor {
         }
     }
 
+    /// Lets requests for files carry a file dialog for the interface to show
+    /// ([`crate::Request::file`]); scripts and agents leave this off and type locations.
+    pub fn use_file_dialogs(&mut self, on: bool) {
+        self.dialogs = on;
+    }
+
     /// Stops the running command and discards what it changed.
     pub fn cancel(&mut self, doc: &mut Document) {
         if let Some(active) = self.active.take() {
@@ -492,7 +516,12 @@ impl Processor {
             return;
         };
         match active.command.step(doc, answer) {
-            Step::Ask(request) => active.request = Some(request),
+            Step::Ask(mut request) => {
+                if !self.dialogs || active.typed {
+                    request.file = None;
+                }
+                active.request = Some(request);
+            }
             Step::Done(message) => {
                 doc.refresh_history();
                 if let Some(active) = self.active.take()
@@ -530,6 +559,44 @@ mod tests {
     const FRONT: Frame = ([0.0; 3], [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
     const RAISED: Frame = ([5.0, 5.0, 5.0], [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
 
+    #[test]
+    fn file_commands_offer_a_dialog_only_where_the_interface_shows_them() {
+        let mut doc = Document::default();
+        let mut scripted = Processor::default();
+        scripted.submit(&mut doc, "Open");
+        assert_eq!(
+            scripted.current_request().map(|r| r.file.is_some()),
+            Some(false)
+        );
+        let mut app = Processor::default();
+        app.use_file_dialogs(true);
+        app.submit(&mut doc, "Open");
+        let dialog = app.current_request().and_then(|r| r.file.clone()).unwrap();
+        assert!(!dialog.save);
+        assert_eq!(dialog.formats[0], crate::CURVA_FILES);
+        app.cancel(&mut doc);
+        app.submit(&mut doc, "SaveAs");
+        let dialog = app.current_request().and_then(|r| r.file.clone()).unwrap();
+        assert!(dialog.save);
+        assert_eq!(dialog.name, None);
+    }
+
+    #[test]
+    fn a_dash_asks_for_the_location_on_the_command_line() {
+        let folder = std::env::temp_dir().join(format!("curva-dash-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let path = folder.join("dashed.curva");
+        let mut doc = Document::default();
+        let mut app = Processor::default();
+        app.use_file_dialogs(true);
+        app.submit(&mut doc, "-SaveAs");
+        assert_eq!(app.current_request().map(|r| r.file.is_some()), Some(false));
+        app.submit(&mut doc, &path.display().to_string());
+        assert!(app.current_request().is_none());
+        assert_eq!(doc.path(), Some(path.as_path()));
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
     fn near(a: Point, b: Point) -> bool {
         curva_kernel::gap(a, b) < 1e-9
     }
@@ -541,11 +608,20 @@ mod tests {
 
     #[test]
     fn typed_locks_are_read() {
-        assert_eq!(parse_lock("25"), Some(TypedLock::Distance(25.0)));
-        assert_eq!(parse_lock("<30"), Some(TypedLock::Angle(30.0)));
-        assert_eq!(parse_lock("25<30"), Some(TypedLock::Both(25.0, 30.0)));
-        assert_eq!(parse_lock("-5"), None);
-        assert_eq!(parse_lock("3,4"), None);
+        assert_eq!(
+            parse_lock("25", Unit::Millimetres),
+            Some(TypedLock::Distance(25.0))
+        );
+        assert_eq!(
+            parse_lock("<30", Unit::Millimetres),
+            Some(TypedLock::Angle(30.0))
+        );
+        assert_eq!(
+            parse_lock("25<30", Unit::Millimetres),
+            Some(TypedLock::Both(25.0, 30.0))
+        );
+        assert_eq!(parse_lock("-5", Unit::Millimetres), None);
+        assert_eq!(parse_lock("3,4", Unit::Millimetres), None);
     }
 
     #[test]
@@ -649,21 +725,39 @@ mod tests {
 
     #[test]
     fn typed_points_follow_the_plane() {
-        assert_eq!(parse_point("3,2", None, FRONT), Some([3.0, 0.0, 2.0]));
-        assert_eq!(parse_point("1,1", None, RAISED), Some([6.0, 6.0, 5.0]));
-        assert_eq!(parse_point("0,0,2", None, RAISED), Some([5.0, 5.0, 7.0]));
+        assert_eq!(
+            parse_point("3,2", None, FRONT, Unit::Millimetres),
+            Some([3.0, 0.0, 2.0])
+        );
+        assert_eq!(
+            parse_point("1,1", None, RAISED, Unit::Millimetres),
+            Some([6.0, 6.0, 5.0])
+        );
+        assert_eq!(
+            parse_point("0,0,2", None, RAISED, Unit::Millimetres),
+            Some([5.0, 5.0, 7.0])
+        );
     }
 
     #[test]
     fn relative_points_follow_the_plane_from_the_last_point() {
         let last = Some([1.0, 1.0, 1.0]);
-        assert_eq!(parse_point("r3,2", last, FRONT), Some([4.0, 1.0, 3.0]));
+        assert_eq!(
+            parse_point("r3,2", last, FRONT, Unit::Millimetres),
+            Some([4.0, 1.0, 3.0])
+        );
     }
 
     #[test]
     fn w_means_world_coordinates_whatever_the_plane() {
-        assert_eq!(parse_point("w3,2", None, RAISED), Some([3.0, 2.0, 0.0]));
-        assert_eq!(parse_point("w1,2,3", None, FRONT), Some([1.0, 2.0, 3.0]));
+        assert_eq!(
+            parse_point("w3,2", None, RAISED, Unit::Millimetres),
+            Some([3.0, 2.0, 0.0])
+        );
+        assert_eq!(
+            parse_point("w1,2,3", None, FRONT, Unit::Millimetres),
+            Some([1.0, 2.0, 3.0])
+        );
     }
 
     #[test]
@@ -679,13 +773,25 @@ mod tests {
     }
     #[test]
     fn points_read_like_rhino() {
-        assert_eq!(parse_point("1,2", None, WORLD), Some([1.0, 2.0, 0.0]));
-        assert_eq!(parse_point("1,2,3", None, WORLD), Some([1.0, 2.0, 3.0]));
+        assert_eq!(
+            parse_point("1,2", None, WORLD, Unit::Millimetres),
+            Some([1.0, 2.0, 0.0])
+        );
+        assert_eq!(
+            parse_point("1,2,3", None, WORLD, Unit::Millimetres),
+            Some([1.0, 2.0, 3.0])
+        );
         let last = Some([10.0, 10.0, 10.0]);
-        assert_eq!(parse_point("r1,2", last, WORLD), Some([11.0, 12.0, 10.0]));
-        assert_eq!(parse_point("@1,2,3", last, WORLD), Some([11.0, 12.0, 13.0]));
-        assert_eq!(parse_point("abc", None, WORLD), None);
-        assert_eq!(parse_point("1,2,3,4", None, WORLD), None);
+        assert_eq!(
+            parse_point("r1,2", last, WORLD, Unit::Millimetres),
+            Some([11.0, 12.0, 10.0])
+        );
+        assert_eq!(
+            parse_point("@1,2,3", last, WORLD, Unit::Millimetres),
+            Some([11.0, 12.0, 13.0])
+        );
+        assert_eq!(parse_point("abc", None, WORLD, Unit::Millimetres), None);
+        assert_eq!(parse_point("1,2,3,4", None, WORLD, Unit::Millimetres), None);
     }
 
     #[test]

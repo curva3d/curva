@@ -24,6 +24,8 @@ pub(crate) enum NoticeAction {
     Update,
     /// Open a page in the browser.
     Open(String),
+    /// Add Curva to the Linux desktop's applications (spec `feedback-0.4.2.md` §2).
+    AddToApplications,
 }
 
 /// One of the command bar's own lines, above the command history.
@@ -93,6 +95,17 @@ impl Curva {
         }
         let welcome = self.text.render(&Message::new("ui.welcome"));
         self.notices.push(Notice::new(welcome, NoticeAction::None));
+        // The first time Curva runs from an AppImage, offer it a place in the applications.
+        if !self.settings.desktop_offered
+            && desktop::appimage().is_some()
+            && desktop::data_home().is_some_and(|data| !desktop::added(&data))
+        {
+            let line = self.text.render(&Message::new("ui.desktop.offer"));
+            self.notices
+                .push(Notice::new(line, NoticeAction::AddToApplications));
+            self.settings.desktop_offered = true;
+            self.save_settings();
+        }
         if self.settings.check_updates {
             let (sender, receiver) = std::sync::mpsc::channel();
             let repaint = ctx.clone();
@@ -103,6 +116,18 @@ impl Curva {
             self.startup.update_check = Some(receiver);
         }
         self
+    }
+
+    /// Adds Curva to the desktop's applications, or removes it; returns whether that worked.
+    pub(crate) fn set_in_applications(&self, wanted: bool) -> bool {
+        let (Some(data), Some(appimage)) = (desktop::data_home(), desktop::appimage()) else {
+            return false;
+        };
+        if wanted {
+            desktop::add(&data, &appimage).is_ok()
+        } else {
+            desktop::remove(&data).is_ok()
+        }
     }
 
     /// The command bar's own lines above the command history: an update on offer, what an update
@@ -124,7 +149,7 @@ impl Curva {
                 NoticeAction::None => {
                     ui.label(text);
                 }
-                NoticeAction::Update | NoticeAction::Open(_) => {
+                NoticeAction::Update | NoticeAction::Open(_) | NoticeAction::AddToApplications => {
                     if ui.link(text).clicked() {
                         clicked = Some(index);
                     }
@@ -135,6 +160,17 @@ impl Curva {
             match self.notices[index].action.clone() {
                 NoticeAction::Update => self.start_update(ui.ctx()),
                 NoticeAction::Open(url) => open_link(&url),
+                NoticeAction::AddToApplications => {
+                    let line = self
+                        .text
+                        .render(&Message::new(if self.set_in_applications(true) {
+                            "ui.desktop.added"
+                        } else {
+                            "ui.desktop.failed"
+                        }));
+                    self.notices
+                        .insert(0, Notice::new(line, NoticeAction::None));
+                }
                 NoticeAction::None => {}
             }
         }

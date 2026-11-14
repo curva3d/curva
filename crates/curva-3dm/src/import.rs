@@ -110,10 +110,12 @@ pub fn open(model: &Model) -> (Document, Report) {
         next_layer: 0,
         ..State::default()
     };
-    state.unit = if model.unit == 4 {
-        Unit::Metres
-    } else {
-        Unit::Millimetres
+    // Rhino's metres, inches and feet are Curva's own; any other unit comes in as millimetres.
+    state.unit = match model.unit {
+        4 => Unit::Metres,
+        8 => Unit::Inches,
+        9 => Unit::Feet,
+        _ => Unit::Millimetres,
     };
     bring_in(model, &mut state, &mut report);
     if state.layers.is_empty() {

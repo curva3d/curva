@@ -1,7 +1,7 @@
 //! `Save`: writes the model to its file, asking for a location the first time.
 
 use crate::commands::unexpected;
-use crate::{Answer, Command, Kind, Message, Request, Step};
+use crate::{Answer, Command, Message, Request, Step};
 use curva_document::Document;
 use std::path::{Path, PathBuf};
 
@@ -24,7 +24,11 @@ impl Command for Save {
         match answer {
             None => match doc.path().map(Path::to_path_buf) {
                 Some(path) => write(doc, &path),
-                None => Step::Ask(Request::new("prompt.save.path", Kind::Path)),
+                None => Step::Ask(Request::file_to_save(
+                    "prompt.save.path",
+                    crate::commands::import_export::SAVE_FORMATS,
+                    crate::commands::import_export::model_name(doc),
+                )),
             },
             Some(Answer::Path(text)) => write(doc, &PathBuf::from(text)),
             Some(_) => unexpected(),

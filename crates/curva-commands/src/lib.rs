@@ -83,6 +83,32 @@ pub struct Request {
     /// How to show the options in the prompt, Rhino's way, such as `Solid=Yes`; when empty the
     /// option words are shown as they are.
     pub option_labels: Vec<String>,
+    /// For a file location: the system's file dialog the interface shows instead of asking for
+    /// typing (spec `feedback-0.4.2.md` §1). Left out for scripts, agents and the dashed
+    /// commands, such as `-Open`, which ask on the command line.
+    pub file: Option<FileDialog>,
+}
+
+/// A kind of file, as a file dialog lists it: the key of its name in `locales/en.txt`, and its
+/// extensions.
+pub type FileFormat = (&'static str, &'static [&'static str]);
+
+/// Curva's own files.
+pub const CURVA_FILES: FileFormat = ("files.curva", &["curva"]);
+
+/// Rhino's files.
+pub const RHINO_FILES: FileFormat = ("files.rhino", &["3dm"]);
+
+/// A file dialog to show for a [`Kind::Path`] request.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FileDialog {
+    /// Whether it picks a file to write, with a name field, rather than one to read.
+    pub save: bool,
+    /// The kinds of file offered, the usual one first.
+    pub formats: &'static [FileFormat],
+    /// For saving: the name the field starts with; `None` for an untitled model, which the
+    /// interface names in its own language.
+    pub name: Option<String>,
 }
 
 impl Request {
@@ -99,6 +125,38 @@ impl Request {
             along: None,
             corner: false,
             option_labels: Vec::new(),
+            file: None,
+        }
+    }
+
+    /// A request for a file to read, with the system's open dialog offering `formats`.
+    #[must_use]
+    pub fn file_to_open(key: &'static str, formats: &'static [FileFormat]) -> Self {
+        Self {
+            file: Some(FileDialog {
+                save: false,
+                formats,
+                name: None,
+            }),
+            ..Self::new(key, Kind::Path)
+        }
+    }
+
+    /// A request for a file to write, with the system's save dialog offering `formats` and its
+    /// name field starting with `name` (see [`FileDialog::name`]).
+    #[must_use]
+    pub fn file_to_save(
+        key: &'static str,
+        formats: &'static [FileFormat],
+        name: Option<String>,
+    ) -> Self {
+        Self {
+            file: Some(FileDialog {
+                save: true,
+                formats,
+                name,
+            }),
+            ..Self::new(key, Kind::Path)
         }
     }
 

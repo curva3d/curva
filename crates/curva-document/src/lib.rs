@@ -19,6 +19,7 @@ mod migrate;
 pub use live::{LiveBoolean, LiveHow};
 mod organise;
 mod shape;
+pub mod units;
 pub use shape::Shape;
 mod views;
 pub use views::{SavedCPlane, SavedView};
@@ -371,6 +372,9 @@ pub struct State {
     pub next_block: u64,
     /// A block definition being edited in place.
     pub block_edit: Option<crate::blocks::BlockEdit>,
+    /// How feet and inches are shown; files leave out the usual display.
+    #[serde(default, skip_serializing_if = "units::LengthDisplay::is_standard")]
+    pub length_display: units::LengthDisplay,
 }
 
 impl State {
@@ -392,6 +396,7 @@ impl State {
             blocks,
             next_block,
             block_edit,
+            length_display,
         } = self;
         objects.len() == other.objects.len()
             && objects
@@ -407,6 +412,7 @@ impl State {
             && *blocks == other.blocks
             && *next_block == other.next_block
             && *block_edit == other.block_edit
+            && *length_display == other.length_display
     }
 }
 
@@ -418,6 +424,10 @@ pub enum Unit {
     Millimetres,
     /// Metres.
     Metres,
+    /// Feet, shown as feet and inches (spec `feedback-0.4.2.md` §3).
+    Feet,
+    /// Inches, shown as inches and fractions.
+    Inches,
 }
 
 impl Unit {
@@ -427,6 +437,8 @@ impl Unit {
         match self {
             Self::Millimetres => "mm",
             Self::Metres => "m",
+            Self::Feet => "ft",
+            Self::Inches => "in",
         }
     }
 
@@ -436,6 +448,22 @@ impl Unit {
         match self {
             Self::Millimetres => 1.0,
             Self::Metres => 1000.0,
+            Self::Feet => 304.8,
+            Self::Inches => 25.4,
+        }
+    }
+
+    /// Every unit, in the order Settings offers them.
+    pub const ALL: [Self; 4] = [Self::Millimetres, Self::Metres, Self::Feet, Self::Inches];
+
+    /// The absolute tolerance that goes with it, as Rhino's templates set it: how far apart two
+    /// points can be and still count as one.
+    #[must_use]
+    pub fn tolerance(self) -> f64 {
+        match self {
+            Self::Millimetres => 0.01,
+            Self::Metres | Self::Inches => 0.001,
+            Self::Feet => 0.0001,
         }
     }
 }
@@ -453,6 +481,7 @@ impl Default for State {
             blocks: Vec::new(),
             next_block: 0,
             block_edit: None,
+            length_display: units::LengthDisplay::default(),
         }
     }
 }
@@ -804,6 +833,17 @@ impl Document {
             self.transform(&ids, &curva_kernel::Similarity::scaling([0.0; 3], factor));
         }
         self.state.unit = unit;
+    }
+
+    /// Sets how feet and inches are shown.
+    pub fn set_length_display(&mut self, display: units::LengthDisplay) {
+        self.state.length_display = display;
+    }
+
+    /// A length in the model's unit, as the model shows it.
+    #[must_use]
+    pub fn length_text(&self, value: f64) -> String {
+        units::format_length(value, self.state.unit, self.state.length_display)
     }
 
     /// Names objects.

@@ -12,7 +12,7 @@ pub struct Distance {
 }
 
 impl Command for Distance {
-    fn step(&mut self, _doc: &mut Document, answer: Option<Answer>) -> Step {
+    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
         match (self.start, answer) {
             (None, None) => ask_point("prompt.distance.start", Vec::new()),
             (None, Some(Answer::Point(start))) => {
@@ -21,7 +21,7 @@ impl Command for Distance {
             }
             (Some(start), Some(Answer::Point(end))) => Step::Done(Some(Message::with(
                 "done.distance",
-                vec![format!("{:.3}", gap(start, end))],
+                vec![doc.length_text(gap(start, end))],
             ))),
             _ => unexpected(),
         }

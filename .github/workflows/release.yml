@@ -90,6 +90,13 @@ jobs:
           mv "$STAGE/curva" "$appdir/usr/bin/curva"
           cp -r "$STAGE/." "$appdir/usr/share/doc/curva/"
           cp packaging/linux/curva.desktop packaging/icons/curva.svg "$appdir/"
+          # Icons in every size docks ask for, as PNG (some don't read SVG) and SVG, and the
+          # picture file managers show for the AppImage (spec `feedback-0.4.2.md` §2).
+          mkdir -p "$appdir/usr/share/icons"
+          cp -r packaging/icons/hicolor "$appdir/usr/share/icons/"
+          mkdir -p "$appdir/usr/share/icons/hicolor/scalable/apps"
+          cp packaging/icons/curva.svg "$appdir/usr/share/icons/hicolor/scalable/apps/curva.svg"
+          cp packaging/icons/hicolor/256x256/apps/curva.png "$appdir/.DirIcon"
           ln -s usr/bin/curva "$appdir/AppRun"
           curl -sSL -o "$RUNNER_TEMP/appimagetool" "$APPIMAGETOOL_URL"
           echo "$APPIMAGETOOL_SHA256  $RUNNER_TEMP/appimagetool" | sha256sum -c -
@@ -103,6 +110,12 @@ jobs:
           cd "$RUNNER_TEMP" && "$GITHUB_WORKSPACE"/dist/*.AppImage --appimage-extract >/dev/null
           test -x squashfs-root/usr/bin/curva
           test -f squashfs-root/usr/share/doc/curva/THIRD-PARTY-LICENSES.html
+          for s in 16 24 32 48 64 128 256 512; do
+            test -f "squashfs-root/usr/share/icons/hicolor/${s}x${s}/apps/curva.png"
+          done
+          test -f squashfs-root/usr/share/icons/hicolor/scalable/apps/curva.svg
+          test -f squashfs-root/.DirIcon
+          grep -qx 'StartupWMClass=curva' squashfs-root/curva.desktop
 
       - name: macOS disk image
         if: runner.os == 'macOS'

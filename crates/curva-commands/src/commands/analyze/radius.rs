@@ -24,7 +24,10 @@ impl Recipe for Radius {
             .map_err(|e| failed(&e))?;
         match found {
             Some((_, Curve::Circle { radius, .. } | Curve::Arc { radius, .. })) => Ok(Made {
-                message: Some(Message::with("done.radius", vec![format!("{radius:.4}")])),
+                message: Some(Message::with(
+                    "done.radius",
+                    vec![cx.doc.length_text(radius)],
+                )),
                 ..Made::default()
             }),
             _ => Err(Message::new("error.radius")),

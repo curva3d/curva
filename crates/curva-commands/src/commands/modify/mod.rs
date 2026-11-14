@@ -1,4 +1,4 @@
-//! Commands that change objects: the Operations tab's transforms, booleans, trimming and
+//! Commands that change objects: the Modify tab's transforms, booleans, trimming and
 //! joining, and editing control points.
 
 pub(crate) mod align;

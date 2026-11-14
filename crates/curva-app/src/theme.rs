@@ -116,6 +116,8 @@ pub struct Settings {
     pub undo_min_steps: usize,
     /// Megabytes undo may hold beyond those, as Rhino's "Maximum memory used".
     pub undo_max_megabytes: usize,
+    /// Whether Curva, run from an AppImage, has offered to add itself to the applications.
+    pub desktop_offered: bool,
 }
 
 impl Default for Settings {
@@ -128,6 +130,7 @@ impl Default for Settings {
             assistant: crate::assistant::Connection::default(),
             undo_min_steps: curva_document::UndoLimits::default().min_steps,
             undo_max_megabytes: curva_document::UndoLimits::default().max_bytes / MEGABYTE,
+            desktop_offered: false,
         }
     }
 }

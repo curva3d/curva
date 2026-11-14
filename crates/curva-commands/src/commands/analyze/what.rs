@@ -20,7 +20,7 @@ impl Recipe for What {
         let Some(Value::Objects(ids)) = cx.values.first() else {
             return Ok(Made::default());
         };
-        let unit = cx.doc.state().unit.symbol();
+        let unit = cx.doc.state().unit;
         let described: Vec<String> = cx
             .doc
             .state()
@@ -53,21 +53,23 @@ impl Recipe for What {
                     };
                     let length = curve
                         .length()
-                        .map(|l| format!(", {l:.3} {unit} long"))
+                        .map(|l| format!(", {} long", cx.doc.length_text(l)))
                         .unwrap_or_default();
                     format!("{kind}{length}")
                 }
                 Shape::Body(body) if body.is_solid() => {
                     let volume = body
                         .volume()
-                        .map(|v| format!(", volume {v:.3} {unit}³"))
+                        .map(|v| {
+                            format!(", volume {}", curva_document::units::format_volume(v, unit))
+                        })
                         .unwrap_or_default();
                     format!("solid{volume}")
                 }
                 Shape::Body(body) => {
                     let area = body
                         .area()
-                        .map(|a| format!(", area {a:.3} {unit}²"))
+                        .map(|a| format!(", area {}", curva_document::units::format_area(a, unit)))
                         .unwrap_or_default();
                     format!("surface{area}")
                 }

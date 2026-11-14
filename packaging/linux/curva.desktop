@@ -4,5 +4,6 @@ Name=Curva
 Comment=Design-oriented 3D modelling
 Exec=curva %F
 Icon=curva
+StartupWMClass=curva
 Terminal=false
 Categories=Graphics;3DGraphics;Engineering;

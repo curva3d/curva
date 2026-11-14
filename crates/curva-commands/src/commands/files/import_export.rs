@@ -2,10 +2,26 @@
 //! `ExportSelected`, and the `.3dm` side of `Open` and `SaveAs`.
 
 use crate::commands::{ask_objects, unexpected};
-use crate::{Answer, Command, Kind, Message, Request, Step};
+use crate::{Answer, CURVA_FILES, Command, FileFormat, Message, RHINO_FILES, Request, Step};
 use curva_3dm::import::Report;
 use curva_document::Document;
 use std::path::{Path, PathBuf};
+
+/// What `Open` and `Import` read, Curva's own files first.
+pub const READ_FORMATS: &[FileFormat] = &[CURVA_FILES, RHINO_FILES];
+
+/// What `Save` and `SaveAs` write, Curva's own files first.
+pub const SAVE_FORMATS: &[FileFormat] = &[CURVA_FILES, RHINO_FILES];
+
+/// What `Export` and `ExportSelected` write.
+pub const EXPORT_FORMATS: &[FileFormat] = &[RHINO_FILES];
+
+/// The model's file name without its extension, for a save dialog's name field.
+pub fn model_name(doc: &Document) -> Option<String> {
+    doc.path()
+        .and_then(Path::file_stem)
+        .map(|stem| stem.to_string_lossy().into_owned())
+}
 
 /// Whether a typed path names a `.3dm` file.
 pub fn is_3dm(path: &Path) -> bool {
@@ -76,7 +92,7 @@ pub struct Import;
 impl Command for Import {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
         match answer {
-            None => Step::Ask(Request::new("prompt.import.path", Kind::Path)),
+            None => Step::Ask(Request::file_to_open("prompt.import.path", READ_FORMATS)),
             Some(Answer::Path(text)) => {
                 let path = typed(&text);
                 let model = if is_3dm(&path) {
@@ -132,7 +148,11 @@ impl Command for Export {
                     return ask_objects("prompt.export.objects");
                 }
                 self.chosen = Some(list);
-                Step::Ask(Request::new("prompt.export.path", Kind::Path))
+                Step::Ask(Request::file_to_save(
+                    "prompt.export.path",
+                    EXPORT_FORMATS,
+                    model_name(doc),
+                ))
             }
             None if self.selected => {
                 let chosen = doc.selection();
@@ -140,9 +160,17 @@ impl Command for Export {
                     return ask_objects("prompt.export.objects");
                 }
                 self.chosen = Some(chosen);
-                Step::Ask(Request::new("prompt.export.path", Kind::Path))
+                Step::Ask(Request::file_to_save(
+                    "prompt.export.path",
+                    EXPORT_FORMATS,
+                    model_name(doc),
+                ))
             }
-            None => Step::Ask(Request::new("prompt.export.path", Kind::Path)),
+            None => Step::Ask(Request::file_to_save(
+                "prompt.export.path",
+                EXPORT_FORMATS,
+                model_name(doc),
+            )),
             Some(Answer::Path(text)) => {
                 let mut path = typed(&text);
                 if path.extension().is_none() {
