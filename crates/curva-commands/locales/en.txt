@@ -873,3 +873,4 @@ ui.detail.projection = View
 ui.detail.scale = Scale
 ui.detail.display = Display
 ui.detail.locked = Locked
+ui.layer.in_detail = Detail

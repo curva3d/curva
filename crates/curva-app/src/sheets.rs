@@ -28,10 +28,18 @@ pub(crate) struct OpenSheet {
 pub(crate) struct ModelForDetails {
     /// The state they were made from, compared quickly with `State::same_as`.
     made_from: Option<State>,
+    /// For each set of layers hidden in details (most details hide none), the model drawn so.
+    by_hidden: std::collections::HashMap<Vec<u64>, ModelScene>,
+}
+
+/// The model's lines and faces with some layers hidden, as details draw it.
+#[derive(Default)]
+pub(crate) struct ModelScene {
     meshes: MeshCache,
     scene: Arc<Vec<curva_viewport::Vertex>>,
     shaded_scene: Arc<Vec<curva_viewport::Vertex>>,
     faces: Arc<Vec<curva_viewport::MeshVertex>>,
+    made: bool,
 }
 
 /// Which sheet, if any, the viewport area shows.
@@ -184,7 +192,7 @@ impl Curva {
             }
             let shaded = detail.display != "Wireframe";
             let ghosted = detail.display == "Ghosted";
-            let model = &self.sheets.model;
+            let model = self.model_scene(&detail.hidden_layers);
             let drawing = curva_viewport::Drawing {
                 slot: VIEW_SLOTS + slot,
                 grid: Arc::default(),
@@ -224,19 +232,39 @@ impl Curva {
     /// Makes the model's lines and faces for details again when the model has changed.
     fn refresh_model_for_details(&mut self) {
         let model = &mut self.sheets.model;
-        if model
+        if !model
             .made_from
             .as_ref()
             .is_some_and(|state| state.same_as(self.doc.state()))
         {
-            return;
+            for scene in model.by_hidden.values_mut() {
+                scene.made = false;
+            }
+            model.made_from = Some(self.doc.state().clone());
         }
-        let outlines =
-            Outlines::of_space(self.doc.state(), None, &mut model.meshes).inked(PAPER_INK);
-        model.scene = Arc::new(object_lines(&outlines, &[]));
-        model.shaded_scene = Arc::new(shaded_object_lines(&outlines, &[]));
-        model.faces = Arc::new(face_vertices(&outlines, &[]));
-        model.made_from = Some(self.doc.state().clone());
+    }
+
+    /// The model drawn with `hidden` layers out of sight, made when first wanted after a change.
+    fn model_scene(&mut self, hidden: &[u64]) -> &ModelScene {
+        let mut key = hidden.to_vec();
+        key.sort_unstable();
+        let state = self.doc.state();
+        let scene = self.sheets.model.by_hidden.entry(key.clone()).or_default();
+        if !scene.made {
+            // The same model with those layers switched off; objects are shared, not copied.
+            let mut seen = state.clone();
+            for layer in &mut seen.layers {
+                if key.contains(&layer.id) {
+                    layer.visible = false;
+                }
+            }
+            let outlines = Outlines::of_space(&seen, None, &mut scene.meshes).inked(PAPER_INK);
+            scene.scene = Arc::new(object_lines(&outlines, &[]));
+            scene.shaded_scene = Arc::new(shaded_object_lines(&outlines, &[]));
+            scene.faces = Arc::new(face_vertices(&outlines, &[]));
+            scene.made = true;
+        }
+        scene
     }
 
     /// The detail under a point of the sheet pane, by its frame, with its corners on the sheet

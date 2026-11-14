@@ -2,6 +2,9 @@
 
 use crate::*;
 
+/// The width of the Layers panel's column for the entered detail.
+const DETAIL_COLUMN: f32 = 48.0;
+
 impl Curva {
     /// Runs an edit of the model from a panel as one undo step, if it changed anything.
     pub(crate) fn undoable(&mut self, edit: impl FnOnce(&mut Document)) {
@@ -138,12 +141,27 @@ impl Curva {
         let gap = ui.spacing().item_spacing.x;
         let row = ui.spacing().interact_size.y;
         let mut columns = self.layout.layer_columns;
+        // While a detail is entered, a first column hides layers in that detail only (spec
+        // `layouts.md` §2).
+        let in_detail = self.sheets.entered.and_then(|frame| {
+            self.doc
+                .detail_of(frame)
+                .map(|(_, d)| (frame, d.hidden_layers.clone()))
+        });
+        let extra = if in_detail.is_some() {
+            DETAIL_COLUMN + gap
+        } else {
+            0.0
+        };
         // The Name column takes whatever room the others leave.
-        let others: f32 = columns[1..].iter().sum::<f32>() + gap * 5.0;
+        let others: f32 = columns[1..].iter().sum::<f32>() + gap * 5.0 + extra;
         columns[0] = columns[0].max(ui.available_width() - others);
-        let total: f32 = columns.iter().sum::<f32>() + gap * 5.0;
+        let total: f32 = columns.iter().sum::<f32>() + gap * 5.0 + extra;
+        // It comes first, so it shows however narrow the panel is.
+        let detail_cell =
+            |rect: egui::Rect| egui::Rect::from_min_size(rect.min, egui::vec2(DETAIL_COLUMN, row));
         let cell = |rect: egui::Rect, index: usize, columns: &[f32; 6]| {
-            let x = rect.min.x + columns[..index].iter().sum::<f32>() + gap * index as f32;
+            let x = rect.min.x + extra + columns[..index].iter().sum::<f32>() + gap * index as f32;
             egui::Rect::from_min_size(egui::pos2(x, rect.min.y), egui::vec2(columns[index], row))
         };
         // The header, with a divider after each column to drag or double-click.
@@ -157,6 +175,15 @@ impl Curva {
             "ui.layer.print_width",
         ];
         let quiet = theme::current().quiet;
+        if in_detail.is_some() {
+            ui.painter().text(
+                detail_cell(header).left_center() + egui::vec2(2.0, 0.0),
+                egui::Align2::LEFT_CENTER,
+                self.text.render(&Message::new("ui.layer.in_detail")),
+                egui::FontId::proportional(11.5),
+                theme::ACCENT,
+            );
+        }
         let mut resized = false;
         let mut finished = false;
         for (index, key) in keys.iter().enumerate() {
@@ -296,6 +323,25 @@ impl Curva {
                     self.undoable(|doc| doc.set_layer_print_width(layer.id, mm));
                 }
             });
+            if let Some((frame, hidden)) = &in_detail {
+                let mut shown = !hidden.contains(&layer.id);
+                let mut child = ui.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(detail_cell(rect))
+                        .layout(egui::Layout::left_to_right(egui::Align::Center)),
+                );
+                if child.checkbox(&mut shown, "").changed() {
+                    let (frame, id) = (*frame, layer.id);
+                    self.undoable(|doc| {
+                        doc.change_detail(frame, |d| {
+                            d.hidden_layers.retain(|l| *l != id);
+                            if !shown {
+                                d.hidden_layers.push(id);
+                            }
+                        });
+                    });
+                }
+            }
         }
         widest[0] = name_fit;
         // A dropdown fits when it shows its usual width.
