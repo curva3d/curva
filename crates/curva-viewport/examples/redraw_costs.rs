@@ -33,7 +33,9 @@ fn main() {
     let drawn = doc.state().clone();
     println!("objects: {}", drawn.objects.len());
     let equal = timed(50, || assert!(std::hint::black_box(&drawn) == doc.state()));
-    let same = timed(50, || assert!(std::hint::black_box(&drawn).same_as(doc.state())));
+    let same = timed(50, || {
+        assert!(std::hint::black_box(&drawn).same_as(doc.state()))
+    });
     println!("tell nothing changed (every frame): compare {equal:.3} ms, same_as {same:.3} ms");
     let mut cache = MeshCache::default();
     let _ = Outlines::of_cached(doc.state(), &mut cache);
