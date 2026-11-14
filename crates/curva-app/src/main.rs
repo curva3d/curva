@@ -118,6 +118,8 @@ struct Curva {
     file_dialogs: FileDialogs,
     /// The layout open in the viewport area, if any.
     sheets: Sheets,
+    /// Each viewport's area last frame, and the part of it the floating panels leave free.
+    pane_areas: [Option<(egui::Rect, egui::Rect)>; VIEW_SLOTS],
     text: Translations,
     typed: String,
     highlight: usize,
@@ -230,6 +232,7 @@ impl Curva {
             },
             file_dialogs: FileDialogs::default(),
             sheets: Sheets::default(),
+            pane_areas: [None; VIEW_SLOTS],
             text: Translations::english(),
             typed: String::new(),
             highlight: 0,
