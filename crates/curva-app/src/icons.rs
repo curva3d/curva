@@ -357,6 +357,26 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
             pen.line((14.0, 14.0), (20.0, 20.0));
             pen.line((20.0, 14.0), (14.0, 20.0));
         }
+        // A horizontal dimension: extension lines, the line between them with its arrows.
+        "dim" => {
+            pen.line((3.0, 8.0), (3.0, 18.0));
+            pen.line((19.0, 8.0), (19.0, 18.0));
+            pen.line((3.0, 11.0), (19.0, 11.0));
+            pen.path(&[(6.0, 9.5), (3.0, 11.0), (6.0, 12.5)], false);
+            pen.path(&[(16.0, 9.5), (19.0, 11.0), (16.0, 12.5)], false);
+        }
+        // A dimension along a slanted edge.
+        "dimaligned" => {
+            pen.line((3.0, 17.0), (15.0, 5.0));
+            pen.line((6.0, 20.0), (18.0, 8.0));
+            pen.line((4.5, 18.5), (16.5, 6.5));
+        }
+        // A dimension at a set angle, with the angle's arc.
+        "dimrotated" => {
+            pen.line((3.0, 19.0), (19.0, 19.0));
+            pen.line((3.0, 19.0), (15.0, 7.0));
+            pen.path(&[(9.0, 19.0), (8.5, 16.5), (7.2, 14.8)], false);
+        }
         // A dimension with its text: the look a style sets.
         "annotationstyle" => {
             pen.line((3.0, 14.0), (19.0, 14.0));

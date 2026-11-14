@@ -176,13 +176,16 @@ pub struct Outlines {
 /// Mesh-cache keys from here up are instances' parts.
 const INSTANCE_KEYS: u64 = 1 << 52;
 
-/// Whether a shape is text holding fields (`%<...>%`), which read other things and so are drawn
-/// again each time.
+/// Whether a shape reads things besides itself and so is drawn again each time: text holding
+/// fields (`%<...>%`), and dimensions, whose look follows their style and the model's unit.
 fn has_fields(shape: &Shape) -> bool {
-    matches!(
-        shape,
-        Shape::Annotation(curva_document::annotation::Annotation::Text(text)) if text.content.contains("%<")
-    )
+    match shape {
+        Shape::Annotation(curva_document::annotation::Annotation::Text(text)) => {
+            text.content.contains("%<")
+        }
+        Shape::Annotation(curva_document::annotation::Annotation::Dimension(_)) => true,
+        _ => false,
+    }
 }
 
 /// An annotation as it shows: its fields worked out.
@@ -192,7 +195,9 @@ fn shown_annotation(
     space: Option<u64>,
     fields: &curva_document::fields::FieldContext,
 ) -> curva_document::annotation::Annotation {
-    let curva_document::annotation::Annotation::Text(text) = annotation;
+    let curva_document::annotation::Annotation::Text(text) = annotation else {
+        return annotation.clone();
+    };
     if !text.content.contains("%<") {
         return annotation.clone();
     }
@@ -217,13 +222,8 @@ pub struct MeshCache {
     /// What text fields read besides the model: the file and the time. The interface sets it.
     pub fields: curva_document::fields::FieldContext,
     /// Annotation's filled letters, with the annotation they were made for.
-    annotations: std::collections::HashMap<
-        u64,
-        (
-            curva_document::annotation::Annotation,
-            std::sync::Arc<curva_kernel::BodyMesh>,
-        ),
-    >,
+    annotations:
+        std::collections::HashMap<u64, (Vec<Vec<Curve>>, std::sync::Arc<curva_kernel::BodyMesh>)>,
     /// Each object as last drawn, with its layer then and what it drew as, so an object that
     /// has not changed is not sampled again (`docs/reviews/code-health-2026-11-14.md`, fix 3).
     drawn: std::collections::HashMap<u64, (std::sync::Arc<Object>, Option<Layer>, Outlines)>,
@@ -248,22 +248,21 @@ impl MeshCache {
         Some((mesh, solid))
     }
 
-    /// An annotation's letters filled: each glyph's contours made into a flat face and meshed,
-    /// all in one mesh, made once while the annotation is unchanged.
+    /// An annotation's filled shapes (letters, arrowheads): each one's contours made into a flat
+    /// face and meshed, all in one mesh, made once while the shapes are unchanged.
     fn annotation_mesh(
         &mut self,
         id: u64,
-        annotation: &curva_document::annotation::Annotation,
+        fills: &[Vec<Curve>],
     ) -> Option<std::sync::Arc<curva_kernel::BodyMesh>> {
         if let Some((held, mesh)) = self.annotations.get(&id)
-            && held == annotation
+            && held == fills
         {
             return Some(std::sync::Arc::clone(mesh));
         }
-        let curva_document::annotation::Annotation::Text(text) = annotation;
         let mut all = curva_kernel::BodyMesh::default();
-        for glyph in curva_document::shape::text_glyphs(text) {
-            let Ok(face) = curva_kernel::Body::planar(&glyph) else {
+        for glyph in fills {
+            let Ok(face) = curva_kernel::Body::planar(glyph) else {
                 continue;
             };
             let Ok(mesh) = face.mesh() else {
@@ -283,7 +282,7 @@ impl MeshCache {
         }
         let mesh = std::sync::Arc::new(all);
         self.annotations
-            .insert(id, (annotation.clone(), std::sync::Arc::clone(&mesh)));
+            .insert(id, (fills.to_vec(), std::sync::Arc::clone(&mesh)));
         Some(mesh)
     }
 
@@ -456,13 +455,18 @@ impl Outlines {
                     }
                     // Instances inside definitions are opened before this.
                     Shape::Instance(_) => continue,
-                    // Text: its letters filled for shading, and their outlines for wireframe,
-                    // picking and snapping.
+                    // Annotation: its letters and arrowheads filled for shading, and its lines
+                    // and outlines for wireframe, picking and snapping.
                     Shape::Annotation(annotation) => {
                         // Fields are worked out for showing; the object keeps them as typed.
                         let annotation =
                             &shown_annotation(annotation, state, object.space, &cache.fields);
-                        if let Some(mesh) = cache.annotation_mesh(*key, annotation) {
+                        let drawing = curva_document::shape::annotation_drawing(
+                            annotation,
+                            state,
+                            object.space,
+                        );
+                        if let Some(mesh) = cache.annotation_mesh(*key, &drawing.fills) {
                             outlines.faces.push(Faces {
                                 id: object.id,
                                 colour,
@@ -471,10 +475,7 @@ impl Outlines {
                                 mesh,
                             });
                         }
-                        curva_document::shape::annotation_curves(annotation)
-                            .into_iter()
-                            .map(|c| (c, None))
-                            .collect()
+                        drawing.lines.into_iter().map(|c| (c, None)).collect()
                     }
                 };
                 for (outline, edge) in pieces {

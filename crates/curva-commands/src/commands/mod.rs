@@ -21,7 +21,7 @@ use analyze::{
     distance, draft_analysis, evaluate_pt, intersect, length, plan, radius, section, show_edges,
     silhouette, volume_centroid, what, zebra,
 };
-use annotate::{styles, text};
+use annotate::{dimension, styles, text};
 use curva_kernel::{KernelError, Point};
 use curves::{
     arc, blend_crv, chamfer, circle, close_crv, conic, curve, curve_boolean, divide, ellipse,
@@ -115,7 +115,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 247] = [
+pub static COMMANDS: [CommandDef; 250] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -484,6 +484,9 @@ pub static COMMANDS: [CommandDef; 247] = [
     listed!("Layouts", [], false, false, layouts_panel::Layouts),
     listed!("Detail", [], false, true, detail::Detail),
     listed!("Text", [], true, true, text::Text),
+    listed!("Dim", [], true, true, dimension::Dim),
+    listed!("DimAligned", [], true, true, dimension::DimAligned),
+    listed!("DimRotated", [], true, true, dimension::DimRotated),
     listed!(
         "AnnotationStyle",
         ["dimstyle"],
@@ -794,7 +797,7 @@ mod tests {
 
     /// For each command that changes geometry, the typed steps that reach its live preview.
     /// A new command must be added here, which is how the preview rule in AGENTS.md is enforced.
-    const PREVIEW_STEPS: [(&str, &[&str]); 57] = [
+    const PREVIEW_STEPS: [(&str, &[&str]); 60] = [
         ("HandleCurve", &["0,0", "1,1", "5,0"]),
         ("Sketch", &["0,0"]),
         ("Conic", &["0,0", "10,0"]),
@@ -826,6 +829,9 @@ mod tests {
         ("Polyline", &["0,0", "9,0"]),
         ("InterpCrv", &["0,0", "9,0"]),
         ("Curve", &["0,0", "9,0"]),
+        ("Dim", &["0,0", "10,0"]),
+        ("DimAligned", &["0,0", "10,5"]),
+        ("DimRotated", &["30", "0,0", "10,0"]),
         ("Circle", &["0,0"]),
         ("Move", &["0,0"]),
         ("Copy", &["0,0"]),
