@@ -833,3 +833,7 @@ done.textobject = Made {0} objects of text.
 files.all_supported = All supported files
 files.curva = Curva model
 files.rhino = Rhino 3D model
+ui.desktop.offer = Add Curva to your applications, so it shows with its icon in the dock and the menu.
+ui.desktop.added = Curva is in your applications.
+ui.desktop.failed = Curva could not be added to your applications.
+ui.settings.in_applications = Show Curva in the applications menu

@@ -163,6 +163,19 @@ impl Curva {
         });
         ui.checkbox(&mut settings.grid, say("ui.settings.grid"));
         ui.checkbox(&mut settings.check_updates, say("ui.settings.updates"));
+        let mut desktop_change = None;
+        // From an AppImage, a place in the desktop's applications can be added or removed.
+        if desktop::appimage().is_some()
+            && let Some(data) = desktop::data_home()
+        {
+            let mut listed = desktop::added(&data);
+            if ui
+                .checkbox(&mut listed, say("ui.settings.in_applications"))
+                .changed()
+            {
+                desktop_change = Some(listed);
+            }
+        }
         ui.label(egui::RichText::new(say("ui.settings.undo")).strong());
         ui.horizontal(|ui| {
             ui.label(say("ui.settings.undo_steps"));
@@ -180,6 +193,9 @@ impl Curva {
                 format!("{:.1}", bytes as f64 / theme::MEGABYTE as f64),
             ],
         )));
+        if let Some(wanted) = desktop_change {
+            self.set_in_applications(wanted);
+        }
         if unit != self.doc.state().unit {
             self.settings_ui.unit_asked = Some(unit);
         }

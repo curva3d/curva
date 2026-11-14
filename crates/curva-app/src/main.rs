@@ -28,6 +28,7 @@ mod assistant;
 mod assistant_panel;
 mod benchmark;
 mod command_line;
+mod desktop;
 mod file_dialogs;
 mod grips;
 mod gumball;
@@ -451,8 +452,11 @@ fn run() -> Result<(), String> {
             viewport: match window_icon() {
                 Some(icon) => egui::ViewportBuilder::default()
                     .with_icon(icon)
+                    .with_app_id(desktop::APP_ID)
                     .with_maximized(true),
-                None => egui::ViewportBuilder::default().with_maximized(true),
+                None => egui::ViewportBuilder::default()
+                    .with_app_id(desktop::APP_ID)
+                    .with_maximized(true),
             },
             ..eframe::NativeOptions::default()
         },
