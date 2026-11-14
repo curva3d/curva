@@ -78,6 +78,55 @@ impl Curva {
         }
     }
 
+    /// A selected clipping plane's side, section fill and the viewports it cuts (spec
+    /// `layouts.md` §3).
+    fn clipping_properties(&mut self, ui: &mut egui::Ui, frame: u64) {
+        use curva_document::clipping::{ClipView, SectionFill};
+        let Some(plane) = self.doc.clipping_plane_of(frame).cloned() else {
+            return;
+        };
+        let say = |key: &'static str| self.text.render(&Message::new(key));
+        ui.label(egui::RichText::new(say("ui.clipping")).strong());
+        let mut changed = plane.clone();
+        ui.checkbox(&mut changed.flipped, say("ui.clipping.flipped"));
+        ui.horizontal(|ui| {
+            ui.label(say("ui.clipping.fill"));
+            let mut filled = matches!(changed.section, SectionFill::Solid(_));
+            ui.radio_value(&mut filled, false, say("ui.clipping.no_fill"));
+            ui.radio_value(&mut filled, true, say("ui.clipping.solid_fill"));
+            let mut colour = match changed.section {
+                SectionFill::Solid(colour) => colour,
+                SectionFill::None => match SectionFill::default() {
+                    SectionFill::Solid(colour) => colour,
+                    SectionFill::None => [0.5; 3],
+                },
+            };
+            if filled {
+                ui.color_edit_button_rgb(&mut colour);
+                changed.section = SectionFill::Solid(colour);
+            } else {
+                changed.section = SectionFill::None;
+            }
+        });
+        ui.label(say("ui.clipping.views"));
+        ui.horizontal_wrapped(|ui| {
+            for (slot, pane) in self.panes.iter().enumerate() {
+                let name = self.text.render(&Message::new(view_label(pane.view)));
+                let view = ClipView::Viewport(slot);
+                let mut on = changed.views.contains(&view);
+                if ui.checkbox(&mut on, name).changed() {
+                    changed.views.retain(|v| *v != view);
+                    if on {
+                        changed.views.push(view);
+                    }
+                }
+            }
+        });
+        if changed != plane {
+            self.undoable(|doc| doc.change_clipping_plane(frame, |c| *c = changed));
+        }
+    }
+
     pub(crate) fn properties_panel(&mut self, ui: &mut egui::Ui) {
         ui.heading(self.text.render(&Message::new("ui.properties")));
         let selection = self.doc.selection();
@@ -91,6 +140,7 @@ impl Curva {
         )));
         if let [only] = selection.as_slice() {
             self.detail_properties(ui, *only);
+            self.clipping_properties(ui, *only);
         }
         if let [only] = selection.as_slice()
             && let Some(object) = self.doc.state().objects.iter().find(|o| o.id == *only)
