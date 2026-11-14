@@ -28,6 +28,7 @@ mod assistant;
 mod assistant_panel;
 mod benchmark;
 mod command_line;
+mod file_dialogs;
 mod grips;
 mod gumball;
 mod icons;
@@ -44,8 +45,8 @@ mod viewports;
 
 #[allow(clippy::wildcard_imports)]
 use {
-    agent::*, assistant_panel::*, benchmark::*, command_line::*, gumball::*, mouse::*, notices::*,
-    panels::frames::*, settings::*, top_bar::*, viewports::*,
+    agent::*, assistant_panel::*, benchmark::*, command_line::*, file_dialogs::*, gumball::*,
+    mouse::*, notices::*, panels::frames::*, settings::*, top_bar::*, viewports::*,
 };
 
 use curva_commands::{DisplayMode, Kind, Message, Processor, Translations, ViewName, ViewRequest};
@@ -111,6 +112,8 @@ const ZOOM_DRAG_SPEED: f64 = 0.01;
 struct Curva {
     doc: Document,
     processor: Processor,
+    /// The system's file dialogs for commands that ask for a file.
+    file_dialogs: FileDialogs,
     text: Translations,
     typed: String,
     highlight: usize,
@@ -214,7 +217,14 @@ impl Curva {
         }
         Self {
             doc,
-            processor: Processor::default(),
+            processor: {
+                // Commands that ask for a file show the system's dialog here; scripts, agents
+                // and benchmarks type locations instead.
+                let mut processor = Processor::default();
+                processor.use_file_dialogs(benchmark.is_none());
+                processor
+            },
+            file_dialogs: FileDialogs::default(),
             text: Translations::english(),
             typed: String::new(),
             highlight: 0,
@@ -312,6 +322,7 @@ impl eframe::App for Curva {
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.apply_theme(ui.ctx());
+        self.serve_file_dialogs(frame);
         // Opening or starting a model makes a new document, so its undo limits are set here.
         let limits = self.settings.undo_limits();
         if self.doc.undo_limits() != limits {

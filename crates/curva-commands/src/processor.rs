@@ -12,6 +12,8 @@ struct Active {
     before: State,
     /// The selection when the command began, which an undo of it brings back.
     selection_before: Vec<u64>,
+    /// Started with a dash, such as `-Open`: file locations are typed, not picked in a dialog.
+    typed: bool,
 }
 
 /// The command line's engine.
@@ -24,6 +26,8 @@ pub struct Processor {
     log: Vec<String>,
     text: Translations,
     view_requests: std::collections::VecDeque<ViewRequest>,
+    /// Whether the interface shows file dialogs; off for scripts and agents.
+    dialogs: bool,
 }
 
 impl Default for Processor {
@@ -36,6 +40,7 @@ impl Default for Processor {
             log: Vec::new(),
             text: Translations::english(),
             view_requests: std::collections::VecDeque::new(),
+            dialogs: false,
         }
     }
 }
@@ -307,6 +312,15 @@ impl Processor {
             }
         } else if let Some(def) = resolve(typed) {
             self.start(doc, def);
+        } else if let Some(def) = typed.strip_prefix('-').and_then(resolve) {
+            // As in Rhino, a dash asks for file locations on the command line.
+            self.start(doc, def);
+            if let Some(active) = self.active.as_mut() {
+                active.typed = true;
+                if let Some(request) = active.request.as_mut() {
+                    request.file = None;
+                }
+            }
         } else {
             self.say(&Message::with(
                 "error.unknown_command",
@@ -325,6 +339,7 @@ impl Processor {
             request: None,
             before: doc.state().clone(),
             selection_before: doc.selection(),
+            typed: false,
         });
         self.advance(doc, None);
     }
@@ -465,6 +480,12 @@ impl Processor {
         }
     }
 
+    /// Lets requests for files carry a file dialog for the interface to show
+    /// ([`crate::Request::file`]); scripts and agents leave this off and type locations.
+    pub fn use_file_dialogs(&mut self, on: bool) {
+        self.dialogs = on;
+    }
+
     /// Stops the running command and discards what it changed.
     pub fn cancel(&mut self, doc: &mut Document) {
         if let Some(active) = self.active.take() {
@@ -492,7 +513,12 @@ impl Processor {
             return;
         };
         match active.command.step(doc, answer) {
-            Step::Ask(request) => active.request = Some(request),
+            Step::Ask(mut request) => {
+                if !self.dialogs || active.typed {
+                    request.file = None;
+                }
+                active.request = Some(request);
+            }
             Step::Done(message) => {
                 doc.refresh_history();
                 if let Some(active) = self.active.take()
@@ -529,6 +555,44 @@ mod tests {
 
     const FRONT: Frame = ([0.0; 3], [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
     const RAISED: Frame = ([5.0, 5.0, 5.0], [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
+
+    #[test]
+    fn file_commands_offer_a_dialog_only_where_the_interface_shows_them() {
+        let mut doc = Document::default();
+        let mut scripted = Processor::default();
+        scripted.submit(&mut doc, "Open");
+        assert_eq!(
+            scripted.current_request().map(|r| r.file.is_some()),
+            Some(false)
+        );
+        let mut app = Processor::default();
+        app.use_file_dialogs(true);
+        app.submit(&mut doc, "Open");
+        let dialog = app.current_request().and_then(|r| r.file.clone()).unwrap();
+        assert!(!dialog.save);
+        assert_eq!(dialog.formats[0], crate::CURVA_FILES);
+        app.cancel(&mut doc);
+        app.submit(&mut doc, "SaveAs");
+        let dialog = app.current_request().and_then(|r| r.file.clone()).unwrap();
+        assert!(dialog.save);
+        assert_eq!(dialog.name, None);
+    }
+
+    #[test]
+    fn a_dash_asks_for_the_location_on_the_command_line() {
+        let folder = std::env::temp_dir().join(format!("curva-dash-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let path = folder.join("dashed.curva");
+        let mut doc = Document::default();
+        let mut app = Processor::default();
+        app.use_file_dialogs(true);
+        app.submit(&mut doc, "-SaveAs");
+        assert_eq!(app.current_request().map(|r| r.file.is_some()), Some(false));
+        app.submit(&mut doc, &path.display().to_string());
+        assert!(app.current_request().is_none());
+        assert_eq!(doc.path(), Some(path.as_path()));
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
 
     fn near(a: Point, b: Point) -> bool {
         curva_kernel::gap(a, b) < 1e-9

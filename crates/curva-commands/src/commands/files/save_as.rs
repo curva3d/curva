@@ -1,7 +1,7 @@
 //! `SaveAs`, as in Rhino: writes the model to a new file, which it then saves to.
 
 use crate::commands::unexpected;
-use crate::{Answer, Command, Kind, Message, Request, Step};
+use crate::{Answer, Command, Message, Request, Step};
 use curva_document::Document;
 use std::path::PathBuf;
 
@@ -12,7 +12,11 @@ pub struct SaveAs;
 impl Command for SaveAs {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
         match answer {
-            None => Step::Ask(Request::new("prompt.save.path", Kind::Path)),
+            None => Step::Ask(Request::file_to_save(
+                "prompt.save.path",
+                crate::commands::import_export::SAVE_FORMATS,
+                crate::commands::import_export::model_name(doc),
+            )),
             Some(Answer::Path(text)) => {
                 let path = PathBuf::from(text.trim().trim_matches('"'));
                 // A Rhino file is written beside the model, which keeps saving as Curva.

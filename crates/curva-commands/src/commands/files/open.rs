@@ -1,7 +1,7 @@
 //! `Open`: replaces the model with one from a file.
 
 use crate::commands::unexpected;
-use crate::{Answer, Command, Kind, Message, Request, Step};
+use crate::{Answer, Command, Message, Request, Step};
 use curva_document::Document;
 use std::path::Path;
 
@@ -12,7 +12,10 @@ pub struct Open;
 impl Command for Open {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
         match answer {
-            None => Step::Ask(Request::new("prompt.open.path", Kind::Path)),
+            None => Step::Ask(Request::file_to_open(
+                "prompt.open.path",
+                crate::commands::import_export::READ_FORMATS,
+            )),
             Some(Answer::Path(text))
                 if crate::commands::import_export::is_3dm(Path::new(
                     text.trim().trim_matches('"'),

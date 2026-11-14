@@ -25,6 +25,11 @@ serde_json = "1"
 png = "0.18"
 # Checks a downloaded update against the checksums its release lists.
 sha2 = "0.10"
+# The system's own file dialogs for Open, Save and the rest (spec `feedback-0.4.2.md` §1): Explorer's,
+# Finder's, and the desktop's through the XDG portal on Linux. MIT.
+rfd = "0.18"
+# Waits for a file dialog on a worker thread, so Curva keeps drawing. Already in the build.
+pollster = "0.4"
 
 # Puts Curva's icon into the Windows program, so Explorer and the task bar show it. Build time only.
 [target.'cfg(windows)'.build-dependencies]

@@ -830,3 +830,6 @@ prompt.textobject.font = Name of a font installed on this computer
 prompt.textobject.point = Start of the text
 prompt.textobject.height = Height <10>
 done.textobject = Made {0} objects of text.
+files.all_supported = All supported files
+files.curva = Curva model
+files.rhino = Rhino 3D model
