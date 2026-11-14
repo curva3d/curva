@@ -6,7 +6,7 @@ mod gpu;
 mod gumball;
 mod snap;
 
-use curva_document::{Shape, State};
+use curva_document::{Layer, Object, Shape, State};
 use curva_kernel::{Curve, Point};
 
 pub use camera::{CPlane, Camera, StandardView};
@@ -136,7 +136,8 @@ struct Faces {
     id: u64,
     colour: [f32; 3],
     locked: bool,
-    mesh: curva_kernel::BodyMesh,
+    /// Shared with the mesh cache, so drawing again copies no triangles.
+    mesh: std::sync::Arc<curva_kernel::BodyMesh>,
     /// The lowest and highest corners of the mesh, so a line of sight can skip it quickly.
     around: (Point, Point),
 }
@@ -177,7 +178,17 @@ const INSTANCE_KEYS: u64 = 1 << 52;
 #[derive(Debug, Default)]
 pub struct MeshCache {
     /// Each body as last meshed, its mesh, and whether it is a closed solid.
-    held: std::collections::HashMap<u64, (curva_kernel::Body, curva_kernel::BodyMesh, bool)>,
+    held: std::collections::HashMap<
+        u64,
+        (
+            curva_kernel::Body,
+            std::sync::Arc<curva_kernel::BodyMesh>,
+            bool,
+        ),
+    >,
+    /// Each object as last drawn, with its layer then and what it drew as, so an object that
+    /// has not changed is not sampled again (`docs/reviews/code-health-2026-11-14.md`, fix 3).
+    drawn: std::collections::HashMap<u64, (std::sync::Arc<Object>, Option<Layer>, Outlines)>,
 }
 
 impl MeshCache {
@@ -186,15 +197,16 @@ impl MeshCache {
         &mut self,
         id: u64,
         body: &curva_kernel::Body,
-    ) -> Option<(curva_kernel::BodyMesh, bool)> {
+    ) -> Option<(std::sync::Arc<curva_kernel::BodyMesh>, bool)> {
         if let Some((held, mesh, solid)) = self.held.get(&id)
             && held == body
         {
-            return Some((mesh.clone(), *solid));
+            return Some((std::sync::Arc::clone(mesh), *solid));
         }
-        let mesh = body.mesh().ok()?;
+        let mesh = std::sync::Arc::new(body.mesh().ok()?);
         let solid = body.is_solid();
-        self.held.insert(id, (body.clone(), mesh.clone(), solid));
+        self.held
+            .insert(id, (body.clone(), std::sync::Arc::clone(&mesh), solid));
         Some((mesh, solid))
     }
 
@@ -203,13 +215,15 @@ impl MeshCache {
     fn refresh(&mut self, state: &State) {
         use rayon::prelude::*;
         // Keys at or above INSTANCE_KEYS are the parts of instances, keyed by their object.
+        let present: std::collections::HashSet<u64> =
+            state.objects.iter().map(|object| object.id).collect();
         self.held.retain(|key, _| {
             let id = if *key >= INSTANCE_KEYS {
                 (*key - INSTANCE_KEYS) >> 12
             } else {
                 *key
             };
-            state.objects.iter().any(|object| object.id == id)
+            present.contains(&id)
         });
         let wanted: Vec<(u64, &curva_kernel::Body)> = state
             .objects
@@ -221,7 +235,12 @@ impl MeshCache {
         let made: Vec<_> = wanted
             .par_iter()
             .filter_map(|(id, body)| {
-                Some((*id, (*body).clone(), body.mesh().ok()?, body.is_solid()))
+                Some((
+                    *id,
+                    (*body).clone(),
+                    std::sync::Arc::new(body.mesh().ok()?),
+                    body.is_solid(),
+                ))
             })
             .collect();
         for (id, body, mesh, solid) in made {
@@ -242,10 +261,56 @@ impl Outlines {
     pub fn of_cached(state: &State, cache: &mut MeshCache) -> Self {
         cache.refresh(state);
         let mut outlines = Self::default();
+        let mut earlier = std::mem::take(&mut cache.drawn);
         for object in &state.objects {
             let layer = state.layers.iter().find(|l| l.id == object.layer);
+            // An instance draws its definition, which can change without it, so it is always
+            // drawn again; any other object only when it or its layer changed.
+            let part = match earlier.remove(&object.id) {
+                Some((was, was_layer, part))
+                    if std::sync::Arc::ptr_eq(&was, object)
+                        && was_layer.as_ref() == layer
+                        && !matches!(object.shape, Shape::Instance(_)) =>
+                {
+                    part
+                }
+                _ => Self::of_object(state, object, layer, cache),
+            };
+            outlines.append(&part);
+            cache.drawn.insert(
+                object.id,
+                (std::sync::Arc::clone(object), layer.cloned(), part),
+            );
+        }
+        outlines
+    }
+
+    /// Adds `other`'s objects after its own.
+    fn append(&mut self, other: &Self) {
+        self.faces.extend(other.faces.iter().cloned());
+        self.objects.extend(other.objects.iter().cloned());
+        self.sites.extend(other.sites.iter().cloned());
+        self.colours.extend_from_slice(&other.colours);
+        self.locked.extend_from_slice(&other.locked);
+        self.widths.extend_from_slice(&other.widths);
+        self.dashes.extend_from_slice(&other.dashes);
+        self.on_faces.extend_from_slice(&other.on_faces);
+        self.edge_of.extend_from_slice(&other.edge_of);
+        self.boxes.extend_from_slice(&other.boxes);
+        self.kinds.extend_from_slice(&other.kinds);
+    }
+
+    /// What one object draws as, on `layer`: nothing if it or its layer is out of sight.
+    fn of_object(
+        state: &State,
+        object: &Object,
+        layer: Option<&Layer>,
+        cache: &mut MeshCache,
+    ) -> Self {
+        let mut outlines = Self::default();
+        {
             if object.hidden || layer.is_some_and(|l| !l.visible) {
-                continue;
+                return outlines;
             }
             let colour = layer.map_or(CURVE_COLOUR, |l| l.colour);
             let locked = object.locked || layer.is_some_and(|l| l.locked);
@@ -1312,6 +1377,65 @@ pub const STANDARD_INK: [f32; 3] = curva_document::STANDARD_COLOUR;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Draws `doc` with `cache` and checks it matches drawing it from nothing.
+    fn drawn_alike(doc: &curva_document::Document, cache: &mut MeshCache) {
+        let fresh = Outlines::of(doc.state());
+        let cached = Outlines::of_cached(doc.state(), cache);
+        assert_eq!(cached, fresh);
+    }
+
+    #[test]
+    fn drawing_again_reuses_unchanged_objects_and_stays_exact() {
+        let mut doc = curva_document::Document::default();
+        let a = doc.add(Curve::line([0.0; 3], [5.0, 0.0, 0.0]).unwrap());
+        let b = doc.add(Curve::circle([0.0, 9.0, 0.0], 2.0).unwrap());
+        doc.add_body(curva_kernel::Body::cuboid([0.0; 3], [1.0, 1.0, 1.0]).unwrap());
+        let mut cache = MeshCache::default();
+        drawn_alike(&doc, &mut cache);
+        let kept = std::sync::Arc::as_ptr(&cache.drawn[&b].0);
+        doc.translate(&[a], [0.0, 0.0, 3.0]);
+        drawn_alike(&doc, &mut cache);
+        assert_eq!(std::sync::Arc::as_ptr(&cache.drawn[&b].0), kept);
+        doc.hide(&[b]);
+        drawn_alike(&doc, &mut cache);
+        doc.remove(&[a]);
+        drawn_alike(&doc, &mut cache);
+        assert!(!cache.drawn.contains_key(&a));
+    }
+
+    #[test]
+    fn a_layer_change_draws_its_objects_again() {
+        let mut doc = curva_document::Document::default();
+        let layer = doc.add_layer("Walls".to_owned());
+        doc.add_on(Curve::line([0.0; 3], [5.0, 0.0, 0.0]).unwrap(), Some(layer));
+        let mut cache = MeshCache::default();
+        drawn_alike(&doc, &mut cache);
+        doc.set_layer_colour(layer, [1.0, 0.0, 0.0]);
+        drawn_alike(&doc, &mut cache);
+        doc.set_layer_visible(layer, false);
+        drawn_alike(&doc, &mut cache);
+        assert!(
+            Outlines::of_cached(doc.state(), &mut cache)
+                .objects
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn an_instance_follows_its_definition() {
+        let mut doc = curva_document::Document::default();
+        let line = doc.add(Curve::line([0.0; 3], [5.0, 0.0, 0.0]).unwrap());
+        let (definition, _) = doc.define_block("Post".to_owned(), [0.0; 3], &[line]);
+        let mut cache = MeshCache::default();
+        drawn_alike(&doc, &mut cache);
+        let mut parts = Vec::new();
+        let mut other = curva_document::Document::default();
+        other.add(Curve::circle([0.0; 3], 4.0).unwrap());
+        parts.extend(other.state().objects.iter().map(|o| Object::clone(o)));
+        doc.set_definition_objects(definition, parts);
+        drawn_alike(&doc, &mut cache);
+    }
     #[test]
     fn block_instances_draw_their_definition_under_their_own_id() {
         let mut doc = curva_document::Document::default();

@@ -380,6 +380,43 @@ pub struct State {
     pub block_edit: Option<crate::blocks::BlockEdit>,
 }
 
+impl State {
+    /// Whether `other` is this state, told quickly: objects are the same when they are the
+    /// same shared copy. Any change to an object makes a new copy of it (`Arc::make_mut`)
+    /// while an earlier state still holds the old one, so this never misses a change; it may
+    /// call two equal objects different, which only costs drawing them again.
+    #[must_use]
+    pub fn same_as(&self, other: &Self) -> bool {
+        // Listed field by field, so that a new field cannot be forgotten here.
+        let Self {
+            objects,
+            next_id,
+            layers,
+            current_layer,
+            next_layer,
+            unit,
+            next_group,
+            blocks,
+            next_block,
+            block_edit,
+        } = self;
+        objects.len() == other.objects.len()
+            && objects
+                .iter()
+                .zip(&other.objects)
+                .all(|(a, b)| std::sync::Arc::ptr_eq(a, b))
+            && *next_id == other.next_id
+            && *layers == other.layers
+            && *current_layer == other.current_layer
+            && *next_layer == other.next_layer
+            && *unit == other.unit
+            && *next_group == other.next_group
+            && *blocks == other.blocks
+            && *next_block == other.next_block
+            && *block_edit == other.block_edit
+    }
+}
+
 /// The unit a model is drawn in (spec `docs/specs/ui-look-and-layout.md` §7).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Unit {

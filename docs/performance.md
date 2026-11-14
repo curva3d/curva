@@ -58,3 +58,21 @@ gigabytes.
 Undo now also has Rhino's two limits, in Settings → General: **Minimum undo steps** (10) are always
 kept, and older steps are dropped once undo holds more than **Maximum memory used** (256 MB). A
 step's size is estimated from what it does not share with the state next to it.
+
+## Drawing only what changed (0.4.3, `docs/reviews/code-health-2026-11-14.md` fix 3)
+
+14 November 2026, the Windows machine, `cargo run --release -p curva-viewport --example redraw_costs`,
+the same 5,200-object model:
+
+| | Before | After |
+|---|---|---|
+| Tell nothing changed (every frame) | 0.093 ms (compare the whole model) | 0.001 ms (`State::same_as`) |
+| Draw again after moving one object | 57.8 ms (sample everything) | 11.6 ms (reuse unchanged objects) |
+| Draw again after a selection change | the same as a model change | recolour only, no sampling |
+
+`same_as` compares objects by their shared copy: since fix 2 any change to an object makes a new
+copy while the drawn state holds the old one, so no change can be missed, and no change counter has
+to be kept by every edit. The viewport keeps what each object drew as, with its layer, and samples an
+object again only when it or its layer changed; an instance is always drawn again, since its
+definition can change without it. The 11.6 ms left is putting the kept pieces together; the mesh
+cache's clean-up of removed objects no longer slows down with the square of the object count.
