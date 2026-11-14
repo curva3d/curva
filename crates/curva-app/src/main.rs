@@ -2135,8 +2135,15 @@ impl Curva {
             }
             match Document::open(std::path::Path::new(&path)) {
                 Ok(opened) => {
-                    self.doc
-                        .set_definition_objects(id, opened.state().objects.clone());
+                    self.doc.set_definition_objects(
+                        id,
+                        opened
+                            .state()
+                            .objects
+                            .iter()
+                            .map(|o| curva_document::Object::clone(o))
+                            .collect(),
+                    );
                     if let Some(when) = modified {
                         self.linked_seen.insert(path.clone(), when);
                     }
@@ -3686,6 +3693,23 @@ impl Curva {
         });
         ui.checkbox(&mut settings.grid, say("ui.settings.grid"));
         ui.checkbox(&mut settings.check_updates, say("ui.settings.updates"));
+        ui.label(egui::RichText::new(say("ui.settings.undo")).strong());
+        ui.horizontal(|ui| {
+            ui.label(say("ui.settings.undo_steps"));
+            ui.add(egui::DragValue::new(&mut settings.undo_min_steps).range(0..=1000));
+        });
+        ui.horizontal(|ui| {
+            ui.label(say("ui.settings.undo_memory"));
+            ui.add(egui::DragValue::new(&mut settings.undo_max_megabytes).range(1..=65536));
+        });
+        let (steps, bytes) = self.doc.undo_held();
+        ui.label(text.render(&Message::with(
+            "ui.settings.undo_held",
+            vec![
+                steps.to_string(),
+                format!("{:.1}", bytes as f64 / theme::MEGABYTE as f64),
+            ],
+        )));
         if unit != self.doc.state().unit {
             self.unit_asked = Some(unit);
         }
@@ -4900,6 +4924,11 @@ impl eframe::App for Curva {
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.apply_theme(ui.ctx());
+        // Opening or starting a model makes a new document, so its undo limits are set here.
+        let limits = self.settings.undo_limits();
+        if self.doc.undo_limits() != limits {
+            self.doc.set_undo_limits(limits);
+        }
         // Linked blocks are read again when Curva gets focus back, in case their files changed.
         let has_focus = ui.ctx().input(|input| input.focused);
         if has_focus && !self.window_had_focus && !self.doc.definitions().is_empty() {

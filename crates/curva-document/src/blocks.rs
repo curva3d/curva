@@ -178,7 +178,7 @@ impl Document {
             .objects
             .iter()
             .filter(|o| ids.contains(&o.id))
-            .cloned()
+            .map(|o| Object::clone(o))
             .collect();
         for object in &mut objects {
             if let Some(shape) = shape_placed(&object.shape, &to_origin) {
@@ -347,7 +347,7 @@ impl Document {
         let mut count = 0;
         for object in &mut self.state.objects {
             if ids.contains(&object.id)
-                && let Shape::Instance(i) = &mut object.shape
+                && let Shape::Instance(i) = &mut std::sync::Arc::make_mut(object).shape
             {
                 i.definition = definition;
                 count += 1;
@@ -414,7 +414,7 @@ impl Document {
         let instances = self.instances_of(definition);
         for object in &mut self.state.objects {
             if instances.contains(&object.id) {
-                object.hidden = true;
+                std::sync::Arc::make_mut(object).hidden = true;
             }
         }
         let mut added = Vec::new();
@@ -443,7 +443,7 @@ impl Document {
             .iter()
             .filter(|o| edit.objects.contains(&o.id))
             .filter_map(|o| {
-                let mut o = o.clone();
+                let mut o = Object::clone(o);
                 o.shape = shape_placed(&o.shape, &back)?;
                 Some(o)
             })
@@ -453,7 +453,7 @@ impl Document {
         let instances = self.instances_of(edit.definition);
         for object in &mut self.state.objects {
             if instances.contains(&object.id) {
-                object.hidden = false;
+                std::sync::Arc::make_mut(object).hidden = false;
             }
         }
         Some(edit.definition)

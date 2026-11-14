@@ -259,7 +259,7 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
             Report::count(&mut report.skipped, "loose block parts");
         } else {
             Report::count(&mut report.brought, kind);
-            state.objects.push(made);
+            state.objects.push(std::sync::Arc::new(made));
         }
     }
     for block in &model.blocks {

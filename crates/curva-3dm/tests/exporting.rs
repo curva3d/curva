@@ -113,15 +113,15 @@ pub fn sample() -> State {
     for (shape, layer) in shapes {
         let id = state.next_id;
         state.next_id += 1;
-        state.objects.push(object(id, shape, layer));
+        state.objects.push(object(id, shape, layer).into());
     }
-    state.objects[1].name = "line".to_owned();
-    state.objects[1].group = Some(7);
-    state.objects[2].group = Some(7);
-    state.objects[2].print_width = PrintWidth::Millimetres(0.5);
-    state.objects[3].hidden = true;
-    state.objects[4].locked = true;
-    state.objects[6]
+    std::sync::Arc::make_mut(&mut state.objects[1]).name = "line".to_owned();
+    std::sync::Arc::make_mut(&mut state.objects[1]).group = Some(7);
+    std::sync::Arc::make_mut(&mut state.objects[2]).group = Some(7);
+    std::sync::Arc::make_mut(&mut state.objects[2]).print_width = PrintWidth::Millimetres(0.5);
+    std::sync::Arc::make_mut(&mut state.objects[3]).hidden = true;
+    std::sync::Arc::make_mut(&mut state.objects[4]).locked = true;
+    std::sync::Arc::make_mut(&mut state.objects[6])
         .user_text
         .insert("Material".to_owned(), "Oak".to_owned());
 
@@ -145,14 +145,17 @@ pub fn sample() -> State {
             row[i] = 1.0;
         }
         placement[3][0] = dx;
-        state.objects.push(object(
-            id,
-            Shape::Instance(Instance {
-                definition: 0,
-                placement,
-            }),
-            0,
-        ));
+        state.objects.push(
+            object(
+                id,
+                Shape::Instance(Instance {
+                    definition: 0,
+                    placement,
+                }),
+                0,
+            )
+            .into(),
+        );
     }
     state
 }

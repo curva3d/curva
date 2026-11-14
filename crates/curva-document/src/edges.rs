@@ -53,6 +53,7 @@ impl Document {
     /// Replaces an object's shape, keeping its id, layer and name.
     pub fn replace_shape(&mut self, id: u64, shape: Shape) {
         if let Some(object) = self.state.objects.iter_mut().find(|o| o.id == id) {
+            let object = std::sync::Arc::make_mut(object);
             object.shape = shape;
             object.recipe = None;
         }

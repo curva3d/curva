@@ -452,6 +452,27 @@ impl Body {
             .map_err(|e| failed("measuring a body", e))
     }
 
+    /// About how many bytes its faces hold, shared by every copy, for weighing undo steps:
+    /// the native text and the mesh, when they have been made.
+    #[must_use]
+    pub fn held_bytes(&self) -> usize {
+        let text = self.shared.native.get().map_or(0, String::len);
+        let mesh = self.shared.mesh.get().map_or(0, |m| {
+            (m.positions.len() + m.normals.len()) * 24
+                + m.triangles.len() * 12
+                + m.edges.iter().map(|e| e.len() * 24).sum::<usize>()
+        });
+        // The engine's own structure is about the size of its text.
+        2 * text + mesh
+    }
+
+    /// Identifies the faces it shares with its copies: two bodies with the same key hold the
+    /// same faces in memory once.
+    #[must_use]
+    pub fn faces_key(&self) -> usize {
+        std::sync::Arc::as_ptr(&self.shared) as usize
+    }
+
     /// How many faces, edges and corners it has.
     pub fn counts(&self) -> Result<[usize; 3], KernelError> {
         self.shared

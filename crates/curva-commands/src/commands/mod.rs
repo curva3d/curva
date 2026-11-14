@@ -1469,6 +1469,7 @@ pub(crate) fn changed(
         .objects
         .iter()
         .filter(|object| ids.contains(&object.id))
+        .map(|o| &**o)
         .collect();
     let bodies = objects.iter().filter(|o| o.shape.body().is_some()).count() * changes.len();
     let light = cx.previewing && bodies > MOST_GHOSTED_BODIES;

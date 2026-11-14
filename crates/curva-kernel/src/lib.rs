@@ -608,6 +608,28 @@ impl Similarity {
 }
 
 impl Curve {
+    /// About how many bytes it holds beyond its own size, for weighing undo steps.
+    #[must_use]
+    pub fn heap_bytes(&self) -> usize {
+        let point = std::mem::size_of::<Point>();
+        match self {
+            Self::Point { .. } | Self::Line { .. } | Self::Circle { .. } | Self::Arc { .. } => 0,
+            Self::Polyline { points, .. } | Self::Interpolated { points, .. } => {
+                points.len() * point
+            }
+            Self::Nurbs {
+                knots,
+                points,
+                weights,
+                ..
+            } => points.len() * point + (knots.len() + weights.len()) * 8,
+            Self::Compound { segments } => segments
+                .iter()
+                .map(|s| std::mem::size_of::<Self>() + s.heap_bytes())
+                .sum(),
+        }
+    }
+
     /// A line between two different points.
     pub fn line(start: Point, end: Point) -> Result<Self, KernelError> {
         if gap(start, end) < SMALLEST {

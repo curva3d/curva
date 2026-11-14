@@ -351,7 +351,7 @@ fn first_new_layer() -> u64 {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct State {
     /// The objects, oldest first.
-    pub objects: Vec<Object>,
+    pub objects: Vec<std::sync::Arc<Object>>,
     /// The id the next object receives. Kept so ids are not reused after an undo.
     pub next_id: u64,
     /// The layers, oldest first.
@@ -449,15 +449,87 @@ impl fmt::Display for FileError {
 
 impl std::error::Error for FileError {}
 
+/// How much undo keeps, as Rhino's two Undo options: at least `min_steps`, and older steps are
+/// dropped once the steps hold more than `max_bytes`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UndoLimits {
+    /// Steps kept whatever they hold.
+    pub min_steps: usize,
+    /// About how many bytes the steps may hold together beyond that.
+    pub max_bytes: usize,
+}
+
+impl Default for UndoLimits {
+    fn default() -> Self {
+        Self {
+            min_steps: 10,
+            max_bytes: 256 * 1024 * 1024,
+        }
+    }
+}
+
+/// One undo or redo step: the state to go back to, the selection with it, and about how many
+/// bytes it holds that the state next to it does not share.
+#[derive(Debug)]
+struct Step {
+    state: State,
+    selection: BTreeSet<u64>,
+    bytes: usize,
+}
+
+/// About how many bytes `state` holds that `beside` does not share with it: the objects it
+/// does not have in common (solids counted only if their faces are not shared too), and the
+/// list of objects itself.
+fn weigh(state: &State, beside: &State) -> usize {
+    let objects: std::collections::HashSet<*const Object> =
+        beside.objects.iter().map(std::sync::Arc::as_ptr).collect();
+    let faces: std::collections::HashSet<usize> = beside
+        .objects
+        .iter()
+        .filter_map(|o| o.shape.body().map(Body::faces_key))
+        .collect();
+    let object_bytes = |o: &Object| {
+        std::mem::size_of::<Object>()
+            + o.name.len()
+            + o.user_text
+                .iter()
+                .map(|(k, v)| k.len() + v.len())
+                .sum::<usize>()
+            + match &o.shape {
+                Shape::Curve(curve) => curve.heap_bytes(),
+                Shape::Body(body) if !faces.contains(&body.faces_key()) => body.held_bytes(),
+                Shape::Body(_) | Shape::Instance(_) => 0,
+            }
+    };
+    let own: usize = state
+        .objects
+        .iter()
+        .filter(|o| !objects.contains(&std::sync::Arc::as_ptr(o)))
+        .map(|o| object_bytes(o))
+        .sum();
+    let blocks: usize = state
+        .blocks
+        .iter()
+        .flat_map(|b| &b.objects)
+        .map(object_bytes)
+        .sum();
+    own + blocks + state.objects.len() * std::mem::size_of::<std::sync::Arc<Object>>()
+}
+
 /// An open model.
 #[derive(Debug, Default)]
 pub struct Document {
     state: State,
     selection: BTreeSet<u64>,
     /// Earlier states, each with the selection that came with it, newest last.
-    undo: Vec<(State, BTreeSet<u64>)>,
+    undo: Vec<Step>,
     /// Undone states, each with its selection, newest last.
-    redo: Vec<(State, BTreeSet<u64>)>,
+    redo: Vec<Step>,
+    /// How many of the oldest undo steps were dropped to keep within `undo_limits`, so that
+    /// marks from [`Self::undo_mark`] stay valid.
+    undo_dropped: usize,
+    /// How much undo may keep. Not saved: the app sets it from the user's settings.
+    undo_limits: UndoLimits,
     path: Option<PathBuf>,
     /// The X and Y directions of the plane being drawn on. Not saved, and not part of undo.
     work_plane: Option<[Point; 2]>,
@@ -546,7 +618,7 @@ impl Document {
     pub fn add_shape(&mut self, shape: Shape) -> u64 {
         let id = self.state.next_id;
         self.state.next_id += 1;
-        self.state.objects.push(Object {
+        self.state.objects.push(std::sync::Arc::new(Object {
             id,
             shape,
             layer: self.state.current_layer,
@@ -560,7 +632,7 @@ impl Document {
             input_of: None,
             linetype: Linetype::ByLayer,
             user_text: std::collections::BTreeMap::new(),
-        });
+        }));
         id
     }
 
@@ -573,7 +645,7 @@ impl Document {
     pub fn add_shape_on(&mut self, shape: Shape, layer: Option<u64>) -> u64 {
         let id = self.add_shape(shape);
         if let (Some(layer), Some(object)) = (layer, self.state.objects.last_mut()) {
-            object.layer = layer;
+            std::sync::Arc::make_mut(object).layer = layer;
         }
         id
     }
@@ -581,6 +653,7 @@ impl Document {
     /// Replaces an object's curve, keeping its id and layer.
     pub fn replace(&mut self, id: u64, curve: Curve) {
         if let Some(object) = self.state.objects.iter_mut().find(|o| o.id == id) {
+            let object = std::sync::Arc::make_mut(object);
             object.shape = Shape::Curve(curve);
             object.recipe = None;
         }
@@ -608,7 +681,7 @@ impl Document {
     pub fn hide(&mut self, ids: &[u64]) {
         for object in &mut self.state.objects {
             if ids.contains(&object.id) {
-                object.hidden = true;
+                std::sync::Arc::make_mut(object).hidden = true;
             }
         }
         self.selection.retain(|id| !ids.contains(id));
@@ -619,7 +692,7 @@ impl Document {
         let mut shown = 0;
         for object in &mut self.state.objects {
             if object.hidden && object.input_of.is_none() {
-                object.hidden = false;
+                std::sync::Arc::make_mut(object).hidden = false;
                 shown += 1;
             }
         }
@@ -629,22 +702,67 @@ impl Document {
     /// Where the undo history stands, for [`Self::squash_undo`].
     #[must_use]
     pub fn undo_mark(&self) -> usize {
-        self.undo.len()
+        self.undo_dropped + self.undo.len()
+    }
+
+    /// How much undo may keep.
+    #[must_use]
+    pub fn undo_limits(&self) -> UndoLimits {
+        self.undo_limits
+    }
+
+    /// Sets how much undo may keep, dropping the oldest steps if it now holds too much.
+    pub fn set_undo_limits(&mut self, limits: UndoLimits) {
+        self.undo_limits = limits;
+        self.trim_undo();
+    }
+
+    /// How many steps undo holds, and about how many bytes they hold together.
+    #[must_use]
+    pub fn undo_held(&self) -> (usize, usize) {
+        (self.undo.len(), self.undo.iter().map(|s| s.bytes).sum())
+    }
+
+    /// Drops the oldest undo steps while there are more than the least kept and they hold more
+    /// than allowed.
+    fn trim_undo(&mut self) {
+        let mut held: usize = self.undo.iter().map(|s| s.bytes).sum();
+        let mut drop = 0;
+        while self.undo.len() - drop > self.undo_limits.min_steps
+            && held > self.undo_limits.max_bytes
+        {
+            held -= self.undo[drop].bytes;
+            drop += 1;
+        }
+        self.undo.drain(..drop);
+        self.undo_dropped += drop;
+    }
+
+    /// `before` as an undo step, weighed against the state now.
+    fn step(&self, before: State, selection: BTreeSet<u64>) -> Step {
+        Step {
+            bytes: weigh(&before, &self.state),
+            state: before,
+            selection,
+        }
     }
 
     /// Makes everything undoable since `mark` a single undo step back to `before`, so that a
     /// group of commands can be undone as one. Does nothing if the model did not change.
     pub fn squash_undo(&mut self, mark: usize, before: State) {
+        let mark = mark.saturating_sub(self.undo_dropped);
         if self.state == before {
             self.undo.truncate(mark);
             return;
         }
-        let selection = self.undo.get(mark).map_or_else(
-            || self.selection.clone(),
-            |(_, selection)| selection.clone(),
-        );
+        let selection = self
+            .undo
+            .get(mark)
+            .map_or_else(|| self.selection.clone(), |step| step.selection.clone());
         self.undo.truncate(mark);
-        self.undo.push((before, selection));
+        let step = self.step(before, selection);
+        self.undo.push(step);
+        self.trim_undo();
     }
 
     /// Changes the model's unit. With `scale`, everything is resized about the origin to keep
@@ -662,7 +780,7 @@ impl Document {
     pub fn rename(&mut self, ids: &[u64], name: &str) {
         for object in &mut self.state.objects {
             if ids.contains(&object.id) {
-                name.clone_into(&mut object.name);
+                name.clone_into(&mut std::sync::Arc::make_mut(object).name);
             }
         }
     }
@@ -679,6 +797,7 @@ impl Document {
     pub fn translate(&mut self, ids: &[u64], by: Point) {
         for object in &mut self.state.objects {
             if ids.contains(&object.id) {
+                let object = std::sync::Arc::make_mut(object);
                 object.shape = object.shape.translated(by);
                 object.recipe = None;
             }
@@ -689,6 +808,7 @@ impl Document {
     pub fn transform(&mut self, ids: &[u64], change: &Similarity) {
         for object in &mut self.state.objects {
             if ids.contains(&object.id) {
+                let object = std::sync::Arc::make_mut(object);
                 object.shape = object.shape.mapped(change);
                 object.recipe = None;
             }
@@ -767,8 +887,8 @@ impl Document {
     /// brings back with the model.
     pub fn record_change_with(&mut self, before: State, selection: &[u64]) {
         self.record_change(before);
-        if let Some((_, kept)) = self.undo.last_mut() {
-            *kept = selection.iter().copied().collect();
+        if let Some(step) = self.undo.last_mut() {
+            step.selection = selection.iter().copied().collect();
         }
     }
 
@@ -783,8 +903,10 @@ impl Document {
             .filter(|o| earlier.get(&o.id) != Some(&&o.shape))
             .map(|o| o.id)
             .collect();
-        self.undo.push((before, self.selection.clone()));
+        let step = self.step(before, self.selection.clone());
+        self.undo.push(step);
         self.redo.clear();
+        self.trim_undo();
     }
 
     /// Puts the state back to `state` without touching undo, as when a command is cancelled.
@@ -800,24 +922,33 @@ impl Document {
 
     /// Steps back one change. Returns false when there is nothing to undo.
     pub fn undo(&mut self) -> bool {
-        let Some((previous, selection)) = self.undo.pop() else {
+        let Some(Step {
+            state, selection, ..
+        }) = self.undo.pop()
+        else {
             return false;
         };
-        let now = std::mem::replace(&mut self.state, previous);
-        self.redo
-            .push((now, std::mem::replace(&mut self.selection, selection)));
+        let now = std::mem::replace(&mut self.state, state);
+        let selection = std::mem::replace(&mut self.selection, selection);
+        let step = self.step(now, selection);
+        self.redo.push(step);
         self.drop_missing_selection();
         true
     }
 
     /// Repeats one undone change. Returns false when there is nothing to redo.
     pub fn redo(&mut self) -> bool {
-        let Some((next, selection)) = self.redo.pop() else {
+        let Some(Step {
+            state, selection, ..
+        }) = self.redo.pop()
+        else {
             return false;
         };
-        let now = std::mem::replace(&mut self.state, next);
-        self.undo
-            .push((now, std::mem::replace(&mut self.selection, selection)));
+        let now = std::mem::replace(&mut self.state, state);
+        let selection = std::mem::replace(&mut self.selection, selection);
+        let step = self.step(now, selection);
+        self.undo.push(step);
+        self.trim_undo();
         self.drop_missing_selection();
         true
     }
@@ -938,6 +1069,79 @@ mod tests {
         doc.undo();
         add_undoably(&mut doc, line(2.0));
         assert!(!doc.redo());
+    }
+
+    #[test]
+    fn an_undo_step_shares_the_objects_a_change_left_alone() {
+        let mut doc = Document::default();
+        let kept = doc.add(line(1.0));
+        let moved = doc.add(line(2.0));
+        let before = doc.state().clone();
+        doc.translate(&[moved], [0.0, 1.0, 0.0]);
+        doc.record_change(before);
+        doc.undo();
+        doc.redo();
+        let now = &doc.state().objects;
+        let earlier = &doc.undo.last().unwrap().state.objects;
+        let find = |list: &[std::sync::Arc<Object>], id: u64| {
+            std::sync::Arc::clone(list.iter().find(|o| o.id == id).unwrap())
+        };
+        assert!(std::sync::Arc::ptr_eq(
+            &find(now, kept),
+            &find(earlier, kept)
+        ));
+        assert!(!std::sync::Arc::ptr_eq(
+            &find(now, moved),
+            &find(earlier, moved)
+        ));
+    }
+
+    #[test]
+    fn undo_drops_the_oldest_steps_beyond_its_budget_but_keeps_the_least() {
+        let mut doc = Document::default();
+        doc.set_undo_limits(UndoLimits {
+            min_steps: 3,
+            max_bytes: 0,
+        });
+        for x in 1..=8 {
+            add_undoably(&mut doc, line(f64::from(x)));
+        }
+        assert_eq!(doc.undo_held().0, 3);
+        assert_eq!(doc.undo_mark(), 8);
+        assert!(doc.undo() && doc.undo() && doc.undo());
+        assert!(!doc.undo());
+        assert_eq!(doc.state().objects.len(), 5);
+    }
+
+    #[test]
+    fn a_roomy_budget_keeps_every_step() {
+        let mut doc = Document::default();
+        for x in 1..=30 {
+            add_undoably(&mut doc, line(f64::from(x)));
+        }
+        let (steps, bytes) = doc.undo_held();
+        assert_eq!(steps, 30);
+        assert!(bytes > 0 && bytes < UndoLimits::default().max_bytes);
+    }
+
+    #[test]
+    fn grouped_changes_still_undo_as_one_after_old_steps_are_dropped() {
+        let mut doc = Document::default();
+        doc.set_undo_limits(UndoLimits {
+            min_steps: 2,
+            max_bytes: 0,
+        });
+        add_undoably(&mut doc, line(1.0));
+        add_undoably(&mut doc, line(2.0));
+        let mark = doc.undo_mark();
+        let before = doc.state().clone();
+        for x in 3..=6 {
+            add_undoably(&mut doc, line(f64::from(x)));
+        }
+        doc.squash_undo(mark, before);
+        assert_eq!(doc.state().objects.len(), 6);
+        assert!(doc.undo());
+        assert_eq!(doc.state().objects.len(), 2);
     }
 
     #[test]

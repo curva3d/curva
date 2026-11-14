@@ -94,6 +94,7 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
         .objects
         .iter()
         .filter(|o| only.is_none_or(|ids| ids.contains(&o.id)))
+        .map(|o| &**o)
         .collect();
 
     // Blocks: the definitions the chosen objects use, nested ones included.
