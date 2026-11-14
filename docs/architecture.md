@@ -262,15 +262,15 @@ Each operation has a primary implementation (solidcore) and can have a second Ru
 |---|---|
 | **M1 — Freeform foundation** | Core, viewport, command framework, `.curva` file, phase F1 commands, history on curves |
 | **M2 — Freeform surfaces and solids** | Phases F2 and F3: surfaces, solids, booleans (live), deformation, analysis, blocks. 3DM import / export |
-| **M3 — Layouts and drafting** | Phase F4: layouts, detail views, Make2D, dimensions, hatches, PDF / DXF. Becomes the shared views-and-sheets core. **Smart object representations** (section 5b) arrive here, with blocks gaining plan symbols and detail levels |
-| **M4 — Architecture** | Specialization 2: levels, walls, slabs, openings, doors, windows, types; live plan and section views; IFC. The Serpentine BIM tool specs carry over. Ships the **built-in object library**: wall and door styles, windows, simple trees and people, each with drawing representations |
+| **M3 — Layouts and drafting** | Phase F4: layouts, detail views, Make2D, dimensions, hatches, PDF / DXF / SVG. Becomes the shared views-and-sheets core. Ships as 0.4.3 (decision 0020) |
+| **M4 — Architecture** | Specialization 2: **smart object representations** (section 5b; moved from M3 by decision 0020), levels, walls, slabs, openings, doors, windows, types; live plan and section views; IFC. The Serpentine BIM tool specs carry over. Ships the **built-in object library**: wall and door styles, windows, simple trees and people, each with drawing representations |
 | **After M4 — Mesh and SubD** | Mesh and SubD objects (section 10d). Not part of the demo |
 | **M5 — Urban** | Specialization 3, with visual scripting as shared core |
 | **M6 — Analysis** | Specialization 4, starting with sun and shadow |
 | **Rendering** | Blender / Cycles bridge, whenever it's useful from M2 on |
 | **Far future — Curva online library and Curva Pro** | Section 10b |
 
-**Designed in from M1, even though it's built later:** the object model must already allow a definition with several representations and placed instances that refer to it. That way M3 doesn't need a rewrite.
+**Designed in from M1, even though it's built later:** the object model must already allow a definition with several representations and placed instances that refer to it. That way M4 doesn't need a rewrite.
 
 ### Milestone 1 — "Freeform foundation" in detail
 
