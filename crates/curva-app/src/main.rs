@@ -39,6 +39,7 @@ mod notices;
 mod panels;
 mod recovery;
 mod settings;
+mod sheets;
 mod theme;
 mod top_bar;
 mod updates;
@@ -47,7 +48,7 @@ mod viewports;
 #[allow(clippy::wildcard_imports)]
 use {
     agent::*, assistant_panel::*, benchmark::*, command_line::*, file_dialogs::*, gumball::*,
-    mouse::*, notices::*, panels::frames::*, settings::*, top_bar::*, viewports::*,
+    mouse::*, notices::*, panels::frames::*, settings::*, sheets::*, top_bar::*, viewports::*,
 };
 
 use curva_commands::{DisplayMode, Kind, Message, Processor, Translations, ViewName, ViewRequest};
@@ -115,6 +116,8 @@ struct Curva {
     processor: Processor,
     /// The system's file dialogs for commands that ask for a file.
     file_dialogs: FileDialogs,
+    /// The layout open in the viewport area, if any.
+    sheets: Sheets,
     text: Translations,
     typed: String,
     highlight: usize,
@@ -226,6 +229,7 @@ impl Curva {
                 processor
             },
             file_dialogs: FileDialogs::default(),
+            sheets: Sheets::default(),
             text: Translations::english(),
             typed: String::new(),
             highlight: 0,
@@ -324,6 +328,7 @@ impl eframe::App for Curva {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.apply_theme(ui.ctx());
         self.serve_file_dialogs(frame);
+        self.follow_space();
         // Opening or starting a model makes a new document, so its undo limits are set here.
         let limits = self.settings.undo_limits();
         if self.doc.undo_limits() != limits {

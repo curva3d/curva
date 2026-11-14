@@ -5,6 +5,7 @@ mod analyze;
 mod arguments;
 mod curves;
 mod files;
+mod layouts;
 mod modify;
 mod organise;
 mod select;
@@ -28,6 +29,7 @@ use curves::{
     weight,
 };
 use files::{import_export, new, open, save, save_as};
+use layouts::{copy_layout, layout};
 use modify::{
     align, array, array_crv, array_linear, array_polar, bend, boolean_difference,
     boolean_intersection, boolean_split, boolean_union, cage_edit, change_degree, copy, delete,
@@ -111,7 +113,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 236] = [
+pub static COMMANDS: [CommandDef; 238] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -475,6 +477,8 @@ pub static COMMANDS: [CommandDef; 236] = [
         import_export::ExportSelected
     ),
     listed!("New", [], false, false, new::New),
+    listed!("Layout", [], false, true, layout::Layout),
+    listed!("CopyLayout", [], false, true, copy_layout::CopyLayout),
     listed!(
         "ZoomExtents",
         ["ze", "zea"],
@@ -804,8 +808,10 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 57] = [
+    const NOTHING_TO_PREVIEW: [&str; 59] = [
         "Import",
+        "Layout",
+        "CopyLayout",
         "ChangeLayer",
         "MatchProperties",
         "Linetype",
@@ -1430,13 +1436,14 @@ mod tests {
                 "CageEdit",
                 "ChamferSrf",
                 "ChamferEdge",
+                "CopyLayout",
                 "CPlane",
                 "Curve"
             ]
         );
         assert_eq!(
             completions("co"),
-            ["Copy", "Cone", "Conic", "Count", "Contour"]
+            ["Copy", "Cone", "Conic", "Count", "Contour", "CopyLayout"]
         );
     }
 

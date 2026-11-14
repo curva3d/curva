@@ -317,7 +317,7 @@ its options here.
 
 | Command | Rhino's steps | Rhino's options | In Curva | Status |
 |---|---|---|---|---|
-| Layout | The New Layout dialog: name, initial detail count (1 to 4; a 4-view layout in first or third angle projection), printer, size, orientation, width and height, units (inches, millimetres, centimetres) | `Name` `InitialDetailCount` `Printer` `Size` `Portrait` `Landscape` `Width` `Height` `Units` | none | missing |
-| CopyLayout | Copies the current layout to a new one (no prompts on the page) | none | none | missing |
+| Layout | The New Layout dialog: name, initial detail count (1 to 4; a 4-view layout in first or third angle projection), printer, size, orientation, width and height, units (inches, millimetres, centimetres) | `Name` `InitialDetailCount` `Printer` `Size` `Portrait` `Landscape` `Width` `Height` `Units` | `Size` `Portrait` `Landscape` (asked at the prompt; renamed in the Layouts panel) | partly |
+| CopyLayout | Copies the current layout to a new one (no prompts on the page) | none | none (not on the command framework yet) | partly |
 | Layouts | Opens the Layouts panel: New Layout, Duplicate Layout, Delete, Move Up, Move Down (or drag), Properties, Print, Import, Search; right-click Set Current, Rename, New Detail | none | none | missing |
 | Detail | Manages details on a layout; the prompt order is not on the page. Add draws the rectangle; Scale asks the length on the layout, then in the model | `Add` `Center` `Projection` `Enable` `FromDetail` `FirstAngle` `ThirdAngle` `Scale` `Lock` `Unlock` `EnablePage` | none | missing |
