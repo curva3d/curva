@@ -438,6 +438,7 @@ impl Curva {
                 self.panes[self.active].display = display;
             }
             ViewRequest::ShowBlocks => self.open_piece(layout::Piece::Blocks),
+            ViewRequest::ShowLayouts => self.open_piece(layout::Piece::Layouts),
             ViewRequest::DraftAnalysis => {
                 let pane = &mut self.panes[self.active];
                 pane.draft = !pane.draft;

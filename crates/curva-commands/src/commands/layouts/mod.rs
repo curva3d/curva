@@ -2,3 +2,4 @@
 
 pub(crate) mod copy_layout;
 pub(crate) mod layout;
+pub(crate) mod layouts_panel;

@@ -306,6 +306,8 @@ pub enum ViewRequest {
     Plan,
     /// Open the Blocks panel.
     ShowBlocks,
+    /// Open the Layouts panel.
+    ShowLayouts,
     /// Show or stop showing draft analysis colours on the last-used viewport.
     DraftAnalysis,
     /// Show or stop showing zebra stripes on the last-used viewport's shaded faces.

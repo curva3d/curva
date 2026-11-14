@@ -339,6 +339,14 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
             pen.rect(4.0, 7.0, 9.0, 8.0);
             pen.line((15.0, 14.0), (18.0, 14.0));
         }
+        // A list of sheets.
+        "layouts" => {
+            pen.rect(3.0, 3.0, 7.0, 5.0);
+            pen.rect(3.0, 10.0, 7.0, 5.0);
+            pen.line((12.0, 5.5), (19.0, 5.5));
+            pen.line((12.0, 12.5), (19.0, 12.5));
+            pen.line((12.0, 18.5), (19.0, 18.5));
+        }
         // Two sheets, one over the other.
         "copylayout" => {
             pen.rect(6.0, 8.0, 14.0, 10.0);

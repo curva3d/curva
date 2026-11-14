@@ -34,11 +34,13 @@ pub enum Piece {
     Settings,
     /// The block definitions (`BlockManager`).
     Blocks,
+    /// The layouts (`Layouts`).
+    Layouts,
 }
 
 impl Piece {
     /// Every piece, in their standard order.
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::CommandTabs,
         Self::Layers,
         Self::Properties,
@@ -47,6 +49,7 @@ impl Piece {
         Self::Display,
         Self::Settings,
         Self::Blocks,
+        Self::Layouts,
     ];
 
     /// Its name's key in the translation file.
@@ -61,6 +64,7 @@ impl Piece {
             Self::Display => "ui.piece.display",
             Self::Settings => "ui.file.settings",
             Self::Blocks => "ui.piece.blocks",
+            Self::Layouts => "ui.piece.layouts",
         }
     }
 }
@@ -229,7 +233,7 @@ impl Default for Layout {
                     [180.0, 64.0],
                 ),
             ],
-            closed: vec![Piece::Settings, Piece::Blocks],
+            closed: vec![Piece::Settings, Piece::Blocks, Piece::Layouts],
             layer_columns: STANDARD_LAYER_COLUMNS,
         }
     }

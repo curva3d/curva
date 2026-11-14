@@ -29,7 +29,7 @@ use curves::{
     weight,
 };
 use files::{import_export, new, open, save, save_as};
-use layouts::{copy_layout, layout};
+use layouts::{copy_layout, layout, layouts_panel};
 use modify::{
     align, array, array_crv, array_linear, array_polar, bend, boolean_difference,
     boolean_intersection, boolean_split, boolean_union, cage_edit, change_degree, copy, delete,
@@ -113,7 +113,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 238] = [
+pub static COMMANDS: [CommandDef; 239] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -479,6 +479,7 @@ pub static COMMANDS: [CommandDef; 238] = [
     listed!("New", [], false, false, new::New),
     listed!("Layout", [], false, true, layout::Layout),
     listed!("CopyLayout", [], false, true, copy_layout::CopyLayout),
+    listed!("Layouts", [], false, false, layouts_panel::Layouts),
     listed!(
         "ZoomExtents",
         ["ze", "zea"],

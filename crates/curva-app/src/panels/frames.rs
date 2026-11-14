@@ -579,6 +579,11 @@ impl Curva {
                                 .auto_shrink([false, false])
                                 .show(ui, |ui| self.blocks_panel(ui));
                         }
+                        layout::Piece::Layouts => {
+                            egui::ScrollArea::both()
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| self.layouts_panel(ui));
+                        }
                     }
                 });
                 // Added after the contents, so these sit above the panel's own controls.
