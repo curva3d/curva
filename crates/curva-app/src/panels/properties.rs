@@ -3,6 +3,81 @@
 use crate::*;
 
 impl Curva {
+    /// A selected detail's view, scale, display mode and lock (spec `layouts.md` §2).
+    fn detail_properties(&mut self, ui: &mut egui::Ui, frame: u64) {
+        let Some((_, detail)) = self.doc.detail_of(frame).map(|(l, d)| (l, d.clone())) else {
+            return;
+        };
+        let say = |key: &'static str| self.text.render(&Message::new(key));
+        ui.label(egui::RichText::new(say("ui.detail")).strong());
+        let mut changed = detail.clone();
+        egui::Grid::new("detail properties").show(ui, |ui| {
+            ui.label(say("ui.detail.projection"));
+            egui::ComboBox::from_id_salt("detail projection")
+                .selected_text(&changed.projection)
+                .show_ui(ui, |ui| {
+                    for key in ["Top", "Front", "Right", "Perspective"] {
+                        ui.selectable_value(&mut changed.projection, key.to_owned(), key);
+                    }
+                });
+            ui.end_row();
+            if changed.projection == "Perspective" {
+                changed.scale = None;
+            } else if changed.scale.is_none() {
+                changed.scale = Some(0.01);
+            }
+            if let Some(scale) = changed.scale {
+                ui.label(say("ui.detail.scale"));
+                egui::ComboBox::from_id_salt("detail scale")
+                    .selected_text(curva_document::layouts::scale_text(scale))
+                    .show_ui(ui, |ui| {
+                        for n in [
+                            1.0, 2.0, 5.0, 10.0, 20.0, 25.0, 50.0, 100.0, 200.0, 250.0, 500.0,
+                            1000.0,
+                        ] {
+                            let value = 1.0 / n;
+                            if ui
+                                .selectable_label(
+                                    (scale - value).abs() < 1e-12,
+                                    curva_document::layouts::scale_text(value),
+                                )
+                                .clicked()
+                            {
+                                changed.scale = Some(value);
+                            }
+                        }
+                        for n in [2.0, 5.0, 10.0] {
+                            if ui
+                                .selectable_label(
+                                    (scale - n).abs() < 1e-12,
+                                    curva_document::layouts::scale_text(n),
+                                )
+                                .clicked()
+                            {
+                                changed.scale = Some(n);
+                            }
+                        }
+                    });
+                ui.end_row();
+            }
+            ui.label(say("ui.detail.display"));
+            egui::ComboBox::from_id_salt("detail display")
+                .selected_text(&changed.display)
+                .show_ui(ui, |ui| {
+                    for mode in ["Wireframe", "Shaded", "Ghosted"] {
+                        ui.selectable_value(&mut changed.display, mode.to_owned(), mode);
+                    }
+                });
+            ui.end_row();
+            ui.label(say("ui.detail.locked"));
+            ui.checkbox(&mut changed.locked, "");
+            ui.end_row();
+        });
+        if changed != detail {
+            self.undoable(|doc| doc.change_detail(frame, |d| *d = changed));
+        }
+    }
+
     pub(crate) fn properties_panel(&mut self, ui: &mut egui::Ui) {
         ui.heading(self.text.render(&Message::new("ui.properties")));
         let selection = self.doc.selection();
@@ -14,6 +89,9 @@ impl Curva {
             "ui.properties.count",
             vec![selection.len().to_string()],
         )));
+        if let [only] = selection.as_slice() {
+            self.detail_properties(ui, *only);
+        }
         if let [only] = selection.as_slice()
             && let Some(object) = self.doc.state().objects.iter().find(|o| o.id == *only)
         {
