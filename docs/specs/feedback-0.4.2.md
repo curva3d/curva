@@ -109,6 +109,12 @@ width**.
 - Widths are kept with the panel layout (`layout.json`), so they survive restarts, and Reset layout
   puts them back.
 - The Name column takes any space left over when the panel is widened.
+- **Prior work checked:** `egui_extras`' `TableBuilder` (MIT OR Apache-2.0, part of egui) has
+  resizable columns, but keeps their widths in egui's own memory where they can't be read back,
+  so they could neither go into `layout.json` nor follow Reset layout; it would also be a new
+  dependency. Curva draws the header and its dividers itself (`panels/layers.rs`), about 60 lines.
+- **Built so:** the panel already scrolls both ways, so columns wider than it are reached by
+  scrolling; right-clicking a layer's name offers Delete, which used to be a button on each row.
 
 ## 7. "Operations" for the commands panel; "Modify" for its tab
 

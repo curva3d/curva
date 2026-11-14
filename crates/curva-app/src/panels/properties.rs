@@ -117,7 +117,7 @@ impl Curva {
         ui.horizontal(|ui| {
             ui.label(self.text.render(&Message::new("ui.properties.width")));
             let id = ui.scope_id().with("object width");
-            if let Some(width) = self.width_choice(ui, id, shown, true) {
+            if let Some(width) = self.width_choice(ui, id, shown, true, 84.0) {
                 self.undoable(|doc| doc.set_print_width(&selection, width));
             }
         });
@@ -136,7 +136,7 @@ impl Curva {
         ui.horizontal(|ui| {
             ui.label(self.text.render(&Message::new("ui.properties.linetype")));
             let id = ui.scope_id().with("object linetype");
-            if let Some(linetype) = self.linetype_choice(ui, id, shown, true) {
+            if let Some(linetype) = self.linetype_choice(ui, id, shown, true, 96.0) {
                 self.undoable(|doc| doc.set_linetype(&selection, linetype));
             }
         });

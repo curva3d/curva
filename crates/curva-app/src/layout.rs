@@ -171,6 +171,20 @@ pub struct Layout {
     /// Pieces closed with their cross, to be brought back from Settings.
     #[serde(default)]
     pub closed: Vec<Piece>,
+    /// The Layers panel's column widths, in points: Name, On, Lock, Colour, Linetype and Print
+    /// width (spec `feedback-0.4.2.md` §6).
+    #[serde(default = "standard_layer_columns")]
+    pub layer_columns: [f32; 6],
+}
+
+/// The Layers panel's columns as they start, and after Reset layout.
+pub const STANDARD_LAYER_COLUMNS: [f32; 6] = [100.0, 26.0, 30.0, 36.0, 84.0, 72.0];
+
+/// The narrowest each of the Layers panel's columns can be made.
+pub const LEAST_LAYER_COLUMNS: [f32; 6] = [60.0, 24.0, 28.0, 32.0, 60.0, 56.0];
+
+fn standard_layer_columns() -> [f32; 6] {
+    STANDARD_LAYER_COLUMNS
 }
 
 impl Default for Layout {
@@ -216,6 +230,7 @@ impl Default for Layout {
                 ),
             ],
             closed: vec![Piece::Settings, Piece::Blocks],
+            layer_columns: STANDARD_LAYER_COLUMNS,
         }
     }
 }
@@ -410,6 +425,7 @@ impl Layout {
         Self {
             places,
             closed: self.closed.clone(),
+            layer_columns: self.layer_columns,
         }
     }
 
@@ -1047,6 +1063,7 @@ mod older {
             super::Layout {
                 places,
                 closed: Vec::new(),
+                layer_columns: super::STANDARD_LAYER_COLUMNS,
             }
             .completed()
         }
