@@ -1,0 +1,38 @@
+//! The Surfaces tab's commands.
+
+pub(crate) mod blend_srf;
+pub(crate) mod dup_border;
+pub(crate) mod dup_edge;
+pub(crate) mod dup_face_border;
+pub(crate) mod edge_srf;
+pub(crate) mod extend_srf;
+pub(crate) mod extract_isocurve;
+pub(crate) mod extract_srf;
+pub(crate) mod extrude_crv;
+pub(crate) mod extrude_crv_along_crv;
+pub(crate) mod extrude_crv_tapered;
+pub(crate) mod extrude_crv_to_point;
+pub(crate) mod extrude_srf;
+pub(crate) mod fillet_srf;
+pub(crate) mod interp_crv_on_srf;
+pub(crate) mod loft;
+pub(crate) mod match_srf;
+pub(crate) mod network_srf;
+pub(crate) mod offset_crv_on_srf;
+pub(crate) mod offset_srf;
+pub(crate) mod patch;
+pub(crate) mod planar_srf;
+pub(crate) mod plane;
+pub(crate) mod project;
+pub(crate) mod pull;
+pub(crate) mod rail_revolve;
+pub(crate) mod rebuild_uv;
+pub(crate) mod revolve;
+pub(crate) mod shrink_trimmed_srf;
+pub(crate) mod split_srf;
+pub(crate) mod srf_pt;
+mod support;
+pub(crate) mod sweep1;
+pub(crate) mod sweep2;
+pub(crate) mod unroll_srf;
+pub(crate) mod untrim;
