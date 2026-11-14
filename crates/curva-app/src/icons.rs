@@ -339,6 +339,24 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
             pen.rect(4.0, 7.0, 9.0, 8.0);
             pen.line((15.0, 14.0), (18.0, 14.0));
         }
+        // A plane seen at an angle, with its arrow.
+        "clippingplane" => {
+            pen.path(&[(3.0, 15.0), (9.0, 6.0), (19.0, 6.0), (13.0, 15.0)], true);
+            pen.line((11.0, 10.5), (11.0, 3.0));
+            pen.line((11.0, 3.0), (9.0, 5.5));
+            pen.line((11.0, 3.0), (13.0, 5.5));
+        }
+        // The plane with a tick: it cuts this view.
+        "enableclippingplane" => {
+            pen.path(&[(2.0, 13.0), (7.0, 6.0), (15.0, 6.0), (10.0, 13.0)], true);
+            pen.path(&[(13.0, 17.0), (15.5, 19.5), (20.0, 14.0)], false);
+        }
+        // The plane crossed out: it no longer cuts this view.
+        "disableclippingplane" => {
+            pen.path(&[(2.0, 13.0), (7.0, 6.0), (15.0, 6.0), (10.0, 13.0)], true);
+            pen.line((14.0, 14.0), (20.0, 20.0));
+            pen.line((20.0, 14.0), (14.0, 20.0));
+        }
         // A frame with a view of the model inside.
         "detail" => {
             pen.rect(3.0, 4.0, 16.0, 14.0);
