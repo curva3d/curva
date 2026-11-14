@@ -26,7 +26,10 @@ fn main() {
     let rounded = plain.blended(&edges, 3.0, false).expect("rounded edges");
     // Moved, so the placement has to be applied too.
     let body = rounded.translated([5.0, 5.0, 5.0]);
-    println!("faces, edges, corners: {:?}", body.counts().expect("counts"));
+    println!(
+        "faces, edges, corners: {:?}",
+        body.counts().expect("counts")
+    );
     timed("is_solid", 50, || {
         assert!(body.is_solid());
     });
