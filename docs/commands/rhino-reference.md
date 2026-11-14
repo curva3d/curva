@@ -307,3 +307,17 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | DupFaceBorder | Faces | none | none | done |
 | TextObject | Text; point; height | `Curves` `Surfaces` `Solids` `Font` | none | partly |
 | DraftAnalysis | Objects | `DraftAngle` `PullDirection` | none | partly |
+
+## Milestone 3 in 0.4.3: layouts and details
+
+Written on 14 November 2026 from the Rhino 8 help pages `commands/layout.htm`, `commands/detail.htm` and
+`commands/layouts.htm` (`panels/layouts.htm` could not be read; `commands/copylayout.htm` is only a redirect,
+so CopyLayout comes from the Layout page). Rhino's Layout is a dialog, not prompts; its fields are listed as
+its options here.
+
+| Command | Rhino's steps | Rhino's options | In Curva | Status |
+|---|---|---|---|---|
+| Layout | The New Layout dialog: name, initial detail count (1 to 4; a 4-view layout in first or third angle projection), printer, size, orientation, width and height, units (inches, millimetres, centimetres) | `Name` `InitialDetailCount` `Printer` `Size` `Portrait` `Landscape` `Width` `Height` `Units` | none | missing |
+| CopyLayout | Copies the current layout to a new one (no prompts on the page) | none | none | missing |
+| Layouts | Opens the Layouts panel: New Layout, Duplicate Layout, Delete, Move Up, Move Down (or drag), Properties, Print, Import, Search; right-click Set Current, Rename, New Detail | none | none | missing |
+| Detail | Manages details on a layout; the prompt order is not on the page. Add draws the rectangle; Scale asks the length on the layout, then in the model | `Add` `Center` `Projection` `Enable` `FromDetail` `FirstAngle` `ThirdAngle` `Scale` `Lock` `Unlock` `EnablePage` | none | missing |
