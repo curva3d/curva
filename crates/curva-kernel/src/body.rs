@@ -49,12 +49,51 @@ fn followed_by(first: &Placement, then: &Placement) -> Placement {
 }
 
 /// A surface or solid: one or more faces joined along their edges.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(try_from = "StoredBody", into = "StoredBody")]
+///
+/// The engine's body is read once (when made, or when a file opens) and shared between copies
+/// behind an `Arc`, so copying a body, as every undo step does, copies no faces, and asking it
+/// something reads nothing again. The native text a file holds is written only when the body is
+/// first saved or compared (`docs/reviews/code-health-2026-11-14.md`, fix 1).
+#[derive(Clone)]
 pub struct Body {
-    /// The faces as made, in the engine's native format.
-    native: String,
+    shared: std::sync::Arc<Shared>,
     placement: Placement,
+}
+
+/// What every copy of a body shares: the engine's body as made, and what is worked out from it
+/// once.
+struct Shared {
+    /// The faces as made, without the placement. Never changed: operations work on a copy.
+    engine: EngineBody,
+    /// The faces in the engine's native text, written when first needed.
+    native: std::sync::OnceLock<String>,
+    /// The faces as the engine's portable record, without the placement, read when first needed.
+    record: std::sync::OnceLock<Record>,
+    /// The faces as made, without the placement, meshed for drawing, when first needed.
+    mesh: std::sync::OnceLock<BodyMesh>,
+    /// The box around the faces as made, without the placement, when first needed.
+    bounds: std::sync::OnceLock<(Point, Point)>,
+    /// The volume and the area of the faces as made, when first needed.
+    volume: std::sync::OnceLock<f64>,
+    area: std::sync::OnceLock<f64>,
+}
+
+impl std::fmt::Debug for Body {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Body")
+            .field("placement", &self.placement)
+            .finish_non_exhaustive()
+    }
+}
+
+impl PartialEq for Body {
+    /// Two bodies are equal when they are placed alike and their faces are the same: at once
+    /// when they share them, else by their native text.
+    fn eq(&self, other: &Self) -> bool {
+        self.placement == other.placement
+            && (std::sync::Arc::ptr_eq(&self.shared, &other.shared)
+                || matches!((self.native(), other.native()), (Ok(a), Ok(b)) if a == b))
+    }
 }
 
 /// A body as a file holds it. Files from 10 and 11 November 2026 hold the portable record
@@ -69,34 +108,47 @@ struct StoredBody {
     placement: Placement,
 }
 
-impl TryFrom<StoredBody> for Body {
-    type Error = String;
-
-    fn try_from(stored: StoredBody) -> Result<Self, String> {
-        let native = match (stored.native, stored.record) {
-            (Some(native), _) => native,
-            (None, Some(record)) => {
-                let (body, _) =
-                    EngineBody::from_record(&record, true).map_err(|e| format!("{e:?}"))?;
-                native_of(&body).map_err(|e| e.0)?
-            }
-            (None, None) => return Err("a body without faces".to_owned()),
+impl<'de> Deserialize<'de> for Body {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let stored = StoredBody::deserialize(deserializer)?;
+        let body = match (stored.native, stored.record) {
+            (Some(native), _) => Self::from_native(native),
+            (None, Some(record)) => EngineBody::from_record(&record, true)
+                .map_err(|e| format!("{e:?}"))
+                .map_err(KernelError)
+                .and_then(|(engine, _)| Self::made(&engine))
+                .map_err(|e| e.0),
+            (None, None) => Err("a body without faces".to_owned()),
         };
-        Ok(Self {
-            native,
-            placement: stored.placement,
-        })
+        let mut body = body.map_err(serde::de::Error::custom)?;
+        body.placement = stored.placement;
+        Ok(body)
     }
 }
 
-impl From<Body> for StoredBody {
-    fn from(body: Body) -> Self {
-        Self {
-            native: Some(body.native),
+impl Serialize for Body {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let native = self.native().map_err(serde::ser::Error::custom)?;
+        StoredBody {
+            native: Some(native.to_owned()),
             record: None,
-            placement: body.placement,
+            placement: self.placement,
         }
+        .serialize(serializer)
     }
+}
+
+/// A measurement kept in `slot`: worked out by `measure` the first time, then read.
+fn measured(
+    slot: &std::sync::OnceLock<f64>,
+    measure: impl FnOnce() -> Result<f64, KernelError>,
+) -> Result<f64, KernelError> {
+    if let Some(value) = slot.get() {
+        return Ok(*value);
+    }
+    let value = measure()?;
+    let _ = slot.set(value);
+    Ok(value)
 }
 
 pub(crate) fn native_of(body: &EngineBody) -> Result<String, KernelError> {
@@ -125,15 +177,33 @@ pub struct BodyMesh {
 
 impl Body {
     /// A body the engine has just made.
+    ///
+    /// It is written to the native text and read back once, here: the engine cannot describe
+    /// some fresh faces (an offset sheet's, found 14 November 2026: "a face surface with no
+    /// NURBS form has no exact record") until its reader has turned them into NURBS. The text
+    /// is kept, so saving writes nothing again.
     pub(crate) fn made(body: &EngineBody) -> Result<Self, KernelError> {
-        Self::from_engine(body)
+        Self::from_native(native_of(body)?).map_err(KernelError)
     }
 
     fn from_engine(body: &EngineBody) -> Result<Self, KernelError> {
-        Ok(Self {
-            native: native_of(body)?,
+        Self::made(body)
+    }
+
+    /// A body the engine has already read from its native text, in place.
+    fn held(engine: EngineBody) -> Self {
+        Self {
+            shared: std::sync::Arc::new(Shared {
+                engine,
+                native: std::sync::OnceLock::new(),
+                record: std::sync::OnceLock::new(),
+                mesh: std::sync::OnceLock::new(),
+                bounds: std::sync::OnceLock::new(),
+                volume: std::sync::OnceLock::new(),
+                area: std::sync::OnceLock::new(),
+            }),
             placement: IN_PLACE,
-        })
+        }
     }
 
     /// The body as the engine holds it, in its place, for operations elsewhere in the kernel.
@@ -141,16 +211,29 @@ impl Body {
         self.engine()
     }
 
-    /// A body from the engine's native text, in place.
-    pub(crate) fn from_native(native: String) -> Self {
-        Self {
-            native,
-            placement: IN_PLACE,
+    /// A body from the engine's native text, in place. The text is read once, here.
+    pub(crate) fn from_native(native: String) -> Result<Self, String> {
+        let engine = EngineBody::from_smb(native.as_bytes().to_vec(), TEXT_FORMAT)
+            .map_err(|e| format!("reading a body failed: {e:?}"))?;
+        let body = Self::held(engine);
+        let _ = body.shared.native.set(native);
+        Ok(body)
+    }
+
+    /// The faces in the engine's native text, as a file holds them; written the first time it
+    /// is asked for, then kept.
+    pub(crate) fn native(&self) -> Result<&str, KernelError> {
+        if self.shared.native.get().is_none() {
+            let _ = self.shared.native.set(native_of(&self.shared.engine)?);
         }
+        Ok(self.shared.native.get().map_or("", String::as_str))
     }
 
     /// The faces in place, as the engine's portable record, for reading their edges.
     pub(crate) fn record(&self) -> Result<Record, KernelError> {
+        if is_in_place(&self.placement) {
+            return self.unplaced_record().cloned();
+        }
         let (record, _) = self
             .engine()?
             .to_record()
@@ -158,18 +241,39 @@ impl Body {
         Ok(record)
     }
 
+    /// The faces as made, without the placement, as the engine's portable record; read the
+    /// first time it is asked for, then kept.
+    fn unplaced_record(&self) -> Result<&Record, KernelError> {
+        if self.shared.record.get().is_none() {
+            let (record, _) = self
+                .shared
+                .engine
+                .to_record()
+                .map_err(|e| failed("describing a body", e))?;
+            let _ = self.shared.record.set(record);
+        }
+        self.shared
+            .record
+            .get()
+            .ok_or_else(|| KernelError("describing a body failed".to_owned()))
+    }
+
     /// The faces as made, without the placement.
     fn unplaced(&self) -> Self {
         Self {
-            native: self.native.clone(),
+            shared: std::sync::Arc::clone(&self.shared),
             placement: IN_PLACE,
         }
     }
 
-    /// The body as the engine holds it, in its place.
+    /// The body as the engine holds it, in its place: a copy of the shared one, which
+    /// operations may change freely.
     fn engine(&self) -> Result<EngineBody, KernelError> {
-        let body = EngineBody::from_smb(self.native.as_bytes().to_vec(), TEXT_FORMAT)
-            .map_err(|e| failed("reading a body", e))?;
+        let body = self
+            .shared
+            .engine
+            .copy()
+            .map_err(|e| failed("copying a body", e))?;
         if !is_in_place(&self.placement) {
             body.transform(&self.placement)
                 .map_err(|e| failed("placing a body", e))?;
@@ -252,7 +356,7 @@ impl Body {
             [origin[0], origin[1], origin[2], 1.0],
         ];
         Self {
-            native: self.native.clone(),
+            shared: std::sync::Arc::clone(&self.shared),
             placement: followed_by(&self.placement, &then),
         }
     }
@@ -288,7 +392,7 @@ impl Body {
     pub fn is_solid(&self) -> bool {
         // Closed means every edge is shared by two faces (a seam counts twice on its own face),
         // which is quick to read; measuring the volume is the fallback.
-        match self.record() {
+        match self.unplaced_record() {
             Ok(record) => {
                 !record.faces.is_empty() && record.edges.iter().all(|edge| edge.uses.len() >= 2)
             }
@@ -299,11 +403,12 @@ impl Body {
     /// The enclosed volume; zero for an open surface. Worked out on the faces as made, then
     /// scaled, which is exact.
     pub fn volume(&self) -> Result<f64, KernelError> {
-        let volume = self
-            .unplaced()
-            .engine()?
-            .volume(MEASURE_ACCURACY)
-            .map_err(|e| failed("measuring volume", e))?;
+        let volume = measured(&self.shared.volume, || {
+            self.shared
+                .engine
+                .volume(MEASURE_ACCURACY)
+                .map_err(|e| failed("measuring volume", e))
+        })?;
         Ok(volume * self.scale().powi(3))
     }
 
@@ -319,16 +424,29 @@ impl Body {
 
     /// The area of all its faces.
     pub fn area(&self) -> Result<f64, KernelError> {
-        let area = self
-            .unplaced()
-            .engine()?
-            .area(MEASURE_ACCURACY)
-            .map_err(|e| failed("measuring area", e))?;
+        let area = measured(&self.shared.area, || {
+            self.shared
+                .engine
+                .area(MEASURE_ACCURACY)
+                .map_err(|e| failed("measuring area", e))
+        })?;
         Ok(area * self.scale().powi(2))
     }
 
     /// The lowest and highest corners of a box around it.
     pub fn bounds(&self) -> Result<(Point, Point), KernelError> {
+        // A move, or a scale or mirror along the axes, keeps the box square to the axes, so the
+        // box as made, placed, is still exact; a turn needs the faces placed and measured again.
+        let m = &self.placement;
+        let square = (0..3).all(|i| (0..3).all(|j| i == j || m[i][j] == 0.0));
+        if square {
+            let (low, high) = self.unplaced_bounds()?;
+            let (a, b) = (self.placed_point(low), self.placed_point(high));
+            return Ok((
+                std::array::from_fn(|k| a[k].min(b[k])),
+                std::array::from_fn(|k| a[k].max(b[k])),
+            ));
+        }
         self.engine()?
             .bounds()
             .map_err(|e| failed("measuring a body", e))
@@ -336,8 +454,8 @@ impl Body {
 
     /// How many faces, edges and corners it has.
     pub fn counts(&self) -> Result<[usize; 3], KernelError> {
-        self.unplaced()
-            .engine()?
+        self.shared
+            .engine
             .counts()
             .map_err(|e| failed("counting faces", e))
     }
@@ -345,32 +463,74 @@ impl Body {
     /// Triangles and edges for drawing, fine enough to look smooth at the body's size. The
     /// faces as made are meshed, then the mesh is placed.
     pub fn mesh(&self) -> Result<BodyMesh, KernelError> {
-        let unplaced = self.unplaced();
-        let (low, high) = unplaced.bounds()?;
-        let record = unplaced.record()?;
-        let size = (0..3)
-            .map(|axis| (high[axis] - low[axis]).powi(2))
-            .sum::<f64>()
-            .sqrt();
-        let (tess, _) = plan(&record, &MeshTolerance::display_of(size), size)
-            .map_err(|e| failed("meshing a body", e))?;
-        let (mesh, _) = tess.evaluate();
-        let kept: Vec<usize> = (0..mesh.edges.len())
-            .filter(|index| !mesh.seams.get(*index).copied().unwrap_or(false))
-            .collect();
-        let point = |v: &solidcore_record::Vec3| self.placed_point([v.x, v.y, v.z]);
-        let direction = |v: &solidcore_record::Vec3| self.placed_direction([v.x, v.y, v.z]);
+        let made = self.unplaced_mesh()?;
+        if is_in_place(&self.placement) {
+            return Ok(made.clone());
+        }
+        let point = |p: &Point| self.placed_point(*p);
+        let direction = |d: &Point| self.placed_direction(*d);
         Ok(BodyMesh {
-            positions: mesh.positions.iter().map(point).collect(),
-            normals: mesh.normals.iter().map(direction).collect(),
-            triangles: mesh.triangles.clone(),
-            edges: kept
+            positions: made.positions.iter().map(point).collect(),
+            normals: made.normals.iter().map(direction).collect(),
+            triangles: made.triangles.clone(),
+            edges: made
+                .edges
                 .iter()
-                .map(|&index| mesh.edges[index].iter().map(point).collect())
+                .map(|run| run.iter().map(point).collect())
                 .collect(),
-            edge_ids: kept,
-            triangle_faces: mesh.tri_face.iter().map(|&face| face as usize).collect(),
+            edge_ids: made.edge_ids.clone(),
+            triangle_faces: made.triangle_faces.clone(),
         })
+    }
+
+    /// The faces as made, without the placement, meshed the first time it is asked for, then
+    /// kept: picking an edge or drawing a moved copy meshes nothing again.
+    fn unplaced_mesh(&self) -> Result<&BodyMesh, KernelError> {
+        if self.shared.mesh.get().is_none() {
+            let (low, high) = self.unplaced_bounds()?;
+            let record = self.unplaced_record()?;
+            let size = (0..3)
+                .map(|axis| (high[axis] - low[axis]).powi(2))
+                .sum::<f64>()
+                .sqrt();
+            let (tess, _) = plan(record, &MeshTolerance::display_of(size), size)
+                .map_err(|e| failed("meshing a body", e))?;
+            let (mesh, _) = tess.evaluate();
+            let kept: Vec<usize> = (0..mesh.edges.len())
+                .filter(|index| !mesh.seams.get(*index).copied().unwrap_or(false))
+                .collect();
+            let point = |v: &solidcore_record::Vec3| [v.x, v.y, v.z];
+            let _ = self.shared.mesh.set(BodyMesh {
+                positions: mesh.positions.iter().map(point).collect(),
+                normals: mesh.normals.iter().map(point).collect(),
+                triangles: mesh.triangles.clone(),
+                edges: kept
+                    .iter()
+                    .map(|&index| mesh.edges[index].iter().map(point).collect())
+                    .collect(),
+                edge_ids: kept,
+                triangle_faces: mesh.tri_face.iter().map(|&face| face as usize).collect(),
+            });
+        }
+        self.shared
+            .mesh
+            .get()
+            .ok_or_else(|| KernelError("meshing a body failed".to_owned()))
+    }
+
+    /// The box around the faces as made, without the placement; measured the first time it is
+    /// asked for, then kept.
+    fn unplaced_bounds(&self) -> Result<(Point, Point), KernelError> {
+        if let Some(bounds) = self.shared.bounds.get() {
+            return Ok(*bounds);
+        }
+        let bounds = self
+            .shared
+            .engine
+            .bounds()
+            .map_err(|e| failed("measuring a body", e))?;
+        let _ = self.shared.bounds.set(bounds);
+        Ok(bounds)
     }
 
     /// The body with the edges numbered `edges` (as in [`BodyMesh::edge_ids`]) rounded to
@@ -401,8 +561,8 @@ impl Body {
         )
         .map_err(|e| failed(if chamfer { "chamfering" } else { "filleting" }, e))?;
         Ok(Self {
-            native: native_of(&unplaced)?,
             placement: self.placement,
+            ..Self::made(&unplaced)?
         })
     }
 
@@ -417,8 +577,8 @@ impl Body {
         solidcore_ops::shell(&unplaced, &order, open, -thickness.abs())
             .map_err(|e| failed("shelling", e))?;
         Ok(Self {
-            native: native_of(&unplaced)?,
             placement: self.placement,
+            ..Self::made(&unplaced)?
         })
     }
 

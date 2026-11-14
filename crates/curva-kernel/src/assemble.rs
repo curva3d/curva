@@ -2,7 +2,7 @@
 //! some faces of a body out on their own, and finding the edges only one face uses.
 
 use crate::KernelError;
-use crate::body::{Body, failed, native_of};
+use crate::body::{Body, failed};
 use solidcore_ops::Body as EngineBody;
 use solidcore_record::brep::{Brep as Record, Loop, Region, Shell};
 
@@ -112,7 +112,7 @@ impl Body {
         let body = engine_body(&merged(&records)?)?;
         let (sewn, _) = solidcore_ops::stitch::stitch(body, SEW_TOLERANCE)
             .map_err(|e| failed("sewing faces", e))?;
-        Ok(Body::from_native(native_of(&sewn)?))
+        Body::made(&sewn)
     }
 
     /// Only the faces numbered `keep` (as in [`crate::BodyMesh::triangle_faces`]), as a surface
@@ -157,7 +157,7 @@ impl Body {
         let (_, order) = engine.to_record().map_err(|e| failed("reading faces", e))?;
         let merged = solidcore_ops::stitch::merge_faces(engine, &order, &[])
             .map_err(|e| failed("merging faces", e))?;
-        Ok(Body::from_native(native_of(&merged)?))
+        Body::made(&merged)
     }
 }
 
