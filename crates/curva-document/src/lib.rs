@@ -17,6 +17,7 @@ mod layers;
 mod live;
 mod migrate;
 pub use live::{LiveBoolean, LiveHow};
+pub mod layouts;
 mod organise;
 mod shape;
 pub mod units;
@@ -65,6 +66,8 @@ pub struct Object {
     pub linetype: Linetype,
     /// Key–value text kept with it (`SetUserText`).
     pub user_text: std::collections::BTreeMap<String, String>,
+    /// The layout whose sheet it is drawn on; `None` for the model (spec `layouts.md` §1).
+    pub space: Option<u64>,
 }
 
 impl Object {
@@ -108,6 +111,8 @@ struct StoredObject {
     linetype: Linetype,
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     user_text: std::collections::BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    space: Option<u64>,
 }
 
 impl TryFrom<StoredObject> for Object {
@@ -134,6 +139,7 @@ impl TryFrom<StoredObject> for Object {
             input_of: stored.input_of,
             linetype: stored.linetype,
             user_text: stored.user_text,
+            space: stored.space,
         })
     }
 }
@@ -161,6 +167,7 @@ impl From<Object> for StoredObject {
             input_of: object.input_of,
             linetype: object.linetype,
             user_text: object.user_text,
+            space: object.space,
         }
     }
 }
@@ -375,6 +382,16 @@ pub struct State {
     /// How feet and inches are shown; files leave out the usual display.
     #[serde(default, skip_serializing_if = "units::LengthDisplay::is_standard")]
     pub length_display: units::LengthDisplay,
+    /// The paper sheets, in their order (spec `layouts.md`); files leave out an empty list.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layouts: Vec<layouts::Layout>,
+    /// The id the next layout receives.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub next_layout: u64,
+}
+
+fn is_zero(value: &u64) -> bool {
+    *value == 0
 }
 
 impl State {
@@ -397,6 +414,8 @@ impl State {
             next_block,
             block_edit,
             length_display,
+            layouts,
+            next_layout,
         } = self;
         objects.len() == other.objects.len()
             && objects
@@ -413,6 +432,8 @@ impl State {
             && *next_block == other.next_block
             && *block_edit == other.block_edit
             && *length_display == other.length_display
+            && *layouts == other.layouts
+            && *next_layout == other.next_layout
     }
 }
 
@@ -482,6 +503,8 @@ impl Default for State {
             next_block: 0,
             block_edit: None,
             length_display: units::LengthDisplay::default(),
+            layouts: Vec::new(),
+            next_layout: 0,
         }
     }
 }
@@ -614,6 +637,8 @@ pub struct Document {
     edge_selection: Vec<EdgePick>,
     /// Faces of bodies picked for a command. Not saved, and not part of undo.
     face_selection: Vec<FacePick>,
+    /// The layout being worked on, or `None` for the model. Not saved, and not part of undo.
+    space: Option<u64>,
 }
 
 impl Document {
@@ -691,6 +716,7 @@ impl Document {
             input_of: None,
             linetype: Linetype::ByLayer,
             user_text: std::collections::BTreeMap::new(),
+            space: self.space,
         }));
         id
     }
@@ -731,7 +757,9 @@ impl Document {
         self.state
             .objects
             .iter()
-            .filter(|object| !object.hidden && !object.locked && open(object.layer))
+            .filter(|object| {
+                !object.hidden && !object.locked && object.space == self.space && open(object.layer)
+            })
             .map(|object| object.id)
             .collect()
     }

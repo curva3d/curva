@@ -198,8 +198,13 @@ impl Curva {
         // A changed model is drawn again, reusing what unchanged objects drew as; a changed
         // selection only recolours.
         if !model_same {
-            self.outlines = Outlines::of_cached(self.doc.state(), &mut self.drawing.meshes)
-                .inked(theme::current().viewport.ink);
+            self.outlines =
+                Outlines::of_space(self.doc.state(), self.doc.space(), &mut self.drawing.meshes)
+                    .inked(if self.sheets.open.is_some() {
+                        PAPER_INK
+                    } else {
+                        theme::current().viewport.ink
+                    });
         }
         if !model_same || !selection_same {
             self.scene = Arc::new(object_lines(&self.outlines, &selection));
@@ -433,6 +438,7 @@ impl Curva {
                 self.panes[self.active].display = display;
             }
             ViewRequest::ShowBlocks => self.open_piece(layout::Piece::Blocks),
+            ViewRequest::ShowLayouts => self.open_piece(layout::Piece::Layouts),
             ViewRequest::DraftAnalysis => {
                 let pane = &mut self.panes[self.active];
                 pane.draft = !pane.draft;
@@ -524,9 +530,18 @@ impl Curva {
         if !wants(Kind::Faces) && !self.doc.face_selection().is_empty() {
             self.doc.select_faces(&[]);
         }
+        // The tabs for the model and the layouts run along the bottom.
+        let row = egui::Rect::from_min_max(egui::pos2(area.min.x, area.max.y - TAB_ROW), area.max);
+        let area = egui::Rect::from_min_max(area.min, egui::pos2(area.max.x, row.min.y));
+        let reach = egui::Rect::from_min_max(
+            reach.min,
+            egui::pos2(reach.max.x, reach.max.y.min(row.min.y)),
+        );
+        self.sheet_tabs(ui, row);
         let mut shown = Vec::new();
-        for (pane, rect) in pane_rects(area, self.maximised) {
-            let rect = reaching(rect, area, reach);
+        for (pane, visible) in pane_rects(area, self.maximised) {
+            let rect = reaching(visible, area, reach);
+            self.frame_sheet(pane, rect, visible);
             let response = ui.allocate_rect(rect, egui::Sense::click_and_drag());
             self.display_menu(ui, pane, rect);
             self.handle_mouse(ui, pane, &response, pane_size(rect));
@@ -647,10 +662,11 @@ impl Curva {
                 draft: self.panes[*pane].draft,
                 area: *rect,
                 frame: ui.ctx().cumulative_frame_nr(),
-                background: theme::current().window,
-                background_low: theme::current().window_low,
+                background: self.pane_background(*pane).0,
+                background_low: self.pane_background(*pane).1,
             };
             ui.painter().add(egui_wgpu_callback(*rect, drawing));
+            self.paint_desk(ui, *pane, *rect, size);
             self.paint_frame(ui, *pane, *rect);
             self.paint_points(ui, *pane, *rect, size, &previewed);
             self.paint_grips(ui, *pane, *rect, size);

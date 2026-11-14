@@ -421,6 +421,13 @@ impl Camera {
         self.distance = diagonal * self.focal() * 0.75;
     }
 
+    /// Aims a flat view at `centre` so exactly `half_height` model units show above and below it,
+    /// as a sheet of paper is framed (spec `layouts.md` §1).
+    pub fn show_exactly(&mut self, centre: Point, half_height: f64) {
+        self.target = centre;
+        self.distance = (half_height * self.focal()).clamp(0.01, 1e8);
+    }
+
     /// This camera saved under a name, as seen from the standard view `kind`.
     #[must_use]
     pub fn saved(&self, name: String, kind: StandardView) -> SavedView {

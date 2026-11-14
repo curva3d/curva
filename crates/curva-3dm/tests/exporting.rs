@@ -6,6 +6,7 @@ use curva_kernel::{Body, Curve};
 
 fn object(id: u64, shape: Shape, layer: u64) -> Object {
     Object {
+        space: None,
         id,
         shape,
         layer,
