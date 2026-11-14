@@ -122,6 +122,9 @@ pub fn annotation_curves(annotation: &crate::annotation::Annotation) -> Vec<Curv
                 .into_iter()
                 .collect()
         }
+        crate::annotation::Annotation::Leader(l) => Curve::polyline(l.points.clone(), false)
+            .into_iter()
+            .collect(),
     }
 }
 
@@ -196,6 +199,7 @@ pub fn annotation_drawing(
             let shown = format!("{:.*}°", style.linear_resolution(), a.value());
             a.parts(&style, scale, typed(&a.text, shown))
         }
+        Annotation::Leader(l) => l.parts(&style, scale, l.content.clone()),
     };
     let mut drawing = text_drawing(&parts.text);
     for (a, b) in &parts.lines {

@@ -396,6 +396,13 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
             pen.line((3.0, 19.0), (15.0, 4.0));
             pen.arc((-9.0, 7.0, 24.0, 24.0), 0.0, 51.0);
         }
+        // An arrow up to a bend, then on to lines of a note.
+        "leader" => {
+            pen.path(&[(3.0, 19.0), (9.0, 8.0), (12.0, 8.0)], false);
+            pen.path(&[(3.0, 15.5), (3.0, 19.0), (6.0, 17.5)], false);
+            pen.line((14.0, 6.0), (21.0, 6.0));
+            pen.line((14.0, 10.0), (19.0, 10.0));
+        }
         // A dimension with its text: the look a style sets.
         "annotationstyle" => {
             pen.line((3.0, 14.0), (19.0, 14.0));

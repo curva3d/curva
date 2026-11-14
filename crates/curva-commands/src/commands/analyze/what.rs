@@ -41,6 +41,9 @@ impl Recipe for What {
                 Shape::Annotation(curva_document::annotation::Annotation::Angle(a)) => {
                     format!("angle dimension of {:.2}°", a.value())
                 }
+                Shape::Annotation(curva_document::annotation::Annotation::Leader(l)) => {
+                    format!("leader \"{}\"", l.content.replace('\n', " "))
+                }
                 Shape::Instance(i) => {
                     let name = cx
                         .doc

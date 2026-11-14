@@ -127,6 +127,31 @@ impl Curva {
         }
     }
 
+    /// A selected leader's note and landing, changed in place (spec `annotation.md` §4); each
+    /// change is one undo step.
+    fn leader_properties(
+        &mut self,
+        ui: &mut egui::Ui,
+        id: u64,
+        leader: &curva_document::annotation::Leader,
+    ) {
+        use curva_document::annotation::Annotation;
+        let say = |key: &'static str| self.text.render(&Message::new(key));
+        ui.label(egui::RichText::new(say("ui.leader")).strong());
+        let mut changed = leader.clone();
+        ui.add(
+            egui::TextEdit::multiline(&mut changed.content)
+                .desired_rows(2)
+                .desired_width(f32::INFINITY),
+        );
+        ui.checkbox(&mut changed.landing, say("ui.leader.landing"));
+        if changed != *leader && !changed.content.trim().is_empty() {
+            self.undoable(|doc| {
+                doc.replace_shape(id, Shape::Annotation(Annotation::Leader(changed)));
+            });
+        }
+    }
+
     /// A selected dimension's value and its text, which can replace the value with typed text
     /// where `<>` stands for it, as in Rhino (spec `annotation.md` §3).
     fn dimension_properties(
@@ -136,10 +161,14 @@ impl Curva {
         dimension: &curva_document::annotation::Annotation,
     ) {
         use curva_document::annotation::Annotation;
+        if let Annotation::Leader(leader) = dimension {
+            self.leader_properties(ui, id, leader);
+            return;
+        }
         let say = |key: &'static str| self.text.render(&Message::new(key));
         ui.label(egui::RichText::new(say("ui.dimension")).strong());
         let value = match dimension {
-            Annotation::Text(_) => return,
+            Annotation::Text(_) | Annotation::Leader(_) => return,
             Annotation::Dimension(d) => self.doc.length_text(d.value()),
             Annotation::Radial(r) => {
                 let mark = if r.diameter { "Ø" } else { "R" };

@@ -377,3 +377,14 @@ measured value.
 | DimRecenterText | Picked dimensions' text goes back to its default place | none | none | missing |
 | Centermark | A cross, or cross and centre lines, at a curve's centre | `Style` | none | missing |
 | SetDimensionLayer | Whether dimensions go on the current layer or a given one | `UseDimensionLayer` `DimensionLayer` `List` `Reset` | none | missing |
+
+### Leaders and dots
+
+Written on 14 November 2026 from `commands/leader.htm` and `commands/dot.htm`. Rhino's Leader has no command-line
+options; its settings are in the Properties panel, listed here as its options.
+
+| Command | Rhino's steps | Rhino's options | In Curva | Status |
+|---|---|---|---|---|
+| Leader | The arrow's point; the next points; Enter ends; the text in a dialog | `Style` `Height` `Mask` `Frame` `Font` `TextAlignment` (Left, Center, Right, Auto) `VerticalAlignment` `Bold` `Italic` `Underline` `TextField` `Arrowhead` `ArrowSize` `CurveType` (None, Polyline, Spline) `TextOrientation` (Horizontal, Aligned) `Landing` | `Landing` as a command option and in Properties; the text typed at the command line (`\n` for a new line), with fields; the current annotation style; Auto alignment; polyline only | partly |
+| Dot | The text; the location. Always in front, the same size on screen, its colour from the layer or object; double-click to edit | `Font` `Height` `DisplayText` `SecondaryText` | none | missing |
+| ConvertDots | Dots to convert | `DeleteInput` `Output` (Point, Text) `TextHeight` `HorizontalAlign` `VerticalAlign` | none | missing |

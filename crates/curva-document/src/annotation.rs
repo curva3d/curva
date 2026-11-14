@@ -17,6 +17,8 @@ pub enum Annotation {
     Radial(RadialDimension),
     /// An angle dimension.
     Angle(AngleDimension),
+    /// A leader: an arrow and line to a note (spec `annotation.md` §4).
+    Leader(Leader),
 }
 
 impl Annotation {
@@ -28,6 +30,7 @@ impl Annotation {
             Self::Dimension(d) => Self::Dimension(d.translated(by)),
             Self::Radial(r) => Self::Radial(r.transformed(&|p| plus(p, by, 1.0), &|d| d)),
             Self::Angle(a) => Self::Angle(a.transformed(&|p| plus(p, by, 1.0), &|d| d)),
+            Self::Leader(l) => Self::Leader(l.transformed(&|p| plus(p, by, 1.0), &|d| d)),
         }
     }
 
@@ -42,6 +45,7 @@ impl Annotation {
             Self::Dimension(d) => Self::Dimension(d.mapped(change)),
             Self::Radial(r) => Self::Radial(r.transformed(&point, &direction)),
             Self::Angle(a) => Self::Angle(a.transformed(&point, &direction)),
+            Self::Leader(l) => Self::Leader(l.transformed(&point, &direction)),
         }
     }
 
@@ -61,6 +65,7 @@ impl Annotation {
             Self::Dimension(d) => Self::Dimension(d.placed(m)),
             Self::Radial(r) => Self::Radial(r.transformed(&point, &direction)),
             Self::Angle(a) => Self::Angle(a.transformed(&point, &direction)),
+            Self::Leader(l) => Self::Leader(l.transformed(&point, &direction)),
         }
     }
 
@@ -72,6 +77,7 @@ impl Annotation {
             Self::Dimension(d) => d.style,
             Self::Radial(r) => r.style,
             Self::Angle(a) => a.style,
+            Self::Leader(l) => l.style,
         }
     }
 
@@ -79,7 +85,7 @@ impl Annotation {
     #[must_use]
     pub fn dimension_text(&self) -> Option<&Option<String>> {
         match self {
-            Self::Text(_) => None,
+            Self::Text(_) | Self::Leader(_) => None,
             Self::Dimension(d) => Some(&d.text),
             Self::Radial(r) => Some(&r.text),
             Self::Angle(a) => Some(&a.text),
@@ -91,7 +97,7 @@ impl Annotation {
     pub fn with_dimension_text(&self, text: Option<String>) -> Self {
         let mut changed = self.clone();
         match &mut changed {
-            Self::Text(_) => {}
+            Self::Text(_) | Self::Leader(_) => {}
             Self::Dimension(d) => d.text = text,
             Self::Radial(r) => r.text = text,
             Self::Angle(a) => a.text = text,
@@ -419,6 +425,95 @@ pub struct Dimension {
     /// Typed text in place of the value; `<>` in it stands for the value, as in Rhino.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
+}
+
+/// A leader (Rhino's Leader): an arrowhead at its first point, a polyline through the rest, and
+/// its note beside the last point, a style's text gap away. The note is text, so it takes fields.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Leader {
+    /// The arrow's tip, then each point the line passes through; the note is at the last.
+    pub points: Vec<Point>,
+    /// The note; a new line starts a new line of text.
+    pub content: String,
+    /// The plane it lies on: its X direction, which the note reads along.
+    pub x: Point,
+    /// The plane's Y direction.
+    pub y: Point,
+    /// Whether a short level line runs from the last point to the note (Rhino's Landing).
+    #[serde(default)]
+    pub landing: bool,
+    /// The annotation style it takes its looks from, by id.
+    #[serde(default)]
+    pub style: u64,
+}
+
+impl Leader {
+    fn transformed(
+        &self,
+        point: &dyn Fn(Point) -> Point,
+        direction: &dyn Fn(Point) -> Point,
+    ) -> Self {
+        Self {
+            points: self.points.iter().map(|p| point(*p)).collect(),
+            x: direction(self.x),
+            y: direction(self.y),
+            ..self.clone()
+        }
+    }
+
+    /// Its line, arrowhead and note, with sizes from `style` scaled by `scale`; `shown` is the
+    /// note with its fields worked out.
+    #[must_use]
+    pub fn parts(&self, style: &AnnotationStyle, scale: f64, shown: String) -> DimensionParts {
+        let arrow = style.arrow_size() * scale;
+        let normal = cross(self.x, self.y);
+        let mut lines: Vec<(Point, Point)> = self.points.windows(2).map(|w| (w[0], w[1])).collect();
+        let mut arrows = Vec::new();
+        if let [tip, next, ..] = self.points[..] {
+            let back = unit(std::array::from_fn(|i| next[i] - tip[i]));
+            let across = unit(cross(normal, back));
+            let base = plus(tip, back, arrow);
+            arrows.push([
+                tip,
+                plus(base, across, arrow / 6.0),
+                plus(base, across, -arrow / 6.0),
+            ]);
+        }
+        let (last, before) = match self.points[..] {
+            [.., before, last] => (last, before),
+            [only] => (only, only),
+            [] => ([0.0; 3], [0.0; 3]),
+        };
+        // The note reads away from the line, as Rhino's Auto alignment does.
+        let leftward = dot(std::array::from_fn(|i| last[i] - before[i]), self.x) < 0.0;
+        let side = if leftward { -1.0 } else { 1.0 };
+        let mut end = last;
+        if self.landing {
+            end = plus(last, self.x, side * arrow);
+            lines.push((last, end));
+        }
+        let gap = style.text_gap() * scale;
+        let height = style.text_height * scale;
+        let text = Text {
+            content: shown,
+            origin: plus(plus(end, self.x, side * gap), self.y, -height / 2.0),
+            x: self.x,
+            y: self.y,
+            height,
+            font: style.font.clone(),
+            align: if leftward {
+                TextAlign::Right
+            } else {
+                TextAlign::Left
+            },
+            style: self.style,
+        };
+        DimensionParts {
+            lines,
+            arrows,
+            text,
+        }
+    }
 }
 
 /// What a dimension draws, where it lies.

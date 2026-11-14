@@ -183,7 +183,10 @@ fn has_fields(shape: &Shape) -> bool {
         Shape::Annotation(curva_document::annotation::Annotation::Text(text)) => {
             text.content.contains("%<")
         }
-        Shape::Annotation(curva_document::annotation::Annotation::Dimension(_)) => true,
+        Shape::Annotation(curva_document::annotation::Annotation::Leader(leader)) => {
+            leader.content.contains("%<")
+        }
+        Shape::Annotation(_) => true,
         _ => false,
     }
 }
@@ -195,16 +198,19 @@ fn shown_annotation(
     space: Option<u64>,
     fields: &curva_document::fields::FieldContext,
 ) -> curva_document::annotation::Annotation {
-    let curva_document::annotation::Annotation::Text(text) = annotation else {
-        return annotation.clone();
-    };
-    if !text.content.contains("%<") {
-        return annotation.clone();
+    use curva_document::annotation::{Annotation, Leader, Text};
+    let resolve = |content: &str| curva_document::fields::resolve(content, state, space, fields);
+    match annotation {
+        Annotation::Text(text) if text.content.contains("%<") => Annotation::Text(Text {
+            content: resolve(&text.content),
+            ..text.clone()
+        }),
+        Annotation::Leader(leader) if leader.content.contains("%<") => Annotation::Leader(Leader {
+            content: resolve(&leader.content),
+            ..leader.clone()
+        }),
+        _ => annotation.clone(),
     }
-    curva_document::annotation::Annotation::Text(curva_document::annotation::Text {
-        content: curva_document::fields::resolve(&text.content, state, space, fields),
-        ..text.clone()
-    })
 }
 
 /// Meshes of bodies already worked out, so a body is meshed again only when it changes.
