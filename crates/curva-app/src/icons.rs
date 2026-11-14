@@ -402,6 +402,13 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
             pen.line((8.0, 10.5), (14.0, 10.5));
             pen.dot(11.0, 19.0);
         }
+        // A square filled with slanted lines.
+        "hatch" => {
+            pen.path(&[(3.0, 3.0), (19.0, 3.0), (19.0, 19.0), (3.0, 19.0)], true);
+            pen.line((3.0, 11.0), (11.0, 3.0));
+            pen.line((3.0, 19.0), (19.0, 3.0));
+            pen.line((11.0, 19.0), (19.0, 11.0));
+        }
         // An arrow up to a bend, then on to lines of a note.
         "leader" => {
             pen.path(&[(3.0, 19.0), (9.0, 8.0), (12.0, 8.0)], false);

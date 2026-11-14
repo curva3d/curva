@@ -3,6 +3,7 @@
 
 pub(crate) mod dimension;
 pub(crate) mod dot;
+pub(crate) mod hatch;
 pub(crate) mod leader;
 pub(crate) mod radial;
 pub(crate) mod styles;

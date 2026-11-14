@@ -388,3 +388,16 @@ options; its settings are in the Properties panel, listed here as its options.
 | Leader | The arrow's point; the next points; Enter ends; the text in a dialog | `Style` `Height` `Mask` `Frame` `Font` `TextAlignment` (Left, Center, Right, Auto) `VerticalAlignment` `Bold` `Italic` `Underline` `TextField` `Arrowhead` `ArrowSize` `CurveType` (None, Polyline, Spline) `TextOrientation` (Horizontal, Aligned) `Landing` | `Landing` as a command option and in Properties; the text typed at the command line (`\n` for a new line), with fields; the current annotation style; Auto alignment; polyline only | partly |
 | Dot | The text; the location. Always in front, the same size on screen, its colour from the layer or object; double-click to edit | `Font` `Height` `DisplayText` `SecondaryText` | `Height` (points on screen); text typed at the command line (`\n` for a new line); text, secondary text and height in Properties. Not yet: fonts, double-click to edit, showing in detail views | partly |
 | ConvertDots | Dots to convert | `DeleteInput` `Output` (Point, Text) `TextHeight` `HorizontalAlign` `VerticalAlign` | none | missing |
+
+### Hatches
+
+Written on 14 November 2026 from `commands/hatch.htm` and `user_interface/hatch-fill-styles.htm`. The Hatch Patterns
+page (`documentproperties/hatchpatterns.htm`) refused to load (HTTP 403), so Rhino's shipped pattern list is not
+read; Curva ships Solid, Hatch1 to Hatch3, Dash, Grid, Grid60, Plus and Squares, and ANSI31 to ANSI38. Rhino sets the
+pattern, scale and rotation in a dialog; Curva takes them as command options.
+
+| Command | Rhino's steps | Rhino's options | In Curva | Status |
+|---|---|---|---|---|
+| Hatch | Closed planar curves, or with `Boundary=Yes` curves and clicks inside the regions they make; then the dialog: pattern, base point, rotation, scale, background, display colour, show boundary, fill style (solid; linear or radial gradients, reflected or wrapped, with repeat and colour stops) | `Boundary` `CombineRegions` `AllRegions` | `Pattern` `Scale` `Rotation` `Boundary` (regions always combined); curves inside others are holes; the pattern starts at the world origin; pattern, scale and rotation in Properties; resizing keeps the pattern's size, turning turns it. Not yet: gradients, background, base point, pattern dots, `.pat` import, boundary following its curves | partly |
+| HatchBase | Changes the base point of hatches | none | none | missing |
+| HatchScale | Scales hatch patterns in model viewports | `Enabled` `Disabled` `Toggle` | none | missing |

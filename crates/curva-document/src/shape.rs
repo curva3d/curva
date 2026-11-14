@@ -126,6 +126,7 @@ pub fn annotation_curves(annotation: &crate::annotation::Annotation) -> Vec<Curv
             .into_iter()
             .collect(),
         crate::annotation::Annotation::Dot(d) => vec![Curve::Point { at: d.at }],
+        crate::annotation::Annotation::Hatch(h) => h.loops.clone(),
     }
 }
 
@@ -163,6 +164,7 @@ pub fn annotation_drawing(
                 fills: Vec::new(),
             };
         }
+        Annotation::Hatch(h) => return hatch_drawing(h, state, space),
         _ => {}
     }
     let styles = if state.annotation_styles.is_empty() {
@@ -197,7 +199,9 @@ pub fn annotation_drawing(
         None => shown,
     };
     let parts = match annotation {
-        Annotation::Text(_) | Annotation::Dot(_) => return AnnotationDrawing::default(),
+        Annotation::Text(_) | Annotation::Dot(_) | Annotation::Hatch(_) => {
+            return AnnotationDrawing::default();
+        }
         Annotation::Dimension(d) => d.parts(&style, scale, typed(&d.text, length(d.value()))),
         Annotation::Radial(r) => {
             let mark = if r.diameter { "Ø" } else { "R" };
@@ -221,6 +225,40 @@ pub fn annotation_drawing(
             drawing.lines.push(head.clone());
             drawing.fills.push(vec![head]);
         }
+    }
+    drawing
+}
+
+/// What a hatch draws: its outlines, and its pattern's lines clipped to them, or the outlines
+/// filled for a solid pattern. Pattern sizes are millimetres, taken to the model's unit, or to
+/// the paper's on a layout. A pattern no longer on offer draws solid.
+fn hatch_drawing(
+    hatch: &crate::annotation::Hatch,
+    state: &crate::State,
+    space: Option<u64>,
+) -> AnnotationDrawing {
+    let millimetres = space
+        .and_then(|id| state.layouts.iter().find(|l| l.id == id))
+        .map_or_else(|| state.unit.millimetres(), |l| l.unit.millimetres());
+    let pattern = state
+        .patterns()
+        .into_iter()
+        .find(|p| p.name.eq_ignore_ascii_case(&hatch.pattern));
+    let mut drawing = AnnotationDrawing {
+        lines: hatch.loops.clone(),
+        fills: Vec::new(),
+    };
+    match pattern {
+        Some(pattern) if !pattern.is_solid() => {
+            // A pattern's dots (zero-length dashes) are left out for now: drawn as points they
+            // would be marked as point objects.
+            for (a, b) in hatch.pieces(&pattern, 1.0 / millimetres) {
+                if let Ok(piece) = Curve::line(a, b) {
+                    drawing.lines.push(piece);
+                }
+            }
+        }
+        _ => drawing.fills.push(hatch.loops.clone()),
     }
     drawing
 }

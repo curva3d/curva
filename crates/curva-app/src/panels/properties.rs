@@ -182,6 +182,50 @@ impl Curva {
         }
     }
 
+    /// A selected hatch's pattern, scale and rotation, as Rhino's Hatch properties; each change
+    /// is one undo step.
+    fn hatch_properties(
+        &mut self,
+        ui: &mut egui::Ui,
+        id: u64,
+        hatch: &curva_document::annotation::Hatch,
+    ) {
+        use curva_document::annotation::Annotation;
+        let say = |key: &'static str| self.text.render(&Message::new(key));
+        ui.label(egui::RichText::new(say("ui.hatch")).strong());
+        let mut changed = hatch.clone();
+        let patterns = self.doc.state().patterns();
+        egui::ComboBox::from_id_salt(("hatch pattern", id))
+            .selected_text(&changed.pattern)
+            .show_ui(ui, |ui| {
+                for pattern in &patterns {
+                    ui.selectable_value(&mut changed.pattern, pattern.name.clone(), &pattern.name)
+                        .on_hover_text(&pattern.description);
+                }
+            });
+        ui.horizontal(|ui| {
+            ui.label(say("ui.hatch.scale"));
+            ui.add(
+                egui::DragValue::new(&mut changed.scale)
+                    .range(1e-6..=1e6)
+                    .speed(0.01 * hatch.scale),
+            );
+        });
+        let mut degrees = changed.rotation.to_degrees();
+        ui.horizontal(|ui| {
+            ui.label(say("ui.hatch.rotation"));
+            ui.add(egui::DragValue::new(&mut degrees).speed(1.0).suffix("°"));
+        });
+        if (degrees - hatch.rotation.to_degrees()).abs() > 1e-9 {
+            changed.rotation = degrees.to_radians();
+        }
+        if changed != *hatch {
+            self.undoable(|doc| {
+                doc.replace_shape(id, Shape::Annotation(Annotation::Hatch(changed)));
+            });
+        }
+    }
+
     /// A selected dimension's value and its text, which can replace the value with typed text
     /// where `<>` stands for it, as in Rhino (spec `annotation.md` §3).
     fn dimension_properties(
@@ -194,12 +238,18 @@ impl Curva {
         match dimension {
             Annotation::Leader(leader) => return self.leader_properties(ui, id, leader),
             Annotation::Dot(dot) => return self.dot_properties(ui, id, dot),
+            Annotation::Hatch(hatch) => return self.hatch_properties(ui, id, hatch),
             _ => {}
         }
         let say = |key: &'static str| self.text.render(&Message::new(key));
         ui.label(egui::RichText::new(say("ui.dimension")).strong());
         let value = match dimension {
-            Annotation::Text(_) | Annotation::Leader(_) | Annotation::Dot(_) => return,
+            Annotation::Text(_)
+            | Annotation::Leader(_)
+            | Annotation::Dot(_)
+            | Annotation::Hatch(_) => {
+                return;
+            }
             Annotation::Dimension(d) => self.doc.length_text(d.value()),
             Annotation::Radial(r) => {
                 let mark = if r.diameter { "Ø" } else { "R" };

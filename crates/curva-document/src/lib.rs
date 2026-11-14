@@ -20,6 +20,7 @@ pub use live::{LiveBoolean, LiveHow};
 pub mod annotation;
 pub mod clipping;
 pub mod fields;
+pub mod hatch;
 pub mod layouts;
 mod organise;
 pub mod shape;
@@ -410,6 +411,29 @@ pub struct State {
     /// The annotation style new annotation takes, by id.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub current_annotation_style: u64,
+    /// Hatch patterns the document adds to the built-in ones, as loaded from `.pat` files; a
+    /// pattern of a built-in's name takes its place.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hatch_patterns: Vec<hatch::Pattern>,
+}
+
+impl State {
+    /// The hatch patterns on offer: the built-in ones, with the document's own added or in
+    /// their place.
+    #[must_use]
+    pub fn patterns(&self) -> Vec<hatch::Pattern> {
+        let mut all = hatch::built_in_patterns();
+        for own in &self.hatch_patterns {
+            match all
+                .iter_mut()
+                .find(|p| p.name.eq_ignore_ascii_case(&own.name))
+            {
+                Some(held) => *held = own.clone(),
+                None => all.push(own.clone()),
+            }
+        }
+        all
+    }
 }
 
 fn is_zero(value: &u64) -> bool {
@@ -441,6 +465,7 @@ impl State {
             clipping_planes,
             annotation_styles,
             current_annotation_style,
+            hatch_patterns,
         } = self;
         objects.len() == other.objects.len()
             && objects
@@ -462,6 +487,7 @@ impl State {
             && *clipping_planes == other.clipping_planes
             && *annotation_styles == other.annotation_styles
             && *current_annotation_style == other.current_annotation_style
+            && *hatch_patterns == other.hatch_patterns
     }
 }
 
@@ -536,6 +562,7 @@ impl Default for State {
             clipping_planes: Vec::new(),
             annotation_styles: Vec::new(),
             current_annotation_style: 0,
+            hatch_patterns: Vec::new(),
         }
     }
 }
