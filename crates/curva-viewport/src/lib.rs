@@ -176,6 +176,32 @@ pub struct Outlines {
 /// Mesh-cache keys from here up are instances' parts.
 const INSTANCE_KEYS: u64 = 1 << 52;
 
+/// Whether a shape is text holding fields (`%<...>%`), which read other things and so are drawn
+/// again each time.
+fn has_fields(shape: &Shape) -> bool {
+    matches!(
+        shape,
+        Shape::Annotation(curva_document::annotation::Annotation::Text(text)) if text.content.contains("%<")
+    )
+}
+
+/// An annotation as it shows: its fields worked out.
+fn shown_annotation(
+    annotation: &curva_document::annotation::Annotation,
+    state: &State,
+    space: Option<u64>,
+    fields: &curva_document::fields::FieldContext,
+) -> curva_document::annotation::Annotation {
+    let curva_document::annotation::Annotation::Text(text) = annotation;
+    if !text.content.contains("%<") {
+        return annotation.clone();
+    }
+    curva_document::annotation::Annotation::Text(curva_document::annotation::Text {
+        content: curva_document::fields::resolve(&text.content, state, space, fields),
+        ..text.clone()
+    })
+}
+
 /// Meshes of bodies already worked out, so a body is meshed again only when it changes.
 #[derive(Debug, Default)]
 pub struct MeshCache {
@@ -188,6 +214,8 @@ pub struct MeshCache {
             bool,
         ),
     >,
+    /// What text fields read besides the model: the file and the time. The interface sets it.
+    pub fields: curva_document::fields::FieldContext,
     /// Annotation's filled letters, with the annotation they were made for.
     annotations: std::collections::HashMap<
         u64,
@@ -319,13 +347,15 @@ impl Outlines {
         let mut earlier = std::mem::take(&mut cache.drawn);
         for object in state.objects.iter().filter(|o| o.space == space) {
             let layer = state.layers.iter().find(|l| l.id == object.layer);
-            // An instance draws its definition, which can change without it, so it is always
-            // drawn again; any other object only when it or its layer changed.
+            // An instance draws its definition, and text with fields reads other things, which
+            // can change without them, so those are always drawn again; any other object only
+            // when it or its layer changed.
             let part = match earlier.remove(&object.id) {
                 Some((was, was_layer, part))
                     if std::sync::Arc::ptr_eq(&was, object)
                         && was_layer.as_ref() == layer
-                        && !matches!(object.shape, Shape::Instance(_)) =>
+                        && !matches!(object.shape, Shape::Instance(_))
+                        && !has_fields(&object.shape) =>
                 {
                     part
                 }
@@ -429,6 +459,9 @@ impl Outlines {
                     // Text: its letters filled for shading, and their outlines for wireframe,
                     // picking and snapping.
                     Shape::Annotation(annotation) => {
+                        // Fields are worked out for showing; the object keeps them as typed.
+                        let annotation =
+                            &shown_annotation(annotation, state, object.space, &cache.fields);
                         if let Some(mesh) = cache.annotation_mesh(*key, annotation) {
                             outlines.faces.push(Faces {
                                 id: object.id,
