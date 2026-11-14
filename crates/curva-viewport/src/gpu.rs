@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 /// The grid: true one-pixel lines, two vertices a segment.
 const GRID_SHADER: &str = "
-struct Uniforms { matrix: mat4x4<f32>, light: vec4<f32>, pixel: vec4<f32> };
+struct Uniforms { matrix: mat4x4<f32>, light: vec4<f32>, pixel: vec4<f32>, clips: array<vec4<f32>, 4> };
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 struct Out { @builtin(position) position: vec4<f32>, @location(0) colour: vec3<f32> };
 @vertex fn vertex_main(@location(0) p: vec3<f32>, @location(1) c: vec3<f32>) -> Out {
@@ -21,9 +21,24 @@ struct Out { @builtin(position) position: vec4<f32>, @location(0) colour: vec3<f
 /// each end so the segments of a curve overlap at their joins. `pixel.xy` is a pixel's size in
 /// clip space, `pixel.z` the screen's pixels per millimetre.
 const LINE_SHADER: &str = "
-struct Uniforms { matrix: mat4x4<f32>, light: vec4<f32>, pixel: vec4<f32> };
+struct Uniforms { matrix: mat4x4<f32>, light: vec4<f32>, pixel: vec4<f32>, clips: array<vec4<f32>, 4> };
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
-struct Out { @builtin(position) position: vec4<f32>, @location(0) colour: vec3<f32> };
+// Clipping planes (spec `layouts.md` §3): `pixel.w` of them, each keeping the side where
+// dot(n, p) + d is not above zero.
+fn clipped(p: vec3<f32>) -> bool {
+    let count = u32(uniforms.pixel.w);
+    for (var i = 0u; i < 4u; i = i + 1u) {
+        if (i < count && dot(uniforms.clips[i].xyz, p) + uniforms.clips[i].w > 0.0) {
+            return true;
+        }
+    }
+    return false;
+}
+struct Out {
+    @builtin(position) position: vec4<f32>,
+    @location(0) colour: vec3<f32>,
+    @location(1) world: vec3<f32>,
+};
 fn pixels(width: f32) -> f32 {
     return max(select(-width, width * uniforms.pixel.z, width > 0.0), 1.0);
 }
@@ -36,7 +51,7 @@ fn pixels(width: f32) -> f32 {
     var pb = uniforms.matrix * vec4<f32>(b, 1.0);
     // Behind the camera: cut the segment where it crosses the near plane.
     if (pa.z < 0.0 && pb.z < 0.0) {
-        return Out(vec4<f32>(2.0, 2.0, 2.0, 1.0), ca);
+        return Out(vec4<f32>(2.0, 2.0, 2.0, 1.0), ca, a);
     }
     if (pa.z < 0.0) { pa = mix(pa, pb, pa.z / (pa.z - pb.z)); }
     if (pb.z < 0.0) { pb = mix(pb, pa, pb.z / (pb.z - pa.z)); }
@@ -52,36 +67,52 @@ fn pixels(width: f32) -> f32 {
     let side = sides[corner];
     var at = pa;
     var colour = ca;
+    var world = a;
     var half = pixels(wa) * 0.5;
     if (end > 0.5) {
         at = pb;
         colour = cb;
+        world = b;
         half = pixels(wb) * 0.5;
     }
     let offset = across * side * half + along * (end * 2.0 - 1.0) * half;
     at = vec4<f32>(at.xy + offset * px * at.w, at.zw);
-    return Out(at, colour);
+    return Out(at, colour, world);
 }
 @fragment fn fragment_main(input: Out) -> @location(0) vec4<f32> {
+    if (clipped(input.world)) { discard; }
     return vec4<f32>(input.colour, 1.0);
 }";
 
 /// Lit mostly from the camera, like a headlight, so whatever faces the viewer is brightest.
 /// Both sides of a face are lit alike, as an open surface can be seen from either.
 const FACE_SHADER: &str = "
-struct Uniforms { matrix: mat4x4<f32>, light: vec4<f32> };
+struct Uniforms { matrix: mat4x4<f32>, light: vec4<f32>, pixel: vec4<f32>, clips: array<vec4<f32>, 4> };
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
+// Clipping planes (spec `layouts.md` §3): `pixel.w` of them, each keeping the side where
+// dot(n, p) + d is not above zero.
+fn clipped(p: vec3<f32>) -> bool {
+    let count = u32(uniforms.pixel.w);
+    for (var i = 0u; i < 4u; i = i + 1u) {
+        if (i < count && dot(uniforms.clips[i].xyz, p) + uniforms.clips[i].w > 0.0) {
+            return true;
+        }
+    }
+    return false;
+}
 struct Out {
     @builtin(position) position: vec4<f32>,
     @location(0) normal: vec3<f32>,
     @location(1) colour: vec3<f32>,
+    @location(2) world: vec3<f32>,
 };
 @vertex fn vertex_main(
     @location(0) p: vec3<f32>, @location(1) n: vec3<f32>, @location(2) c: vec3<f32>,
 ) -> Out {
-    return Out(uniforms.matrix * vec4<f32>(p, 1.0), n, c);
+    return Out(uniforms.matrix * vec4<f32>(p, 1.0), n, c, p);
 }
 @fragment fn fragment_main(input: Out) -> @location(0) vec4<f32> {
+    if (clipped(input.world)) { discard; }
     let n = normalize(input.normal);
     let facing = abs(dot(n, uniforms.light.xyz));
     // A little light from above as well, so tops and sides of a box differ.
@@ -92,19 +123,32 @@ struct Out {
 /// Draft analysis: faces coloured by their angle to the horizontal, against world up: green with
 /// more than 5° of draft, red undercut by more than 5°, yellow between, lit as usual.
 const DRAFT_FACE_SHADER: &str = "
-struct Uniforms { matrix: mat4x4<f32>, light: vec4<f32> };
+struct Uniforms { matrix: mat4x4<f32>, light: vec4<f32>, pixel: vec4<f32>, clips: array<vec4<f32>, 4> };
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
+// Clipping planes (spec `layouts.md` §3): `pixel.w` of them, each keeping the side where
+// dot(n, p) + d is not above zero.
+fn clipped(p: vec3<f32>) -> bool {
+    let count = u32(uniforms.pixel.w);
+    for (var i = 0u; i < 4u; i = i + 1u) {
+        if (i < count && dot(uniforms.clips[i].xyz, p) + uniforms.clips[i].w > 0.0) {
+            return true;
+        }
+    }
+    return false;
+}
 struct Out {
     @builtin(position) position: vec4<f32>,
     @location(0) normal: vec3<f32>,
     @location(1) colour: vec3<f32>,
+    @location(2) world: vec3<f32>,
 };
 @vertex fn vertex_main(
     @location(0) p: vec3<f32>, @location(1) n: vec3<f32>, @location(2) c: vec3<f32>,
 ) -> Out {
-    return Out(uniforms.matrix * vec4<f32>(p, 1.0), n, c);
+    return Out(uniforms.matrix * vec4<f32>(p, 1.0), n, c, p);
 }
 @fragment fn fragment_main(input: Out) -> @location(0) vec4<f32> {
+    if (clipped(input.world)) { discard; }
     let n = normalize(input.normal);
     let angle = degrees(asin(clamp(n.z, -1.0, 1.0)));
     var colour = vec3<f32>(0.95, 0.8, 0.2);
@@ -117,19 +161,32 @@ struct Out {
 /// Zebra stripes: black and white bands from the reflection of the view in each face, so a break
 /// in smoothness shows as a kink in the bands.
 const ZEBRA_FACE_SHADER: &str = "
-struct Uniforms { matrix: mat4x4<f32>, light: vec4<f32> };
+struct Uniforms { matrix: mat4x4<f32>, light: vec4<f32>, pixel: vec4<f32>, clips: array<vec4<f32>, 4> };
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
+// Clipping planes (spec `layouts.md` §3): `pixel.w` of them, each keeping the side where
+// dot(n, p) + d is not above zero.
+fn clipped(p: vec3<f32>) -> bool {
+    let count = u32(uniforms.pixel.w);
+    for (var i = 0u; i < 4u; i = i + 1u) {
+        if (i < count && dot(uniforms.clips[i].xyz, p) + uniforms.clips[i].w > 0.0) {
+            return true;
+        }
+    }
+    return false;
+}
 struct Out {
     @builtin(position) position: vec4<f32>,
     @location(0) normal: vec3<f32>,
     @location(1) colour: vec3<f32>,
+    @location(2) world: vec3<f32>,
 };
 @vertex fn vertex_main(
     @location(0) p: vec3<f32>, @location(1) n: vec3<f32>, @location(2) c: vec3<f32>,
 ) -> Out {
-    return Out(uniforms.matrix * vec4<f32>(p, 1.0), n, c);
+    return Out(uniforms.matrix * vec4<f32>(p, 1.0), n, c, p);
 }
 @fragment fn fragment_main(input: Out) -> @location(0) vec4<f32> {
+    if (clipped(input.world)) { discard; }
     var n = normalize(input.normal);
     let view = uniforms.light.xyz;
     if (dot(n, view) > 0.0) { n = -n; }
@@ -141,19 +198,32 @@ struct Out {
 
 /// As [`FACE_SHADER`], but see-through at half strength, for the Ghosted display mode.
 const GHOST_FACE_SHADER: &str = "
-struct Uniforms { matrix: mat4x4<f32>, light: vec4<f32> };
+struct Uniforms { matrix: mat4x4<f32>, light: vec4<f32>, pixel: vec4<f32>, clips: array<vec4<f32>, 4> };
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
+// Clipping planes (spec `layouts.md` §3): `pixel.w` of them, each keeping the side where
+// dot(n, p) + d is not above zero.
+fn clipped(p: vec3<f32>) -> bool {
+    let count = u32(uniforms.pixel.w);
+    for (var i = 0u; i < 4u; i = i + 1u) {
+        if (i < count && dot(uniforms.clips[i].xyz, p) + uniforms.clips[i].w > 0.0) {
+            return true;
+        }
+    }
+    return false;
+}
 struct Out {
     @builtin(position) position: vec4<f32>,
     @location(0) normal: vec3<f32>,
     @location(1) colour: vec3<f32>,
+    @location(2) world: vec3<f32>,
 };
 @vertex fn vertex_main(
     @location(0) p: vec3<f32>, @location(1) n: vec3<f32>, @location(2) c: vec3<f32>,
 ) -> Out {
-    return Out(uniforms.matrix * vec4<f32>(p, 1.0), n, c);
+    return Out(uniforms.matrix * vec4<f32>(p, 1.0), n, c, p);
 }
 @fragment fn fragment_main(input: Out) -> @location(0) vec4<f32> {
+    if (clipped(input.world)) { discard; }
     let n = normalize(input.normal);
     let facing = abs(dot(n, uniforms.light.xyz));
     let above = abs(n.z);
@@ -173,7 +243,10 @@ const SEGMENT_SIZE: u64 = 2 * LINE_VERTEX_SIZE;
 /// The corners of the two triangles of a segment's quad.
 const SEGMENT_CORNERS: u32 = 6;
 const FACE_VERTEX_SIZE: u64 = 36;
-const UNIFORM_SIZE: u64 = 96;
+const UNIFORM_SIZE: u64 = 160;
+
+/// The most clipping planes one view is cut by.
+pub const MOST_CLIPS: usize = 4;
 /// Pixels per millimetre on a 96 dpi screen at 100 %.
 const PIXELS_PER_MM: f32 = 96.0 / 25.4;
 /// Lines are pulled slightly forward, so they win ties with what lies at their depth.
@@ -227,14 +300,27 @@ fn face_bytes(faces: &[MeshVertex]) -> Vec<u8> {
 }
 
 /// `pixel`: a pixel's width and height in clip space, and the screen's pixels per millimetre.
-fn uniform_bytes(matrix: &[[f32; 4]; 4], light: [f32; 3], pixel: [f32; 3]) -> Vec<u8> {
+/// `clips`: up to [`MOST_CLIPS`] clipping planes, each `[nx, ny, nz, d]`, cutting away where
+/// `n·p + d > 0`.
+fn uniform_bytes(
+    matrix: &[[f32; 4]; 4],
+    light: [f32; 3],
+    pixel: [f32; 3],
+    clips: &[[f32; 4]],
+) -> Vec<u8> {
+    let clips = &clips[..clips.len().min(MOST_CLIPS)];
+    #[allow(clippy::cast_precision_loss)]
+    let count = clips.len() as f32;
+    let mut planes = [[0.0_f32; 4]; MOST_CLIPS];
+    planes[..clips.len()].copy_from_slice(clips);
     matrix
         .iter()
         .flatten()
         .chain(&light)
         .chain(&[0.0])
         .chain(&pixel)
-        .chain(&[0.0])
+        .chain(&[count])
+        .chain(planes.iter().flatten())
         .flat_map(|value| value.to_le_bytes())
         .collect()
 }
@@ -677,7 +763,7 @@ impl LineRenderer {
         queue.write_buffer(
             &slot.uniforms,
             0,
-            &uniform_bytes(&drawing.matrix, drawing.light, pixel),
+            &uniform_bytes(&drawing.matrix, drawing.light, pixel, &drawing.clips),
         );
         slot.shaded = drawing.shaded;
         slot.ghosted = drawing.ghosted;
@@ -815,6 +901,9 @@ pub struct Drawing {
     pub matrix: [[f32; 4]; 4],
     /// The direction the camera looks, of length 1, which lights the faces.
     pub light: [f32; 3],
+    /// Clipping planes cutting this view, each `[nx, ny, nz, d]`, cutting away where
+    /// `n·p + d > 0`; at most [`MOST_CLIPS`] are used.
+    pub clips: Vec<[f32; 4]>,
     /// Whether this view shows faces shaded, rather than only lines.
     pub shaded: bool,
     /// Whether shaded faces are see-through, for the Ghosted display mode.
@@ -994,6 +1083,7 @@ pub fn save_picture(
         .into_iter()
         .partition(|vertex| vertex.width == crate::GRID_WIDTH);
     let drawing = Drawing {
+        clips: Vec::new(),
         slot: 0,
         grid: Arc::new(grid),
         scene: Arc::new(lines),

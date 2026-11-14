@@ -402,17 +402,13 @@ impl Curva {
             ViewRequest::ZoomExtents => {
                 self.refresh_scene();
                 if let Some((low, high)) = self.outlines.bounds() {
-                    for pane in &mut self.panes {
-                        pane.camera.frame(low, high);
-                    }
+                    self.frame_all(low, high);
                 }
             }
             ViewRequest::ZoomSelected => {
                 self.refresh_scene();
                 if let Some((low, high)) = self.outlines.bounds_of(&self.doc.selection()) {
-                    for pane in &mut self.panes {
-                        pane.camera.frame(low, high);
-                    }
+                    self.frame_all(low, high);
                 }
             }
             ViewRequest::FourViews => {
@@ -439,6 +435,7 @@ impl Curva {
             }
             ViewRequest::ShowBlocks => self.open_piece(layout::Piece::Blocks),
             ViewRequest::ShowLayouts => self.open_piece(layout::Piece::Layouts),
+            ViewRequest::ClipIn(frames, on) => self.clip_in(&frames, on),
             ViewRequest::DraftAnalysis => {
                 let pane = &mut self.panes[self.active];
                 pane.draft = !pane.draft;
@@ -465,6 +462,84 @@ impl Curva {
     }
 
     /// One viewport's title, and an outline if it is the one view commands act on.
+    /// Frames a box in every viewport: where a viewport reaches under floating panels, in the
+    /// part they leave free, so what is framed is not hidden behind them.
+    pub(crate) fn frame_all(&mut self, low: Point, high: Point) {
+        for pane in 0..VIEW_SLOTS {
+            self.panes[pane].camera.frame(low, high);
+            let Some((rect, visible)) = self.pane_areas[pane] else {
+                continue;
+            };
+            // A perspective view's size on screen does not follow its distance exactly, so the
+            // fit is repeated until it settles.
+            for _ in 0..4 {
+                self.fit_once(pane, low, high, rect, visible);
+            }
+        }
+    }
+
+    /// One step of [`Self::frame_all`]: zooms the box to fill `visible` and moves it there.
+    fn fit_once(
+        &mut self,
+        pane: usize,
+        low: Point,
+        high: Point,
+        rect: egui::Rect,
+        visible: egui::Rect,
+    ) {
+        {
+            let size = pane_size(rect);
+            let camera = &self.panes[pane].camera;
+            let corners: Vec<[f64; 2]> = (0..8)
+                .filter_map(|i| {
+                    let corner = [
+                        if i & 1 == 0 { low[0] } else { high[0] },
+                        if i & 2 == 0 { low[1] } else { high[1] },
+                        if i & 4 == 0 { low[2] } else { high[2] },
+                    ];
+                    camera.project(corner, size)
+                })
+                .collect();
+            if corners.len() < 8 || visible.width() < 1.0 || visible.height() < 1.0 {
+                return;
+            }
+            let extent = |k: usize| {
+                let values = corners.iter().map(|c| c[k]);
+                values.clone().fold(f64::MIN, f64::max) - values.fold(f64::MAX, f64::min)
+            };
+            let fill = (extent(0) / f64::from(visible.width()))
+                .max(extent(1) / f64::from(visible.height()))
+                * 1.1;
+            let camera = &mut self.panes[pane].camera;
+            // Zooming multiplies the distance, so the box's size on screen divides by it.
+            if fill > 0.0 {
+                camera.zoom(fill);
+            }
+            // Then the box's middle on screen goes to the middle of the free part. Panning moves
+            // what is shown the way the mouse would drag it.
+            let after: Vec<[f64; 2]> = (0..8)
+                .filter_map(|i| {
+                    let corner = [
+                        if i & 1 == 0 { low[0] } else { high[0] },
+                        if i & 2 == 0 { low[1] } else { high[1] },
+                        if i & 4 == 0 { low[2] } else { high[2] },
+                    ];
+                    camera.project(corner, size)
+                })
+                .collect();
+            if after.len() == 8 {
+                let middle = |k: usize| {
+                    let values = after.iter().map(|c| c[k]);
+                    (values.clone().fold(f64::MIN, f64::max) + values.fold(f64::MAX, f64::min))
+                        / 2.0
+                };
+                let shift_x = f64::from(visible.center().x - rect.min.x) - middle(0);
+                let shift_y = f64::from(visible.center().y - rect.min.y) - middle(1);
+                camera.pan(shift_x, shift_y, size[1]);
+            }
+        }
+    }
+
     pub(crate) fn paint_frame(&self, ui: &egui::Ui, pane: usize, rect: egui::Rect) {
         let painter = ui.painter_at(rect);
         painter.text(
@@ -539,8 +614,10 @@ impl Curva {
         );
         self.sheet_tabs(ui, row);
         let mut shown = Vec::new();
+        self.pane_areas = [None; VIEW_SLOTS];
         for (pane, visible) in pane_rects(area, self.maximised) {
             let rect = reaching(visible, area, reach);
+            self.pane_areas[pane] = Some((rect, visible));
             self.frame_sheet(pane, rect, visible);
             let response = ui.allocate_rect(rect, egui::Sense::click_and_drag());
             self.display_menu(ui, pane, rect);
@@ -636,9 +713,16 @@ impl Curva {
         };
         for (pane, rect, _) in &shown {
             let size = pane_size(*rect);
+            // Clipping planes cut the model's viewports, never a sheet.
+            let (clips, pane_faces) = if self.shows_sheet(*pane) {
+                (Vec::new(), Arc::clone(&faces))
+            } else {
+                self.clipped_view(curva_document::clipping::ClipView::Viewport(*pane), &faces)
+            };
             let camera = &self.panes[*pane].camera;
             let display = self.panes[*pane].display;
             let drawing = Drawing {
+                clips,
                 slot: *pane,
                 grid: if self.settings.grid {
                     Arc::clone(&self.panes[*pane].grid)
@@ -651,7 +735,7 @@ impl Curva {
                 } else {
                     &self.scene
                 }),
-                faces: Arc::clone(&faces),
+                faces: pane_faces,
                 overlay: Arc::clone(&overlay),
                 preview_faces: Arc::clone(&preview_faces),
                 matrix: camera.matrix(size[0] / size[1]),

@@ -321,3 +321,17 @@ its options here.
 | CopyLayout | Copies the current layout to a new one (no prompts on the page) | none | none (not on the command framework yet) | partly |
 | Layouts | Opens the Layouts panel: New Layout, Duplicate Layout, Delete, Move Up, Move Down (or drag), Properties, Print, Import, Search; right-click Set Current, Rename, New Detail | none | none (the panel has New, Open, Copy, Delete, Move Up/Down, drag, rename, size and orientation; Print, Import, Search and New Detail come later) | partly |
 | Detail | Manages details on a layout; the prompt order is not on the page. Add draws the rectangle; Scale asks the length on the layout, then in the model | `Add` `Center` `Projection` `Enable` `FromDetail` `FirstAngle` `ThirdAngle` `Scale` `Lock` `Unlock` `EnablePage` | `Add` (two corners) `Projection` (Top, Front, Right, Perspective) `Scale` `Lock` `Unlock`; `Enable` by double-clicking | partly |
+
+### Clipping planes
+
+Written on 14 November 2026 from `commands/clippingplane.htm`, which also covers EnableClippingPlane and
+DisableClippingPlane (`commands/enableclippingplane.htm` is only a redirect). The SectionStyle pages
+(`commands/sectionstyle.htm`, `properties/section_style.htm`) refused to load (HTTP 403); their rows are to be
+completed from Rhino itself.
+
+| Command | Rhino's steps | Rhino's options | In Curva | Status |
+|---|---|---|---|---|
+| ClippingPlane | Two opposite corners of a rectangle, or another way to draw it; the plane clips away what is on its back side in the viewports it is enabled in (its Views Clipped list) | `3Point` `EdgeMidpoint` `Vertical` `Center` `AroundCurve` `CustomDepth` `Depth` `Name` `Label` `SectionStyle` `FlipDirection` `ObjectsClipped` `ViewsClipped` `ResetViews` `Match` | `FlipDirection`; two corners on the construction plane; cuts the four model viewports; section fill in Properties | partly |
+| EnableClippingPlane | Turns on selected clipping planes in the active viewport | none | none (in the active viewport, or the detail being worked in) | partly |
+| DisableClippingPlane | Turns off selected clipping planes in the active viewport | none | none (in the active viewport, or the detail being worked in) | partly |
+| SectionStyle | Not read: the help page refused to load | not read | none | missing |

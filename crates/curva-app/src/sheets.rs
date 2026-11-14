@@ -193,15 +193,22 @@ impl Curva {
             let shaded = detail.display != "Wireframe";
             let ghosted = detail.display == "Ghosted";
             let model = self.model_scene(&detail.hidden_layers);
+            let scene = Arc::clone(if shaded && !ghosted {
+                &model.shaded_scene
+            } else {
+                &model.scene
+            });
+            let model_faces = Arc::clone(&model.faces);
+            let (clips, faces) = self.clipped_view(
+                curva_document::clipping::ClipView::Detail(detail.frame),
+                &model_faces,
+            );
             let drawing = curva_viewport::Drawing {
+                clips,
                 slot: VIEW_SLOTS + slot,
                 grid: Arc::default(),
-                scene: Arc::clone(if shaded && !ghosted {
-                    &model.shaded_scene
-                } else {
-                    &model.scene
-                }),
-                faces: Arc::clone(&model.faces),
+                scene,
+                faces,
                 overlay: Arc::default(),
                 preview_faces: Arc::default(),
                 matrix: camera.matrix(f64::from(shown.width() / shown.height())),

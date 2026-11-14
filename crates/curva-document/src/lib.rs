@@ -17,6 +17,7 @@ mod layers;
 mod live;
 mod migrate;
 pub use live::{LiveBoolean, LiveHow};
+pub mod clipping;
 pub mod layouts;
 mod organise;
 mod shape;
@@ -388,6 +389,9 @@ pub struct State {
     /// The id the next layout receives.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub next_layout: u64,
+    /// The clipping planes (spec `layouts.md` §3); files leave out an empty list.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub clipping_planes: Vec<clipping::ClippingPlane>,
 }
 
 fn is_zero(value: &u64) -> bool {
@@ -416,6 +420,7 @@ impl State {
             length_display,
             layouts,
             next_layout,
+            clipping_planes,
         } = self;
         objects.len() == other.objects.len()
             && objects
@@ -434,6 +439,7 @@ impl State {
             && *length_display == other.length_display
             && *layouts == other.layouts
             && *next_layout == other.next_layout
+            && *clipping_planes == other.clipping_planes
     }
 }
 
@@ -505,6 +511,7 @@ impl Default for State {
             length_display: units::LengthDisplay::default(),
             layouts: Vec::new(),
             next_layout: 0,
+            clipping_planes: Vec::new(),
         }
     }
 }
