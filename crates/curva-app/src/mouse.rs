@@ -421,6 +421,11 @@ impl Curva {
             )
         });
         let (dx, dy) = (f64::from(delta.x), f64::from(delta.y));
+        // In a detail entered on a sheet, panning and zooming move the detail's view instead.
+        if self.detail_mouse(ui, pane, response, size) {
+            self.active = pane;
+            return;
+        }
         if response.is_pointer_button_down_on() {
             self.active = pane;
             // Ctrl + right-drag zooms about where the drag began; dragging up comes closer.
