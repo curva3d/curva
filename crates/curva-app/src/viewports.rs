@@ -666,6 +666,7 @@ impl Curva {
                 background_low: self.pane_background(*pane).1,
             };
             ui.painter().add(egui_wgpu_callback(*rect, drawing));
+            self.paint_details(ui, *pane, *rect, size);
             self.paint_desk(ui, *pane, *rect, size);
             self.paint_frame(ui, *pane, *rect);
             self.paint_points(ui, *pane, *rect, size, &previewed);

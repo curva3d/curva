@@ -276,6 +276,10 @@ fn stale<T>(held: &Option<Uploaded<T>>, wanted: &Arc<Vec<T>>) -> bool {
 /// How many views can be drawn at once.
 pub const VIEW_SLOTS: usize = 4;
 
+/// Slots after the viewports' for the detail views on a sheet (spec `layouts.md` §2). A slot
+/// holds buffers only once it draws something.
+pub const DETAIL_SLOTS: usize = 12;
+
 /// What each view keeps for itself on the graphics card.
 struct ViewSlot {
     uniforms: wgpu::Buffer,
@@ -504,7 +508,7 @@ impl LineRenderer {
                 count: None,
             }],
         });
-        let slots = (0..VIEW_SLOTS)
+        let slots = (0..VIEW_SLOTS + DETAIL_SLOTS)
             .map(|_| {
                 let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
                     label: Some("curva camera"),

@@ -855,3 +855,16 @@ ui.layouts.copy = Copy
 ui.layouts.portrait = Portrait
 ui.layouts.landscape = Landscape
 ui.layouts.turn = Turn the sheet the other way
+prompt.detail.corner = First corner of the detail
+prompt.detail.other_corner = Other corner
+prompt.detail.which = Details to change
+prompt.detail.scale = Scale (1:50, 2:1, 1/4" = 1'-0" or 1" = 20')
+done.detail = Detail added at {0}.
+done.detail_locked = {0} details locked.
+done.detail_unlocked = {0} details unlocked.
+done.detail_scaled = Details set to {0}.
+error.detail_no_layout = Open a layout to put a detail on.
+error.detail_corners = The corners must differ in both directions.
+error.detail_none_picked = None of those is a detail.
+error.detail_scale = {0} is not a scale; type it as 1:50, 2:1, 1/4" = 1'-0" or 1" = 20'.
+done.detail_perspective = Perspective detail added.

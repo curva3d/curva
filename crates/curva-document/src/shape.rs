@@ -32,6 +32,26 @@ impl Shape {
         }
     }
 
+    /// The lowest and highest corners around it. An instance's extent needs its definition, so
+    /// it has none here.
+    #[must_use]
+    pub fn bounds(&self) -> Option<(Point, Point)> {
+        match self {
+            Self::Instance(_) => None,
+            Self::Body(body) => body.bounds().ok(),
+            Self::Curve(curve) => {
+                let points = curve.sample().ok()?;
+                let first = *points.first()?;
+                Some(points.iter().fold((first, first), |(lo, hi), p| {
+                    (
+                        std::array::from_fn(|i| lo[i].min(p[i])),
+                        std::array::from_fn(|i| hi[i].max(p[i])),
+                    )
+                }))
+            }
+        }
+    }
+
     /// The shape moved by `by`.
     #[must_use]
     pub fn translated(&self, by: Point) -> Self {

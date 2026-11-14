@@ -6,24 +6,8 @@ use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef};
 use curva_document::Shape;
 use curva_kernel::Point;
 
-/// The lowest and highest corners of a shape.
 fn bounds_of(shape: &Shape) -> Option<(Point, Point)> {
-    match shape {
-        // An instance's extent needs its definition; commands that use this leave it out.
-        Shape::Instance(_) => None,
-        Shape::Body(body) => body.bounds().ok(),
-        Shape::Curve(curve) => {
-            let points = curve.sample().ok()?;
-            let first = *points.first()?;
-            Some(points.iter().fold((first, first), |(mut lo, mut hi), p| {
-                for k in 0..3 {
-                    lo[k] = lo[k].min(p[k]);
-                    hi[k] = hi[k].max(p[k]);
-                }
-                (lo, hi)
-            }))
-        }
-    }
+    shape.bounds()
 }
 
 /// `Distribute`: spaces objects evenly along `X` (the default), `Y` or `Z`, the first and last

@@ -6,23 +6,8 @@ use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef, Value};
 use curva_document::Shape;
 use curva_kernel::{Point, dot};
 
-/// The lowest and highest corners around an object.
 fn bounds_of(shape: &Shape) -> Option<(Point, Point)> {
-    match shape {
-        // An instance's extent needs its definition; commands that use this leave it out.
-        Shape::Instance(_) => None,
-        Shape::Body(body) => body.bounds().ok(),
-        Shape::Curve(curve) => {
-            let points = curve.sample().ok()?;
-            let first = *points.first()?;
-            Some(points.iter().fold((first, first), |(lo, hi), p| {
-                (
-                    std::array::from_fn(|i| lo[i].min(p[i])),
-                    std::array::from_fn(|i| hi[i].max(p[i])),
-                )
-            }))
-        }
-    }
+    shape.bounds()
 }
 
 /// Which value of an extent along an axis to line up: its start, its end, or its middle.
