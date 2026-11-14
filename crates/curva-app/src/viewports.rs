@@ -435,6 +435,7 @@ impl Curva {
             }
             ViewRequest::ShowBlocks => self.open_piece(layout::Piece::Blocks),
             ViewRequest::ShowLayouts => self.open_piece(layout::Piece::Layouts),
+            ViewRequest::ClipIn(frames, on) => self.clip_in(&frames, on),
             ViewRequest::DraftAnalysis => {
                 let pane = &mut self.panes[self.active];
                 pane.draft = !pane.draft;
@@ -712,9 +713,16 @@ impl Curva {
         };
         for (pane, rect, _) in &shown {
             let size = pane_size(*rect);
+            // Clipping planes cut the model's viewports, never a sheet.
+            let (clips, pane_faces) = if self.shows_sheet(*pane) {
+                (Vec::new(), Arc::clone(&faces))
+            } else {
+                self.clipped_view(curva_document::clipping::ClipView::Viewport(*pane), &faces)
+            };
             let camera = &self.panes[*pane].camera;
             let display = self.panes[*pane].display;
             let drawing = Drawing {
+                clips,
                 slot: *pane,
                 grid: if self.settings.grid {
                     Arc::clone(&self.panes[*pane].grid)
@@ -727,7 +735,7 @@ impl Curva {
                 } else {
                     &self.scene
                 }),
-                faces: Arc::clone(&faces),
+                faces: pane_faces,
                 overlay: Arc::clone(&overlay),
                 preview_faces: Arc::clone(&preview_faces),
                 matrix: camera.matrix(size[0] / size[1]),

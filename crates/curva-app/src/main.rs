@@ -27,6 +27,7 @@ mod agent;
 mod assistant;
 mod assistant_panel;
 mod benchmark;
+mod clipping;
 mod command_line;
 mod desktop;
 mod file_dialogs;
@@ -47,8 +48,9 @@ mod viewports;
 
 #[allow(clippy::wildcard_imports)]
 use {
-    agent::*, assistant_panel::*, benchmark::*, command_line::*, file_dialogs::*, gumball::*,
-    mouse::*, notices::*, panels::frames::*, settings::*, sheets::*, top_bar::*, viewports::*,
+    agent::*, assistant_panel::*, benchmark::*, clipping::*, command_line::*, file_dialogs::*,
+    gumball::*, mouse::*, notices::*, panels::frames::*, settings::*, sheets::*, top_bar::*,
+    viewports::*,
 };
 
 use curva_commands::{DisplayMode, Kind, Message, Processor, Translations, ViewName, ViewRequest};
@@ -120,6 +122,8 @@ struct Curva {
     sheets: Sheets,
     /// Each viewport's area last frame, and the part of it the floating panels leave free.
     pane_areas: [Option<(egui::Rect, egui::Rect)>; VIEW_SLOTS],
+    /// Section fills where clipping planes cut closed solids.
+    section_fills: SectionFills,
     text: Translations,
     typed: String,
     highlight: usize,
@@ -233,6 +237,7 @@ impl Curva {
             file_dialogs: FileDialogs::default(),
             sheets: Sheets::default(),
             pane_areas: [None; VIEW_SLOTS],
+            section_fills: SectionFills::default(),
             text: Translations::english(),
             typed: String::new(),
             highlight: 0,

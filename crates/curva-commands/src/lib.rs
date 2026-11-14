@@ -308,6 +308,9 @@ pub enum ViewRequest {
     ShowBlocks,
     /// Open the Layouts panel.
     ShowLayouts,
+    /// Clipping planes, by their rectangles, cut (`true`) or stop cutting the active viewport,
+    /// or the detail being worked in.
+    ClipIn(Vec<u64>, bool),
     /// Show or stop showing draft analysis colours on the last-used viewport.
     DraftAnalysis,
     /// Show or stop showing zebra stripes on the last-used viewport's shaded faces.

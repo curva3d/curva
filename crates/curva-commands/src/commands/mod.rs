@@ -29,7 +29,7 @@ use curves::{
     weight,
 };
 use files::{import_export, new, open, save, save_as};
-use layouts::{copy_layout, detail, layout, layouts_panel};
+use layouts::{clipping_plane, copy_layout, detail, layout, layouts_panel};
 use modify::{
     align, array, array_crv, array_linear, array_polar, bend, boolean_difference,
     boolean_intersection, boolean_split, boolean_union, cage_edit, change_degree, copy, delete,
@@ -113,7 +113,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 240] = [
+pub static COMMANDS: [CommandDef; 243] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -482,6 +482,27 @@ pub static COMMANDS: [CommandDef; 240] = [
     listed!("Layouts", [], false, false, layouts_panel::Layouts),
     listed!("Detail", [], false, true, detail::Detail),
     listed!(
+        "ClippingPlane",
+        [],
+        true,
+        true,
+        clipping_plane::ClippingPlane
+    ),
+    listed!(
+        "EnableClippingPlane",
+        [],
+        false,
+        true,
+        clipping_plane::EnableClippingPlane
+    ),
+    listed!(
+        "DisableClippingPlane",
+        [],
+        false,
+        true,
+        clipping_plane::DisableClippingPlane
+    ),
+    listed!(
         "ZoomExtents",
         ["ze", "zea"],
         false,
@@ -810,8 +831,11 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 60] = [
+    const NOTHING_TO_PREVIEW: [&str; 63] = [
         "Import",
+        "ClippingPlane",
+        "EnableClippingPlane",
+        "DisableClippingPlane",
         "Detail",
         "Layout",
         "CopyLayout",
@@ -1440,6 +1464,7 @@ mod tests {
                 "ChamferSrf",
                 "ChamferEdge",
                 "CopyLayout",
+                "ClippingPlane",
                 "CPlane",
                 "Curve"
             ]
