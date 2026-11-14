@@ -136,9 +136,7 @@ pub fn shape_placed(shape: &Shape, m: &Placement) -> Option<Shape> {
             definition: i.definition,
             placement: followed_by(&i.placement, m),
         }),
-        Shape::Annotation(crate::annotation::Annotation::Text(text)) => {
-            Shape::Annotation(crate::annotation::Annotation::Text(text.placed(m)))
-        }
+        Shape::Annotation(annotation) => Shape::Annotation(annotation.placed(m)),
     })
 }
 

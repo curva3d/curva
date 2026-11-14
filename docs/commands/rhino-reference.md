@@ -351,3 +351,29 @@ options. Rhino edits styles in Document Properties; Curva's AnnotationStyle open
 | SetCurrentAnnotationStyle | Sets the current annotation style | none | none (by name) | partly |
 | DupAnnotationStyle | The style to copy; the new style's name; whether to make it current | `SetCurrent` | none (styles named at the prompt; `SetCurrent` as an option, not on the command framework yet) | partly |
 | ImportAnnotationStyles | Annotation styles from a `.3dm` file | none | none | missing |
+
+### Dimensions
+
+Written on 14 November 2026 from `commands/dimension_commands.htm` (each command's own page is a redirect to
+it). DimArcLength is not on it and its page refused to load (HTTP 403); that row is to be completed from Rhino.
+In Rhino, dimensions are attached to what they measure by History (on by default, `RecordAnnotationHistory`),
+take their looks from annotation styles with per-dimension overrides, and `<>` in their text stands for the
+measured value.
+
+| Command | Rhino's steps | Rhino's options | In Curva | Status |
+|---|---|---|---|---|
+| Dim | Two points; a third point places the dimension line; horizontal or vertical | `AnnotationStyle` `Object` `Continue` `Undo` `Baseline` `Vertical` `Horizontal` | `Vertical` `Horizontal` (otherwise by where the line goes); the current annotation style | partly |
+| DimAligned | Two points; a third point places the dimension line, parallel to the points | `AnnotationStyle` `Object` `Continue` `Baseline` `Undo` | the current annotation style | partly |
+| DimRotated | The rotation angle (typed, or two points); two points; a third point places the dimension line | `AnnotationStyle` `Object` `Continue` `Baseline` | typed angle; the current annotation style | partly |
+| DimAngle | An arc, or two lines (polyline segments, linear edges); the dimension location | `AnnotationStyle` `Points` | none | missing |
+| DimRadius | A curve; the dimension location; measured as projected to the construction plane | `AnnotationStyle` `PointOnCurve` | none | missing |
+| DimDiameter | A curve; the dimension location | `AnnotationStyle` | none | missing |
+| DimOrdinate | A dimension point; a leader end (X or Y implied by direction); Enter ends | `AnnotationStyle` `XDatum` `YDatum` `Basepoint` `KinkOffset` | none | missing |
+| DimArcLength | Not read: its help page refused to load | not read | none | missing |
+| DimCurveLength | A curve; a start point for the text or leader | `Type` | none | missing |
+| DimArea | A closed planar curve, surface or hatch; a start point for the text or leader | `Type` | none | missing |
+| DimVolume | A closed solid; a start point for the text or leader | `Type` | none | missing |
+| DimCreaseAngle | First surface; second surface; the dimension location | none | none | missing |
+| DimRecenterText | Picked dimensions' text goes back to its default place | none | none | missing |
+| Centermark | A cross, or cross and centre lines, at a curve's centre | `Style` | none | missing |
+| SetDimensionLayer | Whether dimensions go on the current layer or a given one | `UseDimensionLayer` `DimensionLayer` `List` `Reset` | none | missing |

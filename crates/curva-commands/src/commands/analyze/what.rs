@@ -31,6 +31,9 @@ impl Recipe for What {
                 Shape::Annotation(curva_document::annotation::Annotation::Text(text)) => {
                     format!("text \"{}\"", text.content.replace('\n', " "))
                 }
+                Shape::Annotation(curva_document::annotation::Annotation::Dimension(d)) => {
+                    format!("dimension of {}", cx.doc.length_text(d.value()))
+                }
                 Shape::Instance(i) => {
                     let name = cx
                         .doc

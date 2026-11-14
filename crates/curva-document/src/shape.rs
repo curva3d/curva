@@ -65,9 +65,7 @@ impl Shape {
                 definition: i.definition,
                 placement: crate::blocks::followed_by(&i.placement, &crate::blocks::moved_by(by)),
             }),
-            Self::Annotation(crate::annotation::Annotation::Text(text)) => {
-                Self::Annotation(crate::annotation::Annotation::Text(text.translated(by)))
-            }
+            Self::Annotation(annotation) => Self::Annotation(annotation.translated(by)),
         }
     }
 
@@ -84,9 +82,7 @@ impl Shape {
                     &crate::blocks::of_similarity(change),
                 ),
             }),
-            Self::Annotation(crate::annotation::Annotation::Text(text)) => {
-                Self::Annotation(crate::annotation::Annotation::Text(text.mapped(change)))
-            }
+            Self::Annotation(annotation) => Self::Annotation(annotation.mapped(change)),
         }
     }
 
@@ -103,13 +99,107 @@ impl Shape {
     }
 }
 
-/// The outlines of an annotation's letters (and later its lines and arrows), where it lies.
+/// The outlines of an annotation, for its extent: a text's letters; for a dimension, the lines
+/// between its points (what it draws depends on its style, which [`annotation_drawing`] reads).
 #[must_use]
 pub fn annotation_curves(annotation: &crate::annotation::Annotation) -> Vec<Curve> {
     match annotation {
         crate::annotation::Annotation::Text(text) => {
             text_glyphs(text).into_iter().flatten().collect()
         }
+        crate::annotation::Annotation::Dimension(d) => {
+            Curve::polyline(vec![d.first, d.line, d.second], false)
+                .into_iter()
+                .collect()
+        }
+    }
+}
+
+/// What an annotation draws: lines, and closed shapes to fill (letters, arrowheads).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct AnnotationDrawing {
+    /// Lines, and the outlines of the filled shapes.
+    pub lines: Vec<Curve>,
+    /// Each filled shape's closed contours, the outer one with its holes.
+    pub fills: Vec<Vec<Curve>>,
+}
+
+/// What an annotation in `space` draws, with its style's sizes: paper sizes on a layout, in the
+/// model's unit in the model. A dimension's value shows in the model's unit and display.
+#[must_use]
+pub fn annotation_drawing(
+    annotation: &crate::annotation::Annotation,
+    state: &crate::State,
+    space: Option<u64>,
+) -> AnnotationDrawing {
+    let text_drawing = |text: &crate::annotation::Text| {
+        let fills = text_glyphs(text);
+        AnnotationDrawing {
+            lines: fills.iter().flatten().cloned().collect(),
+            fills,
+        }
+    };
+    match annotation {
+        crate::annotation::Annotation::Text(text) => text_drawing(text),
+        crate::annotation::Annotation::Dimension(d) => {
+            let styles = if state.annotation_styles.is_empty() {
+                crate::annotation::standard_styles(matches!(
+                    state.unit,
+                    crate::Unit::Feet | crate::Unit::Inches
+                ))
+            } else {
+                state.annotation_styles.clone()
+            };
+            let Some(style) = styles
+                .iter()
+                .find(|s| s.id == d.style)
+                .or_else(|| styles.first())
+                .cloned()
+            else {
+                return AnnotationDrawing::default();
+            };
+            let paper = space
+                .and_then(|id| state.layouts.iter().find(|l| l.id == id))
+                .map(|l| l.unit);
+            let scale = style.scale_to(state.unit, paper);
+            let value = dimension_value_text(d, &style, state, space);
+            let parts = d.parts(&style, scale, value);
+            let mut drawing = text_drawing(&parts.text);
+            for (a, b) in &parts.lines {
+                if let Ok(line) = Curve::line(*a, *b) {
+                    drawing.lines.push(line);
+                }
+            }
+            for [tip, left, right] in &parts.arrows {
+                if let Ok(head) = Curve::polyline(vec![*tip, *left, *right], true) {
+                    drawing.lines.push(head.clone());
+                    drawing.fills.push(vec![head]);
+                }
+            }
+            drawing
+        }
+    }
+}
+
+/// A dimension's text: its value in the model's unit (paper units on a sheet), to the style's
+/// resolution, or its typed text with `<>` standing for the value.
+#[must_use]
+pub fn dimension_value_text(
+    d: &crate::annotation::Dimension,
+    style: &crate::annotation::AnnotationStyle,
+    state: &crate::State,
+    space: Option<u64>,
+) -> String {
+    let value = d.value();
+    let shown = match (state.unit, space) {
+        (crate::Unit::Feet | crate::Unit::Inches, None) => {
+            crate::units::format_length(value, state.unit, state.length_display)
+        }
+        _ => format!("{value:.*}", style.linear_resolution()),
+    };
+    match &d.text {
+        Some(typed) => typed.replace("<>", &shown),
+        None => shown,
     }
 }
 

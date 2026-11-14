@@ -127,6 +127,38 @@ impl Curva {
         }
     }
 
+    /// A selected dimension's value and its text, which can replace the value with typed text
+    /// where `<>` stands for it, as in Rhino (spec `annotation.md` §3).
+    fn dimension_properties(
+        &mut self,
+        ui: &mut egui::Ui,
+        id: u64,
+        dimension: &curva_document::annotation::Dimension,
+    ) {
+        use curva_document::annotation::Annotation;
+        let say = |key: &'static str| self.text.render(&Message::new(key));
+        ui.label(egui::RichText::new(say("ui.dimension")).strong());
+        ui.label(self.text.render(&Message::with(
+            "ui.dimension.value",
+            vec![self.doc.length_text(dimension.value())],
+        )));
+        let mut typed = dimension.text.clone().unwrap_or_else(|| "<>".to_owned());
+        ui.horizontal(|ui| {
+            ui.label(say("ui.dimension.text"));
+            ui.add(egui::TextEdit::singleline(&mut typed).desired_width(140.0));
+        });
+        let text = (typed.trim() != "<>" && !typed.trim().is_empty()).then_some(typed);
+        if text != dimension.text {
+            let changed = curva_document::annotation::Dimension {
+                text,
+                ..dimension.clone()
+            };
+            self.undoable(|doc| {
+                doc.replace_shape(id, Shape::Annotation(Annotation::Dimension(changed)));
+            });
+        }
+    }
+
     /// A selected text's words, height and alignment, changed in place (spec `annotation.md`
     /// §2); each change is one undo step.
     fn text_properties(
@@ -186,6 +218,10 @@ impl Curva {
                 Shape::Annotation(curva_document::annotation::Annotation::Text(text)) => {
                     let (id, text) = (object.id, text.clone());
                     self.text_properties(ui, id, &text);
+                }
+                Shape::Annotation(curva_document::annotation::Annotation::Dimension(d)) => {
+                    let (id, d) = (object.id, d.clone());
+                    self.dimension_properties(ui, id, &d);
                 }
                 Shape::Instance(instance) => {
                     let name = self
