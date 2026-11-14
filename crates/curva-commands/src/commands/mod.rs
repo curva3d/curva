@@ -1,121 +1,66 @@
-//! The list of commands, and the steps several of them share. One command per file.
+//! The list of commands, and the steps several of them share. Commands are filed in folders by
+//! the tab a user finds them on, one command (or a small family) per file.
 
-mod arc;
-mod area;
-mod array;
-mod array_crv;
-mod array_polar;
-mod blocks;
-mod boolean_difference;
-mod boolean_intersection;
-mod boolean_union;
-mod bounding_box;
-mod box_solid;
-mod chamfer;
-mod chamfer_edge;
-mod circle;
-mod close_crv;
-mod copy;
-mod cplane;
-mod curve;
-mod delete;
-mod dir;
-mod distance;
-mod divide;
-mod ellipse;
-mod explode;
-mod extrude_crv;
+mod analyze;
+mod arguments;
+mod curves;
 mod files;
-mod fillet;
-mod fillet_corners;
-mod fillet_edge;
-mod flip;
-mod four_view;
-mod front;
-mod hide;
-mod history;
-mod insert_knot;
-mod interpcrv;
-mod invert;
-mod isolate;
-mod join;
-mod length;
-mod line;
-mod live;
-mod loft;
-mod mirror;
-mod move_objects;
-mod named_cplane;
-mod named_view;
-mod new;
-mod offset;
-mod offset_srf;
-mod open;
+mod modify;
 mod organise;
-mod orient;
-mod orient3pt;
-mod parity;
-mod parity2;
-mod parity3;
-mod parity4;
-mod parity5;
-mod parity6;
-mod parity7;
-mod perspective;
-mod pipe;
-mod planar_srf;
-mod point;
-mod points_off;
-mod points_on;
-mod polyline;
-mod primitives;
-mod project_to_cplane;
-mod rebuild;
-mod rectangle;
-mod redo;
-mod remove_control_point;
-mod remove_knot;
-mod rename;
-mod revolve;
-mod right;
-mod rotate;
-mod rotate3d;
-mod save;
-mod save_as;
-mod scale;
-mod scale1d;
-mod scale2d;
-mod scale_nu;
-mod sel_all;
-mod sel_body;
-mod sel_crv;
-mod sel_dup;
-mod sel_filter;
-mod sel_last;
-mod sel_layer;
-mod sel_name;
-mod sel_none;
-mod sel_prev;
-mod sel_pt;
-mod set_display_mode;
-mod set_pt;
-mod shell;
-mod show;
-mod smooth;
-mod split;
-mod sweep1;
-mod top;
-mod trim;
-mod tween_curves;
-mod undo;
-mod view_history;
-mod volume;
-mod zoom;
-mod zoom_extents;
-mod zoom_selected;
+mod select;
+mod solids;
+mod support;
+mod surfaces;
+mod view;
 
 use crate::{Command, Kind, Message, Request, Step};
+use analyze::{
+    angle, area, area_centroid, audit, bounding_box, contour, count, curvature_graph, dir,
+    distance, draft_analysis, evaluate_pt, intersect, length, plan, radius, section, show_edges,
+    silhouette, volume_centroid, what, zebra,
+};
 use curva_kernel::{KernelError, Point};
+use curves::{
+    arc, blend_crv, chamfer, circle, close_crv, conic, curve, curve_boolean, divide, ellipse,
+    extend, fair, fillet, fillet_corners, handle_curve, helix, hyperbola, interpcrv, line, lines,
+    make_uniform, match_curve, offset, offset_multiple, parabola, point, points, polygon, polyline,
+    rectangle, reparameterize, simplify_crv, sketch, slot, spiral, text_object, tween_curves,
+    weight,
+};
+use files::{import_export, new, open, save, save_as};
+use modify::{
+    align, array, array_crv, array_linear, array_polar, bend, boolean_difference,
+    boolean_intersection, boolean_split, boolean_union, cage_edit, change_degree, copy, delete,
+    distribute, explode, flip, flow, history, insert_knot, join, live, mirror, move_objects,
+    orient, orient3pt, points_off, points_on, project_to_cplane, rebuild, redo,
+    remove_control_point, remove_knot, rotate, rotate3d, scale, scale_nu, scale1d, scale2d, set_pt,
+    shear, smooth, split, taper, trim, twist, undo,
+};
+use organise::{
+    block, block_edit, block_manager, change_layer, draw_order, explode_block, get_user_text,
+    group, insert, linetype_command, lock, lock_swap, match_properties, print_width_command, purge,
+    rename, replace_block, set_user_text, ungroup, unlock, unlock_selected,
+};
+use select::{
+    hide, hide_swap, invert, isolate, sel_all, sel_arc, sel_block_instance_named, sel_body,
+    sel_circle, sel_closed_crv, sel_color, sel_crv, sel_dup, sel_filter, sel_last, sel_layer,
+    sel_line, sel_name, sel_none, sel_open_crv, sel_polyline, sel_prev, sel_pt, show,
+};
+use solids::{
+    box_solid, cap, chamfer_edge, ellipsoid, extrude_face, fillet_edge, merge_all_faces, move_face,
+    paraboloid, pipe, primitives, pyramid, shell, volume, wirecut,
+};
+use surfaces::{
+    blend_srf, dup_border, dup_edge, dup_face_border, edge_srf, extend_srf, extract_isocurve,
+    extract_srf, extrude_crv, extrude_crv_along_crv, extrude_crv_tapered, extrude_crv_to_point,
+    extrude_srf, fillet_srf, interp_crv_on_srf, loft, match_srf, network_srf, offset_crv_on_srf,
+    offset_srf, patch, planar_srf, plane, project, pull, rail_revolve, rebuild_uv, revolve,
+    shrink_trimmed_srf, split_srf, srf_pt, sweep1, sweep2, unroll_srf, untrim,
+};
+use view::{
+    cplane, four_view, front, named_cplane, named_view, perspective, right, set_display_mode, top,
+    view_history, zoom, zoom_extents, zoom_selected,
+};
 
 /// How a command is listed.
 pub struct CommandDef {
@@ -285,141 +230,212 @@ pub static COMMANDS: [CommandDef; 236] = [
     recipe!("TruncatedCone", [], true, primitives::TruncatedCone),
     recipe!("Torus", [], true, primitives::Torus),
     recipe!("Tube", [], true, primitives::Tube),
-    recipe!("Polygon", [], true, parity::Polygon),
-    recipe!("Helix", [], true, parity::Helix),
-    recipe!("Spiral", [], true, parity::Spiral),
-    recipe!("Plane", [], true, parity::Plane),
-    recipe!("SrfPt", [], true, parity::SrfPt),
-    recipe!("ExtrudeSrf", [], true, parity::ExtrudeSrf),
-    recipe!("ArrayLinear", [], true, parity::ArrayLinear),
-    recipe!("Angle", [], true, parity::Angle),
-    recipe!("EvaluatePt", [], true, parity::EvaluatePt),
-    recipe!("Radius", [], true, parity::Radius),
-    recipe!("What", [], true, parity::What),
-    listed!("SelLine", [], false, false, parity::SelLine),
-    listed!("SelPolyline", [], false, false, parity::SelPolyline),
-    listed!("SelCircle", [], false, false, parity::SelCircle),
-    listed!("SelArc", [], false, false, parity::SelArc),
-    listed!("SelClosedCrv", [], false, false, parity::SelClosedCrv),
-    listed!("SelOpenCrv", [], false, false, parity::SelOpenCrv),
-    listed!("HideSwap", [], true, true, parity::HideSwap),
-    recipe!("Points", [], true, parity2::Points),
-    recipe!("Lines", [], true, parity2::Lines),
-    recipe!("Slot", [], true, parity2::Slot),
-    recipe!("Ellipsoid", [], true, parity2::Ellipsoid),
-    recipe!("BooleanSplit", [], true, parity2::BooleanSplit),
-    recipe!("DupEdge", [], true, parity2::DupEdge),
-    recipe!("Parabola", [], true, parity3::Parabola),
-    recipe!("Paraboloid", [], true, parity3::Paraboloid),
-    recipe!("Align", [], true, parity3::Align),
-    recipe!("ChangeDegree", [], true, parity3::ChangeDegree),
-    recipe!("AreaCentroid", [], true, parity3::AreaCentroid),
-    recipe!("VolumeCentroid", [], true, parity3::VolumeCentroid),
-    recipe!("HandleCurve", [], true, parity4::HandleCurve),
-    recipe!("Sketch", [], true, parity4::Sketch),
-    recipe!("Conic", [], true, parity4::Conic),
-    recipe!("Hyperbola", [], true, parity4::Hyperbola),
-    recipe!("BlendCrv", ["blend"], true, parity4::BlendCrv),
-    recipe!("OffsetMultiple", [], true, parity4::OffsetMultiple),
-    recipe!("DupBorder", [], true, parity4::DupBorder),
-    recipe!("Extend", ["ex"], true, parity4::Extend),
-    recipe!("Fair", [], true, parity4::Fair),
-    recipe!("CurveBoolean", [], true, parity4::CurveBoolean),
-    recipe!("Match", ["matchcrv"], true, parity4::Match),
-    recipe!("SimplifyCrv", [], true, parity4::SimplifyCrv),
-    recipe!("Reparameterize", [], true, parity4::Reparameterize),
-    recipe!("MakeUniform", [], true, parity4::MakeUniform),
-    recipe!("Weight", [], true, parity4::Weight),
-    recipe!("ExtrudeCrvTapered", [], true, parity5::ExtrudeCrvTapered),
-    recipe!("ExtrudeCrvAlongCrv", [], true, parity5::ExtrudeCrvAlongCrv),
-    recipe!("ExtrudeCrvToPoint", [], true, parity5::ExtrudeCrvToPoint),
-    recipe!("RailRevolve", [], true, parity5::RailRevolve),
-    recipe!("Pyramid", [], true, parity5::Pyramid),
-    recipe!("ExtractSrf", [], true, parity5::ExtractSrf),
-    recipe!("MergeAllFaces", [], true, parity5::MergeAllFaces),
-    recipe!("Wirecut", [], true, parity5::Wirecut),
-    recipe!("Distribute", [], true, parity5::Distribute),
-    recipe!("SelColor", [], false, parity5::SelColor),
-    recipe!("Lock", [], true, parity5::Lock),
-    recipe!("Unlock", [], true, parity5::Unlock),
-    recipe!("Group", [], true, parity5::Group),
-    recipe!("Ungroup", [], true, parity5::Ungroup),
-    recipe!("ShowEdges", [], true, parity5::ShowEdges),
-    recipe!("Plan", [], false, parity5::Plan),
-    listed!("Zebra", [], false, false, parity5::Zebra),
+    recipe!("Polygon", [], true, polygon::Polygon),
+    recipe!("Helix", [], true, helix::Helix),
+    recipe!("Spiral", [], true, spiral::Spiral),
+    recipe!("Plane", [], true, plane::Plane),
+    recipe!("SrfPt", [], true, srf_pt::SrfPt),
+    recipe!("ExtrudeSrf", [], true, extrude_srf::ExtrudeSrf),
+    recipe!("ArrayLinear", [], true, array_linear::ArrayLinear),
+    recipe!("Angle", [], true, angle::Angle),
+    recipe!("EvaluatePt", [], true, evaluate_pt::EvaluatePt),
+    recipe!("Radius", [], true, radius::Radius),
+    recipe!("What", [], true, what::What),
+    listed!("SelLine", [], false, false, sel_line::SelLine),
+    listed!("SelPolyline", [], false, false, sel_polyline::SelPolyline),
+    listed!("SelCircle", [], false, false, sel_circle::SelCircle),
+    listed!("SelArc", [], false, false, sel_arc::SelArc),
+    listed!(
+        "SelClosedCrv",
+        [],
+        false,
+        false,
+        sel_closed_crv::SelClosedCrv
+    ),
+    listed!("SelOpenCrv", [], false, false, sel_open_crv::SelOpenCrv),
+    listed!("HideSwap", [], true, true, hide_swap::HideSwap),
+    recipe!("Points", [], true, points::Points),
+    recipe!("Lines", [], true, lines::Lines),
+    recipe!("Slot", [], true, slot::Slot),
+    recipe!("Ellipsoid", [], true, ellipsoid::Ellipsoid),
+    recipe!("BooleanSplit", [], true, boolean_split::BooleanSplit),
+    recipe!("DupEdge", [], true, dup_edge::DupEdge),
+    recipe!("Parabola", [], true, parabola::Parabola),
+    recipe!("Paraboloid", [], true, paraboloid::Paraboloid),
+    recipe!("Align", [], true, align::Align),
+    recipe!("ChangeDegree", [], true, change_degree::ChangeDegree),
+    recipe!("AreaCentroid", [], true, area_centroid::AreaCentroid),
+    recipe!("VolumeCentroid", [], true, volume_centroid::VolumeCentroid),
+    recipe!("HandleCurve", [], true, handle_curve::HandleCurve),
+    recipe!("Sketch", [], true, sketch::Sketch),
+    recipe!("Conic", [], true, conic::Conic),
+    recipe!("Hyperbola", [], true, hyperbola::Hyperbola),
+    recipe!("BlendCrv", ["blend"], true, blend_crv::BlendCrv),
+    recipe!("OffsetMultiple", [], true, offset_multiple::OffsetMultiple),
+    recipe!("DupBorder", [], true, dup_border::DupBorder),
+    recipe!("Extend", ["ex"], true, extend::Extend),
+    recipe!("Fair", [], true, fair::Fair),
+    recipe!("CurveBoolean", [], true, curve_boolean::CurveBoolean),
+    recipe!("Match", ["matchcrv"], true, match_curve::Match),
+    recipe!("SimplifyCrv", [], true, simplify_crv::SimplifyCrv),
+    recipe!("Reparameterize", [], true, reparameterize::Reparameterize),
+    recipe!("MakeUniform", [], true, make_uniform::MakeUniform),
+    recipe!("Weight", [], true, weight::Weight),
+    recipe!(
+        "ExtrudeCrvTapered",
+        [],
+        true,
+        extrude_crv_tapered::ExtrudeCrvTapered
+    ),
+    recipe!(
+        "ExtrudeCrvAlongCrv",
+        [],
+        true,
+        extrude_crv_along_crv::ExtrudeCrvAlongCrv
+    ),
+    recipe!(
+        "ExtrudeCrvToPoint",
+        [],
+        true,
+        extrude_crv_to_point::ExtrudeCrvToPoint
+    ),
+    recipe!("RailRevolve", [], true, rail_revolve::RailRevolve),
+    recipe!("Pyramid", [], true, pyramid::Pyramid),
+    recipe!("ExtractSrf", [], true, extract_srf::ExtractSrf),
+    recipe!("MergeAllFaces", [], true, merge_all_faces::MergeAllFaces),
+    recipe!("Wirecut", [], true, wirecut::Wirecut),
+    recipe!("Distribute", [], true, distribute::Distribute),
+    recipe!("SelColor", [], false, sel_color::SelColor),
+    recipe!("Lock", [], true, lock::Lock),
+    recipe!("Unlock", [], true, unlock::Unlock),
+    recipe!("Group", [], true, group::Group),
+    recipe!("Ungroup", [], true, ungroup::Ungroup),
+    recipe!("ShowEdges", [], true, show_edges::ShowEdges),
+    recipe!("Plan", [], false, plan::Plan),
+    listed!("Zebra", [], false, false, zebra::Zebra),
     listed!("EditBoolean", [], true, true, live::EditBoolean),
     listed!("BreakBoolean", [], true, true, live::BreakBoolean),
-    listed!("Block", [], true, true, blocks::Block),
-    listed!("Insert", [], true, true, blocks::Insert),
-    listed!("BlockManager", [], false, false, blocks::BlockManager),
-    listed!("BlockEdit", [], true, true, blocks::BlockEdit),
-    listed!("ExplodeBlock", [], true, true, blocks::ExplodeBlock),
-    listed!("ReplaceBlock", [], true, true, blocks::ReplaceBlock),
+    listed!("Block", [], true, true, block::Block),
+    listed!("Insert", [], true, true, insert::Insert),
+    listed!(
+        "BlockManager",
+        [],
+        false,
+        false,
+        block_manager::BlockManager
+    ),
+    listed!("BlockEdit", [], true, true, block_edit::BlockEdit),
+    listed!("ExplodeBlock", [], true, true, explode_block::ExplodeBlock),
+    listed!("ReplaceBlock", [], true, true, replace_block::ReplaceBlock),
     listed!(
         "SelBlockInstanceNamed",
         [],
         false,
         false,
-        blocks::SelBlockInstanceNamed
+        sel_block_instance_named::SelBlockInstanceNamed
     ),
-    listed!("Count", [], false, false, organise::Count),
-    listed!("ChangeLayer", [], true, true, organise::ChangeLayer),
+    listed!("Count", [], false, false, count::Count),
+    listed!("ChangeLayer", [], true, true, change_layer::ChangeLayer),
     listed!(
         "MatchProperties",
         ["matchprop"],
         true,
         true,
-        organise::MatchProperties
+        match_properties::MatchProperties
     ),
-    listed!("Linetype", [], true, true, organise::LinetypeCommand),
-    listed!("PrintWidth", [], true, true, organise::PrintWidthCommand),
-    listed!("SetUserText", [], true, true, organise::SetUserText),
-    listed!("GetUserText", [], false, false, organise::GetUserText),
-    listed!("Purge", [], true, true, organise::Purge),
-    listed!("Audit", [], false, false, organise::Audit),
-    listed!("LockSwap", [], true, true, organise::LockSwap),
-    listed!("UnlockSelected", [], true, true, organise::UnlockSelected),
-    listed!("BringToFront", [], true, true, organise::DrawOrder<true, true>),
-    listed!("SendToBack", [], true, true, organise::DrawOrder<false, true>),
-    listed!("BringForward", [], true, true, organise::DrawOrder<true, false>),
-    listed!("SendBackward", [], true, true, organise::DrawOrder<false, false>),
-    recipe!("DupFaceBorder", [], true, organise::DupFaceBorder),
-    listed!("TextObject", ["text"], true, true, organise::TextObject),
-    listed!("DraftAnalysis", [], false, false, organise::DraftAnalysis),
-    recipe!("EdgeSrf", [], true, parity6::EdgeSrf),
-    recipe!("NetworkSrf", [], true, parity6::NetworkSrf),
-    recipe!("Patch", [], true, parity6::Patch),
-    recipe!("ExtendSrf", [], true, parity6::ExtendSrf),
-    recipe!("Untrim", [], true, parity6::Untrim),
-    recipe!("Section", [], true, parity6::Section),
-    recipe!("Contour", [], true, parity6::Contour),
-    recipe!("Intersect", [], true, parity6::Intersect),
-    recipe!("Project", [], true, parity6::Project),
-    recipe!("MoveFace", [], true, parity6::MoveFace<false>),
-    recipe!("PushPull", [], true, parity6::MoveFace<true>),
-    recipe!("Shear", [], true, parity6::Shear),
-    recipe!("RebuildUV", [], true, parity6::RebuildUv),
-    recipe!("CurvatureGraph", [], true, parity6::CurvatureGraph),
-    recipe!("Cap", [], true, parity6::Cap),
-    recipe!("ExtractIsocurve", [], true, parity7::ExtractIsocurve),
-    recipe!("ShrinkTrimmedSrf", [], true, parity7::ShrinkTrimmedSrf),
-    recipe!("BlendSrf", [], true, parity7::BlendSrf),
-    recipe!("MatchSrf", [], true, parity7::MatchSrf),
-    recipe!("Sweep2", [], true, parity7::Sweep2),
-    recipe!("Twist", [], true, parity7::Twist),
-    recipe!("Bend", [], true, parity7::Bend),
-    recipe!("Taper", [], true, parity7::Taper),
-    recipe!("Flow", [], true, parity7::Flow),
-    recipe!("CageEdit", [], true, parity7::CageEdit),
-    recipe!("Pull", [], true, parity7::Pull),
-    recipe!("InterpCrvOnSrf", [], true, parity7::InterpCrvOnSrf),
-    recipe!("OffsetCrvOnSrf", [], true, parity7::OffsetCrvOnSrf),
-    recipe!("Silhouette", [], true, parity7::Silhouette),
-    recipe!("UnrollSrf", [], true, parity7::UnrollSrf),
-    recipe!("ExtrudeFace", [], true, parity7::ExtrudeFace),
-    recipe!("FilletSrf", [], true, parity7::FilletSrf<false>),
-    recipe!("ChamferSrf", [], true, parity7::FilletSrf<true>),
-    recipe!("SplitSrf", [], true, parity7::SplitSrf),
+    listed!(
+        "Linetype",
+        [],
+        true,
+        true,
+        linetype_command::LinetypeCommand
+    ),
+    listed!(
+        "PrintWidth",
+        [],
+        true,
+        true,
+        print_width_command::PrintWidthCommand
+    ),
+    listed!("SetUserText", [], true, true, set_user_text::SetUserText),
+    listed!("GetUserText", [], false, false, get_user_text::GetUserText),
+    listed!("Purge", [], true, true, purge::Purge),
+    listed!("Audit", [], false, false, audit::Audit),
+    listed!("LockSwap", [], true, true, lock_swap::LockSwap),
+    listed!(
+        "UnlockSelected",
+        [],
+        true,
+        true,
+        unlock_selected::UnlockSelected
+    ),
+    listed!("BringToFront", [], true, true, draw_order::DrawOrder<true, true>),
+    listed!("SendToBack", [], true, true, draw_order::DrawOrder<false, true>),
+    listed!("BringForward", [], true, true, draw_order::DrawOrder<true, false>),
+    listed!("SendBackward", [], true, true, draw_order::DrawOrder<false, false>),
+    recipe!("DupFaceBorder", [], true, dup_face_border::DupFaceBorder),
+    listed!("TextObject", ["text"], true, true, text_object::TextObject),
+    listed!(
+        "DraftAnalysis",
+        [],
+        false,
+        false,
+        draft_analysis::DraftAnalysis
+    ),
+    recipe!("EdgeSrf", [], true, edge_srf::EdgeSrf),
+    recipe!("NetworkSrf", [], true, network_srf::NetworkSrf),
+    recipe!("Patch", [], true, patch::Patch),
+    recipe!("ExtendSrf", [], true, extend_srf::ExtendSrf),
+    recipe!("Untrim", [], true, untrim::Untrim),
+    recipe!("Section", [], true, section::Section),
+    recipe!("Contour", [], true, contour::Contour),
+    recipe!("Intersect", [], true, intersect::Intersect),
+    recipe!("Project", [], true, project::Project),
+    recipe!("MoveFace", [], true, move_face::MoveFace<false>),
+    recipe!("PushPull", [], true, move_face::MoveFace<true>),
+    recipe!("Shear", [], true, shear::Shear),
+    recipe!("RebuildUV", [], true, rebuild_uv::RebuildUv),
+    recipe!("CurvatureGraph", [], true, curvature_graph::CurvatureGraph),
+    recipe!("Cap", [], true, cap::Cap),
+    recipe!(
+        "ExtractIsocurve",
+        [],
+        true,
+        extract_isocurve::ExtractIsocurve
+    ),
+    recipe!(
+        "ShrinkTrimmedSrf",
+        [],
+        true,
+        shrink_trimmed_srf::ShrinkTrimmedSrf
+    ),
+    recipe!("BlendSrf", [], true, blend_srf::BlendSrf),
+    recipe!("MatchSrf", [], true, match_srf::MatchSrf),
+    recipe!("Sweep2", [], true, sweep2::Sweep2),
+    recipe!("Twist", [], true, twist::Twist),
+    recipe!("Bend", [], true, bend::Bend),
+    recipe!("Taper", [], true, taper::Taper),
+    recipe!("Flow", [], true, flow::Flow),
+    recipe!("CageEdit", [], true, cage_edit::CageEdit),
+    recipe!("Pull", [], true, pull::Pull),
+    recipe!(
+        "InterpCrvOnSrf",
+        [],
+        true,
+        interp_crv_on_srf::InterpCrvOnSrf
+    ),
+    recipe!(
+        "OffsetCrvOnSrf",
+        [],
+        true,
+        offset_crv_on_srf::OffsetCrvOnSrf
+    ),
+    recipe!("Silhouette", [], true, silhouette::Silhouette),
+    recipe!("UnrollSrf", [], true, unroll_srf::UnrollSrf),
+    recipe!("ExtrudeFace", [], true, extrude_face::ExtrudeFace),
+    recipe!("FilletSrf", [], true, fillet_srf::FilletSrf<false>),
+    recipe!("ChamferSrf", [], true, fillet_srf::FilletSrf<true>),
+    recipe!("SplitSrf", [], true, split_srf::SplitSrf),
     recipe!("ExtrudeCrv", [], true, extrude_crv::ExtrudeCrv),
     recipe!("PlanarSrf", [], true, planar_srf::PlanarSrf),
     recipe!("Revolve", [], true, revolve::Revolve),
@@ -449,9 +465,15 @@ pub static COMMANDS: [CommandDef; 236] = [
     listed!("Save", [], false, false, save::Save),
     listed!("SaveAs", [], false, false, save_as::SaveAs),
     listed!("Open", [], false, false, open::Open),
-    listed!("Import", [], false, true, files::Import),
-    listed!("Export", [], false, false, files::Export),
-    listed!("ExportSelected", [], false, false, files::ExportSelected),
+    listed!("Import", [], false, true, import_export::Import),
+    listed!("Export", [], false, false, import_export::Export),
+    listed!(
+        "ExportSelected",
+        [],
+        false,
+        false,
+        import_export::ExportSelected
+    ),
     listed!("New", [], false, false, new::New),
     listed!(
         "ZoomExtents",

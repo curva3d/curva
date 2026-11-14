@@ -27,13 +27,13 @@ the release notes. Then update "Checked at".
 | straight-extrusion | `curva-kernel/src/assemble.rs` (`Body::extruded_straight`) | ExtrudeSrf, the gumball | `thicken` and `offset_sheet` push along the normal, not along a direction | `9342f32` |
 | cone-to-point | `curva-kernel/src/making2.rs` (`Body::extruded_to_point`) | ExtrudeCrvToPoint for smooth curves | `loft_to_point` takes polygons of lines only; `surface::ruled` takes two curves | `9342f32` |
 | rail-revolve | `curva-kernel/src/making2.rs` (`Body::rail_revolved`) | RailRevolve | none | `9342f32` |
-| arc-extension | `curva-commands/src/commands/parity4.rs` (`extended`) | Extend with `Arc` | `curve::extend_curve` does natural and straight extensions only | `9342f32` |
-| curve-fairing | `curva-commands/src/commands/parity4.rs` (`Fair`) | Fair | none | `9342f32` |
-| curve-boolean-regions | `curva-commands/src/commands/parity4.rs` (`CurveBoolean`) | CurveBoolean | `boolean::boolean2d` combines planar sheets; picking regions by clicks is Curva's | `9342f32` |
-| curve-matching | `curva-commands/src/commands/parity4.rs` (`matched_end`) | Match | none | `9342f32` |
-| curve-simplifying | `curva-commands/src/commands/parity4.rs` (`simpler`) | SimplifyCrv | none | `9342f32` |
+| arc-extension | `curva-commands/src/commands/curves/extend.rs` (`extended`) | Extend with `Arc` | `curve::extend_curve` does natural and straight extensions only | `9342f32` |
+| curve-fairing | `curva-commands/src/commands/curves/fair.rs` (`Fair`) | Fair | none | `9342f32` |
+| curve-boolean-regions | `curva-commands/src/commands/curves/curve_boolean.rs` (`CurveBoolean`) | CurveBoolean | `boolean::boolean2d` combines planar sheets; picking regions by clicks is Curva's | `9342f32` |
+| curve-matching | `curva-commands/src/commands/curves/match_curve.rs` (`matched_end`) | Match | none | `9342f32` |
+| curve-simplifying | `curva-commands/src/commands/curves/simplify_crv.rs` (`simpler`) | SimplifyCrv | none | `9342f32` |
 | planar-capping | `curva-kernel/src/assemble.rs` (`Body::capped`) | Cap | `stitch` closes the shell but leaves no solid region inside it (tangency-labs/solidcore#3266); Curva fills and sews with `face-assembly` | `9342f32` |
-| mesh-area-centroid | `curva-commands/src/commands/parity3.rs` (`area_centroid`) | AreaCentroid of solids | `mass_properties` gives a solid's volume centroid, not its area centroid | `9342f32` |
+| mesh-area-centroid | `curva-commands/src/commands/support.rs` (`area_centroid`) | AreaCentroid of solids | `mass_properties` gives a solid's volume centroid, not its area centroid | `9342f32` |
 
 ## Moved to solidcore at the 0.4.2 check (`377457d`)
 
