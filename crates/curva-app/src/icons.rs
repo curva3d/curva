@@ -333,6 +333,26 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
             pen.dot(11.0, 11.0);
         }
         "rectangle" => pen.rect(4.0, 6.0, 14.0, 10.0),
+        // A sheet, landscape, with a detail on it.
+        "layout" => {
+            pen.rect(2.0, 5.0, 18.0, 12.0);
+            pen.rect(4.0, 7.0, 9.0, 8.0);
+            pen.line((15.0, 14.0), (18.0, 14.0));
+        }
+        // Two sheets, one over the other.
+        "copylayout" => {
+            pen.rect(6.0, 8.0, 14.0, 10.0);
+            pen.path(
+                &[
+                    (4.0, 14.0),
+                    (2.0, 14.0),
+                    (2.0, 4.0),
+                    (16.0, 4.0),
+                    (16.0, 6.0),
+                ],
+                false,
+            );
+        }
         "point" => {
             pen.line((11.0, 5.0), (11.0, 17.0));
             pen.line((5.0, 11.0), (17.0, 11.0));
