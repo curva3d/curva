@@ -133,28 +133,35 @@ impl Curva {
         &mut self,
         ui: &mut egui::Ui,
         id: u64,
-        dimension: &curva_document::annotation::Dimension,
+        dimension: &curva_document::annotation::Annotation,
     ) {
         use curva_document::annotation::Annotation;
         let say = |key: &'static str| self.text.render(&Message::new(key));
         ui.label(egui::RichText::new(say("ui.dimension")).strong());
-        ui.label(self.text.render(&Message::with(
-            "ui.dimension.value",
-            vec![self.doc.length_text(dimension.value())],
-        )));
-        let mut typed = dimension.text.clone().unwrap_or_else(|| "<>".to_owned());
+        let value = match dimension {
+            Annotation::Text(_) => return,
+            Annotation::Dimension(d) => self.doc.length_text(d.value()),
+            Annotation::Radial(r) => {
+                let mark = if r.diameter { "Ø" } else { "R" };
+                format!("{mark}{}", self.doc.length_text(r.value()))
+            }
+            Annotation::Angle(a) => format!("{:.2}°", a.value()),
+        };
+        ui.label(
+            self.text
+                .render(&Message::with("ui.dimension.value", vec![value])),
+        );
+        let held = dimension.dimension_text().cloned().flatten();
+        let mut typed = held.clone().unwrap_or_else(|| "<>".to_owned());
         ui.horizontal(|ui| {
             ui.label(say("ui.dimension.text"));
             ui.add(egui::TextEdit::singleline(&mut typed).desired_width(140.0));
         });
         let text = (typed.trim() != "<>" && !typed.trim().is_empty()).then_some(typed);
-        if text != dimension.text {
-            let changed = curva_document::annotation::Dimension {
-                text,
-                ..dimension.clone()
-            };
+        if text != held {
+            let changed = dimension.with_dimension_text(text);
             self.undoable(|doc| {
-                doc.replace_shape(id, Shape::Annotation(Annotation::Dimension(changed)));
+                doc.replace_shape(id, Shape::Annotation(changed));
             });
         }
     }
@@ -219,9 +226,9 @@ impl Curva {
                     let (id, text) = (object.id, text.clone());
                     self.text_properties(ui, id, &text);
                 }
-                Shape::Annotation(curva_document::annotation::Annotation::Dimension(d)) => {
-                    let (id, d) = (object.id, d.clone());
-                    self.dimension_properties(ui, id, &d);
+                Shape::Annotation(dimension) => {
+                    let (id, dimension) = (object.id, dimension.clone());
+                    self.dimension_properties(ui, id, &dimension);
                 }
                 Shape::Instance(instance) => {
                     let name = self

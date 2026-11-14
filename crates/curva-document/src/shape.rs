@@ -112,6 +112,16 @@ pub fn annotation_curves(annotation: &crate::annotation::Annotation) -> Vec<Curv
                 .into_iter()
                 .collect()
         }
+        crate::annotation::Annotation::Radial(r) => {
+            Curve::polyline(vec![r.centre, r.on_curve, r.text_at], false)
+                .into_iter()
+                .collect()
+        }
+        crate::annotation::Annotation::Angle(a) => {
+            Curve::polyline(vec![a.first, a.apex, a.second, a.arc_at], false)
+                .into_iter()
+                .collect()
+        }
     }
 }
 
@@ -139,68 +149,67 @@ pub fn annotation_drawing(
             fills,
         }
     };
-    match annotation {
-        crate::annotation::Annotation::Text(text) => text_drawing(text),
-        crate::annotation::Annotation::Dimension(d) => {
-            let styles = if state.annotation_styles.is_empty() {
-                crate::annotation::standard_styles(matches!(
-                    state.unit,
-                    crate::Unit::Feet | crate::Unit::Inches
-                ))
-            } else {
-                state.annotation_styles.clone()
-            };
-            let Some(style) = styles
-                .iter()
-                .find(|s| s.id == d.style)
-                .or_else(|| styles.first())
-                .cloned()
-            else {
-                return AnnotationDrawing::default();
-            };
-            let paper = space
-                .and_then(|id| state.layouts.iter().find(|l| l.id == id))
-                .map(|l| l.unit);
-            let scale = style.scale_to(state.unit, paper);
-            let value = dimension_value_text(d, &style, state, space);
-            let parts = d.parts(&style, scale, value);
-            let mut drawing = text_drawing(&parts.text);
-            for (a, b) in &parts.lines {
-                if let Ok(line) = Curve::line(*a, *b) {
-                    drawing.lines.push(line);
-                }
-            }
-            for [tip, left, right] in &parts.arrows {
-                if let Ok(head) = Curve::polyline(vec![*tip, *left, *right], true) {
-                    drawing.lines.push(head.clone());
-                    drawing.fills.push(vec![head]);
-                }
-            }
-            drawing
-        }
+    use crate::annotation::Annotation;
+    if let Annotation::Text(text) = annotation {
+        return text_drawing(text);
     }
-}
-
-/// A dimension's text: its value in the model's unit (paper units on a sheet), to the style's
-/// resolution, or its typed text with `<>` standing for the value.
-#[must_use]
-pub fn dimension_value_text(
-    d: &crate::annotation::Dimension,
-    style: &crate::annotation::AnnotationStyle,
-    state: &crate::State,
-    space: Option<u64>,
-) -> String {
-    let value = d.value();
-    let shown = match (state.unit, space) {
+    let styles = if state.annotation_styles.is_empty() {
+        crate::annotation::standard_styles(matches!(
+            state.unit,
+            crate::Unit::Feet | crate::Unit::Inches
+        ))
+    } else {
+        state.annotation_styles.clone()
+    };
+    let Some(style) = styles
+        .iter()
+        .find(|s| s.id == annotation.style())
+        .or_else(|| styles.first())
+        .cloned()
+    else {
+        return AnnotationDrawing::default();
+    };
+    let paper = space
+        .and_then(|id| state.layouts.iter().find(|l| l.id == id))
+        .map(|l| l.unit);
+    let scale = style.scale_to(state.unit, paper);
+    let length = |value: f64| match (state.unit, space) {
         (crate::Unit::Feet | crate::Unit::Inches, None) => {
             crate::units::format_length(value, state.unit, state.length_display)
         }
         _ => format!("{value:.*}", style.linear_resolution()),
     };
-    match &d.text {
+    // The value as shown, or typed text with `<>` standing for it, as in Rhino.
+    let typed = |text: &Option<String>, shown: String| match text {
         Some(typed) => typed.replace("<>", &shown),
         None => shown,
+    };
+    let parts = match annotation {
+        Annotation::Text(_) => return AnnotationDrawing::default(),
+        Annotation::Dimension(d) => d.parts(&style, scale, typed(&d.text, length(d.value()))),
+        Annotation::Radial(r) => {
+            let mark = if r.diameter { "Ø" } else { "R" };
+            let shown = format!("{mark}{}", length(r.value()));
+            r.parts(&style, scale, typed(&r.text, shown))
+        }
+        Annotation::Angle(a) => {
+            let shown = format!("{:.*}°", style.linear_resolution(), a.value());
+            a.parts(&style, scale, typed(&a.text, shown))
+        }
+    };
+    let mut drawing = text_drawing(&parts.text);
+    for (a, b) in &parts.lines {
+        if let Ok(line) = Curve::line(*a, *b) {
+            drawing.lines.push(line);
+        }
     }
+    for [tip, left, right] in &parts.arrows {
+        if let Ok(head) = Curve::polyline(vec![*tip, *left, *right], true) {
+            drawing.lines.push(head.clone());
+            drawing.fills.push(vec![head]);
+        }
+    }
+    drawing
 }
 
 /// Each glyph of a text with its closed contours, set line by line and aligned.

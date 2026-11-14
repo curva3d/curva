@@ -365,9 +365,9 @@ measured value.
 | Dim | Two points; a third point places the dimension line; horizontal or vertical | `AnnotationStyle` `Object` `Continue` `Undo` `Baseline` `Vertical` `Horizontal` | `Vertical` `Horizontal` (otherwise by where the line goes); the current annotation style | partly |
 | DimAligned | Two points; a third point places the dimension line, parallel to the points | `AnnotationStyle` `Object` `Continue` `Baseline` `Undo` | the current annotation style | partly |
 | DimRotated | The rotation angle (typed, or two points); two points; a third point places the dimension line | `AnnotationStyle` `Object` `Continue` `Baseline` | typed angle; the current annotation style | partly |
-| DimAngle | An arc, or two lines (polyline segments, linear edges); the dimension location | `AnnotationStyle` `Points` | none | missing |
-| DimRadius | A curve; the dimension location; measured as projected to the construction plane | `AnnotationStyle` `PointOnCurve` | none | missing |
-| DimDiameter | A curve; the dimension location | `AnnotationStyle` | none | missing |
+| DimAngle | An arc, or two lines (polyline segments, linear edges); the dimension location | `AnnotationStyle` `Points` | the current annotation style; lines only (no polyline segments or edges yet); the smaller of the four angles that holds the arc point | partly |
+| DimRadius | A curve; the dimension location; measured as projected to the construction plane | `AnnotationStyle` `PointOnCurve` | the current annotation style; the pick sets where the arrow lands (PointOnCurve behaviour); circles and arcs only, in their own plane | partly |
+| DimDiameter | A curve; the dimension location | `AnnotationStyle` | the current annotation style; circles and arcs only | partly |
 | DimOrdinate | A dimension point; a leader end (X or Y implied by direction); Enter ends | `AnnotationStyle` `XDatum` `YDatum` `Basepoint` `KinkOffset` | none | missing |
 | DimArcLength | Not read: its help page refused to load | not read | none | missing |
 | DimCurveLength | A curve; a start point for the text or leader | `Type` | none | missing |

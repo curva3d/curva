@@ -34,6 +34,13 @@ impl Recipe for What {
                 Shape::Annotation(curva_document::annotation::Annotation::Dimension(d)) => {
                     format!("dimension of {}", cx.doc.length_text(d.value()))
                 }
+                Shape::Annotation(curva_document::annotation::Annotation::Radial(r)) => {
+                    let kind = if r.diameter { "diameter" } else { "radius" };
+                    format!("{kind} dimension of {}", cx.doc.length_text(r.value()))
+                }
+                Shape::Annotation(curva_document::annotation::Annotation::Angle(a)) => {
+                    format!("angle dimension of {:.2}°", a.value())
+                }
                 Shape::Instance(i) => {
                     let name = cx
                         .doc
