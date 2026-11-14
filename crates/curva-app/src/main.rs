@@ -1006,13 +1006,19 @@ impl Curva {
     /// Rebuilds the drawing only when the model or selection changed, as sampling is the slow part.
     fn refresh_scene(&mut self) {
         let selection = self.doc.selection();
-        let current = self
+        let (model_same, selection_same) = self
             .drawn
             .as_ref()
-            .is_some_and(|(state, chosen)| state == self.doc.state() && chosen == &selection);
-        if !current {
+            .map_or((false, false), |(state, chosen)| {
+                (state.same_as(self.doc.state()), chosen == &selection)
+            });
+        // A changed model is drawn again, reusing what unchanged objects drew as; a changed
+        // selection only recolours.
+        if !model_same {
             self.outlines = Outlines::of_cached(self.doc.state(), &mut self.meshes)
                 .inked(theme::current().viewport.ink);
+        }
+        if !model_same || !selection_same {
             self.scene = Arc::new(object_lines(&self.outlines, &selection));
             self.shaded_scene = Arc::new(shaded_object_lines(&self.outlines, &selection));
             self.faces = Arc::new(face_vertices(&self.outlines, &selection));
