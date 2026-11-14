@@ -107,11 +107,9 @@ pub enum Curve {
         centre: Point,
         /// The radius.
         radius: f64,
-        /// The plane's X direction, of length 1. Files from before circles had planes lack it.
-        #[serde(default = "world_x")]
+        /// The plane's X direction, of length 1.
         x: Point,
         /// The plane's Y direction, of length 1, at a right angle to `x`.
-        #[serde(default = "world_y")]
         y: Point,
     },
     /// Part of a circle, starting along `x` and turning towards `y`.

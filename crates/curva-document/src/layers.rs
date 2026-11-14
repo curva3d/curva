@@ -246,14 +246,6 @@ mod tests {
     }
 
     #[test]
-    fn a_file_from_before_layers_opens_on_the_default_layer() {
-        let text = r#"{"objects":[{"id":3,"curve":{"Line":{"start":[0.0,0.0,0.0],"end":[1.0,0.0,0.0]}}}],"next_id":4}"#;
-        let state: crate::State = serde_json::from_str(text).unwrap();
-        assert_eq!(state.layers.len(), 1);
-        assert_eq!(state.objects[0].layer, state.current_layer);
-    }
-
-    #[test]
     fn layers_survive_being_saved_as_text() {
         let mut doc = Document::default();
         doc.add_layer("Walls".to_owned());
