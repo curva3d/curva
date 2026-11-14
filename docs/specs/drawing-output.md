@@ -1,6 +1,6 @@
 # Spec: drawing output
 
-**Status:** Draft for the owner's approval.
+**Status:** Approved by the owner in chat · 14 November 2026.
 **Covers:** `milestone-3-in-0.4.3.md`, points 14 to 16; decision 0020 (7, 8).
 
 ## 1. Print

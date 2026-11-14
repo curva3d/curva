@@ -1,6 +1,6 @@
 # Milestone 3 in 0.4.3 · 14 November 2026
 
-**Status:** Draft for the owner's approval.
+**Status:** Approved by the owner in chat · 14 November 2026.
 
 Milestone 3 is "Layouts and drafting" (`docs/architecture.md` §10: phase F4, layouts, detail views,
 Make2D, dimensions, hatches, PDF and DXF), and becomes the shared views-and-sheets core that every

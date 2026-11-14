@@ -1,6 +1,6 @@
 # Spec: Make2D and hidden lines
 
-**Status:** Draft for the owner's approval.
+**Status:** Approved by the owner in chat · 14 November 2026.
 **Covers:** `milestone-3-in-0.4.3.md`, points 11 to 13; decision 0020 (3, 6).
 
 ## 1. Make2D, as Rhino 8 does it

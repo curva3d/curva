@@ -1,6 +1,6 @@
 # Feedback on 0.4.2 · 14 November 2026
 
-**Status:** Draft for the owner's approval.
+**Status:** Approved by the owner in chat · 14 November 2026.
 
 The owner's points after 0.4.2, numbered, with what was decided and the spec for each. The owner's
 answers are in decision 0021. Everything here ships in 0.4.3 with Milestone 3.
