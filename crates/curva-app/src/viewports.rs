@@ -198,8 +198,9 @@ impl Curva {
         // A changed model is drawn again, reusing what unchanged objects drew as; a changed
         // selection only recolours.
         if !model_same {
-            self.outlines = Outlines::of_cached(self.doc.state(), &mut self.drawing.meshes)
-                .inked(theme::current().viewport.ink);
+            self.outlines =
+                Outlines::of_space(self.doc.state(), self.doc.space(), &mut self.drawing.meshes)
+                    .inked(theme::current().viewport.ink);
         }
         if !model_same || !selection_same {
             self.scene = Arc::new(object_lines(&self.outlines, &selection));

@@ -234,6 +234,7 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
         let id = state.next_id;
         state.next_id += 1;
         let made = Object {
+            space: None,
             id,
             shape,
             layer: layer_of(a.layer).unwrap_or(state.current_layer),

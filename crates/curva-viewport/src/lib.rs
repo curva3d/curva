@@ -259,10 +259,16 @@ impl Outlines {
     /// As [`Self::of`], reusing the meshes of bodies that have not changed.
     #[must_use]
     pub fn of_cached(state: &State, cache: &mut MeshCache) -> Self {
+        Self::of_space(state, None, cache)
+    }
+
+    /// The objects in one space: the model's (`None`) or a layout's sheet (spec `layouts.md`).
+    #[must_use]
+    pub fn of_space(state: &State, space: Option<u64>, cache: &mut MeshCache) -> Self {
         cache.refresh(state);
         let mut outlines = Self::default();
         let mut earlier = std::mem::take(&mut cache.drawn);
-        for object in &state.objects {
+        for object in state.objects.iter().filter(|o| o.space == space) {
             let layer = state.layers.iter().find(|l| l.id == object.layer);
             // An instance draws its definition, which can change without it, so it is always
             // drawn again; any other object only when it or its layer changed.
@@ -1377,6 +1383,22 @@ pub const STANDARD_INK: [f32; 3] = curva_document::STANDARD_COLOUR;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_space_draws_only_its_own_objects() {
+        let mut doc = curva_document::Document::default();
+        doc.add(Curve::line([0.0; 3], [5.0, 0.0, 0.0]).unwrap());
+        let paper = curva_document::layouts::paper_size("A4").unwrap();
+        let sheet = doc.add_layout("Sheet".to_owned(), paper, false);
+        doc.set_space(Some(sheet));
+        doc.add(Curve::circle([50.0, 50.0, 0.0], 10.0).unwrap());
+        let mut cache = MeshCache::default();
+        let model = Outlines::of_space(doc.state(), None, &mut cache);
+        let on_sheet = Outlines::of_space(doc.state(), Some(sheet), &mut cache);
+        assert_eq!(model.objects.len(), 1);
+        assert_eq!(on_sheet.objects.len(), 1);
+        assert_ne!(model.objects[0].0, on_sheet.objects[0].0);
+    }
 
     /// Draws `doc` with `cache` and checks it matches drawing it from nothing.
     fn drawn_alike(doc: &curva_document::Document, cache: &mut MeshCache) {
