@@ -105,6 +105,12 @@ pub const PDF_FILES: FileFormat = ("files.pdf", &["pdf"]);
 /// SVG drawings, one file per layout.
 pub const SVG_FILES: FileFormat = ("files.svg", &["svg"]);
 
+/// AutoCAD's exchange files.
+pub const DXF_FILES: FileFormat = ("files.dxf", &["dxf"]);
+
+/// AutoCAD's drawing files.
+pub const DWG_FILES: FileFormat = ("files.dwg", &["dwg"]);
+
 /// Where a print goes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PrintTo {
