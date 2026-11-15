@@ -232,9 +232,10 @@ pub struct MeshCache {
     /// Annotation's filled letters, with the annotation they were made for.
     annotations:
         std::collections::HashMap<u64, (Vec<Vec<Curve>>, std::sync::Arc<curva_kernel::BodyMesh>)>,
-    /// Each object as last drawn, with its layer then and what it drew as, so an object that
+    /// Each object as last drawn, with its layer and that layer's parents then (spec
+    /// `sublayers.md`) and what it drew as, so an object that
     /// has not changed is not sampled again (`docs/reviews/code-health-2026-11-14.md`, fix 3).
-    drawn: std::collections::HashMap<u64, (std::sync::Arc<Object>, Option<Layer>, Outlines)>,
+    drawn: std::collections::HashMap<u64, (std::sync::Arc<Object>, Vec<Layer>, Outlines)>,
 }
 
 impl MeshCache {
@@ -354,13 +355,19 @@ impl Outlines {
         let mut earlier = std::mem::take(&mut cache.drawn);
         for object in state.objects.iter().filter(|o| o.space == space) {
             let layer = state.layers.iter().find(|l| l.id == object.layer);
+            // Its layer and the layer's parents, whose being off or locked rules it too.
+            let chain: Vec<Layer> = state
+                .layer_chain(object.layer)
+                .into_iter()
+                .cloned()
+                .collect();
             // An instance draws its definition, and text with fields reads other things, which
             // can change without them, so those are always drawn again; any other object only
-            // when it or its layer changed.
+            // when it or its layers changed.
             let part = match earlier.remove(&object.id) {
-                Some((was, was_layer, part))
+                Some((was, was_chain, part))
                     if std::sync::Arc::ptr_eq(&was, object)
-                        && was_layer.as_ref() == layer
+                        && was_chain == chain
                         && !matches!(object.shape, Shape::Instance(_))
                         && !has_fields(&object.shape) =>
                 {
@@ -369,10 +376,9 @@ impl Outlines {
                 _ => Self::of_object(state, object, layer, cache),
             };
             outlines.append(&part);
-            cache.drawn.insert(
-                object.id,
-                (std::sync::Arc::clone(object), layer.cloned(), part),
-            );
+            cache
+                .drawn
+                .insert(object.id, (std::sync::Arc::clone(object), chain, part));
         }
         outlines
     }
@@ -401,11 +407,12 @@ impl Outlines {
     ) -> Self {
         let mut outlines = Self::default();
         {
-            if object.hidden || layer.is_some_and(|l| !l.visible) {
+            // A layer shows only with all its parents on (spec `sublayers.md` §1).
+            if object.hidden || !state.layer_shown(object.layer) {
                 return outlines;
             }
             let colour = layer.map_or(CURVE_COLOUR, |l| l.colour);
-            let locked = object.locked || layer.is_some_and(|l| l.locked);
+            let locked = object.locked || state.layer_locked(object.layer);
             let width = object.print_width.resolved(layer);
             let dashes = object.linetype.resolved(layer).pattern();
             // An instance draws its definition's objects, placed, all under its own id.

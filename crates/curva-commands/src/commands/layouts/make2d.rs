@@ -63,13 +63,12 @@ fn placed(curve: &Curve, shift: [f64; 2], place: &Placer) -> Option<Curve> {
         .ok()
 }
 
-/// The layer named `name`, made if there is none, with hidden lines dashed.
-fn layer_named(doc: &mut Document, name: &str, hidden: bool) -> u64 {
-    if let Some(layer) = doc.state().layers.iter().find(|l| l.name == name) {
-        return layer.id;
-    }
-    let id = doc.add_layer(name.to_owned());
-    if hidden {
+/// The layer at `path` (`Make2D::Hidden::Curves`), made with its parents if missing; new hidden
+/// layers draw dashed.
+fn layer_named(doc: &mut Document, path: &str, hidden: bool) -> u64 {
+    let existed = doc.state().layer_named(path).is_some();
+    let id = doc.layer_at_path(path);
+    if hidden && !existed {
         doc.set_layer_linetype(id, Linetype::Hidden);
     }
     id
@@ -157,12 +156,12 @@ impl Make2D {
                 continue;
             };
             let name = match (line.visible, line.kind) {
-                (true, LineKind::Curve) => "Make2D Visible Curves",
-                (true, LineKind::Silhouette) => "Make2D Visible Silhouettes",
-                (true, LineKind::Tangent) => "Make2D Visible Tangents",
-                (false, LineKind::Curve) => "Make2D Hidden Curves",
-                (false, LineKind::Silhouette) => "Make2D Hidden Silhouettes",
-                (false, LineKind::Tangent) => "Make2D Hidden Tangents",
+                (true, LineKind::Curve) => "Make2D::Visible::Curves",
+                (true, LineKind::Silhouette) => "Make2D::Visible::Silhouettes",
+                (true, LineKind::Tangent) => "Make2D::Visible::Tangents",
+                (false, LineKind::Curve) => "Make2D::Hidden::Curves",
+                (false, LineKind::Silhouette) => "Make2D::Hidden::Silhouettes",
+                (false, LineKind::Tangent) => "Make2D::Hidden::Tangents",
             };
             let layer = layer_named(doc, name, !line.visible);
             let id = doc.add(curve);
@@ -205,13 +204,13 @@ mod tests {
     use curva_kernel::Body;
 
     fn layer_lines(doc: &Document, name: &str) -> usize {
-        let Some(layer) = doc.state().layers.iter().find(|l| l.name == name) else {
+        let Some(layer) = doc.state().layer_named(name) else {
             return 0;
         };
         doc.state()
             .objects
             .iter()
-            .filter(|o| o.layer == layer.id && o.curve().is_some())
+            .filter(|o| o.layer == layer && o.curve().is_some())
             .count()
     }
 
@@ -253,8 +252,8 @@ mod tests {
         doc.select(&[cube]);
         let _ = run(&mut doc, &["Make2D", "Projection", ""]);
         // Its outline only: the bottom lies under the top and the upright edges are points.
-        assert_eq!(layer_lines(&doc, "Make2D Visible Curves"), 4);
-        assert_eq!(layer_lines(&doc, "Make2D Hidden Curves"), 0);
+        assert_eq!(layer_lines(&doc, "Make2D::Visible::Curves"), 4);
+        assert_eq!(layer_lines(&doc, "Make2D::Hidden::Curves"), 0);
         let curves = drawn(&doc);
         assert!(
             curves
@@ -306,15 +305,15 @@ mod tests {
         let cube = doc.add_body(Body::cuboid([0.0; 3], [10.0, 10.0, 10.0]).unwrap());
         doc.select(&[cube]);
         let _ = run(&mut doc, &["Make2D", ""]);
-        assert_eq!(layer_lines(&doc, "Make2D Visible Curves"), 9);
-        assert_eq!(layer_lines(&doc, "Make2D Hidden Curves"), 3);
-        let hidden = doc
-            .state()
-            .layers
-            .iter()
-            .find(|l| l.name == "Make2D Hidden Curves")
-            .unwrap();
+        assert_eq!(layer_lines(&doc, "Make2D::Visible::Curves"), 9);
+        assert_eq!(layer_lines(&doc, "Make2D::Hidden::Curves"), 3);
+        // A tree: Make2D > Hidden > Curves, the hidden lines dashed.
+        let hidden = doc.state().layer_named("Make2D::Hidden::Curves").unwrap();
+        let hidden = doc.state().layer(hidden).unwrap();
+        assert_eq!(hidden.name, "Curves");
         assert_eq!(hidden.linetype, curva_document::Linetype::Hidden);
+        let parent = doc.state().layer(hidden.parent.unwrap()).unwrap();
+        assert_eq!(parent.name, "Hidden");
     }
 
     #[test]
@@ -324,8 +323,8 @@ mod tests {
         let cube = doc.add_body(Body::cuboid([0.0; 3], [10.0, 10.0, 10.0]).unwrap());
         doc.select(&[cube]);
         let _ = run(&mut doc, &["Make2D", "HiddenLines", ""]);
-        assert_eq!(layer_lines(&doc, "Make2D Visible Curves"), 9);
-        assert_eq!(layer_lines(&doc, "Make2D Hidden Curves"), 0);
+        assert_eq!(layer_lines(&doc, "Make2D::Visible::Curves"), 9);
+        assert_eq!(layer_lines(&doc, "Make2D::Hidden::Curves"), 0);
     }
 
     #[test]
@@ -351,8 +350,8 @@ mod tests {
         });
         let _ = run(&mut doc, &["Sphere", "0,0,0", "10", "SelAll", "Make2D", ""]);
         // One clean outline, nothing hidden.
-        assert_eq!(layer_lines(&doc, "Make2D Visible Silhouettes"), 1);
-        assert_eq!(layer_lines(&doc, "Make2D Hidden Silhouettes"), 0);
+        assert_eq!(layer_lines(&doc, "Make2D::Visible::Silhouettes"), 1);
+        assert_eq!(layer_lines(&doc, "Make2D::Hidden::Silhouettes"), 0);
     }
 
     #[test]

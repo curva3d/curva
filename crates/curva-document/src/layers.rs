@@ -41,8 +41,73 @@ impl Document {
             locked: false,
             print_width: None,
             linetype: crate::Linetype::Continuous,
+            parent: None,
+            collapsed: false,
         });
         id
+    }
+
+    /// Adds a layer under `parent` and returns its id (spec `sublayers.md`).
+    pub fn add_sublayer(&mut self, parent: u64, name: String) -> u64 {
+        let id = self.add_layer(name);
+        if self.state.layer(parent).is_some()
+            && let Some(layer) = self.layer_mut(id)
+        {
+            layer.parent = Some(parent);
+        }
+        id
+    }
+
+    /// The layer `path` names (`Make2D::Visible::Curves`), making whichever layers down it are
+    /// missing. The names are matched exactly, level by level.
+    pub fn layer_at_path(&mut self, path: &str) -> u64 {
+        let mut parent: Option<u64> = None;
+        for name in path.split("::").map(str::trim).filter(|n| !n.is_empty()) {
+            let found = self
+                .state
+                .layers
+                .iter()
+                .find(|l| l.parent == parent && l.name == name)
+                .map(|l| l.id);
+            parent = Some(found.unwrap_or_else(|| match parent {
+                Some(above) => self.add_sublayer(above, name.to_owned()),
+                None => self.add_layer(name.to_owned()),
+            }));
+        }
+        parent.unwrap_or(self.state.current_layer)
+    }
+
+    /// Puts a layer under `parent`, or at the top for `None`. Returns `false`, changing nothing,
+    /// when that would put a layer under itself or one of its own sublayers, or when its new
+    /// level already has a layer of its name.
+    pub fn set_layer_parent(&mut self, id: u64, parent: Option<u64>) -> bool {
+        let Some(name) = self.state.layer(id).map(|l| l.name.clone()) else {
+            return false;
+        };
+        if let Some(above) = parent
+            && (self.state.layer(above).is_none() || self.state.layer_tree(id).contains(&above))
+        {
+            return false;
+        }
+        let taken = self
+            .state
+            .layers
+            .iter()
+            .any(|l| l.id != id && l.parent == parent && l.name.eq_ignore_ascii_case(&name));
+        if taken {
+            return false;
+        }
+        if let Some(layer) = self.layer_mut(id) {
+            layer.parent = parent;
+        }
+        true
+    }
+
+    /// Folds a layer's sublayers away in the Layers panel, or opens them.
+    pub fn set_layer_collapsed(&mut self, id: u64, collapsed: bool) {
+        if let Some(layer) = self.layer_mut(id) {
+            layer.collapsed = collapsed;
+        }
     }
 
     /// Renames a layer.
@@ -93,29 +158,56 @@ impl Document {
         }
     }
 
-    /// Makes a layer the one new objects go on, showing and unlocking it if need be.
+    /// Makes a layer the one new objects go on, showing and unlocking it and its parents if
+    /// need be.
     pub fn set_current_layer(&mut self, id: u64) {
-        if let Some(layer) = self.layer_mut(id) {
-            layer.visible = true;
-            layer.locked = false;
-            self.state.current_layer = id;
+        if self.state.layer(id).is_none() {
+            return;
         }
+        let chain: Vec<u64> = self.state.layer_chain(id).iter().map(|l| l.id).collect();
+        for at in chain {
+            if let Some(layer) = self.layer_mut(at) {
+                layer.visible = true;
+                layer.locked = false;
+            }
+        }
+        self.state.current_layer = id;
     }
 
+    /// Whether `id` is the current layer or one of its parents, which must stay on and
+    /// unlocked.
+    fn holds_current(&self, id: u64) -> bool {
+        self.state
+            .layer_chain(self.state.current_layer)
+            .iter()
+            .any(|l| l.id == id)
+    }
+
+    /// Takes the objects on a layer and its sublayers out of the selection.
     fn deselect_layer(&mut self, id: u64) {
+        let tree = self.state.layer_tree(id);
         let on_it: Vec<u64> = self
             .state
             .objects
             .iter()
-            .filter(|object| object.layer == id)
+            .filter(|object| tree.contains(&object.layer))
             .map(|object| object.id)
             .collect();
         self.selection.retain(|object| !on_it.contains(object));
     }
 
-    /// Shows or hides a layer. The current layer cannot be hidden.
+    /// Shows or hides a layer. The current layer and its parents cannot be hidden, and a layer
+    /// under a hidden parent cannot be shown on its own (spec `sublayers.md` §1).
     pub fn set_layer_visible(&mut self, id: u64, visible: bool) {
-        if !visible && id == self.state.current_layer {
+        if !visible && self.holds_current(id) {
+            return;
+        }
+        let parent_off = self
+            .state
+            .layer(id)
+            .and_then(|l| l.parent)
+            .is_some_and(|p| !self.state.layer_shown(p));
+        if visible && parent_off {
             return;
         }
         if let Some(layer) = self.layer_mut(id) {
@@ -126,9 +218,18 @@ impl Document {
         }
     }
 
-    /// Locks or unlocks a layer. The current layer cannot be locked.
+    /// Locks or unlocks a layer. The current layer and its parents cannot be locked, and a layer
+    /// under a locked parent cannot be unlocked on its own.
     pub fn set_layer_locked(&mut self, id: u64, locked: bool) {
-        if locked && id == self.state.current_layer {
+        if locked && self.holds_current(id) {
+            return;
+        }
+        let parent_locked = self
+            .state
+            .layer(id)
+            .and_then(|l| l.parent)
+            .is_some_and(|p| self.state.layer_locked(p));
+        if !locked && parent_locked {
             return;
         }
         if let Some(layer) = self.layer_mut(id) {
@@ -151,15 +252,41 @@ impl Document {
         }
     }
 
-    /// Deletes a layer. Returns `false`, changing nothing, for the current layer or one in use.
+    /// Deletes a layer and its sublayers, as Rhino does. Returns `false`, changing nothing, when
+    /// any of them is current or has objects on it.
     pub fn delete_layer(&mut self, id: u64) -> bool {
-        let in_use = self.state.objects.iter().any(|object| object.layer == id);
-        if id == self.state.current_layer || in_use {
+        if self.state.layer(id).is_none() {
             return false;
         }
-        let before = self.state.layers.len();
-        self.state.layers.retain(|layer| layer.id != id);
-        self.state.layers.len() != before
+        let tree = self.state.layer_tree(id);
+        let in_use = self
+            .state
+            .objects
+            .iter()
+            .any(|object| tree.contains(&object.layer));
+        if tree.contains(&self.state.current_layer) || in_use {
+            return false;
+        }
+        self.state.layers.retain(|layer| !tree.contains(&layer.id));
+        true
+    }
+
+    /// The objects on a layer, and with `sublayers` on the layers under it too, that can be
+    /// selected (Rhino's Select Objects and Select Sublayer Objects).
+    #[must_use]
+    pub fn objects_on_layer(&self, id: u64, sublayers: bool) -> Vec<u64> {
+        let layers = if sublayers {
+            self.state.layer_tree(id)
+        } else {
+            vec![id]
+        };
+        let open = self.selectable();
+        self.state
+            .objects
+            .iter()
+            .filter(|o| layers.contains(&o.layer) && open.contains(&o.id))
+            .map(|o| o.id)
+            .collect()
     }
 }
 
@@ -252,5 +379,95 @@ mod tests {
         let text = serde_json::to_string(doc.state()).unwrap();
         let back: crate::State = serde_json::from_str(&text).unwrap();
         assert_eq!(&back, doc.state());
+    }
+
+    /// Walls, with Exterior under it and Glass under that.
+    fn tree() -> (Document, u64, u64, u64) {
+        let mut doc = Document::default();
+        let walls = doc.add_layer("Walls".to_owned());
+        let exterior = doc.add_sublayer(walls, "Exterior".to_owned());
+        let glass = doc.add_sublayer(exterior, "Glass".to_owned());
+        (doc, walls, exterior, glass)
+    }
+
+    #[test]
+    fn a_sublayer_has_a_full_name_and_can_be_found_by_it() {
+        let (doc, walls, exterior, glass) = tree();
+        assert_eq!(doc.state().layer_path(glass), "Walls::Exterior::Glass");
+        assert_eq!(doc.state().layer_named("walls::exterior"), Some(exterior));
+        assert_eq!(doc.state().layer_named("Glass"), Some(glass));
+        assert_eq!(doc.state().layer_tree(walls), vec![walls, exterior, glass]);
+    }
+
+    #[test]
+    fn a_parent_turned_off_or_locked_rules_its_sublayers() {
+        let (mut doc, walls, exterior, glass) = tree();
+        let pane = doc.add(line());
+        doc.move_to_layer(&[pane], glass);
+        doc.set_layer_visible(walls, false);
+        assert!(!doc.state().layer_shown(glass));
+        // Glass keeps its own setting, but cannot be turned on while Walls is off.
+        assert!(doc.layers().iter().find(|l| l.id == glass).unwrap().visible);
+        doc.set_layer_visible(exterior, false);
+        doc.set_layer_visible(walls, true);
+        doc.set_layer_visible(glass, true);
+        assert!(!doc.state().layer_shown(glass));
+        assert!(!doc.selectable().contains(&pane));
+        doc.set_layer_visible(exterior, true);
+        assert!(doc.selectable().contains(&pane));
+        doc.set_layer_locked(walls, true);
+        assert!(doc.state().layer_locked(glass));
+        assert!(!doc.selectable().contains(&pane));
+    }
+
+    #[test]
+    fn the_current_layers_parents_stay_on_and_unlocked() {
+        let (mut doc, walls, exterior, glass) = tree();
+        doc.set_layer_visible(walls, false);
+        doc.set_current_layer(glass);
+        // Making Glass current turned its parents back on.
+        assert!(doc.state().layer_shown(glass));
+        doc.set_layer_visible(exterior, false);
+        doc.set_layer_locked(walls, true);
+        assert!(doc.state().layer_shown(glass));
+        assert!(!doc.state().layer_locked(glass));
+    }
+
+    #[test]
+    fn a_layer_cannot_go_under_itself_and_names_differ_on_a_level() {
+        let (mut doc, walls, exterior, glass) = tree();
+        assert!(!doc.set_layer_parent(walls, Some(glass)));
+        assert!(!doc.set_layer_parent(walls, Some(walls)));
+        assert!(doc.set_layer_parent(glass, None));
+        assert_eq!(doc.state().layer_path(glass), "Glass");
+        let other = doc.add_layer("Exterior".to_owned());
+        assert!(
+            !doc.set_layer_parent(other, Some(walls)),
+            "Walls has an Exterior"
+        );
+        assert!(doc.set_layer_parent(glass, Some(exterior)));
+    }
+
+    #[test]
+    fn deleting_a_layer_deletes_its_sublayers_unless_one_is_used() {
+        let (mut doc, walls, _, glass) = tree();
+        let pane = doc.add(line());
+        doc.move_to_layer(&[pane], glass);
+        assert!(!doc.delete_layer(walls), "Glass has an object");
+        doc.remove(&[pane]);
+        assert!(doc.delete_layer(walls));
+        assert_eq!(doc.layers().len(), 1);
+    }
+
+    #[test]
+    fn a_path_finds_or_makes_its_layers() {
+        let mut doc = Document::default();
+        let curves = doc.layer_at_path("Make2D::Visible::Curves");
+        assert_eq!(doc.state().layer_path(curves), "Make2D::Visible::Curves");
+        let again = doc.layer_at_path("Make2D::Visible::Curves");
+        assert_eq!(curves, again);
+        let hidden = doc.layer_at_path("Make2D::Hidden::Curves");
+        assert_ne!(hidden, curves);
+        assert_eq!(doc.layers().len(), 1 + 5);
     }
 }

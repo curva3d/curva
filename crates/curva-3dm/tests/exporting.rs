@@ -32,6 +32,8 @@ fn layer(id: u64, name: &str, colour: [f32; 3]) -> Layer {
         locked: false,
         print_width: None,
         linetype: Linetype::Continuous,
+        parent: None,
+        collapsed: false,
     }
 }
 
@@ -41,7 +43,7 @@ pub fn sample() -> State {
         layers: vec![
             layer(0, "Default", curva_document::STANDARD_COLOUR),
             layer(1, "Walls", [1.0, 0.0, 0.0]),
-            layer(2, "Walls::Openings", [0.0, 0.0, 1.0]),
+            layer(2, "Openings", [0.0, 0.0, 1.0]),
         ],
         next_layer: 3,
         ..State::default()
@@ -49,6 +51,8 @@ pub fn sample() -> State {
     state.layers[1].locked = false;
     state.layers[2].visible = false;
     state.layers[2].print_width = Some(0.35);
+    // A sublayer (spec `sublayers.md`): Rhino's nested layer, both ways.
+    state.layers[2].parent = Some(1);
     let circle = Curve::circle([0.0; 3], 2.0).unwrap();
     let arc = Curve::arc(
         [0.0, 0.0, -3.0],
@@ -190,7 +194,11 @@ fn a_curva_model_comes_back_the_same() {
     let before = sample();
     let after = round_trip(&before);
 
-    let names: Vec<&str> = after.layers.iter().map(|l| l.name.as_str()).collect();
+    let names: Vec<String> = after
+        .layers
+        .iter()
+        .map(|l| after.layer_path(l.id))
+        .collect();
     assert_eq!(names, ["Default", "Walls", "Walls::Openings"]);
     for (a, b) in after.layers.iter().zip(&before.layers) {
         assert_eq!(a.visible, b.visible, "{}", a.name);
@@ -204,8 +212,7 @@ fn a_curva_model_comes_back_the_same() {
     assert_eq!(after.objects.len(), before.objects.len());
     for (a, b) in after.objects.iter().zip(&before.objects) {
         let what = format!("object {} ({:?})", b.id, std::mem::discriminant(&b.shape));
-        let layer_name =
-            |s: &State, id: u64| s.layers.iter().find(|l| l.id == id).unwrap().name.clone();
+        let layer_name = |s: &State, id: u64| s.layer_path(id);
         assert_eq!(
             layer_name(&after, a.layer),
             layer_name(&before, b.layer),
