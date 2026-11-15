@@ -53,45 +53,35 @@
   Curva online account.
 - Status split per stream and the display stream's rules in `AGENTS.md` (#125).
 
-**In progress / next**
-- **Correct drawing first** (owner, 15 November 2026), before styles are tuned: (1) seams no
-  longer drawn in shaded views (this pull request); (2) outlines of curved shapes in every live
-  view, Wireframe included, found from the depth picture; then wireframe and previews drop seams
-  too; (3) edges that stay whole where a surface is seen at a steep angle; (4) edges that follow
-  the true shape when zooming in (spec steps 5 to 7).
-- **Spec: views and visualisation styles** (`docs/specs/views-and-styles.md`, #160), approved by
-  the owner on 15 November 2026: modelling layers and per-view layers, the model carries its styles,
-  the display stream builds the model and interface parts. Replaces display modes. Next: the
-  prototype pictures (Diagram, Architectural, Textured), then step 11.
-- **Prototype 1 of 3, Diagram**: `curva --picture out.png --scene building
-  --style diagram` draws a small test building on white with white surfaces, thin grey
-  inner edges and bold black outlines, soft shading and ambient occlusion, as the owner asked
-  (outlines found from a hidden picture of object
-  numbers, drawn at twice
-  the size and shrunk). Pictures only; the live viewport comes after the owner judges the look.
-  Known: a thin seam line shows across each sphere. Merged as #168.
-- **Prototype 2 of 3, Architectural** (this pull request): `curva --picture out.png --scene house
-  --style architectural [--view top]` draws a small house cut at 1.2 m: cut walls filled solid
-  black (where the cut opens a solid, the back of its faces shows), lines thinner and lighter the
-  further from the viewer, white surfaces and paper. Pictures for the owner. Known: cut tree
-  trunks show outlined, not filled.
-- Order, by what users notice most: **step 11** (instancing: *Large*'s 58 s first frame and
-  2.1 GB), then **4c** (an edit sends only the changed object), then step 13 (memory limit), then
-  steps 2 and 3. The object index made for snapping (`crates/curva-viewport/src/index.rs`) is the
-  one step 12 (off-screen culling) will use.
-
-**Handoff for the next display session**
-- Start with step 11: findings and the plan in four pull requests are on #153. It needs two
-  additions to `curva-kernel` (the shared unplaced mesh and the placement), announced here first.
-- Measuring: build with `cargo build --release -p curva-app`, check nothing else is building
-  (`tasklist | grep -ci "^rustc.exe\|^cargo.exe"` is 0), run each scene twice:
-  `curva-app --orbit-benchmark --scene medium|large [--trees 0] [--select]`. The machine is
-  reached over Parsec at 1280×800; note the size used.
-- Repository habits that bit this session: files have Windows line endings, so multi-line `sed` or
-  `perl` replacements silently do nothing (use the Edit tool); `git push --force`, `reset --hard`
-  and `branch -D` are blocked by the project's hooks (merge `origin/main` into a branch instead of
-  rebasing); after a pull request it builds on is squash-merged, merge `origin/main` and keep this
-  branch's side of `status/display.md`.
+**In progress / next** (owner, 15 November 2026: decisions 0024 and 0025)
+- **Recommended graphics card** (decision 0025): an RTX 3060, or an AMD or Intel card of the same
+  class, with fallbacks for weaker machines. Speed targets are set on the RTX 3060 itself
+  (`docs/specs/display-pipeline.md` §5 and §6); 2020 Intel integrated graphics are the fallback
+  case.
+- Order of work:
+  1. **Finish what is open:** #189 (outlines of curved shapes in shaded views; two DirectX 12
+     shader fixes, checked locally with DirectX 12's older compiler).
+  2. **#185, Vello for 2D views and sheets** (spike, nearly done): with the RTX 3060 recommended,
+     the verdict is full GPU Vello, with vello_cpu as the fallback; Vello Hybrid not needed. Waiting
+     for the owner's decision before building on it; the decision record goes in
+     `docs/decisions/`. **Then #186, re_renderer for 3D lines** (spike), reported the same way.
+  3. **While waiting: #180,** splitting the viewport's large files, with no behaviour change and
+     speed checked before and after.
+  4. **Then:** step 11 (instancing, #153), 4c (an edit sends only the changed object), step 12
+     (off-screen culling, using the index in `crates/curva-viewport/src/index.rs`), step 13
+     (memory limit).
+  5. If an evaluation recommends a library: propose, as choices with a recommendation, how the
+     remaining steps and the styles spec change, before writing code.
+- **Shelved** (decision 0024): steps 14 (occlusion culling) and 15 (clusters, mesh shaders), back
+  only if a measured real model is still too slow after steps 11 to 13. The styles prototype's
+  third look (Textured) and fine-tuning of the looks wait until the drawing is correct.
+- **Correct drawing:** seams no longer drawn in shaded views (#183, merged); outlines of curved
+  shapes in shaded views (#189); still to do: outlines in Ghosted and Wireframe (then seams go
+  there too), edges that stay whole where a surface is seen at a steep angle, and edges that
+  follow the true shape when zooming in (spec steps 5 to 7).
+- **Styles prototypes merged:** Diagram (#168: white surfaces, thin grey inner lines, bold
+  outlines, soft shading and ambient occlusion) and Architectural (#173: a plan cut at 1.2 m with
+  solid black cut walls and lines that thin and lighten with distance).
 
 **Heads-up for the features stream** (changes outside the viewport, decision B)
 - **`curva_kernel::BodyMesh` has a new field `seams`** (one flag per edge): edges where one face

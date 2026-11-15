@@ -4,8 +4,9 @@
 decisions in section 9.
 **Covers:** the owner's brief of 15 November 2026: detail that follows the zoom, smooth edges,
 display modes as editable files, and speed on large scenes.
-**Rules:** 100% pure Rust, no C++ libraries. Runs well on 2020 Intel integrated graphics (Intel UHD
-620 and Iris Xe) and up. Anything newer, such as mesh shaders, is an optional extra, never required.
+**Rules:** 100% pure Rust, no C++ libraries. Designed and measured for an RTX 3060-class graphics
+card (NVIDIA, or AMD or Intel of the same class), with a fallback that still runs on weaker machines
+(decision 0025, which replaces the earlier 2020 Intel integrated-graphics baseline).
 
 ## 0. In short
 
@@ -239,25 +240,37 @@ draws as steadily as one at the origin.
 
 ## 5. Machines
 
-- **Baseline:** 2020 Intel integrated graphics (UHD 620, Iris Xe) through Vulkan or DirectX 12 on
-  Windows and Linux, and Apple's M1 and later through Metal. Everything in sections 2 to 4 works
-  there.
+> **Changed by decision 0025 (owner, 15 November 2026).** The recommended card is an RTX 3060, or an
+> AMD or Intel card of the same class; Curva is designed and measured for it. Below it Curva still
+> runs on fallbacks that draw the same thing more slowly or at lower quality, chosen automatically.
+> Features that need a strong card (compute shaders, larger limits, full-quality shadows and
+> ambient occlusion) may be used by default when present, each with its fallback. 2020 Intel
+> integrated graphics are now the fallback case, not the design target. The text below describes
+> how the fallbacks are checked without such a machine.
+
+- **Recommended:** an RTX 3060-class card through Vulkan or DirectX 12 on Windows and Linux, or a
+  Mac with Apple silicon through Metal (base M-series chips may use some fallbacks).
+- **Fallback:** weaker cards, down to 2020 Intel integrated graphics (UHD 620, Iris Xe). Everything
+  in sections 2 to 4 still works there, more slowly.
 - **Optional extras, used only when the card offers them:** drawing many objects in one call (on
   most cards; without it, a loop of calls does the same), mesh shaders, 8× multisampling. Each has
   a normal path giving the same picture.
 - CI has no graphics card; its tests draw with software graphics (Mesa on Linux, WARP on Windows),
-  which has every feature of the baseline.
+  which is where the fallbacks are checked.
+- Shaders are checked on DirectX 12's older compiler as well as Vulkan: Windows CI caught a shader
+  that only DirectX 12 refused (15 November 2026).
 
-**Keeping to the baseline without such a machine** (decision A): there is no 2020 Intel machine to
-measure on, so the rule is kept by design and checked as far as possible without one:
+**Keeping the fallbacks working without a weak machine:** there is no 2020 Intel machine to
+measure on, so the fallbacks are kept by design and checked as far as possible without one:
 - The viewport asks the graphics card only for what the baseline cards offer. Each optional extra is
   asked for separately, and a test starts the viewport with every extra turned off and checks that
   it draws the same pictures.
 - Integrated graphics are slow mainly at filling pixels and sharing memory with the computer. So
   multisampling drops automatically when frames are slow (section 2.5), the screen pass stays
   cheap, and the memory limit on integrated graphics stays at 1 GB.
-- Speed is measured on the RTX 3060 with a wide margin: since 2020 Intel graphics are roughly 10 to
-  20 times slower, the RTX 3060's work per frame must stay under a tenth of a frame (section 6).
+- *Replaced by decision 0025:* speed was measured on the RTX 3060 with a margin of a tenth of a
+  frame, standing in for integrated graphics; targets are now set on the RTX 3060 itself
+  (section 6).
 - The software graphics in CI are slower than any real card; *Medium* must still draw there, a
   rough check that nothing needs a fast card.
 
@@ -278,11 +291,12 @@ measure on, so the rule is kept by design and checked as far as possible without
   to `--orbit-benchmark`: *Medium* (5,000 curves, 500 solids, as now), *Large* (10,000 solids,
   50,000 curves, 2,000 instances of a 5,000-triangle tree) and *Far* (*Large* placed 500 km from the
   origin). Recorded in `docs/performance.md` on the RTX 3060.
-  **Aim:** on Intel integrated graphics at 1920×1080, *Medium* orbits at 60 frames a second and
-  *Large* at 30 or better. With no such machine (decision A), the checked targets are on the RTX
-  3060 at 1920×1080, with the margin of section 5: the graphics card's work per frame under 1.6 ms
-  for *Medium* and 3.3 ms for *Large*, and selecting an object in *Large* under 1 ms. These are set
-  after the first measurement (step 1), and the owner is told if they look unreachable.
+  **Targets on the recommended card** (decision 0025), an RTX 3060 at 1920×1080: *Medium* and
+  *Large* orbit smoothly at the screen's rate, which on a 60 Hz screen means every frame done in
+  under 16.7 ms, with the graphics card's own share under 8 ms; selecting an object in *Large*
+  costs under 1 ms. Below the recommended class the fallbacks keep Curva usable rather than smooth.
+  (The earlier targets, a tenth of a frame on the RTX 3060 standing in for Intel integrated
+  graphics, are replaced.) The owner is told if a target looks unreachable.
 
 ## 7. Steps, each a small pull request
 
@@ -327,7 +341,8 @@ The display stream makes these changes itself (decision B).
 **A. No machine with 2020 Intel integrated graphics.** The owner has none; Curva must still work
 well on such computers. The rule is kept by design and by the margins in section 5, measured on
 the RTX 3060. If a user or tester with such a machine turns up, their numbers go in
-`docs/performance.md`.
+`docs/performance.md`. *Replaced by decision 0025: the recommended card is RTX 3060-class, and
+such machines run on fallbacks.*
 
 **B. The display stream makes the changes outside the viewport that section 8 lists**, each in its
 own small pull request touching only what it names there, announced in `status/display.md` before

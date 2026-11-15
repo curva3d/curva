@@ -5,8 +5,8 @@ decisions in §8.
 **Covers:** the owner's direction of 15 November 2026. Replaces "Display modes as editable files"
 (`display-pipeline.md` §3) and its steps 8 to 10. The rest of `display-pipeline.md` (detail that
 follows the zoom, smooth edges, speed on large scenes, the machines Curva runs on) is unchanged.
-**Rules:** 100% pure Rust, no C++ libraries. Runs well on 2020 Intel integrated graphics; heavier
-effects lower their quality there instead of being missing.
+**Rules:** 100% pure Rust, no C++ libraries. Designed for an RTX 3060-class graphics card (decision
+0025); on weaker machines heavier effects lower their quality instead of being missing.
 
 ## 0. In short
 
