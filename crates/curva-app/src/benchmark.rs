@@ -124,6 +124,9 @@ pub(crate) fn benchmark_scene(doc: &mut Document, scene: BenchmarkScene) -> Resu
         };
         doc.add_body(body);
     }
+    if scene.house {
+        benchmark_house(doc)?;
+    }
     if scene.building {
         benchmark_building(doc)?;
     }
@@ -160,6 +163,100 @@ pub(crate) fn benchmark_scene(doc: &mut Document, scene: BenchmarkScene) -> Resu
     ))
 }
 
+/// A small house for cut drawings (spec `views-and-styles.md` §5), in millimetres: a ground
+/// floor of 12 by 8 m with 300 mm outer walls, a door and windows (the window walls stop at sill
+/// and head height, so a plan cut at 1.2 m shows the opening), two inner walls, a table, a stair,
+/// the upper floor's slab, and trees around.
+fn benchmark_house(doc: &mut Document) -> Result<(), String> {
+    let text = |error: curva_kernel::KernelError| error.to_string();
+    let mut add = |low: Point, size: Point| -> Result<(), String> {
+        doc.add_body(curva_kernel::Body::cuboid(low, size).map_err(text)?);
+        Ok(())
+    };
+    let (height, sill, head) = (3000.0, 900.0, 2100.0);
+    // A run of wall along X or Y, with windows: full-height pieces between, sill and head
+    // pieces across each window.
+    let mut wall = |start: Point,
+                    along_x: bool,
+                    length: f64,
+                    thick: f64,
+                    windows: &[(f64, f64)]|
+     -> Result<(), String> {
+        let piece = |from: f64, to: f64, low: f64, high: f64| {
+            if along_x {
+                (
+                    [start[0] + from, start[1], low],
+                    [to - from, thick, high - low],
+                )
+            } else {
+                (
+                    [start[0], start[1] + from, low],
+                    [thick, to - from, high - low],
+                )
+            }
+        };
+        let mut at = 0.0;
+        for &(from, to) in windows {
+            let (l, s) = piece(at, from, 0.0, height);
+            add(l, s)?;
+            let (l, s) = piece(from, to, 0.0, sill);
+            add(l, s)?;
+            let (l, s) = piece(from, to, head, height);
+            add(l, s)?;
+            at = to;
+        }
+        let (l, s) = piece(at, length, 0.0, height);
+        add(l, s)
+    };
+    // Outer walls: south with the door (a gap from 2.5 to 3.5 m) and a window, north, west, east.
+    wall([0.0, 0.0, 0.0], true, 2500.0, 300.0, &[])?;
+    wall([3500.0, 0.0, 0.0], true, 8500.0, 300.0, &[(2500.0, 5500.0)])?;
+    wall(
+        [0.0, 7700.0, 0.0],
+        true,
+        12000.0,
+        300.0,
+        &[(4000.0, 8000.0)],
+    )?;
+    wall([0.0, 300.0, 0.0], false, 7400.0, 300.0, &[(2200.0, 4700.0)])?;
+    wall([11700.0, 300.0, 0.0], false, 7400.0, 300.0, &[])?;
+    // Inner walls, 150 mm.
+    wall([7000.0, 300.0, 0.0], false, 4200.0, 150.0, &[])?;
+    wall([300.0, 4500.0, 0.0], true, 3700.0, 150.0, &[])?;
+    // Floor and the upper floor's slab.
+    add([0.0, 0.0, -300.0], [12000.0, 8000.0, 300.0])?;
+    add([0.0, 0.0, height], [12000.0, 8000.0, 300.0])?;
+    // A table and a stair of six steps.
+    add([1800.0, 1600.0, 0.0], [1800.0, 900.0, 750.0])?;
+    for step in 0..6 {
+        let rise = f64::from(step + 1) * 170.0;
+        add(
+            [8200.0 + f64::from(step) * 280.0, 5600.0, 0.0],
+            [280.0, 1100.0, rise],
+        )?;
+    }
+    // Ground around, lower than the floor.
+    add([-3000.0, -3000.0, -700.0], [18000.0, 14000.0, 400.0])?;
+    let trunk = curva_kernel::Body::extruded(
+        &[Curve::circle([0.0; 3], 180.0).map_err(text)?],
+        [0.0, 0.0, 1.0],
+        3000.0,
+        true,
+    )
+    .map_err(text)?;
+    let crown = curva_kernel::Body::sphere([0.0, 0.0, 4300.0], 1800.0).map_err(text)?;
+    let ids = [doc.add_body(trunk), doc.add_body(crown)];
+    let (tree, first) = doc.define_block("house tree".to_owned(), [0.0; 3], &ids);
+    doc.remove(&[first]);
+    for at in [
+        [-2500.0, -2500.0, -300.0],
+        [14500.0, -2000.0, -300.0],
+        [14000.0, 10500.0, -300.0],
+    ] {
+        doc.insert_block(tree, curva_document::blocks::moved_by(at));
+    }
+    Ok(())
+}
 /// A small building for pictures of visualisation styles (spec `views-and-styles.md` §5), in
 /// millimetres: a plinth, a ground-floor volume, an upper volume cantilevered over the entrance,
 /// a roof box, slender columns under the cantilever, and trees as block instances.
@@ -252,6 +349,8 @@ pub(crate) struct BenchmarkScene {
     pub(crate) select: bool,
     /// A small two-storey building with trees, for pictures of visualisation styles.
     pub(crate) building: bool,
+    /// A small house with walls, openings, a table and a stair, for cut drawings.
+    pub(crate) house: bool,
 }
 
 impl BenchmarkScene {
@@ -266,6 +365,7 @@ impl BenchmarkScene {
             offset: [0.0; 3],
             select: false,
             building: false,
+            house: false,
         };
         match name {
             "medium" => Some(Self {
@@ -275,6 +375,10 @@ impl BenchmarkScene {
             }),
             "large" => Some(large),
             // 500 km from the origin along X and Y, in millimetres.
+            "house" => Some(Self {
+                house: true,
+                ..Self::default()
+            }),
             "building" => Some(Self {
                 building: true,
                 ..Self::default()
@@ -423,6 +527,7 @@ mod tests {
             offset,
             select: false,
             building: false,
+            house: false,
         }
     }
 
