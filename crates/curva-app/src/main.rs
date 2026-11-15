@@ -456,7 +456,18 @@ fn run() -> Result<(), String> {
             None => None,
         };
         let scene = value("--scene").and_then(|name| BenchmarkScene::named(name));
-        return picture(path, script, style, scene);
+        // A standard view by name, any case: top, front, right or perspective.
+        let view = value("--view").and_then(|name| {
+            [
+                StandardView::Top,
+                StandardView::Front,
+                StandardView::Right,
+                StandardView::Perspective,
+            ]
+            .into_iter()
+            .find(|view| view.key().eq_ignore_ascii_case(name))
+        });
+        return picture(path, script, style, scene, view);
     }
     // A model given on the command line opens, as after an update.
     let file = arguments

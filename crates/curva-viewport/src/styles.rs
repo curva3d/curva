@@ -9,15 +9,18 @@
 //! smooth. In this prototype the outline pass runs on the main processor; the live viewport will
 //! do the same on the graphics card.
 
-use crate::gpu::{DEPTH_FORMAT, Picture, draw_picture};
+use crate::gpu::{DEPTH_FORMAT, Picture, draw_picture, draw_picture_cut};
 use crate::{MeshVertex, Vertex};
 use egui_wgpu::wgpu;
 
 /// A look a picture can be drawn in. Only the prototype's looks so far; style files come later.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PictureStyle {
-    /// Light surfaces, thin black edges, thick black outlines.
+    /// White surfaces with soft shading and occlusion, thin grey edges, bold black outlines.
     Diagram,
+    /// A drawing cut open: solid black where solids are cut, lines thinning and lightening the
+    /// further they are from the viewer, white paper.
+    Architectural,
 }
 
 impl PictureStyle {
@@ -26,10 +29,19 @@ impl PictureStyle {
     pub fn named(name: &str) -> Option<Self> {
         match name.to_ascii_lowercase().as_str() {
             "diagram" => Some(Self::Diagram),
+            "architectural" => Some(Self::Architectural),
             _ => None,
         }
     }
 }
+
+/// The Architectural look (owner, 15 November 2026: thick black cut lines; lines lighter grey
+/// and thinner the further from the camera). Widths at the final size, in pixels, and greys from
+/// 0 (black) to 1 (white), for the nearest and the furthest lines.
+const NEAR_LINE: (f32, f32) = (2.2, 0.05);
+const FAR_LINE: (f32, f32) = (0.6, 0.75);
+/// The fill where a solid is cut.
+const POCHE: [u8; 3] = [22, 22, 22];
 
 /// How many times larger the picture is drawn before being shrunk, for smooth outlines.
 const SUPERSAMPLE: u32 = 2;
@@ -51,15 +63,19 @@ const OCCLUSION_STRENGTH: f32 = 0.7;
 const OCCLUSION_REACH: f32 = 1200.0;
 
 /// Draws `picture` in `style` and saves it as a PNG file. The picture's faces must carry object
-/// numbers ([`crate::SceneParts`]), which is how outlines find where one object ends.
+/// numbers ([`crate::SceneParts`]), which is how outlines find where one object ends. `cut`, if
+/// given, is a cutting plane `[nx, ny, nz, d]` cutting away where `n·p + d > 0`, as a plan
+/// cuts at a height.
 pub fn save_styled_picture(
     picture: Picture,
     style: PictureStyle,
+    cut: Option<[f32; 4]>,
     size: [u32; 2],
     path: &std::path::Path,
 ) -> Result<(), String> {
     let pixels = match style {
         PictureStyle::Diagram => draw_diagram(picture, size)?,
+        PictureStyle::Architectural => draw_architectural(picture, cut.unwrap_or(NO_CUT), size)?,
     };
     let file = std::fs::File::create(path).map_err(|error| error.to_string())?;
     let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), size[0], size[1]);
@@ -75,11 +91,12 @@ pub fn save_styled_picture(
 pub(crate) fn draw_diagram(picture: Picture, size: [u32; 2]) -> Result<Vec<u8>, String> {
     let big = [size[0] * SUPERSAMPLE, size[1] * SUPERSAMPLE];
     let scale = SUPERSAMPLE as f32;
-    let ids = draw_object_numbers(&picture.faces, picture.matrix, big, NUMBERS_SHADER)?;
-    let depths: Vec<f32> = draw_object_numbers(&picture.faces, picture.matrix, big, DEPTH_SHADER)?
-        .into_iter()
-        .map(f32::from_bits)
-        .collect();
+    let ids = draw_object_numbers(&picture.faces, picture.matrix, big, NUMBERS_SHADER, NO_CUT)?;
+    let depths: Vec<f32> =
+        draw_object_numbers(&picture.faces, picture.matrix, big, DEPTH_SHADER, NO_CUT)?
+            .into_iter()
+            .map(f32::from_bits)
+            .collect();
     let recoloured = Picture {
         lines: picture
             .lines
@@ -122,6 +139,88 @@ pub(crate) fn draw_diagram(picture: Picture, size: [u32; 2]) -> Result<Vec<u8>, 
         pixel[..3].copy_from_slice(&colour);
     }
     outline(&mut base, &ids, big, OUTLINE_PIXELS * scale);
+    Ok(shrink(&base, big, SUPERSAMPLE))
+}
+
+/// The Architectural look's pixels, four bytes each, row by row. Each line's width and grey are
+/// set from how far it lies from the viewer along the view, between the nearest and furthest
+/// lines left after the cut: the edges at the cut thick and black, those far beyond thin and
+/// light. Where the cut has opened a solid, the inside of its faces shows; those pixels are
+/// filled solid. Surfaces are white.
+pub(crate) fn draw_architectural(
+    picture: Picture,
+    cut: [f32; 4],
+    size: [u32; 2],
+) -> Result<Vec<u8>, String> {
+    let big = [size[0] * SUPERSAMPLE, size[1] * SUPERSAMPLE];
+    let scale = SUPERSAMPLE as f32;
+    let ids = draw_object_numbers(&picture.faces, picture.matrix, big, CUT_NUMBERS_SHADER, cut)?;
+    // How far along the view each line end lies; `light` is the direction the camera looks.
+    let forward = picture.light;
+    let along = |p: [f32; 3]| p[0] * forward[0] + p[1] * forward[1] + p[2] * forward[2];
+    let kept = |p: [f32; 3]| cut[0] * p[0] + cut[1] * p[1] + cut[2] * p[2] + cut[3] <= 0.0;
+    let (near, far) = picture
+        .lines
+        .iter()
+        .filter(|vertex| kept(vertex.position))
+        .map(|vertex| along(vertex.position))
+        .fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), d| {
+            (lo.min(d), hi.max(d))
+        });
+    let span = (far - near).max(1e-3);
+    let lines = picture
+        .lines
+        .iter()
+        .map(|vertex| {
+            let t = ((along(vertex.position) - near) / span).clamp(0.0, 1.0);
+            let width = NEAR_LINE.0 + (FAR_LINE.0 - NEAR_LINE.0) * t;
+            let grey = NEAR_LINE.1 + (FAR_LINE.1 - NEAR_LINE.1) * t;
+            Vertex {
+                colour: [grey; 3],
+                width: -width * scale,
+                ..*vertex
+            }
+        })
+        .collect();
+    let faces: Vec<MeshVertex> = picture
+        .faces
+        .iter()
+        .map(|vertex| MeshVertex {
+            colour: [1.0; 3],
+            ..*vertex
+        })
+        .collect();
+    // Drawn twice, with and without the lines: where the two differ is a line that surfaces did
+    // not hide, whatever its grey; everywhere else is a surface or the paper.
+    let surfaces_only = draw_picture_cut(
+        Picture {
+            lines: Vec::new(),
+            faces: faces.clone(),
+            ..picture
+        },
+        big,
+        vec![cut],
+    )?;
+    let mut base = draw_picture_cut(
+        Picture {
+            lines,
+            faces,
+            ..picture
+        },
+        big,
+        vec![cut],
+    )?;
+    // Cut solids are filled; lines keep their greys; surfaces and paper are white.
+    for ((pixel, plain), id) in base.chunks_mut(4).zip(surfaces_only.chunks(4)).zip(&ids) {
+        let colour = if id & CUT_FLAG != 0 {
+            POCHE
+        } else if pixel[..3] != plain[..3] {
+            [pixel[0], pixel[1], pixel[2]]
+        } else {
+            PAPER
+        };
+        pixel[..3].copy_from_slice(&colour);
+    }
     Ok(shrink(&base, big, SUPERSAMPLE))
 }
 
@@ -253,6 +352,7 @@ fn draw_object_numbers(
     matrix: [[f32; 4]; 4],
     size: [u32; 2],
     shader: &str,
+    cut: [f32; 4],
 ) -> Result<Vec<u32>, String> {
     let [width, height] = size;
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
@@ -292,6 +392,7 @@ fn draw_object_numbers(
     let uniforms: Vec<u8> = matrix
         .iter()
         .flatten()
+        .chain(&cut)
         .flat_map(|value| value.to_le_bytes())
         .collect();
     let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -319,7 +420,7 @@ fn draw_object_numbers(
         label: Some("curva object numbers"),
         entries: &[wgpu::BindGroupLayoutEntry {
             binding: 0,
-            visibility: wgpu::ShaderStages::VERTEX,
+            visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
             ty: wgpu::BindingType::Buffer {
                 ty: wgpu::BufferBindingType::Uniform,
                 has_dynamic_offset: false,
@@ -338,7 +439,7 @@ fn draw_object_numbers(
     });
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("curva object numbers"),
-        source: wgpu::ShaderSource::Wgsl(shader.into()),
+        source: wgpu::ShaderSource::Wgsl(format!("{HIDDEN_COMMON}{shader}").into()),
     });
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("curva object numbers"),
@@ -453,37 +554,54 @@ fn draw_object_numbers(
     Ok(ids)
 }
 
-/// Each face's number, flat across the triangle, nearest face winning by depth.
-const NUMBERS_SHADER: &str = "
-struct Camera { matrix: mat4x4<f32> };
+/// The camera and one cutting plane, shared by the hidden-picture shaders: a point where
+/// `dot(cut.xyz, p) + cut.w > 0` is cut away (a plane that never cuts: `(0, 0, 0, -1)`).
+const HIDDEN_COMMON: &str = "
+struct Camera { matrix: mat4x4<f32>, cut: vec4<f32> };
 @group(0) @binding(0) var<uniform> camera: Camera;
 struct Out {
     @builtin(position) position: vec4<f32>,
     @location(0) @interpolate(flat) number: u32,
+    @location(1) distance: f32,
+    @location(2) world: vec3<f32>,
 };
 @vertex fn vertex_main(@location(0) p: vec3<f32>, @location(1) number: u32) -> Out {
-    return Out(camera.matrix * vec4<f32>(p, 1.0), number);
+    let at = camera.matrix * vec4<f32>(p, 1.0);
+    return Out(at, number, at.w, p);
 }
+fn cut_away(p: vec3<f32>) -> bool {
+    return dot(camera.cut.xyz, p) + camera.cut.w > 0.0;
+}
+";
+
+/// Each face's number, flat across the triangle, nearest face winning by depth.
+const NUMBERS_SHADER: &str = "
 @fragment fn fragment_main(input: Out) -> @location(0) u32 {
+    if (cut_away(input.world)) { discard; }
     return input.number;
 }";
 
 /// Each pixel's distance from the camera along its view (the clip-space w of a perspective
 /// view), as the bits of a float, nearest face winning; 0 where nothing is drawn.
 const DEPTH_SHADER: &str = "
-struct Camera { matrix: mat4x4<f32> };
-@group(0) @binding(0) var<uniform> camera: Camera;
-struct Out {
-    @builtin(position) position: vec4<f32>,
-    @location(0) distance: f32,
-};
-@vertex fn vertex_main(@location(0) p: vec3<f32>, @location(1) number: u32) -> Out {
-    let at = camera.matrix * vec4<f32>(p, 1.0);
-    return Out(at, at.w);
-}
 @fragment fn fragment_main(input: Out) -> @location(0) u32 {
+    if (cut_away(input.world)) { discard; }
     return bitcast<u32>(input.distance);
 }";
+
+/// As [`NUMBERS_SHADER`], with [`CUT_FLAG`] added where the face is seen from behind: looking
+/// into a solid the cut has opened, which is where its cut fill goes.
+const CUT_NUMBERS_SHADER: &str = "
+@fragment fn fragment_main(input: Out, @builtin(front_facing) front: bool) -> @location(0) u32 {
+    if (cut_away(input.world)) { discard; }
+    return select(input.number | 0x80000000u, input.number, front);
+}";
+
+/// Added to an object number where a solid is seen cut open.
+const CUT_FLAG: u32 = 0x8000_0000;
+
+/// A cutting plane that never cuts.
+const NO_CUT: [f32; 4] = [0.0, 0.0, 0.0, -1.0];
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -515,6 +633,47 @@ mod tests {
     #[test]
     fn styles_are_found_by_name() {
         assert_eq!(PictureStyle::named("Diagram"), Some(PictureStyle::Diagram));
+        assert_eq!(
+            PictureStyle::named("ARCHITECTURAL"),
+            Some(PictureStyle::Architectural)
+        );
         assert_eq!(PictureStyle::named("watercolour"), None);
+    }
+
+    /// A box seen from above and cut through its middle: the cut fills it solid, and around it
+    /// is paper.
+    #[test]
+    fn a_cut_solid_is_filled_and_the_rest_is_paper() {
+        let body = curva_kernel::Body::cuboid([-50.0, -50.0, 0.0], [100.0, 100.0, 100.0]).unwrap();
+        let mesh = body.mesh().unwrap();
+        let narrow = |p: [f64; 3]| p.map(|v| v as f32);
+        let faces = mesh
+            .triangles
+            .iter()
+            .flatten()
+            .map(|&corner| MeshVertex {
+                position: narrow(mesh.positions[corner as usize]),
+                normal: narrow(mesh.normals[corner as usize]),
+                colour: [1.0; 3],
+                object: 0,
+            })
+            .collect();
+        let mut camera = crate::StandardView::Top.camera();
+        camera.frame([-200.0, -200.0, 0.0], [200.0, 200.0, 100.0]);
+        let picture = Picture {
+            lines: Vec::new(),
+            faces,
+            matrix: camera.matrix(1.0),
+            light: camera.forward().map(|v| v as f32),
+            ghosted: false,
+        };
+        let size = [64, 64];
+        let Ok(pixels) = draw_architectural(picture, [0.0, 0.0, 1.0, -50.0], size) else {
+            eprintln!("no graphics adapter to draw with, so not checked");
+            return;
+        };
+        let at = |x: usize, y: usize| pixels[(y * 64 + x) * 4];
+        assert!(at(32, 32) < 60, "centre {}", at(32, 32));
+        assert_eq!(at(2, 2), 255);
     }
 }
