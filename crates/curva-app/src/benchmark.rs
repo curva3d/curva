@@ -8,6 +8,8 @@ pub(crate) struct Benchmark {
     pub(crate) times: Vec<f64>,
     pub(crate) work: Vec<f32>,
     pub(crate) snapping: Vec<f64>,
+    /// Whether the graphics card has a timer, so its own time per frame is reported.
+    pub(crate) gpu_timer: bool,
 }
 
 /// Builds a benchmark scene: square grids side by side along X, in this order: circles, spline
@@ -211,6 +213,11 @@ impl Benchmark {
     /// Notes one frame. Returns whether enough have been seen.
     pub(crate) fn record(&mut self, ui: &egui::Ui, frame: &eframe::Frame) -> bool {
         self.times.push(ui.input(|input| input.time));
+        // The card's timer starts with the first frame and starts again once the window has
+        // settled, like the frame gaps.
+        if self.times.len() == 1 || self.times.len() == SETTLE_FRAMES {
+            self.gpu_timer = time_gpu(frame, true);
+        }
         self.work.extend(frame.info().cpu_usage);
         ui.ctx().request_repaint();
         self.times.len() >= BENCHMARK_FRAMES
@@ -241,7 +248,33 @@ impl Benchmark {
         let work = self.work.iter().sum::<f32>() * 1000.0 / self.work.len().max(1) as f32;
         println!("frame gap: median {middle:.1} ms, 99th percentile {worst:.1} ms");
         println!("work per frame: {work:.2} ms");
+        match gpu_frame_ms(frame) {
+            Some(ms) if self.gpu_timer => println!("graphics card per frame: {ms:.2} ms"),
+            _ => println!("graphics card per frame: not measured (the card has no timer)"),
+        }
     }
+}
+
+/// Switches the viewport's timer on the graphics card on or off. Returns whether the card has one.
+fn time_gpu(frame: &eframe::Frame, on: bool) -> bool {
+    let Some(state) = frame.wgpu_render_state() else {
+        return false;
+    };
+    let mut renderer = state.renderer.write();
+    renderer
+        .callback_resources
+        .get_mut::<LineRenderer>()
+        .is_some_and(|lines| lines.time_gpu(&state.device, &state.queue, on))
+}
+
+/// The graphics card's average time per frame for drawing the viewports, if measured.
+fn gpu_frame_ms(frame: &eframe::Frame) -> Option<f64> {
+    let state = frame.wgpu_render_state()?;
+    let renderer = state.renderer.read();
+    renderer
+        .callback_resources
+        .get::<LineRenderer>()?
+        .gpu_frame_ms()
 }
 
 /// Spacing and size of the circles in a benchmark scene, in millimetres.

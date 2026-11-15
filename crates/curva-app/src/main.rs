@@ -480,6 +480,17 @@ fn run() -> Result<(), String> {
                     present_mode: eframe::wgpu::PresentMode::AutoNoVsync,
                     desired_maximum_frame_latency: Some(1),
                 },
+                // The viewport says what it asks of the graphics card: the baseline every
+                // supported card has, plus optional extras when present (spec
+                // `display-pipeline.md` §5).
+                wgpu_setup: eframe::egui_wgpu::WgpuSetup::CreateNew(
+                    eframe::egui_wgpu::WgpuSetupCreateNew {
+                        device_descriptor: std::sync::Arc::new(|adapter| {
+                            curva_viewport::device_descriptor(adapter, true)
+                        }),
+                        ..eframe::egui_wgpu::WgpuSetupCreateNew::without_display_handle()
+                    },
+                ),
                 ..eframe::egui_wgpu::WgpuConfiguration::default()
             },
             // Shaded views need depth, so nearer faces hide farther ones.

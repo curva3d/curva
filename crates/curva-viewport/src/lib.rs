@@ -6,6 +6,7 @@ mod gpu;
 mod gumball;
 pub mod print;
 mod snap;
+mod timer;
 
 use curva_document::{Layer, Object, Shape, State};
 use curva_kernel::{Curve, Point};
@@ -17,6 +18,7 @@ pub use gpu::{
 };
 pub use gumball::{Amount, Gumball, GumballChange, Handle};
 pub use snap::{Guides, SnapHit, SnapKind, SnapSet, constrained};
+pub use timer::{OPTIONAL_FEATURES, baseline_limits, device_descriptor};
 
 const GRID_HALF_SIZE: i32 = 100;
 const GRID_STEP: i32 = 10;
