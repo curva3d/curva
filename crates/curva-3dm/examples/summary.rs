@@ -37,6 +37,10 @@ fn main() {
                         curva_3dm::model::Geometry::Point(_) => "point".to_owned(),
                         curva_3dm::model::Geometry::Dot { .. } => "dot".to_owned(),
                         curva_3dm::model::Geometry::Hatch(_) => "hatch".to_owned(),
+                        curva_3dm::model::Geometry::Dimension(_) => "linear dimension".to_owned(),
+                        curva_3dm::model::Geometry::Radial(_) => "radial dimension".to_owned(),
+                        curva_3dm::model::Geometry::Angular(_) => "angle dimension".to_owned(),
+                        curva_3dm::model::Geometry::Leader(_) => "leader".to_owned(),
                         curva_3dm::model::Geometry::Text(t) => format!(
                             "text {:?} own {:?} x {:?}",
                             t.rich,

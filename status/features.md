@@ -31,10 +31,11 @@ Properties yet; built-in title blocks are one design per standard, not one per s
   pattern lines; unknown patterns come in with the drawing) and blocks (definitions, nested, and INSERTs).
 
 **Milestone 3, `.3dm` round trip of drawing objects** (`drawing-output.md` §5):
-- Merged: dots (#146), hatches with the hatch pattern table (#147, checked by opening Curva's file in Rhino 8).
-- In review: Rhino's notes read (words, height, alignment from annotation styles).
+- Merged: dots (#146), hatches with the hatch pattern table (#147), Rhino's notes read (#149), Curva's notes
+  written with annotation styles (#150). Each checked by opening Curva's file in Rhino 8.
+- In review: linear, radius, diameter and angle dimensions and leaders, both ways.
 
-**Next:** writing notes (needs annotation styles), then dimensions and leaders, then layouts and details; DXF
+**Next:** layouts and details in `.3dm`, scale bars and tables as plain drawing for Rhino; DXF
 dimensions and layouts after.
 
 ## Current state — 8 November 2026

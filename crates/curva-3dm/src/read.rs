@@ -2,9 +2,10 @@
 
 use crate::archive::{Reader, Result, Uuid, bad, tcode};
 use crate::model::{
-    Attributes, Block, Brep, BrepEdge, BrepFace, BrepLoop, BrepTrim, BrepVertex, Curve, DimStyle,
-    Extrusion, Geometry, Group, Hatch, HatchLine, HatchPattern, Layer, Model, NamedCPlane,
-    NurbsCurve, NurbsSurface, Object, P3, Plane, Source, Surface, Text, View,
+    AngularDimension, Attributes, Block, Brep, BrepEdge, BrepFace, BrepLoop, BrepTrim, BrepVertex,
+    Curve, DimStyle, Extrusion, Geometry, Group, Hatch, HatchLine, HatchPattern, Layer, Leader,
+    LinearDimension, Model, NamedCPlane, NurbsCurve, NurbsSurface, Object, P3, Plane,
+    RadialDimension, Source, Surface, Text, View,
 };
 
 /// Class ids of the objects Curva reads and writes (openNURBS `ON_OBJECT_IMPLEMENT`).
@@ -36,6 +37,10 @@ pub mod class {
     pub const HATCH: Uuid = Uuid::parse("0559733B-5332-49d1-A936-0532AC76ADE5");
     pub const HATCH_PATTERN: Uuid = Uuid::parse("064E7C91-35F6-4734-A446-79FF7CD659E1");
     pub const TEXT: Uuid = Uuid::parse("57376349-62A9-4A16-B411-A46BCD544790");
+    pub const DIM_LINEAR: Uuid = Uuid::parse("E550882B-F44D-4154-A1EF-6E50CBBBF543");
+    pub const DIM_RADIAL: Uuid = Uuid::parse("FC749C2F-4C00-41FD-9840-26D94F047AD3");
+    pub const DIM_ANGULAR: Uuid = Uuid::parse("D417786B-F6CD-4F12-9E1F-063F414DBEB6");
+    pub const LEADER: Uuid = Uuid::parse("945BF594-6FF9-4F5C-BFC0-B3AF528F29D2");
     pub const DIM_STYLE: Uuid = Uuid::parse("67AA51A5-791D-4BEC-8AED-D23B462B6F87");
     /// The class an older id stands for, as openNURBS reads Rhino's older classes as today's.
     #[must_use]
@@ -665,6 +670,10 @@ fn geometry_of(id: Uuid, r: &mut Reader<'_>) -> Result<std::result::Result<Geome
         }
         class::HATCH => Geometry::Hatch(hatch(r)?),
         class::TEXT => Geometry::Text(text(r)?),
+        class::DIM_LINEAR => Geometry::Dimension(linear_dimension(r)?),
+        class::DIM_RADIAL => Geometry::Radial(radial_dimension(r)?),
+        class::DIM_ANGULAR => Geometry::Angular(angular_dimension(r)?),
+        class::LEADER => Geometry::Leader(leader(r)?),
         class::TEXT_DOT => {
             let (_, minor) = r.chunk_version()?;
             let at = point(r)?;
@@ -1270,9 +1279,20 @@ fn dim_style(record: &mut Reader<'_>) -> Result<Option<DimStyle>> {
 
 /// A note (`ON_Text::Read`, then `ON_Annotation::Internal_ReadAnnotation` and
 /// `ON_TextContent::Read`).
-fn text(r: &mut Reader<'_>) -> Result<Text> {
-    let (_, mut outer) = r.anonymous()?;
-    let (version, mut a) = outer.anonymous()?;
+/// The part every annotation shares (`ON_Annotation::Internal_ReadAnnotation`): its words, the
+/// turn they carry, its style, plane, kind (openNURBS' annotation type, from version 1) and the
+/// style it sets for itself (from version 2).
+struct AnnotationCore {
+    rich: String,
+    rotation: f64,
+    style: Uuid,
+    plane: Plane,
+    kind: u32,
+    own: Option<DimStyle>,
+}
+
+fn annotation_core(r: &mut Reader<'_>) -> Result<AnnotationCore> {
+    let (version, mut a) = r.anonymous()?;
     let (_, mut content) = a.anonymous()?;
     let rich = content.wstring()?;
     let _obsolete_plane = plane(&mut content)?;
@@ -1280,9 +1300,9 @@ fn text(r: &mut Reader<'_>) -> Result<Text> {
     let rotation = content.f64()?;
     let style = a.uuid()?;
     let plane = plane(&mut a)?;
+    let kind = if version >= 1 { a.u32()? } else { 0 };
     let mut own = None;
     if version >= 2 {
-        let _kind = a.u32()?;
         let (_, mut overrides) = a.anonymous()?;
         if overrides.bool()? {
             let (id, mut data) = class_object(&mut overrides)?;
@@ -1291,11 +1311,108 @@ fn text(r: &mut Reader<'_>) -> Result<Text> {
             }
         }
     }
-    Ok(Text {
+    Ok(AnnotationCore {
         rich,
-        plane,
-        style,
-        own,
         rotation,
+        style,
+        plane,
+        kind,
+        own,
+    })
+}
+
+fn text(r: &mut Reader<'_>) -> Result<Text> {
+    let (_, mut outer) = r.anonymous()?;
+    let core = annotation_core(&mut outer)?;
+    Ok(Text {
+        rich: core.rich,
+        plane: core.plane,
+        style: core.style,
+        own: core.own,
+        rotation: core.rotation,
+    })
+}
+
+/// A linear dimension (`ON_DimLinear::Read` around `ON_Dimension::Internal_ReadDimension`):
+/// the annotation, its typed text, then its second point and dimension line point in its plane.
+fn linear_dimension(r: &mut Reader<'_>) -> Result<LinearDimension> {
+    let (_, mut outer) = r.anonymous()?;
+    let (_, mut d) = outer.anonymous()?;
+    let core = annotation_core(&mut d)?;
+    let text = d.wstring()?;
+    let second = outer.f64s::<2>()?;
+    let line = outer.f64s::<2>()?;
+    Ok(LinearDimension {
+        plane: core.plane,
+        style: core.style,
+        own: core.own,
+        rotated: core.kind == 5,
+        text,
+        second,
+        line,
+    })
+}
+
+/// The part dimensions share after the annotation (`ON_Dimension::Internal_ReadDimension`):
+/// returns the annotation and the typed text; the rest is how Rhino draws it by default.
+fn dimension_core(d: &mut Reader<'_>) -> Result<(AnnotationCore, String)> {
+    let core = annotation_core(d)?;
+    let text = d.wstring()?;
+    Ok((core, text))
+}
+
+/// A radius or diameter dimension (`ON_DimRadial::Read`): the dimension, then the point on the
+/// circle and the text point, in its plane (centred on the circle).
+fn radial_dimension(r: &mut Reader<'_>) -> Result<RadialDimension> {
+    let (_, mut outer) = r.anonymous()?;
+    let (_, mut d) = outer.anonymous()?;
+    let (core, text) = dimension_core(&mut d)?;
+    let radius_point = outer.f64s::<2>()?;
+    let text_point = outer.f64s::<2>()?;
+    Ok(RadialDimension {
+        plane: core.plane,
+        style: core.style,
+        own: core.own,
+        diameter: core.kind == 3,
+        text,
+        radius_point,
+        text_point,
+    })
+}
+
+/// An angle dimension (`ON_DimAngular::Read`): the dimension, its sides' directions, where
+/// its extension lines start, and a point on its arc, in its plane (at the corner).
+fn angular_dimension(r: &mut Reader<'_>) -> Result<AngularDimension> {
+    let (_, mut outer) = r.anonymous()?;
+    let (_, mut d) = outer.anonymous()?;
+    let (core, text) = dimension_core(&mut d)?;
+    let sides = [outer.f64s::<2>()?, outer.f64s::<2>()?];
+    let offsets = [outer.f64()?, outer.f64()?];
+    let arc_point = outer.f64s::<2>()?;
+    Ok(AngularDimension {
+        plane: core.plane,
+        style: core.style,
+        own: core.own,
+        text,
+        sides,
+        offsets,
+        arc_point,
+    })
+}
+
+/// A leader (`ON_Leader::Read`, version 1): the annotation, then its points in its plane.
+fn leader(r: &mut Reader<'_>) -> Result<Leader> {
+    let (_, mut outer) = r.anonymous()?;
+    let core = annotation_core(&mut outer)?;
+    let count = outer.count(16)?;
+    let points = (0..count)
+        .map(|_| outer.f64s::<2>())
+        .collect::<Result<Vec<_>>>()?;
+    Ok(Leader {
+        plane: core.plane,
+        style: core.style,
+        own: core.own,
+        rich: core.rich,
+        points,
     })
 }

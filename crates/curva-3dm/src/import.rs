@@ -391,6 +391,24 @@ fn shape_of(
     let text = |e: KernelError| e.0;
     Ok(match geometry {
         Geometry::Point(p) => (Shape::Curve(Curve::Point { at: *p }), "points"),
+        Geometry::Radial(d) => (
+            Shape::Annotation(curva_document::annotation::Annotation::Radial(radial_in(d))),
+            "dimensions",
+        ),
+        Geometry::Angular(d) => (
+            Shape::Annotation(curva_document::annotation::Annotation::Angle(angular_in(d))),
+            "dimensions",
+        ),
+        Geometry::Leader(l) => (
+            Shape::Annotation(curva_document::annotation::Annotation::Leader(leader_in(l))),
+            "leaders",
+        ),
+        Geometry::Dimension(d) => (
+            Shape::Annotation(curva_document::annotation::Annotation::Dimension(
+                dimension_in(d),
+            )),
+            "dimensions",
+        ),
         Geometry::Text(t) => (
             Shape::Annotation(curva_document::annotation::Annotation::Text(note_in(
                 t, styles,
@@ -1704,4 +1722,92 @@ fn hatch_in(
         x: p.x,
         y: p.y,
     })
+}
+
+/// A linear dimension from a file: its points out of its plane, measured along the plane's X
+/// (rotated) or from point to point (aligned). Its looks come from Curva's current style.
+fn dimension_in(d: &model::LinearDimension) -> curva_document::annotation::Dimension {
+    use curva_document::annotation::DimensionKind;
+    let p = &d.plane;
+    let at = |q: [f64; 2]| -> P3 {
+        std::array::from_fn(|k| p.origin[k] + p.x[k] * q[0] + p.y[k] * q[1])
+    };
+    let text = d.text.trim();
+    curva_document::annotation::Dimension {
+        kind: if d.rotated {
+            DimensionKind::Horizontal
+        } else {
+            DimensionKind::Aligned
+        },
+        first: p.origin,
+        second: at(d.second),
+        line: at(d.line),
+        x: p.x,
+        y: p.y,
+        style: 0,
+        text: (!text.is_empty() && text != "<>").then(|| d.text.clone()),
+    }
+}
+
+/// A point in a plane's coordinates, in the world.
+fn in_plane(p: &model::Plane, q: [f64; 2]) -> P3 {
+    std::array::from_fn(|k| p.origin[k] + p.x[k] * q[0] + p.y[k] * q[1])
+}
+
+/// Typed dimension text, or none when it is only the value (`<>`).
+fn typed(text: &str) -> Option<String> {
+    let trimmed = text.trim();
+    (!trimmed.is_empty() && trimmed != "<>").then(|| text.to_owned())
+}
+
+/// A radius or diameter dimension from a file.
+fn radial_in(d: &model::RadialDimension) -> curva_document::annotation::RadialDimension {
+    curva_document::annotation::RadialDimension {
+        diameter: d.diameter,
+        centre: d.plane.origin,
+        on_curve: in_plane(&d.plane, d.radius_point),
+        text_at: in_plane(&d.plane, d.text_point),
+        x: d.plane.x,
+        y: d.plane.y,
+        style: 0,
+        text: typed(&d.text),
+    }
+}
+
+/// An angle dimension from a file: a point on each side where its extension line starts (or,
+/// with none, as far out as its arc).
+fn angular_in(d: &model::AngularDimension) -> curva_document::annotation::AngleDimension {
+    let arc = (d.arc_point[0].powi(2) + d.arc_point[1].powi(2)).sqrt();
+    let side = |i: usize| {
+        let s = d.sides[i];
+        let length = (s[0] * s[0] + s[1] * s[1]).sqrt().max(1e-12);
+        let reach = if d.offsets[i] > 1e-9 {
+            d.offsets[i]
+        } else {
+            arc
+        };
+        in_plane(&d.plane, [s[0] / length * reach, s[1] / length * reach])
+    };
+    curva_document::annotation::AngleDimension {
+        apex: d.plane.origin,
+        first: side(0),
+        second: side(1),
+        arc_at: in_plane(&d.plane, d.arc_point),
+        x: d.plane.x,
+        y: d.plane.y,
+        style: 0,
+        text: typed(&d.text),
+    }
+}
+
+/// A leader from a file, its words made plain and a landing drawn, as Rhino's usual style does.
+fn leader_in(l: &model::Leader) -> curva_document::annotation::Leader {
+    curva_document::annotation::Leader {
+        points: l.points.iter().map(|q| in_plane(&l.plane, *q)).collect(),
+        content: crate::notes::plain_text(&l.rich),
+        x: l.plane.x,
+        y: l.plane.y,
+        landing: true,
+        style: 0,
+    }
 }
