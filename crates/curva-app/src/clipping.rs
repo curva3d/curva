@@ -57,6 +57,7 @@ fn fills_for(state: &State, cuts: &[PlaneCut]) -> Vec<curva_viewport::MeshVertex
                         position: position.map(|v| v as f32),
                         normal: cut.keep.map(|v| v as f32),
                         colour,
+                        object: curva_viewport::NO_OBJECT,
                     });
                 }
             }
