@@ -54,6 +54,10 @@
 - Status split per stream and the display stream's rules in `AGENTS.md` (#125).
 
 **In progress / next**
+- **Spec: views and visualisation styles** (`docs/specs/views-and-styles.md`, #160), approved by
+  the owner on 15 November 2026: modelling layers and per-view layers, the model carries its styles,
+  the display stream builds the model and interface parts. Replaces display modes. Next: the
+  prototype pictures (Diagram, Architectural, Textured), then step 11.
 - Order, by what users notice most: **step 11** (instancing: *Large*'s 58 s first frame and
   2.1 GB), then **4c** (an edit sends only the changed object), then step 13 (memory limit), then
   steps 2 and 3. The object index made for snapping (`crates/curva-viewport/src/index.rs`) is the
