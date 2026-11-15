@@ -110,3 +110,23 @@ lines. **Snapping** takes three quarters of the processor's time on the reduced 
 not in the spec, and is tracked in a `display` issue. **Far from the origin** costs no more time;
 whether it shimmers is checked by eye in step 2. The graphics card's own time per frame is not
 measured yet (step 1b).
+
+### The graphics card's own time (step 1b)
+
+`--orbit-benchmark` now also reports the graphics card's time per frame for drawing the viewports,
+read from the card's own clock (an optional extra; a card without it says "not measured"). Glass
+blur and egui's panels are not included. Same machine, display and build as above, each run twice:
+
+| Scene | Graphics card per frame | Work per frame (processor) |
+|---|---|---|
+| `--scene medium` | 1.51–1.52 ms | 5.6–5.7 ms |
+| Large reduced | 7.08–7.09 ms | 22.8–22.9 ms |
+
+The processor, not the card, limits both scenes; on reduced Large most of the processor's time is
+snapping (#130). Against the spec's margins (§6: under 1.6 ms for *Medium*, 3.3 ms for *Large*, at
+1920×1080), *Medium* is just inside at 1280×800, and reduced Large, with less than half of *Large*,
+is twice over.
+
+"First frame" in the report counts from the program starting, so it includes building the scene:
+*Medium*'s 500 cylinders, each made its own by extruding a circle, take about 35 of its 39 seconds
+to build, about 60 ms each in the engine (#136, outside the viewport).
