@@ -54,6 +54,9 @@
 - Status split per stream and the display stream's rules in `AGENTS.md` (#125).
 
 **In progress / next**
+- **Spec: views and visualisation styles** (`docs/specs/views-and-styles.md`, #160), waiting for
+  the owner's approval. Replaces display modes; prototype pictures (Diagram, Architectural,
+  Textured) come first once approved.
 - Order, by what users notice most: **step 11** (instancing: *Large*'s 58 s first frame and
   2.1 GB), then **4c** (an edit sends only the changed object), then step 13 (memory limit), then
   steps 2 and 3. The object index made for snapping (`crates/curva-viewport/src/index.rs`) is the

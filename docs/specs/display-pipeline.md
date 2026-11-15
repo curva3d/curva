@@ -97,6 +97,10 @@ for how it feels:
 
 ## 3. Display modes as editable files
 
+> **Replaced (owner, 15 November 2026)** by `views-and-styles.md`: visualisation styles that work
+> in 3D, 2D and exports, and views with their own style, layers and sun. This section is kept for
+> the record; where they differ, `views-and-styles.md` wins.
+
 ### 3.1 What the user sees
 
 As in Rhino's *Display Modes* options page:
@@ -290,10 +294,7 @@ measure on, so the rule is kept by design and checked as far as possible without
 5. **Circles, arcs and ellipses exact at any zoom** (section 2.2).
 6. **Spline curves and edges** at levels (section 2.3).
 7. **Curved faces** at levels (section 2.4).
-8. **Display mode settings and shared shaders**, with the three current modes rebuilt on them and
-   looking as before.
-9. **Mode files** and the Display panel editor; X-Ray.
-10. **Screen pass:** silhouettes and creases; Technical and Pen.
+8. to 10. **Replaced** by the prototype and steps of `views-and-styles.md` §5 and §6.
 11. **Instancing.**
 12. **Off-screen culling.**
 13. **Memory limit.**
