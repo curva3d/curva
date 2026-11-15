@@ -1,23 +1,25 @@
-//! Rhino `.3dm` files at the command line (spec `docs/specs/3dm-files.md` §3): `Import`, `Export`,
-//! `ExportSelected`, and the `.3dm` side of `Open` and `SaveAs`.
+//! Rhino `.3dm` files at the command line (spec `docs/specs/3dm-files.md` §3), and AutoCAD's
+//! `.dxf` and `.dwg` (spec `drawing-output.md` §3): `Import`, `Export`, `ExportSelected`, and the
+//! `.3dm`, `.dxf` and `.dwg` side of `Open` and `SaveAs`.
 
 use crate::commands::{ask_objects, unexpected};
 use crate::{
-    Answer, CURVA_FILES, Command, FileFormat, Message, PrintJob, PrintTo, RHINO_FILES, Request,
-    SVG_FILES, Step, ViewRequest,
+    Answer, CURVA_FILES, Command, DWG_FILES, DXF_FILES, FileFormat, Message, PrintJob, PrintTo,
+    RHINO_FILES, Request, SVG_FILES, Step, ViewRequest,
 };
 use curva_3dm::import::Report;
 use curva_document::Document;
+use curva_dxf::Format as CadFormat;
 use std::path::{Path, PathBuf};
 
 /// What `Open` and `Import` read, Curva's own files first.
-pub const READ_FORMATS: &[FileFormat] = &[CURVA_FILES, RHINO_FILES];
+pub const READ_FORMATS: &[FileFormat] = &[CURVA_FILES, RHINO_FILES, DXF_FILES, DWG_FILES];
 
 /// What `Save` and `SaveAs` write, Curva's own files first.
 pub const SAVE_FORMATS: &[FileFormat] = &[CURVA_FILES, RHINO_FILES];
 
 /// What `Export` and `ExportSelected` write.
-pub const EXPORT_FORMATS: &[FileFormat] = &[RHINO_FILES, SVG_FILES];
+pub const EXPORT_FORMATS: &[FileFormat] = &[RHINO_FILES, DXF_FILES, DWG_FILES, SVG_FILES];
 
 /// The model's file name without its extension, for a save dialog's name field.
 pub fn model_name(doc: &Document) -> Option<String> {
@@ -52,6 +54,31 @@ pub fn open_3dm(path: &Path) -> Result<(Document, Report), String> {
     Ok((doc, report))
 }
 
+/// A `.dxf` or `.dwg` file as a new model, unsaved, named after the file, as `.3dm` files open.
+pub fn open_cad(path: &Path, format: CadFormat) -> Result<(Document, curva_dxf::Report), String> {
+    let data = std::fs::read(path).map_err(|e| e.to_string())?;
+    let cad = curva_dxf::read(&data, format)?;
+    let mut doc = Document::default();
+    let report = curva_dxf::import(&cad, &mut doc);
+    let beside = path.with_extension("curva");
+    doc.set_path((!beside.exists()).then_some(beside));
+    Ok((doc, report))
+}
+
+/// The model, or the objects in `only`, written to a `.dxf` or `.dwg` file, through a partial
+/// file so a failed write never leaves half a drawing.
+fn write_cad(
+    doc: &Document,
+    only: Option<&[u64]>,
+    path: &Path,
+    format: CadFormat,
+) -> Result<curva_dxf::Report, String> {
+    let (bytes, report) = curva_dxf::export(doc, only, format)?;
+    let partial = path.with_extension("partial");
+    std::fs::write(&partial, bytes).map_err(|e| e.to_string())?;
+    std::fs::rename(&partial, path).map_err(|e| e.to_string())?;
+    Ok(report)
+}
 /// The model, or the objects in `only`, written to a `.3dm` file.
 pub fn write_3dm(doc: &Document, only: Option<&[u64]>, path: &Path) -> Result<Report, String> {
     let (model, report) = curva_3dm::export::export_document(doc, only);
@@ -88,7 +115,8 @@ fn written(path: &Path, report: &Report) -> Message {
     )
 }
 
-/// `Import`: a `.3dm` or `.curva` file's contents added to the model, its layers merged by name.
+/// `Import`: a `.3dm`, `.curva`, `.dxf` or `.dwg` file's contents added to the model, its layers
+/// merged by name.
 #[derive(Default)]
 pub struct Import;
 
@@ -98,6 +126,21 @@ impl Command for Import {
             None => Step::Ask(Request::file_to_open("prompt.import.path", READ_FORMATS)),
             Some(Answer::Path(text)) => {
                 let path = typed(&text);
+                if let Some(format) = CadFormat::of(&path) {
+                    let read = std::fs::read(&path)
+                        .map_err(|e| e.to_string())
+                        .and_then(|data| curva_dxf::read(&data, format));
+                    return match read {
+                        Ok(cad) => {
+                            let report = curva_dxf::import(&cad, doc);
+                            Step::Done(Some(Message::with(
+                                "done.import",
+                                vec![path.display().to_string(), report.summary()],
+                            )))
+                        }
+                        Err(e) => failed(e),
+                    };
+                }
                 let model = if is_3dm(&path) {
                     let data = match std::fs::read(&path) {
                         Ok(data) => data,
@@ -125,7 +168,8 @@ impl Command for Import {
     }
 }
 
-/// `Export` and `ExportSelected`: the model, or the chosen objects, written as `.3dm`.
+/// `Export` and `ExportSelected`: the model, or the chosen objects, written as `.3dm`, `.dxf` or
+/// `.dwg`.
 #[derive(Default)]
 pub struct Export {
     selected: bool,
@@ -199,6 +243,15 @@ impl Command for Export {
                         black: false,
                         to: PrintTo::Svg(path.display().to_string()),
                     }));
+                }
+                if let Some(format) = CadFormat::of(&path) {
+                    return match write_cad(doc, self.chosen.as_deref(), &path, format) {
+                        Ok(report) => Step::Done(Some(Message::with(
+                            "done.export_cad",
+                            vec![path.display().to_string(), report.summary()],
+                        ))),
+                        Err(e) => failed(e),
+                    };
                 }
                 if !is_3dm(&path) {
                     return Step::Failed(Message::with(
@@ -317,6 +370,25 @@ mod tests {
             panic!("no print");
         };
         assert_eq!(job.layouts.len(), 2);
+    }
+
+    #[test]
+    fn dxf_and_dwg_go_out_and_open_or_import() {
+        let dir = folder("cadfiles");
+        let mut doc = Document::default();
+        run(&mut doc, &["line", "0,0", "5,0", "circle", "10,10", "3"]);
+        for name in ["plan.dxf", "plan.dwg"] {
+            let file = dir.join(name);
+            run(&mut doc, &["export", file.to_str().unwrap()]);
+            assert!(file.exists(), "{name} written");
+            let mut opened = Document::default();
+            run(&mut opened, &["open", file.to_str().unwrap()]);
+            assert_eq!(opened.state().objects.len(), 2, "{name} opened");
+            assert_eq!(opened.path(), Some(dir.join("plan.curva").as_path()));
+            run(&mut opened, &["import", file.to_str().unwrap()]);
+            assert_eq!(opened.state().objects.len(), 4, "{name} imported");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
     #[test]
     fn a_damaged_3dm_is_refused_and_the_model_kept() {
