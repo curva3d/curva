@@ -5,6 +5,7 @@ pub mod archive;
 pub mod export;
 pub mod import;
 pub mod model;
+pub mod notes;
 pub mod read;
 pub mod write;
 

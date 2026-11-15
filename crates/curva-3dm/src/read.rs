@@ -2,9 +2,9 @@
 
 use crate::archive::{Reader, Result, Uuid, bad, tcode};
 use crate::model::{
-    Attributes, Block, Brep, BrepEdge, BrepFace, BrepLoop, BrepTrim, BrepVertex, Curve, Extrusion,
-    Geometry, Group, Hatch, HatchLine, HatchPattern, Layer, Model, NamedCPlane, NurbsCurve,
-    NurbsSurface, Object, P3, Plane, Source, Surface, View,
+    Attributes, Block, Brep, BrepEdge, BrepFace, BrepLoop, BrepTrim, BrepVertex, Curve, DimStyle,
+    Extrusion, Geometry, Group, Hatch, HatchLine, HatchPattern, Layer, Model, NamedCPlane,
+    NurbsCurve, NurbsSurface, Object, P3, Plane, Source, Surface, Text, View,
 };
 
 /// Class ids of the objects Curva reads and writes (openNURBS `ON_OBJECT_IMPLEMENT`).
@@ -35,6 +35,8 @@ pub mod class {
     pub const TEXT_DOT: Uuid = Uuid::parse("74198302-CDF4-4f95-9609-6D684F22AB37");
     pub const HATCH: Uuid = Uuid::parse("0559733B-5332-49d1-A936-0532AC76ADE5");
     pub const HATCH_PATTERN: Uuid = Uuid::parse("064E7C91-35F6-4734-A446-79FF7CD659E1");
+    pub const TEXT: Uuid = Uuid::parse("57376349-62A9-4A16-B411-A46BCD544790");
+    pub const DIM_STYLE: Uuid = Uuid::parse("67AA51A5-791D-4BEC-8AED-D23B462B6F87");
     /// The class an older id stands for, as openNURBS reads Rhino's older classes as today's.
     #[must_use]
     pub fn current(id: Uuid) -> Uuid {
@@ -101,6 +103,14 @@ pub fn read(data: &[u8]) -> Result<Model> {
                 }
                 Ok(())
             })?,
+            tcode::DIMSTYLE_TABLE => {
+                records(&mut chunk.body, tcode::DIMSTYLE_RECORD, |body| {
+                    if let Some(style) = dim_style(body)? {
+                        model.dim_styles.push(style);
+                    }
+                    Ok(())
+                })?;
+            }
             tcode::HATCHPATTERN_TABLE => {
                 records(&mut chunk.body, tcode::HATCHPATTERN_RECORD, |body| {
                     if let Some(pattern) = hatch_pattern(body)? {
@@ -654,6 +664,7 @@ fn geometry_of(id: Uuid, r: &mut Reader<'_>) -> Result<std::result::Result<Geome
             Geometry::Instance { block, xform }
         }
         class::HATCH => Geometry::Hatch(hatch(r)?),
+        class::TEXT => Geometry::Text(text(r)?),
         class::TEXT_DOT => {
             let (_, minor) = r.chunk_version()?;
             let at = point(r)?;
@@ -1197,5 +1208,94 @@ fn hatch(r: &mut Reader<'_>) -> Result<Hatch> {
         pattern,
         loops,
         base,
+    })
+}
+
+/// A Rhino 6+ annotation style (`ON_DimStyle::Write`, version 1), read as far as the notes'
+/// alignment: its id and name, sizes (the seventh is the text height), then every field in
+/// order up to the alignments it also keeps in Rhino 5's numbering.
+fn dim_style_fields(r: &mut Reader<'_>) -> Result<DimStyle> {
+    let (_, mut b) = r.anonymous()?;
+    let (id, name) = component_attributes(&mut b)?;
+    let sizes = b.f64s::<7>()?;
+    // Text alignment (obsolete), angle format, length format, angle and length resolution,
+    // then the ignored text style index of Rhino 6 files.
+    b.skip(4 * 6)?;
+    b.f64()?; // length factor
+    b.bool()?; // alternate units
+    b.f64()?; // alternate length factor
+    b.skip(4 * 2)?; // alternate length format and resolution
+    for _ in 0..4 {
+        b.wstring()?; // prefixes and suffixes
+    }
+    b.f64()?; // dimension line extension
+    b.skip(2)?; // extension lines suppressed
+    b.uuid()?; // parent style
+    b.i32()?; // legacy override count
+    if b.bool()? {
+        let count = b.count(1)?;
+        b.skip(count)?; // which fields are overridden
+    }
+    b.skip(4 * 2 + 8 * 4)?; // tolerance format, resolution, upper, lower, height, baseline
+    b.skip(1 + 4 + 4)?; // text mask on, fill type, colour
+    b.skip(8 + 4 + 16)?; // dimension scale, its source, source style
+    b.skip(4 + 16 + 4 + 16 + 2 + 16)?; // colour sources and colours, plot weights
+    b.skip(8 + 1)?; // fixed extension length
+    b.skip(8 + 4 + 8)?; // text rotation, alternate tolerance resolution, tolerance height
+    b.skip(2 + 4 + 4 + 8)?; // arrows suppressed, text move, arc symbol, stack height
+    b.skip(4 + 8 * 3)?; // stack format, roundings
+    b.skip(4 * 4 + 1)?; // zero suppression, alternate below
+    b.skip(4 * 3 + 16 * 3)?; // arrow types and blocks
+    b.i32()?; // leader content type (obsolete)
+    let v_align = b.u32()?;
+    b.skip(4 + 4 + 4 + 8 + 1 + 8)?; // leader alignment, angle style, curve, angle, landing
+    let h_align = b.u32()?;
+    Ok(DimStyle {
+        id,
+        name,
+        text_height: sizes[6],
+        h_align,
+        v_align,
+    })
+}
+
+/// A dimension style table record; Rhino 5's older form is left out.
+fn dim_style(record: &mut Reader<'_>) -> Result<Option<DimStyle>> {
+    let (id, mut r) = class_object(record)?;
+    if id != class::DIM_STYLE || r.version < 60 || r.peek_tcode() != Some(tcode::ANONYMOUS_CHUNK) {
+        return Ok(None);
+    }
+    dim_style_fields(&mut r).map(Some)
+}
+
+/// A note (`ON_Text::Read`, then `ON_Annotation::Internal_ReadAnnotation` and
+/// `ON_TextContent::Read`).
+fn text(r: &mut Reader<'_>) -> Result<Text> {
+    let (_, mut outer) = r.anonymous()?;
+    let (version, mut a) = outer.anonymous()?;
+    let (_, mut content) = a.anonymous()?;
+    let rich = content.wstring()?;
+    let _obsolete_plane = plane(&mut content)?;
+    let _width = content.f64()?;
+    let rotation = content.f64()?;
+    let style = a.uuid()?;
+    let plane = plane(&mut a)?;
+    let mut own = None;
+    if version >= 2 {
+        let _kind = a.u32()?;
+        let (_, mut overrides) = a.anonymous()?;
+        if overrides.bool()? {
+            let (id, mut data) = class_object(&mut overrides)?;
+            if id == class::DIM_STYLE {
+                own = Some(dim_style_fields(&mut data)?);
+            }
+        }
+    }
+    Ok(Text {
+        rich,
+        plane,
+        style,
+        own,
+        rotation,
     })
 }

@@ -37,6 +37,14 @@ fn main() {
                         curva_3dm::model::Geometry::Point(_) => "point".to_owned(),
                         curva_3dm::model::Geometry::Dot { .. } => "dot".to_owned(),
                         curva_3dm::model::Geometry::Hatch(_) => "hatch".to_owned(),
+                        curva_3dm::model::Geometry::Text(t) => format!(
+                            "text {:?} own {:?} x {:?}",
+                            t.rich,
+                            t.own
+                                .as_ref()
+                                .map(|s| (s.text_height, s.h_align, s.v_align)),
+                            t.plane.x
+                        ),
                         curva_3dm::model::Geometry::Curve(c) => format!(
                             "curve {}",
                             match c {
@@ -65,6 +73,7 @@ fn main() {
                     *kinds.entry(k).or_insert(0) += 1;
                 }
                 println!("  objects {kinds:?}");
+                println!("  styles {:?}", m.dim_styles);
                 println!(
                     "  names {:?}",
                     m.objects

@@ -1,6 +1,7 @@
 //! A [`Model`] read from a file brought into a Curva document.
 
 use crate::model::{self, Brep, Geometry, Model, P3};
+use crate::notes::note_in;
 use curva_document::blocks::{BlockDefinition, Instance};
 use curva_document::{
     Document, Layer, Linetype, Object, PrintWidth, SavedCPlane, SavedView, Shape, State, Unit,
@@ -251,6 +252,7 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
         let (shape, kind) = match shape_of(
             &object.geometry,
             &block_ids,
+            &model.dim_styles,
             &model.hatch_patterns,
             state,
             file_mm,
@@ -381,6 +383,7 @@ fn scaled(shape: Shape, scale: f64) -> Result<Shape, String> {
 fn shape_of(
     geometry: &Geometry,
     blocks: &BTreeMap<crate::archive::Uuid, u64>,
+    styles: &[model::DimStyle],
     patterns: &[model::HatchPattern],
     state: &mut State,
     file_mm: f64,
@@ -388,6 +391,12 @@ fn shape_of(
     let text = |e: KernelError| e.0;
     Ok(match geometry {
         Geometry::Point(p) => (Shape::Curve(Curve::Point { at: *p }), "points"),
+        Geometry::Text(t) => (
+            Shape::Annotation(curva_document::annotation::Annotation::Text(note_in(
+                t, styles,
+            ))),
+            "texts",
+        ),
         Geometry::Hatch(h) => (
             Shape::Annotation(curva_document::annotation::Annotation::Hatch(hatch_in(
                 h, patterns, state, file_mm,
