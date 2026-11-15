@@ -232,7 +232,10 @@ mod tests {
             parallel: false,
         });
         let _ = run(&mut doc, &["Sphere", "0,0,0", "10", "SelAll", "Make2D", ""]);
-        assert!(layer_lines(&doc, "Make2D Visible Silhouettes") > 0, "no outline");
+        assert!(
+            layer_lines(&doc, "Make2D Visible Silhouettes") > 0,
+            "no outline"
+        );
     }
 
     #[test]
