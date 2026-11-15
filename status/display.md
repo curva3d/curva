@@ -10,12 +10,21 @@
   (#124).
 - `AGENTS.md` now says the display stream owns the inside of `crates/curva-viewport`, other streams
   ask for viewport changes with a `display` issue, and only the display stream runs speed
-  benchmarks (#124). The `display` label exists.
+  benchmarks (#124, merged as #125). The `display` label exists.
+- Spec for the new display pipeline (`docs/specs/display-pipeline.md`, #126), approved by the owner
+  on 15 November 2026: detail that follows the zoom, anti-aliased edges, display modes as editable
+  files, and speed on large scenes, in 15 steps (§7). Decisions: no Intel test machine, so the
+  baseline is kept by design and by margins on the RTX 3060 (§5); the display stream makes the
+  few changes outside the viewport that §8 lists, announcing each here first; display modes live in
+  the user folder, later to be tied to a Curva online account.
 
 **In progress**
-- Spec for the new display pipeline (`docs/specs/display-pipeline.md`): detail that follows the
-  zoom, anti-aliased edges, display modes as editable files, and speed on large scenes. Waiting for
-  the owner's approval before any code.
+- Step 1: the *Large* and *Far* benchmark scenes, the graphics card's own time per frame, a
+  baseline on the RTX 3060, and a test drawing with every optional extra turned off.
+
+**Heads-up for the features stream** (changes outside the viewport, decision B)
+- None started yet. Step 1 touches only the benchmark code; where that lives outside the viewport
+  it will be listed here first.
 
 **Open `display` issues**
 - None yet.
