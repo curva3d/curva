@@ -16,7 +16,7 @@ unpolished; a Windows installer, a Linux AppImage and a macOS disk image are on 
 | File / folder | What it is |
 |---|---|
 | `docs/architecture.md` | The plan for the whole project |
-| `STATUS.md` | Where the project is right now, updated after every work session |
+| `STATUS.md` | Points to `status/display.md` and `status/features.md`: where each stream of work is, updated after every work session |
 | `AGENTS.md` | The rules every AI agent and contributor follows |
 | `docs/decisions/` | One short note per important decision: what, why, what was rejected |
 | `docs/specs/` | Specs for features, approved by the project owner before work starts |

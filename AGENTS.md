@@ -32,6 +32,22 @@ does not read code.
 - **Larger features need an approved spec** in `docs/specs/` before code is written.
 - **Small pull requests:** one concern each, ideally a few hundred lines.
 
+## Streams (owner's rule, 15 November 2026)
+
+Work runs in two streams, each in its own sessions: **display** (the viewport: drawing, display
+modes, speed on large scenes) and **features** (everything else). A session says which stream it
+is in.
+
+- **Each stream writes only its own status file:** `status/display.md` or `status/features.md`.
+  `STATUS.md` only points to them; do not write progress there.
+- **The display stream owns the inside of `crates/curva-viewport`.** Other streams use only its
+  public functions and types. If they need a viewport change (a new function, a fix, a different
+  look), they open an issue labelled `display` describing what they need and why, instead of
+  editing the crate. The display stream folds those issues into its plan.
+- **Only the display stream runs speed benchmarks** (`--orbit-benchmark` and any other timing).
+  Another session may be building on the same machine, so the display stream reruns any result
+  that looks off before reporting it, and says in the report when it did.
+
 ## Code rules (architecture section 17)
 
 - **Pure Rust.** No C++ or Python in anything Curva builds or links. The only exception is the
@@ -96,7 +112,7 @@ To add a command, or bring one up to Rhino:
   what you suspect, label the issue `needs-human` or `blocked`, and move on.
 - **Same failure twice in a row means change approach** or escalate.
 - **Flaky tests are quarantined, not retried:** move them to the quarantine list and open an issue.
-- When a session's time or budget runs out, hand over with notes in `STATUS.md`.
+- When a session's time or budget runs out, hand over with notes in your stream's status file.
 
 ## Keep going (owner's rule, 9 November 2026)
 
@@ -113,4 +129,5 @@ test or reference, new dependencies with licence implications, releases. Everyth
 
 ## Ending a session
 
-Update `STATUS.md`: what changed, what is in progress, known problems, handoff notes.
+Update your stream's status file (`status/display.md` or `status/features.md`): what changed,
+what is in progress, known problems, handoff notes.

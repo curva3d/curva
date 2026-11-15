@@ -576,7 +576,7 @@ Agents start each session without memory of the last one. The repository carries
 - **`AGENTS.md` / `CLAUDE.md`:** the rules (short, kept current). Per-crate files hold local rules where needed.
 - **`ARCHITECTURE.md`:** the map of the code.
 - **`docs/decisions/`:** why things are the way they are.
-- **`STATUS.md`:** current state, what's in progress, known problems and handoff notes. Updated at the end of every session.
+- **`STATUS.md`:** points to one status page per stream of work (`status/display.md`, `status/features.md`), each holding current state, what's in progress, known problems and handoff notes. Each stream updates only its own page at the end of every session.
 - **Fresh context per task:** each task starts a new session that reads these files, rather than one endless session that drifts.
 
 ### Automation that runs without anyone
