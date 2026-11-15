@@ -6,6 +6,8 @@
 //! its own. `curva --mcp --connect` connects an agent to the window that is open instead.
 //! `curva --orbit-benchmark --curves 5000` opens the window on a scene of that many circles, spins
 //! the view and prints how fast it drew and snapped. `--solids 500` adds that many cylinders.
+//! `--scene medium`, `large` or `far` uses a standard scene (spec `display-pipeline.md` §6);
+//! `--splines` and `--trees` change its counts of spline curves and tree instances.
 //!
 //! On Windows Curva is a GUI program, so no console opens beside it. Output from the command-line
 //! modes reaches a terminal when it is piped (`curva --picture out.png --run line | more`), and the
@@ -225,7 +227,9 @@ impl Curva {
             .map(|folder| recovery::Autosave::new(folder, &doc, std::time::Instant::now()));
         let mut panes = standard_panes();
         if let Some(scene) = benchmark
-            && benchmark_scene(&mut doc, scene).is_ok()
+            && benchmark_scene(&mut doc, scene)
+                .inspect(|summary| println!("{summary}"))
+                .is_ok()
             && let Some((low, high)) = Outlines::of(doc.state()).bounds()
         {
             for pane in &mut panes {
@@ -451,10 +455,18 @@ fn run() -> Result<(), String> {
         .iter()
         .any(|argument| argument == "--orbit-benchmark")
         .then(|| {
-            let count = |flag: &str| value(flag).and_then(|n| n.parse().ok()).unwrap_or(0);
+            let count = |flag: &str| value(flag).and_then(|n| n.parse().ok());
+            // A named scene (`--scene medium`, `large` or `far`), with `--curves` and `--solids`
+            // changing its counts if given.
+            let scene = value("--scene")
+                .and_then(|name| BenchmarkScene::named(name))
+                .unwrap_or_default();
             BenchmarkScene {
-                curves: count("--curves"),
-                solids: count("--solids"),
+                curves: count("--curves").unwrap_or(scene.curves),
+                solids: count("--solids").unwrap_or(scene.solids),
+                splines: count("--splines").unwrap_or(scene.splines),
+                trees: count("--trees").unwrap_or(scene.trees),
+                ..scene
             }
         });
     eframe::run_native(

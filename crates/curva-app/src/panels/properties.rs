@@ -239,6 +239,8 @@ impl Curva {
             Annotation::Leader(leader) => return self.leader_properties(ui, id, leader),
             Annotation::Dot(dot) => return self.dot_properties(ui, id, dot),
             Annotation::Hatch(hatch) => return self.hatch_properties(ui, id, hatch),
+            // Worked out from the document; nothing of their own to edit here yet.
+            Annotation::ScaleBar(_) | Annotation::Table(_) => return,
             _ => {}
         }
         let say = |key: &'static str| self.text.render(&Message::new(key));
@@ -247,7 +249,9 @@ impl Curva {
             Annotation::Text(_)
             | Annotation::Leader(_)
             | Annotation::Dot(_)
-            | Annotation::Hatch(_) => {
+            | Annotation::Hatch(_)
+            | Annotation::ScaleBar(_)
+            | Annotation::Table(_) => {
                 return;
             }
             Annotation::Dimension(d) => self.doc.length_text(d.value()),
