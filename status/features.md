@@ -41,12 +41,22 @@ Properties yet; built-in title blocks are one design per standard, not one per s
   `LayoutUserText` and `Notes` fields stay fields for Rhino (a layout named by number goes out as its
   page id and comes back as a number). Checked in Rhino 8 both ways. Rhino writes layout user text
   only when plug-in data is saved (`SaveSmall` with `SavePlugInData=No` drops it).
-- In review: linetypes and objects' own colours both ways in `.3dm`, DXF and DWG. The document gains
+- Merged (#171): linetypes and objects' own colours both ways in `.3dm`, DXF and DWG. The document gains
   object colours (`ObjectColour`, a Colour row in Properties) and linetypes of its own that files bring
   (with their patterns, offered in the Linetype command and drop-downs). Linetype lengths are paper
   millimetres, as in Rhino and printing; DXF lengths convert to drawing units. DXF and DWG import also
   takes layers' on, locked and line weight. Checked in Rhino 8 both ways. Drawing the colours and the
   document's linetypes, and dashes at paper size, is the display stream's (#170).
+- Merged (#181): `.3dm` annotation styles by name with their font, text height, arrow size, text gap,
+  extension lines and decimals (`ON_DimStyle` 1.2 with an `ON_Font` record); notes and dimensions read
+  keep their style. Checked in Rhino 8 both ways.
+- Merged (#188): `.3dm` details keep their display mode (Rhino's standard modes) and lock.
+- In review (#191): layers turned off in a detail stay off in it (`ON__LayerExtensions`; Rhino names a
+  detail's viewport by the detail object's id). Checked in Rhino 8 both ways.
+- In review (#184): DXF and DWG annotation styles as text styles (TrueType family) and dimension styles
+  (sizes, decimals, text style by handle). Checked in Rhino 8; an AutoCAD check is still to come.
+- Notes for the next session: Rhino slots sometimes fail to start or close on the first script; a
+  retry works. A slot keeps styles between imports, so check each import in a fresh slot.
 - Merged (#158): scale bars and tables to `.3dm` as their plain drawing; fields only Curva can work out written as
   they read.
 
