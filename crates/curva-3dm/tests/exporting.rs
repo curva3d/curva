@@ -472,5 +472,8 @@ fn dots_come_back_with_their_words_height_and_font() {
     state.next_id = 1;
     let back = round_trip(&state);
     assert_eq!(back.objects.len(), 1);
-    assert_eq!(back.objects[0].shape, Shape::Annotation(Annotation::Dot(dot)));
+    assert_eq!(
+        back.objects[0].shape,
+        Shape::Annotation(Annotation::Dot(dot))
+    );
 }
