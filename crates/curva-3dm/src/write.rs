@@ -3,9 +3,9 @@
 
 use crate::archive::{Uuid, Writer, tcode};
 use crate::model::{
-    Attributes, Block, Brep, Curve, DimStyle, Geometry, Group, HatchLine, HatchPattern, Layer,
-    LinearDimension, Model, NurbsCurve, NurbsSurface, Object, P3, Plane, Source, Surface, Text,
-    View,
+    AngularDimension, Attributes, Block, Brep, Curve, DimStyle, Geometry, Group, HatchLine,
+    HatchPattern, Layer, Leader, LinearDimension, Model, NurbsCurve, NurbsSurface, Object, P3,
+    Plane, RadialDimension, Source, Surface, Text, View,
 };
 use crate::read::class;
 
@@ -247,7 +247,11 @@ fn object_type(g: &Geometry) -> i64 {
         Geometry::Instance { .. } => 0x1000,
         Geometry::Dot { .. } => 0x2000,
         Geometry::Hatch(_) => 0x10000,
-        Geometry::Text(_) | Geometry::Dimension(_) => 0x200,
+        Geometry::Text(_)
+        | Geometry::Dimension(_)
+        | Geometry::Radial(_)
+        | Geometry::Angular(_)
+        | Geometry::Leader(_) => 0x200,
     }
 }
 
@@ -268,6 +272,13 @@ fn write_object(w: &mut Writer, object: &Object) {
         Geometry::Dimension(d) => {
             class_object(w, class::DIM_LINEAR, |w| write_linear_dimension(w, d));
         }
+        Geometry::Radial(d) => {
+            class_object(w, class::DIM_RADIAL, |w| write_radial_dimension(w, d));
+        }
+        Geometry::Angular(d) => {
+            class_object(w, class::DIM_ANGULAR, |w| write_angular_dimension(w, d));
+        }
+        Geometry::Leader(l) => class_object(w, class::LEADER, |w| write_leader(w, l)),
         Geometry::Hatch(h) => class_object(w, class::HATCH, |w| {
             // openNURBS' ON_Hatch, version 1.2: plane, scale, turn, pattern, outlines as 2D
             // curves in the plane, then the base point.
@@ -989,6 +1000,64 @@ fn write_linear_dimension(w: &mut Writer, d: &LinearDimension) {
     w.end();
 }
 
+/// The part dimensions share after the annotation (`ON_Dimension::Internal_WriteDimension`,
+/// content version 1): typed text at its usual place, arrows as they are, measured in the model.
+fn write_dimension_core(w: &mut Writer, text: &str) {
+    w.wstring(text);
+    w.f64(0.0); // obsolete text rotation
+    w.bool(true); // text at its usual place
+    w.f64s(&[0.0, 0.0]);
+    w.bool(false); // arrows not flipped
+    w.bool(false);
+    w.u32(0); // arrow fit: automatic
+    w.uuid(Uuid::NIL); // not measured through a detail
+    w.f64(1.0); // distance scale
+    w.u32(0); // text fit: automatic
+}
+
+/// A radius or diameter dimension (`ON_DimRadial::Write`).
+fn write_radial_dimension(w: &mut Writer, d: &RadialDimension) {
+    w.begin_anonymous(0);
+    w.begin_anonymous(1);
+    write_annotation_core(
+        w,
+        "",
+        0.0,
+        d.style,
+        &d.plane,
+        if d.diameter { 3 } else { 4 },
+    );
+    write_dimension_core(w, &d.text);
+    w.end();
+    w.f64s(&d.radius_point);
+    w.f64s(&d.text_point);
+    w.end();
+}
+
+/// An angle dimension (`ON_DimAngular::Write`).
+fn write_angular_dimension(w: &mut Writer, d: &AngularDimension) {
+    w.begin_anonymous(0);
+    w.begin_anonymous(1);
+    write_annotation_core(w, "", 0.0, d.style, &d.plane, 2);
+    write_dimension_core(w, &d.text);
+    w.end();
+    w.f64s(&d.sides[0]);
+    w.f64s(&d.sides[1]);
+    w.f64s(&d.offsets);
+    w.f64s(&d.arc_point);
+    w.end();
+}
+
+/// A leader (`ON_Leader::Write`, version 1): the annotation with its words, then its points.
+fn write_leader(w: &mut Writer, l: &Leader) {
+    w.begin_anonymous(1);
+    write_annotation_core(w, &l.rich, 0.0, l.style, &l.plane, 10);
+    w.count(l.points.len());
+    for p in &l.points {
+        w.f64s(p);
+    }
+    w.end();
+}
 #[cfg(test)]
 mod tests {
     use super::*;

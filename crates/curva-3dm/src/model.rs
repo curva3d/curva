@@ -414,6 +414,12 @@ pub enum Geometry {
     Text(Text),
     /// A linear dimension (`ON_DimLinear`).
     Dimension(LinearDimension),
+    /// A radius or diameter dimension (`ON_DimRadial`).
+    Radial(RadialDimension),
+    /// An angle dimension (`ON_DimAngular`).
+    Angular(AngularDimension),
+    /// A leader (`ON_Leader`).
+    Leader(Leader),
     /// A hatch.
     Hatch(Hatch),
     /// A text dot (`ON_TextDot`): a label at a point, the same size on screen.
@@ -560,4 +566,57 @@ pub struct LinearDimension {
     pub second: [f64; 2],
     /// A point its dimension line passes through, in the plane.
     pub line: [f64; 2],
+}
+
+/// A radius or diameter dimension (`ON_DimRadial`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct RadialDimension {
+    /// Its plane, at the circle's centre.
+    pub plane: Plane,
+    /// Its style, by id.
+    pub style: Uuid,
+    /// The style it sets for itself, if it has one.
+    pub own: Option<DimStyle>,
+    /// Whether it shows the diameter rather than the radius.
+    pub diameter: bool,
+    /// Its text, `<>` standing for the measured value.
+    pub text: String,
+    /// The point on the circle its arrow touches, in the plane.
+    pub radius_point: [f64; 2],
+    /// Where its leader ends and its text sits, in the plane.
+    pub text_point: [f64; 2],
+}
+
+/// An angle dimension (`ON_DimAngular`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct AngularDimension {
+    /// Its plane, at the angle's corner.
+    pub plane: Plane,
+    /// Its style, by id.
+    pub style: Uuid,
+    /// The style it sets for itself, if it has one.
+    pub own: Option<DimStyle>,
+    /// Its text, `<>` standing for the measured value.
+    pub text: String,
+    /// The directions of its two sides, in the plane.
+    pub sides: [[f64; 2]; 2],
+    /// How far along each side its extension lines start.
+    pub offsets: [f64; 2],
+    /// A point its arc passes through, in the plane.
+    pub arc_point: [f64; 2],
+}
+
+/// A leader (`ON_Leader`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Leader {
+    /// Its plane.
+    pub plane: Plane,
+    /// Its style, by id.
+    pub style: Uuid,
+    /// The style it sets for itself, if it has one.
+    pub own: Option<DimStyle>,
+    /// Its words, as rich text or plain.
+    pub rich: String,
+    /// The arrow's tip, then the points the line passes through, in the plane.
+    pub points: Vec<[f64; 2]>,
 }

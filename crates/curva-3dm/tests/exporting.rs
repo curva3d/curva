@@ -645,3 +645,88 @@ fn linear_dimensions_come_back_measuring_the_same() {
         assert!((side(d) - side(wanted)).abs() < 1e-9, "{:?}", wanted.kind);
     }
 }
+
+#[test]
+fn radial_and_angle_dimensions_and_leaders_come_back() {
+    use curva_document::annotation::{AngleDimension, Annotation, Leader, RadialDimension};
+    let mut state = State::default();
+    let (x, y) = ([1.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+    let radial = |diameter| RadialDimension {
+        diameter,
+        centre: [10.0, 10.0, 0.0],
+        on_curve: [13.0, 14.0, 0.0],
+        text_at: [20.0, 25.0, 0.0],
+        x,
+        y,
+        style: 0,
+        text: None,
+    };
+    let angle = AngleDimension {
+        apex: [0.0, 0.0, 0.0],
+        first: [10.0, 0.0, 0.0],
+        second: [0.0, 5.0, 0.0],
+        arc_at: [3.0, 3.0, 0.0],
+        x,
+        y,
+        style: 0,
+        text: Some("<> min".to_owned()),
+    };
+    let leader = Leader {
+        points: vec![[0.0, 0.0, 0.0], [10.0, 10.0, 0.0], [20.0, 10.0, 0.0]],
+        content: "Oak floor\nOiled".to_owned(),
+        x,
+        y,
+        landing: true,
+        style: 0,
+    };
+    let shapes = [
+        Annotation::Radial(radial(false)),
+        Annotation::Radial(radial(true)),
+        Annotation::Angle(angle.clone()),
+        Annotation::Leader(leader.clone()),
+    ];
+    for (i, a) in shapes.iter().enumerate() {
+        state
+            .objects
+            .push(object(i as u64, Shape::Annotation(a.clone()), 0).into());
+    }
+    state.next_id = 4;
+    let back = round_trip(&state);
+    let near = |a: [f64; 3], b: [f64; 3]| (0..3).all(|i| (a[i] - b[i]).abs() < 1e-9);
+    let got: Vec<&Annotation> = back
+        .objects
+        .iter()
+        .map(|o| match &o.shape {
+            Shape::Annotation(a) => a,
+            _ => panic!("not annotation"),
+        })
+        .collect();
+    for (a, wanted) in got.iter().zip(&shapes) {
+        match (a, wanted) {
+            (Annotation::Radial(a), Annotation::Radial(w)) => {
+                assert_eq!(a.diameter, w.diameter);
+                assert!((a.value() - w.value()).abs() < 1e-9);
+                assert!(near(a.on_curve, w.on_curve) && near(a.text_at, w.text_at));
+            }
+            (Annotation::Angle(a), Annotation::Angle(w)) => {
+                assert!(
+                    (a.value() - w.value()).abs() < 1e-9,
+                    "{} {}",
+                    a.value(),
+                    w.value()
+                );
+                assert!(near(a.first, w.first) && near(a.second, w.second));
+                assert!(near(a.arc_at, w.arc_at));
+                assert_eq!(a.text, w.text);
+            }
+            (Annotation::Leader(a), Annotation::Leader(w)) => {
+                assert_eq!(a.content, w.content);
+                assert_eq!(a.points.len(), w.points.len());
+                for (p, q) in a.points.iter().zip(&w.points) {
+                    assert!(near(*p, *q));
+                }
+            }
+            _ => panic!("came back as another kind"),
+        }
+    }
+}

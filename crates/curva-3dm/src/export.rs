@@ -140,6 +140,15 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
             Shape::Annotation(curva_document::annotation::Annotation::Dimension(d)) => {
                 Some((dimension_height(state, d.style), 0))
             }
+            Shape::Annotation(curva_document::annotation::Annotation::Radial(d)) => {
+                Some((dimension_height(state, d.style), 0))
+            }
+            Shape::Annotation(curva_document::annotation::Annotation::Angle(d)) => {
+                Some((dimension_height(state, d.style), 0))
+            }
+            Shape::Annotation(curva_document::annotation::Annotation::Leader(l)) => {
+                Some((dimension_height(state, l.style), 0))
+            }
             _ => None,
         })
         .collect();
@@ -391,6 +400,57 @@ fn geometry_of(
         }
         Shape::Annotation(curva_document::annotation::Annotation::Dimension(d)) => {
             Geometry::Dimension(linear_dimension(d, styles, state)?)
+        }
+        Shape::Annotation(curva_document::annotation::Annotation::Radial(d)) => {
+            let style = *styles
+                .get(&(dimension_height(state, d.style).to_bits(), 0))
+                .ok_or("a dimension without its style")?;
+            let plane = plane_at(d.centre, d.x, d.y);
+            Geometry::Radial(model::RadialDimension {
+                radius_point: local(&plane, d.on_curve),
+                text_point: local(&plane, d.text_at),
+                plane,
+                style,
+                own: None,
+                diameter: d.diameter,
+                text: d.text.clone().unwrap_or_else(|| "<>".to_owned()),
+            })
+        }
+        Shape::Annotation(curva_document::annotation::Annotation::Angle(d)) => {
+            let style = *styles
+                .get(&(dimension_height(state, d.style).to_bits(), 0))
+                .ok_or("a dimension without its style")?;
+            let plane = plane_at(d.apex, d.x, d.y);
+            let side = |p: P3| {
+                let q = local(&plane, p);
+                let length = (q[0] * q[0] + q[1] * q[1]).sqrt();
+                ([q[0] / length.max(1e-12), q[1] / length.max(1e-12)], length)
+            };
+            let (first, near) = side(d.first);
+            let (second, far) = side(d.second);
+            Geometry::Angular(model::AngularDimension {
+                arc_point: local(&plane, d.arc_at),
+                plane,
+                style,
+                own: None,
+                text: d.text.clone().unwrap_or_else(|| "<>".to_owned()),
+                sides: [first, second],
+                offsets: [near, far],
+            })
+        }
+        Shape::Annotation(curva_document::annotation::Annotation::Leader(l)) => {
+            let style = *styles
+                .get(&(dimension_height(state, l.style).to_bits(), 0))
+                .ok_or("a leader without its style")?;
+            let start = *l.points.first().ok_or("a leader without points")?;
+            let plane = plane_at(start, l.x, l.y);
+            Geometry::Leader(model::Leader {
+                points: l.points.iter().map(|p| local(&plane, *p)).collect(),
+                plane,
+                style,
+                own: None,
+                rich: l.content.clone(),
+            })
         }
         // Annotation goes into .3dm files with the round trip at the end of Milestone 3.
         Shape::Annotation(_) => {
@@ -1046,4 +1106,23 @@ fn linear_dimension(
         second: local(d.second),
         line: local(d.line),
     })
+}
+
+/// A plane at `origin` with the directions `x` and `y`.
+fn plane_at(origin: P3, x: P3, y: P3) -> Plane {
+    Plane {
+        origin,
+        x,
+        y,
+        z: cross(x, y),
+    }
+}
+
+/// A point in a plane's coordinates.
+fn local(plane: &Plane, p: P3) -> [f64; 2] {
+    let v: P3 = std::array::from_fn(|k| p[k] - plane.origin[k]);
+    [
+        (0..3).map(|k| v[k] * plane.x[k]).sum(),
+        (0..3).map(|k| v[k] * plane.y[k]).sum(),
+    ]
 }

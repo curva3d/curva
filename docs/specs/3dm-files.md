@@ -30,7 +30,8 @@ version, which Rhino 7 and 8 open.
 | Notes (`ON_Text`): words (from rich text), plane, height and alignment from their own or named annotation style, font | yes, from Rhino 6 to 8 | yes: words with their fields, plane, height and alignment, through one annotation style per height and alignment (fonts not yet) |
 | Annotation styles (`ON_DimStyle`): name, text height, alignment | yes | yes, as Rhino 6 reads them (version 1.1; later settings take Rhino's defaults) |
 | Linear dimensions (`ON_DimLinear`): points, dimension line, aligned or rotated, typed text | yes (their looks from Curva's current style) | yes, with a style of their annotation style's text height |
-| Radius, diameter and angle dimensions, leaders, layouts, materials, render settings | skipped, counted (Milestone 3, coming one kind at a time) | no |
+| Radius, diameter and angle dimensions (`ON_DimRadial`, `ON_DimAngular`), leaders (`ON_Leader`) | yes (looks from Curva's current style; leaders with a landing) | yes |
+| Layouts, details, materials, render settings | skipped, counted (Milestone 3, layouts next) | no |
 
 ## 3. Commands and menus
 
