@@ -917,7 +917,12 @@ fn write_length_value(w: &mut Writer, value: f64) {
 /// 1.1: everything up to the notes' alignment and the style's scale, with Rhino's usual values
 /// for what Curva does not set; Rhino fills in the fields of later versions with its defaults.
 fn write_dim_style(w: &mut Writer, style: &DimStyle, index: usize) {
-    w.begin_versioned(tcode::ANONYMOUS_CHUNK, 1, 1);
+    // Version 1.2 adds the font; without one, 1.1 leaves Rhino its default.
+    w.begin_versioned(
+        tcode::ANONYMOUS_CHUNK,
+        1,
+        if style.font.is_some() { 2 } else { 1 },
+    );
     w.begin_versioned(tcode::MODEL_ATTRIBUTES_CHUNK, 1, 0);
     w.u8(0); // model serial number
     w.u8(1);
@@ -929,13 +934,22 @@ fn write_dim_style(w: &mut Writer, style: &DimStyle, index: usize) {
     w.wstring(&style.name);
     w.end();
     let h = style.text_height;
-    // Extension line extension and offset, arrow sizes, centre mark, text gap, text height.
-    w.f64s(&[h / 2.0, h / 2.0, h, h, h, h / 4.0, h]);
+    // Extension line extension and offset, arrow and leader arrow sizes, centre mark, text gap,
+    // text height.
+    w.f64s(&[
+        style.extension_extension,
+        style.extension_offset,
+        style.arrow_size,
+        style.arrow_size,
+        h,
+        style.text_gap,
+        h,
+    ]);
     w.i32(0); // text alignment (obsolete)
     w.i32(0); // angle format: decimal degrees
     w.i32(0); // length format: decimal
     w.i32(0); // angle resolution
-    w.i32(2); // length resolution
+    w.i32(style.length_resolution);
     w.i32(-2_147_483_647); // ignored text style index
     w.f64(1.0); // length factor
     w.bool(false); // alternate units
@@ -1019,6 +1033,26 @@ fn write_dim_style(w: &mut Writer, style: &DimStyle, index: usize) {
     w.u32(1); // ratio format
     w.end();
     w.u32(0); // unit system: none (the model's)
+    if let Some(font) = &style.font {
+        write_font(w, font);
+    }
+    w.end();
+}
+
+/// A font as openNURBS writes one (`ON_Font::Write`, version 1.0, the least Rhino reads): its
+/// characteristics (normal weight, upright, medium stretch, as `FontCharacteristicsAsUnsigned`
+/// makes 429), its Windows name as a UTF-8 string chunk, and no PostScript name. Rhino finds
+/// the installed font by the name.
+fn write_font(w: &mut Writer, family: &str) {
+    w.begin_versioned(tcode::ANONYMOUS_CHUNK, 1, 0);
+    w.u32(429);
+    w.begin(tcode::UTF8_STRING_CHUNK);
+    w.u8(1); // uncompressed
+    for byte in family.as_bytes() {
+        w.u8(*byte);
+    }
+    w.end();
+    w.wstring("");
     w.end();
 }
 

@@ -1146,3 +1146,96 @@ fn object_colours_and_the_documents_own_linetypes_come_back() {
     assert_eq!(back.layers[0].linetype, wall_back);
     assert_eq!(back.objects[1].linetype, wall_back);
 }
+
+#[test]
+fn annotation_styles_go_out_and_come_back_with_their_looks() {
+    use curva_document::annotation::{
+        Annotation, AnnotationStyle, Dimension, DimensionKind, Text, TextAlign, standard_styles,
+    };
+    let mut state = State::default();
+    let mut styles = standard_styles(false);
+    styles.push(AnnotationStyle {
+        id: 40,
+        name: "Plans".to_owned(),
+        font: Some("Arial".to_owned()),
+        text_height: 3.5,
+        imperial: false,
+        arrow_size: Some(2.0),
+        extension_offset: Some(1.0),
+        extension_extension: Some(1.5),
+        text_gap: Some(0.8),
+        linear_resolution: Some(1),
+    });
+    state.annotation_styles = styles;
+    let dimension = Dimension {
+        kind: DimensionKind::Horizontal,
+        first: [0.0; 3],
+        second: [5000.0, 0.0, 0.0],
+        line: [0.0, 800.0, 0.0],
+        x: [1.0, 0.0, 0.0],
+        y: [0.0, 1.0, 0.0],
+        style: 40,
+        text: None,
+    };
+    let note = |height: f64, align| Text {
+        content: "Kitchen".to_owned(),
+        origin: [0.0, 2000.0, 0.0],
+        x: [1.0, 0.0, 0.0],
+        y: [0.0, 1.0, 0.0],
+        height,
+        font: None,
+        align,
+        style: 40,
+    };
+    let shapes = [
+        Shape::Annotation(Annotation::Dimension(dimension)),
+        Shape::Annotation(Annotation::Text(note(3.5, TextAlign::Left))),
+        Shape::Annotation(Annotation::Text(note(7.0, TextAlign::Centre))),
+    ];
+    for (i, shape) in shapes.into_iter().enumerate() {
+        state.objects.push(object(i as u64, shape, 0).into());
+    }
+    state.next_id = 3;
+    let (model, _) = curva_3dm::export::export(&state, None);
+    let plans = model
+        .dim_styles
+        .iter()
+        .find(|s| s.name == "Plans")
+        .expect("the style under its own name");
+    assert_eq!(plans.font.as_deref(), Some("Arial"));
+    assert_eq!(
+        (
+            plans.arrow_size,
+            plans.extension_offset,
+            plans.extension_extension
+        ),
+        (2.0, 1.0, 1.5)
+    );
+    assert_eq!((plans.text_gap, plans.length_resolution), (0.8, 1));
+    assert!(model.dim_styles.iter().any(|s| s.name == "Plans 7 Centre"));
+    let back = round_trip(&state);
+    let held: Vec<&AnnotationStyle> = back
+        .annotation_styles
+        .iter()
+        .filter(|s| s.name == "Plans")
+        .collect();
+    assert_eq!(
+        held.len(),
+        1,
+        "one style, the note's own folded back into it"
+    );
+    let style = held[0];
+    assert_eq!(style.font.as_deref(), Some("Arial"));
+    assert_eq!(style.text_height, 3.5);
+    assert_eq!(style.arrow_size, Some(2.0));
+    assert_eq!(style.extension_offset, Some(1.0));
+    assert_eq!(style.extension_extension, Some(1.5));
+    assert_eq!(style.text_gap, Some(0.8));
+    assert_eq!(style.linear_resolution, Some(1));
+    for o in &back.objects {
+        let Shape::Annotation(a) = &o.shape else {
+            panic!("annotation");
+        };
+        assert_eq!(a.style(), style.id, "everything names the style");
+    }
+}

@@ -84,9 +84,9 @@ The owner requires `.3dm`, DXF and DWG to interoperate both ways: the same drawi
 What does not yet, as of 15 November 2026, to close before 0.4.3:
 
 **`.3dm` (Rhino)**
-- Annotation styles carry only their name, text height and alignment: fonts, arrowheads and their
-  sizes, text gaps, extension lines, units and decimals do not cross; a Rhino note's own overrides are
-  read but not written back; dimensions read take Curva's current style for their looks.
+- Annotation styles cross by name with their font, text height, arrow size, text gap, extension lines
+  and decimals; arrowhead types, units, tolerances, text masks and colours take Rhino's defaults. A
+  Rhino note's own overrides are read but not written back.
 - Text formatting (bold, italic, fonts per run, rich text) comes in as plain words; text masks and
   frames are not carried.
 - Rhino 5 annotation (its older text and dimension objects) is not read.

@@ -571,6 +571,18 @@ pub struct DimStyle {
     /// Notes' vertical alignment, as Rhino 5 numbered it: 3 top, 4 middle of the first line,
     /// 5 middle, 6 middle of the last line, 7 bottom, 8 under the bottom.
     pub v_align: u32,
+    /// Arrowheads' length, in model units.
+    pub arrow_size: f64,
+    /// How far extension lines reach past the dimension line, in model units.
+    pub extension_extension: f64,
+    /// The gap between a measured point and its extension line, in model units.
+    pub extension_offset: f64,
+    /// The gap between the dimension line and its text, in model units.
+    pub text_gap: f64,
+    /// Decimal places of lengths.
+    pub length_resolution: i32,
+    /// Its font's family name; Rhino's default when `None`.
+    pub font: Option<String>,
 }
 
 /// A note (`ON_Text`).

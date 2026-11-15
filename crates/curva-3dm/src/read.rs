@@ -1291,12 +1291,13 @@ fn hatch(r: &mut Reader<'_>) -> Result<Hatch> {
 /// alignment: its id and name, sizes (the seventh is the text height), then every field in
 /// order up to the alignments it also keeps in Rhino 5's numbering.
 fn dim_style_fields(r: &mut Reader<'_>) -> Result<DimStyle> {
-    let (_, mut b) = r.anonymous()?;
+    let (minor, mut b) = r.anonymous()?;
     let (id, name) = component_attributes(&mut b)?;
     let sizes = b.f64s::<7>()?;
-    // Text alignment (obsolete), angle format, length format, angle and length resolution,
-    // then the ignored text style index of Rhino 6 files.
-    b.skip(4 * 6)?;
+    // Text alignment (obsolete), angle format, length format, angle resolution.
+    b.skip(4 * 4)?;
+    let length_resolution = b.i32()?;
+    b.i32()?; // the ignored text style index of Rhino 6 files
     b.f64()?; // length factor
     b.bool()?; // alternate units
     b.f64()?; // alternate length factor
@@ -1326,13 +1327,44 @@ fn dim_style_fields(r: &mut Reader<'_>) -> Result<DimStyle> {
     let v_align = b.u32()?;
     b.skip(4 + 4 + 4 + 8 + 1 + 8)?; // leader alignment, angle style, curve, angle, landing
     let h_align = b.u32()?;
+    let mut font = None;
+    if minor >= 2 {
+        b.u32()?; // leader horizontal alignment
+        b.skip(2)?; // draw forward, signed ordinate
+        b.chunk()?; // the style's scale
+        b.u32()?; // unit system
+        font = font_name(&mut b).ok().flatten();
+    }
     Ok(DimStyle {
         id,
         name,
         text_height: sizes[6],
         h_align,
         v_align,
+        extension_extension: sizes[0],
+        extension_offset: sizes[1],
+        arrow_size: sizes[2],
+        text_gap: sizes[5],
+        length_resolution,
+        font,
     })
+}
+
+/// A font's family name (`ON_Font::Read`, Rhino 6 and later): its characteristics, then its
+/// Windows name as a UTF-8 string chunk, which names the family.
+fn font_name(r: &mut Reader<'_>) -> Result<Option<String>> {
+    let (_, mut f) = r.anonymous()?;
+    f.u32()?; // weight, style, stretch, underline and strikethrough
+    let mut name = f.expect(tcode::UTF8_STRING_CHUNK)?;
+    if name.body.u8()? != 1 {
+        return Ok(None);
+    }
+    let left = name.body.left();
+    let text = String::from_utf8_lossy(name.body.bytes(left)?)
+        .trim_end_matches('\0')
+        .trim()
+        .to_owned();
+    Ok((!text.is_empty()).then_some(text))
 }
 
 /// A dimension style table record; Rhino 5's older form is left out.
