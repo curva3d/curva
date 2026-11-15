@@ -136,3 +136,39 @@ fn damaged_files_never_crash_the_reader() {
         }
     }
 }
+
+#[test]
+fn rhinos_hatches_come_in_with_their_patterns() {
+    use curva_document::annotation::Annotation;
+    let (doc, report) = open("v7_rhino_logo_annotations.3dm");
+    let hatches: Vec<_> = doc
+        .state()
+        .objects
+        .iter()
+        .filter_map(|o| match &o.shape {
+            Shape::Annotation(Annotation::Hatch(h)) => Some(h.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(hatches.len(), 7, "{}", report.summary());
+    for h in &hatches {
+        assert!(!h.loops.is_empty());
+        assert!(h.scale > 0.0);
+        let known = doc
+            .state()
+            .patterns()
+            .iter()
+            .any(|p| p.name.eq_ignore_ascii_case(&h.pattern));
+        assert!(known, "{} is a pattern Curva has", h.pattern);
+        // Their outlines lie in their plane.
+        let z = [
+            h.x[1] * h.y[2] - h.x[2] * h.y[1],
+            h.x[2] * h.y[0] - h.x[0] * h.y[2],
+            h.x[0] * h.y[1] - h.x[1] * h.y[0],
+        ];
+        for p in h.loops[0].sample().unwrap() {
+            let off: f64 = (0..3).map(|i| (p[i] - h.base[i]) * z[i]).sum();
+            assert!(off.abs() < 1e-6, "{off}");
+        }
+    }
+}

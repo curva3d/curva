@@ -477,3 +477,71 @@ fn dots_come_back_with_their_words_height_and_font() {
         Shape::Annotation(Annotation::Dot(dot))
     );
 }
+
+#[test]
+fn hatches_come_back_with_their_pattern_scale_and_holes() {
+    use curva_document::annotation::{Annotation, Hatch};
+    let mut state = State::default();
+    let outline = Curve::polyline(
+        vec![
+            [0.0, 0.0, 5.0],
+            [100.0, 0.0, 5.0],
+            [100.0, 50.0, 5.0],
+            [0.0, 50.0, 5.0],
+        ],
+        true,
+    )
+    .unwrap();
+    let hole = Curve::circle([50.0, 25.0, 5.0], 10.0).unwrap();
+    let hatch = |pattern: &str| Hatch {
+        loops: vec![outline.clone(), hole.clone()],
+        pattern: pattern.to_owned(),
+        scale: 2.5,
+        rotation: 0.4,
+        base: [0.0, 0.0, 5.0],
+        x: [1.0, 0.0, 0.0],
+        y: [0.0, 1.0, 0.0],
+    };
+    state
+        .objects
+        .push(object(0, Shape::Annotation(Annotation::Hatch(hatch("ANSI31"))), 0).into());
+    state
+        .objects
+        .push(object(1, Shape::Annotation(Annotation::Hatch(hatch("Solid"))), 0).into());
+    state.next_id = 2;
+    let back = round_trip(&state);
+    let hatches: Vec<Hatch> = back
+        .objects
+        .iter()
+        .filter_map(|o| match &o.shape {
+            Shape::Annotation(Annotation::Hatch(h)) => Some(h.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(hatches.len(), 2);
+    assert_eq!(hatches[0].pattern, "ANSI31");
+    assert!(
+        (hatches[0].scale - 2.5).abs() < 1e-9,
+        "{}",
+        hatches[0].scale
+    );
+    assert!((hatches[0].rotation - 0.4).abs() < 1e-12);
+    assert_eq!(hatches[0].loops.len(), 2, "the hole stays");
+    // The hole comes back as the same circle (as an exact NURBS circle).
+    for p in hatches[0].loops[1].sample().unwrap() {
+        let r = ((p[0] - 50.0).powi(2) + (p[1] - 25.0).powi(2)).sqrt();
+        assert!(
+            (r - 10.0).abs() < 1e-9 && (p[2] - 5.0).abs() < 1e-9,
+            "{p:?}"
+        );
+    }
+    assert!(
+        hatches[0].loops[0]
+            .sample()
+            .unwrap()
+            .iter()
+            .all(|p| (p[2] - 5.0).abs() < 1e-9),
+        "at its height"
+    );
+    assert_eq!(hatches[1].pattern, "Solid");
+}
