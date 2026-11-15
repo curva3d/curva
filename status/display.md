@@ -6,7 +6,12 @@
 ## 15 November 2026
 
 **Done**
-- Step 4b, **selecting no longer freezes Curva** (#144): one selection change took 117 ms on
+- **Snapping about twice as fast** (#130, first part): the objects and snap places sit in a tree
+  of boxes made once per model change, so snapping looks only near the cursor and finds the same
+  points. Snapping per frame: *Medium* 3.2 → 1.3 ms, *Large* 45 → 20.5 ms; frame gaps *Medium*
+  4.8 → 2.6 ms, *Large* 47 → 23.5 ms. What is left on *Large* is crowding (zoomed all the way out,
+  115,000 segments within the cursor's reach); #130 stays open for it.
+- Step 4b, **selecting no longer freezes Curva** (#144, merged as #148): one selection change took 117 ms on
   *Medium* and 2.3 s on *Large*; now 5.7 ms and 57 ms, about an ordinary frame. Scene vertices
   carry their object's number and the graphics card looks it up in a selection table (one byte
   per object), drawing selected objects in the selection colour and lines a pixel wider, exactly
@@ -49,10 +54,10 @@
 - Status split per stream and the display stream's rules in `AGENTS.md` (#125).
 
 **In progress / next**
-- Order, by what users notice most: **#130 with the object index of step 12** (snapping is most
-  of each frame on every large scene), then **step 11** (instancing: *Large*'s 58 s first frame and
+- Order, by what users notice most: **step 11** (instancing: *Large*'s 58 s first frame and
   2.1 GB), then **4c** (an edit sends only the changed object), then step 13 (memory limit), then
-  steps 2 and 3.
+  steps 2 and 3. The object index made for snapping (`crates/curva-viewport/src/index.rs`) is the
+  one step 12 (off-screen culling) will use.
 
 **Heads-up for the features stream** (changes outside the viewport, decision B)
 - Done: `crates/curva-app/src/benchmark.rs` and the `--orbit-benchmark` arguments in
@@ -66,7 +71,8 @@
   them by hand sets `object: curva_viewport::NO_OBJECT`, as `clipping.rs` now does.
 
 **Open `display` issues**
-- #130: snapping takes most of each frame on large scenes; to use the object index of step 12.
+- #130: snapping now goes through an index of the objects (about twice as fast); what is left on
+  *Large* is crowding: zoomed out, 115,000 segments lie within the cursor's reach.
 - #136 (not display, for the features stream): extruding a circle takes about 60 ms.
 
 **Where the display stands today** (history before this date is in `status/features.md`)

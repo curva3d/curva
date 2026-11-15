@@ -4,6 +4,7 @@ mod camera;
 mod glass;
 mod gpu;
 mod gumball;
+mod index;
 pub mod print;
 mod snap;
 mod timer;
@@ -183,6 +184,8 @@ pub struct Outlines {
     kinds: Vec<PickKind>,
     /// Which kinds clicking and boxing may pick.
     filter: PickFilter,
+    /// The objects and snap places indexed by where they are, made the first time snapping asks.
+    snap_index: snap::SnapIndex,
 }
 
 /// Mesh-cache keys from here up are instances' parts.
@@ -396,6 +399,8 @@ impl Outlines {
 
     /// Adds `other`'s objects after its own.
     fn append(&mut self, other: &Self) {
+        // The objects change, so the index over them is made again when next asked for.
+        self.snap_index = snap::SnapIndex::default();
         self.faces.extend(other.faces.iter().cloned());
         self.objects.extend(other.objects.iter().cloned());
         self.sites.extend(other.sites.iter().cloned());
