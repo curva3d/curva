@@ -3,9 +3,9 @@
 
 use crate::archive::{Uuid, Writer, tcode};
 use crate::model::{
-    AngularDimension, Attributes, Block, Brep, Curve, Detail, DimStyle, Geometry, Group, HatchLine,
-    HatchPattern, Layer, Leader, LinearDimension, Linetype, Model, NurbsCurve, NurbsSurface,
-    Object, P3, Plane, RadialDimension, Source, Surface, Text, View,
+    AngularDimension, Attributes, Block, Brep, ClippingPlane, Curve, Detail, DimStyle, Geometry,
+    Group, HatchLine, HatchPattern, Layer, Leader, LinearDimension, Linetype, Model, NurbsCurve,
+    NurbsSurface, Object, P3, Plane, RadialDimension, Source, Surface, Text, View,
 };
 use crate::read::class;
 
@@ -373,6 +373,7 @@ fn object_type(g: &Geometry) -> i64 {
         | Geometry::Angular(_)
         | Geometry::Leader(_) => 0x200,
         Geometry::Detail(_) => 0x8000,
+        Geometry::ClippingPlane(_) => 0x2000_0000,
     }
 }
 
@@ -401,6 +402,11 @@ fn write_object(w: &mut Writer, object: &Object) {
         }
         Geometry::Leader(l) => class_object(w, class::LEADER, |w| write_leader(w, l)),
         Geometry::Detail(d) => class_object(w, class::DETAIL, |w| write_detail(w, d)),
+        Geometry::ClippingPlane(c) => {
+            class_object(w, class::CLIPPING_PLANE_SURFACE, |w| {
+                write_clipping_plane(w, c)
+            });
+        }
         Geometry::Hatch(h) => class_object(w, class::HATCH, |w| {
             // openNURBS' ON_Hatch, version 1.2: plane, scale, turn, pattern, outlines as 2D
             // curves in the plane, then the base point.
@@ -1312,6 +1318,40 @@ fn write_detail(w: &mut Writer, d: &Detail) {
     w.end();
 }
 
+/// A clipping plane as openNURBS writes one (`ON_ClippingPlaneSurface::Write`): its plane
+/// surface in a plain chunk, then the clipping plane (`ON_ClippingPlane::Write`, version 1.4):
+/// the first viewport, its id, the plane, whether it is on, all its viewports (an
+/// `ON_UuidList`, version 1.0: count and ids), and no clipping depth.
+fn write_clipping_plane(w: &mut Writer, c: &ClippingPlane) {
+    w.begin_versioned(tcode::ANONYMOUS_CHUNK, 1, 0);
+    w.begin(tcode::ANONYMOUS_CHUNK);
+    w.chunk_version(1, 1);
+    write_plane(w, &c.plane);
+    w.f64s(&c.extents[0]);
+    w.f64s(&c.extents[1]);
+    w.f64s(&c.extents[0]);
+    w.f64s(&c.extents[1]);
+    w.end();
+    w.begin_versioned(tcode::ANONYMOUS_CHUNK, 1, 4);
+    w.uuid(c.viewports.first().copied().unwrap_or(Uuid::NIL));
+    w.uuid(c.id);
+    write_plane(w, &c.plane);
+    w.bool(c.enabled);
+    let mut sorted = c.viewports.clone();
+    sorted.sort();
+    sorted.dedup();
+    w.begin_versioned(tcode::ANONYMOUS_CHUNK, 1, 0);
+    w.count(sorted.len());
+    for id in &sorted {
+        w.uuid(*id);
+    }
+    w.end();
+    w.f64(-1.0); // depth: none
+    w.bool(false); // depth off
+    w.end();
+    w.end();
+}
+
 /// The settings' view list: Rhino's four standard model views, then a page view for each
 /// layout, at its paper size, looking down on it.
 fn write_view_list(w: &mut Writer, model: &Model) {
@@ -1343,7 +1383,11 @@ fn write_view_list(w: &mut Writer, model: &Model) {
         write_view(
             w,
             v,
-            Uuid::fresh(0x5354_4456 + i as u64),
+            model
+                .model_views
+                .iter()
+                .find(|(name, _)| *name == v.name)
+                .map_or_else(|| Uuid::fresh(0x5354_4456 + i as u64), |(_, id)| *id),
             Some(ViewKind::plain(0, [0.0, 0.0])),
             &[],
         );

@@ -48,6 +48,11 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
         ..Model::default()
     };
 
+    // The model's standard views' ids, which clipping planes name the views they cut by.
+    model.model_views = ["Top", "Front", "Right", "Perspective"]
+        .iter()
+        .map(|name| ((*name).to_owned(), ids.next()))
+        .collect();
     // Each detail's viewport id, by its frame: layers name the details they are off in by it.
     let detail_ids: BTreeMap<u64, Uuid> = state
         .layouts
@@ -307,7 +312,10 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
                 state,
                 &detail_ids,
             ),
-            None => geometry_of(&o.shape, &block_ids, &pattern_index, &style_ids, state),
+            None => match state.clipping_planes.iter().find(|c| c.frame == o.id) {
+                Some(clip) => clipping_plane(o, clip, &model.model_views, &detail_ids),
+                None => geometry_of(&o.shape, &block_ids, &pattern_index, &style_ids, state),
+            },
         };
         let geometry = match made {
             Ok(g) => g,
@@ -1576,4 +1584,75 @@ fn with_rhino_fields(
         _ => {}
     }
     out
+}
+
+/// A clipping plane's rectangle as Rhino's clipping plane: its plane at the rectangle's middle,
+/// x along its first side and the normal towards the side it keeps (Rhino keeps the side the
+/// normal points to), its extents, and the views it cuts by viewport id (Curva's viewports in
+/// Rhino's layout: Top, Perspective, Front, Right; details by their own ids).
+fn clipping_plane(
+    o: &Object,
+    clip: &curva_document::clipping::ClippingPlane,
+    model_views: &[(String, Uuid)],
+    details: &BTreeMap<u64, Uuid>,
+) -> Result<Geometry, String> {
+    use curva_document::clipping::ClipView;
+    let curve = o.curve().ok_or("a clipping plane without its rectangle")?;
+    let mut points = curve.sample().map_err(|e| e.0)?;
+    if points.len() > 3 && points.first() == points.last() {
+        points.pop();
+    }
+    if points.len() < 3 {
+        return Err("a clipping plane without its rectangle".to_owned());
+    }
+    // The rectangle's normal, by Newell's method as Curva's clipping takes it.
+    let mut normal = [0.0; 3];
+    for (i, a) in points.iter().enumerate() {
+        let b = points[(i + 1) % points.len()];
+        normal[0] += (a[1] - b[1]) * (a[2] + b[2]);
+        normal[1] += (a[2] - b[2]) * (a[0] + b[0]);
+        normal[2] += (a[0] - b[0]) * (a[1] + b[1]);
+    }
+    let z = unit(if clip.flipped {
+        normal.map(|v| -v)
+    } else {
+        normal
+    });
+    #[allow(clippy::cast_precision_loss)]
+    let count = points.len() as f64;
+    let origin: P3 = std::array::from_fn(|k| points.iter().map(|p| p[k]).sum::<f64>() / count);
+    let side: P3 = std::array::from_fn(|k| points[1][k] - points[0][k]);
+    let along = (0..3).map(|k| side[k] * z[k]).sum::<f64>();
+    let x = unit(std::array::from_fn(|k| side[k] - along * z[k]));
+    let y = cross(z, x);
+    let local = |p: &P3, axis: &P3| (0..3).map(|k| (p[k] - origin[k]) * axis[k]).sum::<f64>();
+    let range = |axis: &P3| {
+        points.iter().fold([f64::MAX, f64::MIN], |[lo, hi], p| {
+            let t = local(p, axis);
+            [lo.min(t), hi.max(t)]
+        })
+    };
+    let viewports = clip
+        .views
+        .iter()
+        .filter_map(|view| match view {
+            ClipView::Viewport(slot) => ["Top", "Perspective", "Front", "Right"]
+                .get(*slot)
+                .and_then(|name| model_views.iter().find(|(n, _)| n == name))
+                .map(|(_, id)| *id),
+            ClipView::Detail(frame) => details.get(frame).copied(),
+        })
+        .collect();
+    Ok(Geometry::ClippingPlane(model::ClippingPlane {
+        plane: Plane { origin, x, y, z },
+        extents: [range(&x), range(&y)],
+        viewports,
+        id: Uuid::fresh(o.id),
+        enabled: true,
+    }))
+}
+
+fn unit(a: P3) -> P3 {
+    let length = (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]).sqrt().max(1e-300);
+    a.map(|v| v / length)
 }

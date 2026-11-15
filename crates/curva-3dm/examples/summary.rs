@@ -45,6 +45,11 @@ fn main() {
                             "detail ratio {} dir {:?} target {:?}",
                             d.ratio, d.view.direction, d.view.target
                         ),
+                        curva_3dm::model::Geometry::ClippingPlane(c) => format!(
+                            "clipping plane normal {:?} views {}",
+                            c.plane.z,
+                            c.viewports.len()
+                        ),
                         curva_3dm::model::Geometry::Text(t) => format!(
                             "text {:?} own {:?} x {:?}",
                             t.rich,

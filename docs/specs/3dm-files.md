@@ -33,6 +33,7 @@ version, which Rhino 7 and 8 open.
 | Linear dimensions (`ON_DimLinear`): points, dimension line, aligned or rotated, typed text | yes, with their style | yes, with a style of their annotation style's text height |
 | Radius, diameter and angle dimensions (`ON_DimRadial`, `ON_DimAngular`), leaders (`ON_Leader`) | yes (looks from Curva's current style; leaders with a landing) | yes |
 | Layouts (page views) with their size, and what is drawn on them (in the file's page unit) | yes | yes, in millimetres, with Rhino's four standard views beside them |
+| Clipping planes (`ON_ClippingPlaneSurface`): rectangle, side kept, views cut | yes | yes (version 1.4) |
 | Detail views: frame, standard view or perspective, target, scale, display mode (Rhino's standard modes), lock, layers turned off in them | yes | yes (view attributes version 1.3; layers' `ON__LayerExtensions` user data) |
 | Scale bars and tables | — (Rhino has none) | as the plain drawing they make: lines, solid hatches and notes, grouped |
 | Document user text (`DocumentText` field), layout user text (`LayoutUserText`, on the page's viewport) and the model's notes (`Notes` field) | yes | yes, with those fields kept for Rhino to work out (a field naming a layout names its page) |

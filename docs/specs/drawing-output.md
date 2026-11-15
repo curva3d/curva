@@ -93,7 +93,9 @@ What does not yet, as of 15 November 2026, to close before 0.4.3:
 - Details carry their display mode (Rhino's standard modes by id), lock and the layers turned off in
   them (each layer's per-viewport settings, naming the detail by its object id as Rhino does); a
   perspective's lens (Curva has none) is not carried.
-- Clipping planes and section styles are not written or read.
+- Clipping planes cross both ways: their rectangle, the side they keep and the views they cut
+  (Curva's viewports as Rhino's Top, Perspective, Front and Right; details by id). Section styles
+  (Curva's fill) and a clipping depth are not carried.
 - A standard linetype (Rhino's share Curva's seven names) takes Curva's dash lengths rather than the
   file's (Rhino's Dashed is 5 on, 5 off; Curva's 3 and 1.5). Other linetypes cross with their names
   and patterns. Objects' own colours cross, but the viewport draws neither those colours nor the

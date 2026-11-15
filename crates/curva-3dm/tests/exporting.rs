@@ -1376,3 +1376,97 @@ fn layers_turned_off_in_a_detail_stay_off_in_it() {
     assert_eq!(left.hidden_layers, [furniture], "off in the left detail");
     assert!(right.hidden_layers.is_empty(), "on in the right one");
 }
+
+#[test]
+fn clipping_planes_come_back_cutting_the_same_side_in_the_same_views() {
+    use curva_document::clipping::{ClipView, ClippingPlane, SectionFill};
+    use curva_document::layouts::{Detail, Layout, PaperUnit};
+    let mut state = State::default();
+    // A rectangle at z = 1000 running counter-clockwise seen from above, flipped: it keeps
+    // what is below it.
+    let rectangle = Curve::polyline(
+        vec![
+            [0.0, 0.0, 1000.0],
+            [4000.0, 0.0, 1000.0],
+            [4000.0, 3000.0, 1000.0],
+            [0.0, 3000.0, 1000.0],
+        ],
+        true,
+    )
+    .unwrap();
+    state
+        .objects
+        .push(object(0, Shape::Curve(rectangle), 0).into());
+    let mut detail_frame = object(
+        1,
+        Shape::Curve(
+            Curve::polyline(
+                vec![
+                    [20.0, 20.0, 0.0],
+                    [170.0, 20.0, 0.0],
+                    [170.0, 170.0, 0.0],
+                    [20.0, 170.0, 0.0],
+                ],
+                true,
+            )
+            .unwrap(),
+        ),
+        0,
+    );
+    detail_frame.space = Some(0);
+    state.objects.push(detail_frame.into());
+    state.next_id = 2;
+    state.layouts = vec![Layout {
+        id: 0,
+        name: "Plan".to_owned(),
+        size: [420.0, 297.0],
+        unit: PaperUnit::Millimetres,
+        details: vec![Detail {
+            frame: 1,
+            projection: "Top".to_owned(),
+            target: [0.0; 3],
+            distance: 100.0,
+            scale: Some(0.01),
+            display: "Wireframe".to_owned(),
+            locked: false,
+            hidden_layers: Vec::new(),
+        }],
+        user_text: Default::default(),
+        revisions: Vec::new(),
+    }];
+    state.next_layout = 1;
+    state.clipping_planes = vec![ClippingPlane {
+        frame: 0,
+        flipped: true,
+        views: vec![
+            ClipView::Viewport(0),
+            ClipView::Viewport(1),
+            ClipView::Detail(1),
+        ],
+        section: SectionFill::default(),
+    }];
+    let back = round_trip(&state);
+    assert_eq!(back.clipping_planes.len(), 1);
+    let clip = &back.clipping_planes[0];
+    let frame = back.objects.iter().find(|o| o.id == clip.frame).unwrap();
+    let mut points = frame.curve().unwrap().sample().unwrap();
+    points.pop();
+    let mut normal_z = 0.0;
+    for (i, a) in points.iter().enumerate() {
+        let b = points[(i + 1) % points.len()];
+        normal_z += (a[0] - b[0]) * (a[1] + b[1]);
+    }
+    let keeps_below = (normal_z < 0.0) != clip.flipped;
+    assert!(keeps_below, "still keeps what is below it");
+    assert!(points.iter().all(|p| (p[2] - 1000.0).abs() < 1e-9));
+    let detail = back.layouts[0].details[0].frame;
+    let mut views = clip.views.clone();
+    views.sort_by_key(|v| format!("{v:?}"));
+    let mut wanted = vec![
+        ClipView::Viewport(0),
+        ClipView::Viewport(1),
+        ClipView::Detail(detail),
+    ];
+    wanted.sort_by_key(|v| format!("{v:?}"));
+    assert_eq!(views, wanted);
+}

@@ -283,6 +283,8 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
     let mut page_ids: BTreeMap<crate::archive::Uuid, u64> = BTreeMap::new();
     // Each detail by its viewport id: its layout and frame, for the layers turned off in it.
     let mut detail_by_viewport: BTreeMap<crate::archive::Uuid, (u64, u64)> = BTreeMap::new();
+    // Clipping planes as they come in: their rectangle, viewports and whether they cut.
+    let mut clips: Vec<(u64, Vec<crate::archive::Uuid>, bool)> = Vec::new();
     for page in &model.pages {
         let id = state.next_layout;
         state.next_layout += 1;
@@ -414,8 +416,42 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
             Report::count(&mut report.skipped, "loose block parts");
         } else {
             Report::count(&mut report.brought, kind);
+            if let Geometry::ClippingPlane(c) = &object.geometry {
+                clips.push((made.id, c.viewports.clone(), c.enabled));
+            }
             state.objects.push(std::sync::Arc::new(made));
         }
+    }
+    // Clipping planes: the views they cut, by the file's viewport ids: the model's standard
+    // views as Curva's viewports in Rhino's layout (Top, Perspective, Front, Right), details by
+    // their frames. One that is off cuts nothing.
+    for (frame, viewports, enabled) in clips {
+        use curva_document::clipping::{ClipView, ClippingPlane, SectionFill};
+        let views = if enabled {
+            viewports
+                .iter()
+                .filter_map(|id| {
+                    if let Some((name, _)) = model.model_views.iter().find(|(_, v)| v == id) {
+                        ["Top", "Perspective", "Front", "Right"]
+                            .iter()
+                            .position(|n| n.eq_ignore_ascii_case(name))
+                            .map(ClipView::Viewport)
+                    } else {
+                        detail_by_viewport
+                            .get(id)
+                            .map(|&(_, detail)| ClipView::Detail(detail))
+                    }
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        state.clipping_planes.push(ClippingPlane {
+            frame,
+            flipped: false,
+            views,
+            section: SectionFill::default(),
+        });
     }
     // Layers turned off in particular details.
     for (index, layer) in model.layers.iter().enumerate() {
@@ -526,6 +562,10 @@ fn shape_of(
             "dimensions",
         ),
         Geometry::Detail(_) => return Err("details come in with their layout".to_owned()),
+        Geometry::ClippingPlane(c) => (
+            Shape::Curve(clipping_rectangle(c).map_err(text)?),
+            "clipping planes",
+        ),
         Geometry::Leader(l) => (
             Shape::Annotation(curva_document::annotation::Annotation::Leader(leader_in(l))),
             "leaders",
@@ -2152,4 +2192,15 @@ fn with_style(shape: Shape, style: u64) -> Shape {
         }
         other => other,
     }
+}
+
+/// A clipping plane's rectangle as a closed polyline whose corners run counter-clockwise about
+/// its plane's normal, so that the side it keeps is the rectangle's own normal side, as Curva's
+/// clipping planes take it unflipped.
+fn clipping_rectangle(c: &model::ClippingPlane) -> Result<Curve, KernelError> {
+    let p = &c.plane;
+    let at =
+        |u: f64, v: f64| -> P3 { std::array::from_fn(|k| p.origin[k] + p.x[k] * u + p.y[k] * v) };
+    let [[x0, x1], [y0, y1]] = c.extents;
+    Curve::polyline(vec![at(x0, y0), at(x1, y0), at(x1, y1), at(x0, y1)], true)
 }
