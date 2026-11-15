@@ -1,6 +1,7 @@
 # Spec: the new display pipeline
 
-**Status:** Draft for the owner's approval · 15 November 2026 (display stream, #126).
+**Status:** Approved by the owner in chat · 15 November 2026 (display stream, #126), with the
+decisions in section 9.
 **Covers:** the owner's brief of 15 November 2026: detail that follows the zoom, smooth edges,
 display modes as editable files, and speed on large scenes.
 **Rules:** 100% pure Rust, no C++ libraries. Runs well on 2020 Intel integrated graphics (Intel UHD
@@ -243,6 +244,19 @@ draws as steadily as one at the origin.
 - CI has no graphics card; its tests draw with software graphics (Mesa on Linux, WARP on Windows),
   which has every feature of the baseline.
 
+**Keeping to the baseline without such a machine** (decision A): there is no 2020 Intel machine to
+measure on, so the rule is kept by design and checked as far as possible without one:
+- The viewport asks the graphics card only for what the baseline cards offer. Each optional extra is
+  asked for separately, and a test starts the viewport with every extra turned off and checks that
+  it draws the same pictures.
+- Integrated graphics are slow mainly at filling pixels and sharing memory with the computer. So
+  multisampling drops automatically when frames are slow (section 2.5), the screen pass stays
+  cheap, and the memory limit on integrated graphics stays at 1 GB.
+- Speed is measured on the RTX 3060 with a wide margin: since 2020 Intel graphics are roughly 10 to
+  20 times slower, the RTX 3060's work per frame must stay under a tenth of a frame (section 6).
+- The software graphics in CI are slower than any real card; *Medium* must still draw there, a
+  rough check that nothing needs a fast card.
+
 ## 6. How it is checked
 
 - **Half a pixel, measured:** tests set up a camera at many zooms (up to a million times) and
@@ -259,15 +273,17 @@ draws as steadily as one at the origin.
 - **Speed** (run by the display stream only, results that look off rerun): standard scenes added
   to `--orbit-benchmark`: *Medium* (5,000 curves, 500 solids, as now), *Large* (10,000 solids,
   50,000 curves, 2,000 instances of a 5,000-triangle tree) and *Far* (*Large* placed 500 km from the
-  origin). Recorded in `docs/performance.md` on the RTX 3060 and on Intel integrated graphics.
-  **Targets on Intel integrated graphics at 1920×1080:** *Medium* orbits at 60 frames a second,
-  *Large* at 30 or better; selecting an object in *Large* costs under 1 ms. These targets are set
+  origin). Recorded in `docs/performance.md` on the RTX 3060.
+  **Aim:** on Intel integrated graphics at 1920×1080, *Medium* orbits at 60 frames a second and
+  *Large* at 30 or better. With no such machine (decision A), the checked targets are on the RTX
+  3060 at 1920×1080, with the margin of section 5: the graphics card's work per frame under 1.6 ms
+  for *Medium* and 3.3 ms for *Large*, and selecting an object in *Large* under 1 ms. These are set
   after the first measurement (step 1), and the owner is told if they look unreachable.
 
 ## 7. Steps, each a small pull request
 
-1. **Measure first:** the *Large* and *Far* scenes, and a baseline on the RTX 3060 and Intel
-   integrated graphics.
+1. **Measure first:** the *Large* and *Far* scenes, the graphics card's own time per frame, and a
+   baseline on the RTX 3060; the test that draws with every optional extra turned off.
 2. **Precision:** drawing from the camera, 32-bit depth. *Far* stops shimmering.
 3. **Smooth edges:** line edge smoothing, multisampling and its setting.
 4. **Objects kept on the graphics card**, records per object; selection no longer rebuilds the scene.
@@ -297,33 +313,24 @@ The display stream owns `crates/curva-viewport`. A few steps need small changes 
 - `curva-app`: where the window hands the viewport its views (steps 2, 4 and 8), the Display panel
   editor (step 9), and the new Display settings (steps 3, 13).
 
-See decision B below for how.
+The display stream makes these changes itself (decision B).
 
-## 9. Decisions for the owner
+## 9. The owner's decisions (15 November 2026)
 
-**A. A machine with 2020 Intel integrated graphics.** The speed rule can only be checked on one.
-Today only the RTX 3060 is measured.
-- *Option 1 (recommended):* a used laptop with Intel Iris Xe or UHD 620 graphics (roughly €250–400),
-  set up once with exact steps I write for you, which agents use for benchmarks over the network.
-  Real numbers on the real target.
-- *Option 2:* limit the RTX 3060 machine to imitate a weaker card. Free, but the numbers can mislead
-  in both directions: integrated graphics are slow in different ways.
-- *Option 3:* no low-end machine; rely on users' reports after release. Risky: slowness would be
-  found late.
+**A. No machine with 2020 Intel integrated graphics.** The owner has none; Curva must still work
+well on such computers. The rule is kept by design and by the margins in section 5, measured on
+the RTX 3060. If a user or tester with such a machine turns up, their numbers go in
+`docs/performance.md`.
 
-**B. Who edits the code outside the viewport that the display needs** (section 8).
-- *Option 1 (recommended):* the display stream makes those changes itself, each in its own small
-  pull request touching only what it names in section 8, and says so in `status/display.md`, so the
-  features stream sees them coming. Fastest, and keeps the two streams from waiting on each other.
-- *Option 2:* the display stream opens an issue for each and the features stream does it. Cleaner
-  separation, but each step waits for the other stream.
+**B. The display stream makes the changes outside the viewport that section 8 lists**, each in its
+own small pull request touching only what it names there, announced in `status/display.md` before
+it starts, so the features stream sees it coming. Anything else outside the viewport still goes
+through the features stream.
 
-**C. Display modes in a model file.**
-- *Option 1 (recommended):* modes live in the user's folder; a model remembers only the mode
-  names, and Export makes a file to share. As Rhino does.
-- *Option 2:* a model also carries a copy of every user-made mode it uses, so it looks the same on
-  any machine. Convenient for teams, but the same mode can then exist in two versions, which
-  confuses.
+**C. Display modes live in the user's folder;** a model remembers only the mode names, and Export
+makes a file to share, as Rhino does. Later the owner wants modes (and similar settings) attached to
+a Curva online account (`architecture.md` §10b), so the files are kept self-contained and named by
+mode, ready to be synced without changing their format.
 
 ## 10. What this spec does not cover
 
