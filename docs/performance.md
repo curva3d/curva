@@ -172,3 +172,23 @@ the first, so it was kept.) A change on *Large* still costs about 9 ms more than
 frame, against the spec's aim of under 1 ms; the rest of the window's work on a change is next to
 look at. The graphics card's time per frame rose from 1.52 to 1.65 ms on *Medium* and from 18.7 to
 22.0 ms on *Large*: vertices are 4 bytes larger and each looks the table up.
+
+## Snapping through an index of the objects (#130, first part)
+
+Snapping projected the eight corners of every object's box, and every snap place, each time it
+looked for a point. The objects' boxes and the snap places now sit in a tree of boxes (a bounding
+volume hierarchy), made once per model change, and snapping looks only into the parts of the tree
+whose box comes within reach of the cursor; a box inside one out of reach is out of reach too, so
+the same snap points are found. Same machine, display and build as above, nothing else building,
+each run twice:
+
+| Scene | Snapping, before | After | Frame gap, before | After |
+|---|---|---|---|---|
+| `--scene medium` | 3.2 ms | 1.28–1.29 ms | 4.8 ms | 2.6 ms |
+| `--scene large --trees 0` | 39.4–40.0 ms | 20.3–20.5 ms | 43.4 ms | 22.6–22.9 ms |
+| `--scene large` | 44.5–45.1 ms | 20.5–20.6 ms | 47.0–47.5 ms | 23.5 ms |
+
+What is left on *Large* is crowding, not searching: timed once, the benchmark's view shows the
+whole scene, each circle under a pixel, so about 115,000 segments lie within the cursor's 12
+pixels, and working out where they cross takes about 15 ms. Thinning out objects too small to see
+on screen would remove that, but changes which snap points are offered; it stays open in #130.

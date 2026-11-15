@@ -1,6 +1,7 @@
 //! Object snaps, ortho and grid snap: turning a cursor position into an exact point.
 
 use crate::camera::{CPlane, Projector};
+use crate::index::BoxTree;
 use crate::{Camera, Outlines};
 use curva_kernel::{Curve, Point, closest_between};
 
@@ -310,7 +311,46 @@ fn box_out_of_reach(view: &Projector, (low, high): (Point, Point), cursor: [f64;
         || cursor[1] > bottom + SNAP_REACH
 }
 
+/// The objects' boxes and the snap places, each in a tree of boxes (#130), so snapping looks only
+/// at what is near the cursor. Made once per model, the first time snapping asks.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct SnapIndex(std::sync::OnceLock<std::sync::Arc<SnapTrees>>);
+
+/// Outlines compare by what they hold; the index is only a quicker way to search it.
+impl PartialEq for SnapIndex {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct SnapTrees {
+    /// One item per entry of `Outlines::objects`, by its box.
+    objects: BoxTree,
+    /// One item per entry of `Outlines::sites`, by its point.
+    sites: BoxTree,
+}
+
 impl Outlines {
+    fn snap_trees(&self) -> &SnapTrees {
+        self.snap_index.0.get_or_init(|| {
+            // An object without a box is never skipped, as before.
+            let everywhere = ([f64::NEG_INFINITY; 3], [f64::INFINITY; 3]);
+            let boxes = (0..self.objects.len())
+                .map(|object| self.boxes.get(object).copied().unwrap_or(everywhere))
+                .collect();
+            let points = self
+                .sites
+                .iter()
+                .map(|site| (site.point, site.point))
+                .collect();
+            std::sync::Arc::new(SnapTrees {
+                objects: BoxTree::new(boxes),
+                sites: BoxTree::new(points),
+            })
+        })
+    }
+
     fn segments_near(
         &self,
         view: &Projector,
@@ -318,12 +358,14 @@ impl Outlines {
         drawing: &[Point],
     ) -> Vec<NearbySegment> {
         let mut found = Vec::new();
-        for (object, (_, points)) in self.objects.iter().enumerate() {
-            if !self
-                .boxes
-                .get(object)
-                .is_some_and(|around| box_out_of_reach(view, *around, cursor))
-            {
+        // A box inside a box out of reach is out of reach too (`box_out_of_reach` tests the box's
+        // projected outline), so the tree skips only what testing each object would skip.
+        let near = self
+            .snap_trees()
+            .objects
+            .query(|bounds| !box_out_of_reach(view, bounds, cursor));
+        for object in near {
+            if let Some((_, points)) = self.objects.get(object) {
                 collect_near(&mut found, view, cursor, object, points);
             }
         }
@@ -373,8 +415,15 @@ impl Outlines {
         };
         // In a shaded view, a point behind a face cannot be seen and is not offered.
         let seen = |point: Point| !set.visible_only || !self.hidden(camera, size, point);
-        for place in self.sites.iter().filter(|place| set.has(place.kind)) {
-            offer(place.kind, place.point);
+        // Only places whose point could be within reach, in their own order, as before.
+        let places = self
+            .snap_trees()
+            .sites
+            .query(|bounds| !box_out_of_reach(&view, bounds, cursor));
+        for place in places.iter().filter_map(|&at| self.sites.get(at)) {
+            if set.has(place.kind) {
+                offer(place.kind, place.point);
+            }
         }
         if set.end {
             for point in &drawing[..drawing.len().saturating_sub(1)] {
@@ -1050,6 +1099,80 @@ mod tests {
                 assert_eq!(hit.kind, kind, "{aim:?}");
                 assert!(close(hit.point, aim), "{aim:?} {:?}", hit.point);
             }
+        }
+    }
+
+    /// #130: the index skips a whole box only when it is out of reach, so every box inside it
+    /// must be out of reach too, or a snap point would be lost. Checked over many boxes, views
+    /// and cursor positions, flat and in perspective, including boxes reaching behind the camera.
+    #[test]
+    fn a_box_inside_one_out_of_reach_is_out_of_reach_too() {
+        let mut seed = 99_u64;
+        let mut next = move || {
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            (seed >> 33) as f64 / f64::from(1u32 << 31)
+        };
+        let size = [800.0, 600.0];
+        let mut checked = 0;
+        for view in [
+            crate::StandardView::Top,
+            crate::StandardView::Front,
+            crate::StandardView::Perspective,
+        ] {
+            let mut camera = view.camera();
+            camera.frame([-50.0; 3], [50.0; 3]);
+            let projector = camera.projector(size);
+            for _ in 0..400 {
+                let low = [0, 1, 2].map(|_| next() * 400.0 - 200.0);
+                let outer = (low, [0, 1, 2].map(|axis| low[axis] + next() * 100.0));
+                let corner =
+                    |t: f64, axis: usize| outer.0[axis] + (outer.1[axis] - outer.0[axis]) * t;
+                let (a, b) = (next(), next());
+                let inner = (
+                    [0, 1, 2].map(|axis| corner(a.min(b), axis)),
+                    [0, 1, 2].map(|axis| corner(a.max(b), axis)),
+                );
+                let cursor = [next() * size[0], next() * size[1]];
+                if box_out_of_reach(&projector, outer, cursor) {
+                    assert!(box_out_of_reach(&projector, inner, cursor));
+                    checked += 1;
+                }
+            }
+        }
+        // Enough of the boxes were out of reach for the check to mean something.
+        assert!(checked > 100, "only {checked} checked");
+    }
+
+    /// #130: snapping through the index on a busy model of 900 circles still finds the centre
+    /// of whichever circle is aimed at, near and far corners alike.
+    #[test]
+    fn snapping_through_the_index_finds_the_circle_aimed_at() {
+        let circles = (0..30)
+            .flat_map(|row| (0..30).map(move |column| (row, column)))
+            .map(|(row, column)| {
+                let centre = [f64::from(column) * 12.0, f64::from(row) * 12.0, 0.0];
+                Curve::circle(centre, 5.0).unwrap()
+            })
+            .collect();
+        let outlines = outlines(circles);
+        let mut camera = crate::StandardView::Top.camera();
+        let (low, high) = outlines.bounds().unwrap();
+        camera.frame(low, high);
+        let size = [800.0, 600.0];
+        let set = SnapSet {
+            center: true,
+            ..SnapSet::default()
+        };
+        // Aim at the centres of a spread of circles: each snaps to exactly that centre.
+        for (row, column) in [(0, 0), (29, 29), (15, 3), (7, 22)] {
+            let centre = [f64::from(column) * 12.0, f64::from(row) * 12.0, 0.0];
+            let on_screen = camera.project(centre, size).unwrap();
+            let aim = [on_screen[0] + 2.0, on_screen[1] - 2.0];
+            let hit = outlines.snap(&camera, aim, size, &set, None).unwrap();
+            assert_eq!(hit.kind, SnapKind::Center);
+            assert!(close(hit.point, centre), "{centre:?} {:?}", hit.point);
         }
     }
 }
