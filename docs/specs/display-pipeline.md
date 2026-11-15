@@ -1,6 +1,6 @@
 # Spec: the new display pipeline
 
-**Status:** Approved by the owner in chat · 15 November 2026 (display stream, #126), with the
+**Status:** Approved by the owner in chat · 15 November 2026 (display stream, #126); steps 14 and 15 shelved the same day (decision 0024). With the
 decisions in section 9.
 **Covers:** the owner's brief of 15 November 2026: detail that follows the zoom, smooth edges,
 display modes as editable files, and speed on large scenes.
@@ -298,8 +298,14 @@ measure on, so the rule is kept by design and checked as far as possible without
 11. **Instancing.**
 12. **Off-screen culling.**
 13. **Memory limit.**
-14. **Occlusion culling.**
-15. **Clusters and stand-ins for distant geometry**; mesh shaders as an optional path.
+14. **Shelved** (owner, 15 November 2026, decision 0024): occlusion culling.
+15. **Shelved** (owner, 15 November 2026, decision 0024): clusters and stand-ins for distant geometry, mesh shaders.
+
+Steps 14 and 15 are game-engine techniques that add the most complexity for the least gain in architectural models. They come back only if a real model, measured with `--orbit-benchmark`, is still too slow after steps 11 to 13. Sections 4.3 (the occlusion part) and 4.4 are kept for the record.
+
+**Two evaluations come first** (decision 0024), each a small spike with a written result, before more of the drawing is built by hand:
+- **Vello for 2D views and sheets:** can plans, sections and sheets be drawn as vector paths with Vello (or Vello Hybrid), from the same data the PDF and SVG exports use?
+- **re_renderer for 3D lines:** can Rerun's line, point, outline and picking renderer replace or inform Curva's own line drawing?
 
 Each step is measured before and after, and the result goes in `docs/performance.md` and
 `status/display.md`. Steps 1 to 4 come first because everything else builds on them.
