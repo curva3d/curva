@@ -7,6 +7,10 @@ own page, `status/display.md`.*
 *Until 15 November 2026 this was the whole of `STATUS.md`, so it also holds the display history up
 to then (display modes, glass, line widths, speed measurements).*
 
+**Contributor Licence Agreement (decision 0026, owner's decision in chat, 15 November 2026):**
+`CLA.md`, `CONTRIBUTING.md` and the `CLA` check (`.github/workflows/cla.yml`). Outside contributors sign
+once by commenting on their first pull request; signatures go to the `cla-signatures` branch.
+
 ## Features stream — 15 November 2026
 
 **Licence (decision 0025, owner's decision in chat):** the application crates (`curva-app`,
