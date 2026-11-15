@@ -1024,3 +1024,36 @@ fn layout_user_text_and_its_fields_come_back() {
     );
     assert_eq!(shown, "R0 of R1");
 }
+
+#[test]
+fn fields_only_curva_can_work_out_go_out_worked_out() {
+    use curva_document::annotation::{Annotation, Text, TextAlign};
+    let mut state = State::default();
+    let mut wall = object(
+        0,
+        Shape::Curve(Curve::line([0.0; 3], [5000.0, 0.0, 0.0]).unwrap()),
+        0,
+    );
+    wall.name = "North wall".to_owned();
+    state.objects.push(wall.into());
+    let note = Text {
+        // An object named by Curva's number, which Rhino cannot follow, beside Rhino's own field.
+        content: "%<ObjectName(\"0\")>% / %<PageName()>%".to_owned(),
+        origin: [0.0; 3],
+        x: [1.0, 0.0, 0.0],
+        y: [0.0, 1.0, 0.0],
+        height: 2.5,
+        font: None,
+        align: TextAlign::Left,
+        style: 0,
+    };
+    state
+        .objects
+        .push(object(1, Shape::Annotation(Annotation::Text(note)), 0).into());
+    state.next_id = 2;
+    let back = round_trip(&state);
+    let Shape::Annotation(Annotation::Text(t)) = &back.objects[1].shape else {
+        panic!("not a note");
+    };
+    assert_eq!(t.content, "North wall / %<PageName()>%");
+}
