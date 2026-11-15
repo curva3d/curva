@@ -39,6 +39,12 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
         },
         tolerance: state.unit.tolerance(),
         angle_tolerance: 1f64.to_radians(),
+        document_text: state
+            .document_text
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect(),
+        notes: state.notes.clone(),
         ..Model::default()
     };
 
@@ -1354,9 +1360,12 @@ fn plain_parts(o: &Object, state: &State, group: u64, before: usize) -> Option<V
 }
 
 /// The fields Rhino works out itself, by the same names (Rhino 8's `information/text_fields.htm`).
-/// Others read what only Curva holds (document and layout user text, notes, objects by Curva's
-/// numbers), so they go out worked out.
-const RHINO_FIELDS: [&str; 9] = [
+/// Others read what only Curva holds (layout user text, objects by Curva's
+/// numbers), so they go out worked out. Document text and notes travel in the file, so Rhino reads
+/// them itself.
+const RHINO_FIELDS: [&str; 11] = [
+    "DocumentText",
+    "Notes",
     "PageName",
     "PageNumber",
     "NumPages",

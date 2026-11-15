@@ -34,6 +34,7 @@ version, which Rhino 7 and 8 open.
 | Layouts (page views) with their size, and what is drawn on them (in the file's page unit) | yes | yes, in millimetres, with Rhino's four standard views beside them |
 | Detail views: frame, standard view or perspective, target, scale | yes | yes |
 | Scale bars and tables | — (Rhino has none) | as the plain drawing they make: lines, solid hatches and notes, grouped |
+| Document user text (`DocumentText` field), the model's notes (`Notes` field) | yes | yes, with those fields kept for Rhino to work out |
 | Materials, render settings | no | no |
 
 ## 3. Commands and menus

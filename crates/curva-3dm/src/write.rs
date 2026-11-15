@@ -33,6 +33,18 @@ pub fn write(model: &Model) -> Vec<u8> {
         w.wstring("https://github.com/curva3d/curva");
         w.wstring(concat!("Curva ", env!("CARGO_PKG_VERSION")));
         w.end();
+        if !model.notes.is_empty() {
+            // ON_3dmNotes 1.1: plain text, its words, not shown, no window, not locked.
+            w.begin(tcode::PROPERTIES_NOTES);
+            w.chunk_version(1, 1);
+            w.i32(0);
+            w.wstring(&model.notes);
+            for v in [0, 0, 0, 0, 0] {
+                w.i32(v);
+            }
+            w.bool(false);
+            w.end();
+        }
     });
     table(&mut w, tcode::SETTINGS_TABLE, |w| {
         w.begin(tcode::SETTINGS_UNITSANDTOLS);
@@ -122,6 +134,9 @@ pub fn write(model: &Model) -> Vec<u8> {
         }
     });
     table(&mut w, tcode::HISTORYRECORD_TABLE, |_| {});
+    if !model.document_text.is_empty() {
+        write_document_text(&mut w, &model.document_text);
+    }
     // The end mark holds the size of the whole file, itself included.
     let size = w.out.len() as i64 + 4 + 8 + 8;
     w.u32(tcode::ENDOFFILE);
@@ -1185,6 +1200,35 @@ fn write_page_unit(w: &mut Writer, model: &Model) {
     w.f64(metres_per(unit));
     w.wstring("");
     w.end();
+    w.end();
+}
+
+/// The document user text as openNURBS keeps it (`ONX_Model`'s step 17): a user table for the
+/// plug-in `ON_DocumentUserStringList`, whose record is that object, with the keys and values as
+/// its user data.
+fn write_document_text(w: &mut Writer, pairs: &[(String, String)]) {
+    w.begin(tcode::USER_TABLE);
+    w.begin(tcode::USER_TABLE_UUID);
+    w.uuid(class::DOCUMENT_USER_STRINGS);
+    w.begin_versioned(tcode::USER_TABLE_RECORD_HEADER, 1, 0);
+    w.bool(false); // not kept for a plug-in that is missing
+    w.i32(70);
+    w.u32(OPENNURBS_VERSION as u32);
+    w.end();
+    w.end();
+    w.begin(tcode::USER_RECORD);
+    w.begin(tcode::OPENNURBS_CLASS);
+    w.begin(tcode::OPENNURBS_CLASS_UUID);
+    w.uuid(class::DOCUMENT_USER_STRINGS);
+    w.end();
+    w.begin(tcode::OPENNURBS_CLASS_DATA);
+    w.u8(1);
+    w.end();
+    write_user_text(w, pairs);
+    w.short(tcode::OPENNURBS_CLASS_END, 0);
+    w.end();
+    w.end();
+    w.short(tcode::ENDOFTABLE, 0);
     w.end();
 }
 #[cfg(test)]

@@ -160,6 +160,15 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
         report.skipped.push((kind.clone(), *n));
     }
 
+    // Document user text joins the model's (the file's value where both have a key); its notes
+    // fill notes the model has not got.
+    for (key, value) in &model.document_text {
+        state.document_text.insert(key.clone(), value.clone());
+    }
+    if state.notes.is_empty() {
+        state.notes.clone_from(&model.notes);
+    }
+
     // Layers: the file's tree as sublayers (spec `sublayers.md` §3), parents first, each merged
     // with a layer of the same full name already there.
     let full_names = layer_names(&model.layers);

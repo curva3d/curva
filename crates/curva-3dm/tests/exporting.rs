@@ -926,12 +926,16 @@ fn scale_bars_and_tables_go_out_as_their_plain_drawing() {
 }
 
 #[test]
-fn fields_only_curva_can_work_out_go_out_worked_out() {
+fn fields_rhino_works_out_stay_fields_and_their_text_comes_along() {
     use curva_document::annotation::{Annotation, Text, TextAlign};
     let mut state = State::default();
     state
         .document_text
         .insert("Project".to_owned(), "Harbour Library".to_owned());
+    state
+        .document_text
+        .insert("Client".to_owned(), "City of Porto".to_owned());
+    state.notes = "Issued for planning\nSecond line".to_owned();
     let note = Text {
         content: "%<DocumentText(\"Project\")>% / %<PageName()>% / %<Notes()>%".to_owned(),
         origin: [0.0; 3],
@@ -950,6 +954,11 @@ fn fields_only_curva_can_work_out_go_out_worked_out() {
     let Shape::Annotation(Annotation::Text(t)) = &back.objects[0].shape else {
         panic!("not a note");
     };
-    // Rhino's own page field stays a field; the project and notes are written as they read.
-    assert_eq!(t.content, "Harbour Library / %<PageName()>% / ");
+    // Rhino works these out itself from the file's document text and notes.
+    assert_eq!(
+        t.content,
+        "%<DocumentText(\"Project\")>% / %<PageName()>% / %<Notes()>%"
+    );
+    assert_eq!(back.document_text, state.document_text);
+    assert_eq!(back.notes, state.notes);
 }
