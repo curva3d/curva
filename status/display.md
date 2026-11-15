@@ -6,14 +6,18 @@
 ## 15 November 2026
 
 **Done**
-- Step 1b, the graphics card's own time (#132): the benchmark reports it, read from the card's
+- Step 1c, the baseline kept (#138): pictures made without a window (for agents and `--picture`)
+  ask for their device as the window does, and a test draws a shaded face and lines of three
+  widths with every optional extra off and on and checks the pictures are identical. Step 1 is
+  complete.
+- Step 1b, the graphics card's own time (#132, merged as #137): the benchmark reports it, read from the card's
   clock. *Medium* 1.5 ms, reduced *Large* 7.1 ms per frame; the processor is the bigger cost on both
   (`docs/performance.md`). The window now asks the card for its device through
   `curva_viewport::device_descriptor`: the baseline limits, plus optional extras only when present.
   Found on the way: building *Medium*'s 500 cylinders takes about 35 s, about 60 ms per extrusion in
   the engine (#136, for the features stream).
-- Step 1a, benchmark scenes (#129, merged as #131): `--orbit-benchmark --scene medium|large|far`, plus `--splines`
-  and `--trees`; the report says what the scene holds, how long it took to build and when the first
+- Step 1a, benchmark scenes (#129, merged as #131): `--orbit-benchmark --scene medium|large|far`,
+  plus `--splines` and `--trees`; the report says what the scene holds, how long it took to build and when the first
   frame showed. Baseline on the RTX 3060 in `docs/performance.md`:
   - *Medium* orbits at 4.8–4.9 ms between frames.
   - ***Large* does not open: Curva crashes.** All lines, and all faces, go into one block of
@@ -32,8 +36,7 @@
 - Status split per stream and the display stream's rules in `AGENTS.md` (#125).
 
 **In progress / next**
-- Step 1c: a test that draws with every optional graphics extra turned off.
-- Then **step 4 before steps 2 and 3**: *Large* crashing matters more to users than shimmer or
+- **Step 4 next, before steps 2 and 3**: *Large* crashing matters more to users than shimmer or
   jagged edges, so objects kept on the graphics card (which removes the 256 MB ceiling for lines
   and faces) comes first.
 
