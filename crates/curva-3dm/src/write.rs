@@ -3,8 +3,8 @@
 
 use crate::archive::{Uuid, Writer, tcode};
 use crate::model::{
-    Attributes, Block, Brep, Curve, Geometry, Group, HatchLine, HatchPattern, Layer, Model,
-    NurbsCurve, NurbsSurface, Object, P3, Plane, Source, Surface, View,
+    Attributes, Block, Brep, Curve, DimStyle, Geometry, Group, HatchLine, HatchPattern, Layer,
+    Model, NurbsCurve, NurbsSurface, Object, P3, Plane, Source, Surface, Text, View,
 };
 use crate::read::class;
 
@@ -84,9 +84,15 @@ pub fn write(model: &Model) -> Vec<u8> {
             w.end();
         }
     });
-    for empty in [tcode::FONT_TABLE, tcode::DIMSTYLE_TABLE, tcode::LIGHT_TABLE] {
-        table(&mut w, empty, |_| {});
-    }
+    table(&mut w, tcode::FONT_TABLE, |_| {});
+    table(&mut w, tcode::DIMSTYLE_TABLE, |w| {
+        for (index, style) in model.dim_styles.iter().enumerate() {
+            w.begin(tcode::DIMSTYLE_RECORD);
+            class_object(w, class::DIM_STYLE, |w| write_dim_style(w, style, index));
+            w.end();
+        }
+    });
+    table(&mut w, tcode::LIGHT_TABLE, |_| {});
     table(&mut w, tcode::HATCHPATTERN_TABLE, |w| {
         for (index, pattern) in model.hatch_patterns.iter().enumerate() {
             w.begin(tcode::HATCHPATTERN_RECORD);
@@ -246,10 +252,6 @@ fn object_type(g: &Geometry) -> i64 {
 
 fn write_object(w: &mut Writer, object: &Object) {
     let g = &object.geometry;
-    // Notes are not written yet: they need Rhino's annotation styles.
-    if matches!(g, Geometry::Text(_)) {
-        return;
-    }
     w.begin(tcode::OBJECT_RECORD);
     w.short(tcode::OBJECT_RECORD_TYPE, object_type(g));
     match g {
@@ -261,7 +263,7 @@ fn write_object(w: &mut Writer, object: &Object) {
         Geometry::Surface(s) => write_surface(w, s),
         Geometry::Brep(b) => class_object(w, class::BREP, |w| write_brep(w, b)),
         Geometry::Extrusion(_) => {}
-        Geometry::Text(_) => {}
+        Geometry::Text(t) => class_object(w, class::TEXT, |w| write_text(w, t)),
         Geometry::Hatch(h) => class_object(w, class::HATCH, |w| {
             // openNURBS' ON_Hatch, version 1.2: plane, scale, turn, pattern, outlines as 2D
             // curves in the plane, then the base point.
@@ -783,6 +785,167 @@ fn write_hatch_pattern(w: &mut Writer, pattern: &HatchPattern, index: usize) {
         w.f64s(&line.dashes);
         w.end();
     }
+    w.end();
+    w.end();
+}
+
+/// A length as openNURBS writes one (`ON_LengthValue::Write`): a plain number, no unit.
+fn write_length_value(w: &mut Writer, value: f64) {
+    w.begin_anonymous(1);
+    w.f64(value);
+    w.begin_versioned(tcode::ANONYMOUS_CHUNK, 1, 0); // ON_UnitSystem: none
+    w.u32(0);
+    w.f64(1.0);
+    w.wstring("");
+    w.end();
+    w.u32(0); // angle unit: none
+    w.i32(0); // locale
+    w.wstring("1");
+    w.u32(0); // exact decimal
+    w.end();
+}
+
+/// An annotation style as Rhino 6 and later read it (`ON_DimStyle::Read`), written to version
+/// 1.1: everything up to the notes' alignment and the style's scale, with Rhino's usual values
+/// for what Curva does not set; Rhino fills in the fields of later versions with its defaults.
+fn write_dim_style(w: &mut Writer, style: &DimStyle, index: usize) {
+    w.begin_versioned(tcode::ANONYMOUS_CHUNK, 1, 1);
+    w.begin_versioned(tcode::MODEL_ATTRIBUTES_CHUNK, 1, 0);
+    w.u8(0); // model serial number
+    w.u8(1);
+    w.uuid(style.id);
+    w.u8(0); // component type
+    w.u8(1);
+    w.count(index);
+    w.u8(1);
+    w.wstring(&style.name);
+    w.end();
+    let h = style.text_height;
+    // Extension line extension and offset, arrow sizes, centre mark, text gap, text height.
+    w.f64s(&[h / 2.0, h / 2.0, h, h, h, h / 4.0, h]);
+    w.i32(0); // text alignment (obsolete)
+    w.i32(0); // angle format: decimal degrees
+    w.i32(0); // length format: decimal
+    w.i32(0); // angle resolution
+    w.i32(2); // length resolution
+    w.i32(-2_147_483_647); // ignored text style index
+    w.f64(1.0); // length factor
+    w.bool(false); // alternate units
+    w.f64(1.0);
+    w.i32(0);
+    w.i32(2);
+    for _ in 0..4 {
+        w.wstring(""); // prefixes and suffixes
+    }
+    w.f64(0.0); // dimension line extension
+    w.bool(false);
+    w.bool(false);
+    w.uuid(Uuid::NIL); // no parent style
+    w.i32(0);
+    w.bool(false); // no overridden fields
+    w.i32(0); // tolerance format
+    w.i32(4);
+    w.f64s(&[0.0, 0.0, 1.0, 3.0 * h]);
+    w.bool(false); // no text mask
+    w.i32(0);
+    w.color([255, 255, 255, 0]);
+    w.f64(1.0); // dimension scale
+    w.i32(0);
+    w.uuid(Uuid::NIL);
+    for _ in 0..2 {
+        for _ in 0..4 {
+            w.u8(0); // colour sources: by layer
+        }
+        for _ in 0..4 {
+            w.color([0, 0, 0, 0]);
+        }
+    }
+    w.u8(0); // plot weight sources
+    w.u8(0);
+    w.f64s(&[0.0, 0.0]);
+    w.f64(1.0); // fixed extension length
+    w.bool(false);
+    w.f64(0.0); // text rotation
+    w.i32(4);
+    w.f64(1.0);
+    w.bool(false);
+    w.bool(false);
+    w.i32(0);
+    w.i32(0);
+    w.f64(0.7); // stack height
+    w.i32(0);
+    w.f64s(&[0.0, 0.0, 0.0]); // roundings
+    for _ in 0..4 {
+        w.i32(0); // zero suppression
+    }
+    w.bool(false);
+    w.i32(1); // arrows: solid triangles
+    w.i32(1);
+    w.i32(1);
+    for _ in 0..3 {
+        w.uuid(Uuid::NIL);
+    }
+    // Version 1.1: leaders, then the notes' alignment in Rhino 5's numbering.
+    w.i32(1);
+    w.u32(style.v_align);
+    w.u32(style.v_align);
+    w.i32(0);
+    w.i32(1);
+    w.f64(0.0);
+    w.bool(true);
+    w.f64(h);
+    w.u32(style.h_align);
+    w.u32(style.h_align);
+    w.bool(true); // draw forward
+    w.bool(false);
+    // The style's scale, one to one (`ON_ScaleValue::Write`).
+    w.begin_anonymous(1);
+    w.f64(1.0);
+    w.f64(1.0);
+    w.i32(0);
+    w.u32(0);
+    w.u32(0);
+    w.wstring("1:1");
+    write_length_value(w, 1.0);
+    write_length_value(w, 1.0);
+    w.u32(1); // ratio format
+    w.end();
+    w.u32(0); // unit system: none (the model's)
+    w.end();
+}
+
+/// A note as Rhino 6 and later write one (`ON_Text::Write` around
+/// `ON_Annotation::Internal_WriteAnnotation`, content version 4): its words, style, plane,
+/// kind, no overrides, the horizontal direction and text scaling.
+fn write_text(w: &mut Writer, t: &Text) {
+    w.begin_anonymous(0);
+    w.begin_anonymous(4);
+    w.begin_anonymous(0);
+    w.wstring(&t.rich.replace('\n', "\r\n"));
+    write_plane(
+        w,
+        &Plane {
+            origin: [0.0; 3],
+            x: [1.0, 0.0, 0.0],
+            y: [0.0, 1.0, 0.0],
+            z: [0.0, 0.0, 1.0],
+        },
+    );
+    w.f64(0.0); // no wrapping width
+    w.f64(t.rotation);
+    w.u32(0);
+    w.u32(0);
+    w.f64(1.0); // obsolete height
+    w.bool(false); // not wrapped
+    w.end();
+    w.uuid(t.style);
+    write_plane(w, &t.plane);
+    w.u32(9); // a note
+    w.begin_anonymous(1);
+    w.bool(false); // no overrides
+    w.end();
+    w.f64s(&[1.0, 0.0]); // horizontal direction
+    w.bool(true); // text scales with the model
     w.end();
     w.end();
 }
