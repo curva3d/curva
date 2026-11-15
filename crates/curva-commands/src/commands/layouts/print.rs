@@ -1,6 +1,7 @@
-//! `Print` (Serpentine's PrintSheets and Plot) and `ExportPDF` (spec `drawing-output.md` §1):
-//! layouts to a PDF or a printer. Options first: which layouts, colour or black, and where; then
-//! Enter asks for the file, or sends the pages to the printer. The interface makes the pages.
+//! `Print` (Serpentine's PrintSheets and Plot) opens the Print panel, as Rhino's Print opens its
+//! dialog; `ExportPDF` (spec `drawing-output.md` §1) prints from the command line, for scripts
+//! and the assistant: options first (which layouts, colour or black, a PDF or the printer), then
+//! Enter asks for the file or sends the pages to the printer. The interface makes the pages.
 
 use crate::{
     Answer, Command, Kind, Message, PDF_FILES, PrintJob, PrintTo, Request, Step, ViewRequest,
@@ -11,16 +12,16 @@ const LAYOUTS: &str = "Layouts";
 const COLOUR: &str = "Colour";
 const OUTPUT: &str = "Output";
 
-/// The running command.
+/// The running `ExportPDF`.
 #[derive(Default)]
-pub struct Print {
+pub struct ExportPdf {
     all: bool,
     black: bool,
     printer: bool,
     asking_file: bool,
 }
 
-impl Print {
+impl ExportPdf {
     /// The layouts chosen: all of them in the Layouts panel's order, or the one being worked on
     /// (all when working in the model).
     fn layouts(&self, doc: &Document) -> Vec<u64> {
@@ -70,7 +71,7 @@ impl Print {
     }
 }
 
-impl Command for Print {
+impl Command for ExportPdf {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
         match answer {
             None if doc.layouts().is_empty() => {
@@ -118,13 +119,13 @@ impl Command for Print {
     }
 }
 
-/// `ExportPDF`: `Print` with a PDF as its output.
+/// `Print`: opens the Print panel.
 #[derive(Default)]
-pub struct ExportPdf(Print);
+pub struct Print;
 
-impl Command for ExportPdf {
-    fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        self.0.step(doc, answer)
+impl Command for Print {
+    fn step(&mut self, _doc: &mut Document, _answer: Option<Answer>) -> Step {
+        Step::View(ViewRequest::ShowPrint)
     }
 }
 
@@ -142,11 +143,18 @@ mod tests {
     }
 
     #[test]
-    fn print_asks_for_a_pdf_and_hands_the_layouts_over() {
+    fn print_opens_the_print_panel() {
+        let mut doc = Document::default();
+        let mut processor = run(&mut doc, &["Print"]);
+        assert_eq!(processor.take_view_request(), Some(ViewRequest::ShowPrint));
+    }
+
+    #[test]
+    fn export_pdf_asks_for_a_file_and_hands_the_layouts_over() {
         let mut doc = Document::default();
         let (a, b) = sheets(&mut doc);
         doc.set_space(Some(b));
-        let mut processor = run(&mut doc, &["Print", "", "drawings/set"]);
+        let mut processor = run(&mut doc, &["ExportPDF", "", "drawings/set"]);
         assert_eq!(
             processor.take_view_request(),
             Some(ViewRequest::Print(PrintJob {
@@ -155,7 +163,7 @@ mod tests {
                 to: PrintTo::Pdf("drawings/set.pdf".to_owned()),
             }))
         );
-        let mut processor = run(&mut doc, &["Print", "Layouts", "Colour", "Output", ""]);
+        let mut processor = run(&mut doc, &["ExportPDF", "Layouts", "Colour", "Output", ""]);
         assert_eq!(
             processor.take_view_request(),
             Some(ViewRequest::Print(PrintJob {
@@ -169,7 +177,7 @@ mod tests {
     #[test]
     fn with_no_layouts_there_is_nothing_to_print() {
         let mut doc = Document::default();
-        let mut processor = run(&mut doc, &["Print"]);
+        let mut processor = run(&mut doc, &["ExportPDF"]);
         assert_eq!(processor.take_view_request(), None);
         assert!(!processor.is_running());
     }

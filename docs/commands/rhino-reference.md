@@ -405,10 +405,10 @@ pattern, scale and rotation in a dialog; Curva takes them as command options.
 ### Printing and export
 
 Written on 15 November 2026 from `commands/print.htm`, which covers the Print dialog only (not `-Print`'s options).
-Curva's print settings are command options for now; the Print panel with its preview follows
+Curva's Print opens the Print panel; ExportPDF prints from the command line, for scripts and the assistant
 (`drawing-output.md` §1).
 
 | Command | Rhino's steps | Rhino's options | In Curva | Status |
 |---|---|---|---|---|
-| Print | The Print dialog: destination (printer, size, DPI, orientation, copies), output type (vector or raster), output colour (print, display, black and white), view and scale (viewport or layouts, extents, window, several layouts, separate PDF files, scale), margins and position, linetypes and line widths, visibility, with a live preview | the dialog's settings | `Layouts` (current or all), `Colour` (display, with white printing black, or black), `Output` (PDF or printer); layouts print 1:1 on their paper as vectors: sheet objects, and detail views of the model clipped to their frames, with print widths and linetypes; text and arrowheads filled. Aliases `PrintSheets`, `Plot`. Not yet: the panel and preview, model views, raster details, hidden lines, dots, separate files, margins | partly |
-| ExportPDF | Serpentine's command: Print to a PDF | as Print | as Print, with a PDF | partly |
+| Print | The Print dialog: destination (printer, size, DPI, orientation, copies), output type (vector or raster), output colour (print, display, black and white), view and scale (viewport or layouts, extents, window, several layouts, separate PDF files, scale), margins and position, linetypes and line widths, visibility, with a live preview | the dialog's settings | The Print panel: layouts ticked to print, display colours (white prints black) or black, PDF file or printer, and a preview of each page (fills shown as outlines); layouts print 1:1 on their paper as vectors: sheet objects, and detail views of the model clipped to their frames, with print widths and linetypes; text and arrowheads filled. Aliases `PrintSheets`, `Plot`. Not yet: model views, raster details, hidden lines, dots, separate files, margins | partly |
+| ExportPDF | Serpentine's command: Print to a PDF | as Print | Print's choices as options: `Layouts` (current or all), `Colour`, `Output` (PDF or printer); then the file | partly |

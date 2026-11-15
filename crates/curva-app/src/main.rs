@@ -121,6 +121,8 @@ struct Curva {
     processor: Processor,
     /// The system's file dialogs for commands that ask for a file.
     file_dialogs: FileDialogs,
+    /// The Print panel's choices and its waiting save dialog.
+    print_panel: panels::print::PrintPanel,
     /// The layout open in the viewport area, if any.
     sheets: Sheets,
     /// Each viewport's area last frame, and the part of it the floating panels leave free.
@@ -240,6 +242,7 @@ impl Curva {
                 processor
             },
             file_dialogs: FileDialogs::default(),
+            print_panel: panels::print::PrintPanel::default(),
             sheets: Sheets::default(),
             pane_areas: [None; VIEW_SLOTS],
             section_fills: SectionFills::default(),

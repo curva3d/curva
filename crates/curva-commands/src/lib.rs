@@ -333,6 +333,8 @@ pub enum ViewRequest {
     ShowLayouts,
     /// Open the Annotation Styles panel.
     ShowAnnotationStyles,
+    /// Open the Print panel.
+    ShowPrint,
     /// Print or export layouts; the interface makes the pages.
     Print(PrintJob),
     /// Clipping planes, by their rectangles, cut (`true`) or stop cutting the active viewport,
