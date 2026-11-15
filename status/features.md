@@ -12,7 +12,7 @@ to then (display modes, glass, line widths, speed measurements).*
 **Milestone 3, point 5 (title blocks, scale bars, sheet index, revisions):**
 - Merged: document and layout user text and notes (#128): `SetDocumentUserText`, `GetDocumentUserText`,
   `SetLayoutUserText`, `Notes`, and the `DocumentText`, `LayoutUserText` and `Notes` text fields.
-- In review: `TitleBlock`, `ScaleBar`, `SheetIndex`, `Revision`. The title block is grouped lines and text
+- Merged (#133): `TitleBlock`, `ScaleBar`, `SheetIndex`, `Revision`. The title block is grouped lines and text
   with fields (ISO 7200-style in an ISO 5457 border, or ANSI); scale bars, the sheet index and revision
   tables are annotation worked out from the document, so they follow detail scales, layouts and new
   revisions. Checked on a printed PDF.
@@ -21,7 +21,14 @@ to then (display modes, glass, line widths, speed measurements).*
 `Notes` is typed at the prompt rather than in a panel; scale bars and tables have nothing to edit in
 Properties yet; built-in title blocks are one design per standard, not one per sheet size.
 
-**Next:** SVG and DXF export, then the `.3dm` round trip of drawing objects.
+**Milestone 3, points 14 to 16 (export):**
+- Merged (#134): SVG export of layouts through Export (`.svg`), one file per layout.
+- In review: DXF and DWG (new crate `curva-dxf` on `acadrust`, MPL-2.0 exception added to `deny.toml` and
+  `about.toml` as decision 0021 approved). Export, ExportSelected, Open and Import take `.dxf` and `.dwg`:
+  curves, points and layers (colour, print width, on, locked, sublayers as `Parent$Child`), the unit.
+  Text, dimensions, hatches, blocks, solids and layouts are left out and reported for now.
+
+**Next:** DXF text, dimensions, hatches and blocks; then the `.3dm` round trip of drawing objects.
 
 ## Current state — 8 November 2026
 
