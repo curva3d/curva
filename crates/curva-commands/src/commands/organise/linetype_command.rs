@@ -3,10 +3,10 @@
 use crate::commands::ask_objects;
 use crate::commands::support::*;
 use crate::{Answer, Command, Kind, Message, Request, Step};
-use curva_document::{Document, Linetype};
+use curva_document::Document;
 
 /// `Linetype`: sets objects' linetype by name (ByLayer, Continuous, Dashed, Dots, DashDot,
-/// Hidden, Center, Border).
+/// Hidden, Center, Border, or one of the document's own that a file brought).
 #[derive(Default)]
 pub struct LinetypeCommand {
     objects: Vec<u64>,
@@ -16,13 +16,13 @@ impl Command for LinetypeCommand {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
         match answer {
             Some(Answer::Path(name)) if !self.objects.is_empty() => {
-                let Some(linetype) = Linetype::named(name.trim()) else {
+                let Some(linetype) = doc.state().linetype_named(name.trim()) else {
                     return Step::Failed(Message::with("error.no_linetype", vec![name]));
                 };
                 doc.set_linetype(&self.objects, linetype);
                 Step::Done(Some(Message::with(
                     "done.linetype",
-                    vec![linetype.name().to_owned()],
+                    vec![doc.state().linetype_name(linetype)],
                 )))
             }
             other => {

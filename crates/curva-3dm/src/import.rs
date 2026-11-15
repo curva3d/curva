@@ -171,7 +171,18 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
 
     // Layers: the file's tree as sublayers (spec `sublayers.md` §3), parents first, each merged
     // with a layer of the same full name already there.
-    let mut unknown_linetypes = std::collections::BTreeSet::new();
+    // Linetypes: the file's table as Curva's own or the document's.
+    let linetypes: Vec<Linetype> = model
+        .linetypes
+        .iter()
+        .map(|l| linetype_in(state, l))
+        .collect();
+    let linetype_of = |index: i32| {
+        usize::try_from(index)
+            .ok()
+            .and_then(|i| linetypes.get(i).copied())
+            .unwrap_or(Linetype::Continuous)
+    };
     let full_names = layer_names(&model.layers);
     let nil = crate::archive::Uuid::NIL;
     let mut placed: Vec<Option<u64>> = vec![None; model.layers.len()];
@@ -211,7 +222,7 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
                     locked: layer.locked,
                     print_width: (layer.print_width > 0.0)
                         .then(|| PrintWidth::clamped(layer.print_width)),
-                    linetype: linetype_of(model, layer.linetype, &mut unknown_linetypes),
+                    linetype: linetype_of(layer.linetype),
                     parent,
                     collapsed: false,
                 });
@@ -255,7 +266,6 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
         .flat_map(|b| b.objects.iter().map(move |o| (*o, b.id)))
         .collect();
     let mut definitions: BTreeMap<crate::archive::Uuid, Vec<Object>> = BTreeMap::new();
-    let mut own_colours = 0;
 
     // Layouts: one for each of the file's pages, in millimetres; what is drawn on a page comes
     // from the file's page unit.
@@ -311,6 +321,7 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
                         group: None,
                         live: None,
                         input_of: None,
+                        colour: None,
                         linetype: Linetype::ByLayer,
                         user_text: BTreeMap::new(),
                     }));
@@ -349,9 +360,6 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
             }
         };
         let shape = with_layout_numbers(shape, &page_ids);
-        if a.color_source == model::Source::Object {
-            own_colours += 1;
-        }
         let id = state.next_id;
         state.next_id += 1;
         let made = Object {
@@ -373,8 +381,10 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
             group: a.groups.first().and_then(|g| group_ids.get(*g)).copied(),
             live: None,
             input_of: None,
+            colour: (a.color_source == model::Source::Object)
+                .then(|| a.color.map(|c| f32::from(c) / 255.0)),
             linetype: if a.linetype_source == model::Source::Object {
-                linetype_of(model, a.linetype, &mut unknown_linetypes)
+                linetype_of(a.linetype)
             } else {
                 Linetype::ByLayer
             },
@@ -412,21 +422,6 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
             objects,
             linked: None,
         });
-    }
-    if own_colours > 0 {
-        report.notes.push(format!(
-            "{own_colours} objects had their own colour and show in their layer's"
-        ));
-    }
-    if !unknown_linetypes.is_empty() {
-        let names: Vec<String> = unknown_linetypes
-            .iter()
-            .map(|n| format!("\"{n}\""))
-            .collect();
-        report.notes.push(format!(
-            "linetypes Curva does not have, drawn continuous: {}",
-            names.join(", ")
-        ));
     }
 }
 
@@ -1934,27 +1929,16 @@ fn with_layout_numbers(shape: Shape, page_ids: &BTreeMap<crate::archive::Uuid, u
     }
 }
 
-/// One of Curva's linetypes for a linetype table index, matched by name (Rhino's standard
-/// linetypes share Curva's names); a linetype Curva does not have is drawn continuous and
-/// named in `unknown`.
-fn linetype_of(
-    model: &Model,
-    index: i32,
-    unknown: &mut std::collections::BTreeSet<String>,
-) -> Linetype {
-    let Some(linetype) = usize::try_from(index)
-        .ok()
-        .and_then(|i| model.linetypes.get(i))
-    else {
-        return Linetype::Continuous;
-    };
-    match Linetype::named(linetype.name.trim()) {
-        Some(Linetype::ByLayer) | None => {
-            unknown.insert(linetype.name.clone());
-            Linetype::Continuous
-        }
-        Some(found) => found,
+/// A file's linetype as the document's: one of Curva's own when the name matches (Rhino's
+/// standard linetypes share Curva's names), otherwise the document's own with the file's
+/// pattern.
+fn linetype_in(state: &mut State, linetype: &model::Linetype) -> Linetype {
+    let name = linetype.name.trim();
+    if let Some(own) = Linetype::named(name).filter(|l| !l.is_by_layer()) {
+        return own;
     }
+    // Rhino's lengths are millimetres on paper whatever the model's unit, as Curva's are.
+    state.add_linetype(name, &curva_document::alternating(&linetype.segments))
 }
 
 /// A leader from a file, its words made plain and a landing drawn, as Rhino's usual style does.

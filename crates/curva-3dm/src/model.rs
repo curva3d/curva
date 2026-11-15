@@ -159,8 +159,8 @@ pub struct Linetype {
     pub id: Uuid,
     /// Its name.
     pub name: String,
-    /// Its pattern: each segment's length in model units, and whether it is drawn (a dash or
-    /// dot) or left out (a gap).
+    /// Its pattern: each segment's length in millimetres on paper (Rhino's, whatever the model's
+    /// unit), and whether it is drawn (a dash or dot) or left out (a gap).
     pub segments: Vec<(f64, bool)>,
 }
 

@@ -294,6 +294,7 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | MatchProperties | Objects; object to match | `MatchAll` `Linetype` `PrintWidth` `Layer` `Name` | none | partly |
 | Linetype | Objects; linetype | none | none | partly |
 | PrintWidth | Objects; width | none | none | partly |
+| ObjectColour | Objects; a colour (red, green, blue, `#rrggbb` or `ByLayer`), as Rhino's Properties set an object's display colour | none | none | partly |
 | SetUserText | Objects; key; text | none | none | partly |
 | GetUserText | Object | none | none | partly |
 | Purge | none | `Layers` `BlockDefinitions` `Linetypes` | none | partly |

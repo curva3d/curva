@@ -77,7 +77,7 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
                 }
             };
             if last {
-                let linetype = linetype_in(&mut model, &mut ids, layer.linetype);
+                let linetype = linetype_in(&mut model, &mut ids, state, layer.linetype);
                 let l = &mut model.layers[index];
                 l.linetype = linetype;
                 l.color = colour_of(layer.colour);
@@ -298,7 +298,10 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
         let (linetype, linetype_source) = if o.linetype.is_by_layer() {
             (-1, Source::Layer)
         } else {
-            (linetype_in(model, &mut ids, o.linetype), Source::Object)
+            (
+                linetype_in(model, &mut ids, state, o.linetype),
+                Source::Object,
+            )
         };
         model.objects.push(model::Object {
             geometry,
@@ -328,7 +331,14 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
                     .collect(),
                 linetype,
                 linetype_source,
-                ..Attributes::default()
+                color: o.colour.map_or([0, 0, 0], |c| {
+                    c.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8)
+                }),
+                color_source: if o.colour.is_some() {
+                    Source::Object
+                } else {
+                    Source::Layer
+                },
             },
         });
         if !in_block {
@@ -375,21 +385,26 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
     (model, report)
 }
 
-/// The linetype table's index for one of Curva's linetypes, adding it to the table the first
-/// time; -1 for a continuous line, which Rhino leaves unnamed.
-fn linetype_in(model: &mut Model, ids: &mut Ids, linetype: curva_document::Linetype) -> i32 {
-    if linetype.is_by_layer() || linetype.is_continuous() {
+/// The linetype table's index for a linetype (Curva's own or the document's), adding it to the
+/// table the first time; -1 for a continuous line, which Rhino leaves unnamed.
+fn linetype_in(
+    model: &mut Model,
+    ids: &mut Ids,
+    state: &State,
+    linetype: curva_document::Linetype,
+) -> i32 {
+    let pattern = state.linetype_pattern(linetype);
+    if linetype.is_by_layer() || pattern.is_empty() {
         return -1;
     }
-    let name = linetype.name();
+    let name = state.linetype_name(linetype);
     let index = match model.linetypes.iter().position(|l| l.name == name) {
         Some(i) => i,
         None => {
             model.linetypes.push(model::Linetype {
                 id: ids.next(),
-                name: name.to_owned(),
-                segments: linetype
-                    .pattern()
+                name,
+                segments: pattern
                     .iter()
                     .enumerate()
                     .map(|(k, length)| (*length, k % 2 == 0))

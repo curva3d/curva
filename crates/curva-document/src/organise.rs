@@ -66,6 +66,22 @@ impl Document {
         }
     }
 
+    /// Sets objects' own colour, or `None` to take their layer's again.
+    pub fn set_colour(&mut self, ids: &[u64], colour: Option<[f32; 3]>) {
+        for object in &mut self.state.objects {
+            if ids.contains(&object.id) {
+                std::sync::Arc::make_mut(object).colour = colour;
+            }
+        }
+    }
+
+    /// A linetype with this name and pattern (lengths drawn and left out in turn, in
+    /// millimetres on paper), as files bring them: one of Curva's own of that name, the
+    /// document's of that name, or a new one of the document's.
+    pub fn add_linetype(&mut self, name: &str, pattern: &[f64]) -> crate::Linetype {
+        self.state.add_linetype(name, pattern)
+    }
+
     /// Sets a layer's linetype (`ByLayer` means continuous for a layer).
     pub fn set_layer_linetype(&mut self, id: u64, linetype: crate::Linetype) {
         let linetype = if linetype.is_by_layer() {
@@ -163,6 +179,7 @@ impl Document {
                 object.layer = source.layer;
                 object.print_width = source.print_width;
                 object.linetype = source.linetype;
+                object.colour = source.colour;
                 object.name.clone_from(&source.name);
                 count += 1;
             }

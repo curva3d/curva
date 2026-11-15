@@ -56,9 +56,9 @@ fn a_layout_rhino_wrote_comes_in_with_its_detail() {
 
 #[test]
 fn rhinos_linetypes_come_in_on_layers_and_lines() {
-    // Rhino 8's DXF, in metres: layer "Hidden lines" (Hidden) and "Axes" (Center); a line by layer at
-    // y = 0, one with Border at y = 0.01, one with a custom "Wall dash" at y = 30 and one with
-    // Dots at y = 40.
+    // Rhino 8's DXF, in metres: layer "Hidden lines" (Hidden) and "Axes" (Center); a line by
+    // layer at y = 0, one with Border at y = 0.01, one with a custom "Wall dash" (8 on, 2 off,
+    // 1 on, 2 off) at y = 30 and one with Dots at y = 40.
     use curva_document::Linetype;
     let path = format!(
         "{}/tests/files/rhino8_linetypes.dxf",
@@ -85,13 +85,14 @@ fn rhinos_linetypes_come_in_on_layers_and_lines() {
     };
     assert_eq!(at(0.0), Linetype::ByLayer);
     assert_eq!(at(0.01), Linetype::Border);
-    assert_eq!(at(30.0), Linetype::Continuous);
+    let wall = state
+        .linetype_named("Wall dash")
+        .expect("the document's own");
+    assert_eq!(at(30.0), wall);
+    assert_eq!(state.linetype_pattern(wall), [8.0, 2.0, 1.0, 2.0]);
     assert_eq!(at(40.0), Linetype::Dotted);
     assert!(
-        report
-            .skipped
-            .iter()
-            .any(|(k, _)| k.contains("\"Wall dash\"")),
+        !report.skipped.iter().any(|(k, _)| k.contains("linetype")),
         "{:?}",
         report.skipped
     );

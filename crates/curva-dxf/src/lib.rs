@@ -164,6 +164,13 @@ const LINE_WEIGHTS: [i16; 24] = [
     211,
 ];
 
+/// A colour channel from 0 to 1 as a byte.
+fn byte(c: f32) -> u8 {
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let byte = (c.clamp(0.0, 1.0) * 255.0).round() as u8;
+    byte
+}
+
 /// The AutoCAD line weight nearest a print width in millimetres.
 fn line_weight(millimetres: f64) -> LineWeight {
     let wanted = millimetres * 100.0;
@@ -307,20 +314,31 @@ impl Writer<'_> {
         if linetype.is_by_layer() {
             return "ByLayer".to_owned();
         }
-        let name = linetype.name();
-        if self.cad.line_types.get(name).is_none() {
-            let mut entry = LineType::new(name);
-            for (k, length) in linetype.pattern().iter().enumerate() {
+        let state = self.doc.state();
+        let name = state.linetype_name(linetype);
+        // Curva's lengths are millimetres on paper; a DXF's are drawing units, as Rhino writes them.
+        let per_mm = 1.0 / state.unit.millimetres();
+        let pattern: Vec<f64> = state
+            .linetype_pattern(linetype)
+            .iter()
+            .map(|l| l * per_mm)
+            .collect();
+        if pattern.is_empty() {
+            return "Continuous".to_owned();
+        }
+        if self.cad.line_types.get(&name).is_none() {
+            let mut entry = LineType::new(name.clone());
+            for (k, length) in pattern.iter().enumerate() {
                 entry.add_element(if k % 2 == 0 {
                     LineTypeElement::dash(*length)
                 } else {
                     LineTypeElement::space(*length)
                 });
             }
-            entry.pattern_length = linetype.pattern().iter().sum();
+            entry.pattern_length = pattern.iter().sum();
             let _ = self.cad.line_types.add(entry);
         }
-        name.to_owned()
+        name
     }
 
     /// The DXF layer for a Curva layer, made the first time it is needed.
@@ -332,11 +350,7 @@ impl Writer<'_> {
         if self.cad.layers.get(&name).is_none() {
             let mut entry = Layer::new(name.clone());
             if let Some(held) = self.doc.state().layer(id) {
-                let [r, g, b] = held.colour.map(|c| {
-                    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                    let byte = (c.clamp(0.0, 1.0) * 255.0).round() as u8;
-                    byte
-                });
+                let [r, g, b] = held.colour.map(byte);
                 entry.color = Color::Rgb { r, g, b };
                 entry.flags.off = !held.visible;
                 entry.flags.locked = held.locked;
@@ -428,6 +442,10 @@ impl Writer<'_> {
             common.layer.clone_from(&layer);
             if let Some(name) = &linetype {
                 common.linetype.clone_from(name);
+            }
+            if let Some(colour) = object.colour {
+                let [r, g, b] = colour.map(byte);
+                common.color = Color::Rgb { r, g, b };
             }
             match object.print_width {
                 PrintWidth::Millimetres(width) => common.line_weight = line_weight(width),
@@ -751,10 +769,11 @@ struct Reader<'a> {
 }
 
 impl Reader<'_> {
-    /// One of Curva's linetypes for a DXF linetype name, matched ignoring case (AutoCAD's
-    /// `DOT` is Curva's dotted line, `ByBlock` follows the layer); one Curva does not have is
-    /// drawn continuous and counted.
-    fn linetype(&mut self, name: &str) -> Linetype {
+    /// The linetype for a DXF linetype name, matched ignoring case: one of Curva's own
+    /// (AutoCAD's `DOT` is Curva's dotted line, `ByBlock` follows the layer), or the
+    /// document's own with the file's pattern. A name the file gives no pattern for is drawn
+    /// continuous and counted.
+    fn linetype(&mut self, doc: &mut Document, name: &str) -> Linetype {
         let name = name.trim();
         if name.is_empty() || name.eq_ignore_ascii_case("ByBlock") {
             return Linetype::ByLayer;
@@ -762,18 +781,37 @@ impl Reader<'_> {
         if name.eq_ignore_ascii_case("DOT") {
             return Linetype::Dotted;
         }
-        Linetype::named(name).unwrap_or_else(|| {
+        if let Some(found) = doc.state().linetype_named(name) {
+            return found;
+        }
+        let Some(entry) = self.cad.line_types.get(name) else {
             *self.unknown_linetypes.entry(name.to_owned()).or_default() += 1;
-            Linetype::Continuous
-        })
+            return Linetype::Continuous;
+        };
+        let segments: Vec<(f64, bool)> = entry
+            .elements
+            .iter()
+            .map(|e| (e.length.abs(), e.length >= 0.0))
+            .collect();
+        let mm = doc.state().unit.millimetres();
+        let segments: Vec<(f64, bool)> = segments.iter().map(|(l, d)| (l * mm, *d)).collect();
+        doc.add_linetype(name, &curva_document::alternating(&segments))
     }
 
-    /// An object's own linetype and line weight, as its entity gives them.
+    /// An object's own colour, linetype and line weight, as its entity gives them.
     fn properties(&mut self, doc: &mut Document, id: u64, entity: &EntityType) {
         let common = entity.common();
-        let linetype = self.linetype(&common.linetype);
+        let linetype = self.linetype(doc, &common.linetype);
         if !linetype.is_by_layer() {
             doc.set_linetype(&[id], linetype);
+        }
+        let colour = match common.color {
+            Color::ByLayer | Color::ByBlock => None,
+            Color::Rgb { r, g, b } => Some((r, g, b)),
+            other => other.rgb(),
+        };
+        if let Some((r, g, b)) = colour {
+            doc.set_colour(&[id], Some([r, g, b].map(|c| f32::from(c) / 255.0)));
         }
         match common.line_weight {
             LineWeight::Value(v) if v >= 0 => doc.set_print_width(
@@ -813,7 +851,7 @@ impl Reader<'_> {
                 doc.set_layer_print_width(id, Some(f64::from(v) / 100.0));
             }
             let line_type = held.line_type.clone();
-            let linetype = self.linetype(&line_type);
+            let linetype = self.linetype(doc, &line_type);
             if !linetype.is_by_layer() {
                 doc.set_layer_linetype(id, linetype);
             }
@@ -1297,5 +1335,47 @@ mod tests {
             "{:?}",
             report.skipped
         );
+    }
+
+    #[test]
+    fn object_colours_and_the_documents_own_linetypes_come_back_as_dxf_and_dwg() {
+        let mut doc = Document::default();
+        doc.set_unit(Unit::Metres, false);
+        let walls = doc.add_layer("Walls".to_owned());
+        let wall = doc.add_linetype("Wall dash", &[8.0, 2.0, 1.0, 2.0]);
+        doc.set_layer_linetype(walls, wall);
+        let line = |y: f64| Shape::Curve(Curve::line([0.0, y, 0.0], [10.0, y, 0.0]).unwrap());
+        let red = doc.add_shape_on(line(0.0), Some(walls));
+        doc.set_colour(&[red], Some([1.0, 0.0, 0.0]));
+        doc.add_shape_on(line(1.0), Some(walls));
+        for format in [Format::Dxf, Format::Dwg] {
+            let (bytes, _) = export(&doc, None, format).unwrap();
+            let cad = read(&bytes, format).unwrap();
+            let lengths: Vec<f64> = cad
+                .line_types
+                .get("Wall dash")
+                .expect("written")
+                .elements
+                .iter()
+                .map(|e| e.length)
+                .collect();
+            let near = |a: &[f64], b: &[f64]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-9);
+            assert!(
+                near(&lengths, &[0.008, -0.002, 0.001, -0.002]),
+                "{format:?}: millimetres in metres, {lengths:?}"
+            );
+            let mut back = Document::default();
+            import(&cad, &mut back);
+            let state = back.state();
+            let wall_back = state.linetype_named("Wall dash").expect("read");
+            assert!(near(
+                state.linetype_pattern(wall_back),
+                &[8.0, 2.0, 1.0, 2.0]
+            ));
+            let walls_back = state.layers.iter().find(|l| l.name == "Walls").unwrap();
+            assert_eq!(walls_back.linetype, wall_back, "{format:?}");
+            let colours: Vec<Option<[f32; 3]>> = state.objects.iter().map(|o| o.colour).collect();
+            assert_eq!(colours, [Some([1.0, 0.0, 0.0]), None], "{format:?}");
+        }
     }
 }
