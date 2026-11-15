@@ -4,8 +4,8 @@ use crate::archive::{Reader, Result, Uuid, bad, tcode};
 use crate::model::{
     AngularDimension, Attributes, Block, Brep, BrepEdge, BrepFace, BrepLoop, BrepTrim, BrepVertex,
     Curve, Detail, DimStyle, Extrusion, Geometry, Group, Hatch, HatchLine, HatchPattern, Layer,
-    Leader, LinearDimension, Model, NamedCPlane, NurbsCurve, NurbsSurface, Object, P3, Page, Plane,
-    RadialDimension, Source, Surface, Text, View,
+    Leader, LinearDimension, Linetype, Model, NamedCPlane, NurbsCurve, NurbsSurface, Object, P3,
+    Page, Plane, RadialDimension, Source, Surface, Text, View,
 };
 
 /// Class ids of the objects Curva reads and writes (openNURBS `ON_OBJECT_IMPLEMENT`).
@@ -44,6 +44,7 @@ pub mod class {
     pub const LEADER: Uuid = Uuid::parse("945BF594-6FF9-4F5C-BFC0-B3AF528F29D2");
     pub const DETAIL: Uuid = Uuid::parse("C8C66EFA-B3CB-4e00-9440-2AD66203379E");
     pub const DIM_STYLE: Uuid = Uuid::parse("67AA51A5-791D-4BEC-8AED-D23B462B6F87");
+    pub const LINETYPE: Uuid = Uuid::parse("26F10A24-7D13-4F05-8FDA-8E364DAF8EA6");
     /// The class an older id stands for, as openNURBS reads Rhino's older classes as today's.
     #[must_use]
     pub fn current(id: Uuid) -> Uuid {
@@ -133,6 +134,14 @@ pub fn read(data: &[u8]) -> Result<Model> {
                 records(&mut chunk.body, tcode::HATCHPATTERN_RECORD, |body| {
                     if let Some(pattern) = hatch_pattern(body)? {
                         model.hatch_patterns.push(pattern);
+                    }
+                    Ok(())
+                })?;
+            }
+            tcode::LINETYPE_TABLE => {
+                records(&mut chunk.body, tcode::LINETYPE_RECORD, |body| {
+                    if let Some(linetype) = linetype(body)? {
+                        model.linetypes.push(linetype);
                     }
                     Ok(())
                 })?;
@@ -401,12 +410,13 @@ fn layer(record: &mut Reader<'_>) -> Result<Option<Layer>> {
         visible: mode != 1,
         locked: mode == 2,
         print_width: 0.0,
+        linetype: -1,
     };
     if minor >= 1 {
         layer.visible = r.bool()? && mode != 1;
     }
     if minor >= 2 {
-        let _linetype = r.i32()?;
+        layer.linetype = r.i32()?;
     }
     if minor >= 3 {
         let _plot_color = r.color()?;
@@ -644,7 +654,8 @@ fn read_attributes(r: &mut Reader<'_>) -> Result<Attributes> {
             2 => {
                 r.wstring()?;
             }
-            3 | 4 | 10 => r.skip(4)?,
+            3 => a.linetype = r.i32()?,
+            4 | 10 => r.skip(4)?,
             6 => {
                 let c = r.color()?;
                 a.color = [c[0], c[1], c[2]];
@@ -655,7 +666,8 @@ fn read_attributes(r: &mut Reader<'_>) -> Result<Attributes> {
             }
             7 => r.skip(4)?,
             8 => a.print_width = r.f64()?,
-            9 | 14 | 16 | 17 => r.skip(1)?,
+            9 | 14 | 16 => r.skip(1)?,
+            17 => a.linetype_source = source(r.u8()?),
             11 => a.visible = r.bool()?,
             12 => a.mode = r.u8()? & 0x0F,
             13 => a.color_source = source(r.u8()?),
@@ -1200,6 +1212,32 @@ fn hatch_pattern(record: &mut Reader<'_>) -> Result<Option<HatchPattern>> {
         solid: kind != 1,
         lines,
     }))
+}
+
+/// A linetype table record (`ON_Linetype::Read`): Rhino 6 and later write version 2 (the
+/// component's attributes, then the segments), Rhino 5 version 1 (index, name, segments, id).
+fn linetype(record: &mut Reader<'_>) -> Result<Option<Linetype>> {
+    let (class, mut r) = class_object(record)?;
+    if class != class::LINETYPE {
+        return Ok(None);
+    }
+    let (major, minor, mut body) = r.versioned(tcode::ANONYMOUS_CHUNK)?;
+    let segments = |body: &mut Reader<'_>| -> Result<Vec<(f64, bool)>> {
+        let n = body.count(12)?;
+        (0..n)
+            .map(|_| Ok((body.f64()?, body.i32()? == 0)))
+            .collect()
+    };
+    if major == 1 {
+        let _index = body.i32()?;
+        let name = body.wstring()?;
+        let segments = segments(&mut body)?;
+        let id = if minor >= 1 { body.uuid()? } else { Uuid::NIL };
+        return Ok(Some(Linetype { id, name, segments }));
+    }
+    let (id, name) = component_attributes(&mut body)?;
+    let segments = segments(&mut body)?;
+    Ok(Some(Linetype { id, name, segments }))
 }
 
 /// openNURBS' `ReadModelComponentAttributes` for components written since Rhino 6: a bit set

@@ -21,6 +21,7 @@ version, which Rhino 7 and 8 open.
 | Polysurfaces and solids (B-reps, trimmed faces) | yes | yes |
 | Extrusion objects (Rhino's light solids) | yes, as solids | not written (B-reps instead) |
 | Object names, colours by layer or object, print widths, user text | yes | yes |
+| Linetypes of layers and objects (the linetype table) | yes: Curva's seven by name, others drawn continuous and reported | yes, the ones used, with Curva's patterns |
 | Groups, locked and hidden objects | yes | yes |
 | Blocks: definitions, instances, linked definitions | yes | yes |
 | Named views and construction planes | yes | yes |

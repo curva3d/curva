@@ -13,11 +13,12 @@ mod dims;
 mod layouts;
 
 use acadrust::entities::{Arc, Circle, EntityType, Line, LwPolyline, Point, Polyline3D, Spline};
+use acadrust::tables::{LineType, LineTypeElement};
 use acadrust::types::{Color, DxfVersion, LineWeight, Vector2, Vector3};
 use acadrust::{CadDocument, DwgReader, DwgWriter, DxfReader, DxfWriter, Layer};
 use curva_document::annotation::Annotation;
 use curva_document::fields::{FieldContext, resolve};
-use curva_document::{Document, PrintWidth, Shape, Unit};
+use curva_document::{Document, Linetype, PrintWidth, Shape, Unit};
 use curva_kernel::Curve;
 use std::collections::BTreeMap;
 use std::io::Cursor;
@@ -300,6 +301,28 @@ struct Writer<'a> {
 }
 
 impl Writer<'_> {
+    /// The DXF linetype name for one of Curva's linetypes, its pattern added to the linetype
+    /// table the first time it is needed (dashes positive, gaps negative, in drawing units).
+    fn linetype(&mut self, linetype: Linetype) -> String {
+        if linetype.is_by_layer() {
+            return "ByLayer".to_owned();
+        }
+        let name = linetype.name();
+        if self.cad.line_types.get(name).is_none() {
+            let mut entry = LineType::new(name);
+            for (k, length) in linetype.pattern().iter().enumerate() {
+                entry.add_element(if k % 2 == 0 {
+                    LineTypeElement::dash(*length)
+                } else {
+                    LineTypeElement::space(*length)
+                });
+            }
+            entry.pattern_length = linetype.pattern().iter().sum();
+            let _ = self.cad.line_types.add(entry);
+        }
+        name.to_owned()
+    }
+
     /// The DXF layer for a Curva layer, made the first time it is needed.
     fn layer(&mut self, id: u64) -> String {
         if let Some(name) = self.layers.get(&id) {
@@ -320,6 +343,7 @@ impl Writer<'_> {
                 if let Some(width) = held.print_width {
                     entry.line_weight = line_weight(width);
                 }
+                entry.line_type = self.linetype(held.linetype);
             }
             let _ = self.cad.layers.add(entry);
         }
@@ -394,9 +418,17 @@ impl Writer<'_> {
         } else {
             self.layer(object.layer)
         };
+        let linetype = if made.is_empty() || object.linetype.is_by_layer() {
+            None
+        } else {
+            Some(self.linetype(object.linetype))
+        };
         for entity in &mut made {
             let common = entity.common_mut();
             common.layer.clone_from(&layer);
+            if let Some(name) = &linetype {
+                common.linetype.clone_from(name);
+            }
             match object.print_width {
                 PrintWidth::Millimetres(width) => common.line_weight = line_weight(width),
                 PrintWidth::Default => common.line_weight = LineWeight::Default,
@@ -714,9 +746,45 @@ struct Reader<'a> {
     cad: &'a CadDocument,
     layers: BTreeMap<String, u64>,
     blocks: BTreeMap<String, Option<u64>>,
+    /// Linetypes Curva does not have, by name, and how many layers and objects used them.
+    unknown_linetypes: BTreeMap<String, usize>,
 }
 
 impl Reader<'_> {
+    /// One of Curva's linetypes for a DXF linetype name, matched ignoring case (AutoCAD's
+    /// `DOT` is Curva's dotted line, `ByBlock` follows the layer); one Curva does not have is
+    /// drawn continuous and counted.
+    fn linetype(&mut self, name: &str) -> Linetype {
+        let name = name.trim();
+        if name.is_empty() || name.eq_ignore_ascii_case("ByBlock") {
+            return Linetype::ByLayer;
+        }
+        if name.eq_ignore_ascii_case("DOT") {
+            return Linetype::Dotted;
+        }
+        Linetype::named(name).unwrap_or_else(|| {
+            *self.unknown_linetypes.entry(name.to_owned()).or_default() += 1;
+            Linetype::Continuous
+        })
+    }
+
+    /// An object's own linetype and line weight, as its entity gives them.
+    fn properties(&mut self, doc: &mut Document, id: u64, entity: &EntityType) {
+        let common = entity.common();
+        let linetype = self.linetype(&common.linetype);
+        if !linetype.is_by_layer() {
+            doc.set_linetype(&[id], linetype);
+        }
+        match common.line_weight {
+            LineWeight::Value(v) if v >= 0 => doc.set_print_width(
+                &[id],
+                PrintWidth::Millimetres(PrintWidth::clamped(f64::from(v) / 100.0)),
+            ),
+            LineWeight::Default => doc.set_print_width(&[id], PrintWidth::Default),
+            _ => {}
+        }
+    }
+
     /// The Curva layer for a DXF layer, made (with its colour) the first time it is needed; `$`
     /// in a name makes sublayers, as Rhino writes them.
     fn layer(&mut self, doc: &mut Document, name: &str) -> u64 {
@@ -732,6 +800,22 @@ impl Reader<'_> {
             };
             if let Some((r, g, b)) = colour {
                 doc.set_layer_colour(id, [r, g, b].map(|c| f32::from(c) / 255.0));
+            }
+            if held.flags.off || held.flags.frozen {
+                doc.set_layer_visible(id, false);
+            }
+            if held.flags.locked {
+                doc.set_layer_locked(id, true);
+            }
+            if let LineWeight::Value(v) = held.line_weight
+                && v >= 0
+            {
+                doc.set_layer_print_width(id, Some(f64::from(v) / 100.0));
+            }
+            let line_type = held.line_type.clone();
+            let linetype = self.linetype(&line_type);
+            if !linetype.is_by_layer() {
+                doc.set_layer_linetype(id, linetype);
             }
         }
         self.layers.insert(name.to_owned(), id);
@@ -754,7 +838,9 @@ impl Reader<'_> {
             let (shapes, _) = self.shapes(doc, entity);
             let layer = self.layer(doc, &entity.common().layer);
             for shape in shapes {
-                ids.push(doc.add_shape_on(shape, Some(layer)));
+                let id = doc.add_shape_on(shape, Some(layer));
+                self.properties(doc, id, entity);
+                ids.push(id);
             }
         }
         let (definition, instance) = doc.define_block(name.to_owned(), [0.0; 3], &ids);
@@ -832,6 +918,7 @@ pub fn import(cad: &CadDocument, doc: &mut Document) -> Report {
         cad,
         layers: BTreeMap::new(),
         blocks: BTreeMap::new(),
+        unknown_linetypes: BTreeMap::new(),
     };
     // Only what model space owns: a file read back lists block contents among its entities too.
     let model = cad.block_records.get("*Model_Space").map(|b| b.handle);
@@ -846,7 +933,8 @@ pub fn import(cad: &CadDocument, doc: &mut Document) -> Report {
         }
         let layer = reader.layer(doc, &entity.common().layer);
         for shape in shapes {
-            doc.add_shape_on(shape, Some(layer));
+            let id = doc.add_shape_on(shape, Some(layer));
+            reader.properties(doc, id, entity);
             Report::count(&mut report.brought, kind);
         }
     }
@@ -899,12 +987,19 @@ pub fn import(cad: &CadDocument, doc: &mut Document) -> Report {
                 continue;
             }
             for shape in shapes {
-                doc.add_shape_on(shifted(shape), Some(layer));
+                let id = doc.add_shape_on(shifted(shape), Some(layer));
+                reader.properties(doc, id, entity);
                 Report::count(&mut report.brought, kind);
             }
         }
     }
     doc.set_space(open);
+    for (name, uses) in reader.unknown_linetypes {
+        report.skipped.push((
+            format!("linetype \"{name}\", which Curva does not have (drawn continuous)"),
+            uses,
+        ));
+    }
     report
 }
 
@@ -1110,5 +1205,97 @@ mod tests {
         assert!((last[0] - 10.0).abs() < 1e-6 && (last[1] - 10.0).abs() < 1e-6);
         // Counter-clockwise from (10, 0) to (10, 10) about (10, 5) passes through (15, 5).
         assert!(along.iter().any(|p| (p[0] - 15.0).abs() < 1e-3));
+    }
+
+    #[test]
+    fn linetypes_widths_and_layer_states_come_back_as_dxf_and_dwg() {
+        let mut doc = Document::default();
+        let hidden = doc.add_layer("Hidden lines".to_owned());
+        doc.set_layer_linetype(hidden, Linetype::Hidden);
+        doc.set_layer_print_width(hidden, Some(0.25));
+        let axes = doc.add_layer("Axes".to_owned());
+        doc.set_layer_linetype(axes, Linetype::Center);
+        doc.set_layer_locked(axes, true);
+        let off = doc.add_layer("Off".to_owned());
+        doc.set_layer_visible(off, false);
+        let line = |y: f64| Shape::Curve(Curve::line([0.0, y, 0.0], [100.0, y, 0.0]).unwrap());
+        doc.add_shape_on(line(0.0), Some(hidden));
+        let border = doc.add_shape_on(line(10.0), Some(axes));
+        doc.set_linetype(&[border], Linetype::Border);
+        doc.set_print_width(&[border], PrintWidth::Millimetres(0.7));
+        let dots = doc.add_shape_on(line(20.0), Some(off));
+        doc.set_linetype(&[dots], Linetype::Dotted);
+        for format in [Format::Dxf, Format::Dwg] {
+            let (bytes, _) = export(&doc, None, format).unwrap();
+            let cad = read(&bytes, format).unwrap();
+            let pattern: Vec<f64> = cad
+                .line_types
+                .get("Hidden")
+                .expect("the linetype table holds it")
+                .elements
+                .iter()
+                .map(|e| e.length)
+                .collect();
+            assert_eq!(pattern, [1.5, -1.0], "{format:?}: Curva's pattern");
+            let mut back = Document::default();
+            let report = import(&cad, &mut back);
+            let state = back.state();
+            let layer = |n: &str| state.layers.iter().find(|l| l.name == n).unwrap();
+            assert_eq!(
+                layer("Hidden lines").linetype,
+                Linetype::Hidden,
+                "{format:?}"
+            );
+            assert_eq!(layer("Hidden lines").print_width, Some(0.25));
+            assert_eq!(layer("Axes").linetype, Linetype::Center);
+            assert!(layer("Axes").locked);
+            assert!(!layer("Off").visible);
+            let kinds: Vec<(Linetype, PrintWidth)> = state
+                .objects
+                .iter()
+                .map(|o| (o.linetype, o.print_width))
+                .collect();
+            assert_eq!(
+                kinds,
+                [
+                    (Linetype::ByLayer, PrintWidth::ByLayer),
+                    (Linetype::Border, PrintWidth::Millimetres(0.7)),
+                    (Linetype::Dotted, PrintWidth::ByLayer),
+                ],
+                "{format:?}: {:?}",
+                report.skipped
+            );
+        }
+    }
+
+    #[test]
+    fn autocads_dot_and_unknown_linetypes_come_in() {
+        let mut cad = CadDocument::new();
+        let mut layer = Layer::new("Fence");
+        layer.line_type = "FENCELINE1".to_owned();
+        let _ = cad.layers.add(layer);
+        let mut dotted = Layer::new("Dots");
+        dotted.line_type = "DOT".to_owned();
+        let _ = cad.layers.add(dotted);
+        let mut a = Line::from_points(Vector3::new(0.0, 0.0, 0.0), Vector3::new(1.0, 0.0, 0.0));
+        a.common.layer = "Fence".to_owned();
+        let mut b = Line::from_points(Vector3::new(0.0, 1.0, 0.0), Vector3::new(1.0, 1.0, 0.0));
+        b.common.layer = "Dots".to_owned();
+        let _ = cad.add_entity(EntityType::Line(a));
+        let _ = cad.add_entity(EntityType::Line(b));
+        let mut doc = Document::default();
+        let report = import(&cad, &mut doc);
+        let state = doc.state();
+        let layer = |n: &str| state.layers.iter().find(|l| l.name == n).unwrap();
+        assert_eq!(layer("Fence").linetype, Linetype::Continuous);
+        assert_eq!(layer("Dots").linetype, Linetype::Dotted);
+        assert!(
+            report
+                .skipped
+                .iter()
+                .any(|(k, n)| k.contains("\"FENCELINE1\"") && *n == 1),
+            "{:?}",
+            report.skipped
+        );
     }
 }

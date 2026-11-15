@@ -26,6 +26,8 @@ pub struct Model {
     pub blocks: Vec<Block>,
     /// Hatch patterns, in the file's order; hatches name them by their place in it.
     pub hatch_patterns: Vec<HatchPattern>,
+    /// The linetype table.
+    pub linetypes: Vec<Linetype>,
     /// Annotation (dimension) styles, in the file's order.
     pub dim_styles: Vec<DimStyle>,
     /// Layouts (Rhino's page views), in the file's order.
@@ -74,6 +76,8 @@ pub struct Layer {
     pub locked: bool,
     /// Print width in millimetres: 0 the default, below 0 not printed.
     pub print_width: f64,
+    /// Its linetype's index in the linetype table; -1 continuous.
+    pub linetype: i32,
 }
 
 /// A group.
@@ -141,6 +145,23 @@ pub struct Attributes {
     pub page_space: bool,
     /// The view it belongs to: for an object on a layout, its page's id.
     pub viewport: Uuid,
+    /// Its own linetype's index in the linetype table, used when `linetype_source` says so;
+    /// -1 continuous.
+    pub linetype: i32,
+    /// Where its linetype comes from.
+    pub linetype_source: Source,
+}
+
+/// A linetype (`ON_Linetype`): its name and pattern.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Linetype {
+    /// Its id.
+    pub id: Uuid,
+    /// Its name.
+    pub name: String,
+    /// Its pattern: each segment's length in model units, and whether it is drawn (a dash or
+    /// dot) or left out (a gap).
+    pub segments: Vec<(f64, bool)>,
 }
 
 impl Default for Attributes {
@@ -159,6 +180,8 @@ impl Default for Attributes {
             user_text: Vec::new(),
             page_space: false,
             viewport: Uuid::NIL,
+            linetype: -1,
+            linetype_source: Source::Layer,
         }
     }
 }

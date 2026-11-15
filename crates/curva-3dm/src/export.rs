@@ -70,13 +70,16 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
                         visible: true,
                         locked: false,
                         print_width: 0.0,
+                        linetype: -1,
                     });
                     by_path.insert(path, model.layers.len() - 1);
                     model.layers.len() - 1
                 }
             };
             if last {
+                let linetype = linetype_in(&mut model, &mut ids, layer.linetype);
                 let l = &mut model.layers[index];
+                l.linetype = linetype;
                 l.color = colour_of(layer.colour);
                 l.visible = layer.visible;
                 l.locked = layer.locked;
@@ -95,6 +98,7 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
             visible: true,
             locked: false,
             print_width: 0.0,
+            linetype: -1,
         });
     }
 
@@ -291,6 +295,11 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
             PrintWidth::Default => (0.0, Source::Object),
             PrintWidth::Millimetres(w) => (w, Source::Object),
         };
+        let (linetype, linetype_source) = if o.linetype.is_by_layer() {
+            (-1, Source::Layer)
+        } else {
+            (linetype_in(model, &mut ids, o.linetype), Source::Object)
+        };
         model.objects.push(model::Object {
             geometry,
             attributes: Attributes {
@@ -317,6 +326,8 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
                     .iter()
                     .map(|(k, v)| (k.clone(), v.clone()))
                     .collect(),
+                linetype,
+                linetype_source,
                 ..Attributes::default()
             },
         });
@@ -362,6 +373,32 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
             .push("live booleans and History are saved as plain geometry".to_owned());
     }
     (model, report)
+}
+
+/// The linetype table's index for one of Curva's linetypes, adding it to the table the first
+/// time; -1 for a continuous line, which Rhino leaves unnamed.
+fn linetype_in(model: &mut Model, ids: &mut Ids, linetype: curva_document::Linetype) -> i32 {
+    if linetype.is_by_layer() || linetype.is_continuous() {
+        return -1;
+    }
+    let name = linetype.name();
+    let index = match model.linetypes.iter().position(|l| l.name == name) {
+        Some(i) => i,
+        None => {
+            model.linetypes.push(model::Linetype {
+                id: ids.next(),
+                name: name.to_owned(),
+                segments: linetype
+                    .pattern()
+                    .iter()
+                    .enumerate()
+                    .map(|(k, length)| (*length, k % 2 == 0))
+                    .collect(),
+            });
+            model.linetypes.len() - 1
+        }
+    };
+    i32::try_from(index).unwrap_or(-1)
 }
 
 /// Fresh ids for one file.
