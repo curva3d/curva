@@ -90,7 +90,9 @@ What does not yet, as of 15 November 2026, to close before 0.4.3:
 - Text formatting (bold, italic, fonts per run, rich text) comes in as plain words; text masks and
   frames are not carried.
 - Rhino 5 annotation (its older text and dimension objects) is not read.
-- Details: display mode, per-detail layer visibility and a perspective's lens are not carried.
+- Details carry their display mode (Rhino's standard modes by id) and lock; per-detail layer
+  visibility (Rhino keeps it in each layer's own user data) and a perspective's lens (Curva has none)
+  are not carried.
 - Clipping planes and section styles are not written or read.
 - A standard linetype (Rhino's share Curva's seven names) takes Curva's dash lengths rather than the
   file's (Rhino's Dashed is 5 on, 5 off; Curva's 3 and 1.5). Other linetypes cross with their names

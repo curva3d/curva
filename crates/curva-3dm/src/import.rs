@@ -2013,12 +2013,17 @@ fn detail_in(
             target,
             distance: gap,
             scale: (v.parallel && d.ratio > 0.0).then(|| 1.0 / d.ratio),
-            display: if projection == "Perspective" {
-                "Shaded".to_owned()
-            } else {
-                "Wireframe".to_owned()
-            },
-            locked: false,
+            display: model::display_mode_name(d.display).map_or_else(
+                || {
+                    if projection == "Perspective" {
+                        "Shaded".to_owned()
+                    } else {
+                        "Wireframe".to_owned()
+                    }
+                },
+                str::to_owned,
+            ),
+            locked: d.locked,
             hidden_layers: Vec::new(),
         },
     ))

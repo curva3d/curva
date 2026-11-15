@@ -1293,6 +1293,8 @@ fn sheet_geometry(
         view: detail_camera(detail, [high[0] - low[0], high[1] - low[1]], model_mm),
         boundary,
         ratio: detail.scale.map_or(0.0, |s| 1.0 / s),
+        display: model::display_mode_id(&detail.display),
+        locked: detail.locked,
     }))
 }
 

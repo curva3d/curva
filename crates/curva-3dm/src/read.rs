@@ -280,8 +280,22 @@ fn named_views(r: &mut Reader<'_>) -> Result<Vec<View>> {
 
 /// A view: tagged parts, of which Curva takes the camera, the target and the name.
 fn view(r: &mut Reader<'_>) -> Result<View> {
+    view_with_attributes(r).map(|(view, _)| view)
+}
+
+/// What a view's attributes (version 1.2 and later) add: its display mode's id, and whether its
+/// projection is locked (version 1.3).
+#[derive(Clone, Copy, Debug, Default)]
+struct ViewExtras {
+    display: Uuid,
+    locked: bool,
+}
+
+/// A view, and its display mode and lock.
+fn view_with_attributes(r: &mut Reader<'_>) -> Result<(View, ViewExtras)> {
     let mut camera = None;
     let mut target = None;
+    let mut extras = ViewExtras::default();
     let mut name = String::new();
     while !r.is_done() {
         let mut part = r.chunk()?;
@@ -291,6 +305,11 @@ fn view(r: &mut Reader<'_>) -> Result<View> {
             // Files before the viewport held its own target keep it here.
             tcode::VIEW_TARGET => target = Some(point(&mut part.body)?),
             tcode::VIEW_NAME => name = part.body.wstring()?,
+            tcode::VIEW_ATTRIBUTES => {
+                if let Ok(found) = view_extras(&mut part.body) {
+                    extras = found;
+                }
+            }
             _ => {}
         }
     }
@@ -301,7 +320,24 @@ fn view(r: &mut Reader<'_>) -> Result<View> {
         let depth = 0.5 * (view.frustum[4] + view.frustum[5]);
         std::array::from_fn(|k| view.location[k] + depth * view.direction[k])
     });
-    Ok(view)
+    Ok((view, extras))
+}
+
+/// A view's attributes past its kind and paper size: version 1.2's display mode id (after the
+/// obsolete parent id and nested position), then the page settings and version 1.3's lock.
+fn view_extras(r: &mut Reader<'_>) -> Result<ViewExtras> {
+    let (_, minor) = r.chunk_version()?;
+    let mut extras = ViewExtras::default();
+    if minor < 2 {
+        return Ok(extras);
+    }
+    r.skip(4 + 8 * 2 + 16 + 8 * 6)?; // kind, paper size, parent id, nested position
+    extras.display = r.uuid()?;
+    if minor >= 3 {
+        r.chunk()?; // page settings
+        extras.locked = r.bool()?;
+    }
+    Ok(extras)
 }
 
 /// openNURBS' viewport: projection, camera frame and frustum, and in later versions its own
@@ -1584,7 +1620,7 @@ fn page_unit(r: &mut Reader<'_>) -> Result<Option<u32>> {
 fn detail(r: &mut Reader<'_>) -> Result<Detail> {
     let (_, minor, mut body) = r.versioned(tcode::ANONYMOUS_CHUNK)?;
     let (_, _, mut view_chunk) = body.versioned(tcode::ANONYMOUS_CHUNK)?;
-    let view = view(&mut view_chunk)?;
+    let (view, extras) = view_with_attributes(&mut view_chunk)?;
     let (_, _, mut outline) = body.versioned(tcode::ANONYMOUS_CHUNK)?;
     let boundary = nurbs_curve(&mut outline)?;
     let ratio = if minor >= 1 { body.f64()? } else { 0.0 };
@@ -1592,6 +1628,8 @@ fn detail(r: &mut Reader<'_>) -> Result<Detail> {
         view,
         boundary,
         ratio,
+        display: extras.display,
+        locked: extras.locked,
     })
 }
 
