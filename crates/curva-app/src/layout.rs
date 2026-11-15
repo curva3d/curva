@@ -40,11 +40,13 @@ pub enum Piece {
     Layouts,
     /// Printing (`Print`).
     Print,
+    /// The model's notes (`Notes`).
+    Notes,
 }
 
 impl Piece {
     /// Every piece, in their standard order.
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 12] = [
         Self::CommandTabs,
         Self::Layers,
         Self::Properties,
@@ -56,6 +58,7 @@ impl Piece {
         Self::Layouts,
         Self::AnnotationStyles,
         Self::Print,
+        Self::Notes,
     ];
 
     /// Its name's key in the translation file.
@@ -73,6 +76,7 @@ impl Piece {
             Self::Layouts => "ui.piece.layouts",
             Self::AnnotationStyles => "ui.piece.annotationstyles",
             Self::Print => "ui.piece.print",
+            Self::Notes => "ui.piece.notes",
         }
     }
 }
@@ -247,6 +251,7 @@ impl Default for Layout {
                 Piece::Layouts,
                 Piece::AnnotationStyles,
                 Piece::Print,
+                Piece::Notes,
             ],
             layer_columns: STANDARD_LAYER_COLUMNS,
         }

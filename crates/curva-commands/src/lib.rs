@@ -347,6 +347,8 @@ pub enum ViewRequest {
     ShowAnnotationStyles,
     /// Open the Print panel.
     ShowPrint,
+    /// Open the Notes panel.
+    ShowNotes,
     /// Print or export layouts; the interface makes the pages.
     Print(PrintJob),
     /// Clipping planes, by their rectangles, cut (`true`) or stop cutting the active viewport,
