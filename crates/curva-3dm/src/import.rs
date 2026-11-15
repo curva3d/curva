@@ -248,7 +248,13 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
 
     for object in &model.objects {
         let a = &object.attributes;
-        let (shape, kind) = match shape_of(&object.geometry, &block_ids) {
+        let (shape, kind) = match shape_of(
+            &object.geometry,
+            &block_ids,
+            &model.hatch_patterns,
+            state,
+            file_mm,
+        ) {
             Ok(made) => made,
             Err(why) => {
                 Report::count(&mut report.skipped, &format!("unreadable ({why})"));
@@ -375,10 +381,19 @@ fn scaled(shape: Shape, scale: f64) -> Result<Shape, String> {
 fn shape_of(
     geometry: &Geometry,
     blocks: &BTreeMap<crate::archive::Uuid, u64>,
+    patterns: &[model::HatchPattern],
+    state: &mut State,
+    file_mm: f64,
 ) -> Result<(Shape, &'static str), String> {
     let text = |e: KernelError| e.0;
     Ok(match geometry {
         Geometry::Point(p) => (Shape::Curve(Curve::Point { at: *p }), "points"),
+        Geometry::Hatch(h) => (
+            Shape::Annotation(curva_document::annotation::Annotation::Hatch(hatch_in(
+                h, patterns, state, file_mm,
+            )?)),
+            "hatches",
+        ),
         Geometry::Dot {
             at,
             text,
@@ -1599,4 +1614,85 @@ fn add_views_and_planes(model: &Model, doc: &mut Document, report: &mut Report) 
             doc.save_cplane(p);
         }
     }
+}
+
+/// A hatch from a file, in the file's unit (the caller scales it): its outlines placed from its
+/// plane into the world, and its pattern found by name among Curva's, else added from the file.
+fn hatch_in(
+    h: &model::Hatch,
+    patterns: &[model::HatchPattern],
+    state: &mut State,
+    file_mm: f64,
+) -> Result<curva_document::annotation::Hatch, String> {
+    let p = &h.plane;
+    let out: [[f64; 4]; 4] = [
+        [p.x[0], p.x[1], p.x[2], 0.0],
+        [p.y[0], p.y[1], p.y[2], 0.0],
+        [p.z[0], p.z[1], p.z[2], 0.0],
+        [p.origin[0], p.origin[1], p.origin[2], 1.0],
+    ];
+    let loops = h
+        .loops
+        .iter()
+        .map(|(_, c)| {
+            curve(c)
+                .and_then(|flat| flat.mapped_affine(out))
+                .map_err(|e| e.0)
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let from_file = usize::try_from(h.pattern)
+        .ok()
+        .and_then(|i| patterns.get(i));
+    let (pattern, scale) = match from_file {
+        None => ("Solid".to_owned(), 1.0),
+        Some(file) if file.solid => ("Solid".to_owned(), 1.0),
+        Some(file) => {
+            let own = state
+                .patterns()
+                .into_iter()
+                .find(|q| q.name.eq_ignore_ascii_case(&file.name));
+            match own {
+                // The same pattern: its scale from the line spacing written against Curva's.
+                Some(own) => {
+                    let ratio = match (file.lines.first(), own.lines.first()) {
+                        (Some(line), Some(mine)) if mine.spacing.abs() > 1e-12 => {
+                            line.offset[1].abs() * file_mm / mine.spacing.abs()
+                        }
+                        _ => 1.0,
+                    };
+                    (own.name, h.scale * ratio)
+                }
+                None => {
+                    // A pattern of the file's own, kept in millimetres.
+                    let made = curva_document::hatch::Pattern {
+                        name: file.name.clone(),
+                        description: file.description.clone(),
+                        lines: file
+                            .lines
+                            .iter()
+                            .map(|l| curva_document::hatch::PatternLine {
+                                angle: l.angle.to_degrees(),
+                                origin: [l.base[0] * file_mm, l.base[1] * file_mm],
+                                shift: l.offset[0] * file_mm,
+                                spacing: l.offset[1] * file_mm,
+                                dashes: l.dashes.iter().map(|d| d * file_mm).collect(),
+                            })
+                            .collect(),
+                    };
+                    state.hatch_patterns.push(made);
+                    (file.name.clone(), h.scale)
+                }
+            }
+        }
+    };
+    let base: P3 = std::array::from_fn(|k| p.origin[k] + p.x[k] * h.base[0] + p.y[k] * h.base[1]);
+    Ok(curva_document::annotation::Hatch {
+        loops,
+        pattern,
+        scale,
+        rotation: h.rotation,
+        base,
+        x: p.x,
+        y: p.y,
+    })
 }
