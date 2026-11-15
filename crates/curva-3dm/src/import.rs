@@ -391,6 +391,12 @@ fn shape_of(
     let text = |e: KernelError| e.0;
     Ok(match geometry {
         Geometry::Point(p) => (Shape::Curve(Curve::Point { at: *p }), "points"),
+        Geometry::Dimension(d) => (
+            Shape::Annotation(curva_document::annotation::Annotation::Dimension(
+                dimension_in(d),
+            )),
+            "dimensions",
+        ),
         Geometry::Text(t) => (
             Shape::Annotation(curva_document::annotation::Annotation::Text(note_in(
                 t, styles,
@@ -1704,4 +1710,29 @@ fn hatch_in(
         x: p.x,
         y: p.y,
     })
+}
+
+/// A linear dimension from a file: its points out of its plane, measured along the plane's X
+/// (rotated) or from point to point (aligned). Its looks come from Curva's current style.
+fn dimension_in(d: &model::LinearDimension) -> curva_document::annotation::Dimension {
+    use curva_document::annotation::DimensionKind;
+    let p = &d.plane;
+    let at = |q: [f64; 2]| -> P3 {
+        std::array::from_fn(|k| p.origin[k] + p.x[k] * q[0] + p.y[k] * q[1])
+    };
+    let text = d.text.trim();
+    curva_document::annotation::Dimension {
+        kind: if d.rotated {
+            DimensionKind::Horizontal
+        } else {
+            DimensionKind::Aligned
+        },
+        first: p.origin,
+        second: at(d.second),
+        line: at(d.line),
+        x: p.x,
+        y: p.y,
+        style: 0,
+        text: (!text.is_empty() && text != "<>").then(|| d.text.clone()),
+    }
 }

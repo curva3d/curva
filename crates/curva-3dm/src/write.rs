@@ -4,7 +4,8 @@
 use crate::archive::{Uuid, Writer, tcode};
 use crate::model::{
     Attributes, Block, Brep, Curve, DimStyle, Geometry, Group, HatchLine, HatchPattern, Layer,
-    Model, NurbsCurve, NurbsSurface, Object, P3, Plane, Source, Surface, Text, View,
+    LinearDimension, Model, NurbsCurve, NurbsSurface, Object, P3, Plane, Source, Surface, Text,
+    View,
 };
 use crate::read::class;
 
@@ -246,7 +247,7 @@ fn object_type(g: &Geometry) -> i64 {
         Geometry::Instance { .. } => 0x1000,
         Geometry::Dot { .. } => 0x2000,
         Geometry::Hatch(_) => 0x10000,
-        Geometry::Text(_) => 0x200,
+        Geometry::Text(_) | Geometry::Dimension(_) => 0x200,
     }
 }
 
@@ -264,6 +265,9 @@ fn write_object(w: &mut Writer, object: &Object) {
         Geometry::Brep(b) => class_object(w, class::BREP, |w| write_brep(w, b)),
         Geometry::Extrusion(_) => {}
         Geometry::Text(t) => class_object(w, class::TEXT, |w| write_text(w, t)),
+        Geometry::Dimension(d) => {
+            class_object(w, class::DIM_LINEAR, |w| write_linear_dimension(w, d));
+        }
         Geometry::Hatch(h) => class_object(w, class::HATCH, |w| {
             // openNURBS' ON_Hatch, version 1.2: plane, scale, turn, pattern, outlines as 2D
             // curves in the plane, then the base point.
@@ -914,14 +918,20 @@ fn write_dim_style(w: &mut Writer, style: &DimStyle, index: usize) {
     w.end();
 }
 
-/// A note as Rhino 6 and later write one (`ON_Text::Write` around
-/// `ON_Annotation::Internal_WriteAnnotation`, content version 4): its words, style, plane,
-/// kind, no overrides, the horizontal direction and text scaling.
-fn write_text(w: &mut Writer, t: &Text) {
-    w.begin_anonymous(0);
+/// The part every annotation shares, as Rhino 6 and later write it
+/// (`ON_Annotation::Internal_WriteAnnotation`, content version 4): its words, style, plane,
+/// kind (openNURBS' annotation type), no overrides, the horizontal direction and text scaling.
+fn write_annotation_core(
+    w: &mut Writer,
+    rich: &str,
+    rotation: f64,
+    style: Uuid,
+    plane: &Plane,
+    kind: u32,
+) {
     w.begin_anonymous(4);
     w.begin_anonymous(0);
-    w.wstring(&t.rich.replace('\n', "\r\n"));
+    w.wstring(&rich.replace('\n', "\r\n"));
     write_plane(
         w,
         &Plane {
@@ -932,21 +942,50 @@ fn write_text(w: &mut Writer, t: &Text) {
         },
     );
     w.f64(0.0); // no wrapping width
-    w.f64(t.rotation);
+    w.f64(rotation);
     w.u32(0);
     w.u32(0);
     w.f64(1.0); // obsolete height
     w.bool(false); // not wrapped
     w.end();
-    w.uuid(t.style);
-    write_plane(w, &t.plane);
-    w.u32(9); // a note
+    w.uuid(style);
+    write_plane(w, plane);
+    w.u32(kind);
     w.begin_anonymous(1);
     w.bool(false); // no overrides
     w.end();
     w.f64s(&[1.0, 0.0]); // horizontal direction
     w.bool(true); // text scales with the model
     w.end();
+}
+
+/// A note (`ON_Text::Write`).
+fn write_text(w: &mut Writer, t: &Text) {
+    w.begin_anonymous(0);
+    write_annotation_core(w, &t.rich, t.rotation, t.style, &t.plane, 9);
+    w.end();
+}
+
+/// A linear dimension (`ON_DimLinear::Write` around `ON_Dimension::Internal_WriteDimension`,
+/// content version 1): the annotation, its typed text, its text at the usual place, arrows as
+/// they are, measured in the model, then its second point and dimension line point.
+fn write_linear_dimension(w: &mut Writer, d: &LinearDimension) {
+    w.begin_anonymous(0);
+    w.begin_anonymous(1);
+    write_annotation_core(w, "", 0.0, d.style, &d.plane, if d.rotated { 5 } else { 1 });
+    w.wstring(&d.text);
+    w.f64(0.0); // obsolete text rotation
+    w.bool(true); // text at its usual place
+    w.f64s(&[0.0, 0.0]);
+    w.bool(false); // arrows not flipped
+    w.bool(false);
+    w.u32(0); // arrow fit: automatic
+    w.uuid(Uuid::NIL); // not measured through a detail
+    w.f64(1.0); // distance scale
+    w.u32(0); // text fit: automatic
+    w.end();
+    w.f64s(&d.second);
+    w.f64s(&d.line);
     w.end();
 }
 

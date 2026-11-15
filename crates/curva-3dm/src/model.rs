@@ -412,6 +412,8 @@ pub enum Geometry {
     Extrusion(Extrusion),
     /// A note (`ON_Text`).
     Text(Text),
+    /// A linear dimension (`ON_DimLinear`).
+    Dimension(LinearDimension),
     /// A hatch.
     Hatch(Hatch),
     /// A text dot (`ON_TextDot`): a label at a point, the same size on screen.
@@ -538,4 +540,24 @@ pub struct Text {
     pub own: Option<DimStyle>,
     /// A turn of the words within the plane, radians.
     pub rotation: f64,
+}
+
+/// A linear dimension (`ON_DimLinear`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct LinearDimension {
+    /// Its plane, at the first point measured; for a rotated dimension its X is the direction
+    /// measured along, for an aligned one it runs from the first point to the second.
+    pub plane: Plane,
+    /// Its style, by id.
+    pub style: Uuid,
+    /// The style it sets for itself, if it has one.
+    pub own: Option<DimStyle>,
+    /// Whether it measures along its plane's X (rotated) rather than point to point (aligned).
+    pub rotated: bool,
+    /// Its text, `<>` standing for the measured value.
+    pub text: String,
+    /// The second point measured, in the plane.
+    pub second: [f64; 2],
+    /// A point its dimension line passes through, in the plane.
+    pub line: [f64; 2],
 }

@@ -3,8 +3,8 @@
 use crate::archive::{Reader, Result, Uuid, bad, tcode};
 use crate::model::{
     Attributes, Block, Brep, BrepEdge, BrepFace, BrepLoop, BrepTrim, BrepVertex, Curve, DimStyle,
-    Extrusion, Geometry, Group, Hatch, HatchLine, HatchPattern, Layer, Model, NamedCPlane,
-    NurbsCurve, NurbsSurface, Object, P3, Plane, Source, Surface, Text, View,
+    Extrusion, Geometry, Group, Hatch, HatchLine, HatchPattern, Layer, LinearDimension, Model,
+    NamedCPlane, NurbsCurve, NurbsSurface, Object, P3, Plane, Source, Surface, Text, View,
 };
 
 /// Class ids of the objects Curva reads and writes (openNURBS `ON_OBJECT_IMPLEMENT`).
@@ -36,6 +36,7 @@ pub mod class {
     pub const HATCH: Uuid = Uuid::parse("0559733B-5332-49d1-A936-0532AC76ADE5");
     pub const HATCH_PATTERN: Uuid = Uuid::parse("064E7C91-35F6-4734-A446-79FF7CD659E1");
     pub const TEXT: Uuid = Uuid::parse("57376349-62A9-4A16-B411-A46BCD544790");
+    pub const DIM_LINEAR: Uuid = Uuid::parse("E550882B-F44D-4154-A1EF-6E50CBBBF543");
     pub const DIM_STYLE: Uuid = Uuid::parse("67AA51A5-791D-4BEC-8AED-D23B462B6F87");
     /// The class an older id stands for, as openNURBS reads Rhino's older classes as today's.
     #[must_use]
@@ -665,6 +666,7 @@ fn geometry_of(id: Uuid, r: &mut Reader<'_>) -> Result<std::result::Result<Geome
         }
         class::HATCH => Geometry::Hatch(hatch(r)?),
         class::TEXT => Geometry::Text(text(r)?),
+        class::DIM_LINEAR => Geometry::Dimension(linear_dimension(r)?),
         class::TEXT_DOT => {
             let (_, minor) = r.chunk_version()?;
             let at = point(r)?;
@@ -1270,9 +1272,20 @@ fn dim_style(record: &mut Reader<'_>) -> Result<Option<DimStyle>> {
 
 /// A note (`ON_Text::Read`, then `ON_Annotation::Internal_ReadAnnotation` and
 /// `ON_TextContent::Read`).
-fn text(r: &mut Reader<'_>) -> Result<Text> {
-    let (_, mut outer) = r.anonymous()?;
-    let (version, mut a) = outer.anonymous()?;
+/// The part every annotation shares (`ON_Annotation::Internal_ReadAnnotation`): its words, the
+/// turn they carry, its style, plane, kind (openNURBS' annotation type, from version 1) and the
+/// style it sets for itself (from version 2).
+struct AnnotationCore {
+    rich: String,
+    rotation: f64,
+    style: Uuid,
+    plane: Plane,
+    kind: u32,
+    own: Option<DimStyle>,
+}
+
+fn annotation_core(r: &mut Reader<'_>) -> Result<AnnotationCore> {
+    let (version, mut a) = r.anonymous()?;
     let (_, mut content) = a.anonymous()?;
     let rich = content.wstring()?;
     let _obsolete_plane = plane(&mut content)?;
@@ -1280,9 +1293,9 @@ fn text(r: &mut Reader<'_>) -> Result<Text> {
     let rotation = content.f64()?;
     let style = a.uuid()?;
     let plane = plane(&mut a)?;
+    let kind = if version >= 1 { a.u32()? } else { 0 };
     let mut own = None;
     if version >= 2 {
-        let _kind = a.u32()?;
         let (_, mut overrides) = a.anonymous()?;
         if overrides.bool()? {
             let (id, mut data) = class_object(&mut overrides)?;
@@ -1291,11 +1304,44 @@ fn text(r: &mut Reader<'_>) -> Result<Text> {
             }
         }
     }
-    Ok(Text {
+    Ok(AnnotationCore {
         rich,
-        plane,
-        style,
-        own,
         rotation,
+        style,
+        plane,
+        kind,
+        own,
+    })
+}
+
+fn text(r: &mut Reader<'_>) -> Result<Text> {
+    let (_, mut outer) = r.anonymous()?;
+    let core = annotation_core(&mut outer)?;
+    Ok(Text {
+        rich: core.rich,
+        plane: core.plane,
+        style: core.style,
+        own: core.own,
+        rotation: core.rotation,
+    })
+}
+
+/// A linear dimension (`ON_DimLinear::Read` around `ON_Dimension::Internal_ReadDimension`):
+/// the annotation, its typed text, then its second point and dimension line point in its plane.
+fn linear_dimension(r: &mut Reader<'_>) -> Result<LinearDimension> {
+    let (_, mut outer) = r.anonymous()?;
+    let (_, mut d) = outer.anonymous()?;
+    let core = annotation_core(&mut d)?;
+    let text = d.wstring()?;
+    let second = outer.f64s::<2>()?;
+    let line = outer.f64s::<2>()?;
+    Ok(LinearDimension {
+        plane: core.plane,
+        style: core.style,
+        own: core.own,
+        rotated: core.kind == 5,
+        text,
+        second,
+        line,
     })
 }

@@ -217,3 +217,27 @@ fn rhinos_notes_come_in_with_their_words_height_and_alignment() {
         kitchen.origin
     );
 }
+
+#[test]
+fn rhinos_linear_dimensions_come_in_measuring_the_same() {
+    use curva_document::annotation::Annotation;
+    // Made in Rhino 8: an aligned dimension from (0, 50) to (100, 50), its line through
+    // (50, 60).
+    let (doc, _) = open("v8_texts.3dm");
+    let dims: Vec<_> = doc
+        .state()
+        .objects
+        .iter()
+        .filter_map(|o| match &o.shape {
+            Shape::Annotation(Annotation::Dimension(d)) => Some(d.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(dims.len(), 1);
+    let d = &dims[0];
+    assert!((d.value() - 100.0).abs() < 1e-9, "{}", d.value());
+    let near = |a: [f64; 3], b: [f64; 3]| (0..3).all(|i| (a[i] - b[i]).abs() < 1e-9);
+    assert!(near(d.first, [0.0, 50.0, 0.0]) && near(d.second, [100.0, 50.0, 0.0]));
+    assert!((d.line[1] - 60.0).abs() < 1e-9, "{:?}", d.line);
+    assert_eq!(d.text, None);
+}

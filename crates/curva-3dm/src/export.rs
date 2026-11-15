@@ -121,8 +121,9 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
 
     // Annotation styles: one for each height and alignment the notes use, so no note needs to
     // override its style.
+    // Dimensions take their style's text height, in the model's unit.
     let mut style_ids: BTreeMap<(u64, u32), Uuid> = BTreeMap::new();
-    let notes = state
+    let wanted: Vec<(f64, u32)> = state
         .objects
         .iter()
         .map(|o| &o.shape)
@@ -133,12 +134,17 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
                 .flat_map(|b| b.objects.iter().map(|o| &o.shape)),
         )
         .filter_map(|s| match s {
-            Shape::Annotation(curva_document::annotation::Annotation::Text(t)) => Some(t),
+            Shape::Annotation(curva_document::annotation::Annotation::Text(t)) => {
+                Some((t.height, align_code(t.align)))
+            }
+            Shape::Annotation(curva_document::annotation::Annotation::Dimension(d)) => {
+                Some((dimension_height(state, d.style), 0))
+            }
             _ => None,
-        });
-    for note in notes {
-        let align = align_code(note.align);
-        let key = (note.height.to_bits(), align);
+        })
+        .collect();
+    for (height, align) in wanted {
+        let key = (height.to_bits(), align);
         if style_ids.contains_key(&key) {
             continue;
         }
@@ -148,12 +154,12 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
             id,
             name: format!(
                 "Curva {} {}",
-                format!("{:.4}", note.height)
+                format!("{height:.4}")
                     .trim_end_matches('0')
                     .trim_end_matches('.'),
                 ["Left", "Centre", "Right"][align as usize]
             ),
-            text_height: note.height,
+            text_height: height,
             h_align: align,
             v_align: 3,
         });
@@ -208,7 +214,7 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
 
     let mut groups: BTreeMap<u64, usize> = BTreeMap::new();
     let mut add = |o: &Object, in_block: bool, model: &mut Model, report: &mut Report| {
-        let geometry = match geometry_of(&o.shape, &block_ids, &pattern_index, &style_ids) {
+        let geometry = match geometry_of(&o.shape, &block_ids, &pattern_index, &style_ids, state) {
             Ok(g) => g,
             Err(why) => {
                 count(&mut report.skipped, &format!("not written ({why})"));
@@ -338,6 +344,7 @@ fn geometry_of(
     blocks: &BTreeMap<u64, Uuid>,
     patterns: &BTreeMap<String, i32>,
     styles: &BTreeMap<(u64, u32), Uuid>,
+    state: &State,
 ) -> Result<Geometry, String> {
     Ok(match shape {
         Shape::Curve(Curve::Point { at }) => Geometry::Point(*at),
@@ -381,6 +388,9 @@ fn geometry_of(
                 own: None,
                 rotation: 0.0,
             })
+        }
+        Shape::Annotation(curva_document::annotation::Annotation::Dimension(d)) => {
+            Geometry::Dimension(linear_dimension(d, styles, state)?)
         }
         // Annotation goes into .3dm files with the round trip at the end of Milestone 3.
         Shape::Annotation(_) => {
@@ -968,4 +978,72 @@ fn align_code(align: curva_document::annotation::TextAlign) -> u32 {
         curva_document::annotation::TextAlign::Centre => 1,
         curva_document::annotation::TextAlign::Right => 2,
     }
+}
+
+/// A dimension's text height: its annotation style's, in the model's unit.
+fn dimension_height(state: &State, style: u64) -> f64 {
+    let styles = if state.annotation_styles.is_empty() {
+        curva_document::annotation::standard_styles(matches!(state.unit, Unit::Feet | Unit::Inches))
+    } else {
+        state.annotation_styles.clone()
+    };
+    styles
+        .iter()
+        .find(|s| s.id == style)
+        .or_else(|| styles.first())
+        .map_or(1.0, |s| s.height_in(state.unit))
+}
+
+/// A linear dimension as Rhino holds one: its plane at the first point, its X the direction it
+/// measures along (rotated) or from point to point (aligned), the other points in that plane.
+fn linear_dimension(
+    d: &curva_document::annotation::Dimension,
+    styles: &BTreeMap<(u64, u32), Uuid>,
+    state: &State,
+) -> Result<model::LinearDimension, String> {
+    use curva_document::annotation::DimensionKind;
+    let normal = cross(d.x, d.y);
+    let unit = |v: P3| {
+        let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+        (l > 1e-12).then(|| v.map(|c| c / l))
+    };
+    let (along, rotated) = match d.kind {
+        DimensionKind::Horizontal => (d.x, true),
+        DimensionKind::Vertical => (d.y, true),
+        DimensionKind::Rotated(a) => (
+            std::array::from_fn(|k| d.x[k] * a.cos() + d.y[k] * a.sin()),
+            true,
+        ),
+        DimensionKind::Aligned => {
+            let v: P3 = std::array::from_fn(|k| d.second[k] - d.first[k]);
+            let off: f64 = (0..3).map(|k| v[k] * normal[k]).sum();
+            let flat: P3 = std::array::from_fn(|k| v[k] - normal[k] * off);
+            (unit(flat).ok_or("a dimension between one point")?, false)
+        }
+    };
+    let up = cross(normal, along);
+    let local = |p: P3| {
+        let v: P3 = std::array::from_fn(|k| p[k] - d.first[k]);
+        [
+            (0..3).map(|k| v[k] * along[k]).sum::<f64>(),
+            (0..3).map(|k| v[k] * up[k]).sum::<f64>(),
+        ]
+    };
+    let style = *styles
+        .get(&(dimension_height(state, d.style).to_bits(), 0))
+        .ok_or("a dimension without its style")?;
+    Ok(model::LinearDimension {
+        plane: Plane {
+            origin: d.first,
+            x: along,
+            y: up,
+            z: normal,
+        },
+        style,
+        own: None,
+        rotated,
+        text: d.text.clone().unwrap_or_else(|| "<>".to_owned()),
+        second: local(d.second),
+        line: local(d.line),
+    })
 }
