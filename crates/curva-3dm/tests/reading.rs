@@ -400,3 +400,33 @@ fn a_layer_rhino_turned_off_in_one_detail_comes_in_off_in_it() {
         );
     }
 }
+
+#[test]
+fn rhinos_clipping_plane_comes_in_cutting_its_views() {
+    // Made in Rhino 8: a 2000 by 1500 clipping plane at x = 500 facing +x (keeping what is on
+    // the +x side), cutting the Front view and a detail on layout "Plan".
+    use curva_document::clipping::ClipView;
+    let (doc, report) = open("v8_clipping_plane.3dm");
+    let state = doc.state();
+    assert_eq!(state.clipping_planes.len(), 1, "{}", report.summary());
+    let clip = &state.clipping_planes[0];
+    let keep = doc
+        .planes_cutting(ClipView::Viewport(2))
+        .first()
+        .map(|cut| cut.keep)
+        .expect("it cuts Front, Curva's third viewport");
+    assert!((keep[0] - 1.0).abs() < 1e-9, "keeps the +x side: {keep:?}");
+    let detail = state
+        .layouts
+        .iter()
+        .find(|l| l.name == "Plan")
+        .and_then(|l| l.details.first())
+        .unwrap()
+        .frame;
+    assert!(clip.views.contains(&ClipView::Detail(detail)));
+    assert_eq!(clip.views.len(), 2);
+    let frame = state.objects.iter().find(|o| o.id == clip.frame).unwrap();
+    let (low, high) = frame.shape.bounds().unwrap();
+    assert!((low[0] - 500.0).abs() < 1e-6 && (high[0] - 500.0).abs() < 1e-6);
+    assert!((high[1] - low[1] - 2000.0).abs() < 1e-6 || (high[2] - low[2] - 2000.0).abs() < 1e-6);
+}

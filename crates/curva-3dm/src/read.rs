@@ -3,9 +3,9 @@
 use crate::archive::{Reader, Result, Uuid, bad, tcode};
 use crate::model::{
     AngularDimension, Attributes, Block, Brep, BrepEdge, BrepFace, BrepLoop, BrepTrim, BrepVertex,
-    Curve, Detail, DimStyle, Extrusion, Geometry, Group, Hatch, HatchLine, HatchPattern, Layer,
-    Leader, LinearDimension, Linetype, Model, NamedCPlane, NurbsCurve, NurbsSurface, Object, P3,
-    Page, Plane, RadialDimension, Source, Surface, Text, View,
+    ClippingPlane, Curve, Detail, DimStyle, Extrusion, Geometry, Group, Hatch, HatchLine,
+    HatchPattern, Layer, Leader, LinearDimension, Linetype, Model, NamedCPlane, NurbsCurve,
+    NurbsSurface, Object, P3, Page, Plane, RadialDimension, Source, Surface, Text, View,
 };
 
 /// Class ids of the objects Curva reads and writes (openNURBS `ON_OBJECT_IMPLEMENT`).
@@ -43,6 +43,7 @@ pub mod class {
     pub const DIM_ANGULAR: Uuid = Uuid::parse("D417786B-F6CD-4F12-9E1F-063F414DBEB6");
     pub const LEADER: Uuid = Uuid::parse("945BF594-6FF9-4F5C-BFC0-B3AF528F29D2");
     pub const DETAIL: Uuid = Uuid::parse("C8C66EFA-B3CB-4e00-9440-2AD66203379E");
+    pub const CLIPPING_PLANE_SURFACE: Uuid = Uuid::parse("DBC5A584-CE3F-4170-98A8-497069CA5C36");
     pub const DIM_STYLE: Uuid = Uuid::parse("67AA51A5-791D-4BEC-8AED-D23B462B6F87");
     pub const LINETYPE: Uuid = Uuid::parse("26F10A24-7D13-4F05-8FDA-8E364DAF8EA6");
     /// The class an older id stands for, as openNURBS reads Rhino's older classes as today's.
@@ -224,6 +225,9 @@ fn settings(table: &mut Reader<'_>, model: &mut Model) -> Result<()> {
                 }
             }
             tcode::SETTINGS_VIEW_LIST => {
+                if let Ok(views) = model_views(&mut chunk.body.clone()) {
+                    model.model_views = views;
+                }
                 if let Ok(found) = pages(&mut chunk.body) {
                     model.pages = found;
                 }
@@ -828,6 +832,7 @@ fn geometry_of(id: Uuid, r: &mut Reader<'_>) -> Result<std::result::Result<Geome
         class::DIM_ANGULAR => Geometry::Angular(angular_dimension(r)?),
         class::LEADER => Geometry::Leader(leader(r)?),
         class::DETAIL => Geometry::Detail(detail(r)?),
+        class::CLIPPING_PLANE_SURFACE => Geometry::ClippingPlane(clipping_plane(r)?),
         class::TEXT_DOT => {
             let (_, minor) = r.chunk_version()?;
             let at = point(r)?;
@@ -1629,6 +1634,38 @@ fn leader(r: &mut Reader<'_>) -> Result<Leader> {
     })
 }
 
+/// The model's views in the settings' view list (those not pages or nested in one): their
+/// names and viewport ids.
+fn model_views(r: &mut Reader<'_>) -> Result<Vec<(String, Uuid)>> {
+    let count = list_count(r)?;
+    let mut out = Vec::new();
+    for _ in 0..count {
+        let mut record = r.expect(tcode::VIEW_RECORD)?;
+        let mut id = Uuid::NIL;
+        let mut name = String::new();
+        let mut kind = 0;
+        while !record.body.is_done() {
+            let mut part = record.body.chunk()?;
+            match part.tcode {
+                tcode::ENDOFTABLE => break,
+                tcode::VIEW_VIEWPORT => id = viewport_id(&mut part.body)?,
+                tcode::VIEW_NAME => name = part.body.wstring()?,
+                tcode::VIEW_ATTRIBUTES => {
+                    let (_, minor) = part.body.chunk_version()?;
+                    if minor >= 1 {
+                        kind = part.body.i32()?;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if kind == 0 {
+            out.push((name, id));
+        }
+    }
+    Ok(out)
+}
+
 /// The layouts among the views of the settings' view list: views of openNURBS' page type
 /// (`ON_3dmView` with `ON::page_view_type`), with their viewport id, name and paper size.
 fn pages(r: &mut Reader<'_>) -> Result<Vec<Page>> {
@@ -1708,6 +1745,45 @@ fn detail(r: &mut Reader<'_>) -> Result<Detail> {
         id: extras.id,
         display: extras.display,
         locked: extras.locked,
+    })
+}
+
+/// A clipping plane (`ON_ClippingPlaneSurface::Read`): its plane surface, then the clipping
+/// plane: the first viewport, its id, the plane, whether it is on, and from version 1.1 all
+/// its viewports.
+fn clipping_plane(r: &mut Reader<'_>) -> Result<ClippingPlane> {
+    let (_, mut body) = r.anonymous()?;
+    let mut surface = body.expect(tcode::ANONYMOUS_CHUNK)?;
+    let (_, minor) = surface.body.chunk_version()?;
+    let _plane = plane(&mut surface.body)?;
+    let domain = [interval(&mut surface.body)?, interval(&mut surface.body)?];
+    let extents = if minor >= 1 {
+        [interval(&mut surface.body)?, interval(&mut surface.body)?]
+    } else {
+        domain
+    };
+    let (_, clip_minor, mut clip) = body.versioned(tcode::ANONYMOUS_CHUNK)?;
+    let first = clip.uuid()?;
+    let id = clip.uuid()?;
+    let plane = plane(&mut clip)?;
+    let enabled = clip.bool()?;
+    let mut viewports = Vec::new();
+    if clip_minor >= 1 {
+        let (_, mut list) = clip.anonymous()?;
+        let n = list.count(16)?;
+        for _ in 0..n {
+            viewports.push(list.uuid()?);
+        }
+    }
+    if viewports.is_empty() && first != Uuid::NIL {
+        viewports.push(first);
+    }
+    Ok(ClippingPlane {
+        plane,
+        extents,
+        viewports,
+        id,
+        enabled,
     })
 }
 

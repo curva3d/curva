@@ -32,6 +32,9 @@ pub struct Model {
     pub dim_styles: Vec<DimStyle>,
     /// Layouts (Rhino's page views), in the file's order.
     pub pages: Vec<Page>,
+    /// The model's standard views by name (Top, Front, Right, Perspective) and viewport id, as
+    /// clipping planes name the views they cut.
+    pub model_views: Vec<(String, Uuid)>,
     /// The unit layouts are drawn in, as openNURBS numbers units; the model's when the file
     /// does not say.
     pub page_unit: Option<u32>,
@@ -462,6 +465,8 @@ pub enum Geometry {
     Leader(Leader),
     /// A detail view on a layout (`ON_DetailView`).
     Detail(Detail),
+    /// A clipping plane (`ON_ClippingPlaneSurface`).
+    ClippingPlane(ClippingPlane),
     /// A hatch.
     Hatch(Hatch),
     /// A text dot (`ON_TextDot`): a label at a point, the same size on screen.
@@ -759,4 +764,21 @@ pub fn display_mode_name(id: Uuid) -> Option<&'static str> {
         .iter()
         .find(|(_, m)| *m == id)
         .map(|(n, _)| *n)
+}
+
+/// A clipping plane (`ON_ClippingPlaneSurface`): a rectangle of a plane that cuts away, in the
+/// views it names, everything on the side opposite its normal (Rhino keeps the side the normal
+/// points to).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ClippingPlane {
+    /// Its plane; the normal points to the side kept.
+    pub plane: Plane,
+    /// The rectangle's extents along the plane's x and y.
+    pub extents: [[f64; 2]; 2],
+    /// The viewports it cuts: model views and details, by viewport id.
+    pub viewports: Vec<Uuid>,
+    /// Its own id.
+    pub id: Uuid,
+    /// Whether it cuts at all.
+    pub enabled: bool,
 }
