@@ -36,8 +36,8 @@ must never depend on a GPL one.
   anyone who sues users over patents. CAD is a field full of patents.
 - **Nothing that 0002 relied on is lost.** Permissive code (solidcore, SolidCraft, Serpentine3D,
   every MIT/Apache library) can still flow into Curva, since Apache-2.0 and MIT combine with GPLv3.
-  The libraries still flow out. The open-core plan is unaffected: Pro sells content and services,
-  not a closed version of the code. GPLv3 also allows AGPL libraries, which 0002 had ruled out.
+  The libraries still flow out. The open-core plan is unaffected: Pro can sell content, services,
+  and closed paid plugins (the plugin exception covers Curva's own Pro plugins too). GPLv3 also allows AGPL libraries, which 0002 had ruled out.
 - **Done now** because the owner is so far the only contributor, so relicensing needs no one
   else's agreement.
 
@@ -50,8 +50,9 @@ must never depend on a GPL one.
 - GPL for every crate: would put off the Rust developers most likely to use and improve the
   foundations.
 
-**Later.** If Curva ever wants to sell commercial licences of the application (dual licensing),
-contributors would need to sign a contributor licence agreement first. Decide that before outside
+**Later.** If Curva ever wants paid features built into the application itself (beyond what the
+Plugin API reaches), or to sell commercial licences of it (dual licensing), contributors would need
+to sign a contributor licence agreement first. Decide that before outside
 contributors join. Have a lawyer review the exception's wording once a company plans a
 serious commercial plugin.
 
