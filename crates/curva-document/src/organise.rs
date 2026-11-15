@@ -93,6 +93,37 @@ impl Document {
         }
     }
 
+    /// Sets one key of the document user text; an empty value removes the key, as in Rhino's
+    /// SetDocumentUserText.
+    pub fn set_document_text(&mut self, key: &str, value: &str) {
+        if value.is_empty() {
+            self.state.document_text.remove(key);
+        } else {
+            self.state
+                .document_text
+                .insert(key.to_owned(), value.to_owned());
+        }
+    }
+
+    /// Replaces the model's notes.
+    pub fn set_notes(&mut self, notes: &str) {
+        notes.clone_into(&mut self.state.notes);
+    }
+
+    /// Sets one key of a layout's user text; an empty value removes it. Returns whether the
+    /// layout exists.
+    pub fn set_layout_text(&mut self, layout: u64, key: &str, value: &str) -> bool {
+        let Some(layout) = self.state.layouts.iter_mut().find(|l| l.id == layout) else {
+            return false;
+        };
+        if value.is_empty() {
+            layout.user_text.remove(key);
+        } else {
+            layout.user_text.insert(key.to_owned(), value.to_owned());
+        }
+        true
+    }
+
     /// Copies layer, print width, linetype and name from one object to others.
     pub fn match_properties(&mut self, from: u64, to: &[u64]) -> usize {
         let Some(source) = self.state.objects.iter().find(|o| o.id == from).cloned() else {

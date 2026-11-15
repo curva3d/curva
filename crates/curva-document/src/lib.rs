@@ -424,6 +424,13 @@ pub struct State {
     /// pattern of a built-in's name takes its place.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hatch_patterns: Vec<hatch::Pattern>,
+    /// Rhino's document user text: keys and values kept with the file, read by the
+    /// `DocumentText` field; keys starting with a full stop are hidden from lists, as in Rhino.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub document_text: std::collections::BTreeMap<String, String>,
+    /// The model's notes (Rhino's `Notes`), read by the `Notes` field.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub notes: String,
 }
 
 impl State {
@@ -573,6 +580,8 @@ impl State {
             annotation_styles,
             current_annotation_style,
             hatch_patterns,
+            document_text,
+            notes,
         } = self;
         objects.len() == other.objects.len()
             && objects
@@ -595,6 +604,8 @@ impl State {
             && *annotation_styles == other.annotation_styles
             && *current_annotation_style == other.current_annotation_style
             && *hatch_patterns == other.hatch_patterns
+            && *document_text == other.document_text
+            && *notes == other.notes
     }
 }
 
@@ -670,6 +681,8 @@ impl Default for State {
             annotation_styles: Vec::new(),
             current_annotation_style: 0,
             hatch_patterns: Vec::new(),
+            document_text: std::collections::BTreeMap::new(),
+            notes: String::new(),
         }
     }
 }
