@@ -14,3 +14,7 @@ accepted = [
 ]
 ignore-build-dependencies = true
 ignore-dev-dependencies = true
+
+# MPL-2.0 for acadrust alone (decision 0021, point 5), as in deny.toml.
+[acadrust]
+accepted = ["MPL-2.0"]

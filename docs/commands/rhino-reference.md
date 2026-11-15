@@ -157,12 +157,12 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | NamedCPlane | A panel in Rhino: save, restore, delete construction planes | `Save` `Restore` `Delete` | `Save` `Restore` `Delete` | partly |
 | SetDisplayMode | Not read: Rhino's page redirected; complete from Rhino | to confirm | `Wireframe` `Shaded` `Ghosted` | partly |
 | New | Choose a template | none | none | partly |
-| Open | Choose a file | none | none | partly |
+| Open | Choose a file | none | none; `.curva`, `.3dm`, and `.dxf` and `.dwg` (curves, points, text, hatches, blocks and layers; dimensions and leaders left out and reported) as a new model | partly |
 | Save | File name | `Version` `SaveSmall` `GeometryOnly` `SaveTextures` `SavePlugInData` `Browse` | none | partly |
 | SaveAs | Asks for a file name; saves there and keeps saving there | none | none | partly |
-| Import | Choose a file (.3dm or .curva); its contents join the model, layers merged by name | none | none | partly |
-| Export | Choose a file and its type; the model is written in that format | none | none; `.3dm`, and `.svg` for drawings: the open layout as it prints, or every layout (one file each, named after them) from the model | partly |
-| ExportSelected | Select objects; choose a file; they are written as .3dm | none | none | partly |
+| Import | Choose a file (.3dm, .curva, .dxf or .dwg); its contents join the model, layers merged by name | none | none | partly |
+| Export | Choose a file and its type; the model is written in that format | none | none; `.3dm`, `.dxf` and `.dwg` (curves, points, text, hatches, blocks and layers), and `.svg` for drawings: the open layout as it prints, or every layout (one file each, named after them) from the model | partly |
+| ExportSelected | Select objects; choose a file; they are written as .3dm, .dxf or .dwg | none | none | partly |
 
 ## Added for Rhino parity (after 0.3.0)
 

@@ -119,9 +119,56 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
         .map(|b| (b.id, ids.next()))
         .collect();
 
+    // Hatch patterns: those the hatches use, in Rhino's model units at scale one.
+    let mut pattern_index: BTreeMap<String, i32> = BTreeMap::new();
+    let per_mm = 1.0 / state.unit.millimetres();
+    let all_patterns = state.patterns();
+    let hatch_patterns = state
+        .objects
+        .iter()
+        .map(|o| &o.shape)
+        .chain(
+            state
+                .blocks
+                .iter()
+                .flat_map(|b| b.objects.iter().map(|o| &o.shape)),
+        )
+        .filter_map(|s| match s {
+            Shape::Annotation(curva_document::annotation::Annotation::Hatch(h)) => {
+                Some(h.pattern.to_lowercase())
+            }
+            _ => None,
+        });
+    for name in hatch_patterns {
+        if pattern_index.contains_key(&name) {
+            continue;
+        }
+        let Some(own) = all_patterns.iter().find(|p| p.name.to_lowercase() == name) else {
+            continue;
+        };
+        #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+        pattern_index.insert(name, model.hatch_patterns.len() as i32);
+        model.hatch_patterns.push(model::HatchPattern {
+            id: ids.next(),
+            name: own.name.clone(),
+            description: own.description.clone(),
+            solid: own.is_solid(),
+            lines: own
+                .lines
+                .iter()
+                .map(|l| model::HatchLine {
+                    angle: l.angle.to_radians(),
+                    base: [l.origin[0] * per_mm, l.origin[1] * per_mm],
+                    offset: [l.shift * per_mm, l.spacing * per_mm],
+                    dashes: l.dashes.iter().map(|d| d * per_mm).collect(),
+                })
+                .collect(),
+        });
+    }
+
     let mut groups: BTreeMap<u64, usize> = BTreeMap::new();
     let mut add = |o: &Object, in_block: bool, model: &mut Model, report: &mut Report| {
-        let geometry = match geometry_of(&o.shape, &block_ids) {
+        let geometry = match geometry_of(&o.shape, &block_ids, &pattern_index) {
             Ok(g) => g,
             Err(why) => {
                 count(&mut report.skipped, &format!("not written ({why})"));
@@ -246,7 +293,11 @@ fn colour_of(c: [f32; 3]) -> [u8; 3] {
     }
 }
 
-fn geometry_of(shape: &Shape, blocks: &BTreeMap<u64, Uuid>) -> Result<Geometry, String> {
+fn geometry_of(
+    shape: &Shape,
+    blocks: &BTreeMap<u64, Uuid>,
+    patterns: &BTreeMap<String, i32>,
+) -> Result<Geometry, String> {
     Ok(match shape {
         Shape::Curve(Curve::Point { at }) => Geometry::Point(*at),
         Shape::Curve(c) => Geometry::Curve(curve(c)?),
@@ -258,6 +309,17 @@ fn geometry_of(shape: &Shape, blocks: &BTreeMap<u64, Uuid>) -> Result<Geometry, 
             // Curva's placements are rows; openNURBS transforms columns.
             let xform = std::array::from_fn(|i2| std::array::from_fn(|j| i.placement[j][i2]));
             Geometry::Instance { block, xform }
+        }
+        Shape::Annotation(curva_document::annotation::Annotation::Dot(dot)) => Geometry::Dot {
+            at: dot.at,
+            text: dot.content.clone(),
+            secondary: dot.secondary.clone(),
+            #[allow(clippy::cast_possible_truncation)]
+            height: dot.height.round() as i32,
+            font: dot.font.clone().unwrap_or_default(),
+        },
+        Shape::Annotation(curva_document::annotation::Annotation::Hatch(h)) => {
+            Geometry::Hatch(hatch(h, patterns)?)
         }
         // Annotation goes into .3dm files with the round trip at the end of Milestone 3.
         Shape::Annotation(_) => {
@@ -777,5 +839,63 @@ fn view_of(v: &curva_document::SavedView) -> model::View {
         target: v.target,
         parallel: v.parallel,
         frustum: [-half, half, -half, half, near, far],
+    }
+}
+
+/// A hatch as Rhino holds one: its plane at the hatch's base point, its outlines as 2D curves
+/// in that plane, and its pattern by its place in the file's table.
+fn hatch(
+    h: &curva_document::annotation::Hatch,
+    patterns: &BTreeMap<String, i32>,
+) -> Result<model::Hatch, String> {
+    let z = cross(h.x, h.y);
+    let o = h.base;
+    // From the world into the plane: each axis's coordinate, measured from the base point.
+    let dot = |a: P3, b: P3| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    let into: [[f64; 4]; 4] = [
+        [h.x[0], h.y[0], z[0], 0.0],
+        [h.x[1], h.y[1], z[1], 0.0],
+        [h.x[2], h.y[2], z[2], 0.0],
+        [-dot(o, h.x), -dot(o, h.y), -dot(o, z), 1.0],
+    ];
+    let loops = h
+        .loops
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let flat = c.mapped_affine(into).map_err(|e| e.0)?;
+            Ok((i == 0, flat2(curve(&flat)?)))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let pattern = *patterns
+        .get(&h.pattern.to_lowercase())
+        .ok_or("a hatch pattern Curva does not have")?;
+    Ok(model::Hatch {
+        plane: Plane {
+            origin: o,
+            x: h.x,
+            y: h.y,
+            z,
+        },
+        scale: h.scale,
+        rotation: h.rotation,
+        pattern,
+        loops,
+        base: [0.0; 2],
+    })
+}
+
+/// A curve in a plane's coordinates written as a 2D one, as hatch outlines are.
+fn flat2(c: model::Curve) -> model::Curve {
+    match c {
+        model::Curve::Nurbs(mut n) => {
+            n.dimension = 2;
+            model::Curve::Nurbs(n)
+        }
+        model::Curve::Poly { segments, params } => model::Curve::Poly {
+            segments: segments.into_iter().map(flat2).collect(),
+            params,
+        },
+        other => other,
     }
 }

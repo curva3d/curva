@@ -35,6 +35,8 @@ fn main() {
                 for o in &m.objects {
                     let k = match &o.geometry {
                         curva_3dm::model::Geometry::Point(_) => "point".to_owned(),
+                        curva_3dm::model::Geometry::Dot { .. } => "dot".to_owned(),
+                        curva_3dm::model::Geometry::Hatch(_) => "hatch".to_owned(),
                         curva_3dm::model::Geometry::Curve(c) => format!(
                             "curve {}",
                             match c {

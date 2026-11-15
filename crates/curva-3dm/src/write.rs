@@ -3,8 +3,8 @@
 
 use crate::archive::{Uuid, Writer, tcode};
 use crate::model::{
-    Attributes, Block, Brep, Curve, Geometry, Group, Layer, Model, NurbsCurve, NurbsSurface,
-    Object, P3, Plane, Source, Surface, View,
+    Attributes, Block, Brep, Curve, Geometry, Group, HatchLine, HatchPattern, Layer, Model,
+    NurbsCurve, NurbsSurface, Object, P3, Plane, Source, Surface, View,
 };
 use crate::read::class;
 
@@ -84,14 +84,18 @@ pub fn write(model: &Model) -> Vec<u8> {
             w.end();
         }
     });
-    for empty in [
-        tcode::FONT_TABLE,
-        tcode::DIMSTYLE_TABLE,
-        tcode::LIGHT_TABLE,
-        tcode::HATCHPATTERN_TABLE,
-    ] {
+    for empty in [tcode::FONT_TABLE, tcode::DIMSTYLE_TABLE, tcode::LIGHT_TABLE] {
         table(&mut w, empty, |_| {});
     }
+    table(&mut w, tcode::HATCHPATTERN_TABLE, |w| {
+        for (index, pattern) in model.hatch_patterns.iter().enumerate() {
+            w.begin(tcode::HATCHPATTERN_RECORD);
+            class_object(w, class::HATCH_PATTERN, |w| {
+                write_hatch_pattern(w, pattern, index);
+            });
+            w.end();
+        }
+    });
     table(&mut w, tcode::INSTANCE_DEFINITION_TABLE, |w| {
         for (index, block) in model.blocks.iter().enumerate() {
             w.begin(tcode::INSTANCE_DEFINITION_RECORD);
@@ -234,6 +238,8 @@ fn object_type(g: &Geometry) -> i64 {
         Geometry::Surface(_) => 8,
         Geometry::Brep(_) | Geometry::Extrusion(_) => 0x10,
         Geometry::Instance { .. } => 0x1000,
+        Geometry::Dot { .. } => 0x2000,
+        Geometry::Hatch(_) => 0x10000,
     }
 }
 
@@ -250,6 +256,39 @@ fn write_object(w: &mut Writer, object: &Object) {
         Geometry::Surface(s) => write_surface(w, s),
         Geometry::Brep(b) => class_object(w, class::BREP, |w| write_brep(w, b)),
         Geometry::Extrusion(_) => {}
+        Geometry::Hatch(h) => class_object(w, class::HATCH, |w| {
+            // openNURBS' ON_Hatch, version 1.2: plane, scale, turn, pattern, outlines as 2D
+            // curves in the plane, then the base point.
+            w.chunk_version(1, 2);
+            write_plane(w, &h.plane);
+            w.f64(h.scale);
+            w.f64(h.rotation);
+            w.i32(h.pattern);
+            w.count(h.loops.len());
+            for (outer, curve) in &h.loops {
+                w.chunk_version(1, 1);
+                w.i32(i32::from(!outer));
+                write_curve2(w, curve);
+            }
+            w.f64s(&h.base);
+        }),
+        Geometry::Dot {
+            at,
+            text,
+            secondary,
+            height,
+            font,
+        } => class_object(w, class::TEXT_DOT, |w| {
+            // openNURBS' ON_TextDot, version 1.1: the point, height, words, font, display bits
+            // (none), then the secondary words.
+            w.chunk_version(1, 1);
+            w.f64s(at);
+            w.i32(*height);
+            w.wstring(text);
+            w.wstring(font);
+            w.i32(0);
+            w.wstring(secondary);
+        }),
         Geometry::Instance { block, xform } => class_object(w, class::INSTANCE_REF, |w| {
             w.chunk_version(1, 0);
             w.uuid(*block);
@@ -711,6 +750,34 @@ fn write_brep(w: &mut Writer, b: &Brep) {
     w.i32(0); // solidity unknown: Rhino works it out
     w.begin_anonymous(1);
     w.bool(false); // no region topology
+    w.end();
+}
+
+/// A hatch pattern as Rhino 6 and later write it (`ON_HatchPattern::Write`): its id, index and
+/// name, fill type, description, then its lines, each in a chunk of its own.
+fn write_hatch_pattern(w: &mut Writer, pattern: &HatchPattern, index: usize) {
+    w.begin_anonymous(0);
+    w.begin_anonymous(0);
+    w.u32(0x01 | 0x04 | 0x08); // id, index and name follow
+    w.uuid(pattern.id);
+    w.count(index);
+    w.wstring(&pattern.name);
+    w.end();
+    w.u32(u32::from(!pattern.solid));
+    w.wstring(&pattern.description);
+    w.begin(tcode::ANONYMOUS_CHUNK);
+    let lines: &[HatchLine] = if pattern.solid { &[] } else { &pattern.lines };
+    w.count(lines.len());
+    for line in lines {
+        w.begin_anonymous(0);
+        w.f64(line.angle);
+        w.f64s(&line.base);
+        w.f64s(&line.offset);
+        w.count(line.dashes.len());
+        w.f64s(&line.dashes);
+        w.end();
+    }
+    w.end();
     w.end();
 }
 

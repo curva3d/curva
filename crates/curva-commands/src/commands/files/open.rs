@@ -34,6 +34,24 @@ impl Command for Open {
                     Err(error) => Step::Failed(Message::with("error.file", vec![error])),
                 }
             }
+            Some(Answer::Path(text))
+                if curva_dxf::Format::of(Path::new(text.trim().trim_matches('"'))).is_some() =>
+            {
+                let path = Path::new(text.trim().trim_matches('"'));
+                let Some(format) = curva_dxf::Format::of(path) else {
+                    return unexpected();
+                };
+                match crate::commands::import_export::open_cad(path, format) {
+                    Ok((opened, report)) => {
+                        *doc = opened;
+                        Step::Done(Some(Message::with(
+                            "done.open_3dm",
+                            vec![text.clone(), report.summary()],
+                        )))
+                    }
+                    Err(error) => Step::Failed(Message::with("error.file", vec![error])),
+                }
+            }
             Some(Answer::Path(text)) => match Document::open(Path::new(&text)) {
                 Ok(opened) => {
                     *doc = opened;

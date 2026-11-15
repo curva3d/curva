@@ -24,6 +24,8 @@ pub struct Model {
     pub groups: Vec<Group>,
     /// Block definitions.
     pub blocks: Vec<Block>,
+    /// Hatch patterns, in the file's order; hatches name them by their place in it.
+    pub hatch_patterns: Vec<HatchPattern>,
     /// Objects, those of block definitions included (their attributes say so).
     pub objects: Vec<Object>,
     /// Named views, in the file's order.
@@ -406,6 +408,21 @@ pub enum Geometry {
     Brep(Brep),
     /// An extrusion object.
     Extrusion(Extrusion),
+    /// A hatch.
+    Hatch(Hatch),
+    /// A text dot (`ON_TextDot`): a label at a point, the same size on screen.
+    Dot {
+        /// The point it labels.
+        at: P3,
+        /// What it shows.
+        text: String,
+        /// Words it holds without showing them.
+        secondary: String,
+        /// Its letters' height on screen, in points.
+        height: i32,
+        /// Its font's name; empty for the usual one.
+        font: String,
+    },
     /// A block instance: its definition's id and placement (row-major 4 × 4).
     Instance {
         /// The definition.
@@ -441,4 +458,49 @@ pub struct NamedCPlane {
     pub name: String,
     /// The plane.
     pub plane: Plane,
+}
+
+/// A hatch pattern (`ON_HatchPattern`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct HatchPattern {
+    /// Identifies it.
+    pub id: Uuid,
+    /// Its name.
+    pub name: String,
+    /// What it shows.
+    pub description: String,
+    /// Whether it fills solid (openNURBS' fill type 0) rather than with lines (1).
+    pub solid: bool,
+    /// Its line families.
+    pub lines: Vec<HatchLine>,
+}
+
+/// One family of a hatch pattern's lines (`ON_HatchLine`), at scale one in model units.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct HatchLine {
+    /// Their direction, radians from the hatch plane's X.
+    pub angle: f64,
+    /// A point the first line passes through.
+    pub base: [f64; 2],
+    /// From one line to the next: along the line, then across it.
+    pub offset: [f64; 2],
+    /// Dash lengths, a gap when negative; solid when empty.
+    pub dashes: Vec<f64>,
+}
+
+/// A hatch (`ON_Hatch`): outlines on a plane, filled with a pattern.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Hatch {
+    /// Its plane; the outlines are 2D curves in it.
+    pub plane: Plane,
+    /// What the pattern's sizes are multiplied by.
+    pub scale: f64,
+    /// How far the pattern is turned, radians.
+    pub rotation: f64,
+    /// The pattern, by its place in the hatch pattern table.
+    pub pattern: i32,
+    /// The outlines, each with whether it is an outer one (else a hole).
+    pub loops: Vec<(bool, Curve)>,
+    /// Where the pattern starts, in the plane.
+    pub base: [f64; 2],
 }

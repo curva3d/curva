@@ -3,8 +3,8 @@
 use crate::archive::{Reader, Result, Uuid, bad, tcode};
 use crate::model::{
     Attributes, Block, Brep, BrepEdge, BrepFace, BrepLoop, BrepTrim, BrepVertex, Curve, Extrusion,
-    Geometry, Group, Layer, Model, NamedCPlane, NurbsCurve, NurbsSurface, Object, P3, Plane,
-    Source, Surface, View,
+    Geometry, Group, Hatch, HatchLine, HatchPattern, Layer, Model, NamedCPlane, NurbsCurve,
+    NurbsSurface, Object, P3, Plane, Source, Surface, View,
 };
 
 /// Class ids of the objects Curva reads and writes (openNURBS `ON_OBJECT_IMPLEMENT`).
@@ -32,6 +32,9 @@ pub mod class {
     pub const POINT_CLOUD: Uuid = Uuid::parse("2488F347-F8FA-11d3-BFEC-0010830122F0");
     pub const SUBD: Uuid = Uuid::parse("F09BA4D9-455B-42C3-BA3B-E6CCACEF853B");
     pub const USER_STRING_LIST: Uuid = Uuid::parse("CE28DE29-F4C5-4faa-A50A-C3A6849B6329");
+    pub const TEXT_DOT: Uuid = Uuid::parse("74198302-CDF4-4f95-9609-6D684F22AB37");
+    pub const HATCH: Uuid = Uuid::parse("0559733B-5332-49d1-A936-0532AC76ADE5");
+    pub const HATCH_PATTERN: Uuid = Uuid::parse("064E7C91-35F6-4734-A446-79FF7CD659E1");
     /// The class an older id stands for, as openNURBS reads Rhino's older classes as today's.
     #[must_use]
     pub fn current(id: Uuid) -> Uuid {
@@ -98,6 +101,14 @@ pub fn read(data: &[u8]) -> Result<Model> {
                 }
                 Ok(())
             })?,
+            tcode::HATCHPATTERN_TABLE => {
+                records(&mut chunk.body, tcode::HATCHPATTERN_RECORD, |body| {
+                    if let Some(pattern) = hatch_pattern(body)? {
+                        model.hatch_patterns.push(pattern);
+                    }
+                    Ok(())
+                })?;
+            }
             tcode::INSTANCE_DEFINITION_TABLE => {
                 records(&mut chunk.body, tcode::INSTANCE_DEFINITION_RECORD, |body| {
                     if let Some(block) = block(body)? {
@@ -642,6 +653,27 @@ fn geometry_of(id: Uuid, r: &mut Reader<'_>) -> Result<std::result::Result<Geome
             }
             Geometry::Instance { block, xform }
         }
+        class::HATCH => Geometry::Hatch(hatch(r)?),
+        class::TEXT_DOT => {
+            let (_, minor) = r.chunk_version()?;
+            let at = point(r)?;
+            let height = r.i32()?;
+            let text = r.wstring()?;
+            let font = r.wstring()?;
+            let _display = r.i32()?;
+            let secondary = if minor >= 1 {
+                r.wstring()?
+            } else {
+                String::new()
+            };
+            Geometry::Dot {
+                at,
+                text,
+                secondary,
+                height,
+                font,
+            }
+        }
         class::MESH => return Ok(Err("mesh".to_owned())),
         class::POINT_CLOUD => return Ok(Err("point cloud".to_owned())),
         class::SUBD => return Ok(Err("SubD".to_owned())),
@@ -1033,5 +1065,137 @@ fn extrusion(r: &mut Reader<'_>) -> Result<Extrusion> {
         up,
         profiles,
         caps,
+    })
+}
+
+/// Whether a hatch line or pattern is written the old (Rhino 5) way: always before version 60,
+/// never after, and in version 60 files only when the next chunk is not an anonymous one
+/// (openNURBS' `Internal_UseHatchReadV5`).
+fn old_hatch_io(r: &Reader<'_>) -> bool {
+    match r.version {
+        v if v < 60 => true,
+        60 => r.peek_tcode() != Some(tcode::ANONYMOUS_CHUNK),
+        _ => false,
+    }
+}
+
+fn doubles(r: &mut Reader<'_>) -> Result<Vec<f64>> {
+    let n = r.count(8)?;
+    (0..n).map(|_| r.f64()).collect()
+}
+
+/// A hatch line (`ON_HatchLine::Read`).
+fn hatch_line(r: &mut Reader<'_>) -> Result<HatchLine> {
+    let read = |r: &mut Reader<'_>| -> Result<HatchLine> {
+        let angle = r.f64()?;
+        let base = r.f64s::<2>()?;
+        let offset = r.f64s::<2>()?;
+        let dashes = doubles(r)?;
+        Ok(HatchLine {
+            angle,
+            base,
+            offset,
+            dashes,
+        })
+    };
+    if old_hatch_io(r) {
+        r.chunk_version()?;
+        read(r)
+    } else {
+        let (_, mut body) = r.anonymous()?;
+        read(&mut body)
+    }
+}
+
+/// A hatch pattern table record (`ON_HatchPattern::Read`, or `ReadV5` in older files).
+fn hatch_pattern(record: &mut Reader<'_>) -> Result<Option<HatchPattern>> {
+    let (id, mut r) = class_object(record)?;
+    if id != class::HATCH_PATTERN {
+        return Ok(None);
+    }
+    let lines_of = |r: &mut Reader<'_>, count: usize| -> Result<Vec<HatchLine>> {
+        (0..count).map(|_| hatch_line(r)).collect()
+    };
+    if old_hatch_io(&r) {
+        let (_, minor) = r.chunk_version()?;
+        let _index = r.i32()?;
+        let kind = r.i32()?;
+        let name = r.wstring()?;
+        let description = r.wstring()?;
+        let lines = if kind == 1 {
+            let count = usize::try_from(r.i32()?).unwrap_or(0);
+            lines_of(&mut r, count)?
+        } else {
+            Vec::new()
+        };
+        let id = if minor >= 2 { r.uuid()? } else { Uuid::NIL };
+        return Ok(Some(HatchPattern {
+            id,
+            name,
+            description,
+            solid: kind != 1,
+            lines,
+        }));
+    }
+    let (_, mut body) = r.anonymous()?;
+    let (id, name) = model_component(&mut body)?;
+    let kind = body.u32()?;
+    let description = body.wstring()?;
+    let mut lines_chunk = body.expect(tcode::ANONYMOUS_CHUNK)?;
+    let count = usize::try_from(lines_chunk.body.u32()?).unwrap_or(0);
+    let lines = lines_of(&mut lines_chunk.body, count)?;
+    Ok(Some(HatchPattern {
+        id,
+        name,
+        description,
+        solid: kind != 1,
+        lines,
+    }))
+}
+
+/// openNURBS' `ReadModelComponentAttributes` for components written since Rhino 6: a bit set
+/// saying which of id, parent id, index, name and status follow. Returns the id and name.
+fn model_component(r: &mut Reader<'_>) -> Result<(Uuid, String)> {
+    let (_, mut body) = r.anonymous()?;
+    let bits = body.u32()?;
+    let mut id = Uuid::NIL;
+    let mut name = String::new();
+    if bits & 0x01 != 0 {
+        id = body.uuid()?;
+    }
+    if bits & 0x02 != 0 {
+        body.uuid()?;
+    }
+    if bits & 0x04 != 0 {
+        body.i32()?;
+    }
+    if bits & 0x08 != 0 {
+        name = body.wstring()?;
+    }
+    Ok((id, name))
+}
+
+/// A hatch (`ON_Hatch::Read`): its plane, scale, turn, pattern, outlines and base point.
+fn hatch(r: &mut Reader<'_>) -> Result<Hatch> {
+    let (_, minor) = r.chunk_version()?;
+    let plane = plane(r)?;
+    let scale = r.f64()?;
+    let rotation = r.f64()?;
+    let pattern = r.i32()?;
+    let count = usize::try_from(r.i32()?).map_err(|_| bad("a bad loop count"))?;
+    let mut loops = Vec::with_capacity(count.min(1024));
+    for _ in 0..count {
+        r.chunk_version()?;
+        let outer = r.i32()? == 0;
+        loops.push((outer, curve(r)?));
+    }
+    let base = if minor >= 2 { r.f64s::<2>()? } else { [0.0; 2] };
+    Ok(Hatch {
+        plane,
+        scale,
+        rotation,
+        pattern,
+        loops,
+        base,
     })
 }
