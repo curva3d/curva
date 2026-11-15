@@ -406,6 +406,19 @@ pub enum Geometry {
     Brep(Brep),
     /// An extrusion object.
     Extrusion(Extrusion),
+    /// A text dot (`ON_TextDot`): a label at a point, the same size on screen.
+    Dot {
+        /// The point it labels.
+        at: P3,
+        /// What it shows.
+        text: String,
+        /// Words it holds without showing them.
+        secondary: String,
+        /// Its letters' height on screen, in points.
+        height: i32,
+        /// Its font's name; empty for the usual one.
+        font: String,
+    },
     /// A block instance: its definition's id and placement (row-major 4 × 4).
     Instance {
         /// The definition.

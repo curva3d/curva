@@ -25,7 +25,8 @@ version, which Rhino 7 and 8 open.
 | Blocks: definitions, instances, linked definitions | yes | yes |
 | Named views and construction planes | yes | yes |
 | Meshes, SubD, point clouds | listed and skipped, with a count in the command bar | no |
-| Annotations, hatches, layouts, materials, render settings | skipped, counted (Milestone 3 and later) | no |
+| Text dots (`ON_TextDot`): point, words, secondary words, height, font | yes | yes |
+| Annotations, hatches, layouts, materials, render settings | skipped, counted (Milestone 3, coming one kind at a time) | no |
 
 ## 3. Commands and menus
 
