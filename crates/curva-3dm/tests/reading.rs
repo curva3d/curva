@@ -329,3 +329,37 @@ fn rhinos_linetypes_come_in_on_layers_and_objects() {
     assert_eq!(object("wall dash by object"), wall);
     assert!(report.skipped.is_empty(), "{}", report.summary());
 }
+
+#[test]
+fn rhinos_annotation_style_comes_in_with_its_looks() {
+    // Made in Rhino 8, in millimetres: a style "Sections" in Times New Roman, text 5, arrows 3,
+    // extension line offset 2 and extension 2.5, text gap 1.2, three decimals; a 4 m aligned
+    // dimension and a note in it.
+    let (doc, report) = open("v8_annotation_style.3dm");
+    let state = doc.state();
+    let style = state
+        .annotation_styles
+        .iter()
+        .find(|s| s.name == "Sections")
+        .unwrap_or_else(|| panic!("the style: {}", report.summary()));
+    assert_eq!(style.font.as_deref(), Some("Times New Roman"));
+    assert!((style.text_height - 5.0).abs() < 1e-9);
+    assert_eq!(style.arrow_size, Some(3.0));
+    assert_eq!(style.extension_offset, Some(2.0));
+    assert_eq!(style.extension_extension, Some(2.5));
+    assert_eq!(style.text_gap, Some(1.2));
+    assert_eq!(style.linear_resolution, Some(3));
+    let annotation: Vec<u64> = state
+        .objects
+        .iter()
+        .filter_map(|o| match &o.shape {
+            Shape::Annotation(a) => Some(a.style()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        annotation,
+        [style.id, style.id],
+        "the dimension and the note"
+    );
+}
