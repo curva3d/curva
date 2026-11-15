@@ -7,15 +7,19 @@
 //! normal through AutoCAD's arbitrary axis algorithm (AutoCAD DXF Reference, "Arbitrary Axis
 //! Algorithm"), so they are turned into and out of it here.
 
+mod annotation;
+
 use acadrust::entities::{Arc, Circle, EntityType, Line, LwPolyline, Point, Polyline3D, Spline};
 use acadrust::types::{Color, DxfVersion, LineWeight, Vector2, Vector3};
 use acadrust::{CadDocument, DwgReader, DwgWriter, DxfReader, DxfWriter, Layer};
+use curva_document::annotation::Annotation;
+use curva_document::fields::{FieldContext, resolve};
 use curva_document::{Document, PrintWidth, Shape, Unit};
 use curva_kernel::Curve;
 use std::collections::BTreeMap;
 use std::io::Cursor;
 
-type P = curva_kernel::Point;
+pub(crate) type P = curva_kernel::Point;
 
 /// Which of the two files.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -79,19 +83,19 @@ impl Report {
     }
 }
 
-fn v3(p: P) -> Vector3 {
+pub(crate) fn v3(p: P) -> Vector3 {
     Vector3::new(p[0], p[1], p[2])
 }
 
-fn p3(v: &Vector3) -> P {
+pub(crate) fn p3(v: &Vector3) -> P {
     [v.x, v.y, v.z]
 }
 
-fn dot(a: P, b: P) -> f64 {
+pub(crate) fn dot(a: P, b: P) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
-fn cross(a: P, b: P) -> P {
+pub(crate) fn cross(a: P, b: P) -> P {
     [
         a[1] * b[2] - a[2] * b[1],
         a[2] * b[0] - a[0] * b[2],
@@ -99,14 +103,14 @@ fn cross(a: P, b: P) -> P {
     ]
 }
 
-fn unit(v: P) -> Option<P> {
+pub(crate) fn unit(v: P) -> Option<P> {
     let length = dot(v, v).sqrt();
     (length > 1e-12).then(|| v.map(|c| c / length))
 }
 
 /// The X and Y axes of the object coordinate system for a normal, by the arbitrary axis
 /// algorithm: X is the world Y (or Z) axis crossed with the normal.
-fn object_axes(normal: P) -> (P, P) {
+pub(crate) fn object_axes(normal: P) -> (P, P) {
     let limit = 1.0 / 64.0;
     let x = if normal[0].abs() < limit && normal[1].abs() < limit {
         cross([0.0, 1.0, 0.0], normal)
@@ -118,13 +122,13 @@ fn object_axes(normal: P) -> (P, P) {
 }
 
 /// A world point in a normal's object coordinates.
-fn to_object(p: P, normal: P) -> P {
+pub(crate) fn to_object(p: P, normal: P) -> P {
     let (x, y) = object_axes(normal);
     [dot(p, x), dot(p, y), dot(p, normal)]
 }
 
 /// A point in a normal's object coordinates back in the world.
-fn from_object(p: P, normal: P) -> P {
+pub(crate) fn from_object(p: P, normal: P) -> P {
     let (x, y) = object_axes(normal);
     std::array::from_fn(|i| x[i] * p[0] + y[i] * p[1] + normal[i] * p[2])
 }
@@ -282,22 +286,33 @@ pub fn export(
     cad.header.insertion_units = unit_code(doc.state().unit);
     let mut report = Report::default();
     let mut layers: BTreeMap<u64, String> = BTreeMap::new();
+    let fields = FieldContext::now(doc.path());
     for object in &doc.state().objects {
         if only.is_some_and(|ids| !ids.contains(&object.id))
             || (only.is_none() && object.space.is_some())
         {
             continue;
         }
-        let Shape::Curve(curve) = &object.shape else {
-            let kind = match &object.shape {
-                Shape::Body(_) => "surfaces and solids",
-                Shape::Instance(_) => "block instances",
-                Shape::Annotation(_) => "annotations",
-                Shape::Curve(_) => "curves",
-            };
+        let (made, kind) = match &object.shape {
+            Shape::Curve(curve) => (entities_for(curve), "curves"),
+            Shape::Annotation(Annotation::Text(text)) => {
+                let words = resolve(&text.content, doc.state(), object.space, &fields);
+                (annotation::text_out(text, &words), "texts")
+            }
+            Shape::Annotation(Annotation::Hatch(hatch)) => (
+                annotation::hatch_out(hatch, doc.state())
+                    .into_iter()
+                    .collect(),
+                "hatches",
+            ),
+            Shape::Annotation(_) => (Vec::new(), "dimensions, leaders and other annotations"),
+            Shape::Body(_) => (Vec::new(), "surfaces and solids"),
+            Shape::Instance(_) => (Vec::new(), "block instances"),
+        };
+        if made.is_empty() {
             Report::count(&mut report.skipped, kind);
             continue;
-        };
+        }
         let layer = layers.entry(object.layer).or_insert_with(|| {
             let name = dxf_layer_name(doc, object.layer);
             if cad.layers.get(&name).is_none() {
@@ -319,11 +334,6 @@ pub fn export(
             }
             name
         });
-        let made = entities_for(curve);
-        if made.is_empty() {
-            Report::count(&mut report.skipped, "curves");
-            continue;
-        }
         for mut entity in made {
             let common = entity.common_mut();
             common.layer.clone_from(layer);
@@ -334,7 +344,7 @@ pub fn export(
             }
             cad.add_entity(entity).map_err(|e| e.to_string())?;
         }
-        Report::count(&mut report.brought, "curves");
+        Report::count(&mut report.brought, kind);
     }
     let bytes = match format {
         Format::Dxf => DxfWriter::new(&cad).write_to_vec(),
@@ -445,7 +455,12 @@ fn curve_of(entity: &EntityType) -> Result<Vec<Curve>, &'static str> {
 
 /// A lightweight polyline with arc segments (a bulge is the tangent of a quarter of the arc's
 /// angle, negative turning clockwise) as a compound of lines and arcs.
-fn bulged(points: &[P], bulges: &[f64], closed: bool, normal: P) -> Result<Curve, &'static str> {
+pub(crate) fn bulged(
+    points: &[P],
+    bulges: &[f64],
+    closed: bool,
+    normal: P,
+) -> Result<Curve, &'static str> {
     let count = points.len();
     let spans = if closed {
         count
@@ -489,7 +504,7 @@ fn bulged(points: &[P], bulges: &[f64], closed: bool, normal: P) -> Result<Curve
     Ok(Curve::Compound { segments })
 }
 
-/// A DXF or DWG drawing's model space added to `doc`: its curves and points on layers of the
+/// A DXF or DWG drawing's model space added to `doc`: its curves, points, text and hatches on layers of the
 /// same names (made where missing, with their colours; `$` in a name makes sublayers, as Rhino
 /// writes them), and the model's unit taken from the file when `doc` is empty.
 pub fn import(cad: &CadDocument, doc: &mut Document) -> Report {
@@ -501,13 +516,39 @@ pub fn import(cad: &CadDocument, doc: &mut Document) -> Report {
     }
     let mut layers: BTreeMap<String, u64> = BTreeMap::new();
     for entity in cad.entities() {
-        let curves = match curve_of(entity) {
-            Ok(curves) => curves,
-            Err(kind) => {
-                Report::count(&mut report.skipped, kind);
-                continue;
-            }
+        let (shapes, kind): (Vec<Shape>, &str) = match entity {
+            EntityType::Text(text) => (
+                annotation::text_in(text)
+                    .map(|t| Shape::Annotation(Annotation::Text(t)))
+                    .into_iter()
+                    .collect(),
+                "texts",
+            ),
+            EntityType::MText(text) => (
+                annotation::mtext_in(text)
+                    .map(|t| Shape::Annotation(Annotation::Text(t)))
+                    .into_iter()
+                    .collect(),
+                "texts",
+            ),
+            EntityType::Hatch(hatch) => match annotation::hatch_in(hatch, doc.state()) {
+                Some((made, pattern)) => {
+                    if let Some(pattern) = pattern {
+                        doc.add_hatch_pattern(pattern);
+                    }
+                    (vec![Shape::Annotation(Annotation::Hatch(made))], "hatches")
+                }
+                None => (Vec::new(), "hatches"),
+            },
+            other => match curve_of(other) {
+                Ok(curves) => (curves.into_iter().map(Shape::Curve).collect(), "curves"),
+                Err(kind) => (Vec::new(), kind),
+            },
         };
+        if shapes.is_empty() {
+            Report::count(&mut report.skipped, kind);
+            continue;
+        }
         let name = entity.common().layer.clone();
         let layer = *layers.entry(name.clone()).or_insert_with(|| {
             let path = name.replace('$', "::");
@@ -523,9 +564,9 @@ pub fn import(cad: &CadDocument, doc: &mut Document) -> Report {
             }
             id
         });
-        for curve in curves {
-            doc.add_shape_on(Shape::Curve(curve), Some(layer));
-            Report::count(&mut report.brought, "curves");
+        for shape in shapes {
+            doc.add_shape_on(shape, Some(layer));
+            Report::count(&mut report.brought, kind);
         }
     }
     report

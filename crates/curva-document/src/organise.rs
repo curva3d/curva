@@ -137,6 +137,20 @@ impl Document {
         true
     }
 
+    /// Adds a hatch pattern to the document's own, replacing one of the same name (as a `.pat`
+    /// file or a drawing brings them in).
+    pub fn add_hatch_pattern(&mut self, pattern: crate::hatch::Pattern) {
+        match self
+            .state
+            .hatch_patterns
+            .iter_mut()
+            .find(|p| p.name.eq_ignore_ascii_case(&pattern.name))
+        {
+            Some(held) => *held = pattern,
+            None => self.state.hatch_patterns.push(pattern),
+        }
+    }
+
     /// Copies layer, print width, linetype and name from one object to others.
     pub fn match_properties(&mut self, from: u64, to: &[u64]) -> usize {
         let Some(source) = self.state.objects.iter().find(|o| o.id == from).cloned() else {
