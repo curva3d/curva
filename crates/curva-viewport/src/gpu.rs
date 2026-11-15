@@ -1070,13 +1070,33 @@ pub fn save_picture(
     path: &std::path::Path,
 ) -> Result<(), String> {
     let [width, height] = size;
+    let pixels = draw_picture(picture, size, true)?;
+    let file = std::fs::File::create(path).map_err(|error| error.to_string())?;
+    let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), width, height);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut writer = encoder.write_header().map_err(|error| error.to_string())?;
+    writer
+        .write_image_data(&pixels)
+        .map_err(|error| error.to_string())
+}
+
+/// Draws a picture without a window and returns its pixels, four bytes each, row by row. The
+/// device is asked for as the window asks ([`crate::device_descriptor`]); with `extras` false,
+/// without any optional extra, as on a card that has none.
+pub(crate) fn draw_picture(
+    picture: Picture,
+    size: [u32; 2],
+    extras: bool,
+) -> Result<Vec<u8>, String> {
+    let [width, height] = size;
     let format = wgpu::TextureFormat::Rgba8UnormSrgb;
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let adapter =
         pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
             .map_err(|error| error.to_string())?;
     let (device, queue) =
-        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+        pollster::block_on(adapter.request_device(&crate::device_descriptor(&adapter, extras)))
             .map_err(|error| error.to_string())?;
     let extent = wgpu::Extent3d {
         width,
@@ -1197,19 +1217,12 @@ pub fn save_picture(
     for line in mapped.chunks(row as usize) {
         pixels.extend_from_slice(&line[..(width * 4) as usize]);
     }
-    let file = std::fs::File::create(path).map_err(|error| error.to_string())?;
-    let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), width, height);
-    encoder.set_color(png::ColorType::Rgba);
-    encoder.set_depth(png::BitDepth::Eight);
-    let mut writer = encoder.write_header().map_err(|error| error.to_string())?;
-    writer
-        .write_image_data(&pixels)
-        .map_err(|error| error.to_string())
+    Ok(pixels)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Picture, save_picture};
+    use super::{Picture, draw_picture, save_picture};
     use crate::{MeshVertex, Vertex};
 
     const SIZE: [u32; 2] = [64, 64];
@@ -1335,5 +1348,52 @@ mod tests {
         assert_eq!(default, 2);
         assert!((3..=5).contains(&one), "1 mm lit {one} rows");
         assert!((7..=9).contains(&two), "2 mm lit {two} rows");
+    }
+
+    /// A grey face crossed by lines of three widths, drawn straight in clip space.
+    fn mixed_picture() -> Picture {
+        let corner = |x: f32, y: f32| MeshVertex {
+            position: [x, y, 0.5],
+            normal: [0.0, 0.0, 1.0],
+            colour: [0.4, 0.4, 0.4],
+        };
+        let line = |y: f32, width: f32| {
+            [-0.8, 0.8].map(|x| Vertex {
+                position: [x, y, 0.3],
+                colour: [0.9, 0.5, 0.2],
+                width,
+            })
+        };
+        Picture {
+            lines: [line(-0.4, -1.0), line(0.0, -3.0), line(0.4, 0.5)]
+                .into_iter()
+                .flatten()
+                .collect(),
+            faces: vec![corner(-0.9, -0.9), corner(0.9, -0.9), corner(0.0, 0.9)],
+            matrix: [
+                [1.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 0.0],
+                [0.0, 0.0, 0.0, 1.0],
+            ],
+            light: [0.0, 0.0, 1.0],
+            ghosted: false,
+        }
+    }
+
+    /// Spec `display-pipeline.md` §5: optional extras never change the picture, so a card
+    /// without them shows the same.
+    #[test]
+    fn every_optional_extra_off_draws_the_same_picture() {
+        let (Ok(bare), Ok(full)) = (
+            draw_picture(mixed_picture(), SIZE, false),
+            draw_picture(mixed_picture(), SIZE, true),
+        ) else {
+            eprintln!("no graphics adapter to draw with, so not checked");
+            return;
+        };
+        // Something was drawn: not every pixel is the background.
+        assert!(bare.chunks(4).any(|pixel| pixel != &bare[0..4]));
+        assert_eq!(bare, full);
     }
 }
