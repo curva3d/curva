@@ -58,20 +58,29 @@
   class, with fallbacks for weaker machines. Speed targets are set on the RTX 3060 itself
   (`docs/specs/display-pipeline.md` §5 and §6); 2020 Intel integrated graphics are the fallback
   case.
+- **3D direction** (owner, 15 November 2026): re_renderer for lines, points, outlines and picking
+  (its latest version uses wgpu 30 and ecolor 0.37, as Curva does); Bevy's WGSL shaders (MIT/Apache)
+  for ambient occlusion, edge smoothing, tonemapping and materials, copied and adapted with credit;
+  our own code for the CAD basics (exact arcs, precision far from the origin, instancing, off-screen
+  culling, the memory limit, the styles); Blender Workbench only as the picture to match for the
+  cavity effect, with no Blender code except in GPL crates (decision 0025, #190).
+- **2D direction** (decision 0027): Vello draws 2D views and sheets, vello_cpu the fallback. Its
+  production follow-up is not started.
 - Order of work:
-  1. **Finish what is open: done.** #189 merged (outlines of curved shapes in shaded views; two DirectX 12
-     shader fixes, checked locally with DirectX 12's older compiler).
-  2. **#185, Vello for 2D views and sheets: done** (decision 0027): full GPU Vello, with vello_cpu
-     as the fallback; spike on branch `185-vello-spike`, not merged. Found #193 (wrong sections of
-     moved solids). Building on it waits for the re_renderer comparison and a plan for how the
-     styles spec changes (point 5). **Next: #186, re_renderer for 3D lines** (spike).
-  3. **While waiting: #180,** splitting the viewport's large files, with no behaviour change and
+  1. **Finish what is open:** #189 merged (outlines in shaded views); this documentation pull
+     request (decisions 0026 and 0027).
+  2. **#186, re_renderer lines** (spike): report to the owner with pictures, numbers and a
+     recommendation, then wait for the decision.
+  3. **#197, the shaded look from Bevy's shaders, jump-flood outlines and our own cavity**
+     (spike): the same report, then wait.
+  4. **While waiting: #180,** splitting the viewport's large files, with no behaviour change and
      speed checked before and after.
-  4. **Then:** step 11 (instancing, #153), 4c (an edit sends only the changed object), step 12
-     (off-screen culling, using the index in `crates/curva-viewport/src/index.rs`), step 13
-     (memory limit).
-  5. If an evaluation recommends a library: propose, as choices with a recommendation, how the
-     remaining steps and the styles spec change, before writing code.
+  5. **Then, adjusted to the decisions on #186 and #197:** step 11 (instancing, #153), 4c (an edit
+     sends only the changed object), step 12 (off-screen culling, using
+     `crates/curva-viewport/src/index.rs`), step 13 (memory limit).
+  6. If either spike recommends adopting something: propose, as choices with a recommendation, how
+     the remaining steps and the 3D part of `docs/specs/views-and-styles.md` change, before writing
+     production code.
 - **Shelved** (decision 0024): steps 14 (occlusion culling) and 15 (clusters, mesh shaders), back
   only if a measured real model is still too slow after steps 11 to 13. The styles prototype's
   third look (Textured) and fine-tuning of the looks wait until the drawing is correct.
