@@ -1,7 +1,9 @@
-// Fills in the latest release from GitHub: the version number and a direct link per system.
+// Fills in the newest release from GitHub: the version number and a direct link per system.
+// Curva's releases are pre-releases for now, which GitHub's "latest" ignores, so read the list
+// and take the newest one that isn't a draft, as the app's updater does.
 // Without JavaScript, or if GitHub doesn't answer, every link still goes to the Releases page.
 (function () {
-  var API = "https://api.github.com/repos/curva3d/curva/releases/latest";
+  var API = "https://api.github.com/repos/curva3d/curva/releases?per_page=10";
   var match = {
     win: function (n) { return /\.exe$/i.test(n); },
     linux: function (n) { return /\.appimage$/i.test(n); },
@@ -16,7 +18,9 @@
   }
   fetch(API, { headers: { Accept: "application/vnd.github+json" } })
     .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-    .then(function (rel) {
+    .then(function (list) {
+      var rel = (list || []).filter(function (r) { return !r.draft; })[0];
+      if (!rel) return;
       var version = (rel.tag_name || "").replace(/^v/, "");
       document.querySelectorAll("[data-version]").forEach(function (el) { if (version) el.textContent = version; });
       var assets = rel.assets || [];
