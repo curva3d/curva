@@ -27,10 +27,15 @@ Properties yet; built-in title blocks are one design per standard, not one per s
   `about.toml` as decision 0021 approved). Export, ExportSelected, Open and Import take `.dxf` and `.dwg`:
   curves, points and layers (colour, print width, on, locked, sublayers as `Parent$Child`), the unit.
   Text, dimensions, hatches, blocks, solids and layouts were left out and reported.
-- In review: DXF and DWG text (TEXT out, TEXT and MTEXT in, fields worked out), hatches (outlines and
+- Merged (#145): DXF and DWG text (TEXT out, TEXT and MTEXT in, fields worked out), hatches (outlines and
   pattern lines; unknown patterns come in with the drawing) and blocks (definitions, nested, and INSERTs).
 
-**Next:** DXF dimensions, leaders and layouts; then the `.3dm` round trip of drawing objects.
+**Milestone 3, `.3dm` round trip of drawing objects** (`drawing-output.md` §5):
+- Merged: dots (#146), hatches with the hatch pattern table (#147, checked by opening Curva's file in Rhino 8).
+- In review: Rhino's notes read (words, height, alignment from annotation styles).
+
+**Next:** writing notes (needs annotation styles), then dimensions and leaders, then layouts and details; DXF
+dimensions and layouts after.
 
 ## Current state — 8 November 2026
 
