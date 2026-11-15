@@ -64,6 +64,26 @@ is in.
 - No interface text hard-coded in source: all wording goes in translation files.
 - No secrets in the repository. Tests never use the network.
 
+## Keeping the code tidy (owner's rule, 15 November 2026)
+
+The code grows fast, so keep it easy to find your way around. Leave each file you touch at
+least as tidy as you found it.
+
+- **Size limits.** A source file stays under about 800 lines, not counting its tests. A function
+  stays under about 80 lines. If a change would push a file or function past that, split it first,
+  in a separate pull request or a separate commit before your change. Long tables of plain data are
+  the only exception.
+- **Fit in, don't bolt on.** Put new code in the module where it belongs. Never make a numbered
+  copy such as `making2`. If nothing fits, make a new module whose name says what it does.
+- **Same logic three times means a shared helper.** For commands, the helper goes in the command
+  framework, so every command gets it.
+- **Don't crash on outside input.** Code that reads files or user input never uses `unwrap` or
+  `expect` on what it read. It returns an error the user can see. Outside tests, use them only
+  where failure is impossible, with a comment saying why.
+- **Tidy-up pull requests change no behaviour.** They move and split code only. Tests stay as
+  they are: they may move with their code, but are never changed to pass. Issues for this work are
+  labelled `tidy-up`. A pull request that only moves code may be larger than usual; say so in it.
+
 ## Tests (architecture section 15)
 
 - **Nothing merges unless CI passes** on Linux, Windows and macOS.
