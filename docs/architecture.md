@@ -316,7 +316,7 @@ An **open-core model**: Curva itself stays free and open source, and paid online
 - **Never paywall basics.** Everything needed to model and draw a real project stays free. Pro adds breadth and convenience.
 - **The object format stays open** (`.curvaobj`), so the community and manufacturers can publish objects too. A marketplace for third-party objects is a possible later step.
 - **Files never depend on the subscription.** A `.curva` file carries the definitions of the objects it uses, so it opens for anyone, with or without Pro.
-- **Code and content are licensed separately.** The code is MIT OR Apache-2.0. Free library objects use an open content licence (for example CC-BY). Pro library content is licensed to subscribers.
+- **Code and content are licensed separately.** The application is GPL-3.0-or-later with a plugin exception; the reusable libraries are MIT OR Apache-2.0 (decision 0025). Free library objects use an open content licence (for example CC-BY). Pro library content is licensed to subscribers.
 - **Before going commercial, clear the name** (section 10c).
 
 ## 10c. Name
@@ -401,7 +401,7 @@ SolidCraft and solidcore are about a month old (started October 2026). Re-check 
 3. **Interface toolkit:** egui vs Slint vs iced. It must handle a different layout per specialization.
 4. **IFC library:** openbim-ifc, or our own. Check its licence and IFC 4.3 coverage.
 5. **Mesh boolean library:** answered by decision 0008 (csgrs first). Re-check with manifold-rust when mesh work starts (section 10d).
-6. **Licence:** suggest MIT OR Apache-2.0, to match the Rust ecosystem and allow reusing SolidCraft and Serpentine3D code.
+6. **Licence:** answered by decision 0025: the application is GPL-3.0-or-later with a plugin exception, the reusable libraries MIT OR Apache-2.0.
 7. **Rhino licensing for automated reference generation:** check Rhino's licence terms for scripted, unattended use on the Windows machine (section 15).
 8. **A Mac for hands-on checks:** CI covers macOS builds and tests, but a real Mac (for example a Mac mini) is eventually needed for feel and display checks. An Apple Developer account is needed to sign and notarise the macOS app.
 

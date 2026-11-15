@@ -9,6 +9,11 @@ to then (display modes, glass, line widths, speed measurements).*
 
 ## Features stream — 15 November 2026
 
+**Licence (decision 0025, owner's decision in chat):** the application crates (`curva-app`,
+`curva-commands`, `curva-viewport`, `curva-mcp`) are now GPL-3.0-or-later with a plugin exception
+(`LICENSE`, `PLUGIN-EXCEPTION.md`); the libraries stay MIT OR Apache-2.0. A permissive crate must never
+depend on a GPL one. Release packages now ship `LICENSE` and `PLUGIN-EXCEPTION.md`.
+
 **Milestone 3, point 5 (title blocks, scale bars, sheet index, revisions):**
 - Merged: document and layout user text and notes (#128): `SetDocumentUserText`, `GetDocumentUserText`,
   `SetLayoutUserText`, `Notes`, and the `DocumentText`, `LayoutUserText` and `Notes` text fields.

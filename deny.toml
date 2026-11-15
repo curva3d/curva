@@ -30,6 +30,24 @@ allow = ["OFL-1.1", "Ubuntu-font-1.0"]
 crate = "acadrust"
 allow = ["MPL-2.0"]
 
+# Owner decided 15 November 2026 (decision 0025): Curva's own application crates are
+# GPL-3.0-or-later. Only these four; outside libraries stay on the list above.
+[[licenses.exceptions]]
+crate = "curva-app"
+allow = ["GPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+crate = "curva-commands"
+allow = ["GPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+crate = "curva-viewport"
+allow = ["GPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+crate = "curva-mcp"
+allow = ["GPL-3.0-or-later"]
+
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"

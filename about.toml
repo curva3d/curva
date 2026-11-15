@@ -18,3 +18,16 @@ ignore-dev-dependencies = true
 # MPL-2.0 for acadrust alone (decision 0021, point 5), as in deny.toml.
 [acadrust]
 accepted = ["MPL-2.0"]
+
+# Curva's own application crates are GPL-3.0-or-later (decision 0025), as in deny.toml.
+[curva-app]
+accepted = ["GPL-3.0-or-later"]
+
+[curva-commands]
+accepted = ["GPL-3.0-or-later"]
+
+[curva-viewport]
+accepted = ["GPL-3.0-or-later"]
+
+[curva-mcp]
+accepted = ["GPL-3.0-or-later"]

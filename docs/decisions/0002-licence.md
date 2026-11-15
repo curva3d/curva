@@ -1,6 +1,8 @@
 # 0002 — Licence: MIT OR Apache-2.0
 
-**Status:** Accepted · 8 November 2026 (architecture open decision 6)
+**Status:** Replaced by decision 0025 (15 November 2026): the application is now GPL-3.0-or-later
+with a plugin exception; the libraries stay MIT OR Apache-2.0. Originally accepted 8 November 2026
+(architecture open decision 6).
 
 **Decision:** Curva's code is licensed MIT OR Apache-2.0, at the user's choice.
 
