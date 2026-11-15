@@ -41,7 +41,13 @@ Properties yet; built-in title blocks are one design per standard, not one per s
 - Merged (#158): scale bars and tables to `.3dm` as their plain drawing; fields only Curva can work out written as
   they read.
 
-**Next:** layout user text and document text in `.3dm` and DXF; the Notes panel; Properties for scale bars and
+**Owner's decision (0023, 15 November 2026):** finish all of Milestone 3 before 0.4.3, and close every
+interoperability gap for `.3dm`, DXF and DWG (`drawing-output.md` §7). Technical and Hidden views are asked of the
+display stream (#164).
+
+**Next (features):** the interoperability gaps; ordinate, arc length and curve length dimensions and dimensions
+that follow their geometry; `.pat` hatch patterns, gradients, base point; printing the model or a view and to PNG;
+Make2D four-view drawings, clipping cuts, annotations and source layers. Earlier list: Properties for scale bars and
 tables. Known: Rhino's own DXF export writes a detail's view height as paper height ÷ scale, against AutoCAD's
 reference; Curva follows the reference, so a Rhino DXF's detail scale reads inverted.
 

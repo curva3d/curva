@@ -77,3 +77,37 @@ only, SVG with `usvg`, DXF and DWG with `acadrust`) and compared; a printed line
 width; fonts embedded; a DXF and a DWG from Rhino and from AutoCAD imported. In the app: print
 a layout with a shaded and a Technical detail to PDF and check it at 100% against a ruler; open a
 Curva drawing's `.3dm` in Rhino (`docs/releasing.md`).
+
+## 7. Interoperability gaps (decision 0023)
+
+The owner requires `.3dm`, DXF and DWG to interoperate both ways: the same drawing on each side.
+What does not yet, as of 15 November 2026, to close before 0.4.3:
+
+**`.3dm` (Rhino)**
+- Document user text, layout user text and the model's notes are not written or read; fields that
+  read them go out as their values.
+- Annotation styles carry only their name, text height and alignment: fonts, arrowheads and their
+  sizes, text gaps, extension lines, units and decimals do not cross; a Rhino note's own overrides are
+  read but not written back; dimensions read take Curva's current style for their looks.
+- Text formatting (bold, italic, fonts per run, rich text) comes in as plain words; text masks and
+  frames are not carried.
+- Rhino 5 annotation (its older text and dimension objects) is not read.
+- Details: display mode, per-detail layer visibility and a perspective's lens are not carried.
+- Clipping planes and section styles, and layers' linetypes (the linetype table), are not written or
+  read.
+- Hatch gradients are not carried.
+- Scale bars and tables go out as their drawing (Rhino has no such objects), which is as far as Rhino
+  can take them.
+
+**DXF and DWG (AutoCAD)**
+- Linetypes are not written; colours by object are not carried.
+- Text styles and dimension styles are not written (everything uses `Standard`); MTEXT formatting is
+  dropped on reading.
+- Ellipses, solids and surfaces (ACIS bodies), meshes, MLEADERs, block attributes, external
+  references and images are left out.
+- Viewports: per-viewport frozen layers and plot settings are not carried; Rhino's own DXF writes a
+  viewport's view height against AutoCAD's reference, so its details read at an inverted scale.
+- Splines given only by fit points come in through Curva's interpolation, not AutoCAD's.
+
+Each gap is checked by a test reading a file the other program wrote, and a file Curva wrote opened in
+the other program (Rhino through its connection; AutoCAD's side through files it wrote, or the owner).
