@@ -1297,3 +1297,82 @@ fn details_keep_their_display_mode_and_lock() {
         ]
     );
 }
+
+#[test]
+fn layers_turned_off_in_a_detail_stay_off_in_it() {
+    use curva_document::layouts::{Detail, Layout, PaperUnit};
+    let mut state = State {
+        layers: vec![
+            layer(0, "Default", curva_document::STANDARD_COLOUR),
+            layer(1, "Furniture", [0.0, 0.5, 0.0]),
+        ],
+        next_layer: 2,
+        ..State::default()
+    };
+    let frame = |x: f64| {
+        Curve::polyline(
+            vec![
+                [x, 20.0, 0.0],
+                [x + 150.0, 20.0, 0.0],
+                [x + 150.0, 170.0, 0.0],
+                [x, 170.0, 0.0],
+            ],
+            true,
+        )
+        .unwrap()
+    };
+    for (id, x) in [(0, 20.0), (1, 200.0)] {
+        let mut o = object(id, Shape::Curve(frame(x)), 0);
+        o.space = Some(0);
+        state.objects.push(o.into());
+    }
+    state.objects.push(
+        object(
+            2,
+            Shape::Curve(Curve::line([0.0; 3], [1000.0, 0.0, 0.0]).unwrap()),
+            1,
+        )
+        .into(),
+    );
+    state.next_id = 3;
+    let detail = |frame: u64, hidden: Vec<u64>| Detail {
+        frame,
+        projection: "Top".to_owned(),
+        target: [0.0; 3],
+        distance: 100.0,
+        scale: Some(0.01),
+        display: "Wireframe".to_owned(),
+        locked: false,
+        hidden_layers: hidden,
+    };
+    state.layouts = vec![Layout {
+        id: 0,
+        name: "Plan".to_owned(),
+        size: [420.0, 297.0],
+        unit: PaperUnit::Millimetres,
+        details: vec![detail(0, vec![1]), detail(1, Vec::new())],
+        user_text: Default::default(),
+        revisions: Vec::new(),
+    }];
+    state.next_layout = 1;
+    let back = round_trip(&state);
+    let furniture = back
+        .layers
+        .iter()
+        .find(|l| l.name == "Furniture")
+        .unwrap()
+        .id;
+    let frame_x = |d: &Detail| {
+        back.objects
+            .iter()
+            .find(|o| o.id == d.frame)
+            .and_then(|o| o.shape.bounds())
+            .map(|(low, _)| low[0])
+            .unwrap()
+    };
+    let details = &back.layouts[0].details;
+    let left = details.iter().find(|d| frame_x(d) < 100.0).unwrap();
+    let right = details.iter().find(|d| frame_x(d) > 100.0).unwrap();
+    assert_eq!(left.hidden_layers, [furniture], "off in the left detail");
+    assert!(right.hidden_layers.is_empty(), "on in the right one");
+}

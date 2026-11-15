@@ -78,6 +78,8 @@ pub struct Layer {
     pub print_width: f64,
     /// Its linetype's index in the linetype table; -1 continuous.
     pub linetype: i32,
+    /// The details (by viewport id) it is turned off in, beside its own visibility.
+    pub hidden_in: Vec<Uuid>,
 }
 
 /// A group.
@@ -689,6 +691,8 @@ pub struct Page {
 /// A detail view on a layout (`ON_DetailView`): a window onto the model.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Detail {
+    /// Its viewport's id, by which layers name the details they are off in.
+    pub id: Uuid,
     /// The camera it looks through.
     pub view: View,
     /// Its outline on the page, a 2D curve in millimetres from the page's lower left corner.

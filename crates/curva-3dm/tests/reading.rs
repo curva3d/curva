@@ -363,3 +363,40 @@ fn rhinos_annotation_style_comes_in_with_its_looks() {
         "the dimension and the note"
     );
 }
+
+#[test]
+fn a_layer_rhino_turned_off_in_one_detail_comes_in_off_in_it() {
+    // Made in Rhino 8: layout "Plan" with details "Left" (20 to 170 mm) and "Right" (200 to
+    // 350 mm), and a layer "Furniture" turned off in the left one only.
+    let (doc, report) = open("v8_detail_layers.3dm");
+    let state = doc.state();
+    let furniture = state
+        .layers
+        .iter()
+        .find(|l| l.name == "Furniture")
+        .unwrap()
+        .id;
+    let plan = state
+        .layouts
+        .iter()
+        .find(|l| l.name == "Plan")
+        .unwrap_or_else(|| panic!("the layout: {}", report.summary()));
+    assert_eq!(plan.details.len(), 2);
+    let left_of = |frame: u64| {
+        state
+            .objects
+            .iter()
+            .find(|o| o.id == frame)
+            .and_then(|o| o.shape.bounds())
+            .map(|(low, _)| low[0])
+            .unwrap()
+    };
+    for detail in &plan.details {
+        let hidden = detail.hidden_layers.contains(&furniture);
+        assert_eq!(
+            hidden,
+            left_of(detail.frame) < 100.0,
+            "off in the left detail only"
+        );
+    }
+}

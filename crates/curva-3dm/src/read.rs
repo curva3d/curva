@@ -75,6 +75,8 @@ pub mod class {
 
     /// openNURBS' own application id, which owns user strings.
     pub const OPENNURBS4: Uuid = Uuid::parse("17b3ecda-17ba-4e45-9e67-a2b8d9be520d");
+    pub const OPENNURBS5: Uuid = Uuid::parse("c8cda597-d957-4625-a4b3-a0b510fc30d4");
+    pub const LAYER_EXTENSIONS: Uuid = Uuid::parse("3E4904E6-E930-4fbc-AA42-EBD407AEFE3B");
 }
 
 /// Reads a whole file.
@@ -287,6 +289,7 @@ fn view(r: &mut Reader<'_>) -> Result<View> {
 /// projection is locked (version 1.3).
 #[derive(Clone, Copy, Debug, Default)]
 struct ViewExtras {
+    id: Uuid,
     display: Uuid,
     locked: bool,
 }
@@ -301,13 +304,17 @@ fn view_with_attributes(r: &mut Reader<'_>) -> Result<(View, ViewExtras)> {
         let mut part = r.chunk()?;
         match part.tcode {
             tcode::ENDOFTABLE => break,
-            tcode::VIEW_VIEWPORT => camera = Some(viewport(&mut part.body)?),
+            tcode::VIEW_VIEWPORT => {
+                extras.id = viewport_id(&mut part.body.clone()).unwrap_or(Uuid::NIL);
+                camera = Some(viewport(&mut part.body)?);
+            }
             // Files before the viewport held its own target keep it here.
             tcode::VIEW_TARGET => target = Some(point(&mut part.body)?),
             tcode::VIEW_NAME => name = part.body.wstring()?,
             tcode::VIEW_ATTRIBUTES => {
                 if let Ok(found) = view_extras(&mut part.body) {
-                    extras = found;
+                    extras.display = found.display;
+                    extras.locked = found.locked;
                 }
             }
             _ => {}
@@ -338,6 +345,14 @@ fn view_extras(r: &mut Reader<'_>) -> Result<ViewExtras> {
         extras.locked = r.bool()?;
     }
     Ok(extras)
+}
+
+/// A viewport's id (version 1.1 and later), past its flags, projection, camera, frustum and
+/// port; nil before.
+fn viewport_id(r: &mut Reader<'_>) -> Result<Uuid> {
+    let (_, minor) = r.chunk_version()?;
+    r.skip(4 * 4 + 6 * 24 + 6 * 8 + 6 * 4)?;
+    if minor >= 1 { r.uuid() } else { Ok(Uuid::NIL) }
 }
 
 /// openNURBS' viewport: projection, camera frame and frustum, and in later versions its own
@@ -421,8 +436,68 @@ fn bounding_box(r: &mut Reader<'_>) -> Result<()> {
     r.skip(48)
 }
 
+/// An object written with `WriteObject`: its class id, the reader of its data, and the reader
+/// of what follows (its user data).
+fn class_object_rest<'a>(reader: &mut Reader<'a>) -> Result<(Uuid, Reader<'a>, Reader<'a>)> {
+    let mut chunk = reader.expect(tcode::OPENNURBS_CLASS)?;
+    let mut id_chunk = chunk.body.expect(tcode::OPENNURBS_CLASS_UUID)?;
+    let id = class::current(id_chunk.body.uuid()?);
+    let data = chunk.body.expect(tcode::OPENNURBS_CLASS_DATA)?;
+    Ok((id, data.body, chunk.body))
+}
+
+/// The details (by viewport id) a layer is turned off in, from its per-viewport settings
+/// (`ON__LayerExtensions` user data); empty when it has none or they cannot be read.
+fn layer_off_in(rest: &mut Reader<'_>) -> Vec<Uuid> {
+    let mut out = Vec::new();
+    while !rest.is_done() {
+        let Ok(mut chunk) = rest.chunk() else {
+            break;
+        };
+        if chunk.tcode != tcode::OPENNURBS_CLASS_USERDATA {
+            continue;
+        }
+        let read = |body: &mut Reader<'_>| -> Result<Vec<Uuid>> {
+            body.chunk_version()?;
+            let mut header = body.expect(tcode::OPENNURBS_CLASS_USERDATA_HEADER)?;
+            if header.body.uuid()? != class::LAYER_EXTENSIONS {
+                return Ok(Vec::new());
+            }
+            let mut data = body.expect(tcode::ANONYMOUS_CHUNK)?;
+            let (_, mut list) = data.body.anonymous()?;
+            let count = list.count(4)?;
+            let mut off = Vec::new();
+            for _ in 0..count {
+                let (_, mut setting) = list.anonymous()?;
+                let bits = setting.u32()?;
+                if bits == 0 {
+                    continue;
+                }
+                let viewport = setting.uuid()?;
+                if bits & 2 != 0 {
+                    setting.skip(4)?; // colour
+                }
+                if bits & 4 != 0 {
+                    setting.skip(4)?; // print colour
+                }
+                if bits & 8 != 0 {
+                    setting.skip(8)?; // print width
+                }
+                if bits & 16 != 0 && setting.u8()? == 2 {
+                    off.push(viewport);
+                }
+            }
+            Ok(off)
+        };
+        if let Ok(found) = read(&mut chunk.body) {
+            out.extend(found);
+        }
+    }
+    out
+}
+
 fn layer(record: &mut Reader<'_>) -> Result<Option<Layer>> {
-    let (id, mut r) = class_object(record)?;
+    let (id, mut r, mut rest) = class_object_rest(record)?;
     if id != class::LAYER {
         return Ok(None);
     }
@@ -447,6 +522,7 @@ fn layer(record: &mut Reader<'_>) -> Result<Option<Layer>> {
         locked: mode == 2,
         print_width: 0.0,
         linetype: -1,
+        hidden_in: Vec::new(),
     };
     if minor >= 1 {
         layer.visible = r.bool()? && mode != 1;
@@ -467,6 +543,7 @@ fn layer(record: &mut Reader<'_>) -> Result<Option<Layer>> {
     if minor >= 6 {
         layer.parent = r.uuid()?;
     }
+    layer.hidden_in = layer_off_in(&mut rest);
     Ok(Some(layer))
 }
 
@@ -1628,6 +1705,7 @@ fn detail(r: &mut Reader<'_>) -> Result<Detail> {
         view,
         boundary,
         ratio,
+        id: extras.id,
         display: extras.display,
         locked: extras.locked,
     })

@@ -48,6 +48,14 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
         ..Model::default()
     };
 
+    // Each detail's viewport id, by its frame: layers name the details they are off in by it.
+    let detail_ids: BTreeMap<u64, Uuid> = state
+        .layouts
+        .iter()
+        .flat_map(|l| l.details.iter())
+        .map(|d| (d.frame, ids.next()))
+        .collect();
+
     // Layers: each layer's full name (its sublayer tree, spec `sublayers.md` §3, or an older
     // "Parent::Child" name) becomes Rhino's nested layers, parents made as needed.
     let mut layer_index: BTreeMap<u64, usize> = BTreeMap::new();
@@ -71,6 +79,7 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
                         locked: false,
                         print_width: 0.0,
                         linetype: -1,
+                        hidden_in: Vec::new(),
                     });
                     by_path.insert(path, model.layers.len() - 1);
                     model.layers.len() - 1
@@ -84,6 +93,13 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
                 l.visible = layer.visible;
                 l.locked = layer.locked;
                 l.print_width = layer.print_width.unwrap_or(0.0);
+                l.hidden_in = state
+                    .layouts
+                    .iter()
+                    .flat_map(|s| s.details.iter())
+                    .filter(|d| d.hidden_layers.contains(&layer.id))
+                    .filter_map(|d| detail_ids.get(&d.frame).copied())
+                    .collect();
                 layer_index.insert(layer.id, index);
             }
             parent = model.layers[index].id;
@@ -99,6 +115,7 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
             locked: false,
             print_width: 0.0,
             linetype: -1,
+            hidden_in: Vec::new(),
         });
     }
 
@@ -281,9 +298,15 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
             .and_then(|id| state.layouts.iter().find(|l| l.id == id));
         let made = match sheet {
             // On a layout: drawn in millimetres on its page, a detail's frame as the detail.
-            Some(layout) => {
-                sheet_geometry(o, layout, &block_ids, &pattern_index, &style_ids, state)
-            }
+            Some(layout) => sheet_geometry(
+                o,
+                layout,
+                &block_ids,
+                &pattern_index,
+                &style_ids,
+                state,
+                &detail_ids,
+            ),
             None => geometry_of(&o.shape, &block_ids, &pattern_index, &style_ids, state),
         };
         let geometry = match made {
@@ -297,7 +320,12 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
             let n = groups.len();
             *groups.entry(g).or_insert(n)
         });
-        let id = ids.next();
+        // A detail is written under its viewport's id, as Rhino names details: layers turned off
+        // in one name it by that.
+        let id = match &geometry {
+            Geometry::Detail(d) if d.id != Uuid::NIL => d.id,
+            _ => ids.next(),
+        };
         let (print_width, print_width_source) = match o.print_width {
             PrintWidth::ByLayer => (0.0, Source::Layer),
             PrintWidth::Default => (0.0, Source::Object),
@@ -1266,6 +1294,7 @@ fn sheet_geometry(
     patterns: &BTreeMap<String, i32>,
     styles: &StyleIds,
     state: &State,
+    details: &BTreeMap<u64, Uuid>,
 ) -> Result<Geometry, String> {
     let mm = layout.unit.millimetres();
     let to_mm = [
@@ -1290,6 +1319,7 @@ fn sheet_geometry(
     let (low, high) = shape.bounds().ok_or("a detail without a size")?;
     let model_mm = state.unit.millimetres();
     Ok(Geometry::Detail(model::Detail {
+        id: details.get(&detail.frame).copied().unwrap_or(Uuid::NIL),
         view: detail_camera(detail, [high[0] - low[0], high[1] - low[1]], model_mm),
         boundary,
         ratio: detail.scale.map_or(0.0, |s| 1.0 / s),
