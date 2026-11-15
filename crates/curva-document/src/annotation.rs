@@ -17,6 +17,12 @@ pub enum Annotation {
     Radial(RadialDimension),
     /// An angle dimension.
     Angle(AngleDimension),
+    /// A leader: an arrow and line to a note (spec `annotation.md` §4).
+    Leader(Leader),
+    /// A dot: a label at a point that keeps its size on screen (spec `annotation.md` §4).
+    Dot(Dot),
+    /// A hatch: outlines filled with a pattern or solid (spec `annotation.md` §5).
+    Hatch(Hatch),
 }
 
 impl Annotation {
@@ -28,6 +34,16 @@ impl Annotation {
             Self::Dimension(d) => Self::Dimension(d.translated(by)),
             Self::Radial(r) => Self::Radial(r.transformed(&|p| plus(p, by, 1.0), &|d| d)),
             Self::Angle(a) => Self::Angle(a.transformed(&|p| plus(p, by, 1.0), &|d| d)),
+            Self::Leader(l) => Self::Leader(l.transformed(&|p| plus(p, by, 1.0), &|d| d)),
+            Self::Dot(d) => Self::Dot(Dot {
+                at: plus(d.at, by, 1.0),
+                ..d.clone()
+            }),
+            Self::Hatch(h) => Self::Hatch(h.with_loops(
+                h.loops.iter().map(|c| c.translated(by)).collect(),
+                &|p| plus(p, by, 1.0),
+                &|d| d,
+            )),
         }
     }
 
@@ -42,6 +58,18 @@ impl Annotation {
             Self::Dimension(d) => Self::Dimension(d.mapped(change)),
             Self::Radial(r) => Self::Radial(r.transformed(&point, &direction)),
             Self::Angle(a) => Self::Angle(a.transformed(&point, &direction)),
+            Self::Leader(l) => Self::Leader(l.transformed(&point, &direction)),
+            Self::Dot(d) => Self::Dot(Dot {
+                at: point(d.at),
+                ..d.clone()
+            }),
+            // As in Rhino, resizing a hatch keeps its pattern's size; turning it turns the
+            // pattern with it.
+            Self::Hatch(h) => Self::Hatch(h.with_loops(
+                h.loops.iter().map(|c| c.mapped(change)).collect(),
+                &point,
+                &direction,
+            )),
         }
     }
 
@@ -61,6 +89,21 @@ impl Annotation {
             Self::Dimension(d) => Self::Dimension(d.placed(m)),
             Self::Radial(r) => Self::Radial(r.transformed(&point, &direction)),
             Self::Angle(a) => Self::Angle(a.transformed(&point, &direction)),
+            Self::Leader(l) => Self::Leader(l.transformed(&point, &direction)),
+            Self::Dot(d) => Self::Dot(Dot {
+                at: point(d.at),
+                ..d.clone()
+            }),
+            Self::Hatch(h) => Self::Hatch(
+                h.with_loops(
+                    h.loops
+                        .iter()
+                        .map(|c| c.mapped_affine(*m).unwrap_or_else(|_| c.clone()))
+                        .collect(),
+                    &point,
+                    &direction,
+                ),
+            ),
         }
     }
 
@@ -72,6 +115,8 @@ impl Annotation {
             Self::Dimension(d) => d.style,
             Self::Radial(r) => r.style,
             Self::Angle(a) => a.style,
+            Self::Leader(l) => l.style,
+            Self::Dot(_) | Self::Hatch(_) => 0,
         }
     }
 
@@ -79,7 +124,7 @@ impl Annotation {
     #[must_use]
     pub fn dimension_text(&self) -> Option<&Option<String>> {
         match self {
-            Self::Text(_) => None,
+            Self::Text(_) | Self::Leader(_) | Self::Dot(_) | Self::Hatch(_) => None,
             Self::Dimension(d) => Some(&d.text),
             Self::Radial(r) => Some(&r.text),
             Self::Angle(a) => Some(&a.text),
@@ -91,7 +136,7 @@ impl Annotation {
     pub fn with_dimension_text(&self, text: Option<String>) -> Self {
         let mut changed = self.clone();
         match &mut changed {
-            Self::Text(_) => {}
+            Self::Text(_) | Self::Leader(_) | Self::Dot(_) | Self::Hatch(_) => {}
             Self::Dimension(d) => d.text = text,
             Self::Radial(r) => r.text = text,
             Self::Angle(a) => a.text = text,
@@ -419,6 +464,208 @@ pub struct Dimension {
     /// Typed text in place of the value; `<>` in it stands for the value, as in Rhino.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
+}
+
+/// A leader (Rhino's Leader): an arrowhead at its first point, a polyline through the rest, and
+/// its note beside the last point, a style's text gap away. The note is text, so it takes fields.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Leader {
+    /// The arrow's tip, then each point the line passes through; the note is at the last.
+    pub points: Vec<Point>,
+    /// The note; a new line starts a new line of text.
+    pub content: String,
+    /// The plane it lies on: its X direction, which the note reads along.
+    pub x: Point,
+    /// The plane's Y direction.
+    pub y: Point,
+    /// Whether a short level line runs from the last point to the note (Rhino's Landing).
+    #[serde(default)]
+    pub landing: bool,
+    /// The annotation style it takes its looks from, by id.
+    #[serde(default)]
+    pub style: u64,
+}
+
+impl Leader {
+    fn transformed(
+        &self,
+        point: &dyn Fn(Point) -> Point,
+        direction: &dyn Fn(Point) -> Point,
+    ) -> Self {
+        Self {
+            points: self.points.iter().map(|p| point(*p)).collect(),
+            x: direction(self.x),
+            y: direction(self.y),
+            ..self.clone()
+        }
+    }
+
+    /// Its line, arrowhead and note, with sizes from `style` scaled by `scale`; `shown` is the
+    /// note with its fields worked out.
+    #[must_use]
+    pub fn parts(&self, style: &AnnotationStyle, scale: f64, shown: String) -> DimensionParts {
+        let arrow = style.arrow_size() * scale;
+        let normal = cross(self.x, self.y);
+        let mut lines: Vec<(Point, Point)> = self.points.windows(2).map(|w| (w[0], w[1])).collect();
+        let mut arrows = Vec::new();
+        if let [tip, next, ..] = self.points[..] {
+            let back = unit(std::array::from_fn(|i| next[i] - tip[i]));
+            let across = unit(cross(normal, back));
+            let base = plus(tip, back, arrow);
+            arrows.push([
+                tip,
+                plus(base, across, arrow / 6.0),
+                plus(base, across, -arrow / 6.0),
+            ]);
+        }
+        let (last, before) = match self.points[..] {
+            [.., before, last] => (last, before),
+            [only] => (only, only),
+            [] => ([0.0; 3], [0.0; 3]),
+        };
+        // The note reads away from the line, as Rhino's Auto alignment does.
+        let leftward = dot(std::array::from_fn(|i| last[i] - before[i]), self.x) < 0.0;
+        let side = if leftward { -1.0 } else { 1.0 };
+        let mut end = last;
+        if self.landing {
+            end = plus(last, self.x, side * arrow);
+            lines.push((last, end));
+        }
+        let gap = style.text_gap() * scale;
+        let height = style.text_height * scale;
+        let text = Text {
+            content: shown,
+            origin: plus(plus(end, self.x, side * gap), self.y, -height / 2.0),
+            x: self.x,
+            y: self.y,
+            height,
+            font: style.font.clone(),
+            align: if leftward {
+                TextAlign::Right
+            } else {
+                TextAlign::Left
+            },
+            style: self.style,
+        };
+        DimensionParts {
+            lines,
+            arrows,
+            text,
+        }
+    }
+}
+
+/// A hatch (Rhino's Hatch, spec `annotation.md` §5): closed flat outlines filled with a pattern
+/// or solid. Inside is even–odd, so an outline inside another is a hole.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Hatch {
+    /// Its closed outlines, all in its plane.
+    pub loops: Vec<curva_kernel::Curve>,
+    /// The pattern's name (see [`crate::State::patterns`]).
+    pub pattern: String,
+    /// What the pattern's sizes are multiplied by.
+    #[serde(default = "Hatch::usual_scale")]
+    pub scale: f64,
+    /// How far the pattern is turned from the plane's X, in radians.
+    #[serde(default)]
+    pub rotation: f64,
+    /// Where the pattern starts.
+    pub base: Point,
+    /// The plane's X direction.
+    pub x: Point,
+    /// The plane's Y direction.
+    pub y: Point,
+}
+
+impl Hatch {
+    /// A pattern at its own size.
+    #[must_use]
+    pub fn usual_scale() -> f64 {
+        1.0
+    }
+
+    fn with_loops(
+        &self,
+        loops: Vec<curva_kernel::Curve>,
+        point: &dyn Fn(Point) -> Point,
+        direction: &dyn Fn(Point) -> Point,
+    ) -> Self {
+        Self {
+            loops,
+            base: point(self.base),
+            x: direction(self.x),
+            y: direction(self.y),
+            ..self.clone()
+        }
+    }
+
+    /// Its outlines as polygons in its plane's own coordinates, from its base point.
+    #[must_use]
+    pub fn rings(&self) -> Vec<Vec<[f64; 2]>> {
+        self.loops
+            .iter()
+            .filter_map(|c| c.sample().ok())
+            .map(|points| {
+                points
+                    .iter()
+                    .map(|p| {
+                        let d: Point = std::array::from_fn(|i| p[i] - self.base[i]);
+                        [dot(d, self.x), dot(d, self.y)]
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// The pattern's line pieces in the model, or nothing for a solid fill. The pattern's sizes
+    /// are millimetres; `per_millimetre` is how many of the space's units one millimetre is.
+    #[must_use]
+    pub fn pieces(
+        &self,
+        pattern: &crate::hatch::Pattern,
+        per_millimetre: f64,
+    ) -> Vec<(Point, Point)> {
+        let rings = self.rings();
+        let flat = crate::hatch::pattern_pieces(
+            pattern,
+            &rings,
+            self.scale * per_millimetre,
+            self.rotation,
+            [0.0, 0.0],
+        );
+        let at = |p: [f64; 2]| -> Point {
+            std::array::from_fn(|i| self.base[i] + self.x[i] * p[0] + self.y[i] * p[1])
+        };
+        flat.into_iter().map(|(a, b)| (at(a), at(b))).collect()
+    }
+}
+
+/// A dot (Rhino's Dot): a label at a point, drawn on the screen rather than in the model, so it
+/// keeps its size and faces the viewer however the view turns, and shows in front of everything.
+/// Its colour is its layer's or its own.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Dot {
+    /// The point it labels.
+    pub at: Point,
+    /// What it shows; a new line starts a new line.
+    pub content: String,
+    /// Further words it holds without showing them (Rhino's secondary text).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub secondary: String,
+    /// Its letters' height on screen, in points.
+    #[serde(default = "Dot::usual_height")]
+    pub height: f64,
+    /// A font installed on the computer, by name; Curva's own type when `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font: Option<String>,
+}
+
+impl Dot {
+    /// Rhino's usual dot height.
+    #[must_use]
+    pub fn usual_height() -> f64 {
+        14.0
+    }
 }
 
 /// What a dimension draws, where it lies.

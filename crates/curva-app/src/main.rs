@@ -30,6 +30,7 @@ mod benchmark;
 mod clipping;
 mod command_line;
 mod desktop;
+mod dots;
 mod file_dialogs;
 mod grips;
 mod gumball;

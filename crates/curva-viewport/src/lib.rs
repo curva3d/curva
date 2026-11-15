@@ -183,7 +183,11 @@ fn has_fields(shape: &Shape) -> bool {
         Shape::Annotation(curva_document::annotation::Annotation::Text(text)) => {
             text.content.contains("%<")
         }
-        Shape::Annotation(curva_document::annotation::Annotation::Dimension(_)) => true,
+        Shape::Annotation(curva_document::annotation::Annotation::Leader(leader)) => {
+            leader.content.contains("%<")
+        }
+        Shape::Annotation(curva_document::annotation::Annotation::Dot(_)) => false,
+        Shape::Annotation(_) => true,
         _ => false,
     }
 }
@@ -195,16 +199,19 @@ fn shown_annotation(
     space: Option<u64>,
     fields: &curva_document::fields::FieldContext,
 ) -> curva_document::annotation::Annotation {
-    let curva_document::annotation::Annotation::Text(text) = annotation else {
-        return annotation.clone();
-    };
-    if !text.content.contains("%<") {
-        return annotation.clone();
+    use curva_document::annotation::{Annotation, Leader, Text};
+    let resolve = |content: &str| curva_document::fields::resolve(content, state, space, fields);
+    match annotation {
+        Annotation::Text(text) if text.content.contains("%<") => Annotation::Text(Text {
+            content: resolve(&text.content),
+            ..text.clone()
+        }),
+        Annotation::Leader(leader) if leader.content.contains("%<") => Annotation::Leader(Leader {
+            content: resolve(&leader.content),
+            ..leader.clone()
+        }),
+        _ => annotation.clone(),
     }
-    curva_document::annotation::Annotation::Text(curva_document::annotation::Text {
-        content: curva_document::fields::resolve(&text.content, state, space, fields),
-        ..text.clone()
-    })
 }
 
 /// Meshes of bodies already worked out, so a body is meshed again only when it changes.
@@ -458,6 +465,9 @@ impl Outlines {
                     // Annotation: its letters and arrowheads filled for shading, and its lines
                     // and outlines for wireframe, picking and snapping.
                     Shape::Annotation(annotation) => {
+                        if matches!(annotation, curva_document::annotation::Annotation::Dot(_)) {
+                            kind = PickKind::Point;
+                        }
                         // Fields are worked out for showing; the object keeps them as typed.
                         let annotation =
                             &shown_annotation(annotation, state, object.space, &cache.fields);
@@ -619,6 +629,20 @@ impl Outlines {
                 _ => None,
             })
             .collect()
+    }
+
+    /// The colour to show an object in, as its points are marked: the selection's, locked
+    /// grey, or its own; `None` when it is not drawn here (hidden, or in another space).
+    #[must_use]
+    pub fn colour_of(&self, id: u64, selected: &[u64]) -> Option<[f32; 3]> {
+        let index = self.objects.iter().position(|(held, _)| *held == id)?;
+        Some(if selected.contains(&id) {
+            SELECTED_COLOUR
+        } else if self.locked.get(index).copied().unwrap_or(false) {
+            LOCKED_COLOUR
+        } else {
+            self.colours.get(index).copied().unwrap_or(CURVE_COLOUR)
+        })
     }
 
     /// The lowest and highest corners around chosen objects, if any of them can be drawn.

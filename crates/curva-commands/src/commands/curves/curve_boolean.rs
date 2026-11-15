@@ -27,13 +27,97 @@ fn inside(p: [f64; 2], ring: &[[f64; 2]]) -> bool {
     crossed
 }
 
+/// The outlines of the regions of closed flat `curves` that hold the `picks`, on the plane of
+/// directions `[x, y]`: all picked regions together when `combine`, else one list per pick.
+/// Each list is closed curves, an outer outline and its holes; for `CurveBoolean` and `Hatch`'s
+/// `Boundary`.
+///
+/// # Errors
+///
+/// When no pick is inside any curve, or the outlines cannot be joined.
+// CUSTOM KERNEL OPERATION: curve-boolean-regions
+pub(crate) fn regions(
+    curves: &[Curve],
+    picks: &[Point],
+    [x, y]: [Point; 2],
+    combine: bool,
+) -> Result<Vec<Vec<Curve>>, Message> {
+    let Some(&origin) = picks.first() else {
+        return Ok(Vec::new());
+    };
+    let rings: Vec<Vec<[f64; 2]>> = curves
+        .iter()
+        .map(|c| {
+            c.sample()
+                .map(|points| points.iter().map(|p| flat(*p, origin, x, y)).collect())
+                .unwrap_or_default()
+        })
+        .collect();
+    let signature = |p: [f64; 2]| -> Vec<bool> { rings.iter().map(|r| inside(p, r)).collect() };
+    let wanted: Vec<Vec<bool>> = picks
+        .iter()
+        .map(|p| signature(flat(*p, origin, x, y)))
+        .filter(|s| s.iter().any(|inside| *inside))
+        .collect();
+    if wanted.is_empty() {
+        return Err(Message::new("error.curveboolean_outside"));
+    }
+    // Every curve cut where the others cross it.
+    let mut pieces = Vec::new();
+    for (i, curve) in curves.iter().enumerate() {
+        let mut cuts = Vec::new();
+        for (j, other) in curves.iter().enumerate() {
+            if i != j {
+                cuts.extend(curva_kernel::crossings(curve, other).unwrap_or_default());
+            }
+        }
+        pieces.extend(curve.cut_at(&cuts).unwrap_or_else(|_| vec![curve.clone()]));
+    }
+    let size = rings
+        .iter()
+        .flatten()
+        .fold(0.0_f64, |m, p| m.max(p[0].abs()).max(p[1].abs()))
+        .max(1.0);
+    let nudge = size * 1e-5;
+    let groups: Vec<Vec<Vec<bool>>> = if combine {
+        vec![wanted.clone()]
+    } else {
+        wanted.iter().map(|w| vec![w.clone()]).collect()
+    };
+    let mut found = Vec::new();
+    for region in groups {
+        let held = |p: [f64; 2]| region.contains(&signature(p));
+        let edges: Vec<Curve> = pieces
+            .iter()
+            .filter(|piece| {
+                let Ok(points) = piece.sample() else {
+                    return false;
+                };
+                let middle = points.len() / 2;
+                let (a, b) = (
+                    points[middle.saturating_sub(1)],
+                    points[(middle + 1).min(points.len() - 1)],
+                );
+                let m = points[middle];
+                let along = flat(sub(b, a), [0.0; 3], x, y);
+                let n = (along[0].hypot(along[1])).max(1e-12);
+                let side = [-along[1] / n * nudge, along[0] / n * nudge];
+                let at = flat(m, origin, x, y);
+                held([at[0] + side[0], at[1] + side[1]]) != held([at[0] - side[0], at[1] - side[1]])
+            })
+            .cloned()
+            .collect();
+        found.push(curva_kernel::join_all(&edges).map_err(|e| failed(&e))?);
+    }
+    Ok(found)
+}
+
 /// `CurveBoolean`: closed flat curves that overlap, then clicks inside the regions to keep; Enter
 /// makes their outlines. `CombineRegions` (the default) outlines the regions picked together; off,
 /// each separately. `DeleteInput` takes the curves away.
 #[derive(Default)]
 pub struct CurveBoolean;
 
-// CUSTOM KERNEL OPERATION: curve-boolean-regions
 impl Recipe for CurveBoolean {
     const NAME: &'static str = "curveboolean";
     const OPTIONS: &'static [OptionDef] = &[
@@ -72,74 +156,11 @@ impl Recipe for CurveBoolean {
         if curves.is_empty() || picks.is_empty() {
             return Ok(Made::default());
         }
-        let [x, y] = cx.plane();
-        let origin = picks[0];
-        let rings: Vec<Vec<[f64; 2]>> = curves
-            .iter()
-            .map(|(_, c)| {
-                c.sample()
-                    .map(|points| points.iter().map(|p| flat(*p, origin, x, y)).collect())
-                    .unwrap_or_default()
-            })
-            .collect();
-        let signature = |p: [f64; 2]| -> Vec<bool> { rings.iter().map(|r| inside(p, r)).collect() };
-        let wanted: Vec<Vec<bool>> = picks
-            .iter()
-            .map(|p| signature(flat(*p, origin, x, y)))
-            .filter(|s| s.iter().any(|inside| *inside))
-            .collect();
-        if wanted.is_empty() {
-            return Err(Message::new("error.curveboolean_outside"));
-        }
-        // Every curve cut where the others cross it.
-        let mut pieces = Vec::new();
-        for (i, (_, curve)) in curves.iter().enumerate() {
-            let mut cuts = Vec::new();
-            for (j, (_, other)) in curves.iter().enumerate() {
-                if i != j {
-                    cuts.extend(curva_kernel::crossings(curve, other).unwrap_or_default());
-                }
-            }
-            pieces.extend(curve.cut_at(&cuts).unwrap_or_else(|_| vec![curve.clone()]));
-        }
-        let size = rings
-            .iter()
-            .flatten()
-            .fold(0.0_f64, |m, p| m.max(p[0].abs()).max(p[1].abs()))
-            .max(1.0);
-        let nudge = size * 1e-5;
-        let regions: Vec<Vec<Vec<bool>>> = if cx.toggle("CombineRegions") {
-            vec![wanted.clone()]
-        } else {
-            wanted.iter().map(|w| vec![w.clone()]).collect()
-        };
+        let only: Vec<Curve> = curves.iter().map(|(_, c)| c.clone()).collect();
+        let found = regions(&only, &picks, cx.plane(), cx.toggle("CombineRegions"))?;
         let mut made = Made::default();
-        for region in regions {
-            let held = |p: [f64; 2]| region.contains(&signature(p));
-            let edges: Vec<Curve> = pieces
-                .iter()
-                .filter(|piece| {
-                    let Ok(points) = piece.sample() else {
-                        return false;
-                    };
-                    let middle = points.len() / 2;
-                    let (a, b) = (
-                        points[middle.saturating_sub(1)],
-                        points[(middle + 1).min(points.len() - 1)],
-                    );
-                    let m = points[middle];
-                    let along = flat(sub(b, a), [0.0; 3], x, y);
-                    let n = (along[0].hypot(along[1])).max(1e-12);
-                    let side = [-along[1] / n * nudge, along[0] / n * nudge];
-                    let at = flat(m, origin, x, y);
-                    held([at[0] + side[0], at[1] + side[1]])
-                        != held([at[0] - side[0], at[1] - side[1]])
-                })
-                .cloned()
-                .collect();
-            for outline in curva_kernel::join_all(&edges).map_err(|e| failed(&e))? {
-                made.add.push(Shape::Curve(outline));
-            }
+        for outline in found.into_iter().flatten() {
+            made.add.push(Shape::Curve(outline));
         }
         if cx.toggle("DeleteInput") {
             made.remove = curves.iter().map(|(id, _)| *id).collect();
