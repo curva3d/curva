@@ -3,7 +3,7 @@
 
 use crate::archive::{Uuid, Writer, tcode};
 use crate::model::{
-    AngularDimension, Attributes, Block, Brep, Curve, DimStyle, Geometry, Group, HatchLine,
+    AngularDimension, Attributes, Block, Brep, Curve, Detail, DimStyle, Geometry, Group, HatchLine,
     HatchPattern, Layer, Leader, LinearDimension, Model, NurbsCurve, NurbsSurface, Object, P3,
     Plane, RadialDimension, Source, Surface, Text, View,
 };
@@ -58,10 +58,14 @@ pub fn write(model: &Model) -> Vec<u8> {
         w.count(model.views.len());
         for (i, v) in model.views.iter().enumerate() {
             w.begin(tcode::VIEW_RECORD);
-            write_view(w, v, i);
+            write_view(w, v, Uuid::fresh(0x5649_4557 + i as u64), None);
             w.end();
         }
         w.end();
+        if !model.pages.is_empty() {
+            write_view_list(w, model);
+            write_page_unit(w, model);
+        }
     });
     for empty in [
         tcode::BITMAP_TABLE,
@@ -252,6 +256,7 @@ fn object_type(g: &Geometry) -> i64 {
         | Geometry::Radial(_)
         | Geometry::Angular(_)
         | Geometry::Leader(_) => 0x200,
+        Geometry::Detail(_) => 0x8000,
     }
 }
 
@@ -279,6 +284,7 @@ fn write_object(w: &mut Writer, object: &Object) {
             class_object(w, class::DIM_ANGULAR, |w| write_angular_dimension(w, d));
         }
         Geometry::Leader(l) => class_object(w, class::LEADER, |w| write_leader(w, l)),
+        Geometry::Detail(d) => class_object(w, class::DETAIL, |w| write_detail(w, d)),
         Geometry::Hatch(h) => class_object(w, class::HATCH, |w| {
             // openNURBS' ON_Hatch, version 1.2: plane, scale, turn, pattern, outlines as 2D
             // curves in the plane, then the base point.
@@ -381,6 +387,15 @@ fn write_attributes(w: &mut Writer, a: &Attributes) {
             w.count(*g);
         }
     }
+    // On a layout: paper space, and the page it is drawn on.
+    if a.page_space {
+        w.u8(19);
+        w.u8(2); // page space
+    }
+    if a.viewport != Uuid::NIL {
+        w.u8(20);
+        w.uuid(a.viewport);
+    }
     w.u8(0);
 }
 
@@ -451,7 +466,9 @@ fn unit(a: P3) -> P3 {
 
 /// A named view: its viewport (camera and frustum), the construction plane its kind of view
 /// has, its target and its name.
-fn write_view(w: &mut Writer, v: &View, index: usize) {
+/// A view: its camera, construction plane, target and name, and for a layout or a detail its
+/// kind (1 a page, 2 a view nested in a page) and paper size in millimetres.
+fn write_view(w: &mut Writer, v: &View, id: Uuid, kind: Option<(i32, [f64; 2])>) {
     let direction = unit(v.direction);
     let x = unit(cross(direction, v.up));
     let y = cross(x, direction);
@@ -472,7 +489,7 @@ fn write_view(w: &mut Writer, v: &View, index: usize) {
     for p in [0, 1000, 1000, 0, 0, 255] {
         w.i32(p);
     }
-    w.uuid(Uuid::fresh(0x5649_4557 + index as u64));
+    w.uuid(id);
     for locked in [false, false, false, true, true] {
         w.bool(locked);
     }
@@ -504,6 +521,17 @@ fn write_view(w: &mut Writer, v: &View, index: usize) {
     w.begin(tcode::VIEW_NAME);
     w.wstring(&v.name);
     w.end();
+    if let Some((kind, size)) = kind {
+        // Version 1.1 of the view's attributes: kind, paper size, then an unused parent id
+        // and nested position.
+        w.begin(tcode::VIEW_ATTRIBUTES);
+        w.chunk_version(1, 1);
+        w.i32(kind);
+        w.f64s(&size);
+        w.uuid(Uuid::NIL);
+        w.f64s(&[1.0, 0.0, 0.0, -1.0, 0.0, 0.0]);
+        w.end();
+    }
     w.short(tcode::ENDOFTABLE, 0);
 }
 
@@ -1056,6 +1084,107 @@ fn write_leader(w: &mut Writer, l: &Leader) {
     for p in &l.points {
         w.f64s(p);
     }
+    w.end();
+}
+
+/// A detail view (`ON_DetailView::Write`, version 1.1): its camera as a view nested in its
+/// layout, its outline, and its scale.
+fn write_detail(w: &mut Writer, d: &Detail) {
+    w.begin_versioned(tcode::ANONYMOUS_CHUNK, 1, 1);
+    w.begin_versioned(tcode::ANONYMOUS_CHUNK, 1, 0);
+    write_view(w, &d.view, Uuid::NIL, Some((2, [0.0, 0.0])));
+    w.end();
+    w.begin_versioned(tcode::ANONYMOUS_CHUNK, 1, 0);
+    write_nurbs_curve(w, &d.boundary);
+    w.end();
+    w.f64(d.ratio);
+    w.end();
+}
+
+/// The settings' view list: Rhino's four standard model views, then a page view for each
+/// layout, at its paper size, looking down on it.
+fn write_view_list(w: &mut Writer, model: &Model) {
+    let span = 1000.0;
+    let standard = |name: &str, direction: P3, up: P3, parallel: bool| View {
+        name: name.to_owned(),
+        location: direction.map(|c| -c * span * 10.0),
+        direction,
+        up,
+        target: [0.0; 3],
+        parallel,
+        frustum: if parallel {
+            [-span, span, -span, span, 1.0, span * 100.0]
+        } else {
+            [-0.36, 0.36, -0.36, 0.36, 1.0, span * 100.0]
+        },
+    };
+    let s = 1.0 / 3f64.sqrt();
+    let views = [
+        standard("Top", [0.0, 0.0, -1.0], [0.0, 1.0, 0.0], true),
+        standard("Front", [0.0, 1.0, 0.0], [0.0, 0.0, 1.0], true),
+        standard("Right", [-1.0, 0.0, 0.0], [0.0, 0.0, 1.0], true),
+        standard("Perspective", [-s, s, -s], [-s, s, 2.0 * s], false),
+    ];
+    w.begin(tcode::SETTINGS_VIEW_LIST);
+    w.count(views.len() + model.pages.len());
+    for (i, v) in views.iter().enumerate() {
+        w.begin(tcode::VIEW_RECORD);
+        write_view(
+            w,
+            v,
+            Uuid::fresh(0x5354_4456 + i as u64),
+            Some((0, [0.0, 0.0])),
+        );
+        w.end();
+    }
+    for page in &model.pages {
+        let [width, height] = page.size_mm;
+        let centre = [width / 2.0, height / 2.0, 0.0];
+        let view = View {
+            name: page.name.clone(),
+            location: [centre[0], centre[1], 100.0],
+            direction: [0.0, 0.0, -1.0],
+            up: [0.0, 1.0, 0.0],
+            target: centre,
+            parallel: true,
+            frustum: [
+                -width / 2.0,
+                width / 2.0,
+                -height / 2.0,
+                height / 2.0,
+                1.0,
+                200.0,
+            ],
+        };
+        w.begin(tcode::VIEW_RECORD);
+        write_view(w, &view, page.id, Some((1, page.size_mm)));
+        w.end();
+    }
+    w.end();
+}
+
+/// The settings' attributes, to version 1.1: the usual linetype scale, plot colour and current
+/// linetype, then the unit layouts are drawn in.
+fn write_page_unit(w: &mut Writer, model: &Model) {
+    let unit = model.page_unit.unwrap_or(model.unit);
+    w.begin(tcode::SETTINGS_ATTRIBUTES);
+    w.chunk_version(1, 1);
+    w.f64(1.0); // linetype display scale
+    w.color([0, 0, 0, 0]); // plot colour
+    w.i32(0); // plot colour from the layer
+    w.i32(-1); // no current linetype
+    w.i32(0); // linetype from the layer
+    w.begin_versioned(tcode::ANONYMOUS_CHUNK, 1, 0);
+    w.i32(102);
+    w.u32(unit);
+    w.f64(0.001);
+    w.f64(1f64.to_radians());
+    w.f64(0.01);
+    w.i32(0);
+    w.i32(3);
+    w.f64(metres_per(unit));
+    w.wstring("");
+    w.end();
     w.end();
 }
 #[cfg(test)]

@@ -241,3 +241,35 @@ fn rhinos_linear_dimensions_come_in_measuring_the_same() {
     assert!((d.line[1] - 60.0).abs() < 1e-9, "{:?}", d.line);
     assert_eq!(d.text, None);
 }
+
+#[test]
+fn rhinos_layouts_come_in_with_their_details_and_sheet_drawing() {
+    // Made in Rhino 8: an A3 layout "Plan" with a 1:50 top detail from (20, 20) to (220, 170)
+    // looking at (5000, 0), and a rectangle drawn on the sheet; a 10 m line in the model.
+    let (doc, report) = open("v8_layout.3dm");
+    let state = doc.state();
+    assert_eq!(state.layouts.len(), 1, "{}", report.summary());
+    let sheet = &state.layouts[0];
+    assert_eq!(sheet.name, "Plan");
+    assert_eq!(sheet.size, [420.0, 297.0]);
+    assert_eq!(sheet.details.len(), 1);
+    let detail = &sheet.details[0];
+    assert_eq!(detail.projection, "Top");
+    assert!((detail.scale.unwrap() - 0.02).abs() < 1e-12);
+    assert!((detail.target[0] - 5000.0).abs() < 1e-6);
+    let frame = state.objects.iter().find(|o| o.id == detail.frame).unwrap();
+    assert_eq!(frame.space, Some(sheet.id));
+    let (low, high) = frame.shape.bounds().unwrap();
+    assert!((low[0] - 20.0).abs() < 1e-6 && (high[1] - 170.0).abs() < 1e-6);
+    let on_sheet: Vec<_> = state
+        .objects
+        .iter()
+        .filter(|o| o.space == Some(sheet.id) && o.id != detail.frame)
+        .collect();
+    assert_eq!(on_sheet.len(), 1, "the rectangle");
+    let (low, high) = on_sheet[0].shape.bounds().unwrap();
+    assert!((low[0] - 250.0).abs() < 1e-6 && (high[0] - 400.0).abs() < 1e-6);
+    let in_model: Vec<_> = state.objects.iter().filter(|o| o.space.is_none()).collect();
+    assert_eq!(in_model.len(), 1, "the line");
+    assert!((in_model[0].curve().unwrap().length().unwrap() - 10_000.0).abs() < 1e-6);
+}
