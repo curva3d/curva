@@ -1,6 +1,6 @@
 [package]
 name = "curva-pdf"
-description = "Drawings to PDF: pages of lines and fills written with krilla."
+description = "Drawings to PDF and SVG: pages of lines and fills, PDF written with krilla."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

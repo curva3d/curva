@@ -102,11 +102,17 @@ pub const RHINO_FILES: FileFormat = ("files.rhino", &["3dm"]);
 /// PDF drawings.
 pub const PDF_FILES: FileFormat = ("files.pdf", &["pdf"]);
 
+/// SVG drawings, one file per layout.
+pub const SVG_FILES: FileFormat = ("files.svg", &["svg"]);
+
 /// Where a print goes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PrintTo {
     /// A PDF file at this location, every page in it.
     Pdf(String),
+    /// SVG files at this location: one for one page; for more, one each, named after their
+    /// layouts beside it.
+    Svg(String),
     /// The system's printer, through its print command.
     Printer,
 }
