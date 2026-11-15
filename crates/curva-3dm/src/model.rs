@@ -26,6 +26,8 @@ pub struct Model {
     pub blocks: Vec<Block>,
     /// Hatch patterns, in the file's order; hatches name them by their place in it.
     pub hatch_patterns: Vec<HatchPattern>,
+    /// Annotation (dimension) styles, in the file's order.
+    pub dim_styles: Vec<DimStyle>,
     /// Objects, those of block definitions included (their attributes say so).
     pub objects: Vec<Object>,
     /// Named views, in the file's order.
@@ -408,6 +410,8 @@ pub enum Geometry {
     Brep(Brep),
     /// An extrusion object.
     Extrusion(Extrusion),
+    /// A note (`ON_Text`).
+    Text(Text),
     /// A hatch.
     Hatch(Hatch),
     /// A text dot (`ON_TextDot`): a label at a point, the same size on screen.
@@ -503,4 +507,35 @@ pub struct Hatch {
     pub loops: Vec<(bool, Curve)>,
     /// Where the pattern starts, in the plane.
     pub base: [f64; 2],
+}
+
+/// An annotation style (`ON_DimStyle`), as much of it as Curva reads.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DimStyle {
+    /// Identifies it; notes name their style by it.
+    pub id: Uuid,
+    /// Its name.
+    pub name: String,
+    /// Its text height, in model units.
+    pub text_height: f64,
+    /// Notes' horizontal alignment, as Rhino 5 numbered it: 0 left, 1 centre, 2 right.
+    pub h_align: u32,
+    /// Notes' vertical alignment, as Rhino 5 numbered it: 3 top, 4 middle of the first line,
+    /// 5 middle, 6 middle of the last line, 7 bottom, 8 under the bottom.
+    pub v_align: u32,
+}
+
+/// A note (`ON_Text`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Text {
+    /// Its words as rich text (RTF), or plain.
+    pub rich: String,
+    /// Its plane: the note's point and directions.
+    pub plane: Plane,
+    /// Its style, by id.
+    pub style: Uuid,
+    /// The style the note sets for itself (its overrides), if it has one.
+    pub own: Option<DimStyle>,
+    /// A turn of the words within the plane, radians.
+    pub rotation: f64,
 }

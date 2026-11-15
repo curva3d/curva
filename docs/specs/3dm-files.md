@@ -27,7 +27,8 @@ version, which Rhino 7 and 8 open.
 | Meshes, SubD, point clouds | listed and skipped, with a count in the command bar | no |
 | Text dots (`ON_TextDot`): point, words, secondary words, height, font | yes | yes |
 | Hatches (`ON_Hatch`) and their patterns (the hatch pattern table): plane, outlines and holes, pattern, scale, turn | yes; a pattern Curva lacks comes in with the file | yes |
-| Text, dimensions, leaders, layouts, materials, render settings | skipped, counted (Milestone 3, coming one kind at a time) | no |
+| Notes (`ON_Text`): words (from rich text), plane, height and alignment from their own or named annotation style, font | yes, from Rhino 6 to 8 | not yet |
+| Dimensions, leaders, layouts, materials, render settings | skipped, counted (Milestone 3, coming one kind at a time) | no |
 
 ## 3. Commands and menus
 

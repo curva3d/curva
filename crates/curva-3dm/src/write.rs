@@ -240,11 +240,16 @@ fn object_type(g: &Geometry) -> i64 {
         Geometry::Instance { .. } => 0x1000,
         Geometry::Dot { .. } => 0x2000,
         Geometry::Hatch(_) => 0x10000,
+        Geometry::Text(_) => 0x200,
     }
 }
 
 fn write_object(w: &mut Writer, object: &Object) {
     let g = &object.geometry;
+    // Notes are not written yet: they need Rhino's annotation styles.
+    if matches!(g, Geometry::Text(_)) {
+        return;
+    }
     w.begin(tcode::OBJECT_RECORD);
     w.short(tcode::OBJECT_RECORD_TYPE, object_type(g));
     match g {
@@ -256,6 +261,7 @@ fn write_object(w: &mut Writer, object: &Object) {
         Geometry::Surface(s) => write_surface(w, s),
         Geometry::Brep(b) => class_object(w, class::BREP, |w| write_brep(w, b)),
         Geometry::Extrusion(_) => {}
+        Geometry::Text(_) => {}
         Geometry::Hatch(h) => class_object(w, class::HATCH, |w| {
             // openNURBS' ON_Hatch, version 1.2: plane, scale, turn, pattern, outlines as 2D
             // curves in the plane, then the base point.

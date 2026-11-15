@@ -172,3 +172,48 @@ fn rhinos_hatches_come_in_with_their_patterns() {
         }
     }
 }
+
+#[test]
+fn rhinos_notes_come_in_with_their_words_height_and_alignment() {
+    use curva_document::annotation::{Annotation, LINE_SPACING, TextAlign};
+    // Made in Rhino 8: "Hall" 3.5 high, left and bottom at (10, 20); "Ground floor / Plan"
+    // 5 high, centred at the bottom, turned 30 degrees at (50, 0); "Kitchen" in the Default
+    // style (1 high, left and top) at (0, -30).
+    let (doc, report) = open("v8_texts.3dm");
+    let notes: Vec<_> = doc
+        .state()
+        .objects
+        .iter()
+        .filter_map(|o| match &o.shape {
+            Shape::Annotation(Annotation::Text(t)) => Some(t.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(notes.len(), 3, "{}", report.summary());
+    let near = |a: [f64; 3], b: [f64; 3]| (0..3).all(|i| (a[i] - b[i]).abs() < 1e-9);
+    let find = |words: &str| notes.iter().find(|n| n.content == words).unwrap();
+    let hall = find("Hall");
+    assert!((hall.height - 3.5).abs() < 1e-12);
+    assert_eq!(hall.align, TextAlign::Left);
+    assert!(near(hall.origin, [10.0, 20.0, 0.0]), "{:?}", hall.origin);
+    let ground = find("Ground floor\nPlan");
+    assert!((ground.height - 5.0).abs() < 1e-12);
+    assert_eq!(ground.align, TextAlign::Centre);
+    let (s, c) = (30f64.to_radians().sin(), 30f64.to_radians().cos());
+    assert!(near(ground.x, [c, s, 0.0]));
+    // Aligned at the bottom of its second line, so its first line sits one line higher.
+    let up = 5.0 * LINE_SPACING;
+    assert!(
+        near(ground.origin, [50.0 - s * up, c * up, 0.0]),
+        "{:?}",
+        ground.origin
+    );
+    let kitchen = find("Kitchen");
+    assert!((kitchen.height - 1.0).abs() < 1e-12);
+    // Aligned at its top, so its baseline is one text height lower.
+    assert!(
+        near(kitchen.origin, [0.0, -31.0, 0.0]),
+        "{:?}",
+        kitchen.origin
+    );
+}
