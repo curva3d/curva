@@ -41,6 +41,9 @@ pub struct Layout {
     /// Rhino's layout user text, read by the `LayoutUserText` field; files leave out none.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub user_text: std::collections::BTreeMap<String, String>,
+    /// Its revision table's rows, oldest first (spec `layouts.md` §4); files leave out none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub revisions: Vec<crate::sheet::Revision>,
 }
 
 impl PaperUnit {
@@ -212,6 +215,7 @@ impl Document {
             unit,
             details: Vec::new(),
             user_text: std::collections::BTreeMap::new(),
+            revisions: Vec::new(),
         });
         id
     }

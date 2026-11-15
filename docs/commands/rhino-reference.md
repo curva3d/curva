@@ -433,3 +433,15 @@ refused to load (HTTP 403); Rhino sets layout user text there, Curva with SetLay
 | GetDocumentUserText | Shows text kept with SetDocumentUserText | none | the key, or Enter for every key that is not hidden (not on the command framework yet) | partly |
 | SetLayoutUserText | Curva's: Rhino sets layout user text in Layout Properties. The key; the value, on the current layout. Read by the `LayoutUserText` field | none | as SetDocumentUserText, on the open layout (not on the command framework yet) | partly |
 | Notes | Opens the Notes panel, where the model's notes are typed; a Locked checkbox. Read by the `Notes` field | none | typed at the prompt (`\n` for a new line, `""` clears, Enter keeps); not yet a panel or Locked | partly |
+
+### Title blocks, scale bars, sheet index and revisions
+
+Rhino has none of these commands (`layouts.md` §4); they are Serpentine3D's, and their steps follow Serpentine's.
+Rhino users build title blocks from curves and text with fields, which is what TitleBlock places.
+
+| Command | Rhino's steps | Rhino's options | In Curva | Status |
+|---|---|---|---|---|
+| TitleBlock | Not in Rhino. Serpentine: the project, the drawing title, who drew it; the block goes bottom right | none | `Standard` (ISO or ANSI, from the sheet's unit); the project, title and drawn-by, Enter keeping what the document says; places a border (ISO 5457 or a half-inch one) and an ISO 7200-style block of lines and text with fields (project, title, scale of the largest detail, date, drawn and checked by, file, sheet number of count, revision) and a revision table, grouped | partly |
+| ScaleBar | Not in Rhino. Serpentine: the bar's place, for the detail there or the first one | none | `Length` `Divisions`; the detail is asked only when the sheet has more than one scaled detail; the bar follows the detail's scale, a round length when not typed, in metres for millimetre models | partly |
+| SheetIndex | Not in Rhino. Serpentine: where the index goes | none | a table of every sheet's number, name and `Title` layout user text, which follows the layouts | partly |
+| Revision | Not in Rhino. Serpentine: the revision mark, then the description; dated today | none | the mark (Enter takes the next: B after A, P02 after P01), what changed, who (Enter takes the `DrawnBy` document text); the row shows in the sheet's revision table and the mark in its title block | partly |
