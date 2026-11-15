@@ -1,4 +1,4 @@
-# 0026: Vello draws 2D views and sheets, with vello_cpu as the fallback
+# 0027: Vello draws 2D views and sheets, with vello_cpu as the fallback
 
 **Status:** Decided by the owner in chat · 15 November 2026, after the Vello spike (#185).
 
@@ -6,9 +6,9 @@
 - Live 2D views (plans, sections) and sheets are drawn with **Vello**, fully on the graphics card,
   from the same vector page (`curva_document::drawing::Page`) that the PDF and SVG exports write, so
   what is on screen is what prints.
-- On machines below the recommended graphics card (decision 0025), and wherever there is no graphics
+- On machines below the recommended graphics card (decision 0026), and wherever there is no graphics
   card, the same page is drawn with **vello_cpu** on the processor.
-- **Vello Hybrid** is not used: it suited the earlier weak-card baseline, which decision 0025 replaced.
+- **Vello Hybrid** is not used: it suited the earlier weak-card baseline, which decision 0026 replaced.
 - 3D views keep Curva's own pipeline.
 
 **What the spike found** (branch `185-vello-spike`, not merged; RTX 3060, A3 at 150 dpi,

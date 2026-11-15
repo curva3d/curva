@@ -6,7 +6,7 @@ decisions in section 9.
 display modes as editable files, and speed on large scenes.
 **Rules:** 100% pure Rust, no C++ libraries. Designed and measured for an RTX 3060-class graphics
 card (NVIDIA, or AMD or Intel of the same class), with a fallback that still runs on weaker machines
-(decision 0025, which replaces the earlier 2020 Intel integrated-graphics baseline).
+(decision 0026, which replaces the earlier 2020 Intel integrated-graphics baseline).
 
 ## 0. In short
 
@@ -240,7 +240,7 @@ draws as steadily as one at the origin.
 
 ## 5. Machines
 
-> **Changed by decision 0025 (owner, 15 November 2026).** The recommended card is an RTX 3060, or an
+> **Changed by decision 0026 (owner, 15 November 2026).** The recommended card is an RTX 3060, or an
 > AMD or Intel card of the same class; Curva is designed and measured for it. Below it Curva still
 > runs on fallbacks that draw the same thing more slowly or at lower quality, chosen automatically.
 > Features that need a strong card (compute shaders, larger limits, full-quality shadows and
@@ -268,7 +268,7 @@ measure on, so the fallbacks are kept by design and checked as far as possible w
 - Integrated graphics are slow mainly at filling pixels and sharing memory with the computer. So
   multisampling drops automatically when frames are slow (section 2.5), the screen pass stays
   cheap, and the memory limit on integrated graphics stays at 1 GB.
-- *Replaced by decision 0025:* speed was measured on the RTX 3060 with a margin of a tenth of a
+- *Replaced by decision 0026:* speed was measured on the RTX 3060 with a margin of a tenth of a
   frame, standing in for integrated graphics; targets are now set on the RTX 3060 itself
   (section 6).
 - The software graphics in CI are slower than any real card; *Medium* must still draw there, a
@@ -291,7 +291,7 @@ measure on, so the fallbacks are kept by design and checked as far as possible w
   to `--orbit-benchmark`: *Medium* (5,000 curves, 500 solids, as now), *Large* (10,000 solids,
   50,000 curves, 2,000 instances of a 5,000-triangle tree) and *Far* (*Large* placed 500 km from the
   origin). Recorded in `docs/performance.md` on the RTX 3060.
-  **Targets on the recommended card** (decision 0025), an RTX 3060 at 1920×1080: *Medium* and
+  **Targets on the recommended card** (decision 0026), an RTX 3060 at 1920×1080: *Medium* and
   *Large* orbit smoothly at the screen's rate, which on a 60 Hz screen means every frame done in
   under 16.7 ms, with the graphics card's own share under 8 ms; selecting an object in *Large*
   costs under 1 ms. Below the recommended class the fallbacks keep Curva usable rather than smooth.
@@ -341,7 +341,7 @@ The display stream makes these changes itself (decision B).
 **A. No machine with 2020 Intel integrated graphics.** The owner has none; Curva must still work
 well on such computers. The rule is kept by design and by the margins in section 5, measured on
 the RTX 3060. If a user or tester with such a machine turns up, their numbers go in
-`docs/performance.md`. *Replaced by decision 0025: the recommended card is RTX 3060-class, and
+`docs/performance.md`. *Replaced by decision 0026: the recommended card is RTX 3060-class, and
 such machines run on fallbacks.*
 
 **B. The display stream makes the changes outside the viewport that section 8 lists**, each in its

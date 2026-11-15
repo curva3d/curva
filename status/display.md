@@ -53,15 +53,15 @@
   Curva online account.
 - Status split per stream and the display stream's rules in `AGENTS.md` (#125).
 
-**In progress / next** (owner, 15 November 2026: decisions 0024 and 0025)
-- **Recommended graphics card** (decision 0025): an RTX 3060, or an AMD or Intel card of the same
+**In progress / next** (owner, 15 November 2026: decisions 0024 and 0026)
+- **Recommended graphics card** (decision 0026): an RTX 3060, or an AMD or Intel card of the same
   class, with fallbacks for weaker machines. Speed targets are set on the RTX 3060 itself
   (`docs/specs/display-pipeline.md` §5 and §6); 2020 Intel integrated graphics are the fallback
   case.
 - Order of work:
   1. **Finish what is open: done.** #189 merged (outlines of curved shapes in shaded views; two DirectX 12
      shader fixes, checked locally with DirectX 12's older compiler).
-  2. **#185, Vello for 2D views and sheets: done** (decision 0026): full GPU Vello, with vello_cpu
+  2. **#185, Vello for 2D views and sheets: done** (decision 0027): full GPU Vello, with vello_cpu
      as the fallback; spike on branch `185-vello-spike`, not merged. Found #193 (wrong sections of
      moved solids). Building on it waits for the re_renderer comparison and a plan for how the
      styles spec changes (point 5). **Next: #186, re_renderer for 3D lines** (spike).

@@ -1,4 +1,4 @@
-# 0025: An RTX 3060-class graphics card is recommended, with a fallback for weaker machines
+# 0026: An RTX 3060-class graphics card is recommended, with a fallback for weaker machines
 
 **Status:** Decided by the owner in chat · 15 November 2026.
 

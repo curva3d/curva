@@ -6,7 +6,7 @@ decisions in §8.
 (`display-pipeline.md` §3) and its steps 8 to 10. The rest of `display-pipeline.md` (detail that
 follows the zoom, smooth edges, speed on large scenes, the machines Curva runs on) is unchanged.
 **Rules:** 100% pure Rust, no C++ libraries. Designed for an RTX 3060-class graphics card (decision
-0025); on weaker machines heavier effects lower their quality instead of being missing.
+0026); on weaker machines heavier effects lower their quality instead of being missing.
 
 ## 0. In short
 
