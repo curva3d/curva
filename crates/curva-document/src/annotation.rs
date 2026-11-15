@@ -1176,9 +1176,12 @@ impl Document {
     /// Deletes style `id` if no annotation uses it and it is not the last; returns whether it
     /// was deleted.
     pub fn delete_annotation_style(&mut self, id: u64) -> bool {
-        let used = self.state.objects.iter().any(
-            |o| matches!(&o.shape, crate::Shape::Annotation(Annotation::Text(t)) if t.style == id),
-        );
+        // Text, dimensions and leaders take styles; dots and hatches have none.
+        let used = self.state.objects.iter().any(|o| match &o.shape {
+            crate::Shape::Annotation(Annotation::Dot(_) | Annotation::Hatch(_)) => false,
+            crate::Shape::Annotation(annotation) => annotation.style() == id,
+            _ => false,
+        });
         if used || self.annotation_styles().len() <= 1 {
             return false;
         }
@@ -1251,5 +1254,27 @@ mod tests {
         doc.remove(&[id]);
         assert!(doc.delete_annotation_style(copy));
         assert_eq!(doc.current_annotation_style(), 0);
+    }
+
+    #[test]
+    fn a_style_used_only_by_a_dimension_is_kept() {
+        let mut doc = Document::default();
+        let copy = doc.copy_annotation_style(0, "Dimensions".to_owned());
+        let id = doc.add_annotation(Annotation::Dimension(Dimension {
+            kind: DimensionKind::Aligned,
+            first: [0.0; 3],
+            second: [10.0, 0.0, 0.0],
+            line: [5.0, 5.0, 0.0],
+            x: [1.0, 0.0, 0.0],
+            y: [0.0, 1.0, 0.0],
+            style: copy,
+            text: None,
+        }));
+        assert!(
+            !doc.delete_annotation_style(copy),
+            "in use by the dimension"
+        );
+        doc.remove(&[id]);
+        assert!(doc.delete_annotation_style(copy));
     }
 }

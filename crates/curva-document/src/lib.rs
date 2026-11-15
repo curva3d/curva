@@ -19,6 +19,7 @@ mod migrate;
 pub use live::{LiveBoolean, LiveHow};
 pub mod annotation;
 pub mod clipping;
+pub mod drawing;
 pub mod fields;
 pub mod hatch;
 pub mod layouts;

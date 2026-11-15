@@ -454,6 +454,29 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
                 false,
             );
         }
+        // A printer with a sheet coming out.
+        "print" => {
+            pen.rect(6.0, 2.0, 10.0, 6.0);
+            pen.rect(2.0, 8.0, 18.0, 8.0);
+            pen.rect(6.0, 13.0, 10.0, 7.0);
+            pen.line((8.0, 16.5), (14.0, 16.5));
+        }
+        // A sheet with its corner turned, and an arrow out of it.
+        "exportpdf" => {
+            pen.path(
+                &[
+                    (4.0, 2.0),
+                    (13.0, 2.0),
+                    (17.0, 6.0),
+                    (17.0, 20.0),
+                    (4.0, 20.0),
+                ],
+                true,
+            );
+            pen.path(&[(13.0, 2.0), (13.0, 6.0), (17.0, 6.0)], false);
+            pen.line((8.0, 13.0), (21.0, 13.0));
+            pen.path(&[(18.0, 10.0), (21.0, 13.0), (18.0, 16.0)], false);
+        }
         // A list of sheets.
         "layouts" => {
             pen.rect(3.0, 3.0, 7.0, 5.0);

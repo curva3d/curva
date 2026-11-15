@@ -4,6 +4,7 @@ mod camera;
 mod glass;
 mod gpu;
 mod gumball;
+pub mod print;
 mod snap;
 
 use curva_document::{Layer, Object, Shape, State};
