@@ -8,6 +8,7 @@
 //! Algorithm"), so they are turned into and out of it here.
 
 mod annotation;
+mod blocks;
 
 use acadrust::entities::{Arc, Circle, EntityType, Line, LwPolyline, Point, Polyline3D, Spline};
 use acadrust::types::{Color, DxfVersion, LineWeight, Vector2, Vector3};
@@ -271,8 +272,130 @@ fn entities_for(curve: &Curve) -> Vec<EntityType> {
     }
 }
 
+/// A name AutoCAD takes for a layer or block: the characters it refuses become `_`.
+fn dxf_name(name: &str) -> String {
+    let clean: String = name
+        .chars()
+        .map(|c| if "<>/\\\":;?*|=`".contains(c) { '_' } else { c })
+        .collect();
+    if clean.trim().is_empty() {
+        "_".to_owned()
+    } else {
+        clean
+    }
+}
+
+/// What an export is writing: the drawing, and what has been put in it so far.
+struct Writer<'a> {
+    cad: CadDocument,
+    doc: &'a Document,
+    fields: FieldContext,
+    layers: BTreeMap<u64, String>,
+    blocks: BTreeMap<u64, String>,
+    report: Report,
+}
+
+impl Writer<'_> {
+    /// The DXF layer for a Curva layer, made the first time it is needed.
+    fn layer(&mut self, id: u64) -> String {
+        if let Some(name) = self.layers.get(&id) {
+            return name.clone();
+        }
+        let name = dxf_layer_name(self.doc, id);
+        if self.cad.layers.get(&name).is_none() {
+            let mut entry = Layer::new(name.clone());
+            if let Some(held) = self.doc.state().layer(id) {
+                let [r, g, b] = held.colour.map(|c| {
+                    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                    let byte = (c.clamp(0.0, 1.0) * 255.0).round() as u8;
+                    byte
+                });
+                entry.color = Color::Rgb { r, g, b };
+                entry.flags.off = !held.visible;
+                entry.flags.locked = held.locked;
+                if let Some(width) = held.print_width {
+                    entry.line_weight = line_weight(width);
+                }
+            }
+            let _ = self.cad.layers.add(entry);
+        }
+        self.layers.insert(id, name.clone());
+        name
+    }
+
+    /// The entities for one object, and the kind it is reported as.
+    fn entities(&mut self, object: &curva_document::Object) -> (Vec<EntityType>, &'static str) {
+        let state = self.doc.state();
+        let (mut made, kind) = match &object.shape {
+            Shape::Curve(curve) => (entities_for(curve), "curves"),
+            Shape::Annotation(Annotation::Text(text)) => {
+                let words = resolve(&text.content, state, object.space, &self.fields);
+                (annotation::text_out(text, &words), "texts")
+            }
+            Shape::Annotation(Annotation::Hatch(hatch)) => (
+                annotation::hatch_out(hatch, state).into_iter().collect(),
+                "hatches",
+            ),
+            Shape::Annotation(_) => (Vec::new(), "dimensions, leaders and other annotations"),
+            Shape::Body(_) => (Vec::new(), "surfaces and solids"),
+            Shape::Instance(instance) => {
+                let name = self.block(instance.definition);
+                (
+                    name.and_then(|name| blocks::insert_out(instance, &name))
+                        .map(EntityType::Insert)
+                        .into_iter()
+                        .collect(),
+                    "block instances",
+                )
+            }
+        };
+        let layer = if made.is_empty() {
+            String::new()
+        } else {
+            self.layer(object.layer)
+        };
+        for entity in &mut made {
+            let common = entity.common_mut();
+            common.layer.clone_from(&layer);
+            match object.print_width {
+                PrintWidth::Millimetres(width) => common.line_weight = line_weight(width),
+                PrintWidth::Default => common.line_weight = LineWeight::Default,
+                PrintWidth::ByLayer => {}
+            }
+        }
+        (made, kind)
+    }
+
+    /// The block for a definition, written with its objects the first time it is needed.
+    fn block(&mut self, definition: u64) -> Option<String> {
+        if let Some(name) = self.blocks.get(&definition) {
+            return Some(name.clone());
+        }
+        let held = self
+            .doc
+            .state()
+            .blocks
+            .iter()
+            .find(|b| b.id == definition)?
+            .clone();
+        let mut name = dxf_name(&held.name);
+        while self.cad.block_records.get(&name).is_some() {
+            name.push('_');
+        }
+        // Claimed before its contents, so a definition that holds itself stops here.
+        self.blocks.insert(definition, name.clone());
+        let mut contents = Vec::new();
+        for object in &held.objects {
+            let (made, _) = self.entities(object);
+            contents.extend(made);
+        }
+        blocks::write_block(&mut self.cad, &name, contents).ok()?;
+        Some(name)
+    }
+}
+
 /// The model (objects in the model, not on sheets), or the objects in `only`, written as a DXF
-/// or DWG file.
+/// or DWG file. Block instances go out as INSERTs of blocks holding their definitions.
 ///
 /// # Errors
 ///
@@ -284,74 +407,36 @@ pub fn export(
 ) -> Result<(Vec<u8>, Report), String> {
     let mut cad = CadDocument::with_version(DxfVersion::AC1015);
     cad.header.insertion_units = unit_code(doc.state().unit);
-    let mut report = Report::default();
-    let mut layers: BTreeMap<u64, String> = BTreeMap::new();
-    let fields = FieldContext::now(doc.path());
+    let mut writer = Writer {
+        cad,
+        doc,
+        fields: FieldContext::now(doc.path()),
+        layers: BTreeMap::new(),
+        blocks: BTreeMap::new(),
+        report: Report::default(),
+    };
     for object in &doc.state().objects {
         if only.is_some_and(|ids| !ids.contains(&object.id))
             || (only.is_none() && object.space.is_some())
         {
             continue;
         }
-        let (made, kind) = match &object.shape {
-            Shape::Curve(curve) => (entities_for(curve), "curves"),
-            Shape::Annotation(Annotation::Text(text)) => {
-                let words = resolve(&text.content, doc.state(), object.space, &fields);
-                (annotation::text_out(text, &words), "texts")
-            }
-            Shape::Annotation(Annotation::Hatch(hatch)) => (
-                annotation::hatch_out(hatch, doc.state())
-                    .into_iter()
-                    .collect(),
-                "hatches",
-            ),
-            Shape::Annotation(_) => (Vec::new(), "dimensions, leaders and other annotations"),
-            Shape::Body(_) => (Vec::new(), "surfaces and solids"),
-            Shape::Instance(_) => (Vec::new(), "block instances"),
-        };
+        let (made, kind) = writer.entities(object);
         if made.is_empty() {
-            Report::count(&mut report.skipped, kind);
+            Report::count(&mut writer.report.skipped, kind);
             continue;
         }
-        let layer = layers.entry(object.layer).or_insert_with(|| {
-            let name = dxf_layer_name(doc, object.layer);
-            if cad.layers.get(&name).is_none() {
-                let mut entry = Layer::new(name.clone());
-                if let Some(held) = doc.state().layer(object.layer) {
-                    let [r, g, b] = held.colour.map(|c| {
-                        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                        let byte = (c.clamp(0.0, 1.0) * 255.0).round() as u8;
-                        byte
-                    });
-                    entry.color = Color::Rgb { r, g, b };
-                    entry.flags.off = !held.visible;
-                    entry.flags.locked = held.locked;
-                    if let Some(width) = held.print_width {
-                        entry.line_weight = line_weight(width);
-                    }
-                }
-                let _ = cad.layers.add(entry);
-            }
-            name
-        });
-        for mut entity in made {
-            let common = entity.common_mut();
-            common.layer.clone_from(layer);
-            match object.print_width {
-                PrintWidth::Millimetres(width) => common.line_weight = line_weight(width),
-                PrintWidth::Default => common.line_weight = LineWeight::Default,
-                PrintWidth::ByLayer => {}
-            }
-            cad.add_entity(entity).map_err(|e| e.to_string())?;
+        for entity in made {
+            writer.cad.add_entity(entity).map_err(|e| e.to_string())?;
         }
-        Report::count(&mut report.brought, kind);
+        Report::count(&mut writer.report.brought, kind);
     }
     let bytes = match format {
-        Format::Dxf => DxfWriter::new(&cad).write_to_vec(),
-        Format::Dwg => DwgWriter::write_to_vec(&cad),
+        Format::Dxf => DxfWriter::new(&writer.cad).write_to_vec(),
+        Format::Dwg => DwgWriter::write_to_vec(&writer.cad),
     }
     .map_err(|e| e.to_string())?;
-    Ok((bytes, report))
+    Ok((bytes, writer.report))
 }
 
 /// A DXF or DWG file read.
@@ -504,19 +589,63 @@ pub(crate) fn bulged(
     Ok(Curve::Compound { segments })
 }
 
-/// A DXF or DWG drawing's model space added to `doc`: its curves, points, text and hatches on layers of the
-/// same names (made where missing, with their colours; `$` in a name makes sublayers, as Rhino
-/// writes them), and the model's unit taken from the file when `doc` is empty.
-pub fn import(cad: &CadDocument, doc: &mut Document) -> Report {
-    let mut report = Report::default();
-    if doc.state().objects.is_empty()
-        && let Some(unit) = unit_of(cad.header.insertion_units)
-    {
-        doc.set_unit(unit, false);
+/// What an import is reading into: the model, and the layers and blocks made so far.
+struct Reader<'a> {
+    cad: &'a CadDocument,
+    layers: BTreeMap<String, u64>,
+    blocks: BTreeMap<String, Option<u64>>,
+}
+
+impl Reader<'_> {
+    /// The Curva layer for a DXF layer, made (with its colour) the first time it is needed; `$`
+    /// in a name makes sublayers, as Rhino writes them.
+    fn layer(&mut self, doc: &mut Document, name: &str) -> u64 {
+        if let Some(id) = self.layers.get(name) {
+            return *id;
+        }
+        let path = name.replace('$', "::");
+        let id = doc.layer_at_path(if path.is_empty() { "0" } else { &path });
+        if let Some(held) = self.cad.layers.get(name) {
+            let colour = match held.color {
+                Color::Rgb { r, g, b } => Some((r, g, b)),
+                other => other.rgb(),
+            };
+            if let Some((r, g, b)) = colour {
+                doc.set_layer_colour(id, [r, g, b].map(|c| f32::from(c) / 255.0));
+            }
+        }
+        self.layers.insert(name.to_owned(), id);
+        id
     }
-    let mut layers: BTreeMap<String, u64> = BTreeMap::new();
-    for entity in cad.entities() {
-        let (shapes, kind): (Vec<Shape>, &str) = match entity {
+
+    /// The Curva definition for a block, made from its entities the first time it is needed.
+    fn block(&mut self, doc: &mut Document, name: &str) -> Option<u64> {
+        if let Some(id) = self.blocks.get(name) {
+            return *id;
+        }
+        // Claimed before its contents, so a block that holds itself stops here.
+        self.blocks.insert(name.to_owned(), None);
+        let cad = self.cad;
+        let mut ids = Vec::new();
+        for entity in cad.entities_in_block(name) {
+            if matches!(entity, EntityType::Block(_) | EntityType::BlockEnd(_)) {
+                continue;
+            }
+            let (shapes, _) = self.shapes(doc, entity);
+            let layer = self.layer(doc, &entity.common().layer);
+            for shape in shapes {
+                ids.push(doc.add_shape_on(shape, Some(layer)));
+            }
+        }
+        let (definition, instance) = doc.define_block(name.to_owned(), [0.0; 3], &ids);
+        doc.remove(&[instance]);
+        self.blocks.insert(name.to_owned(), Some(definition));
+        Some(definition)
+    }
+
+    /// What one entity becomes, and the kind it is reported as.
+    fn shapes(&mut self, doc: &mut Document, entity: &EntityType) -> (Vec<Shape>, &'static str) {
+        match entity {
             EntityType::Text(text) => (
                 annotation::text_in(text)
                     .map(|t| Shape::Annotation(Annotation::Text(t)))
@@ -540,30 +669,51 @@ pub fn import(cad: &CadDocument, doc: &mut Document) -> Report {
                 }
                 None => (Vec::new(), "hatches"),
             },
+            EntityType::Insert(insert) => match self.block(doc, &insert.block_name) {
+                Some(definition) if insert.column_count <= 1 && insert.row_count <= 1 => (
+                    vec![Shape::Instance(curva_document::Instance {
+                        definition,
+                        placement: blocks::placement_in(insert),
+                    })],
+                    "block instances",
+                ),
+                _ => (Vec::new(), "block instances"),
+            },
             other => match curve_of(other) {
                 Ok(curves) => (curves.into_iter().map(Shape::Curve).collect(), "curves"),
                 Err(kind) => (Vec::new(), kind),
             },
-        };
+        }
+    }
+}
+
+/// A DXF or DWG drawing's model space added to `doc`: its curves, points, text, hatches and
+/// block instances (with their blocks as definitions) on layers of the same names, and the
+/// model's unit taken from the file when `doc` is empty.
+pub fn import(cad: &CadDocument, doc: &mut Document) -> Report {
+    let mut report = Report::default();
+    if doc.state().objects.is_empty()
+        && let Some(unit) = unit_of(cad.header.insertion_units)
+    {
+        doc.set_unit(unit, false);
+    }
+    let mut reader = Reader {
+        cad,
+        layers: BTreeMap::new(),
+        blocks: BTreeMap::new(),
+    };
+    // Only what model space owns: a file read back lists block contents among its entities too.
+    let model = cad.block_records.get("*Model_Space").map(|b| b.handle);
+    for entity in cad.entities().filter(|e| {
+        let owner = e.common().owner_handle;
+        owner.is_null() || Some(owner) == model
+    }) {
+        let (shapes, kind) = reader.shapes(doc, entity);
         if shapes.is_empty() {
             Report::count(&mut report.skipped, kind);
             continue;
         }
-        let name = entity.common().layer.clone();
-        let layer = *layers.entry(name.clone()).or_insert_with(|| {
-            let path = name.replace('$', "::");
-            let id = doc.layer_at_path(if path.is_empty() { "0" } else { &path });
-            if let Some(held) = cad.layers.get(&name) {
-                let colour = match held.color {
-                    Color::Rgb { r, g, b } => Some((r, g, b)),
-                    other => other.rgb(),
-                };
-                if let Some((r, g, b)) = colour {
-                    doc.set_layer_colour(id, [r, g, b].map(|c| f32::from(c) / 255.0));
-                }
-            }
-            id
-        });
+        let layer = reader.layer(doc, &entity.common().layer);
         for shape in shapes {
             doc.add_shape_on(shape, Some(layer));
             Report::count(&mut report.brought, kind);
