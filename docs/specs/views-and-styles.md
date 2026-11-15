@@ -1,6 +1,7 @@
 # Spec: views and visualisation styles
 
-**Status:** Draft for the owner's approval · 15 November 2026 (display stream, #160).
+**Status:** Approved by the owner in chat · 15 November 2026 (display stream, #160), with the
+decisions in §8.
 **Covers:** the owner's direction of 15 November 2026. Replaces "Display modes as editable files"
 (`display-pipeline.md` §3) and its steps 8 to 10. The rest of `display-pipeline.md` (detail that
 follows the zoom, smooth edges, speed on large scenes, the machines Curva runs on) is unchanged.
@@ -64,17 +65,25 @@ A view is a saved item in the model, listed in a **Views** panel. It holds:
 - Levels (named heights, as in architecture tools) come with the architecture specialisation; until
   then a plan's height is a number.
 
-### 1.4 Layers per view
+### 1.4 Layers: for modelling, and per view
 
-- **Each view keeps its own layers on and off.** The Layers panel always shows and edits the view
-  of the viewport you are working in. Turning a layer off there changes only that view.
-- A new layer is on in every view.
-- **Copy layer state:** a command copies one view's layers on and off to other views, chosen in a
-  list.
-- **Locking stays model-wide:** a locked layer cannot be edited in any view, as locking is about
+There are two kinds of layer state (owner's decision A):
+
+- **Modelling layers:** one on/off state for modelling, used by the viewports while you work,
+  as the Layers panel works today.
+- **View layers:** each saved view keeps its own layers on and off. On a sheet and in an export,
+  a view always draws with its own layers, whatever the modelling layers say. "Walls" can be off
+  while modelling and on in the printed plan.
+- When a viewport shows a saved view, the Layers panel says at its top which state it is editing,
+  **Modelling** or **This view: <name>**, and starts on the view's layers; one click switches. So a
+  submission drawing is never changed by accident while modelling, nor the other way round.
+- A new layer is on in the modelling layers and in every view.
+- **Copy layer state:** a command copies one view's (or the modelling) layers on and off to other
+  views, chosen in a list.
+- **Locking stays model-wide:** a locked layer cannot be edited anywhere, as locking is about
   editing, not about how a drawing looks.
-- **Hide and Show stay model-wide** too: they are a modelling tool for getting objects out of the
-  way, not part of a drawing. (Recommendation; see §8.)
+- **Hide and Show stay model-wide:** they are a modelling tool for getting objects out of the way,
+  not part of a drawing.
 
 ### 1.5 The sun
 
@@ -134,14 +143,20 @@ of any style.
 
 ### 2.4 Files
 
-- Each style is one file, `<style name>.curvastyle`, in plain readable text, in
-  `Curva/styles/` in the user's app-data folder. Built-in styles live inside the program.
-- A model remembers each view's style by name. If the style is missing on another machine, the view
-  draws in Shaded and says which style is missing. Export makes a file to share.
+- **A model carries its styles** (owner's decision C): every style its views use is saved inside
+  the `.curva` file, so the model looks as intended whoever opens it, on any machine. Editing a
+  style edits the model's copy.
+- **My styles:** the user's own library, one plain-text file per style
+  (`<style name>.curvastyle`) in `Curva/styles/` in the user's app-data folder. Choosing a style from
+  the library for a view copies it into the model. **Save to my styles** puts a model's style into
+  the library; **Export** makes a file to share. Built-in styles live inside the program and are
+  copied into a model the same way when used.
+- If a model's style and a library style share a name but differ, the model's own copy is always
+  the one drawn; the Style panel marks the difference and offers to update either from the other.
 - Unknown settings are kept when saving; a bad value falls back to its default and the Style panel
   says which line is wrong; a bad file never stops Curva starting.
-- Later the owner wants styles (and similar settings) tied to a Curva online account; the files are
-  self-contained so they can be synced without changing their format.
+- Later the owner wants the library tied to a Curva online account; style files are self-contained
+  so they can be synced without changing their format.
 
 ## 3. Making a style: intuitive, live
 
@@ -232,8 +247,9 @@ These replace steps 8 to 10 of `display-pipeline.md`; the other steps keep their
 Views and per-view layers live in the model, so this reaches further than `display-pipeline.md`
 §8 foresaw:
 
-- `curva-document`: views as items (camera or cut, style name, layer state, sun, locked), saved
-  in the file; named views and older files brought in; layers' on/off moved into views.
+- `curva-document`: views as items (camera or cut, style, layer state, sun, locked) and the styles
+  they use, saved in the file; named views and older files brought in; modelling layers kept as today, view layers
+  added.
 - `curva-app`: Views panel, Style panel, the Layers panel editing the current view, viewport title
   menus listing views, sheets placing views.
 - `curva-commands`: `SetDisplayMode` becomes `SetStyle` (the old name kept as an alias); commands for
@@ -249,16 +265,16 @@ angles, place and time later; plans and sections with cut height and depth from 
 are saved items shown in any viewport or sheet; ambient occlusion is a style layer; one engine and
 one set of settings; everything live.
 
-**Still to confirm (recommendations; approving the spec accepts them):**
-- **A. Hide and Show stay model-wide**, while layers are per view (§1.4). Hiding is a modelling
-  tool; a drawing's content is set by its layers. The alternative, hiding per view, makes it easy to
-  lose objects in views you are not looking at.
-- **B. Who builds the model and interface parts** (§7): the display stream, in small pull requests
-  announced in `status/display.md` before each, as for `display-pipeline.md` (decision B there). The
-  views and layer changes touch files the features stream works in, so each is kept small and merged
-  quickly.
-- **C. Style names in files:** a model remembers styles by name and draws a missing one in Shaded,
-  rather than carrying copies of its styles inside the file (as decided for display modes).
+**Confirmed by the owner (15 November 2026):**
+- **A. Modelling layers and view layers** (§1.4): the modelling viewports have one layer state for
+  modelling; each saved view has its own, which wins on sheets and in exports. Hide and Show stay
+  model-wide, as modelling tools.
+- **B. The display stream builds the model and interface parts** (§7), in small pull requests
+  announced in `status/display.md` before each and merged quickly, as these touch files the
+  features stream works in.
+- **C. A model carries its styles** (§2.4), so it always looks as intended whoever opens it; the
+  user's folder is a library to choose from. This replaces, for styles, the earlier choice to
+  remember display modes by name.
 
 ## 9. Not covered
 
