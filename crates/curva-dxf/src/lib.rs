@@ -371,6 +371,8 @@ impl Writer<'_> {
                 dim.dimtxsty_handle = text.handle;
             }
             dim.dimscale = 1.0;
+            // No suffix: acadrust's "<>" means the value alone to AutoCAD, but Rhino shows it.
+            dim.dimpost = String::new();
             let _ = self.cad.dim_styles.add(dim);
         }
         name
@@ -1544,6 +1546,11 @@ mod tests {
                 dim.dimtxsty, "Plans",
                 "{format:?}: its text style, by handle"
             );
+            // A DWG keeps the suffix as written; acadrust leaves an empty one out of a DXF and
+            // reads it back as its own "<>".
+            if format == Format::Dwg {
+                assert!(dim.dimpost.is_empty(), "no suffix after the value");
+            }
             let mut back = Document::default();
             import(&cad, &mut back);
             let styles: Vec<AnnotationStyle> = back
