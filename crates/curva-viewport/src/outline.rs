@@ -6,7 +6,8 @@
 //! compared with where the surface's own slope would carry it. Depth values in a perspective or
 //! flat view change evenly across any flat surface on screen, so a flat surface seen at however
 //! steep an angle never counts; a jump well past the slope does. The outline is drawn on the near
-//! side of the jump, [`OUTLINE_PIXELS`] wide, so it sits on the object, not on what is behind it.
+//! side of the jump, two pixels wide (the default line's width), so it sits on the object, not on
+//! what is behind it.
 //! (Depth discontinuities as outlines: Saito and Takahashi, "Comprehensible rendering of 3-D
 //! shapes", SIGGRAPH 1990.)
 
@@ -14,9 +15,6 @@ use egui_wgpu::wgpu;
 
 /// How far back, as a share of the distance, the depth must step to count as an outline.
 const JUMP: f32 = 0.03;
-
-/// How wide outlines are drawn, in pixels: the default line's width.
-const OUTLINE_PIXELS: i32 = 2;
 
 const SHADER: &str = "
 @group(0) @binding(0) var depth: texture_depth_2d;
@@ -54,21 +52,23 @@ fn jumps(before: f32, a: f32, b: f32) -> bool {
     let p = vec2<i32>(at.xy);
     // Only on objects: the background is never outlined, the object beside it is.
     if (depth_at(p) >= 1.0) { discard; }
-    let directions = array<vec2<i32>, 4>(
-        vec2<i32>(1, 0), vec2<i32>(-1, 0), vec2<i32>(0, 1), vec2<i32>(0, -1)
-    );
-    for (var d = 0; d < 4; d = d + 1) {
-        let step = directions[d];
-        for (var k = 1; k <= WIDTH; k = k + 1) {
-            let before = depth_at(p + step * (k - 2));
-            let a = depth_at(p + step * (k - 1));
-            let b = depth_at(p + step * k);
-            if (jumps(before, a, b)) {
-                return look.colour;
-            }
-        }
+    // Written out with no loops: DirectX 12's shader compiler refuses to unroll a loop that
+    // leaves early, and Curva must run there (Windows CI caught it).
+    if (near_step(p, vec2<i32>(1, 0)) || near_step(p, vec2<i32>(-1, 0))
+        || near_step(p, vec2<i32>(0, 1)) || near_step(p, vec2<i32>(0, -1))) {
+        return look.colour;
     }
     discard;
+}
+
+// Whether a step back lies within two pixels of `p` in direction `step`: between `p` and the next
+// pixel, or between the next and the one after.
+fn near_step(p: vec2<i32>, step: vec2<i32>) -> bool {
+    let before = depth_at(p - step);
+    let here = depth_at(p);
+    let next = depth_at(p + step);
+    let after = depth_at(p + step * 2);
+    return jumps(before, here, next) || jumps(here, next, after);
 }";
 
 /// Draws outlines from a view's depth picture onto its colour picture.
@@ -108,12 +108,7 @@ impl Outliner {
         });
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("curva outlines"),
-            source: wgpu::ShaderSource::Wgsl(
-                SHADER
-                    .replace("WIDTH", &OUTLINE_PIXELS.to_string())
-                    .replace("JUMP", &format!("{JUMP:?}"))
-                    .into(),
-            ),
+            source: wgpu::ShaderSource::Wgsl(SHADER.replace("JUMP", &format!("{JUMP:?}")).into()),
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("curva outlines"),
