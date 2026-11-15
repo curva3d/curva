@@ -171,6 +171,31 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
 
     // Layers: the file's tree as sublayers (spec `sublayers.md` §3), parents first, each merged
     // with a layer of the same full name already there.
+    // Linetypes: the file's table as Curva's own or the document's.
+    let linetypes: Vec<Linetype> = model
+        .linetypes
+        .iter()
+        .map(|l| linetype_in(state, l))
+        .collect();
+    let linetype_of = |index: i32| {
+        usize::try_from(index)
+            .ok()
+            .and_then(|i| linetypes.get(i).copied())
+            .unwrap_or(Linetype::Continuous)
+    };
+    // Annotation styles: each the file's annotation uses, as Curva's, by name.
+    let used: Vec<model::DimStyle> = model
+        .dim_styles
+        .iter()
+        .filter(|s| {
+            model
+                .objects
+                .iter()
+                .any(|o| style_named(&o.geometry) == Some(s.id))
+        })
+        .cloned()
+        .collect();
+    let style_ids = styles_in(state, &used, file_mm);
     let full_names = layer_names(&model.layers);
     let nil = crate::archive::Uuid::NIL;
     let mut placed: Vec<Option<u64>> = vec![None; model.layers.len()];
@@ -210,7 +235,7 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
                     locked: layer.locked,
                     print_width: (layer.print_width > 0.0)
                         .then(|| PrintWidth::clamped(layer.print_width)),
-                    linetype: Linetype::Continuous,
+                    linetype: linetype_of(layer.linetype),
                     parent,
                     collapsed: false,
                 });
@@ -254,7 +279,6 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
         .flat_map(|b| b.objects.iter().map(move |o| (*o, b.id)))
         .collect();
     let mut definitions: BTreeMap<crate::archive::Uuid, Vec<Object>> = BTreeMap::new();
-    let mut own_colours = 0;
 
     // Layouts: one for each of the file's pages, in millimetres; what is drawn on a page comes
     // from the file's page unit.
@@ -310,6 +334,7 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
                         group: None,
                         live: None,
                         input_of: None,
+                        colour: None,
                         linetype: Linetype::ByLayer,
                         user_text: BTreeMap::new(),
                     }));
@@ -348,9 +373,10 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
             }
         };
         let shape = with_layout_numbers(shape, &page_ids);
-        if a.color_source == model::Source::Object {
-            own_colours += 1;
-        }
+        let shape = match style_named(&object.geometry).and_then(|s| style_ids.get(&s)) {
+            Some(style) => with_style(shape, *style),
+            None => shape,
+        };
         let id = state.next_id;
         state.next_id += 1;
         let made = Object {
@@ -372,7 +398,13 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
             group: a.groups.first().and_then(|g| group_ids.get(*g)).copied(),
             live: None,
             input_of: None,
-            linetype: Linetype::ByLayer,
+            colour: (a.color_source == model::Source::Object)
+                .then(|| a.color.map(|c| f32::from(c) / 255.0)),
+            linetype: if a.linetype_source == model::Source::Object {
+                linetype_of(a.linetype)
+            } else {
+                Linetype::ByLayer
+            },
             user_text: a.user_text.iter().cloned().collect(),
         };
         if let Some(block) = in_blocks.get(&a.id) {
@@ -407,11 +439,6 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
             objects,
             linked: None,
         });
-    }
-    if own_colours > 0 {
-        report.notes.push(format!(
-            "{own_colours} objects had their own colour and show in their layer's"
-        ));
     }
 }
 
@@ -1919,6 +1946,18 @@ fn with_layout_numbers(shape: Shape, page_ids: &BTreeMap<crate::archive::Uuid, u
     }
 }
 
+/// A file's linetype as the document's: one of Curva's own when the name matches (Rhino's
+/// standard linetypes share Curva's names), otherwise the document's own with the file's
+/// pattern.
+fn linetype_in(state: &mut State, linetype: &model::Linetype) -> Linetype {
+    let name = linetype.name.trim();
+    if let Some(own) = Linetype::named(name).filter(|l| !l.is_by_layer()) {
+        return own;
+    }
+    // Rhino's lengths are millimetres on paper whatever the model's unit, as Curva's are.
+    state.add_linetype(name, &curva_document::alternating(&linetype.segments))
+}
+
 /// A leader from a file, its words made plain and a landing drawn, as Rhino's usual style does.
 fn leader_in(l: &model::Leader) -> curva_document::annotation::Leader {
     curva_document::annotation::Leader {
@@ -1983,4 +2022,108 @@ fn detail_in(
             hidden_layers: Vec::new(),
         },
     ))
+}
+
+/// The file's annotation styles as the document's, by Rhino id: one of the same name kept,
+/// otherwise a new one with the file's font, sizes (from the file's unit to the style's
+/// millimetres, or inches in an imperial model) and decimals. A style Curva wrote for a note of
+/// another height or alignment ("ISO 3.5 7 Centre") goes back to the style it was made from.
+fn styles_in(
+    state: &mut State,
+    styles: &[model::DimStyle],
+    file_mm: f64,
+) -> BTreeMap<crate::archive::Uuid, u64> {
+    use curva_document::annotation::{AnnotationStyle, standard_styles};
+    let imperial = matches!(state.unit, Unit::Feet | Unit::Inches);
+    if state.annotation_styles.is_empty() && !styles.is_empty() {
+        state.annotation_styles = standard_styles(imperial);
+    }
+    let per_unit = file_mm / if imperial { 25.4 } else { 1.0 };
+    let mut out = BTreeMap::new();
+    for style in styles {
+        let name = style.name.trim();
+        let base = note_style_base(name, styles).unwrap_or(name);
+        let id = match state
+            .annotation_styles
+            .iter()
+            .find(|s| s.name.eq_ignore_ascii_case(base))
+        {
+            Some(held) => held.id,
+            None => {
+                let id = state
+                    .annotation_styles
+                    .iter()
+                    .map(|s| s.id)
+                    .max()
+                    .map_or(0, |m| m + 1);
+                state.annotation_styles.push(AnnotationStyle {
+                    id,
+                    name: base.to_owned(),
+                    font: style.font.clone(),
+                    text_height: style.text_height * per_unit,
+                    imperial,
+                    arrow_size: Some(style.arrow_size * per_unit),
+                    extension_offset: Some(style.extension_offset * per_unit),
+                    extension_extension: Some(style.extension_extension * per_unit),
+                    text_gap: Some(style.text_gap * per_unit),
+                    linear_resolution: u8::try_from(style.length_resolution).ok(),
+                });
+                id
+            }
+        };
+        out.insert(style.id, id);
+    }
+    out
+}
+
+/// For a style named as Curva names one made for a note ("ISO 3.5 7 Centre"), the style it was
+/// made from, when the file has it.
+fn note_style_base<'a>(name: &'a str, styles: &[model::DimStyle]) -> Option<&'a str> {
+    let (rest, align) = name.rsplit_once(' ')?;
+    if !matches!(align, "Left" | "Centre" | "Right") {
+        return None;
+    }
+    let (base, height) = rest.rsplit_once(' ')?;
+    height.parse::<f64>().ok()?;
+    styles.iter().any(|s| s.name.trim() == base).then_some(base)
+}
+
+/// The Rhino style an annotation from the file names.
+fn style_named(geometry: &Geometry) -> Option<crate::archive::Uuid> {
+    match geometry {
+        Geometry::Text(t) => Some(t.style),
+        Geometry::Dimension(d) => Some(d.style),
+        Geometry::Radial(d) => Some(d.style),
+        Geometry::Angular(d) => Some(d.style),
+        Geometry::Leader(l) => Some(l.style),
+        _ => None,
+    }
+}
+
+/// An annotation with its Curva style set.
+fn with_style(shape: Shape, style: u64) -> Shape {
+    use curva_document::annotation::Annotation;
+    match shape {
+        Shape::Annotation(Annotation::Text(mut t)) => {
+            t.style = style;
+            Shape::Annotation(Annotation::Text(t))
+        }
+        Shape::Annotation(Annotation::Dimension(mut d)) => {
+            d.style = style;
+            Shape::Annotation(Annotation::Dimension(d))
+        }
+        Shape::Annotation(Annotation::Radial(mut d)) => {
+            d.style = style;
+            Shape::Annotation(Annotation::Radial(d))
+        }
+        Shape::Annotation(Annotation::Angle(mut d)) => {
+            d.style = style;
+            Shape::Annotation(Annotation::Angle(d))
+        }
+        Shape::Annotation(Annotation::Leader(mut l)) => {
+            l.style = style;
+            Shape::Annotation(Annotation::Leader(l))
+        }
+        other => other,
+    }
 }

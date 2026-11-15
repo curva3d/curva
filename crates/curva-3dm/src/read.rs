@@ -4,8 +4,8 @@ use crate::archive::{Reader, Result, Uuid, bad, tcode};
 use crate::model::{
     AngularDimension, Attributes, Block, Brep, BrepEdge, BrepFace, BrepLoop, BrepTrim, BrepVertex,
     Curve, Detail, DimStyle, Extrusion, Geometry, Group, Hatch, HatchLine, HatchPattern, Layer,
-    Leader, LinearDimension, Model, NamedCPlane, NurbsCurve, NurbsSurface, Object, P3, Page, Plane,
-    RadialDimension, Source, Surface, Text, View,
+    Leader, LinearDimension, Linetype, Model, NamedCPlane, NurbsCurve, NurbsSurface, Object, P3,
+    Page, Plane, RadialDimension, Source, Surface, Text, View,
 };
 
 /// Class ids of the objects Curva reads and writes (openNURBS `ON_OBJECT_IMPLEMENT`).
@@ -44,6 +44,7 @@ pub mod class {
     pub const LEADER: Uuid = Uuid::parse("945BF594-6FF9-4F5C-BFC0-B3AF528F29D2");
     pub const DETAIL: Uuid = Uuid::parse("C8C66EFA-B3CB-4e00-9440-2AD66203379E");
     pub const DIM_STYLE: Uuid = Uuid::parse("67AA51A5-791D-4BEC-8AED-D23B462B6F87");
+    pub const LINETYPE: Uuid = Uuid::parse("26F10A24-7D13-4F05-8FDA-8E364DAF8EA6");
     /// The class an older id stands for, as openNURBS reads Rhino's older classes as today's.
     #[must_use]
     pub fn current(id: Uuid) -> Uuid {
@@ -133,6 +134,14 @@ pub fn read(data: &[u8]) -> Result<Model> {
                 records(&mut chunk.body, tcode::HATCHPATTERN_RECORD, |body| {
                     if let Some(pattern) = hatch_pattern(body)? {
                         model.hatch_patterns.push(pattern);
+                    }
+                    Ok(())
+                })?;
+            }
+            tcode::LINETYPE_TABLE => {
+                records(&mut chunk.body, tcode::LINETYPE_RECORD, |body| {
+                    if let Some(linetype) = linetype(body)? {
+                        model.linetypes.push(linetype);
                     }
                     Ok(())
                 })?;
@@ -401,12 +410,13 @@ fn layer(record: &mut Reader<'_>) -> Result<Option<Layer>> {
         visible: mode != 1,
         locked: mode == 2,
         print_width: 0.0,
+        linetype: -1,
     };
     if minor >= 1 {
         layer.visible = r.bool()? && mode != 1;
     }
     if minor >= 2 {
-        let _linetype = r.i32()?;
+        layer.linetype = r.i32()?;
     }
     if minor >= 3 {
         let _plot_color = r.color()?;
@@ -644,7 +654,8 @@ fn read_attributes(r: &mut Reader<'_>) -> Result<Attributes> {
             2 => {
                 r.wstring()?;
             }
-            3 | 4 | 10 => r.skip(4)?,
+            3 => a.linetype = r.i32()?,
+            4 | 10 => r.skip(4)?,
             6 => {
                 let c = r.color()?;
                 a.color = [c[0], c[1], c[2]];
@@ -655,7 +666,8 @@ fn read_attributes(r: &mut Reader<'_>) -> Result<Attributes> {
             }
             7 => r.skip(4)?,
             8 => a.print_width = r.f64()?,
-            9 | 14 | 16 | 17 => r.skip(1)?,
+            9 | 14 | 16 => r.skip(1)?,
+            17 => a.linetype_source = source(r.u8()?),
             11 => a.visible = r.bool()?,
             12 => a.mode = r.u8()? & 0x0F,
             13 => a.color_source = source(r.u8()?),
@@ -1202,6 +1214,32 @@ fn hatch_pattern(record: &mut Reader<'_>) -> Result<Option<HatchPattern>> {
     }))
 }
 
+/// A linetype table record (`ON_Linetype::Read`): Rhino 6 and later write version 2 (the
+/// component's attributes, then the segments), Rhino 5 version 1 (index, name, segments, id).
+fn linetype(record: &mut Reader<'_>) -> Result<Option<Linetype>> {
+    let (class, mut r) = class_object(record)?;
+    if class != class::LINETYPE {
+        return Ok(None);
+    }
+    let (major, minor, mut body) = r.versioned(tcode::ANONYMOUS_CHUNK)?;
+    let segments = |body: &mut Reader<'_>| -> Result<Vec<(f64, bool)>> {
+        let n = body.count(12)?;
+        (0..n)
+            .map(|_| Ok((body.f64()?, body.i32()? == 0)))
+            .collect()
+    };
+    if major == 1 {
+        let _index = body.i32()?;
+        let name = body.wstring()?;
+        let segments = segments(&mut body)?;
+        let id = if minor >= 1 { body.uuid()? } else { Uuid::NIL };
+        return Ok(Some(Linetype { id, name, segments }));
+    }
+    let (id, name) = component_attributes(&mut body)?;
+    let segments = segments(&mut body)?;
+    Ok(Some(Linetype { id, name, segments }))
+}
+
 /// openNURBS' `ReadModelComponentAttributes` for components written since Rhino 6: a bit set
 /// saying which of id, parent id, index, name and status follow. Returns the id and name.
 fn model_component(r: &mut Reader<'_>) -> Result<(Uuid, String)> {
@@ -1253,12 +1291,13 @@ fn hatch(r: &mut Reader<'_>) -> Result<Hatch> {
 /// alignment: its id and name, sizes (the seventh is the text height), then every field in
 /// order up to the alignments it also keeps in Rhino 5's numbering.
 fn dim_style_fields(r: &mut Reader<'_>) -> Result<DimStyle> {
-    let (_, mut b) = r.anonymous()?;
+    let (minor, mut b) = r.anonymous()?;
     let (id, name) = component_attributes(&mut b)?;
     let sizes = b.f64s::<7>()?;
-    // Text alignment (obsolete), angle format, length format, angle and length resolution,
-    // then the ignored text style index of Rhino 6 files.
-    b.skip(4 * 6)?;
+    // Text alignment (obsolete), angle format, length format, angle resolution.
+    b.skip(4 * 4)?;
+    let length_resolution = b.i32()?;
+    b.i32()?; // the ignored text style index of Rhino 6 files
     b.f64()?; // length factor
     b.bool()?; // alternate units
     b.f64()?; // alternate length factor
@@ -1288,13 +1327,44 @@ fn dim_style_fields(r: &mut Reader<'_>) -> Result<DimStyle> {
     let v_align = b.u32()?;
     b.skip(4 + 4 + 4 + 8 + 1 + 8)?; // leader alignment, angle style, curve, angle, landing
     let h_align = b.u32()?;
+    let mut font = None;
+    if minor >= 2 {
+        b.u32()?; // leader horizontal alignment
+        b.skip(2)?; // draw forward, signed ordinate
+        b.chunk()?; // the style's scale
+        b.u32()?; // unit system
+        font = font_name(&mut b).ok().flatten();
+    }
     Ok(DimStyle {
         id,
         name,
         text_height: sizes[6],
         h_align,
         v_align,
+        extension_extension: sizes[0],
+        extension_offset: sizes[1],
+        arrow_size: sizes[2],
+        text_gap: sizes[5],
+        length_resolution,
+        font,
     })
+}
+
+/// A font's family name (`ON_Font::Read`, Rhino 6 and later): its characteristics, then its
+/// Windows name as a UTF-8 string chunk, which names the family.
+fn font_name(r: &mut Reader<'_>) -> Result<Option<String>> {
+    let (_, mut f) = r.anonymous()?;
+    f.u32()?; // weight, style, stretch, underline and strikethrough
+    let mut name = f.expect(tcode::UTF8_STRING_CHUNK)?;
+    if name.body.u8()? != 1 {
+        return Ok(None);
+    }
+    let left = name.body.left();
+    let text = String::from_utf8_lossy(name.body.bytes(left)?)
+        .trim_end_matches('\0')
+        .trim()
+        .to_owned();
+    Ok((!text.is_empty()).then_some(text))
 }
 
 /// A dimension style table record; Rhino 5's older form is left out.

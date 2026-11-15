@@ -46,7 +46,7 @@ use modify::{
 use organise::{
     block, block_edit, block_manager, change_layer, draw_order, explode_block,
     get_document_user_text, get_user_text, group, insert, linetype_command, lock, lock_swap,
-    match_properties, notes, print_width_command, purge, rename, replace_block,
+    match_properties, notes, object_colour, print_width_command, purge, rename, replace_block,
     set_document_user_text, set_user_text, ungroup, unlock, unlock_selected,
 };
 use select::{
@@ -119,7 +119,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 267] = [
+pub static COMMANDS: [CommandDef; 268] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -364,6 +364,13 @@ pub static COMMANDS: [CommandDef; 267] = [
         true,
         true,
         print_width_command::PrintWidthCommand
+    ),
+    listed!(
+        "ObjectColour",
+        ["objectcolor"],
+        true,
+        true,
+        object_colour::ObjectColour
     ),
     listed!("SetUserText", [], true, true, set_user_text::SetUserText),
     listed!("GetUserText", [], false, false, get_user_text::GetUserText),
@@ -902,7 +909,7 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 75] = [
+    const NOTHING_TO_PREVIEW: [&str; 76] = [
         "Make2D",
         "Print",
         "ExportPDF",
@@ -922,6 +929,7 @@ mod tests {
         "MatchProperties",
         "Linetype",
         "PrintWidth",
+        "ObjectColour",
         "SetUserText",
         "SetDocumentUserText",
         "SetLayoutUserText",

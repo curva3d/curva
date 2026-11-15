@@ -5,8 +5,8 @@ use crate::commands::support::*;
 use crate::{Answer, Command, Message, Step};
 use curva_document::Document;
 
-/// `MatchProperties`: copies layer, print width, linetype and name from one object to others:
-/// the objects to change, then the one to match.
+/// `MatchProperties`: copies layer, colour, print width, linetype and name from one object to
+/// others: the objects to change, then the one to match.
 #[derive(Default)]
 pub struct MatchProperties {
     targets: Vec<u64>,

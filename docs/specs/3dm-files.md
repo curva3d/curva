@@ -20,7 +20,8 @@ version, which Rhino 7 and 8 open.
 | NURBS surfaces, planes, surfaces of revolution and extrusions | yes, as surfaces | yes |
 | Polysurfaces and solids (B-reps, trimmed faces) | yes | yes |
 | Extrusion objects (Rhino's light solids) | yes, as solids | not written (B-reps instead) |
-| Object names, colours by layer or object, print widths, user text | yes | yes |
+| Object names, colours by layer or object (own colours kept), print widths, user text | yes | yes |
+| Linetypes of layers and objects (the linetype table), lengths in millimetres | yes: Curva's seven by name, others as the document's own with their patterns | yes, the ones used, with their patterns |
 | Groups, locked and hidden objects | yes | yes |
 | Blocks: definitions, instances, linked definitions | yes | yes |
 | Named views and construction planes | yes | yes |
@@ -28,8 +29,8 @@ version, which Rhino 7 and 8 open.
 | Text dots (`ON_TextDot`): point, words, secondary words, height, font | yes | yes |
 | Hatches (`ON_Hatch`) and their patterns (the hatch pattern table): plane, outlines and holes, pattern, scale, turn | yes; a pattern Curva lacks comes in with the file | yes |
 | Notes (`ON_Text`): words (from rich text), plane, height and alignment from their own or named annotation style, font | yes, from Rhino 6 to 8 | yes: words with their fields, plane, height and alignment, through one annotation style per height and alignment (fonts not yet) |
-| Annotation styles (`ON_DimStyle`): name, text height, alignment | yes | yes, as Rhino 6 reads them (version 1.1; later settings take Rhino's defaults) |
-| Linear dimensions (`ON_DimLinear`): points, dimension line, aligned or rotated, typed text | yes (their looks from Curva's current style) | yes, with a style of their annotation style's text height |
+| Annotation styles (`ON_DimStyle`): name, font, text height, arrow size, text gap, extension lines, decimals, alignment | yes, the ones the annotation uses, kept by name | yes, each style used under its name (version 1.2 with a font; later settings take Rhino's defaults); a note of another height or alignment gets a style beside its own ("ISO 3.5 7 Centre"), folded back on reading |
+| Linear dimensions (`ON_DimLinear`): points, dimension line, aligned or rotated, typed text | yes, with their style | yes, with a style of their annotation style's text height |
 | Radius, diameter and angle dimensions (`ON_DimRadial`, `ON_DimAngular`), leaders (`ON_Leader`) | yes (looks from Curva's current style; leaders with a landing) | yes |
 | Layouts (page views) with their size, and what is drawn on them (in the file's page unit) | yes | yes, in millimetres, with Rhino's four standard views beside them |
 | Detail views: frame, standard view or perspective, target, scale | yes | yes |

@@ -1916,6 +1916,13 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
             pen.line((3.0, 12.0), (19.0, 12.0));
             pen.dashed_in(&[(3.0, 17.0), (19.0, 17.0)], thin(1.0));
         }
+        "objectcolour" => {
+            pen.rect(4.0, 4.0, 14.0, 14.0);
+            pen.filled(
+                &[(7.0, 7.0), (15.0, 7.0), (15.0, 15.0), (7.0, 15.0)],
+                theme::ACCENT,
+            );
+        }
         "printwidth" => {
             pen.line_in((3.0, 6.0), (19.0, 6.0), thin(1.0));
             pen.line((3.0, 11.0), (19.0, 11.0));

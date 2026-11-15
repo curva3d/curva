@@ -26,6 +26,8 @@ pub struct Model {
     pub blocks: Vec<Block>,
     /// Hatch patterns, in the file's order; hatches name them by their place in it.
     pub hatch_patterns: Vec<HatchPattern>,
+    /// The linetype table.
+    pub linetypes: Vec<Linetype>,
     /// Annotation (dimension) styles, in the file's order.
     pub dim_styles: Vec<DimStyle>,
     /// Layouts (Rhino's page views), in the file's order.
@@ -74,6 +76,8 @@ pub struct Layer {
     pub locked: bool,
     /// Print width in millimetres: 0 the default, below 0 not printed.
     pub print_width: f64,
+    /// Its linetype's index in the linetype table; -1 continuous.
+    pub linetype: i32,
 }
 
 /// A group.
@@ -141,6 +145,23 @@ pub struct Attributes {
     pub page_space: bool,
     /// The view it belongs to: for an object on a layout, its page's id.
     pub viewport: Uuid,
+    /// Its own linetype's index in the linetype table, used when `linetype_source` says so;
+    /// -1 continuous.
+    pub linetype: i32,
+    /// Where its linetype comes from.
+    pub linetype_source: Source,
+}
+
+/// A linetype (`ON_Linetype`): its name and pattern.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Linetype {
+    /// Its id.
+    pub id: Uuid,
+    /// Its name.
+    pub name: String,
+    /// Its pattern: each segment's length in millimetres on paper (Rhino's, whatever the model's
+    /// unit), and whether it is drawn (a dash or dot) or left out (a gap).
+    pub segments: Vec<(f64, bool)>,
 }
 
 impl Default for Attributes {
@@ -159,6 +180,8 @@ impl Default for Attributes {
             user_text: Vec::new(),
             page_space: false,
             viewport: Uuid::NIL,
+            linetype: -1,
+            linetype_source: Source::Layer,
         }
     }
 }
@@ -548,6 +571,18 @@ pub struct DimStyle {
     /// Notes' vertical alignment, as Rhino 5 numbered it: 3 top, 4 middle of the first line,
     /// 5 middle, 6 middle of the last line, 7 bottom, 8 under the bottom.
     pub v_align: u32,
+    /// Arrowheads' length, in model units.
+    pub arrow_size: f64,
+    /// How far extension lines reach past the dimension line, in model units.
+    pub extension_extension: f64,
+    /// The gap between a measured point and its extension line, in model units.
+    pub extension_offset: f64,
+    /// The gap between the dimension line and its text, in model units.
+    pub text_gap: f64,
+    /// Decimal places of lengths.
+    pub length_resolution: i32,
+    /// Its font's family name; Rhino's default when `None`.
+    pub font: Option<String>,
 }
 
 /// A note (`ON_Text`).

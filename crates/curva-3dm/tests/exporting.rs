@@ -18,6 +18,7 @@ fn object(id: u64, shape: Shape, layer: u64) -> Object {
         group: None,
         live: None,
         input_of: None,
+        colour: None,
         linetype: Linetype::ByLayer,
         user_text: Default::default(),
     }
@@ -1056,4 +1057,185 @@ fn fields_only_curva_can_work_out_go_out_worked_out() {
         panic!("not a note");
     };
     assert_eq!(t.content, "North wall / %<PageName()>%");
+}
+
+#[test]
+fn linetypes_come_back_on_layers_and_objects() {
+    let mut state = State {
+        layers: vec![
+            Layer {
+                linetype: Linetype::Hidden,
+                ..layer(0, "Hidden lines", [0.5, 0.5, 0.5])
+            },
+            Layer {
+                linetype: Linetype::Center,
+                ..layer(1, "Axes", [0.0, 0.0, 1.0])
+            },
+            layer(2, "Plain", [0.0, 0.0, 0.0]),
+        ],
+        ..State::default()
+    };
+    let line = |y: f64| Shape::Curve(Curve::line([0.0, y, 0.0], [100.0, y, 0.0]).unwrap());
+    state.objects.push(object(0, line(0.0), 0).into());
+    state.objects.push(
+        Object {
+            linetype: Linetype::Border,
+            ..object(1, line(10.0), 1)
+        }
+        .into(),
+    );
+    state.objects.push(
+        Object {
+            linetype: Linetype::Continuous,
+            ..object(2, line(20.0), 0)
+        }
+        .into(),
+    );
+    state.next_id = 3;
+    state.next_layer = 3;
+    let (model, _) = curva_3dm::export::export(&state, None);
+    let names: Vec<&str> = model.linetypes.iter().map(|l| l.name.as_str()).collect();
+    assert_eq!(names, ["Hidden", "Center", "Border"], "only the ones used");
+    assert_eq!(
+        model.linetypes[0].segments,
+        [(1.5, true), (1.0, false)],
+        "Curva's pattern"
+    );
+    let back = round_trip(&state);
+    let by_name = |n: &str| back.layers.iter().find(|l| l.name == n).unwrap().linetype;
+    assert_eq!(by_name("Hidden lines"), Linetype::Hidden);
+    assert_eq!(by_name("Axes"), Linetype::Center);
+    assert_eq!(by_name("Plain"), Linetype::Continuous);
+    let kinds: Vec<Linetype> = back.objects.iter().map(|o| o.linetype).collect();
+    assert_eq!(
+        kinds,
+        [Linetype::ByLayer, Linetype::Border, Linetype::Continuous]
+    );
+}
+
+#[test]
+fn object_colours_and_the_documents_own_linetypes_come_back() {
+    let mut state = State {
+        layers: vec![layer(0, "Walls", [0.5, 0.5, 0.5])],
+        ..State::default()
+    };
+    let wall = state.add_linetype("Wall dash", &[8.0, 2.0, 1.0, 2.0]);
+    state.layers[0].linetype = wall;
+    let line = |y: f64| Shape::Curve(Curve::line([0.0, y, 0.0], [100.0, y, 0.0]).unwrap());
+    state.objects.push(
+        Object {
+            colour: Some([1.0, 0.0, 0.0]),
+            ..object(0, line(0.0), 0)
+        }
+        .into(),
+    );
+    state.objects.push(
+        Object {
+            linetype: wall,
+            ..object(1, line(10.0), 0)
+        }
+        .into(),
+    );
+    state.next_id = 2;
+    state.next_layer = 1;
+    let back = round_trip(&state);
+    assert_eq!(back.objects[0].colour, Some([1.0, 0.0, 0.0]));
+    assert_eq!(back.objects[1].colour, None, "by layer");
+    let wall_back = back.linetype_named("Wall dash").expect("the linetype");
+    assert_eq!(back.linetype_pattern(wall_back), [8.0, 2.0, 1.0, 2.0]);
+    assert_eq!(back.layers[0].linetype, wall_back);
+    assert_eq!(back.objects[1].linetype, wall_back);
+}
+
+#[test]
+fn annotation_styles_go_out_and_come_back_with_their_looks() {
+    use curva_document::annotation::{
+        Annotation, AnnotationStyle, Dimension, DimensionKind, Text, TextAlign, standard_styles,
+    };
+    let mut state = State::default();
+    let mut styles = standard_styles(false);
+    styles.push(AnnotationStyle {
+        id: 40,
+        name: "Plans".to_owned(),
+        font: Some("Arial".to_owned()),
+        text_height: 3.5,
+        imperial: false,
+        arrow_size: Some(2.0),
+        extension_offset: Some(1.0),
+        extension_extension: Some(1.5),
+        text_gap: Some(0.8),
+        linear_resolution: Some(1),
+    });
+    state.annotation_styles = styles;
+    let dimension = Dimension {
+        kind: DimensionKind::Horizontal,
+        first: [0.0; 3],
+        second: [5000.0, 0.0, 0.0],
+        line: [0.0, 800.0, 0.0],
+        x: [1.0, 0.0, 0.0],
+        y: [0.0, 1.0, 0.0],
+        style: 40,
+        text: None,
+    };
+    let note = |height: f64, align| Text {
+        content: "Kitchen".to_owned(),
+        origin: [0.0, 2000.0, 0.0],
+        x: [1.0, 0.0, 0.0],
+        y: [0.0, 1.0, 0.0],
+        height,
+        font: None,
+        align,
+        style: 40,
+    };
+    let shapes = [
+        Shape::Annotation(Annotation::Dimension(dimension)),
+        Shape::Annotation(Annotation::Text(note(3.5, TextAlign::Left))),
+        Shape::Annotation(Annotation::Text(note(7.0, TextAlign::Centre))),
+    ];
+    for (i, shape) in shapes.into_iter().enumerate() {
+        state.objects.push(object(i as u64, shape, 0).into());
+    }
+    state.next_id = 3;
+    let (model, _) = curva_3dm::export::export(&state, None);
+    let plans = model
+        .dim_styles
+        .iter()
+        .find(|s| s.name == "Plans")
+        .expect("the style under its own name");
+    assert_eq!(plans.font.as_deref(), Some("Arial"));
+    assert_eq!(
+        (
+            plans.arrow_size,
+            plans.extension_offset,
+            plans.extension_extension
+        ),
+        (2.0, 1.0, 1.5)
+    );
+    assert_eq!((plans.text_gap, plans.length_resolution), (0.8, 1));
+    assert!(model.dim_styles.iter().any(|s| s.name == "Plans 7 Centre"));
+    let back = round_trip(&state);
+    let held: Vec<&AnnotationStyle> = back
+        .annotation_styles
+        .iter()
+        .filter(|s| s.name == "Plans")
+        .collect();
+    assert_eq!(
+        held.len(),
+        1,
+        "one style, the note's own folded back into it"
+    );
+    let style = held[0];
+    assert_eq!(style.font.as_deref(), Some("Arial"));
+    assert_eq!(style.text_height, 3.5);
+    assert_eq!(style.arrow_size, Some(2.0));
+    assert_eq!(style.extension_offset, Some(1.0));
+    assert_eq!(style.extension_extension, Some(1.5));
+    assert_eq!(style.text_gap, Some(0.8));
+    assert_eq!(style.linear_resolution, Some(1));
+    for o in &back.objects {
+        let Shape::Annotation(a) = &o.shape else {
+            panic!("annotation");
+        };
+        assert_eq!(a.style(), style.id, "everything names the style");
+    }
 }

@@ -1427,12 +1427,28 @@ pub(crate) fn draw_picture(
     draw_picture_in_chunks(picture, size, extras, CHUNK_BYTES, &Scene::default())
 }
 
+/// [`draw_picture`], cut by clipping planes, each `[nx, ny, nz, d]` cutting away where
+/// `n·p + d > 0` (a plan cut, a section).
+pub(crate) fn draw_picture_cut(
+    picture: Picture,
+    size: [u32; 2],
+    clips: Vec<[f32; 4]>,
+) -> Result<Vec<u8>, String> {
+    let scene = Scene {
+        clips,
+        ..Scene::default()
+    };
+    draw_picture_in_chunks(picture, size, true, CHUNK_BYTES, &scene)
+}
+
 /// The object list and selection a picture's numbered lines and faces are drawn with; empty
 /// for a picture whose selection is drawn into its colours.
 #[derive(Default)]
 struct Scene {
     objects: Arc<Vec<u64>>,
     selection: Arc<Vec<u64>>,
+    /// Clipping planes cutting the picture, as for [`Drawing::clips`].
+    clips: Vec<[f32; 4]>,
 }
 
 /// [`draw_picture`], with uploads split into blocks of at most `chunk_bytes`.
@@ -1489,7 +1505,7 @@ fn draw_picture_in_chunks(
         .into_iter()
         .partition(|vertex| vertex.width == crate::GRID_WIDTH);
     let drawing = Drawing {
-        clips: Vec::new(),
+        clips: scene.clips.clone(),
         slot: 0,
         grid: Arc::new(grid),
         scene: Arc::new(lines),
@@ -1899,6 +1915,7 @@ mod tests {
             let scene = Scene {
                 objects: Arc::new(parts.objects.clone()),
                 selection: Arc::new(selected.clone()),
+                clips: Vec::new(),
             };
             let size = [96, 96];
             let (Ok(before), Ok(after)) = (

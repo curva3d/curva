@@ -1,6 +1,6 @@
 //! Reading Rhino files: openNURBS' example files (spec `docs/specs/3dm-files.md` §4).
 
-use curva_document::Shape;
+use curva_document::{Linetype, Shape};
 
 fn open(name: &str) -> (curva_document::Document, curva_3dm::import::Report) {
     let path = format!("{}/tests/files/{name}", env!("CARGO_MANIFEST_DIR"));
@@ -307,4 +307,59 @@ fn rhinos_layout_user_text_comes_in_with_its_fields() {
         .collect();
     shown.sort();
     assert_eq!(shown, ["Ground floor plan", "LP"]);
+}
+
+#[test]
+fn rhinos_linetypes_come_in_on_layers_and_objects() {
+    // Made in Rhino 8: layers with Dashed, Hidden and a custom "Wall dash" linetype; lines by
+    // layer, one with Border and one with "Wall dash" of their own.
+    let (doc, report) = open("v8_linetypes.3dm");
+    let state = doc.state();
+    let layer = |n: &str| state.layers.iter().find(|l| l.name == n).unwrap().linetype;
+    assert_eq!(layer("Dashed layer"), Linetype::Dashed);
+    assert_eq!(layer("Hidden layer"), Linetype::Hidden);
+    let wall = state
+        .linetype_named("Wall dash")
+        .expect("the document's own");
+    assert_eq!(layer("Wall layer"), wall);
+    assert_eq!(state.linetype_pattern(wall), [8.0, 2.0, 1.0, 2.0]);
+    let object = |n: &str| state.objects.iter().find(|o| o.name == n).unwrap().linetype;
+    assert_eq!(object("by layer"), Linetype::ByLayer);
+    assert_eq!(object("border by object"), Linetype::Border);
+    assert_eq!(object("wall dash by object"), wall);
+    assert!(report.skipped.is_empty(), "{}", report.summary());
+}
+
+#[test]
+fn rhinos_annotation_style_comes_in_with_its_looks() {
+    // Made in Rhino 8, in millimetres: a style "Sections" in Times New Roman, text 5, arrows 3,
+    // extension line offset 2 and extension 2.5, text gap 1.2, three decimals; a 4 m aligned
+    // dimension and a note in it.
+    let (doc, report) = open("v8_annotation_style.3dm");
+    let state = doc.state();
+    let style = state
+        .annotation_styles
+        .iter()
+        .find(|s| s.name == "Sections")
+        .unwrap_or_else(|| panic!("the style: {}", report.summary()));
+    assert_eq!(style.font.as_deref(), Some("Times New Roman"));
+    assert!((style.text_height - 5.0).abs() < 1e-9);
+    assert_eq!(style.arrow_size, Some(3.0));
+    assert_eq!(style.extension_offset, Some(2.0));
+    assert_eq!(style.extension_extension, Some(2.5));
+    assert_eq!(style.text_gap, Some(1.2));
+    assert_eq!(style.linear_resolution, Some(3));
+    let annotation: Vec<u64> = state
+        .objects
+        .iter()
+        .filter_map(|o| match &o.shape {
+            Shape::Annotation(a) => Some(a.style()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        annotation,
+        [style.id, style.id],
+        "the dimension and the note"
+    );
 }

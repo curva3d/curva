@@ -5,13 +5,11 @@ use crate::commands::arguments::*;
 use crate::recipe::{Context, Edit, Made, Recipe, StepDef};
 use curva_document::Document;
 
-/// The colour an object shows in: its layer's.
+/// The colour an object shows in: its own, or its layer's.
 fn colour_of(doc: &Document, id: u64) -> Option<[f32; 3]> {
-    let layer = doc.layer_of(id)?;
-    doc.layers()
-        .iter()
-        .find(|l| l.id == layer)
-        .map(|l| l.colour)
+    let state = doc.state();
+    let object = state.objects.iter().find(|o| o.id == id)?;
+    Some(state.object_colour(object))
 }
 
 /// `SelColor`: selects every object showing in the same colour as the one picked.

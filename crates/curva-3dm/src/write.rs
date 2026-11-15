@@ -4,8 +4,8 @@
 use crate::archive::{Uuid, Writer, tcode};
 use crate::model::{
     AngularDimension, Attributes, Block, Brep, Curve, Detail, DimStyle, Geometry, Group, HatchLine,
-    HatchPattern, Layer, Leader, LinearDimension, Model, NurbsCurve, NurbsSurface, Object, P3,
-    Plane, RadialDimension, Source, Surface, Text, View,
+    HatchPattern, Layer, Leader, LinearDimension, Linetype, Model, NurbsCurve, NurbsSurface,
+    Object, P3, Plane, RadialDimension, Source, Surface, Text, View,
 };
 use crate::read::class;
 
@@ -83,10 +83,16 @@ pub fn write(model: &Model) -> Vec<u8> {
         tcode::BITMAP_TABLE,
         tcode::TEXTURE_MAPPING_TABLE,
         tcode::MATERIAL_TABLE,
-        tcode::LINETYPE_TABLE,
     ] {
         table(&mut w, empty, |_| {});
     }
+    table(&mut w, tcode::LINETYPE_TABLE, |w| {
+        for (index, linetype) in model.linetypes.iter().enumerate() {
+            w.begin(tcode::LINETYPE_RECORD);
+            class_object(w, class::LINETYPE, |w| write_linetype(w, linetype, index));
+            w.end();
+        }
+    });
     table(&mut w, tcode::LAYER_TABLE, |w| {
         for (index, layer) in model.layers.iter().enumerate() {
             w.begin(tcode::LAYER_RECORD);
@@ -205,13 +211,36 @@ fn write_layer(w: &mut Writer, layer: &Layer, index: usize) {
     w.f64(1.0);
     w.wstring(&layer.name);
     w.bool(layer.visible);
-    w.i32(-1); // linetype: continuous
+    w.i32(layer.linetype);
     w.color(UNSET_COLOR);
     w.f64(layer.print_width);
     w.bool(layer.locked);
     w.uuid(layer.id);
     w.uuid(layer.parent);
     w.bool(true); // expanded
+}
+
+/// A linetype as Rhino 8 writes one (`ON_Linetype::Write`, version 2.3): its id, index and
+/// name, its segments (length, then 0 drawn or 1 left out), and no further properties.
+fn write_linetype(w: &mut Writer, linetype: &Linetype, index: usize) {
+    w.begin_versioned(tcode::ANONYMOUS_CHUNK, 2, 3);
+    w.begin_versioned(tcode::MODEL_ATTRIBUTES_CHUNK, 1, 0);
+    w.u8(0); // model serial number
+    w.u8(1);
+    w.uuid(linetype.id);
+    w.u8(0); // component type
+    w.u8(1);
+    w.count(index);
+    w.u8(1);
+    w.wstring(&linetype.name);
+    w.end();
+    w.count(linetype.segments.len());
+    for (length, drawn) in &linetype.segments {
+        w.f64(*length);
+        w.i32(i32::from(!drawn));
+    }
+    w.u8(0);
+    w.end();
 }
 
 fn write_group(w: &mut Writer, group: &Group, index: usize) {
@@ -371,6 +400,10 @@ fn write_attributes(w: &mut Writer, a: &Attributes) {
         w.u8(1);
         w.wstring(&a.name);
     }
+    if a.linetype >= 0 {
+        w.u8(3);
+        w.i32(a.linetype);
+    }
     if a.color_source == Source::Object {
         w.u8(6);
         w.color(color(a.color));
@@ -394,6 +427,10 @@ fn write_attributes(w: &mut Writer, a: &Attributes) {
     if a.print_width_source != Source::Layer {
         w.u8(15);
         w.u8(source(a.print_width_source));
+    }
+    if a.linetype_source != Source::Layer {
+        w.u8(17);
+        w.u8(source(a.linetype_source));
     }
     if !a.groups.is_empty() {
         w.u8(18);
@@ -880,7 +917,12 @@ fn write_length_value(w: &mut Writer, value: f64) {
 /// 1.1: everything up to the notes' alignment and the style's scale, with Rhino's usual values
 /// for what Curva does not set; Rhino fills in the fields of later versions with its defaults.
 fn write_dim_style(w: &mut Writer, style: &DimStyle, index: usize) {
-    w.begin_versioned(tcode::ANONYMOUS_CHUNK, 1, 1);
+    // Version 1.2 adds the font; without one, 1.1 leaves Rhino its default.
+    w.begin_versioned(
+        tcode::ANONYMOUS_CHUNK,
+        1,
+        if style.font.is_some() { 2 } else { 1 },
+    );
     w.begin_versioned(tcode::MODEL_ATTRIBUTES_CHUNK, 1, 0);
     w.u8(0); // model serial number
     w.u8(1);
@@ -892,13 +934,22 @@ fn write_dim_style(w: &mut Writer, style: &DimStyle, index: usize) {
     w.wstring(&style.name);
     w.end();
     let h = style.text_height;
-    // Extension line extension and offset, arrow sizes, centre mark, text gap, text height.
-    w.f64s(&[h / 2.0, h / 2.0, h, h, h, h / 4.0, h]);
+    // Extension line extension and offset, arrow and leader arrow sizes, centre mark, text gap,
+    // text height.
+    w.f64s(&[
+        style.extension_extension,
+        style.extension_offset,
+        style.arrow_size,
+        style.arrow_size,
+        h,
+        style.text_gap,
+        h,
+    ]);
     w.i32(0); // text alignment (obsolete)
     w.i32(0); // angle format: decimal degrees
     w.i32(0); // length format: decimal
     w.i32(0); // angle resolution
-    w.i32(2); // length resolution
+    w.i32(style.length_resolution);
     w.i32(-2_147_483_647); // ignored text style index
     w.f64(1.0); // length factor
     w.bool(false); // alternate units
@@ -982,6 +1033,26 @@ fn write_dim_style(w: &mut Writer, style: &DimStyle, index: usize) {
     w.u32(1); // ratio format
     w.end();
     w.u32(0); // unit system: none (the model's)
+    if let Some(font) = &style.font {
+        write_font(w, font);
+    }
+    w.end();
+}
+
+/// A font as openNURBS writes one (`ON_Font::Write`, version 1.0, the least Rhino reads): its
+/// characteristics (normal weight, upright, medium stretch, as `FontCharacteristicsAsUnsigned`
+/// makes 429), its Windows name as a UTF-8 string chunk, and no PostScript name. Rhino finds
+/// the installed font by the name.
+fn write_font(w: &mut Writer, family: &str) {
+    w.begin_versioned(tcode::ANONYMOUS_CHUNK, 1, 0);
+    w.u32(429);
+    w.begin(tcode::UTF8_STRING_CHUNK);
+    w.u8(1); // uncompressed
+    for byte in family.as_bytes() {
+        w.u8(*byte);
+    }
+    w.end();
+    w.wstring("");
     w.end();
 }
 
