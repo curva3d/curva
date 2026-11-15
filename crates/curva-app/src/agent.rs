@@ -19,6 +19,9 @@ pub(crate) const AGENT_ACTIVE: egui::Color32 = egui::Color32::from_rgb(110, 200,
 
 pub(crate) const PICTURE_SIZE: [u32; 2] = [1200, 800];
 
+/// How much closer than a framed view pictures of standard scenes are taken.
+pub(crate) const SCENE_PICTURE_ZOOM: f64 = 0.74;
+
 /// What a picture of the model shows: everything, shaded or `ghosted`, seen by `camera`.
 pub(crate) fn picture_of(
     doc: &Document,
@@ -72,9 +75,18 @@ pub(crate) fn picture_from(
     Ok(bytes)
 }
 
-/// Runs semicolon-separated command lines and saves a picture of the result.
-pub(crate) fn picture(path: &str, script: &str) -> Result<(), String> {
+/// Runs semicolon-separated command lines and saves a picture of the result: in `style` if given
+/// (`--style diagram`), and starting from a standard scene if given (`--scene building`).
+pub(crate) fn picture(
+    path: &str,
+    script: &str,
+    style: Option<curva_viewport::PictureStyle>,
+    scene: Option<BenchmarkScene>,
+) -> Result<(), String> {
     let mut doc = Document::default();
+    if let Some(scene) = scene {
+        benchmark_scene(&mut doc, scene)?;
+    }
     let mut processor = Processor::default();
     // A `SetDisplayMode Ghosted` in the script makes the picture ghosted.
     let mut ghosted = false;
@@ -90,13 +102,35 @@ pub(crate) fn picture(path: &str, script: &str) -> Result<(), String> {
     let mut camera = Camera::default();
     if let Some((low, high)) = outlines.bounds() {
         camera.frame(low, high);
+        // A standard scene fills more of the picture, for judging how it looks.
+        if scene.is_some() {
+            camera.zoom(SCENE_PICTURE_ZOOM);
+        }
     }
     let aspect = f64::from(PICTURE_SIZE[0]) / f64::from(PICTURE_SIZE[1]);
-    save_picture(
-        picture_of(&doc, &outlines, &camera, aspect, ghosted),
-        PICTURE_SIZE,
-        std::path::Path::new(path),
-    )?;
+    if let Some(style) = style {
+        // Styles find outlines from object numbers, so the faces are numbered.
+        let parts = curva_viewport::SceneParts::of(&outlines);
+        let numbered = Picture {
+            lines: parts.shaded_lines,
+            faces: parts.faces,
+            matrix: camera.matrix(aspect),
+            light: camera.forward().map(|value| value as f32),
+            ghosted: false,
+        };
+        curva_viewport::save_styled_picture(
+            numbered,
+            style,
+            PICTURE_SIZE,
+            std::path::Path::new(path),
+        )?;
+    } else {
+        save_picture(
+            picture_of(&doc, &outlines, &camera, aspect, ghosted),
+            PICTURE_SIZE,
+            std::path::Path::new(path),
+        )?;
+    }
     for line in processor.log() {
         println!("{line}");
     }

@@ -58,6 +58,13 @@
   the owner on 15 November 2026: modelling layers and per-view layers, the model carries its styles,
   the display stream builds the model and interface parts. Replaces display modes. Next: the
   prototype pictures (Diagram, Architectural, Textured), then step 11.
+- **Prototype 1 of 3, Diagram** (this pull request): `curva --picture out.png --scene building
+  --style diagram` draws a small test building on white with white surfaces, thin grey
+  inner edges and bold black outlines, soft shading and ambient occlusion, as the owner asked
+  (outlines found from a hidden picture of object
+  numbers, drawn at twice
+  the size and shrunk). Pictures only; the live viewport comes after the owner judges the look.
+  Known: a thin seam line shows across each sphere.
 - Order, by what users notice most: **step 11** (instancing: *Large*'s 58 s first frame and
   2.1 GB), then **4c** (an edit sends only the changed object), then step 13 (memory limit), then
   steps 2 and 3. The object index made for snapping (`crates/curva-viewport/src/index.rs`) is the
