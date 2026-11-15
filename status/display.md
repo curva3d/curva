@@ -59,7 +59,7 @@
   (`docs/specs/display-pipeline.md` §5 and §6); 2020 Intel integrated graphics are the fallback
   case.
 - Order of work:
-  1. **Finish what is open:** #189 (outlines of curved shapes in shaded views; two DirectX 12
+  1. **Finish what is open: done.** #189 merged (outlines of curved shapes in shaded views; two DirectX 12
      shader fixes, checked locally with DirectX 12's older compiler).
   2. **#185, Vello for 2D views and sheets: done** (decision 0026): full GPU Vello, with vello_cpu
      as the fallback; spike on branch `185-vello-spike`, not merged. Found #193 (wrong sections of
