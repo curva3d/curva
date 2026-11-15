@@ -5,6 +5,45 @@ use crate::*;
 /// The width of the Layers panel's column for the entered detail.
 const DETAIL_COLUMN: f32 = 48.0;
 
+/// How far each level of sublayers is indented in the Layers panel.
+const INDENT: f32 = 10.0;
+
+/// The width of a layer's expand triangle.
+const ARROW: f32 = 12.0;
+
+/// The width of a layer's drag grip.
+const GRIP: f32 = 7.0;
+
+/// The layers as the panel lists them (spec `sublayers.md` §2): each top-level layer followed
+/// by its sublayers, depth first, those under a collapsed layer left out; with each its depth
+/// and whether it has sublayers.
+fn tree_rows(layers: &[curva_document::Layer]) -> Vec<(&curva_document::Layer, usize, bool)> {
+    let known = |id: u64| layers.iter().any(|l| l.id == id);
+    let mut rows = Vec::new();
+    // Layers still to list, the next last; a layer whose parent is missing is top-level.
+    let mut stack: Vec<(&curva_document::Layer, usize)> = layers
+        .iter()
+        .filter(|l| l.parent.is_none_or(|p| !known(p)))
+        .rev()
+        .map(|l| (l, 0))
+        .collect();
+    let mut listed = std::collections::HashSet::new();
+    while let Some((layer, depth)) = stack.pop() {
+        if !listed.insert(layer.id) {
+            continue;
+        }
+        let children: Vec<&curva_document::Layer> = layers
+            .iter()
+            .filter(|l| l.parent == Some(layer.id))
+            .collect();
+        rows.push((layer, depth, !children.is_empty()));
+        if !layer.collapsed {
+            stack.extend(children.into_iter().rev().map(|l| (l, depth + 1)));
+        }
+    }
+    rows
+}
+
 impl Curva {
     /// Runs an edit of the model from a panel as one undo step, if it changed anything.
     pub(crate) fn undoable(&mut self, edit: impl FnOnce(&mut Document)) {
@@ -115,19 +154,33 @@ impl Curva {
         let current = self.doc.current_layer();
         // The panel scrolls both ways (`panel_area`), so wide columns can be reached.
         self.layer_table(ui, &layers, current);
-        if ui
-            .button(self.text.render(&Message::new("ui.layer.new")))
-            .clicked()
-        {
-            let number = layers.iter().map(|layer| layer.id).max().unwrap_or(0) + 1;
-            let name = self.text.render(&Message::with(
-                "ui.layer.new_name",
-                vec![number.to_string()],
-            ));
-            self.undoable(|doc| {
-                doc.add_layer(name);
-            });
-        }
+        let number = layers.iter().map(|layer| layer.id).max().unwrap_or(0) + 1;
+        let name = self.text.render(&Message::with(
+            "ui.layer.new_name",
+            vec![number.to_string()],
+        ));
+        ui.horizontal(|ui| {
+            if ui
+                .button(self.text.render(&Message::new("ui.layer.new")))
+                .clicked()
+            {
+                let name = name.clone();
+                self.undoable(|doc| {
+                    doc.add_layer(name);
+                });
+            }
+            // Rhino's New Sublayer: under the current layer, which opens to show it.
+            if ui
+                .button(self.text.render(&Message::new("ui.layer.new_sublayer")))
+                .clicked()
+            {
+                let name = name.clone();
+                self.undoable(|doc| {
+                    doc.add_sublayer(current, name);
+                    doc.set_layer_collapsed(current, false);
+                });
+            }
+        });
     }
 
     /// The layers as a table with a header row whose dividers size each column (spec
@@ -165,7 +218,23 @@ impl Curva {
             egui::Rect::from_min_size(egui::pos2(x, rect.min.y), egui::vec2(columns[index], row))
         };
         // The header, with a divider after each column to drag or double-click.
-        let (header, _) = ui.allocate_exact_size(egui::vec2(total, row), egui::Sense::hover());
+        let (header, header_response) =
+            ui.allocate_exact_size(egui::vec2(total, row), egui::Sense::hover());
+        // A layer dropped on the header goes to the top level (spec `sublayers.md` §2).
+        if let Some(dragged) = header_response.dnd_release_payload::<u64>() {
+            let dragged = *dragged;
+            self.undoable(|doc| {
+                doc.set_layer_parent(dragged, None);
+            });
+        }
+        if header_response.dnd_hover_payload::<u64>().is_some() {
+            ui.painter().rect_stroke(
+                header,
+                2.0,
+                egui::Stroke::new(1.0, theme::ACCENT),
+                egui::StrokeKind::Inside,
+            );
+        }
         let keys = [
             "ui.layer.name",
             "ui.layer.on",
@@ -234,7 +303,12 @@ impl Curva {
             self.save_layout();
         }
         let mut name_fit = 0.0_f32;
-        for layer in layers {
+        let state = self.doc.state().clone();
+        for (layer, depth, has_sublayers) in tree_rows(layers) {
+            let indent = INDENT * depth as f32;
+            // Whether a parent being off or locked rules this layer (Rhino's half-drawn icons).
+            let parent_off = layer.parent.is_some_and(|p| !state.layer_shown(p));
+            let parent_locked = layer.parent.is_some_and(|p| state.layer_locked(p));
             // The Name column fits the longest name, not the room its field was given.
             let name_width = ui.fonts_mut(|fonts| {
                 fonts
@@ -246,8 +320,28 @@ impl Curva {
                     .size()
                     .x
             });
-            name_fit = name_fit.max(name_width + 56.0);
-            let (rect, _) = ui.allocate_exact_size(egui::vec2(total, row), egui::Sense::hover());
+            name_fit = name_fit.max(name_width + 56.0 + indent + ARROW + GRIP);
+            let (rect, row_response) =
+                ui.allocate_exact_size(egui::vec2(total, row), egui::Sense::hover());
+            // A layer dropped on this row becomes its sublayer.
+            if let Some(dragged) = row_response.dnd_release_payload::<u64>() {
+                let (dragged, under) = (*dragged, layer.id);
+                if dragged != under {
+                    self.undoable(|doc| {
+                        if doc.set_layer_parent(dragged, Some(under)) {
+                            doc.set_layer_collapsed(under, false);
+                        }
+                    });
+                }
+            }
+            if row_response.dnd_hover_payload::<u64>().is_some() {
+                ui.painter().rect_stroke(
+                    rect,
+                    2.0,
+                    egui::Stroke::new(1.0, theme::ACCENT),
+                    egui::StrokeKind::Inside,
+                );
+            }
             let mut in_cell =
                 |ui: &mut egui::Ui, index: usize, add: &mut dyn FnMut(&mut egui::Ui)| {
                     let mut child = ui.new_child(
@@ -260,6 +354,60 @@ impl Curva {
                     widest[index] = widest[index].max(child.min_rect().width());
                 };
             in_cell(ui, 0, &mut |ui| {
+                ui.spacing_mut().item_spacing.x = 2.0;
+                ui.add_space(indent);
+                // Rhino's Expand and Collapse Sublayers: a triangle, painted as the font has
+                // no arrow.
+                let (arrow, clicked) =
+                    ui.allocate_exact_size(egui::vec2(ARROW, row), egui::Sense::click());
+                if has_sublayers {
+                    let c = arrow.center();
+                    let s = ARROW * 0.3;
+                    let points = if layer.collapsed {
+                        vec![
+                            egui::pos2(c.x - s * 0.6, c.y - s),
+                            egui::pos2(c.x + s * 0.8, c.y),
+                            egui::pos2(c.x - s * 0.6, c.y + s),
+                        ]
+                    } else {
+                        vec![
+                            egui::pos2(c.x - s, c.y - s * 0.6),
+                            egui::pos2(c.x + s, c.y - s * 0.6),
+                            egui::pos2(c.x, c.y + s * 0.8),
+                        ]
+                    };
+                    let colour = if clicked.hovered() {
+                        theme::ACCENT
+                    } else {
+                        quiet
+                    };
+                    ui.painter().add(egui::Shape::convex_polygon(
+                        points,
+                        colour,
+                        egui::Stroke::NONE,
+                    ));
+                    if clicked.clicked() {
+                        let (id, folded) = (layer.id, !layer.collapsed);
+                        self.doc.set_layer_collapsed(id, folded);
+                    }
+                }
+                // A grip to drag the layer onto another, or onto the header for the top.
+                let handle_id = ui.scope_id().with(("layer drag", layer.id));
+                let drag_hint = self.text.render(&Message::new("ui.layer.drag"));
+                ui.dnd_drag_source(handle_id, layer.id, |ui| {
+                    let (grip, hover) =
+                        ui.allocate_exact_size(egui::vec2(GRIP, row), egui::Sense::hover());
+                    for k in 0..3 {
+                        for side in [-1.5_f32, 1.5] {
+                            ui.painter().circle_filled(
+                                grip.center() + egui::vec2(side, (k as f32 - 1.0) * 4.0),
+                                1.1,
+                                quiet,
+                            );
+                        }
+                    }
+                    hover.on_hover_text(drag_hint);
+                });
                 if ui.radio(layer.id == current, "").clicked() {
                     self.undoable(|doc| doc.set_current_layer(layer.id));
                 }
@@ -269,11 +417,46 @@ impl Curva {
                 if edit.changed() {
                     self.doc.rename_layer(layer.id, name.clone());
                 }
+                // The menu's words, rendered now, as the menu's actions change the model.
+                let say = |key: &'static str| self.text.render(&Message::new(key));
+                let new_sublayer = say("ui.layer.new_sublayer");
+                let sublayer_name = say("ui.layer.sublayer_name");
+                let up_one_parent = say("ui.layer.up_one_parent");
+                let select_objects = say("ui.layer.select_objects");
+                let select_sublayer_objects = say("ui.layer.select_sublayer_objects");
+                let delete = say("ui.layer.delete");
                 edit.context_menu(|ui| {
-                    if ui
-                        .button(self.text.render(&Message::new("ui.layer.delete")))
-                        .clicked()
+                    if ui.button(&new_sublayer).clicked() {
+                        let name = sublayer_name.clone();
+                        let id = layer.id;
+                        self.undoable(|doc| {
+                            doc.add_sublayer(id, name);
+                            doc.set_layer_collapsed(id, false);
+                        });
+                        ui.close();
+                    }
+                    if let Some(parent) = layer.parent
+                        && ui.button(&up_one_parent).clicked()
                     {
+                        let above = state.layer(parent).and_then(|p| p.parent);
+                        let id = layer.id;
+                        self.undoable(|doc| {
+                            doc.set_layer_parent(id, above);
+                        });
+                        ui.close();
+                    }
+                    if ui.button(&select_objects).clicked() {
+                        let picked = self.doc.objects_on_layer(layer.id, false);
+                        self.doc.select(&picked);
+                        ui.close();
+                    }
+                    if has_sublayers && ui.button(&select_sublayer_objects).clicked() {
+                        let picked = self.doc.objects_on_layer(layer.id, true);
+                        self.doc.select(&picked);
+                        ui.close();
+                    }
+                    ui.separator();
+                    if ui.button(&delete).clicked() {
                         self.undoable(|doc| {
                             doc.delete_layer(layer.id);
                         });
@@ -281,15 +464,22 @@ impl Curva {
                     }
                 });
             });
+            // A box its parent rules is greyed: it cannot be turned on or unlocked on its own.
             in_cell(ui, 1, &mut |ui| {
-                let mut visible = layer.visible;
-                if ui.checkbox(&mut visible, "").changed() {
+                let mut visible = layer.visible && !parent_off;
+                if ui
+                    .add_enabled(!parent_off, egui::Checkbox::without_text(&mut visible))
+                    .changed()
+                {
                     self.undoable(|doc| doc.set_layer_visible(layer.id, visible));
                 }
             });
             in_cell(ui, 2, &mut |ui| {
-                let mut locked = layer.locked;
-                if ui.checkbox(&mut locked, "").changed() {
+                let mut locked = layer.locked || parent_locked;
+                if ui
+                    .add_enabled(!parent_locked, egui::Checkbox::without_text(&mut locked))
+                    .changed()
+                {
                     self.undoable(|doc| doc.set_layer_locked(layer.id, locked));
                 }
             });

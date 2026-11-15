@@ -209,6 +209,8 @@ impl<'a> Session<'a> {
                 json!({
                     "id": layer.id,
                     "name": layer.name,
+                    "full_name": self.doc.state().layer_path(layer.id),
+                    "parent": layer.parent,
                     "visible": layer.visible,
                     "locked": layer.locked,
                     "print_width": layer.print_width,

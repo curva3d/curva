@@ -144,11 +144,15 @@ fn marks_of(
     }
 }
 
-/// Whether an object prints: not hidden, on a shown layer, and not on a layer `hidden` here.
+/// Whether an object prints: not hidden, on a shown layer (with its parents on), and not on a
+/// layer `hidden` here, or under one.
 fn prints<'a>(state: &'a State, object: &Object, hidden: &[u64]) -> Option<Option<&'a Layer>> {
     let layer = state.layers.iter().find(|l| l.id == object.layer);
-    let shown =
-        !object.hidden && layer.is_none_or(|l| l.visible) && !hidden.contains(&object.layer);
+    let hidden_here = state
+        .layer_chain(object.layer)
+        .iter()
+        .any(|l| hidden.contains(&l.id));
+    let shown = !object.hidden && state.layer_shown(object.layer) && !hidden_here;
     shown.then_some(layer)
 }
 

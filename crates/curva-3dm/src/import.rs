@@ -159,30 +159,64 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
         report.skipped.push((kind.clone(), *n));
     }
 
-    // Layers: by their full names, parents first, merged with any of the same name.
+    // Layers: the file's tree as sublayers (spec `sublayers.md` §3), parents first, each merged
+    // with a layer of the same full name already there.
     let full_names = layer_names(&model.layers);
-    let layer_ids: Vec<u64> = model
-        .layers
-        .iter()
-        .zip(&full_names)
-        .map(|(layer, name)| {
-            if let Some(existing) = state.layers.iter().find(|l| &l.name == name) {
-                return existing.id;
+    let nil = crate::archive::Uuid::NIL;
+    let mut placed: Vec<Option<u64>> = vec![None; model.layers.len()];
+    // Each pass places the layers whose parent is placed; a tree n deep takes n passes.
+    for _ in 0..=model.layers.len() {
+        let mut placed_any = false;
+        for (index, layer) in model.layers.iter().enumerate() {
+            if placed[index].is_some() {
+                continue;
             }
-            let id = state.next_layer;
-            state.next_layer += 1;
-            state.layers.push(Layer {
-                id,
-                name: name.clone(),
-                colour: colour_of(layer.color),
-                visible: layer.visible,
-                locked: layer.locked,
-                print_width: (layer.print_width > 0.0)
-                    .then(|| PrintWidth::clamped(layer.print_width)),
-                linetype: Linetype::Continuous,
+            let parent = if layer.parent == nil {
+                None
+            } else {
+                match model.layers.iter().position(|l| l.id == layer.parent) {
+                    // A parent the file does not have: the layer goes at the top.
+                    None => None,
+                    Some(p) => match placed[p] {
+                        Some(id) => Some(id),
+                        None => continue,
+                    },
+                }
+            };
+            let full = &full_names[index];
+            let existing = state
+                .layers
+                .iter()
+                .find(|l| state.layer_path(l.id) == *full)
+                .map(|l| l.id);
+            let id = existing.unwrap_or_else(|| {
+                let id = state.next_layer;
+                state.next_layer += 1;
+                state.layers.push(Layer {
+                    id,
+                    name: layer.name.clone(),
+                    colour: colour_of(layer.color),
+                    visible: layer.visible,
+                    locked: layer.locked,
+                    print_width: (layer.print_width > 0.0)
+                        .then(|| PrintWidth::clamped(layer.print_width)),
+                    linetype: Linetype::Continuous,
+                    parent,
+                    collapsed: false,
+                });
+                id
             });
-            id
-        })
+            placed[index] = Some(id);
+            placed_any = true;
+        }
+        if !placed_any {
+            break;
+        }
+    }
+    let fallback = state.current_layer;
+    let layer_ids: Vec<u64> = placed
+        .into_iter()
+        .map(|id| id.unwrap_or(fallback))
         .collect();
     let layer_of = |index: usize| layer_ids.get(index).copied();
 

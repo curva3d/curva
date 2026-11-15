@@ -42,12 +42,14 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
         ..Model::default()
     };
 
-    // Layers: "Parent::Child" names become nested layers again, parents made as needed.
+    // Layers: each layer's full name (its sublayer tree, spec `sublayers.md` §3, or an older
+    // "Parent::Child" name) becomes Rhino's nested layers, parents made as needed.
     let mut layer_index: BTreeMap<u64, usize> = BTreeMap::new();
     let mut by_path: BTreeMap<String, usize> = BTreeMap::new();
     for layer in &state.layers {
         let mut parent = Uuid::NIL;
-        let parts: Vec<&str> = layer.name.split("::").collect();
+        let full = state.layer_path(layer.id);
+        let parts: Vec<&str> = full.split("::").collect();
         for (depth, part) in parts.iter().enumerate() {
             let path = parts[..=depth].join("::");
             let last = depth + 1 == parts.len();

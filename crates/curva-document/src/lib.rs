@@ -212,6 +212,12 @@ pub struct Layer {
         skip_serializing_if = "Linetype::is_continuous"
     )]
     pub linetype: Linetype,
+    /// The layer it is a sublayer of; `None` for a top-level layer (spec `sublayers.md`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<u64>,
+    /// Whether its sublayers are folded away in the Layers panel.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub collapsed: bool,
 }
 
 /// How thick an object's lines are, as Rhino's Print Width (spec `line-weights.md`).
@@ -364,6 +370,8 @@ fn standard_layers() -> Vec<Layer> {
         locked: false,
         print_width: None,
         linetype: Linetype::Continuous,
+        parent: None,
+        collapsed: false,
     }]
 }
 
@@ -434,6 +442,104 @@ impl State {
             }
         }
         all
+    }
+
+    /// A layer by id.
+    #[must_use]
+    pub fn layer(&self, id: u64) -> Option<&Layer> {
+        self.layers.iter().find(|l| l.id == id)
+    }
+
+    /// A layer and its parents, the layer first. A broken or looping tree stops where it
+    /// breaks.
+    #[must_use]
+    pub fn layer_chain(&self, id: u64) -> Vec<&Layer> {
+        let mut chain = Vec::new();
+        let mut next = Some(id);
+        while let Some(at) = next {
+            let Some(layer) = self.layer(at) else {
+                break;
+            };
+            if chain.iter().any(|l: &&Layer| l.id == at) {
+                break;
+            }
+            chain.push(layer);
+            next = layer.parent;
+        }
+        chain
+    }
+
+    /// Whether a layer's objects show: it and all its parents are on (spec `sublayers.md` §1).
+    /// An unknown layer shows.
+    #[must_use]
+    pub fn layer_shown(&self, id: u64) -> bool {
+        self.layer_chain(id).iter().all(|l| l.visible)
+    }
+
+    /// Whether a layer's objects are locked: it or one of its parents is locked.
+    #[must_use]
+    pub fn layer_locked(&self, id: u64) -> bool {
+        self.layer_chain(id).iter().any(|l| l.locked)
+    }
+
+    /// A layer's full name: the names down its tree joined by `::`, as Rhino writes them.
+    #[must_use]
+    pub fn layer_path(&self, id: u64) -> String {
+        let mut names: Vec<&str> = self
+            .layer_chain(id)
+            .iter()
+            .map(|l| l.name.as_str())
+            .collect();
+        names.reverse();
+        names.join("::")
+    }
+
+    /// A layer's sublayers, in their order.
+    #[must_use]
+    pub fn sublayers(&self, id: u64) -> Vec<&Layer> {
+        self.layers
+            .iter()
+            .filter(|l| l.parent == Some(id))
+            .collect()
+    }
+
+    /// A layer and every layer under it, the layer first.
+    #[must_use]
+    pub fn layer_tree(&self, id: u64) -> Vec<u64> {
+        let mut out = vec![id];
+        let mut index = 0;
+        while index < out.len() {
+            let at = out[index];
+            for child in self.sublayers(at) {
+                if !out.contains(&child.id) {
+                    out.push(child.id);
+                }
+            }
+            index += 1;
+        }
+        out
+    }
+
+    /// The layer a name means: a full name (`Walls::Exterior`), or a plain name when only one
+    /// layer has it. Case does not matter.
+    #[must_use]
+    pub fn layer_named(&self, name: &str) -> Option<u64> {
+        let name = name.trim();
+        if let Some(found) = self
+            .layers
+            .iter()
+            .find(|l| self.layer_path(l.id).eq_ignore_ascii_case(name))
+        {
+            return Some(found.id);
+        }
+        let mut plain = self
+            .layers
+            .iter()
+            .filter(|l| l.name.eq_ignore_ascii_case(name));
+        match (plain.next(), plain.next()) {
+            (Some(only), None) => Some(only.id),
+            _ => None,
+        }
     }
 }
 
@@ -819,13 +925,8 @@ impl Document {
     /// The objects that can be selected: not hidden, and not on a hidden or locked layer.
     #[must_use]
     pub fn selectable(&self) -> Vec<u64> {
-        let open = |layer: u64| {
-            self.state
-                .layers
-                .iter()
-                .find(|l| l.id == layer)
-                .is_none_or(|l| l.visible && !l.locked)
-        };
+        // Through the layer's parents (spec `sublayers.md` §1).
+        let open = |layer: u64| self.state.layer_shown(layer) && !self.state.layer_locked(layer);
         self.state
             .objects
             .iter()

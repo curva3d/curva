@@ -15,12 +15,8 @@ impl Command for ChangeLayer {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
         match answer {
             Some(Answer::Path(name)) if !self.objects.is_empty() => {
-                let Some(layer) = doc
-                    .layers()
-                    .iter()
-                    .find(|l| l.name.eq_ignore_ascii_case(name.trim()))
-                    .map(|l| l.id)
-                else {
+                // A full name (`Walls::Exterior`), or a plain one only one layer has.
+                let Some(layer) = doc.state().layer_named(&name) else {
                     return Step::Failed(Message::with("error.no_layer", vec![name]));
                 };
                 doc.move_to_layer(&self.objects, layer);
