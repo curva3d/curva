@@ -924,3 +924,32 @@ fn scale_bars_and_tables_go_out_as_their_plain_drawing() {
             .any(|o| matches!(o.shape, Shape::Curve(_)) && o.group.is_some())
     );
 }
+
+#[test]
+fn fields_only_curva_can_work_out_go_out_worked_out() {
+    use curva_document::annotation::{Annotation, Text, TextAlign};
+    let mut state = State::default();
+    state
+        .document_text
+        .insert("Project".to_owned(), "Harbour Library".to_owned());
+    let note = Text {
+        content: "%<DocumentText(\"Project\")>% / %<PageName()>% / %<Notes()>%".to_owned(),
+        origin: [0.0; 3],
+        x: [1.0, 0.0, 0.0],
+        y: [0.0, 1.0, 0.0],
+        height: 2.5,
+        font: None,
+        align: TextAlign::Left,
+        style: 0,
+    };
+    state
+        .objects
+        .push(object(0, Shape::Annotation(Annotation::Text(note)), 0).into());
+    state.next_id = 1;
+    let back = round_trip(&state);
+    let Shape::Annotation(Annotation::Text(t)) = &back.objects[0].shape else {
+        panic!("not a note");
+    };
+    // Rhino's own page field stays a field; the project and notes are written as they read.
+    assert_eq!(t.content, "Harbour Library / %<PageName()>% / ");
+}

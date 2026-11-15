@@ -94,6 +94,7 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
 
     // Scale bars and tables, which Rhino has not, go out as the plain drawing they make: lines,
     // solid hatches for their filled blocks, and notes, grouped.
+    let fields = curva_document::fields::FieldContext::now(None);
     let mut expanded: Vec<Object> = Vec::new();
     let mut next_group = state.next_group;
     for o in state
@@ -106,7 +107,7 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
                 next_group += 1;
                 expanded.extend(parts);
             }
-            None => expanded.push(Object::clone(o)),
+            None => expanded.push(with_rhino_fields(o, state, &fields)),
         }
     }
     let chosen: Vec<&Object> = expanded.iter().collect();
@@ -1350,4 +1351,72 @@ fn plain_parts(o: &Object, state: &State, group: u64, before: usize) -> Option<V
             })
             .collect(),
     )
+}
+
+/// The fields Rhino works out itself, by the same names (Rhino 8's `information/text_fields.htm`).
+/// Others read what only Curva holds (document and layout user text, notes, objects by Curva's
+/// numbers), so they go out worked out.
+const RHINO_FIELDS: [&str; 9] = [
+    "PageName",
+    "PageNumber",
+    "NumPages",
+    "PageWidth",
+    "PageHeight",
+    "PaperName",
+    "Date",
+    "FileName",
+    "ModelUnits",
+];
+
+/// Words with their fields as Rhino will show them: its own fields kept, the rest worked out.
+fn rhino_words(
+    words: &str,
+    state: &State,
+    space: Option<u64>,
+    fields: &curva_document::fields::FieldContext,
+) -> String {
+    let mut out = String::new();
+    let mut rest = words;
+    while let Some(start) = rest.find("%<") {
+        out.push_str(&rest[..start]);
+        let Some(end) = rest[start..].find(">%") else {
+            out.push_str(&rest[start..]);
+            return out;
+        };
+        let field = &rest[start..start + end + 2];
+        let name: String = field[2..]
+            .chars()
+            .take_while(char::is_ascii_alphanumeric)
+            .collect();
+        if RHINO_FIELDS.contains(&name.as_str()) {
+            out.push_str(field);
+        } else {
+            out.push_str(&curva_document::fields::resolve(
+                field, state, space, fields,
+            ));
+        }
+        rest = &rest[start + end + 2..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// An object with its notes' and leaders' fields as Rhino will show them.
+fn with_rhino_fields(
+    o: &Object,
+    state: &State,
+    fields: &curva_document::fields::FieldContext,
+) -> Object {
+    use curva_document::annotation::Annotation;
+    let mut out = o.clone();
+    match &mut out.shape {
+        Shape::Annotation(Annotation::Text(t)) => {
+            t.content = rhino_words(&t.content, state, o.space, fields);
+        }
+        Shape::Annotation(Annotation::Leader(l)) => {
+            l.content = rhino_words(&l.content, state, o.space, fields);
+        }
+        _ => {}
+    }
+    out
 }
