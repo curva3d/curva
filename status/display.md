@@ -6,7 +6,13 @@
 ## 15 November 2026
 
 **Done**
-- Step 1a, benchmark scenes (#129): `--orbit-benchmark --scene medium|large|far`, plus `--splines`
+- Step 1b, the graphics card's own time (#132): the benchmark reports it, read from the card's
+  clock. *Medium* 1.5 ms, reduced *Large* 7.1 ms per frame; the processor is the bigger cost on both
+  (`docs/performance.md`). The window now asks the card for its device through
+  `curva_viewport::device_descriptor`: the baseline limits, plus optional extras only when present.
+  Found on the way: building *Medium*'s 500 cylinders takes about 35 s, about 60 ms per extrusion in
+  the engine (#136, for the features stream).
+- Step 1a, benchmark scenes (#129, merged as #131): `--orbit-benchmark --scene medium|large|far`, plus `--splines`
   and `--trees`; the report says what the scene holds, how long it took to build and when the first
   frame showed. Baseline on the RTX 3060 in `docs/performance.md`:
   - *Medium* orbits at 4.8–4.9 ms between frames.
@@ -26,17 +32,21 @@
 - Status split per stream and the display stream's rules in `AGENTS.md` (#125).
 
 **In progress / next**
-- Step 1b: the graphics card's own time per frame in the benchmark report.
 - Step 1c: a test that draws with every optional graphics extra turned off.
-- Then step 2 (precision) and step 3 (smooth edges).
+- Then **step 4 before steps 2 and 3**: *Large* crashing matters more to users than shimmer or
+  jagged edges, so objects kept on the graphics card (which removes the 256 MB ceiling for lines
+  and faces) comes first.
 
 **Heads-up for the features stream** (changes outside the viewport, decision B)
-- `crates/curva-app/src/benchmark.rs` and the `--orbit-benchmark` arguments in
-  `crates/curva-app/src/main.rs` (#129, step 1a). Step 1b will touch the window's graphics set-up in
-  `main.rs` to ask for the card's timer, which is optional.
+- Done: `crates/curva-app/src/benchmark.rs` and the `--orbit-benchmark` arguments in
+  `crates/curva-app/src/main.rs` (#131); the window's graphics set-up in `main.rs` now uses
+  `curva_viewport::device_descriptor` (#132).
+- Next: step 4 changes what the window hands the viewport each frame (`Drawing`, built in
+  `crates/curva-app/src/viewports.rs` and `sheets.rs`), so selection no longer rebuilds the scene.
 
 **Open `display` issues**
 - #130: snapping takes most of each frame on large scenes; to use the object index of step 12.
+- #136 (not display, for the features stream): extruding a circle takes about 60 ms.
 
 **Where the display stands today** (history before this date is in `status/features.md`)
 - Wireframe, Shaded and Ghosted modes, fixed in code. Solids are meshed once, to a tolerance set

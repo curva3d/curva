@@ -396,6 +396,8 @@ pub struct LineRenderer {
     pub(crate) compositor: crate::glass::Compositor,
     /// The shaded background behind each viewport.
     background: Background,
+    /// The graphics card's timer for the benchmark, once asked for and if the card has one.
+    timer: Option<crate::timer::GpuTimer>,
 }
 
 /// The background: a quad over the whole viewport, shading from one colour at the top to
@@ -735,6 +737,7 @@ impl LineRenderer {
             zebra_faces,
             draft_faces,
             background,
+            timer: None,
             slots,
             surfaces: None,
             overlay: None,
@@ -747,6 +750,28 @@ impl LineRenderer {
     /// panels show their tint alone.
     pub fn set_blur(&mut self, on: bool) {
         self.compositor.blur = on;
+    }
+
+    /// Starts or stops timing the viewports on the graphics card, for the benchmark. Returns
+    /// whether the card has a timer; without one nothing is measured.
+    pub fn time_gpu(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, on: bool) -> bool {
+        if self.timer.is_none() {
+            self.timer = crate::timer::GpuTimer::new(device, queue);
+        }
+        match &mut self.timer {
+            Some(timer) => {
+                timer.switch(on);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// The graphics card's average time per frame for drawing the viewports, in milliseconds,
+    /// since [`Self::time_gpu`] switched timing on; `None` before any reading has come back.
+    #[must_use]
+    pub fn gpu_frame_ms(&self) -> Option<f64> {
+        self.timer.as_ref()?.per_frame_ms()
     }
 
     /// Sends one view's camera and grid, and anything that changed, to the graphics card.
@@ -992,7 +1017,7 @@ impl egui_wgpu::CallbackTrait for Drawing {
                 }),
                 stencil_ops: None,
             }),
-            timestamp_writes: None,
+            timestamp_writes: renderer.timer.as_mut().and_then(|t| t.writes(self.frame)),
             occlusion_query_set: None,
             multiview_mask: None,
         });
@@ -1005,6 +1030,10 @@ impl egui_wgpu::CallbackTrait for Drawing {
         );
         renderer.background.draw(&mut pass);
         renderer.draw(&mut pass, self.slot);
+        drop(pass);
+        if let Some(timer) = &mut renderer.timer {
+            timer.finish_pass(encoder);
+        }
         Vec::new()
     }
 
