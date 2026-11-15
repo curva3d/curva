@@ -420,3 +420,16 @@ Written on 15 November 2026 from `commands/make2d.htm`, which describes the dial
 | Command | Rhino's steps | Rhino's options | In Curva | Status |
 |---|---|---|---|---|
 | Make2D | Select objects; set the projection and options in the dialog | Projection: `View` (lower left at the world origin; register with previous), `CPlane` (on the construction plane), third angle and first angle four-view drawings. Options: object properties (from input objects or by output layers), maintain source layers, tangent edges, hidden lines, scene silhouette, clipping plane intersections, viewport rectangle, group output, register with previous; the parent layer name | `Projection` (View or CPlane), `HiddenLines`, `TangentEdges`; exact edges, curves (polylines as their segments) and silhouettes of curved faces (exact for cylinders and spheres), visible and hidden, under `Make2D` > `Visible`/`Hidden` > `Curves`, `Silhouettes` and `Tangents` (hidden ones dashed). Visibility by solidcore's B-rep rays (`make2d.md` §2). Clean output: same-visibility pieces rejoined, end-on lines, hidden lines under visible ones and doubled lines removed (a square gives four lines, a box from above its outline). Not yet: four-view drawings, clipping plane intersections, annotations, groups, source layers, register with previous | partly |
+
+### Document text and notes
+
+Written on 15 November 2026 from `commands/setdocumentusertext.htm` (which also covers GetDocumentUserText),
+`commands/notes.htm` and `information/text_fields.htm`. The layout properties page (`properties/layout.htm`)
+refused to load (HTTP 403); Rhino sets layout user text there, Curva with SetLayoutUserText.
+
+| Command | Rhino's steps | Rhino's options | In Curva | Status |
+|---|---|---|---|---|
+| SetDocumentUserText | The key (a leading full stop hides it from lists); the value (`""` removes the key). Read by the `DocumentText` field | none | as Rhino; Enter alone also removes the key, `\n` types a new line (not on the command framework, which has no typed-text step yet) | partly |
+| GetDocumentUserText | Shows text kept with SetDocumentUserText | none | the key, or Enter for every key that is not hidden (not on the command framework yet) | partly |
+| SetLayoutUserText | Curva's: Rhino sets layout user text in Layout Properties. The key; the value, on the current layout. Read by the `LayoutUserText` field | none | as SetDocumentUserText, on the open layout (not on the command framework yet) | partly |
+| Notes | Opens the Notes panel, where the model's notes are typed; a Locked checkbox. Read by the `Notes` field | none | typed at the prompt (`\n` for a new line, `""` clears, Enter keeps); not yet a panel or Locked | partly |
