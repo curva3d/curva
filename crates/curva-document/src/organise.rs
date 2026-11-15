@@ -124,6 +124,19 @@ impl Document {
         true
     }
 
+    /// Adds a row to a layout's revision table and makes its mark the layout's `Revision` user
+    /// text, which title blocks show. Returns whether the layout exists.
+    pub fn add_revision(&mut self, layout: u64, revision: crate::sheet::Revision) -> bool {
+        let Some(sheet) = self.state.layouts.iter_mut().find(|l| l.id == layout) else {
+            return false;
+        };
+        sheet
+            .user_text
+            .insert("Revision".to_owned(), revision.mark.clone());
+        sheet.revisions.push(revision);
+        true
+    }
+
     /// Copies layer, print width, linetype and name from one object to others.
     pub fn match_properties(&mut self, from: u64, to: &[u64]) -> usize {
         let Some(source) = self.state.objects.iter().find(|o| o.id == from).cloned() else {
