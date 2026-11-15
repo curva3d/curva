@@ -1,0 +1,66 @@
+---
+title: Coming from Rhino
+description: What works the same as Rhino, what's different in Curva, and what isn't there yet.
+sidebar:
+  order: 4
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Curva's Freeform modelling follows Rhino on purpose: the same command names, the same steps and options, the same mouse. If you know Rhino, you can model in Curva today. This page covers the differences.
+
+## What's the same
+
+- **Command names.** Commands have Rhino's names: `Line`, `Polyline`, `InterpCrv`, `ExtrudeCrv`, `Loft`, `Sweep2`, `FilletEdge`, `BooleanUnion` and so on, with the usual short names (`l`, `c`, `m`, `co`, `ro`, `sc`, `j`, `x`, `tr`).
+- **Steps and options.** Each command asks its questions in Rhino's order and offers Rhino's options, clicked or typed. Not every option is there yet (see below).
+- **The command line.** <kbd>Enter</kbd> on an empty line repeats the last command, <kbd>Esc</kbd> cancels, and typing shows matching commands.
+- **The mouse.** Right-drag pans the flat views and orbits Perspective; <kbd>Shift</kbd> + right-drag pans Perspective; <kbd>Ctrl</kbd> + right-drag and the wheel zoom. Four viewports in Rhino's arrangement; double-click a title to maximise.
+- **Snaps, Ortho, Grid snap and the gumball**, switched on and off under the command line.
+- **Undo** with <kbd>Ctrl</kbd> + <kbd>Z</kbd>; view changes are kept apart, with `UndoView` and `RedoView`.
+- **History.** Type `History` to record it, as in Rhino.
+
+## Rhino files
+
+Curva reads and writes Rhino's `.3dm` format directly, with `Import` and `Export`.
+
+- **Reads** files from Rhino 5 to Rhino 8. **Writes** Rhino 7 files, which Rhino 7 and 8 open.
+- **Comes across:** units and tolerance, layers (with colour, visibility, lock, print width and nesting), points, curves, NURBS surfaces, polysurfaces and solids, object names and colours, print widths, user text, groups, hidden and locked objects, and blocks.
+- **Rhino's extrusion objects** are read as ordinary solids.
+- **Curva's live booleans** are written as plain solids, since Rhino has no equivalent.
+
+Curva's own format is `.curva`. Use it for your work, and `.3dm` to exchange with Rhino users.
+
+## What's different
+
+### Live booleans
+
+`BooleanUnion`, `BooleanDifference` and `BooleanIntersection` keep the solids they were made from, inside the result. Run `EditBoolean` on a result to show its inputs and change them, with the gumball or any command: the result updates as you go. `BreakBoolean` turns it back into a plain solid.
+
+### Panels instead of toolbars
+
+Curva has no toolbars. Commands are in the **Commands** panel, as tabs of buttons, and everything else is a panel too: Layers, Properties, Display, the command bar. Panels float over the model, dock to edges and merge as tabs. See [The interface](/docs/getting-started/interface/).
+
+### Specializations
+
+The dial in the top bar switches the interface between kinds of work: Freeform today, with Architecture and others to come. Objects stay the same whichever one you're in, so a freeform roof and an architectural wall can live in the same file and react to each other.
+
+### Display modes
+
+The **Display** panel has three modes for now: **Wireframe**, **Shaded** and **Ghosted**.
+
+### Built in: an AI assistant and MCP
+
+The **AI Assistant** panel can explain things or run commands for you, with a local model or your own API key. **Agent access** lets AI tools outside Curva use its commands through MCP.
+
+## Not there yet
+
+<Aside type="caution">
+Curva is an early preview. These are planned, not missing by accident.
+</Aside>
+
+- **Some options.** Many commands have only some of Rhino's options so far. The [Rhino parity list](https://github.com/curva3d/curva/blob/main/docs/commands/rhino-parity.md) shows every Rhino modelling command with its status in Curva.
+- **Commands the geometry engine can't do yet.** A few Rhino commands wait on Curva's geometry engine. They're marked *blocked* in the parity list.
+- **Layouts, dimensions and drawings.** Coming in 0.4.3: layouts, detail views, Make2D, dimensions, hatches, and PDF, DXF and DWG export.
+- **Meshes and SubD** come after the Architecture specialization.
+- **Rendering** will go through Blender's Cycles.
+- **Grasshopper-style visual scripting** is planned later.

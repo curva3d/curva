@@ -1,0 +1,96 @@
+/* Starlight in Curva's colours and type (values from the Curva brand guidelines). */
+@font-face { font-family: "Inter"; font-style: normal; font-weight: 400; font-display: swap; src: url("/assets/fonts/inter-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-style: normal; font-weight: 600; font-display: swap; src: url("/assets/fonts/inter-latin-600-normal.woff2") format("woff2"); }
+
+/* Dark theme */
+:root {
+	--sl-font: Inter, system-ui, sans-serif;
+	--sl-color-accent-low: #684327;
+	--sl-color-accent: #e0782f;
+	--sl-color-accent-high: #f8ddcc;
+	--sl-color-white: #f5f4ef;
+	--sl-color-gray-1: #e5e3da;
+	--sl-color-gray-2: #c9c6bd;
+	--sl-color-gray-3: #a6a39b;
+	--sl-color-gray-4: #6b6a64;
+	--sl-color-gray-5: #45443f;
+	--sl-color-gray-6: #30302e;
+	--sl-color-black: #262624;
+	--curva-underline: #e0782f;
+	--sl-content-width: 46rem;
+}
+
+/* Light theme */
+:root[data-theme='light'] {
+	--sl-color-accent-low: #f8ddcc;
+	--sl-color-accent: #e0782f;
+	--sl-color-accent-high: #1f1e1d;
+	--sl-color-white: #1f1e1d;
+	--sl-color-gray-1: #30302e;
+	--sl-color-gray-2: #45443f;
+	--sl-color-gray-3: #6b6a64;
+	--sl-color-gray-4: #8c8a84;
+	--sl-color-gray-5: #c9c6bd;
+	--sl-color-gray-6: #e5e3da;
+	--sl-color-gray-7: #eeece5;
+	--sl-color-black: #f5f4ef;
+}
+
+/* Links: ink text with the orange underline, as on the home page. */
+.sl-markdown-content a:not(.card a, .sl-link-card a, .sl-link-button) {
+	color: var(--sl-color-white);
+	text-decoration: underline;
+	text-decoration-color: var(--curva-underline);
+	text-decoration-thickness: 2px;
+	text-underline-offset: 4px;
+}
+.sl-markdown-content a:hover { text-decoration-thickness: 3px; }
+
+/* Headings: SemiBold, tight, with the short orange rule above page titles. */
+h1, h2, h3, h4 { font-weight: 600; letter-spacing: -0.015em; }
+.content-panel h1#_top { letter-spacing: -0.03em; }
+.content-panel h1#_top::before {
+	content: ""; display: block; width: 24px; height: 3px; border-radius: 2px;
+	background: var(--curva-underline); margin-bottom: 1rem;
+}
+
+/* Current page in the sidebar: a quiet fill with an orange edge, never an orange block. */
+.sidebar-content a[aria-current='page'] {
+	background: var(--sl-color-gray-6);
+	color: var(--sl-color-white);
+	font-weight: 600;
+	box-shadow: inset 3px 0 0 var(--curva-underline);
+}
+:root[data-theme='light'] .sidebar-content a[aria-current='page'] { background: var(--sl-color-gray-7); }
+
+/* Keyboard keys */
+kbd {
+	font-family: var(--sl-font); font-size: 0.85em; padding: 0.1em 0.45em; border-radius: 6px;
+	border: 1px solid var(--sl-color-gray-5); background: var(--sl-color-gray-6); color: var(--sl-color-white);
+	box-shadow: 0 1px 0 var(--sl-color-gray-5);
+}
+:root[data-theme='light'] kbd { background: var(--sl-color-gray-7); }
+
+/* Callouts in Curva's colours: tips on the orange highlight, notes on grey. Orange never fills a large area. */
+:root {
+	--sl-color-purple-low: #684327; --sl-color-purple: #e0782f; --sl-color-purple-high: #f5f4ef;
+	--sl-color-blue-low: #30302e; --sl-color-blue: #a6a39b; --sl-color-blue-high: #f5f4ef;
+}
+:root[data-theme='light'] {
+	--sl-color-purple-low: #f8ddcc; --sl-color-purple: #e0782f; --sl-color-purple-high: #1f1e1d;
+	--sl-color-blue-low: #eeece5; --sl-color-blue: #8c8a84; --sl-color-blue-high: #1f1e1d;
+	/* Accent-coloured text (page contents, active tab) stays ink on light grounds, for contrast. */
+	--sl-color-text-accent: #1f1e1d;
+}
+
+/* Buttons: ink, like the home page's main button. */
+.sl-link-button.primary { background: var(--sl-color-white); border-color: var(--sl-color-white); color: var(--sl-color-black); }
+.sl-link-button.primary:hover { opacity: 0.88; }
+
+/* Current entry in "On this page": ink with an orange mark. */
+starlight-toc a[aria-current='true'] { color: var(--sl-color-white); font-weight: 600; }
+starlight-toc a[aria-current='true']::before { content: "· "; color: var(--curva-underline); }
+
+/* Header icons in quiet grey. */
+.social-icons a { color: var(--sl-color-gray-3); }
+.social-icons a:hover { color: var(--sl-color-white); }
