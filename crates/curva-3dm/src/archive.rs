@@ -78,6 +78,7 @@ pub mod tcode {
     pub const VIEW_RECORD: u32 = TABLEREC | CRC | 0x003B;
     pub const VIEW_CPLANE: u32 = TABLEREC | CRC | 0x013B;
     pub const VIEW_VIEWPORT: u32 = TABLEREC | CRC | 0x023B;
+    pub const VIEW_VIEWPORT_USERDATA: u32 = TABLEREC | CRC | 0x0D3B;
     pub const VIEW_TARGET: u32 = TABLEREC | CRC | 0x083B;
     pub const VIEW_NAME: u32 = TABLEREC | CRC | 0x0A3B;
     pub const SETTINGS_CURRENT_LAYER_INDEX: u32 = TABLEREC | SHORT | 0x0038;
@@ -162,6 +163,24 @@ impl Uuid {
         bytes[7] = (bytes[7] & 0x0F) | 0x40;
         bytes[8] = (bytes[8] & 0x3F) | 0x80;
         Self(bytes)
+    }
+
+    /// The usual text form, lower case, as Rhino writes an id in a field.
+    #[must_use]
+    pub fn text(&self) -> String {
+        let b = self.0;
+        let plain = [
+            b[3], b[2], b[1], b[0], b[5], b[4], b[7], b[6], b[8], b[9], b[10], b[11], b[12], b[13],
+            b[14], b[15],
+        ];
+        let mut out = String::with_capacity(36);
+        for (k, byte) in plain.iter().enumerate() {
+            if matches!(k, 4 | 6 | 8 | 10) {
+                out.push('-');
+            }
+            out.push_str(&format!("{byte:02x}"));
+        }
+        out
     }
 }
 

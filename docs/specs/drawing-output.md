@@ -84,8 +84,6 @@ The owner requires `.3dm`, DXF and DWG to interoperate both ways: the same drawi
 What does not yet, as of 15 November 2026, to close before 0.4.3:
 
 **`.3dm` (Rhino)**
-- Layout user text is not written or read; fields that read it go out as their values. (Document
-  user text and the notes cross both ways, and Rhino works out their fields itself.)
 - Annotation styles carry only their name, text height and alignment: fonts, arrowheads and their
   sizes, text gaps, extension lines, units and decimals do not cross; a Rhino note's own overrides are
   read but not written back; dimensions read take Curva's current style for their looks.

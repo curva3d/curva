@@ -647,6 +647,8 @@ pub struct Page {
     pub name: String,
     /// Its paper's width and height, in millimetres.
     pub size_mm: [f64; 2],
+    /// Its user text (layout user text, on its viewport).
+    pub user_text: Vec<(String, String)>,
 }
 
 /// A detail view on a layout (`ON_DetailView`): a window onto the model.

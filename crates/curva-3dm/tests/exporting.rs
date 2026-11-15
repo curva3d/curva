@@ -962,3 +962,65 @@ fn fields_rhino_works_out_stay_fields_and_their_text_comes_along() {
     assert_eq!(back.document_text, state.document_text);
     assert_eq!(back.notes, state.notes);
 }
+
+#[test]
+fn layout_user_text_and_its_fields_come_back() {
+    use curva_document::annotation::{Annotation, Text, TextAlign};
+    use curva_document::layouts::{Layout, PaperUnit};
+    let mut state = State::default();
+    for id in [0, 1] {
+        state.layouts.push(Layout {
+            id,
+            name: format!("Sheet {id}"),
+            size: [420.0, 297.0],
+            unit: PaperUnit::Millimetres,
+            details: Vec::new(),
+            user_text: [("Revision".to_owned(), format!("R{id}"))].into(),
+            revisions: Vec::new(),
+        });
+    }
+    state.next_layout = 2;
+    let note = |content: &str| Text {
+        content: content.to_owned(),
+        origin: [10.0, 10.0, 0.0],
+        x: [1.0, 0.0, 0.0],
+        y: [0.0, 1.0, 0.0],
+        height: 2.5,
+        font: None,
+        align: TextAlign::Left,
+        style: 0,
+    };
+    let mut on_first = object(
+        0,
+        Shape::Annotation(Annotation::Text(note(
+            "%<LayoutUserText(\"Revision\")>% of %<LayoutUserText(\"1\",\"Revision\")>%",
+        ))),
+        0,
+    );
+    on_first.space = Some(0);
+    state.objects.push(on_first.into());
+    state.next_id = 1;
+    let back = round_trip(&state);
+    assert_eq!(back.layouts.len(), 2);
+    for (sheet, was) in back.layouts.iter().zip(&state.layouts) {
+        assert_eq!(sheet.user_text, was.user_text);
+    }
+    let o = &back.objects[0];
+    let Shape::Annotation(Annotation::Text(t)) = &o.shape else {
+        panic!("not a note");
+    };
+    let second = back.layouts[1].id;
+    assert_eq!(
+        t.content,
+        format!(
+            "%<LayoutUserText(\"Revision\")>% of %<LayoutUserText(\"{second}\",\"Revision\")>%"
+        )
+    );
+    let shown = curva_document::fields::resolve(
+        &t.content,
+        &back,
+        o.space,
+        &curva_document::fields::FieldContext::default(),
+    );
+    assert_eq!(shown, "R0 of R1");
+}

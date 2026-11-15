@@ -70,7 +70,7 @@ pub fn write(model: &Model) -> Vec<u8> {
         w.count(model.views.len());
         for (i, v) in model.views.iter().enumerate() {
             w.begin(tcode::VIEW_RECORD);
-            write_view(w, v, Uuid::fresh(0x5649_4557 + i as u64), None);
+            write_view(w, v, Uuid::fresh(0x5649_4557 + i as u64), None, &[]);
             w.end();
         }
         w.end();
@@ -483,7 +483,13 @@ fn unit(a: P3) -> P3 {
 /// has, its target and its name.
 /// A view: its camera, construction plane, target and name, and for a layout or a detail its
 /// kind (1 a page, 2 a view nested in a page) and paper size in millimetres.
-fn write_view(w: &mut Writer, v: &View, id: Uuid, kind: Option<(i32, [f64; 2])>) {
+fn write_view(
+    w: &mut Writer,
+    v: &View,
+    id: Uuid,
+    kind: Option<(i32, [f64; 2])>,
+    user_text: &[(String, String)],
+) {
     let direction = unit(v.direction);
     let x = unit(cross(direction, v.up));
     let y = cross(x, direction);
@@ -512,6 +518,13 @@ fn write_view(w: &mut Writer, v: &View, id: Uuid, kind: Option<(i32, [f64; 2])>)
     w.bool(true); // the camera frame is valid
     w.f64s(&[1.0, 1.0, 1.0]);
     w.end();
+    // A layout's user text, in its viewport's user data.
+    if !user_text.is_empty() {
+        w.begin(tcode::VIEW_VIEWPORT_USERDATA);
+        write_user_text(w, user_text);
+        w.short(tcode::OPENNURBS_CLASS_END, 0);
+        w.end();
+    }
     // A flat view looking along an axis draws on that axis' plane, as Rhino's standard views do.
     let along = |axis: usize, sign: f64| v.parallel && direction[axis] * sign > 1.0 - 1e-9;
     let (px, py) = if along(1, 1.0) {
@@ -1107,7 +1120,7 @@ fn write_leader(w: &mut Writer, l: &Leader) {
 fn write_detail(w: &mut Writer, d: &Detail) {
     w.begin_versioned(tcode::ANONYMOUS_CHUNK, 1, 1);
     w.begin_versioned(tcode::ANONYMOUS_CHUNK, 1, 0);
-    write_view(w, &d.view, Uuid::NIL, Some((2, [0.0, 0.0])));
+    write_view(w, &d.view, Uuid::NIL, Some((2, [0.0, 0.0])), &[]);
     w.end();
     w.begin_versioned(tcode::ANONYMOUS_CHUNK, 1, 0);
     write_nurbs_curve(w, &d.boundary);
@@ -1149,6 +1162,7 @@ fn write_view_list(w: &mut Writer, model: &Model) {
             v,
             Uuid::fresh(0x5354_4456 + i as u64),
             Some((0, [0.0, 0.0])),
+            &[],
         );
         w.end();
     }
@@ -1172,7 +1186,7 @@ fn write_view_list(w: &mut Writer, model: &Model) {
             ],
         };
         w.begin(tcode::VIEW_RECORD);
-        write_view(w, &view, page.id, Some((1, page.size_mm)));
+        write_view(w, &view, page.id, Some((1, page.size_mm)), &page.user_text);
         w.end();
     }
     w.end();

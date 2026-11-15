@@ -1456,6 +1456,7 @@ fn pages(r: &mut Reader<'_>) -> Result<Vec<Page>> {
         let mut id = Uuid::NIL;
         let mut name = String::new();
         let mut page = None;
+        let mut user_text = Vec::new();
         while !record.body.is_done() {
             let mut part = record.body.chunk()?;
             match part.tcode {
@@ -1468,6 +1469,8 @@ fn pages(r: &mut Reader<'_>) -> Result<Vec<Page>> {
                         id = part.body.uuid()?;
                     }
                 }
+                // The viewport's user data, where Rhino keeps layout user text.
+                tcode::VIEW_VIEWPORT_USERDATA => user_text = self::user_text(&mut part.body),
                 tcode::VIEW_NAME => name = part.body.wstring()?,
                 tcode::VIEW_ATTRIBUTES => {
                     let (_, minor) = part.body.chunk_version()?;
@@ -1479,7 +1482,12 @@ fn pages(r: &mut Reader<'_>) -> Result<Vec<Page>> {
             }
         }
         if let Some(size_mm) = page {
-            out.push(Page { id, name, size_mm });
+            out.push(Page {
+                id,
+                name,
+                size_mm,
+                user_text,
+            });
         }
     }
     Ok(out)
