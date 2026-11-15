@@ -325,38 +325,66 @@ fn uniform_bytes(
         .collect()
 }
 
-/// Vertices on the graphics card, and what they were made from, so unchanged ones are kept.
+/// The largest block of graphics memory one upload is split into. The baseline cards refuse a
+/// single block over 256 MB (`wgpu::Limits::max_buffer_size`); a quarter of that leaves room and
+/// keeps each copy to the card short.
+const CHUNK_BYTES: u64 = 64 * 1024 * 1024;
+
+/// Vertices on the graphics card, in blocks of at most [`CHUNK_BYTES`], and what they were made
+/// from, so unchanged ones are kept.
 struct Uploaded<T> {
-    buffer: wgpu::Buffer,
+    /// Each block and how many vertices it holds.
+    chunks: Vec<(wgpu::Buffer, u32)>,
     count: u32,
     source: Arc<Vec<T>>,
 }
 
+/// Where to split `len` vertices into blocks of at most `most` vertices, never splitting a
+/// group of `group` (2 for a line segment, 3 for a triangle).
+fn chunk_ranges(len: usize, group: usize, most: usize) -> Vec<std::ops::Range<usize>> {
+    let step = (most / group).max(1) * group;
+    (0..len)
+        .step_by(step)
+        .map(|start| start..(start + step).min(len))
+        .collect()
+}
+
+/// Sends `source` to the graphics card in blocks of at most `chunk_bytes`, each turned to bytes
+/// on its own so the whole scene is never copied at once.
 fn upload<T>(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     source: &Arc<Vec<T>>,
     bytes: impl Fn(&[T]) -> Vec<u8>,
-    smallest: u64,
+    vertex_size: u64,
+    group: usize,
+    chunk_bytes: u64,
 ) -> Uploaded<T> {
-    let bytes = bytes(source);
-    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("curva vertices"),
-        size: (bytes.len() as u64).max(smallest),
-        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    });
-    queue.write_buffer(&buffer, 0, &bytes);
+    let most = (chunk_bytes / vertex_size).max(1) as usize;
+    let chunks = chunk_ranges(source.len(), group, most)
+        .into_iter()
+        .map(|range| {
+            let count = range.len() as u32;
+            let bytes = bytes(&source[range]);
+            let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("curva vertices"),
+                size: bytes.len() as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            queue.write_buffer(&buffer, 0, &bytes);
+            (buffer, count)
+        })
+        .collect();
     Uploaded {
-        buffer,
+        chunks,
         count: source.len() as u32,
         source: Arc::clone(source),
     }
 }
 
-fn stale<T>(held: &Option<Uploaded<T>>, wanted: &Arc<Vec<T>>) -> bool {
-    held.as_ref()
-        .is_none_or(|uploaded| !Arc::ptr_eq(&uploaded.source, wanted))
+fn stale<T>(held: Option<&Uploaded<T>>, wanted: &Arc<Vec<T>>) -> bool {
+    held.is_none_or(|uploaded| !Arc::ptr_eq(&uploaded.source, wanted))
 }
 
 /// How many views can be drawn at once.
@@ -371,8 +399,9 @@ struct ViewSlot {
     uniforms: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
     grid: Option<Uploaded<Vertex>>,
-    /// Kept per view, as shaded and wireframe views draw edges in different colours.
-    scene: Option<Uploaded<Vertex>>,
+    /// Shared between views drawing the same lines: shaded and wireframe views draw edges in
+    /// different colours, so there are at most two different ones.
+    scene: Option<Arc<Uploaded<Vertex>>>,
     shaded: bool,
     ghosted: bool,
     zebra: bool,
@@ -398,6 +427,8 @@ pub struct LineRenderer {
     background: Background,
     /// The graphics card's timer for the benchmark, once asked for and if the card has one.
     timer: Option<crate::timer::GpuTimer>,
+    /// The largest block one upload is split into ([`CHUNK_BYTES`]; smaller in tests).
+    chunk_bytes: u64,
 }
 
 /// The background: a quad over the whole viewport, shading from one colour at the top to
@@ -738,6 +769,7 @@ impl LineRenderer {
             draft_faces,
             background,
             timer: None,
+            chunk_bytes: CHUNK_BYTES,
             slots,
             surfaces: None,
             overlay: None,
@@ -794,50 +826,73 @@ impl LineRenderer {
         slot.ghosted = drawing.ghosted;
         slot.zebra = drawing.zebra;
         slot.draft = drawing.draft;
-        if stale(&slot.grid, &drawing.grid) {
+        let chunk = self.chunk_bytes;
+        if stale(slot.grid.as_ref(), &drawing.grid) {
             slot.grid = Some(upload(
                 device,
                 queue,
                 &drawing.grid,
                 line_bytes,
                 LINE_VERTEX_SIZE,
+                2,
+                chunk,
             ));
         }
-        if stale(&slot.scene, &drawing.scene) {
-            slot.scene = Some(upload(
-                device,
-                queue,
-                &drawing.scene,
-                line_bytes,
-                LINE_VERTEX_SIZE,
-            ));
+        if stale(slot.scene.as_deref(), &drawing.scene) {
+            // Another view showing the same lines has already sent them: share its copy.
+            let shared = self
+                .slots
+                .iter()
+                .filter_map(|other| other.scene.as_ref())
+                .find(|held| Arc::ptr_eq(&held.source, &drawing.scene))
+                .map(Arc::clone);
+            let scene = shared.unwrap_or_else(|| {
+                Arc::new(upload(
+                    device,
+                    queue,
+                    &drawing.scene,
+                    line_bytes,
+                    LINE_VERTEX_SIZE,
+                    2,
+                    chunk,
+                ))
+            });
+            if let Some(slot) = self.slots.get_mut(drawing.slot) {
+                slot.scene = Some(scene);
+            }
         }
         // The views of one frame share these, so only the first of them uploads.
-        if stale(&self.surfaces, &drawing.faces) {
+        if stale(self.surfaces.as_ref(), &drawing.faces) {
             self.surfaces = Some(upload(
                 device,
                 queue,
                 &drawing.faces,
                 face_bytes,
                 FACE_VERTEX_SIZE,
+                3,
+                chunk,
             ));
         }
-        if stale(&self.overlay, &drawing.overlay) {
+        if stale(self.overlay.as_ref(), &drawing.overlay) {
             self.overlay = Some(upload(
                 device,
                 queue,
                 &drawing.overlay,
                 line_bytes,
                 LINE_VERTEX_SIZE,
+                2,
+                chunk,
             ));
         }
-        if stale(&self.preview_faces, &drawing.preview_faces) {
+        if stale(self.preview_faces.as_ref(), &drawing.preview_faces) {
             self.preview_faces = Some(upload(
                 device,
                 queue,
                 &drawing.preview_faces,
                 face_bytes,
                 FACE_VERTEX_SIZE,
+                3,
+                chunk,
             ));
         }
     }
@@ -851,16 +906,20 @@ impl LineRenderer {
         let draw_faces =
             |pass: &mut wgpu::RenderPass<'_>, pipeline, faces: &Uploaded<MeshVertex>| {
                 pass.set_pipeline(pipeline);
-                pass.set_vertex_buffer(0, faces.buffer.slice(..));
-                pass.draw(0..faces.count, 0..1);
+                for (buffer, count) in &faces.chunks {
+                    pass.set_vertex_buffer(0, buffer.slice(..));
+                    pass.draw(0..*count, 0..1);
+                }
             };
         // The grid goes first, writing no depth, so whatever lies on it or near it draws over
         // it, as in Rhino; drawn after faces, it showed through faces lying exactly on it. It
         // stays a pixel wide; the model's lines have their own widths.
         if let Some(grid) = slot.grid.as_ref().filter(|lines| lines.count > 0) {
             pass.set_pipeline(&self.grid);
-            pass.set_vertex_buffer(0, grid.buffer.slice(..));
-            pass.draw(0..grid.count, 0..1);
+            for (buffer, count) in &grid.chunks {
+                pass.set_vertex_buffer(0, buffer.slice(..));
+                pass.draw(0..*count, 0..1);
+            }
         }
         // Solid faces go next and hide the lines behind them.
         if slot.shaded
@@ -879,7 +938,7 @@ impl LineRenderer {
                 faces,
             );
         }
-        if let Some(scene) = slot.scene.as_ref() {
+        if let Some(scene) = slot.scene.as_deref() {
             self.draw_segments(pass, scene);
         }
         // Ghosted faces go over the lines, so lines behind a face show through it, dimmed,
@@ -899,13 +958,15 @@ impl LineRenderer {
         }
     }
 
-    /// Draws lines as quads, one instance a segment.
+    /// Draws lines as quads, one instance a segment, block by block.
     fn draw_segments(&self, pass: &mut wgpu::RenderPass<'_>, lines: &Uploaded<Vertex>) {
-        let segments = lines.count / 2;
-        if segments > 0 {
-            pass.set_pipeline(&self.lines);
-            pass.set_vertex_buffer(0, lines.buffer.slice(..));
-            pass.draw(0..SEGMENT_CORNERS, 0..segments);
+        if lines.count < 2 {
+            return;
+        }
+        pass.set_pipeline(&self.lines);
+        for (buffer, count) in &lines.chunks {
+            pass.set_vertex_buffer(0, buffer.slice(..));
+            pass.draw(0..SEGMENT_CORNERS, 0..count / 2);
         }
     }
 }
@@ -1089,6 +1150,16 @@ pub(crate) fn draw_picture(
     size: [u32; 2],
     extras: bool,
 ) -> Result<Vec<u8>, String> {
+    draw_picture_in_chunks(picture, size, extras, CHUNK_BYTES)
+}
+
+/// [`draw_picture`], with uploads split into blocks of at most `chunk_bytes`.
+fn draw_picture_in_chunks(
+    picture: Picture,
+    size: [u32; 2],
+    extras: bool,
+    chunk_bytes: u64,
+) -> Result<Vec<u8>, String> {
     let [width, height] = size;
     let format = wgpu::TextureFormat::Rgba8UnormSrgb;
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
@@ -1126,6 +1197,7 @@ pub(crate) fn draw_picture(
     });
     let depth_view = depth.create_view(&wgpu::TextureViewDescriptor::default());
     let mut renderer = LineRenderer::new(&device, format);
+    renderer.chunk_bytes = chunk_bytes;
     let empty = Arc::new(Vec::new());
     let shaded = !picture.faces.is_empty();
     // The grid is drawn as in a window: thin and under the model's lines.
@@ -1222,7 +1294,7 @@ pub(crate) fn draw_picture(
 
 #[cfg(test)]
 mod tests {
-    use super::{Picture, draw_picture, save_picture};
+    use super::{Picture, chunk_ranges, draw_picture, draw_picture_in_chunks, save_picture};
     use crate::{MeshVertex, Vertex};
 
     const SIZE: [u32; 2] = [64, 64];
@@ -1369,7 +1441,15 @@ mod tests {
                 .into_iter()
                 .flatten()
                 .collect(),
-            faces: vec![corner(-0.9, -0.9), corner(0.9, -0.9), corner(0.0, 0.9)],
+            // Two triangles, so faces too cross a block boundary when blocks are small.
+            faces: vec![
+                corner(-0.9, -0.9),
+                corner(0.9, -0.9),
+                corner(0.0, 0.9),
+                corner(0.5, 0.2),
+                corner(0.95, 0.95),
+                corner(0.2, 0.95),
+            ],
             matrix: [
                 [1.0, 0.0, 0.0, 0.0],
                 [0.0, 1.0, 0.0, 0.0],
@@ -1395,5 +1475,41 @@ mod tests {
         // Something was drawn: not every pixel is the background.
         assert!(bare.chunks(4).any(|pixel| pixel != &bare[0..4]));
         assert_eq!(bare, full);
+    }
+
+    #[test]
+    fn blocks_never_split_a_segment_or_a_triangle() {
+        assert!(chunk_ranges(0, 2, 10).is_empty());
+        assert_eq!(chunk_ranges(7, 3, 100), vec![0..7]);
+        // 10 vertices to a block holds 3 triangles (9 vertices), never a part of a fourth.
+        assert_eq!(chunk_ranges(20, 3, 10), vec![0..9, 9..18, 18..20]);
+        assert_eq!(chunk_ranges(10, 2, 5), vec![0..4, 4..8, 8..10]);
+        // A block smaller than one group still holds a whole group.
+        assert_eq!(chunk_ranges(4, 2, 1), vec![0..2, 2..4]);
+        for (len, group, most) in [(1000, 2, 7), (999, 3, 64), (12, 3, 3)] {
+            let ranges = chunk_ranges(len, group, most);
+            assert_eq!(ranges.first().map(|r| r.start), Some(0));
+            assert_eq!(ranges.last().map(|r| r.end), Some(len));
+            for pair in ranges.windows(2) {
+                assert_eq!(pair[0].end, pair[1].start);
+                assert_eq!(pair[0].end % group, 0);
+            }
+        }
+    }
+
+    /// Spec `display-pipeline.md` step 4: a scene too big for one block of graphics memory is
+    /// drawn in several, and looks exactly the same.
+    #[test]
+    fn a_scene_drawn_in_many_blocks_looks_the_same() {
+        // Blocks of 100 bytes: one segment or one triangle each.
+        let (Ok(whole), Ok(split)) = (
+            draw_picture(mixed_picture(), SIZE, true),
+            draw_picture_in_chunks(mixed_picture(), SIZE, true, 100),
+        ) else {
+            eprintln!("no graphics adapter to draw with, so not checked");
+            return;
+        };
+        assert!(whole.chunks(4).any(|pixel| pixel != &whole[0..4]));
+        assert_eq!(whole, split);
     }
 }

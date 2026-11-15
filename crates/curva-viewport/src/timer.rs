@@ -199,8 +199,9 @@ impl GpuTimer {
                         .map_or(0, u64::from_le_bytes)
                 };
                 let (start, end) = (tick(0), tick(8));
-                // A clock that wrapped or was reset gives a reading to leave out.
-                if end > start && self.on {
+                // A clock that wrapped or was reset gives a reading to leave out; equal readings
+                // are a pass shorter than one tick of the clock, which counts as no time.
+                if end >= start && self.on {
                     self.total_ms += (end - start) as f64 * self.period / 1.0e6;
                     self.frames.insert(readback.frame);
                 }

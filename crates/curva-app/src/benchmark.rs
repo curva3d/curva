@@ -245,7 +245,10 @@ impl Benchmark {
             self.times[0]
         );
         println!("snapping per frame: {snapping:.2} ms");
-        let work = self.work.iter().sum::<f32>() * 1000.0 / self.work.len().max(1) as f32;
+        // Like the frame gaps, leaving out the opening frames, whose first upload of a large
+        // scene would otherwise swamp the average.
+        let settled = self.work.get(SETTLE_FRAMES..).unwrap_or_default();
+        let work = settled.iter().sum::<f32>() * 1000.0 / settled.len().max(1) as f32;
         println!("frame gap: median {middle:.1} ms, 99th percentile {worst:.1} ms");
         println!("work per frame: {work:.2} ms");
         match gpu_frame_ms(frame) {

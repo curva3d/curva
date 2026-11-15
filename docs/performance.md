@@ -130,3 +130,24 @@ is twice over.
 "First frame" in the report counts from the program starting, so it includes building the scene:
 *Medium*'s 500 cylinders, each made its own by extruding a circle, take about 35 of its 39 seconds
 to build, about 60 ms each in the engine (#136, outside the viewport).
+
+## Large opens: uploads in blocks, one copy for all views (step 4a)
+
+Uploads of lines and faces are split into blocks of at most 64 MB (the baseline cards refuse one
+block over 256 MB), and views showing the same lines share one copy instead of each sending its
+own. Same machine, display and build as above, nothing else building, each run twice. "Work per
+frame" now leaves out the opening frames, like the frame gaps; before, the first upload of a
+large scene swamped it (276 ms reported for *Large*, 48 ms without the opening frames).
+
+| Scene | First frame | Frame gap (median) | Work per frame | Snapping | Graphics card |
+|---|---|---|---|---|---|
+| `--scene medium` | 38.3–38.4 s | 4.9–5.0 ms | 4.5–4.6 ms | 3.2 ms | 1.5–1.6 ms |
+| Large reduced (as above) | 3.6 s | 20.0–20.1 ms | 19.5–19.6 ms | 17.4 ms | 7.0 ms |
+| `--scene large --trees 0` | 3.8–3.9 s | 43.4 ms | 42.4 ms | 39.4–40.0 ms | 15.0–15.1 ms |
+| `--scene large` | 58.4–58.5 s | 47.0–47.5 ms | 48.1–48.7 ms | 44.5–45.1 ms | 18.7 ms |
+
+*Medium* and reduced Large take the same time as before, so splitting costs nothing. **Large
+opens** (before: crashed). Its first frame takes 58 s, nearly all of it writing out each of the
+2,000 trees' 5,344 triangles one by one (instancing, step 11, removes that), and by the block sizes measured above the card's memory
+holds about 2.1 GB for it, too much for integrated graphics (memory limit, step 13). Snapping is
+still most of each frame (#130). (*Medium*'s first frame is mostly building its cylinders, #136.)
