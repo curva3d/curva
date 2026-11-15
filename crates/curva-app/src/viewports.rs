@@ -342,6 +342,8 @@ impl Curva {
         let plane = self.panes[self.active].plane;
         self.doc.set_work_plane([plane.x, plane.y]);
         self.doc.set_work_origin(plane.origin);
+        let look = self.panes[self.active].camera.look();
+        self.doc.set_view(look);
     }
 
     /// Carries out the changes of view commands asked for, oldest first.

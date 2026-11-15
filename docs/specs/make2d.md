@@ -50,6 +50,12 @@ to the screen.
   shows and Escape cancels.
 - **Custom:** listed in `docs/kernel/custom-operations.md` and checked against solidcore before each
   release, as decision 0019 requires.
+- **As built first (15 November 2026):** solidcore's silhouette tracer and B-rep ray firing need its
+  B-rep cache and keys, which Curva does not wrap yet. The first version therefore takes silhouettes
+  and tests rays against a tessellation of the bodies (through a bounding-volume tree), with the
+  exact edges split as above. Visibility is right to the tessellation's tolerance, not the
+  model's. Switching steps 1 and 4 to solidcore follows once its ray firing is wrapped. Pieces are
+  tested on one thread for now; rayon comes with the speed target.
 
 ## 3. Prior work checked
 

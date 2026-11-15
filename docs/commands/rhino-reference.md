@@ -412,3 +412,11 @@ Curva's Print opens the Print panel; ExportPDF prints from the command line, for
 |---|---|---|---|---|
 | Print | The Print dialog: destination (printer, size, DPI, orientation, copies), output type (vector or raster), output colour (print, display, black and white), view and scale (viewport or layouts, extents, window, several layouts, separate PDF files, scale), margins and position, linetypes and line widths, visibility, with a live preview | the dialog's settings | The Print panel: layouts ticked to print, display colours (white prints black) or black, PDF file or printer, and a preview of each page (fills shown as outlines); layouts print 1:1 on their paper as vectors: sheet objects, and detail views of the model clipped to their frames, with print widths and linetypes; text and arrowheads filled. Aliases `PrintSheets`, `Plot`. Not yet: model views, raster details, hidden lines, dots, separate files, margins | partly |
 | ExportPDF | Serpentine's command: Print to a PDF | as Print | Print's choices as options: `Layouts` (current or all), `Colour`, `Output` (PDF or printer); then the file | partly |
+
+### Make2D
+
+Written on 15 November 2026 from `commands/make2d.htm`, which describes the dialog only (no `-Make2D` options).
+
+| Command | Rhino's steps | Rhino's options | In Curva | Status |
+|---|---|---|---|---|
+| Make2D | Select objects; set the projection and options in the dialog | Projection: `View` (lower left at the world origin; register with previous), `CPlane` (on the construction plane), third angle and first angle four-view drawings. Options: object properties (from input objects or by output layers), maintain source layers, tangent edges, hidden lines, scene silhouette, clipping plane intersections, viewport rectangle, group output, register with previous; the parent layer name | `Projection` (View or CPlane), `HiddenLines`; edges, curves and silhouettes of curved faces, visible and hidden, on the layers `Make2D Visible Curves`, `Make2D Visible Silhouettes`, `Make2D Hidden Curves` and `Make2D Hidden Silhouettes` (hidden ones dashed; Curva has no sublayers yet). Visibility is tested against a tessellation (`make2d.md` §2). Not yet: four-view drawings, tangent edges as their own kind, clipping plane intersections, annotations, groups, source layers, register with previous | partly |

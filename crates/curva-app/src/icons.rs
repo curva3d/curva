@@ -454,6 +454,15 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
                 false,
             );
         }
+        // A box in outline with its hidden edges dashed.
+        "make2d" => {
+            pen.path(&[(3.0, 8.0), (14.0, 8.0), (14.0, 19.0), (3.0, 19.0)], true);
+            pen.path(&[(3.0, 8.0), (8.0, 3.0), (19.0, 3.0), (14.0, 8.0)], false);
+            pen.path(&[(19.0, 3.0), (19.0, 14.0), (14.0, 19.0)], false);
+            pen.line((8.0, 3.0), (8.0, 6.0));
+            pen.line((8.0, 9.0), (8.0, 12.0));
+            pen.line((8.0, 14.0), (11.0, 14.0));
+        }
         // A printer with a sheet coming out.
         "print" => {
             pen.rect(6.0, 2.0, 10.0, 6.0);

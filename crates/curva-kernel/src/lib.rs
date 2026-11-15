@@ -25,6 +25,7 @@ mod finishing;
 mod grips;
 mod knots;
 pub use engine_ops::{Carry, Contact};
+pub mod hidden;
 mod making;
 mod making2;
 pub use making::nested_groups;

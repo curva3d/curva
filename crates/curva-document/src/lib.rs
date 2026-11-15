@@ -698,6 +698,8 @@ pub struct Document {
     face_selection: Vec<FacePick>,
     /// The layout being worked on, or `None` for the model. Not saved, and not part of undo.
     space: Option<u64>,
+    /// Where the last-used viewport looks from, for Make2D. Not saved, and not part of undo.
+    view: Option<curva_kernel::hidden::View>,
 }
 
 impl Document {
@@ -733,6 +735,17 @@ impl Document {
     /// Sets the plane new flat objects go on.
     pub fn set_work_plane(&mut self, axes: [Point; 2]) {
         self.work_plane = Some(axes);
+    }
+
+    /// Where the last-used viewport looks from; `None` until the interface says.
+    #[must_use]
+    pub fn view(&self) -> Option<curva_kernel::hidden::View> {
+        self.view
+    }
+
+    /// Records where the last-used viewport looks from.
+    pub fn set_view(&mut self, view: curva_kernel::hidden::View) {
+        self.view = Some(view);
     }
 
     /// The objects and counters, for reading.
