@@ -2,7 +2,10 @@
 //! `ExportSelected`, and the `.3dm` side of `Open` and `SaveAs`.
 
 use crate::commands::{ask_objects, unexpected};
-use crate::{Answer, CURVA_FILES, Command, FileFormat, Message, RHINO_FILES, Request, Step};
+use crate::{
+    Answer, CURVA_FILES, Command, FileFormat, Message, PrintJob, PrintTo, RHINO_FILES, Request,
+    SVG_FILES, Step, ViewRequest,
+};
 use curva_3dm::import::Report;
 use curva_document::Document;
 use std::path::{Path, PathBuf};
@@ -14,7 +17,7 @@ pub const READ_FORMATS: &[FileFormat] = &[CURVA_FILES, RHINO_FILES];
 pub const SAVE_FORMATS: &[FileFormat] = &[CURVA_FILES, RHINO_FILES];
 
 /// What `Export` and `ExportSelected` write.
-pub const EXPORT_FORMATS: &[FileFormat] = &[RHINO_FILES];
+pub const EXPORT_FORMATS: &[FileFormat] = &[RHINO_FILES, SVG_FILES];
 
 /// The model's file name without its extension, for a save dialog's name field.
 pub fn model_name(doc: &Document) -> Option<String> {
@@ -176,6 +179,27 @@ impl Command for Export {
                 if path.extension().is_none() {
                     path.set_extension("3dm");
                 }
+                if path
+                    .extension()
+                    .is_some_and(|e| e.eq_ignore_ascii_case("svg"))
+                {
+                    // A drawing: the open layout, as it prints, or every layout from the model.
+                    if self.selected {
+                        return Step::Failed(Message::new("error.export_svg_selected"));
+                    }
+                    let layouts = match doc.space() {
+                        Some(sheet) => vec![sheet],
+                        None => doc.layouts().iter().map(|l| l.id).collect(),
+                    };
+                    if layouts.is_empty() {
+                        return Step::Failed(Message::new("error.export_svg_no_layouts"));
+                    }
+                    return Step::View(ViewRequest::Print(PrintJob {
+                        layouts,
+                        black: false,
+                        to: PrintTo::Svg(path.display().to_string()),
+                    }));
+                }
                 if !is_3dm(&path) {
                     return Step::Failed(Message::with(
                         "error.export_kind",
@@ -271,6 +295,29 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[test]
+    fn svg_exports_the_open_layout_or_every_layout_as_drawings() {
+        use crate::{PrintJob, PrintTo, ViewRequest};
+        let mut doc = Document::default();
+        let mut processor = run(&mut doc, &["export", "plan.svg"]);
+        assert_eq!(processor.take_view_request(), None, "no layouts to draw");
+        run(&mut doc, &["layout", "", "layout", ""]);
+        let mut processor = run(&mut doc, &["export", "plan.svg"]);
+        assert_eq!(
+            processor.take_view_request(),
+            Some(ViewRequest::Print(PrintJob {
+                layouts: vec![doc.layouts()[1].id],
+                black: false,
+                to: PrintTo::Svg("plan.svg".to_owned()),
+            }))
+        );
+        doc.set_space(None);
+        let mut processor = run(&mut doc, &["export", "plan.svg"]);
+        let Some(ViewRequest::Print(job)) = processor.take_view_request() else {
+            panic!("no print");
+        };
+        assert_eq!(job.layouts.len(), 2);
+    }
     #[test]
     fn a_damaged_3dm_is_refused_and_the_model_kept() {
         let dir = folder("bad3dm");

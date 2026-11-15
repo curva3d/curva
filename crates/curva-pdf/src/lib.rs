@@ -3,6 +3,9 @@
 //! `krilla`. Paper millimetres become PDF points (1/72 inch), and the page's upward Y becomes
 //! PDF's downward one.
 
+mod svg;
+pub use svg::write_svg;
+
 use curva_document::drawing::{Colour, Mark, Page};
 use krilla::Document;
 use krilla::color::rgb;

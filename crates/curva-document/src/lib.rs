@@ -25,6 +25,7 @@ pub mod hatch;
 pub mod layouts;
 mod organise;
 pub mod shape;
+pub mod sheet;
 pub mod units;
 pub use shape::Shape;
 mod views;

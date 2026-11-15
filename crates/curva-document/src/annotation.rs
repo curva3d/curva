@@ -23,6 +23,10 @@ pub enum Annotation {
     Dot(Dot),
     /// A hatch: outlines filled with a pattern or solid (spec `annotation.md` §5).
     Hatch(Hatch),
+    /// A scale bar for a detail view (spec `layouts.md` §4).
+    ScaleBar(crate::sheet::ScaleBar),
+    /// A table on a sheet: the sheet index or a revision table (spec `layouts.md` §4).
+    Table(crate::sheet::Table),
 }
 
 impl Annotation {
@@ -44,6 +48,8 @@ impl Annotation {
                 &|p| plus(p, by, 1.0),
                 &|d| d,
             )),
+            Self::ScaleBar(b) => Self::ScaleBar(b.with_at(b.at.translated(by), 1.0)),
+            Self::Table(t) => Self::Table(t.with_at(t.at.translated(by), 1.0)),
         }
     }
 
@@ -70,6 +76,8 @@ impl Annotation {
                 &point,
                 &direction,
             )),
+            Self::ScaleBar(b) => Self::ScaleBar(b.with_at(b.at.mapped(change), change.factor())),
+            Self::Table(t) => Self::Table(t.with_at(t.at.mapped(change), change.factor())),
         }
     }
 
@@ -104,6 +112,16 @@ impl Annotation {
                     &direction,
                 ),
             ),
+            Self::ScaleBar(b) => {
+                let at = b.at.placed(m);
+                let stretch = at.height / b.at.height.max(1e-12);
+                Self::ScaleBar(b.with_at(at, stretch))
+            }
+            Self::Table(t) => {
+                let at = t.at.placed(m);
+                let stretch = at.height / t.at.height.max(1e-12);
+                Self::Table(t.with_at(at, stretch))
+            }
         }
     }
 
@@ -116,6 +134,8 @@ impl Annotation {
             Self::Radial(r) => r.style,
             Self::Angle(a) => a.style,
             Self::Leader(l) => l.style,
+            Self::ScaleBar(b) => b.at.style,
+            Self::Table(t) => t.at.style,
             Self::Dot(_) | Self::Hatch(_) => 0,
         }
     }
@@ -124,7 +144,12 @@ impl Annotation {
     #[must_use]
     pub fn dimension_text(&self) -> Option<&Option<String>> {
         match self {
-            Self::Text(_) | Self::Leader(_) | Self::Dot(_) | Self::Hatch(_) => None,
+            Self::Text(_)
+            | Self::Leader(_)
+            | Self::Dot(_)
+            | Self::Hatch(_)
+            | Self::ScaleBar(_)
+            | Self::Table(_) => None,
             Self::Dimension(d) => Some(&d.text),
             Self::Radial(r) => Some(&r.text),
             Self::Angle(a) => Some(&a.text),
@@ -136,7 +161,12 @@ impl Annotation {
     pub fn with_dimension_text(&self, text: Option<String>) -> Self {
         let mut changed = self.clone();
         match &mut changed {
-            Self::Text(_) | Self::Leader(_) | Self::Dot(_) | Self::Hatch(_) => {}
+            Self::Text(_)
+            | Self::Leader(_)
+            | Self::Dot(_)
+            | Self::Hatch(_)
+            | Self::ScaleBar(_)
+            | Self::Table(_) => {}
             Self::Dimension(d) => d.text = text,
             Self::Radial(r) => r.text = text,
             Self::Angle(a) => a.text = text,

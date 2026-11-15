@@ -7,6 +7,22 @@ own page, `status/display.md`.*
 *Until 15 November 2026 this was the whole of `STATUS.md`, so it also holds the display history up
 to then (display modes, glass, line widths, speed measurements).*
 
+## Features stream — 15 November 2026
+
+**Milestone 3, point 5 (title blocks, scale bars, sheet index, revisions):**
+- Merged: document and layout user text and notes (#128): `SetDocumentUserText`, `GetDocumentUserText`,
+  `SetLayoutUserText`, `Notes`, and the `DocumentText`, `LayoutUserText` and `Notes` text fields.
+- In review: `TitleBlock`, `ScaleBar`, `SheetIndex`, `Revision`. The title block is grouped lines and text
+  with fields (ISO 7200-style in an ISO 5457 border, or ANSI); scale bars, the sheet index and revision
+  tables are annotation worked out from the document, so they follow detail scales, layouts and new
+  revisions. Checked on a printed PDF.
+
+**Known gaps:** the new text is not yet read from or written to `.3dm` (comes with the round trip);
+`Notes` is typed at the prompt rather than in a panel; scale bars and tables have nothing to edit in
+Properties yet; built-in title blocks are one design per standard, not one per sheet size.
+
+**Next:** SVG and DXF export, then the `.3dm` round trip of drawing objects.
+
 ## Current state — 8 November 2026
 
 **Milestone:** M0, groundwork and kernel evaluation.
