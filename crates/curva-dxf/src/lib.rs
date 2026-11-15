@@ -9,6 +9,7 @@
 
 mod annotation;
 mod blocks;
+mod dims;
 
 use acadrust::entities::{Arc, Circle, EntityType, Line, LwPolyline, Point, Polyline3D, Spline};
 use acadrust::types::{Color, DxfVersion, LineWeight, Vector2, Vector3};
@@ -292,6 +293,8 @@ struct Writer<'a> {
     fields: FieldContext,
     layers: BTreeMap<u64, String>,
     blocks: BTreeMap<u64, String>,
+    /// How many dimension blocks (`*D1`, `*D2`, ...) are written.
+    dimensions: usize,
     report: Report,
 }
 
@@ -336,7 +339,43 @@ impl Writer<'_> {
                 annotation::hatch_out(hatch, state).into_iter().collect(),
                 "hatches",
             ),
-            Shape::Annotation(_) => (Vec::new(), "dimensions, leaders and other annotations"),
+            Shape::Annotation(
+                a @ (Annotation::Dimension(_) | Annotation::Radial(_) | Annotation::Angle(_)),
+            ) => {
+                let name = format!("*D{}", self.dimensions + 1);
+                let written = dims::dimension_out(a, state, object.space, &name)
+                    .filter(|(_, contents)| !contents.is_empty())
+                    .and_then(|(dimension, contents)| {
+                        blocks::write_block(&mut self.cad, &name, contents)
+                            .ok()
+                            .map(|()| dimension)
+                    });
+                match written {
+                    Some(dimension) => {
+                        self.dimensions += 1;
+                        (vec![dimension], "dimensions")
+                    }
+                    // Off the world's XY plane: the drawing alone.
+                    _ => (
+                        curva_document::shape::annotation_parts(a, state, object.space)
+                            .map(|p| {
+                                p.lines
+                                    .iter()
+                                    .map(|(s, e)| {
+                                        EntityType::Line(Line::from_points(v3(*s), v3(*e)))
+                                    })
+                                    .chain(annotation::text_out(&p.text, &p.text.content))
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
+                        "dimensions",
+                    ),
+                }
+            }
+            Shape::Annotation(Annotation::Leader(l)) => {
+                (dims::leader_out(l, state, object.space), "leaders")
+            }
+            Shape::Annotation(_) => (Vec::new(), "dots and other annotations"),
             Shape::Body(_) => (Vec::new(), "surfaces and solids"),
             Shape::Instance(instance) => {
                 let name = self.block(instance.definition);
@@ -413,6 +452,7 @@ pub fn export(
         fields: FieldContext::now(doc.path()),
         layers: BTreeMap::new(),
         blocks: BTreeMap::new(),
+        dimensions: 0,
         report: Report::default(),
     };
     for object in &doc.state().objects {
@@ -528,7 +568,7 @@ fn curve_of(entity: &EntityType) -> Result<Vec<Curve>, &'static str> {
             }
         }
         EntityType::Text(_) | EntityType::MText(_) => return Err("texts"),
-        EntityType::Dimension(_) => return Err("dimensions"),
+        EntityType::Dimension(_) => return Err("dimensions of other kinds"),
         EntityType::Hatch(_) => return Err("hatches"),
         EntityType::Insert(_) => return Err("block instances"),
         EntityType::Ellipse(_) => return Err("ellipses"),
@@ -669,6 +709,17 @@ impl Reader<'_> {
                 }
                 None => (Vec::new(), "hatches"),
             },
+            EntityType::Dimension(d) => match dims::dimension_in(d) {
+                Ok(a) => (vec![Shape::Annotation(a)], "dimensions"),
+                Err(kind) => (Vec::new(), kind),
+            },
+            EntityType::Leader(l) => (
+                dims::leader_in(l)
+                    .map(|l| Shape::Annotation(Annotation::Leader(l)))
+                    .into_iter()
+                    .collect(),
+                "leaders",
+            ),
             EntityType::Insert(insert) => match self.block(doc, &insert.block_name) {
                 Some(definition) if insert.column_count <= 1 && insert.row_count <= 1 => (
                     vec![Shape::Instance(curva_document::Instance {

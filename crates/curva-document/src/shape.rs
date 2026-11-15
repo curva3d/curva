@@ -182,6 +182,33 @@ pub fn annotation_drawing(
         Annotation::Table(t) => return crate::sheet::table_drawing(t, state),
         _ => {}
     }
+    let Some(parts) = annotation_parts(annotation, state, space) else {
+        return AnnotationDrawing::default();
+    };
+    let mut drawing = text_drawing(&parts.text);
+    for (a, b) in &parts.lines {
+        if let Ok(line) = Curve::line(*a, *b) {
+            drawing.lines.push(line);
+        }
+    }
+    for [tip, left, right] in &parts.arrows {
+        if let Ok(head) = Curve::polyline(vec![*tip, *left, *right], true) {
+            drawing.lines.push(head.clone());
+            drawing.fills.push(vec![head]);
+        }
+    }
+    drawing
+}
+
+/// A dimension or leader's parts as drawn in `space`: its lines, arrowheads and text, with its
+/// style's sizes and its value shown as Curva shows it. `None` for other annotation.
+#[must_use]
+pub fn annotation_parts(
+    annotation: &crate::annotation::Annotation,
+    state: &crate::State,
+    space: Option<u64>,
+) -> Option<crate::annotation::DimensionParts> {
+    use crate::annotation::Annotation;
     let styles = if state.annotation_styles.is_empty() {
         crate::annotation::standard_styles(matches!(
             state.unit,
@@ -190,14 +217,11 @@ pub fn annotation_drawing(
     } else {
         state.annotation_styles.clone()
     };
-    let Some(style) = styles
+    let style = styles
         .iter()
         .find(|s| s.id == annotation.style())
         .or_else(|| styles.first())
-        .cloned()
-    else {
-        return AnnotationDrawing::default();
-    };
+        .cloned()?;
     let paper = space
         .and_then(|id| state.layouts.iter().find(|l| l.id == id))
         .map(|l| l.unit);
@@ -219,7 +243,7 @@ pub fn annotation_drawing(
         | Annotation::Hatch(_)
         | Annotation::ScaleBar(_)
         | Annotation::Table(_) => {
-            return AnnotationDrawing::default();
+            return None;
         }
         Annotation::Dimension(d) => d.parts(&style, scale, typed(&d.text, length(d.value()))),
         Annotation::Radial(r) => {
@@ -233,21 +257,8 @@ pub fn annotation_drawing(
         }
         Annotation::Leader(l) => l.parts(&style, scale, l.content.clone()),
     };
-    let mut drawing = text_drawing(&parts.text);
-    for (a, b) in &parts.lines {
-        if let Ok(line) = Curve::line(*a, *b) {
-            drawing.lines.push(line);
-        }
-    }
-    for [tip, left, right] in &parts.arrows {
-        if let Ok(head) = Curve::polyline(vec![*tip, *left, *right], true) {
-            drawing.lines.push(head.clone());
-            drawing.fills.push(vec![head]);
-        }
-    }
-    drawing
+    Some(parts)
 }
-
 /// What a hatch draws: its outlines, and its pattern's lines clipped to them, or the outlines
 /// filled for a solid pattern. Pattern sizes are millimetres, taken to the model's unit, or to
 /// the paper's on a layout. A pattern no longer on offer draws solid.
