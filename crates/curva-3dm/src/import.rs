@@ -249,10 +249,7 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
         }
     }
     let fallback = state.current_layer;
-    let layer_ids: Vec<u64> = placed
-        .into_iter()
-        .map(|id| id.unwrap_or(fallback))
-        .collect();
+    let layer_ids: Vec<u64> = placed.iter().map(|id| id.unwrap_or(fallback)).collect();
     let layer_of = |index: usize| layer_ids.get(index).copied();
 
     // Groups: a new Curva group for each of the file's.
@@ -284,6 +281,8 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
     // from the file's page unit.
     let page_mm = millimetres_per(model.page_unit.unwrap_or(model.unit)).unwrap_or(file_mm);
     let mut page_ids: BTreeMap<crate::archive::Uuid, u64> = BTreeMap::new();
+    // Each detail by its viewport id: its layout and frame, for the layers turned off in it.
+    let mut detail_by_viewport: BTreeMap<crate::archive::Uuid, (u64, u64)> = BTreeMap::new();
     for page in &model.pages {
         let id = state.next_layout;
         state.next_layout += 1;
@@ -339,6 +338,7 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
                         user_text: BTreeMap::new(),
                     }));
                     if let Some(sheet) = state.layouts.iter_mut().find(|l| l.id == layout) {
+                        detail_by_viewport.insert(a.id, (layout, id));
                         sheet.details.push(detail);
                     }
                     Report::count(&mut report.brought, "details");
@@ -415,6 +415,27 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
         } else {
             Report::count(&mut report.brought, kind);
             state.objects.push(std::sync::Arc::new(made));
+        }
+    }
+    // Layers turned off in particular details.
+    for (index, layer) in model.layers.iter().enumerate() {
+        let Some(curva_layer) = placed[index] else {
+            continue;
+        };
+        for viewport in &layer.hidden_in {
+            let Some(&(layout, frame)) = detail_by_viewport.get(viewport) else {
+                continue;
+            };
+            if let Some(detail) = state
+                .layouts
+                .iter_mut()
+                .filter(|l| l.id == layout)
+                .flat_map(|l| l.details.iter_mut())
+                .find(|d| d.frame == frame)
+                && !detail.hidden_layers.contains(&curva_layer)
+            {
+                detail.hidden_layers.push(curva_layer);
+            }
         }
     }
     for block in &model.blocks {

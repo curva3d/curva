@@ -96,7 +96,16 @@ pub fn write(model: &Model) -> Vec<u8> {
     table(&mut w, tcode::LAYER_TABLE, |w| {
         for (index, layer) in model.layers.iter().enumerate() {
             w.begin(tcode::LAYER_RECORD);
-            class_object(w, class::LAYER, |w| write_layer(w, layer, index));
+            class_object_with(
+                w,
+                class::LAYER,
+                |w| write_layer(w, layer, index),
+                |w| {
+                    if !layer.hidden_in.is_empty() {
+                        write_layer_extensions(w, &layer.hidden_in);
+                    }
+                },
+            );
             w.end();
         }
     });
@@ -181,6 +190,69 @@ fn class_object(w: &mut Writer, id: Uuid, data: impl FnOnce(&mut Writer)) {
     w.end();
     w.short(tcode::OPENNURBS_CLASS_END, 0);
     w.end();
+}
+
+/// An object written with openNURBS' `WriteObject` and its user data after its data.
+fn class_object_with(
+    w: &mut Writer,
+    id: Uuid,
+    data: impl FnOnce(&mut Writer),
+    user_data: impl FnOnce(&mut Writer),
+) {
+    w.begin(tcode::OPENNURBS_CLASS);
+    w.begin(tcode::OPENNURBS_CLASS_UUID);
+    w.uuid(id);
+    w.end();
+    w.begin(tcode::OPENNURBS_CLASS_DATA);
+    data(w);
+    w.end();
+    user_data(w);
+    w.short(tcode::OPENNURBS_CLASS_END, 0);
+    w.end();
+}
+
+/// One piece of user data as openNURBS writes it (`WriteObjectUserData`): its header (class,
+/// item, copy count, transform, owning application) and its data in a chunk of its own.
+fn write_user_data(w: &mut Writer, class: Uuid, application: Uuid, data: impl FnOnce(&mut Writer)) {
+    w.begin(tcode::OPENNURBS_CLASS_USERDATA);
+    w.chunk_version(2, 2);
+    w.begin(tcode::OPENNURBS_CLASS_USERDATA_HEADER);
+    w.uuid(class);
+    w.uuid(class);
+    w.i32(1); // copy count
+    for row in 0..4 {
+        for col in 0..4 {
+            w.f64(if row == col { 1.0 } else { 0.0 });
+        }
+    }
+    w.uuid(application);
+    w.bool(false);
+    w.i32(70);
+    w.u32(OPENNURBS_VERSION as u32);
+    w.end();
+    w.begin(tcode::ANONYMOUS_CHUNK);
+    data(w);
+    w.end();
+    w.end();
+}
+
+/// A layer's per-viewport settings (`ON__LayerExtensions`): turned off (2) in each of these
+/// details, by viewport id. Each setting is version 1.2: its bits (1 the viewport id, 16 the
+/// visibility), the id, and the visibility twice, as openNURBS writes it for older Rhinos.
+fn write_layer_extensions(w: &mut Writer, off_in: &[Uuid]) {
+    write_user_data(w, class::LAYER_EXTENSIONS, class::OPENNURBS5, |w| {
+        w.begin_versioned(tcode::ANONYMOUS_CHUNK, 1, 0);
+        w.count(off_in.len());
+        for viewport in off_in {
+            w.begin_versioned(tcode::ANONYMOUS_CHUNK, 1, 2);
+            w.u32(1 | 16);
+            w.uuid(*viewport);
+            w.u8(2);
+            w.u8(2);
+            w.end();
+        }
+        w.end();
+    });
 }
 
 fn color(c: [u8; 3]) -> [u8; 4] {
@@ -1224,7 +1296,7 @@ fn write_detail(w: &mut Writer, d: &Detail) {
     write_view(
         w,
         &d.view,
-        Uuid::NIL,
+        d.id,
         Some(ViewKind {
             display: d.display,
             locked: d.locked,
