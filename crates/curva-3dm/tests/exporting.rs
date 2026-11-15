@@ -926,12 +926,16 @@ fn scale_bars_and_tables_go_out_as_their_plain_drawing() {
 }
 
 #[test]
-fn fields_only_curva_can_work_out_go_out_worked_out() {
+fn fields_rhino_works_out_stay_fields_and_their_text_comes_along() {
     use curva_document::annotation::{Annotation, Text, TextAlign};
     let mut state = State::default();
     state
         .document_text
         .insert("Project".to_owned(), "Harbour Library".to_owned());
+    state
+        .document_text
+        .insert("Client".to_owned(), "City of Porto".to_owned());
+    state.notes = "Issued for planning\nSecond line".to_owned();
     let note = Text {
         content: "%<DocumentText(\"Project\")>% / %<PageName()>% / %<Notes()>%".to_owned(),
         origin: [0.0; 3],
@@ -950,6 +954,106 @@ fn fields_only_curva_can_work_out_go_out_worked_out() {
     let Shape::Annotation(Annotation::Text(t)) = &back.objects[0].shape else {
         panic!("not a note");
     };
-    // Rhino's own page field stays a field; the project and notes are written as they read.
-    assert_eq!(t.content, "Harbour Library / %<PageName()>% / ");
+    // Rhino works these out itself from the file's document text and notes.
+    assert_eq!(
+        t.content,
+        "%<DocumentText(\"Project\")>% / %<PageName()>% / %<Notes()>%"
+    );
+    assert_eq!(back.document_text, state.document_text);
+    assert_eq!(back.notes, state.notes);
+}
+
+#[test]
+fn layout_user_text_and_its_fields_come_back() {
+    use curva_document::annotation::{Annotation, Text, TextAlign};
+    use curva_document::layouts::{Layout, PaperUnit};
+    let mut state = State::default();
+    for id in [0, 1] {
+        state.layouts.push(Layout {
+            id,
+            name: format!("Sheet {id}"),
+            size: [420.0, 297.0],
+            unit: PaperUnit::Millimetres,
+            details: Vec::new(),
+            user_text: [("Revision".to_owned(), format!("R{id}"))].into(),
+            revisions: Vec::new(),
+        });
+    }
+    state.next_layout = 2;
+    let note = |content: &str| Text {
+        content: content.to_owned(),
+        origin: [10.0, 10.0, 0.0],
+        x: [1.0, 0.0, 0.0],
+        y: [0.0, 1.0, 0.0],
+        height: 2.5,
+        font: None,
+        align: TextAlign::Left,
+        style: 0,
+    };
+    let mut on_first = object(
+        0,
+        Shape::Annotation(Annotation::Text(note(
+            "%<LayoutUserText(\"Revision\")>% of %<LayoutUserText(\"1\",\"Revision\")>%",
+        ))),
+        0,
+    );
+    on_first.space = Some(0);
+    state.objects.push(on_first.into());
+    state.next_id = 1;
+    let back = round_trip(&state);
+    assert_eq!(back.layouts.len(), 2);
+    for (sheet, was) in back.layouts.iter().zip(&state.layouts) {
+        assert_eq!(sheet.user_text, was.user_text);
+    }
+    let o = &back.objects[0];
+    let Shape::Annotation(Annotation::Text(t)) = &o.shape else {
+        panic!("not a note");
+    };
+    let second = back.layouts[1].id;
+    assert_eq!(
+        t.content,
+        format!(
+            "%<LayoutUserText(\"Revision\")>% of %<LayoutUserText(\"{second}\",\"Revision\")>%"
+        )
+    );
+    let shown = curva_document::fields::resolve(
+        &t.content,
+        &back,
+        o.space,
+        &curva_document::fields::FieldContext::default(),
+    );
+    assert_eq!(shown, "R0 of R1");
+}
+
+#[test]
+fn fields_only_curva_can_work_out_go_out_worked_out() {
+    use curva_document::annotation::{Annotation, Text, TextAlign};
+    let mut state = State::default();
+    let mut wall = object(
+        0,
+        Shape::Curve(Curve::line([0.0; 3], [5000.0, 0.0, 0.0]).unwrap()),
+        0,
+    );
+    wall.name = "North wall".to_owned();
+    state.objects.push(wall.into());
+    let note = Text {
+        // An object named by Curva's number, which Rhino cannot follow, beside Rhino's own field.
+        content: "%<ObjectName(\"0\")>% / %<PageName()>%".to_owned(),
+        origin: [0.0; 3],
+        x: [1.0, 0.0, 0.0],
+        y: [0.0, 1.0, 0.0],
+        height: 2.5,
+        font: None,
+        align: TextAlign::Left,
+        style: 0,
+    };
+    state
+        .objects
+        .push(object(1, Shape::Annotation(Annotation::Text(note)), 0).into());
+    state.next_id = 2;
+    let back = round_trip(&state);
+    let Shape::Annotation(Annotation::Text(t)) = &back.objects[1].shape else {
+        panic!("not a note");
+    };
+    assert_eq!(t.content, "North wall / %<PageName()>%");
 }

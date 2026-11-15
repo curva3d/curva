@@ -17,8 +17,7 @@ to then (display modes, glass, line widths, speed measurements).*
   tables are annotation worked out from the document, so they follow detail scales, layouts and new
   revisions. Checked on a printed PDF.
 
-**Known gaps:** the new text is not yet read from or written to `.3dm` (comes with the round trip);
-`Notes` is typed at the prompt rather than in a panel; scale bars and tables have nothing to edit in
+**Known gaps:** scale bars and tables have nothing to edit in
 Properties yet; built-in title blocks are one design per standard, not one per sheet size.
 
 **Milestone 3, points 14 to 16 (export):**
@@ -38,6 +37,10 @@ Properties yet; built-in title blocks are one design per standard, not one per s
   written with annotation styles (#150). Each checked by opening Curva's file in Rhino 8.
 - Merged (#152): linear, radius, diameter and angle dimensions and leaders, both ways.
 - Merged (#156): layouts and details, both ways.
+- In review: document user text, layout user text and notes, both ways; the `DocumentText`,
+  `LayoutUserText` and `Notes` fields stay fields for Rhino (a layout named by number goes out as its
+  page id and comes back as a number). Checked in Rhino 8 both ways. Rhino writes layout user text
+  only when plug-in data is saved (`SaveSmall` with `SavePlugInData=No` drops it).
 - Merged (#158): scale bars and tables to `.3dm` as their plain drawing; fields only Curva can work out written as
   they read.
 

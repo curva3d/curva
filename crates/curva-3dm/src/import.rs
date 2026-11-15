@@ -160,6 +160,15 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
         report.skipped.push((kind.clone(), *n));
     }
 
+    // Document user text joins the model's (the file's value where both have a key); its notes
+    // fill notes the model has not got.
+    for (key, value) in &model.document_text {
+        state.document_text.insert(key.clone(), value.clone());
+    }
+    if state.notes.is_empty() {
+        state.notes.clone_from(&model.notes);
+    }
+
     // Layers: the file's tree as sublayers (spec `sublayers.md` §3), parents first, each merged
     // with a layer of the same full name already there.
     let full_names = layer_names(&model.layers);
@@ -261,7 +270,7 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
             size: page.size_mm,
             unit: curva_document::layouts::PaperUnit::Millimetres,
             details: Vec::new(),
-            user_text: BTreeMap::new(),
+            user_text: page.user_text.iter().cloned().collect(),
             revisions: Vec::new(),
         });
     }
@@ -338,6 +347,7 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
                 continue;
             }
         };
+        let shape = with_layout_numbers(shape, &page_ids);
         if a.color_source == model::Source::Object {
             own_colours += 1;
         }
@@ -1866,6 +1876,46 @@ fn angular_in(d: &model::AngularDimension) -> curva_document::annotation::AngleD
         y: d.plane.y,
         style: 0,
         text: typed(&d.text),
+    }
+}
+
+/// Words whose `LayoutUserText` fields name a page by its id, with that page's layout number
+/// instead, as Curva's field reads it.
+fn layout_numbers_in(words: &str, page_ids: &BTreeMap<crate::archive::Uuid, u64>) -> String {
+    let mut out = String::new();
+    let mut rest = words;
+    while let Some(start) = rest.find("%<LayoutUserText(") {
+        out.push_str(&rest[..start]);
+        let Some(end) = rest[start..].find(">%") else {
+            break;
+        };
+        let field = &rest[start..start + end + 2];
+        let swapped = match crate::export::field_args(field).as_deref() {
+            Some([page, key]) => page_ids
+                .get(&crate::archive::Uuid::parse(page))
+                .map(|layout| format!("%<LayoutUserText(\"{layout}\",\"{key}\")>%")),
+            _ => None,
+        };
+        out.push_str(swapped.as_deref().unwrap_or(field));
+        rest = &rest[start + end + 2..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// A note or leader with its layout fields naming Curva's layouts.
+fn with_layout_numbers(shape: Shape, page_ids: &BTreeMap<crate::archive::Uuid, u64>) -> Shape {
+    use curva_document::annotation::Annotation;
+    match shape {
+        Shape::Annotation(Annotation::Text(mut t)) => {
+            t.content = layout_numbers_in(&t.content, page_ids);
+            Shape::Annotation(Annotation::Text(t))
+        }
+        Shape::Annotation(Annotation::Leader(mut l)) => {
+            l.content = layout_numbers_in(&l.content, page_ids);
+            Shape::Annotation(Annotation::Leader(l))
+        }
+        other => other,
     }
 }
 

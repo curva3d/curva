@@ -39,6 +39,12 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
         },
         tolerance: state.unit.tolerance(),
         angle_tolerance: 1f64.to_radians(),
+        document_text: state
+            .document_text
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect(),
+        notes: state.notes.clone(),
         ..Model::default()
     };
 
@@ -92,6 +98,8 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
         });
     }
 
+    // Each layout's page id, which objects on it and fields naming it carry.
+    let page_ids: BTreeMap<u64, Uuid> = state.layouts.iter().map(|l| (l.id, ids.next())).collect();
     // Scale bars and tables, which Rhino has not, go out as the plain drawing they make: lines,
     // solid hatches for their filled blocks, and notes, grouped.
     let fields = curva_document::fields::FieldContext::now(None);
@@ -107,7 +115,7 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
                 next_group += 1;
                 expanded.extend(parts);
             }
-            None => expanded.push(with_rhino_fields(o, state, &fields)),
+            None => expanded.push(with_rhino_fields(o, state, &fields, &page_ids)),
         }
     }
     let chosen: Vec<&Object> = expanded.iter().collect();
@@ -233,7 +241,6 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
     }
 
     // Layouts: Rhino's pages, in millimetres.
-    let page_ids: BTreeMap<u64, Uuid> = state.layouts.iter().map(|l| (l.id, ids.next())).collect();
     for (index, layout) in state.layouts.iter().enumerate() {
         let mm = layout.unit.millimetres();
         model.pages.push(model::Page {
@@ -244,6 +251,11 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
                 layout.name.clone()
             },
             size_mm: [layout.size[0] * mm, layout.size[1] * mm],
+            user_text: layout
+                .user_text
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
         });
     }
     if !state.layouts.is_empty() {
@@ -1354,9 +1366,12 @@ fn plain_parts(o: &Object, state: &State, group: u64, before: usize) -> Option<V
 }
 
 /// The fields Rhino works out itself, by the same names (Rhino 8's `information/text_fields.htm`).
-/// Others read what only Curva holds (document and layout user text, notes, objects by Curva's
-/// numbers), so they go out worked out.
-const RHINO_FIELDS: [&str; 9] = [
+/// Others read what only Curva holds (objects by Curva's numbers), so they go out worked out.
+/// Document text, layout user text and notes travel in the file, so Rhino reads them itself.
+const RHINO_FIELDS: [&str; 12] = [
+    "DocumentText",
+    "LayoutUserText",
+    "Notes",
     "PageName",
     "PageNumber",
     "NumPages",
@@ -1374,6 +1389,7 @@ fn rhino_words(
     state: &State,
     space: Option<u64>,
     fields: &curva_document::fields::FieldContext,
+    page_ids: &BTreeMap<u64, Uuid>,
 ) -> String {
     let mut out = String::new();
     let mut rest = words;
@@ -1388,7 +1404,14 @@ fn rhino_words(
             .chars()
             .take_while(char::is_ascii_alphanumeric)
             .collect();
-        if RHINO_FIELDS.contains(&name.as_str()) {
+        if name == "LayoutUserText" {
+            match layout_by_page_id(field, page_ids) {
+                Some(rhinos) => out.push_str(&rhinos),
+                None => out.push_str(&curva_document::fields::resolve(
+                    field, state, space, fields,
+                )),
+            }
+        } else if RHINO_FIELDS.contains(&name.as_str()) {
             out.push_str(field);
         } else {
             out.push_str(&curva_document::fields::resolve(
@@ -1401,20 +1424,45 @@ fn rhino_words(
     out
 }
 
+/// The two parts of a field's brackets, `"a","b"`, as written; `None` for any other form.
+pub(crate) fn field_args(field: &str) -> Option<Vec<String>> {
+    let inner = field.get(field.find('(')? + 1..field.rfind(')')?)?;
+    let mut args = Vec::new();
+    for part in inner.split(',') {
+        let part = part.trim();
+        args.push(part.strip_prefix('"')?.strip_suffix('"')?.to_owned());
+    }
+    Some(args)
+}
+
+/// A `LayoutUserText` field as Rhino reads it: with one part as it is, with two the layout's
+/// number swapped for its page's id. `None` when it names no layout going out.
+fn layout_by_page_id(field: &str, page_ids: &BTreeMap<u64, Uuid>) -> Option<String> {
+    match field_args(field)?.as_slice() {
+        [_] => Some(field.to_owned()),
+        [layout, key] => {
+            let id = page_ids.get(&layout.trim().parse().ok()?)?;
+            Some(format!("%<LayoutUserText(\"{}\",\"{key}\")>%", id.text()))
+        }
+        _ => None,
+    }
+}
+
 /// An object with its notes' and leaders' fields as Rhino will show them.
 fn with_rhino_fields(
     o: &Object,
     state: &State,
     fields: &curva_document::fields::FieldContext,
+    page_ids: &BTreeMap<u64, Uuid>,
 ) -> Object {
     use curva_document::annotation::Annotation;
     let mut out = o.clone();
     match &mut out.shape {
         Shape::Annotation(Annotation::Text(t)) => {
-            t.content = rhino_words(&t.content, state, o.space, fields);
+            t.content = rhino_words(&t.content, state, o.space, fields, page_ids);
         }
         Shape::Annotation(Annotation::Leader(l)) => {
-            l.content = rhino_words(&l.content, state, o.space, fields);
+            l.content = rhino_words(&l.content, state, o.space, fields, page_ids);
         }
         _ => {}
     }

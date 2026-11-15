@@ -33,6 +33,7 @@ pub mod class {
     pub const POINT_CLOUD: Uuid = Uuid::parse("2488F347-F8FA-11d3-BFEC-0010830122F0");
     pub const SUBD: Uuid = Uuid::parse("F09BA4D9-455B-42C3-BA3B-E6CCACEF853B");
     pub const USER_STRING_LIST: Uuid = Uuid::parse("CE28DE29-F4C5-4faa-A50A-C3A6849B6329");
+    pub const DOCUMENT_USER_STRINGS: Uuid = Uuid::parse("06F3218E-F5EC-4f6c-B74C-14583F0ED7BC");
     pub const TEXT_DOT: Uuid = Uuid::parse("74198302-CDF4-4f95-9609-6D684F22AB37");
     pub const HATCH: Uuid = Uuid::parse("0559733B-5332-49d1-A936-0532AC76ADE5");
     pub const HATCH_PATTERN: Uuid = Uuid::parse("064E7C91-35F6-4734-A446-79FF7CD659E1");
@@ -97,6 +98,17 @@ pub fn read(data: &[u8]) -> Result<Model> {
         let mut chunk = file.chunk()?;
         match chunk.tcode {
             tcode::SETTINGS_TABLE => settings(&mut chunk.body, &mut model)?,
+            tcode::PROPERTIES_TABLE => {
+                if let Ok(Some(found)) = notes(&mut chunk.body) {
+                    model.notes = found;
+                }
+            }
+            // A user table Curva cannot read is left out, not the file.
+            tcode::USER_TABLE => {
+                if let Ok(Some(pairs)) = user_table(&mut chunk.body) {
+                    model.document_text.extend(pairs);
+                }
+            }
             tcode::LAYER_TABLE => records(&mut chunk.body, tcode::LAYER_RECORD, |body| {
                 if let Some(layer) = layer(body)? {
                     model.layers.push(layer);
@@ -1444,6 +1456,7 @@ fn pages(r: &mut Reader<'_>) -> Result<Vec<Page>> {
         let mut id = Uuid::NIL;
         let mut name = String::new();
         let mut page = None;
+        let mut user_text = Vec::new();
         while !record.body.is_done() {
             let mut part = record.body.chunk()?;
             match part.tcode {
@@ -1456,6 +1469,8 @@ fn pages(r: &mut Reader<'_>) -> Result<Vec<Page>> {
                         id = part.body.uuid()?;
                     }
                 }
+                // The viewport's user data, where Rhino keeps layout user text.
+                tcode::VIEW_VIEWPORT_USERDATA => user_text = self::user_text(&mut part.body),
                 tcode::VIEW_NAME => name = part.body.wstring()?,
                 tcode::VIEW_ATTRIBUTES => {
                     let (_, minor) = part.body.chunk_version()?;
@@ -1467,7 +1482,12 @@ fn pages(r: &mut Reader<'_>) -> Result<Vec<Page>> {
             }
         }
         if let Some(size_mm) = page {
-            out.push(Page { id, name, size_mm });
+            out.push(Page {
+                id,
+                name,
+                size_mm,
+                user_text,
+            });
         }
     }
     Ok(out)
@@ -1503,4 +1523,38 @@ fn detail(r: &mut Reader<'_>) -> Result<Detail> {
         boundary,
         ratio,
     })
+}
+
+/// The model's notes in the properties table (`ON_3dmNotes`): whether they are HTML, then the
+/// words.
+fn notes(table: &mut Reader<'_>) -> Result<Option<String>> {
+    while !table.is_done() {
+        let mut chunk = table.chunk()?;
+        match chunk.tcode {
+            tcode::ENDOFTABLE => break,
+            tcode::PROPERTIES_NOTES => {
+                chunk.body.chunk_version()?;
+                let _html = chunk.body.i32()?;
+                return Ok(Some(chunk.body.wstring()?));
+            }
+            _ => {}
+        }
+    }
+    Ok(None)
+}
+
+/// A user table: its plug-in's id, then its record. Curva reads the one openNURBS keeps the
+/// document user text in: an `ON_DocumentUserStringList` object whose user data holds the keys and
+/// values.
+fn user_table(table: &mut Reader<'_>) -> Result<Option<Vec<(String, String)>>> {
+    let mut id_chunk = table.expect(tcode::USER_TABLE_UUID)?;
+    if id_chunk.body.uuid()? != class::DOCUMENT_USER_STRINGS {
+        return Ok(None);
+    }
+    let mut record = table.expect(tcode::USER_RECORD)?;
+    let mut object = record.body.expect(tcode::OPENNURBS_CLASS)?;
+    // The class id and data come first; the user data, with the keys and values, after.
+    object.body.expect(tcode::OPENNURBS_CLASS_UUID)?;
+    object.body.expect(tcode::OPENNURBS_CLASS_DATA)?;
+    Ok(Some(user_text(&mut object.body)))
 }

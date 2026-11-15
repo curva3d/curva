@@ -33,6 +33,18 @@ pub fn write(model: &Model) -> Vec<u8> {
         w.wstring("https://github.com/curva3d/curva");
         w.wstring(concat!("Curva ", env!("CARGO_PKG_VERSION")));
         w.end();
+        if !model.notes.is_empty() {
+            // ON_3dmNotes 1.1: plain text, its words, not shown, no window, not locked.
+            w.begin(tcode::PROPERTIES_NOTES);
+            w.chunk_version(1, 1);
+            w.i32(0);
+            w.wstring(&model.notes);
+            for v in [0, 0, 0, 0, 0] {
+                w.i32(v);
+            }
+            w.bool(false);
+            w.end();
+        }
     });
     table(&mut w, tcode::SETTINGS_TABLE, |w| {
         w.begin(tcode::SETTINGS_UNITSANDTOLS);
@@ -58,7 +70,7 @@ pub fn write(model: &Model) -> Vec<u8> {
         w.count(model.views.len());
         for (i, v) in model.views.iter().enumerate() {
             w.begin(tcode::VIEW_RECORD);
-            write_view(w, v, Uuid::fresh(0x5649_4557 + i as u64), None);
+            write_view(w, v, Uuid::fresh(0x5649_4557 + i as u64), None, &[]);
             w.end();
         }
         w.end();
@@ -122,6 +134,9 @@ pub fn write(model: &Model) -> Vec<u8> {
         }
     });
     table(&mut w, tcode::HISTORYRECORD_TABLE, |_| {});
+    if !model.document_text.is_empty() {
+        write_document_text(&mut w, &model.document_text);
+    }
     // The end mark holds the size of the whole file, itself included.
     let size = w.out.len() as i64 + 4 + 8 + 8;
     w.u32(tcode::ENDOFFILE);
@@ -468,7 +483,13 @@ fn unit(a: P3) -> P3 {
 /// has, its target and its name.
 /// A view: its camera, construction plane, target and name, and for a layout or a detail its
 /// kind (1 a page, 2 a view nested in a page) and paper size in millimetres.
-fn write_view(w: &mut Writer, v: &View, id: Uuid, kind: Option<(i32, [f64; 2])>) {
+fn write_view(
+    w: &mut Writer,
+    v: &View,
+    id: Uuid,
+    kind: Option<(i32, [f64; 2])>,
+    user_text: &[(String, String)],
+) {
     let direction = unit(v.direction);
     let x = unit(cross(direction, v.up));
     let y = cross(x, direction);
@@ -497,6 +518,13 @@ fn write_view(w: &mut Writer, v: &View, id: Uuid, kind: Option<(i32, [f64; 2])>)
     w.bool(true); // the camera frame is valid
     w.f64s(&[1.0, 1.0, 1.0]);
     w.end();
+    // A layout's user text, in its viewport's user data.
+    if !user_text.is_empty() {
+        w.begin(tcode::VIEW_VIEWPORT_USERDATA);
+        write_user_text(w, user_text);
+        w.short(tcode::OPENNURBS_CLASS_END, 0);
+        w.end();
+    }
     // A flat view looking along an axis draws on that axis' plane, as Rhino's standard views do.
     let along = |axis: usize, sign: f64| v.parallel && direction[axis] * sign > 1.0 - 1e-9;
     let (px, py) = if along(1, 1.0) {
@@ -1092,7 +1120,7 @@ fn write_leader(w: &mut Writer, l: &Leader) {
 fn write_detail(w: &mut Writer, d: &Detail) {
     w.begin_versioned(tcode::ANONYMOUS_CHUNK, 1, 1);
     w.begin_versioned(tcode::ANONYMOUS_CHUNK, 1, 0);
-    write_view(w, &d.view, Uuid::NIL, Some((2, [0.0, 0.0])));
+    write_view(w, &d.view, Uuid::NIL, Some((2, [0.0, 0.0])), &[]);
     w.end();
     w.begin_versioned(tcode::ANONYMOUS_CHUNK, 1, 0);
     write_nurbs_curve(w, &d.boundary);
@@ -1134,6 +1162,7 @@ fn write_view_list(w: &mut Writer, model: &Model) {
             v,
             Uuid::fresh(0x5354_4456 + i as u64),
             Some((0, [0.0, 0.0])),
+            &[],
         );
         w.end();
     }
@@ -1157,7 +1186,7 @@ fn write_view_list(w: &mut Writer, model: &Model) {
             ],
         };
         w.begin(tcode::VIEW_RECORD);
-        write_view(w, &view, page.id, Some((1, page.size_mm)));
+        write_view(w, &view, page.id, Some((1, page.size_mm)), &page.user_text);
         w.end();
     }
     w.end();
@@ -1185,6 +1214,35 @@ fn write_page_unit(w: &mut Writer, model: &Model) {
     w.f64(metres_per(unit));
     w.wstring("");
     w.end();
+    w.end();
+}
+
+/// The document user text as openNURBS keeps it (`ONX_Model`'s step 17): a user table for the
+/// plug-in `ON_DocumentUserStringList`, whose record is that object, with the keys and values as
+/// its user data.
+fn write_document_text(w: &mut Writer, pairs: &[(String, String)]) {
+    w.begin(tcode::USER_TABLE);
+    w.begin(tcode::USER_TABLE_UUID);
+    w.uuid(class::DOCUMENT_USER_STRINGS);
+    w.begin_versioned(tcode::USER_TABLE_RECORD_HEADER, 1, 0);
+    w.bool(false); // not kept for a plug-in that is missing
+    w.i32(70);
+    w.u32(OPENNURBS_VERSION as u32);
+    w.end();
+    w.end();
+    w.begin(tcode::USER_RECORD);
+    w.begin(tcode::OPENNURBS_CLASS);
+    w.begin(tcode::OPENNURBS_CLASS_UUID);
+    w.uuid(class::DOCUMENT_USER_STRINGS);
+    w.end();
+    w.begin(tcode::OPENNURBS_CLASS_DATA);
+    w.u8(1);
+    w.end();
+    write_user_text(w, pairs);
+    w.short(tcode::OPENNURBS_CLASS_END, 0);
+    w.end();
+    w.end();
+    w.short(tcode::ENDOFTABLE, 0);
     w.end();
 }
 #[cfg(test)]

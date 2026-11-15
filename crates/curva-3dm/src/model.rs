@@ -33,6 +33,10 @@ pub struct Model {
     /// The unit layouts are drawn in, as openNURBS numbers units; the model's when the file
     /// does not say.
     pub page_unit: Option<u32>,
+    /// Rhino's document user text, key and value.
+    pub document_text: Vec<(String, String)>,
+    /// The model's notes.
+    pub notes: String,
     /// Objects, those of block definitions included (their attributes say so).
     pub objects: Vec<Object>,
     /// Named views, in the file's order.
@@ -643,6 +647,8 @@ pub struct Page {
     pub name: String,
     /// Its paper's width and height, in millimetres.
     pub size_mm: [f64; 2],
+    /// Its user text (layout user text, on its viewport).
+    pub user_text: Vec<(String, String)>,
 }
 
 /// A detail view on a layout (`ON_DetailView`): a window onto the model.

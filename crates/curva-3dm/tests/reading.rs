@@ -273,3 +273,38 @@ fn rhinos_layouts_come_in_with_their_details_and_sheet_drawing() {
     assert_eq!(in_model.len(), 1, "the line");
     assert!((in_model[0].curve().unwrap().length().unwrap() - 10_000.0).abs() < 1e-6);
 }
+
+#[test]
+fn rhinos_layout_user_text_comes_in_with_its_fields() {
+    // Made in Rhino 8: an A1 layout with user text "Sheet title" and "Drawn by", and two notes
+    // reading them, one by key alone and one naming the page by its viewport's id.
+    let (doc, report) = open("v8_layout_user_text.3dm");
+    let state = doc.state();
+    assert_eq!(state.layouts.len(), 1, "{}", report.summary());
+    let sheet = &state.layouts[0];
+    assert_eq!(
+        sheet.user_text.get("Sheet title").map(String::as_str),
+        Some("Ground floor plan")
+    );
+    assert_eq!(
+        sheet.user_text.get("Drawn by").map(String::as_str),
+        Some("LP")
+    );
+    let mut shown: Vec<String> = state
+        .objects
+        .iter()
+        .filter_map(|o| match &o.shape {
+            curva_document::Shape::Annotation(curva_document::annotation::Annotation::Text(t)) => {
+                Some(curva_document::fields::resolve(
+                    &t.content,
+                    state,
+                    o.space,
+                    &curva_document::fields::FieldContext::default(),
+                ))
+            }
+            _ => None,
+        })
+        .collect();
+    shown.sort();
+    assert_eq!(shown, ["Ground floor plan", "LP"]);
+}
