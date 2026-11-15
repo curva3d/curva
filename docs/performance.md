@@ -76,3 +76,37 @@ to be kept by every edit. The viewport keeps what each object drew as, with its 
 object again only when it or its layer changed; an instance is always drawn again, since its
 definition can change without it. The 11.6 ms left is putting the kept pieces together; the mesh
 cache's clean-up of removed objects no longer slows down with the square of the object count.
+
+## Display pipeline baseline (15 November 2026, spec `display-pipeline.md` step 1)
+
+Before any of the new display pipeline. NVIDIA GeForce RTX 3060 (Vulkan), window maximized on a
+1280×800 display (the machine was reached over Parsec at the time; the spec's targets are for
+1920×1080, which has twice the pixels, so later runs note the size used), built locally
+with `cargo build --release`, nothing else building on the machine. Each run done twice; the two
+agreed within 0.2 ms (99th percentiles excepted). `--scene` names the standard scenes of the spec
+(§6). "Work per frame" is the main processor's time, which includes snapping: the benchmark looks
+for snap points every frame with every snap on, as moving the mouse does.
+
+| Scene | Opens | Frame gap (median) | Work per frame | Of which snapping |
+|---|---|---|---|---|
+| `--scene medium` (5,000 circles, 500 cylinders) | yes | 4.8–4.9 ms | 5.5–5.7 ms | 3.1–3.2 ms |
+| `--scene large` (40,000 circles, 10,000 splines, 10,000 solids as copies of 100 shapes, 2,000 trees of 5,344 triangles) | **no, crashes** | — | — | — |
+| Large reduced: `--scene large --curves 20000 --splines 5000 --solids 4000 --trees 0` | yes, first frame after 3.4–3.5 s | 20.1–20.4 ms | 23.2 ms | 17.6–17.7 ms |
+| Far reduced: the same, `--scene far` (500 km from the origin) | yes, first frame after 3.4–3.6 s | 20.1–20.2 ms | 22.8–22.9 ms | 17.4–17.5 ms |
+
+**Large does not open.** The viewport puts all lines, and all faces, each in one block of graphics
+memory, and the graphics card refuses a block over 256 MB. Each part of Large alone is already too
+big:
+
+| Part alone | One block would need |
+|---|---|
+| 40,000 circles and 10,000 splines (128 segments per circle, 32 per spline point) | 376 MB |
+| 10,000 solids, copies of 100 shapes (each copy written out again) | 580 MB |
+| 2,000 trees (each instance written out again, about 2 minutes of work before the crash) | 1,154 MB |
+
+Steps 4 (objects kept on the graphics card), 11 (instancing) and 13 (memory limit) of the spec
+remove this ceiling; until then the largest scene that opens holds roughly 35,000 circles' worth of
+lines. **Snapping** takes three quarters of the processor's time on the reduced Large scene; it is
+not in the spec, and is tracked in a `display` issue. **Far from the origin** costs no more time;
+whether it shimmers is checked by eye in step 2. The graphics card's own time per frame is not
+measured yet (step 1b).

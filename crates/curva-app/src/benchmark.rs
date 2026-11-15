@@ -10,38 +10,178 @@ pub(crate) struct Benchmark {
     pub(crate) snapping: Vec<f64>,
 }
 
-/// A square grid of `count` circles.
-/// A grid of circles, then a grid of upright cylinders beside it.
-pub(crate) fn benchmark_scene(doc: &mut Document, scene: BenchmarkScene) -> Result<(), String> {
-    let place = |index: usize, count: usize, shift: f64| {
+/// Builds a benchmark scene: square grids side by side along X, in this order: circles, spline
+/// curves, solids, then block instances of a tree, all moved by `scene.offset`.
+/// Returns a line saying what the scene holds, for the report.
+pub(crate) fn benchmark_scene(doc: &mut Document, scene: BenchmarkScene) -> Result<String, String> {
+    let started = std::time::Instant::now();
+    let text = |error: curva_kernel::KernelError| error.to_string();
+    let at = scene.offset;
+    // Where the next grid starts along X, and the grid's side, for `count` items `spacing` apart.
+    let mut shift = 0.0;
+    let mut grid = |count: usize, spacing: f64| {
         let side = (count as f64).sqrt().ceil().max(1.0) as usize;
-        let (column, row) = ((index % side) as f64, (index / side) as f64);
-        [
-            column * BENCHMARK_SPACING + shift,
-            row * BENCHMARK_SPACING,
-            0.0,
-        ]
+        let start = shift;
+        if count > 0 {
+            shift += (side as f64 + 1.0) * spacing;
+        }
+        move |index: usize| {
+            let (column, row) = ((index % side) as f64, (index / side) as f64);
+            [
+                at[0] + start + column * spacing,
+                at[1] + row * spacing,
+                at[2],
+            ]
+        }
     };
+    let circles = grid(scene.curves, BENCHMARK_SPACING);
     for index in 0..scene.curves {
-        let centre = place(index, scene.curves, 0.0);
-        doc.add(Curve::circle(centre, BENCHMARK_RADIUS).map_err(|error| error.to_string())?);
+        doc.add(Curve::circle(circles(index), BENCHMARK_RADIUS).map_err(text)?);
     }
-    let beside = (scene.curves as f64).sqrt().ceil() * BENCHMARK_SPACING + BENCHMARK_SPACING;
+    let splines = grid(scene.splines, BENCHMARK_SPACING);
+    for index in 0..scene.splines {
+        let [x, y, z] = splines(index);
+        // A wave through five points, so it is cut by the spline rule, not the circle rule.
+        let points = (0..5)
+            .map(|k: u8| {
+                let t = f64::from(k) / 4.0;
+                let wave = if k.is_multiple_of(2) {
+                    0.0
+                } else {
+                    BENCHMARK_RADIUS
+                };
+                [
+                    x - BENCHMARK_RADIUS + 2.0 * BENCHMARK_RADIUS * t,
+                    y + wave,
+                    z,
+                ]
+            })
+            .collect();
+        doc.add(Curve::interpolated(points, false).map_err(text)?);
+    }
+    let solids = grid(scene.solids, BENCHMARK_SPACING);
+    // With `shapes` set, solids are copies of that many different shapes, moved: copies share
+    // their mesh, as copies and arrays made in Curva do. Without it, every solid is its own.
+    let mut shapes = Vec::new();
+    for index in 0..scene.shapes {
+        shapes.push(benchmark_shape(index)?);
+    }
     for index in 0..scene.solids {
-        let base = Curve::circle(place(index, scene.solids, beside), BENCHMARK_RADIUS)
-            .map_err(|error| error.to_string())?;
-        let up = curva_kernel::Body::extruded(&[base], [0.0, 0.0, 1.0], BENCHMARK_SPACING, true)
-            .map_err(|error| error.to_string())?;
-        doc.add_body(up);
+        let place = solids(index);
+        let body = if shapes.is_empty() {
+            let base = Curve::circle(place, BENCHMARK_RADIUS).map_err(text)?;
+            curva_kernel::Body::extruded(&[base], [0.0, 0.0, 1.0], BENCHMARK_SPACING, true)
+                .map_err(text)?
+        } else {
+            shapes[index % shapes.len()].translated(place)
+        };
+        doc.add_body(body);
     }
-    Ok(())
+    let mut tree_triangles = 0;
+    if scene.trees > 0 {
+        let trees = grid(scene.trees, BENCHMARK_TREE_SPACING);
+        let tree = benchmark_tree()?;
+        for body in &tree {
+            tree_triangles += body.mesh().map_err(text)?.triangles.len();
+        }
+        let ids = tree
+            .into_iter()
+            .map(|body| doc.add_body(body))
+            .collect::<Vec<_>>();
+        let (definition, first) = doc.define_block("tree".to_owned(), [0.0; 3], &ids);
+        doc.remove(&[first]);
+        for index in 0..scene.trees {
+            doc.insert_block(definition, curva_document::blocks::moved_by(trees(index)));
+        }
+    }
+    Ok(format!(
+        "scene: {} circles, {} splines, {} solids ({}), {} trees of {tree_triangles} triangles, \
+         moved by {:?} mm, built in {:.1} s",
+        scene.curves,
+        scene.splines,
+        scene.solids,
+        match scene.shapes {
+            0 => "each its own".to_owned(),
+            shapes => format!("copies of {shapes} shapes"),
+        },
+        scene.trees,
+        scene.offset,
+        started.elapsed().as_secs_f64(),
+    ))
+}
+
+/// One of the different solids of the Large scene, at the origin: cylinders and boxes of several
+/// sizes, each fitting within a grid cell.
+fn benchmark_shape(index: usize) -> Result<curva_kernel::Body, String> {
+    let text = |error: curva_kernel::KernelError| error.to_string();
+    let step = (index % 10) as f64 / 10.0;
+    let height = BENCHMARK_SPACING * (0.5 + 2.0 * step);
+    if index.is_multiple_of(2) {
+        let radius = BENCHMARK_RADIUS * (0.4 + 0.6 * step);
+        let base = Curve::circle([0.0; 3], radius).map_err(text)?;
+        curva_kernel::Body::extruded(&[base], [0.0, 0.0, 1.0], height, true).map_err(text)
+    } else {
+        let side = 2.0 * BENCHMARK_RADIUS * (0.4 + 0.6 * step);
+        curva_kernel::Body::cuboid([-side / 2.0, -side / 2.0, 0.0], [side, side, height])
+            .map_err(text)
+    }
+}
+
+/// The solids of the tree block, standing at the origin: a trunk and a crown of spheres.
+fn benchmark_tree() -> Result<Vec<curva_kernel::Body>, String> {
+    let text = |error: curva_kernel::KernelError| error.to_string();
+    let base = Curve::circle([0.0; 3], 1.5).map_err(text)?;
+    let mut bodies =
+        vec![curva_kernel::Body::extruded(&[base], [0.0, 0.0, 1.0], 30.0, true).map_err(text)?];
+    for [x, y, z, radius] in BENCHMARK_CROWN {
+        bodies.push(curva_kernel::Body::sphere([x, y, z], radius).map_err(text)?);
+    }
+    Ok(bodies)
 }
 
 /// What a benchmark scene holds.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct BenchmarkScene {
+    /// Circles.
     pub(crate) curves: usize,
+    /// Spline curves through five points.
+    pub(crate) splines: usize,
+    /// Solids.
     pub(crate) solids: usize,
+    /// How many different shapes the solids are copies of; 0: each solid its own.
+    pub(crate) shapes: usize,
+    /// Block instances of one tree.
+    pub(crate) trees: usize,
+    /// Where the scene is moved to, for drawing far from the origin.
+    pub(crate) offset: Point,
+}
+
+impl BenchmarkScene {
+    /// The standard scenes of spec `display-pipeline.md` §6, by name.
+    pub(crate) fn named(name: &str) -> Option<Self> {
+        let large = Self {
+            curves: 40_000,
+            splines: 10_000,
+            solids: 10_000,
+            shapes: 100,
+            trees: 2_000,
+            offset: [0.0; 3],
+        };
+        match name {
+            "medium" => Some(Self {
+                curves: 5_000,
+                solids: 500,
+                ..Self::default()
+            }),
+            "large" => Some(large),
+            // 500 km from the origin along X and Y, in millimetres.
+            "far" => Some(Self {
+                offset: [5.0e8, 5.0e8, 0.0],
+                ..large
+            }),
+            _ => None,
+        }
+    }
 }
 
 pub(crate) fn curve_kind(curve: &Curve) -> &'static str {
@@ -92,6 +232,11 @@ impl Benchmark {
         let middle = gaps[gaps.len() / 2];
         let worst = gaps[gaps.len() * 99 / 100];
         let snapping = self.snapping.iter().sum::<f64>() / self.snapping.len().max(1) as f64;
+        // egui counts time from the window opening, so this is how long the scene took to show.
+        println!(
+            "first frame: {:.1} s after the window opened",
+            self.times[0]
+        );
         println!("snapping per frame: {snapping:.2} ms");
         let work = self.work.iter().sum::<f32>() * 1000.0 / self.work.len().max(1) as f32;
         println!("frame gap: median {middle:.1} ms, 99th percentile {worst:.1} ms");
@@ -111,3 +256,81 @@ pub(crate) const SETTLE_FRAMES: usize = 30;
 
 /// How far, in points, the benchmark drags the view each frame.
 pub(crate) const BENCHMARK_DRAG: f64 = 4.0;
+
+/// Spacing of the trees in a benchmark scene, in millimetres.
+pub(crate) const BENCHMARK_TREE_SPACING: f64 = 40.0;
+
+/// The tree's crown: spheres as centre and radius, in millimetres. One sphere and the trunk mesh to
+/// about 5,000 triangles, as spec `display-pipeline.md` §6 asks (the report prints the count).
+pub(crate) const BENCHMARK_CROWN: [[f64; 4]; 1] = [[0.0, 0.0, 40.0, 12.0]];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A small scene with every kind, so building it stays quick.
+    fn small(offset: Point) -> BenchmarkScene {
+        BenchmarkScene {
+            curves: 4,
+            splines: 3,
+            solids: 5,
+            shapes: 2,
+            trees: 3,
+            offset,
+        }
+    }
+
+    #[test]
+    fn the_standard_scenes_hold_what_the_spec_lists() {
+        let medium = BenchmarkScene::named("medium").unwrap();
+        assert_eq!(
+            (medium.curves, medium.solids, medium.trees),
+            (5_000, 500, 0)
+        );
+        let large = BenchmarkScene::named("large").unwrap();
+        assert_eq!(large.curves + large.splines, 50_000);
+        assert_eq!((large.solids, large.trees), (10_000, 2_000));
+        let far = BenchmarkScene::named("far").unwrap();
+        assert_eq!(far.offset, [5.0e8, 5.0e8, 0.0]);
+        assert_eq!(
+            BenchmarkScene {
+                offset: [0.0; 3],
+                ..far
+            },
+            large
+        );
+        assert!(BenchmarkScene::named("huge").is_none());
+    }
+
+    #[test]
+    fn a_scene_adds_every_object_and_one_tree_definition() {
+        let mut doc = Document::default();
+        let summary = benchmark_scene(&mut doc, small([0.0; 3])).unwrap();
+        // 4 circles, 3 splines, 5 solids and 3 tree instances.
+        assert_eq!(doc.state().objects.len(), 15);
+        assert_eq!(doc.definitions().len(), 1);
+        assert_eq!(doc.instances_of(doc.definitions()[0].id).len(), 3);
+        assert!(summary.starts_with("scene: 4 circles, 3 splines, 5 solids"));
+    }
+
+    #[test]
+    fn a_far_scene_is_the_same_scene_moved() {
+        let bounds = |offset: Point| {
+            let mut doc = Document::default();
+            // Without trees, which take long to mesh in a test build.
+            let scene = BenchmarkScene {
+                trees: 0,
+                ..small(offset)
+            };
+            benchmark_scene(&mut doc, scene).unwrap();
+            Outlines::of(doc.state()).bounds().unwrap()
+        };
+        let (near_low, near_high) = bounds([0.0; 3]);
+        let (far_low, far_high) = bounds([5.0e8, 5.0e8, 0.0]);
+        for axis in 0..3 {
+            let shift = if axis < 2 { 5.0e8 } else { 0.0 };
+            assert!((far_low[axis] - near_low[axis] - shift).abs() < 1e-3);
+            assert!((far_high[axis] - near_high[axis] - shift).abs() < 1e-3);
+        }
+    }
+}
