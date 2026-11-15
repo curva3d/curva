@@ -54,6 +54,11 @@
 - Status split per stream and the display stream's rules in `AGENTS.md` (#125).
 
 **In progress / next**
+- **Correct drawing first** (owner, 15 November 2026), before styles are tuned: (1) seams no
+  longer drawn in shaded views (this pull request); (2) outlines of curved shapes in every live
+  view, Wireframe included, found from the depth picture; then wireframe and previews drop seams
+  too; (3) edges that stay whole where a surface is seen at a steep angle; (4) edges that follow
+  the true shape when zooming in (spec steps 5 to 7).
 - **Spec: views and visualisation styles** (`docs/specs/views-and-styles.md`, #160), approved by
   the owner on 15 November 2026: modelling layers and per-view layers, the model carries its styles,
   the display stream builds the model and interface parts. Replaces display modes. Next: the
@@ -84,6 +89,10 @@
   branch's side of `status/display.md`.
 
 **Heads-up for the features stream** (changes outside the viewport, decision B)
+- **`curva_kernel::BodyMesh` has a new field `seams`** (one flag per edge): edges where one face
+  meets itself, which the engine does not mark (`seam_edges` in `crates/curva-kernel/src/body.rs`).
+  Shaded views leave them out; wireframe, previews and prints keep them until outlines of curved
+  shapes are drawn there.
 - Done: `crates/curva-app/src/benchmark.rs` and the `--orbit-benchmark` arguments in
   `crates/curva-app/src/main.rs` (#131); the window's graphics set-up in `main.rs` now uses
   `curva_viewport::device_descriptor` (#132).

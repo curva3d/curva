@@ -154,10 +154,14 @@ pub struct BodyMesh {
     pub normals: Vec<Point>,
     /// Triangles as three indices into `positions`.
     pub triangles: Vec<[u32; 3]>,
-    /// The body's edges as runs of points; seams inside a smooth face are left out.
+    /// The body's edges as runs of points; seams the engine marks are left out.
     pub edges: Vec<Vec<Point>>,
     /// For each of `edges`, its number among the body's edges, for picking it.
     pub edge_ids: Vec<usize>,
+    /// For each of `edges`, whether it is a seam: where one smooth face meets itself, as along
+    /// a sphere's meridian or a cylinder's side. Views that show the faces leave seams out;
+    /// the engine does not mark these itself (see `seam_edges`).
+    pub seams: Vec<bool>,
     /// For each of `triangles`, the number of the face it is part of, for picking faces.
     pub triangle_faces: Vec<usize>,
 }
@@ -494,6 +498,7 @@ impl Body {
                 .map(|run| run.iter().map(point).collect())
                 .collect(),
             edge_ids: made.edge_ids.clone(),
+            seams: made.seams.clone(),
             triangle_faces: made.triangle_faces.clone(),
         })
     }
@@ -511,6 +516,7 @@ impl Body {
             let (tess, _) = plan(record, &MeshTolerance::display_of(size), size)
                 .map_err(|e| failed("meshing a body", e))?;
             let (mesh, _) = tess.evaluate();
+            let seams = seam_edges(&mesh, size);
             let kept: Vec<usize> = (0..mesh.edges.len())
                 .filter(|index| !mesh.seams.get(*index).copied().unwrap_or(false))
                 .collect();
@@ -522,6 +528,10 @@ impl Body {
                 edges: kept
                     .iter()
                     .map(|&index| mesh.edges[index].iter().map(point).collect())
+                    .collect(),
+                seams: kept
+                    .iter()
+                    .map(|&index| seams.get(index).copied().unwrap_or(false))
                     .collect(),
                 edge_ids: kept,
                 triangle_faces: mesh.tri_face.iter().map(|&face| face as usize).collect(),
@@ -785,6 +795,50 @@ impl Body {
     }
 }
 
+/// Which of a mesh's edges are seams: where a single face meets itself, as along a sphere's
+/// meridian or a cylinder's side, so that no line should be drawn. The engine does not mark these
+/// itself (it lists such an edge with one face), and the boundary of an open surface is listed the
+/// same way, so the two are told apart by the triangles: along a seam, that face's triangles lie
+/// on both sides of the edge; along a boundary, on one side only. Points are compared within a
+/// millionth of the body's `size`, as the mesh repeats a seam's points for each side.
+fn seam_edges(mesh: &solidcore_tess::Mesh, size: f64) -> Vec<bool> {
+    let step = (size * 1e-6).max(1e-12);
+    let key = |v: &solidcore_record::Vec3| [v.x, v.y, v.z].map(|c| (c / step).round() as i64);
+    // How many triangles of each face use each side, by its two ends in either order.
+    let mut sides: std::collections::HashMap<([i64; 3], [i64; 3], u32), u32> =
+        std::collections::HashMap::new();
+    for (triangle, face) in mesh.triangles.iter().zip(&mesh.tri_face) {
+        for k in 0..3 {
+            let (a, b) = (triangle[k] as usize, triangle[(k + 1) % 3] as usize);
+            let (Some(a), Some(b)) = (mesh.positions.get(a), mesh.positions.get(b)) else {
+                continue;
+            };
+            let (a, b) = (key(a), key(b));
+            let ends = if a <= b { (a, b) } else { (b, a) };
+            *sides.entry((ends.0, ends.1, *face)).or_default() += 1;
+        }
+    }
+    mesh.edges
+        .iter()
+        .enumerate()
+        .map(|(index, run)| {
+            let [face] = mesh.edge_faces.get(index).map_or(&[][..], Vec::as_slice) else {
+                return false;
+            };
+            // A seam when, for most of its pieces, the face lies on both sides.
+            let both = run
+                .windows(2)
+                .filter(|pair| {
+                    let (a, b) = (key(&pair[0]), key(&pair[1]));
+                    let ends = if a <= b { (a, b) } else { (b, a) };
+                    sides.get(&(ends.0, ends.1, *face)).copied().unwrap_or(0) >= 2
+                })
+                .count();
+            run.len() > 1 && both * 2 > run.len() - 1
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::Body;
@@ -1001,5 +1055,33 @@ mod tests {
         let text = serde_json::to_string(&body).unwrap();
         let back: Body = serde_json::from_str(&text).unwrap();
         assert_eq!(back, body);
+    }
+
+    /// Seams, where a face meets itself, are not drawn: a sphere has no edge lines, a cylinder
+    /// Seams, where a face meets itself, are marked so views showing the faces leave them out: a
+    /// sphere's only edge is a seam, a cylinder keeps its two rims; an open boundary is no seam.
+    #[test]
+    fn seams_are_marked_but_open_boundaries_are_not() {
+        let unmarked = |body: &Body| {
+            let mesh = body.mesh().unwrap();
+            assert_eq!(mesh.seams.len(), mesh.edges.len());
+            mesh.seams.iter().filter(|seam| !**seam).count()
+        };
+        let sphere = Body::sphere([0.0; 3], 10.0).unwrap();
+        assert_eq!(unmarked(&sphere), 0);
+        let rim = crate::Curve::circle([0.0; 3], 5.0).unwrap();
+        let cylinder =
+            Body::extruded(std::slice::from_ref(&rim), [0.0, 0.0, 1.0], 20.0, true).unwrap();
+        assert_eq!(unmarked(&cylinder), 2);
+        // An open tube: the side alone; its two rims are boundaries and stay.
+        let tube =
+            Body::extruded(std::slice::from_ref(&rim), [0.0, 0.0, 1.0], 20.0, false).unwrap();
+        assert_eq!(unmarked(&tube), 2);
+        // A flat disc: its rim is its only, open boundary.
+        let disc = Body::planar(&[rim]).unwrap();
+        assert_eq!(unmarked(&disc), 1);
+        // A box keeps all twelve edges.
+        let block = Body::cuboid([0.0; 3], [1.0, 2.0, 3.0]).unwrap();
+        assert_eq!(unmarked(&block), 12);
     }
 }
