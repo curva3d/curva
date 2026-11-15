@@ -53,3 +53,46 @@ fn a_layout_rhino_wrote_comes_in_with_its_detail() {
         1
     );
 }
+
+#[test]
+fn rhinos_linetypes_come_in_on_layers_and_lines() {
+    // Rhino 8's DXF, in metres: layer "Hidden lines" (Hidden) and "Axes" (Center); a line by layer at
+    // y = 0, one with Border at y = 0.01, one with a custom "Wall dash" at y = 30 and one with
+    // Dots at y = 40.
+    use curva_document::Linetype;
+    let path = format!(
+        "{}/tests/files/rhino8_linetypes.dxf",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let cad = curva_dxf::read(&std::fs::read(path).unwrap(), curva_dxf::Format::Dxf).unwrap();
+    let mut doc = Document::default();
+    let report = curva_dxf::import(&cad, &mut doc);
+    let state = doc.state();
+    let layer = |n: &str| state.layers.iter().find(|l| l.name == n).unwrap().linetype;
+    assert_eq!(layer("Hidden lines"), Linetype::Hidden);
+    assert_eq!(layer("Axes"), Linetype::Center);
+    let at = |y: f64| {
+        state
+            .objects
+            .iter()
+            .find(|o| {
+                o.curve()
+                    .and_then(|c| c.sample().ok())
+                    .is_some_and(|s| (s[0][1] - y).abs() < 1e-6)
+            })
+            .unwrap()
+            .linetype
+    };
+    assert_eq!(at(0.0), Linetype::ByLayer);
+    assert_eq!(at(0.01), Linetype::Border);
+    assert_eq!(at(30.0), Linetype::Continuous);
+    assert_eq!(at(40.0), Linetype::Dotted);
+    assert!(
+        report
+            .skipped
+            .iter()
+            .any(|(k, _)| k.contains("\"Wall dash\"")),
+        "{:?}",
+        report.skipped
+    );
+}
