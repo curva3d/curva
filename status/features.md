@@ -29,16 +29,21 @@ Properties yet; built-in title blocks are one design per standard, not one per s
   Text, dimensions, hatches, blocks, solids and layouts were left out and reported.
 - Merged (#145): DXF and DWG text (TEXT out, TEXT and MTEXT in, fields worked out), hatches (outlines and
   pattern lines; unknown patterns come in with the drawing) and blocks (definitions, nested, and INSERTs).
+- Merged (#159): DXF and DWG dimensions (DIMENSION entities with their `*D` drawing blocks) and leaders, both
+  ways; Rhino 8 reads them with the same values.
+- In review: DXF and DWG layouts with their viewports, both ways (Rhino's layout DXF reads in place).
 
 **Milestone 3, `.3dm` round trip of drawing objects** (`drawing-output.md` §5):
 - Merged: dots (#146), hatches with the hatch pattern table (#147), Rhino's notes read (#149), Curva's notes
   written with annotation styles (#150). Each checked by opening Curva's file in Rhino 8.
 - Merged (#152): linear, radius, diameter and angle dimensions and leaders, both ways.
 - Merged (#156): layouts and details, both ways.
-- In review: scale bars and tables to `.3dm` as their plain drawing; fields only Curva can work out written as
+- Merged (#158): scale bars and tables to `.3dm` as their plain drawing; fields only Curva can work out written as
   they read.
 
-**Next:** DXF dimensions and leaders (real DIMENSION entities) and layouts; layout user text in `.3dm`.
+**Next:** layout user text and document text in `.3dm` and DXF; the Notes panel; Properties for scale bars and
+tables. Known: Rhino's own DXF export writes a detail's view height as paper height ÷ scale, against AutoCAD's
+reference; Curva follows the reference, so a Rhino DXF's detail scale reads inverted.
 
 **Note:** the website's Cloudflare build (`Workers Builds`, from #155) fails on pull request branches. It is not a
 required check, and pull requests that touch no website files merge without it.

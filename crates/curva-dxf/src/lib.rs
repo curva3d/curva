@@ -9,6 +9,8 @@
 
 mod annotation;
 mod blocks;
+mod dims;
+mod layouts;
 
 use acadrust::entities::{Arc, Circle, EntityType, Line, LwPolyline, Point, Polyline3D, Spline};
 use acadrust::types::{Color, DxfVersion, LineWeight, Vector2, Vector3};
@@ -273,7 +275,7 @@ fn entities_for(curve: &Curve) -> Vec<EntityType> {
 }
 
 /// A name AutoCAD takes for a layer or block: the characters it refuses become `_`.
-fn dxf_name(name: &str) -> String {
+pub(crate) fn dxf_name(name: &str) -> String {
     let clean: String = name
         .chars()
         .map(|c| if "<>/\\\":;?*|=`".contains(c) { '_' } else { c })
@@ -292,6 +294,8 @@ struct Writer<'a> {
     fields: FieldContext,
     layers: BTreeMap<u64, String>,
     blocks: BTreeMap<u64, String>,
+    /// How many dimension blocks (`*D1`, `*D2`, ...) are written.
+    dimensions: usize,
     report: Report,
 }
 
@@ -336,7 +340,43 @@ impl Writer<'_> {
                 annotation::hatch_out(hatch, state).into_iter().collect(),
                 "hatches",
             ),
-            Shape::Annotation(_) => (Vec::new(), "dimensions, leaders and other annotations"),
+            Shape::Annotation(
+                a @ (Annotation::Dimension(_) | Annotation::Radial(_) | Annotation::Angle(_)),
+            ) => {
+                let name = format!("*D{}", self.dimensions + 1);
+                let written = dims::dimension_out(a, state, object.space, &name)
+                    .filter(|(_, contents)| !contents.is_empty())
+                    .and_then(|(dimension, contents)| {
+                        blocks::write_block(&mut self.cad, &name, contents)
+                            .ok()
+                            .map(|()| dimension)
+                    });
+                match written {
+                    Some(dimension) => {
+                        self.dimensions += 1;
+                        (vec![dimension], "dimensions")
+                    }
+                    // Off the world's XY plane: the drawing alone.
+                    _ => (
+                        curva_document::shape::annotation_parts(a, state, object.space)
+                            .map(|p| {
+                                p.lines
+                                    .iter()
+                                    .map(|(s, e)| {
+                                        EntityType::Line(Line::from_points(v3(*s), v3(*e)))
+                                    })
+                                    .chain(annotation::text_out(&p.text, &p.text.content))
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
+                        "dimensions",
+                    ),
+                }
+            }
+            Shape::Annotation(Annotation::Leader(l)) => {
+                (dims::leader_out(l, state, object.space), "leaders")
+            }
+            Shape::Annotation(_) => (Vec::new(), "dots and other annotations"),
             Shape::Body(_) => (Vec::new(), "surfaces and solids"),
             Shape::Instance(instance) => {
                 let name = self.block(instance.definition);
@@ -413,6 +453,7 @@ pub fn export(
         fields: FieldContext::now(doc.path()),
         layers: BTreeMap::new(),
         blocks: BTreeMap::new(),
+        dimensions: 0,
         report: Report::default(),
     };
     for object in &doc.state().objects {
@@ -430,6 +471,65 @@ pub fn export(
             writer.cad.add_entity(entity).map_err(|e| e.to_string())?;
         }
         Report::count(&mut writer.report.brought, kind);
+    }
+    // Layouts: each a DXF layout of its paper size, its drawing in its paper space in
+    // millimetres, and its details as viewports.
+    if only.is_none() {
+        let model_mm = doc.state().unit.millimetres();
+        let mut next_viewport: i16 = 2;
+        for (index, layout) in doc.state().layouts.iter().enumerate() {
+            let mm = layout.unit.millimetres();
+            let name = layouts::layout_out(
+                &mut writer.cad,
+                &layout.name,
+                index == 0,
+                [layout.size[0] * mm, layout.size[1] * mm],
+            );
+            let to_mm = [
+                [mm, 0.0, 0.0, 0.0],
+                [0.0, mm, 0.0, 0.0],
+                [0.0, 0.0, mm, 0.0],
+                [0.0, 0.0, 0.0, 1.0],
+            ];
+            for object in doc
+                .state()
+                .objects
+                .iter()
+                .filter(|o| o.space == Some(layout.id))
+            {
+                let mut sheet = curva_document::Object::clone(object);
+                if (mm - 1.0).abs() > 1e-12
+                    && let Some(shape) = curva_document::blocks::shape_placed(&sheet.shape, &to_mm)
+                {
+                    sheet.shape = shape;
+                }
+                let made =
+                    if let Some(detail) = layout.details.iter().find(|d| d.frame == object.id) {
+                        let Some((low, high)) = sheet.shape.bounds() else {
+                            continue;
+                        };
+                        let mut viewport =
+                            layouts::viewport_out(detail, low, high, model_mm, next_viewport);
+                        next_viewport += 1;
+                        viewport.common.layer = writer.layer(object.layer);
+                        (vec![EntityType::Viewport(Box::new(viewport))], "details")
+                    } else {
+                        writer.entities(&sheet)
+                    };
+                let (entities, kind) = made;
+                if entities.is_empty() {
+                    Report::count(&mut writer.report.skipped, kind);
+                    continue;
+                }
+                for entity in entities {
+                    writer
+                        .cad
+                        .add_entity_to_layout(entity, &name)
+                        .map_err(|e| e.to_string())?;
+                }
+                Report::count(&mut writer.report.brought, kind);
+            }
+        }
     }
     let bytes = match format {
         Format::Dxf => DxfWriter::new(&writer.cad).write_to_vec(),
@@ -502,6 +602,26 @@ fn curve_of(entity: &EntityType) -> Result<Vec<Curve>, &'static str> {
             }
             Curve::polyline(points, l.is_closed).map_err(|_| "polylines")?
         }
+        // The older, heavy polylines: 2D ones lie in their normal's plane at their elevation, with
+        // bulges as arcs; the others hold world points.
+        EntityType::Polyline2D(l) => {
+            let normal = normal_of(&l.normal);
+            let points: Vec<P> = l
+                .vertices
+                .iter()
+                .map(|v| from_object([v.location.x, v.location.y, l.elevation], normal))
+                .collect();
+            if l.vertices.iter().any(|v| v.bulge.abs() > 1e-12) {
+                let bulges: Vec<f64> = l.vertices.iter().map(|v| v.bulge).collect();
+                return Ok(vec![bulged(&points, &bulges, l.is_closed(), normal)?]);
+            }
+            Curve::polyline(points, l.is_closed()).map_err(|_| "polylines")?
+        }
+        EntityType::Polyline(p) => Curve::polyline(
+            p.vertices.iter().map(|v| p3(&v.location)).collect(),
+            p.is_closed(),
+        )
+        .map_err(|_| "polylines")?,
         EntityType::Polyline3D(p) => Curve::polyline(
             p.vertices.iter().map(|v| p3(&v.position)).collect(),
             p.is_closed(),
@@ -528,7 +648,7 @@ fn curve_of(entity: &EntityType) -> Result<Vec<Curve>, &'static str> {
             }
         }
         EntityType::Text(_) | EntityType::MText(_) => return Err("texts"),
-        EntityType::Dimension(_) => return Err("dimensions"),
+        EntityType::Dimension(_) => return Err("dimensions of other kinds"),
         EntityType::Hatch(_) => return Err("hatches"),
         EntityType::Insert(_) => return Err("block instances"),
         EntityType::Ellipse(_) => return Err("ellipses"),
@@ -669,6 +789,17 @@ impl Reader<'_> {
                 }
                 None => (Vec::new(), "hatches"),
             },
+            EntityType::Dimension(d) => match dims::dimension_in(d) {
+                Ok(a) => (vec![Shape::Annotation(a)], "dimensions"),
+                Err(kind) => (Vec::new(), kind),
+            },
+            EntityType::Leader(l) => (
+                dims::leader_in(l)
+                    .map(|l| Shape::Annotation(Annotation::Leader(l)))
+                    .into_iter()
+                    .collect(),
+                "leaders",
+            ),
             EntityType::Insert(insert) => match self.block(doc, &insert.block_name) {
                 Some(definition) if insert.column_count <= 1 && insert.row_count <= 1 => (
                     vec![Shape::Instance(curva_document::Instance {
@@ -719,6 +850,61 @@ pub fn import(cad: &CadDocument, doc: &mut Document) -> Report {
             Report::count(&mut report.brought, kind);
         }
     }
+    // Layouts: each with its paper space's drawing on its sheet, and its viewports as details.
+    let model_mm = doc.state().unit.millimetres();
+    let open = doc.space();
+    for sheet in layouts::layouts_in(cad) {
+        let id = doc.add_layout_sized(
+            sheet.name,
+            sheet.size,
+            curva_document::layouts::PaperUnit::Millimetres,
+        );
+        doc.set_space(Some(id));
+        let [ox, oy] = sheet.offset;
+        let shifted = |shape: Shape| {
+            if ox == 0.0 && oy == 0.0 {
+                return shape;
+            }
+            let by = [
+                [1.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 0.0],
+                [ox, oy, 0.0, 1.0],
+            ];
+            curva_document::blocks::shape_placed(&shape, &by).unwrap_or(shape)
+        };
+        // The first viewport of a paper space is its own, the size of the sheet; the others
+        // are its details (AutoCAD DXF Reference, "VIEWPORT").
+        let mut own_seen = false;
+        for entity in cad.entities_in_block(&sheet.block) {
+            if matches!(entity, EntityType::Block(_) | EntityType::BlockEnd(_)) {
+                continue;
+            }
+            let layer = reader.layer(doc, &entity.common().layer);
+            if let Some(viewport) = layouts::is_viewport(entity) {
+                if !own_seen {
+                    own_seen = true;
+                    continue;
+                }
+                if let Some((frame, mut detail)) = layouts::viewport_in(viewport, model_mm) {
+                    detail.frame = doc.add_shape_on(shifted(Shape::Curve(frame)), Some(layer));
+                    doc.add_detail(id, detail);
+                    Report::count(&mut report.brought, "details");
+                }
+                continue;
+            }
+            let (shapes, kind) = reader.shapes(doc, entity);
+            if shapes.is_empty() {
+                Report::count(&mut report.skipped, kind);
+                continue;
+            }
+            for shape in shapes {
+                doc.add_shape_on(shifted(shape), Some(layer));
+                Report::count(&mut report.brought, kind);
+            }
+        }
+    }
+    doc.set_space(open);
     report
 }
 

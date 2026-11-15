@@ -157,11 +157,11 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | NamedCPlane | A panel in Rhino: save, restore, delete construction planes | `Save` `Restore` `Delete` | `Save` `Restore` `Delete` | partly |
 | SetDisplayMode | Not read: Rhino's page redirected; complete from Rhino | to confirm | `Wireframe` `Shaded` `Ghosted` | partly |
 | New | Choose a template | none | none | partly |
-| Open | Choose a file | none | none; `.curva`, `.3dm`, and `.dxf` and `.dwg` (curves, points, text, hatches, blocks and layers; dimensions and leaders left out and reported) as a new model | partly |
+| Open | Choose a file | none | none; `.curva`, `.3dm`, and `.dxf` and `.dwg` (curves, points, text, hatches, blocks, dimensions, leaders, layers and layouts with their viewports) as a new model | partly |
 | Save | File name | `Version` `SaveSmall` `GeometryOnly` `SaveTextures` `SavePlugInData` `Browse` | none | partly |
 | SaveAs | Asks for a file name; saves there and keeps saving there | none | none | partly |
 | Import | Choose a file (.3dm, .curva, .dxf or .dwg); its contents join the model, layers merged by name | none | none | partly |
-| Export | Choose a file and its type; the model is written in that format | none | none; `.3dm`, `.dxf` and `.dwg` (curves, points, text, hatches, blocks and layers), and `.svg` for drawings: the open layout as it prints, or every layout (one file each, named after them) from the model | partly |
+| Export | Choose a file and its type; the model is written in that format | none | none; `.3dm`, `.dxf` and `.dwg` (curves, points, text, hatches, blocks, dimensions, leaders, layers and layouts with their details as viewports), and `.svg` for drawings: the open layout as it prints, or every layout (one file each, named after them) from the model | partly |
 | ExportSelected | Select objects; choose a file; they are written as .3dm, .dxf or .dwg | none | none | partly |
 
 ## Added for Rhino parity (after 0.3.0)
@@ -432,7 +432,7 @@ refused to load (HTTP 403); Rhino sets layout user text there, Curva with SetLay
 | SetDocumentUserText | The key (a leading full stop hides it from lists); the value (`""` removes the key). Read by the `DocumentText` field | none | as Rhino; Enter alone also removes the key, `\n` types a new line (not on the command framework, which has no typed-text step yet) | partly |
 | GetDocumentUserText | Shows text kept with SetDocumentUserText | none | the key, or Enter for every key that is not hidden (not on the command framework yet) | partly |
 | SetLayoutUserText | Curva's: Rhino sets layout user text in Layout Properties. The key; the value, on the current layout. Read by the `LayoutUserText` field | none | as SetDocumentUserText, on the open layout (not on the command framework yet) | partly |
-| Notes | Opens the Notes panel, where the model's notes are typed; a Locked checkbox. Read by the `Notes` field | none | typed at the prompt (`\n` for a new line, `""` clears, Enter keeps); not yet a panel or Locked | partly |
+| Notes | Opens the Notes panel, where the model's notes are typed; a Locked checkbox. Read by the `Notes` field | none | Enter opens the Notes panel, edited in place (undoable); also typed at the prompt (`\n` for a new line, `""` clears) for scripts. Not yet: Locked | partly |
 
 ### Title blocks, scale bars, sheet index and revisions
 
