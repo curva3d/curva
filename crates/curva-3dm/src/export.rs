@@ -92,12 +92,24 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
         });
     }
 
-    let chosen: Vec<&Object> = state
+    // Scale bars and tables, which Rhino has not, go out as the plain drawing they make: lines,
+    // solid hatches for their filled blocks, and notes, grouped.
+    let mut expanded: Vec<Object> = Vec::new();
+    let mut next_group = state.next_group;
+    for o in state
         .objects
         .iter()
         .filter(|o| only.is_none_or(|ids| ids.contains(&o.id)))
-        .map(|o| &**o)
-        .collect();
+    {
+        match plain_parts(o, state, next_group, expanded.len()) {
+            Some(parts) => {
+                next_group += 1;
+                expanded.extend(parts);
+            }
+            None => expanded.push(Object::clone(o)),
+        }
+    }
+    let chosen: Vec<&Object> = expanded.iter().collect();
 
     // Blocks: the definitions the chosen objects use, nested ones included.
     let mut needed: Vec<u64> = Vec::new();
@@ -123,8 +135,7 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
     // override its style.
     // Dimensions take their style's text height, in the model's unit.
     let mut style_ids: BTreeMap<(u64, u32), Uuid> = BTreeMap::new();
-    let wanted: Vec<(f64, u32)> = state
-        .objects
+    let wanted: Vec<(f64, u32)> = chosen
         .iter()
         .map(|o| &o.shape)
         .chain(
@@ -178,8 +189,7 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
     let mut pattern_index: BTreeMap<String, i32> = BTreeMap::new();
     let per_mm = 1.0 / state.unit.millimetres();
     let all_patterns = state.patterns();
-    let hatch_patterns = state
-        .objects
+    let hatch_patterns = chosen
         .iter()
         .map(|o| &o.shape)
         .chain(
@@ -1290,4 +1300,54 @@ fn outline(frame: &Curve) -> Result<model::NurbsCurve, String> {
     };
     boundary.dimension = 2;
     Ok(boundary)
+}
+
+/// A scale bar or table as the plain objects it draws, for a file that has neither: its lines,
+/// its filled blocks as solid hatches, and its words as notes, on its layer and sheet and in a
+/// group of their own. `None` for any other object.
+fn plain_parts(o: &Object, state: &State, group: u64, before: usize) -> Option<Vec<Object>> {
+    use curva_document::annotation::{Annotation, Hatch};
+    let (parts, place) = match &o.shape {
+        Shape::Annotation(Annotation::ScaleBar(bar)) => (
+            curva_document::sheet::scale_bar_parts(bar, state, o.space),
+            &bar.at,
+        ),
+        Shape::Annotation(Annotation::Table(table)) => {
+            (curva_document::sheet::table_parts(table, state), &table.at)
+        }
+        _ => return None,
+    };
+    let shapes = parts
+        .lines
+        .into_iter()
+        .map(Shape::Curve)
+        .chain(parts.fills.into_iter().map(|loops| {
+            Shape::Annotation(Annotation::Hatch(Hatch {
+                loops,
+                pattern: "Solid".to_owned(),
+                scale: 1.0,
+                rotation: 0.0,
+                base: place.origin,
+                x: place.x,
+                y: place.y,
+            }))
+        }))
+        .chain(
+            parts
+                .texts
+                .into_iter()
+                .map(|t| Shape::Annotation(Annotation::Text(t))),
+        );
+    Some(
+        shapes
+            .enumerate()
+            .map(|(i, shape)| Object {
+                // Ids of their own, far from the model's, as these objects exist only in the file.
+                id: u64::MAX - (before + i) as u64,
+                shape,
+                group: Some(group),
+                ..o.clone()
+            })
+            .collect(),
+    )
 }

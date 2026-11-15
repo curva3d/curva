@@ -822,3 +822,105 @@ fn layouts_come_back_with_their_details_and_sheet_drawing() {
         "the model's line stays in the model"
     );
 }
+
+#[test]
+fn scale_bars_and_tables_go_out_as_their_plain_drawing() {
+    use curva_document::annotation::{Annotation, Text, TextAlign};
+    use curva_document::layouts::{Detail, Layout, PaperUnit};
+    use curva_document::sheet::{ScaleBar, Table, TableKind};
+    let mut state = State::default();
+    let place = Text {
+        content: String::new(),
+        origin: [250.0, 100.0, 0.0],
+        x: [1.0, 0.0, 0.0],
+        y: [0.0, 1.0, 0.0],
+        height: 2.5,
+        font: None,
+        align: TextAlign::Left,
+        style: 0,
+    };
+    let frame = Curve::polyline(
+        vec![
+            [20.0, 20.0, 0.0],
+            [220.0, 20.0, 0.0],
+            [220.0, 170.0, 0.0],
+            [20.0, 170.0, 0.0],
+        ],
+        true,
+    )
+    .unwrap();
+    let mut on = |id: u64, shape: Shape| {
+        let mut o = object(id, shape, 0);
+        o.space = Some(0);
+        state.objects.push(o.into());
+    };
+    on(0, Shape::Curve(frame));
+    on(
+        1,
+        Shape::Annotation(Annotation::ScaleBar(ScaleBar {
+            at: place.clone(),
+            detail: 0,
+            length: None,
+            divisions: 0,
+        })),
+    );
+    on(
+        2,
+        Shape::Annotation(Annotation::Table(Table {
+            at: Text {
+                origin: [250.0, 280.0, 0.0],
+                ..place
+            },
+            kind: TableKind::SheetIndex,
+            headings: vec!["No.".into(), "Sheet".into()],
+            title: None,
+            width: None,
+            unnamed: None,
+        })),
+    );
+    state.next_id = 3;
+    state.layouts = vec![Layout {
+        id: 0,
+        name: "Plan".to_owned(),
+        size: [420.0, 297.0],
+        unit: PaperUnit::Millimetres,
+        details: vec![Detail {
+            frame: 0,
+            projection: "Top".to_owned(),
+            target: [0.0; 3],
+            distance: 100.0,
+            scale: Some(0.02),
+            display: "Wireframe".to_owned(),
+            locked: false,
+            hidden_layers: Vec::new(),
+        }],
+        user_text: Default::default(),
+        revisions: Vec::new(),
+    }];
+    state.next_layout = 1;
+    let back = round_trip(&state);
+    let on_sheet: Vec<_> = back.objects.iter().filter(|o| o.space == Some(0)).collect();
+    let texts: Vec<String> = on_sheet
+        .iter()
+        .filter_map(|o| match &o.shape {
+            Shape::Annotation(Annotation::Text(t)) => Some(t.content.clone()),
+            _ => None,
+        })
+        .collect();
+    // The bar's numbers and scale, the index's headings and its one sheet.
+    for wanted in ["0", "2 m", "1:50", "No.", "Sheet", "1", "Plan"] {
+        assert!(texts.iter().any(|t| t == wanted), "{wanted} in {texts:?}");
+    }
+    let solid = on_sheet
+        .iter()
+        .filter(
+            |o| matches!(&o.shape, Shape::Annotation(Annotation::Hatch(h)) if h.pattern == "Solid"),
+        )
+        .count();
+    assert!(solid >= 2, "the bar's filled blocks");
+    assert!(
+        on_sheet
+            .iter()
+            .any(|o| matches!(o.shape, Shape::Curve(_)) && o.group.is_some())
+    );
+}
