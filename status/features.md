@@ -23,12 +23,14 @@ Properties yet; built-in title blocks are one design per standard, not one per s
 
 **Milestone 3, points 14 to 16 (export):**
 - Merged (#134): SVG export of layouts through Export (`.svg`), one file per layout.
-- In review: DXF and DWG (new crate `curva-dxf` on `acadrust`, MPL-2.0 exception added to `deny.toml` and
+- Merged (#142): DXF and DWG (new crate `curva-dxf` on `acadrust`, MPL-2.0 exception added to `deny.toml` and
   `about.toml` as decision 0021 approved). Export, ExportSelected, Open and Import take `.dxf` and `.dwg`:
   curves, points and layers (colour, print width, on, locked, sublayers as `Parent$Child`), the unit.
-  Text, dimensions, hatches, blocks, solids and layouts are left out and reported for now.
+  Text, dimensions, hatches, blocks, solids and layouts were left out and reported.
+- In review: DXF and DWG text (TEXT out, TEXT and MTEXT in, fields worked out), hatches (outlines and
+  pattern lines; unknown patterns come in with the drawing) and blocks (definitions, nested, and INSERTs).
 
-**Next:** DXF text, dimensions, hatches and blocks; then the `.3dm` round trip of drawing objects.
+**Next:** DXF dimensions, leaders and layouts; then the `.3dm` round trip of drawing objects.
 
 ## Current state — 8 November 2026
 
