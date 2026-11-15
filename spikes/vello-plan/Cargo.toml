@@ -1,0 +1,21 @@
+# Spike for #185 (decision 0024): draw a plan of the test house with Vello, Vello Hybrid and
+# vello_cpu, and compare with Curva's PDF. Not part of Curva's workspace or build; not merged.
+[package]
+name = "vello-plan-spike"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+curva-kernel = { path = "../../crates/curva-kernel" }
+curva-document = { path = "../../crates/curva-document" }
+curva-pdf = { path = "../../crates/curva-pdf" }
+vello = "0.12"
+curva-viewport = { path = "../../crates/curva-viewport" }
+hayro = "0.9"
+pollster = "0.4"
+png = "0.18"
+vello_hybrid = "0.2"
+wgpu29 = { package = "wgpu", version = "29" }
