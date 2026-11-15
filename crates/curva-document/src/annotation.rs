@@ -140,6 +140,20 @@ impl Annotation {
         }
     }
 
+    /// Points it at another annotation style; dots and hatches have none.
+    pub fn set_style(&mut self, style: u64) {
+        match self {
+            Self::Text(t) => t.style = style,
+            Self::Dimension(d) => d.style = style,
+            Self::Radial(r) => r.style = style,
+            Self::Angle(a) => a.style = style,
+            Self::Leader(l) => l.style = style,
+            Self::ScaleBar(b) => b.at.style = style,
+            Self::Table(t) => t.at.style = style,
+            Self::Dot(_) | Self::Hatch(_) => {}
+        }
+    }
+
     /// A dimension's typed text (`<>` stands for its value); `None` for a text.
     #[must_use]
     pub fn dimension_text(&self) -> Option<&Option<String>> {
@@ -1157,6 +1171,35 @@ impl Document {
             self.state.annotation_styles = self.annotation_styles();
         }
         &mut self.state.annotation_styles
+    }
+
+    /// Adds a style as files bring them: one of the same name already held is kept and its id
+    /// returned; otherwise this one, under a new id.
+    pub fn add_annotation_style(&mut self, mut style: AnnotationStyle) -> u64 {
+        if let Some(held) = self
+            .annotation_styles()
+            .iter()
+            .find(|s| s.name.eq_ignore_ascii_case(style.name.trim()))
+        {
+            return held.id;
+        }
+        let styles = self.own_styles();
+        let id = styles.iter().map(|s| s.id).max().map_or(0, |m| m + 1);
+        style.id = id;
+        styles.push(style);
+        id
+    }
+
+    /// Points annotations at style `style`, leaving their geometry as it is.
+    pub fn set_annotation_style_of(&mut self, ids: &[u64], style: u64) {
+        for object in &mut self.state.objects {
+            if !ids.contains(&object.id) {
+                continue;
+            }
+            if let crate::Shape::Annotation(a) = &mut std::sync::Arc::make_mut(object).shape {
+                a.set_style(style);
+            }
+        }
     }
 
     /// Adds a copy of style `from`, named `name`; returns its id.

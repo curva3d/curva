@@ -13,7 +13,7 @@ mod dims;
 mod layouts;
 
 use acadrust::entities::{Arc, Circle, EntityType, Line, LwPolyline, Point, Polyline3D, Spline};
-use acadrust::tables::{LineType, LineTypeElement};
+use acadrust::tables::{DimStyle, LineType, LineTypeElement, TextStyle};
 use acadrust::types::{Color, DxfVersion, LineWeight, Vector2, Vector3};
 use acadrust::{CadDocument, DwgReader, DwgWriter, DxfReader, DxfWriter, Layer};
 use curva_document::annotation::Annotation;
@@ -341,6 +341,43 @@ impl Writer<'_> {
         name
     }
 
+    /// The DXF text style and dimension style for a Curva annotation style, both under its
+    /// name, made the first time it is needed: the font (a TrueType family, as AutoCAD names
+    /// one), and the sizes in drawing units with the decimals.
+    fn style(&mut self, id: u64) -> String {
+        let style = self.doc.annotation_style(id);
+        let name = style.name.clone();
+        if self.cad.text_styles.get(&name).is_none() {
+            let mut text = TextStyle::new(name.clone());
+            text.handle = self.cad.allocate_handle();
+            if let Some(family) = &style.font {
+                text.true_type_font.clone_from(family);
+                text.font_file = format!("{family}.ttf");
+            }
+            let _ = self.cad.text_styles.add(text);
+        }
+        if self.cad.dim_styles.get(&name).is_none() {
+            let scale = style.scale_to(self.doc.state().unit, None);
+            let mut dim = DimStyle::new(name.clone());
+            dim.dimtxt = style.text_height * scale;
+            dim.dimasz = style.arrow_size() * scale;
+            dim.dimexo = style.extension_offset() * scale;
+            dim.dimexe = style.extension_extension() * scale;
+            dim.dimgap = style.text_gap() * scale;
+            dim.dimdec = i16::try_from(style.linear_resolution()).unwrap_or(2);
+            dim.dimtxsty.clone_from(&name);
+            // AutoCAD follows the text style by handle (group 340), not by name.
+            if let Some(text) = self.cad.text_styles.get(&name) {
+                dim.dimtxsty_handle = text.handle;
+            }
+            dim.dimscale = 1.0;
+            // No suffix: acadrust's "<>" means the value alone to AutoCAD, but Rhino shows it.
+            dim.dimpost = String::new();
+            let _ = self.cad.dim_styles.add(dim);
+        }
+        name
+    }
+
     /// The DXF layer for a Curva layer, made the first time it is needed.
     fn layer(&mut self, id: u64) -> String {
         if let Some(name) = self.layers.get(&id) {
@@ -427,6 +464,23 @@ impl Writer<'_> {
                 )
             }
         };
+        // Annotation names its style: text by text style, dimensions and leaders by
+        // dimension style, both under the Curva style's name.
+        if let Shape::Annotation(a) = &object.shape
+            && !made.is_empty()
+            && !matches!(a, Annotation::Hatch(_) | Annotation::Dot(_))
+        {
+            let name = self.style(a.style());
+            for entity in &mut made {
+                match entity {
+                    EntityType::Text(t) => t.style.clone_from(&name),
+                    EntityType::MText(t) => t.style.clone_from(&name),
+                    EntityType::Dimension(d) => dims::base_of(d).style_name.clone_from(&name),
+                    EntityType::Leader(l) => l.dimension_style.clone_from(&name),
+                    _ => {}
+                }
+            }
+        }
         let layer = if made.is_empty() {
             String::new()
         } else {
@@ -798,8 +852,66 @@ impl Reader<'_> {
         doc.add_linetype(name, &curva_document::alternating(&segments))
     }
 
-    /// An object's own colour, linetype and line weight, as its entity gives them.
+    /// The Curva annotation style for a DXF style name: one of the same name kept, otherwise
+    /// one made from the dimension style of that name (its text style's font, its sizes from
+    /// drawing units to the style's millimetres, or inches in an imperial model, its decimals),
+    /// or from a text style alone (its font and fixed height).
+    fn style(&mut self, doc: &mut Document, name: &str) -> Option<u64> {
+        use curva_document::annotation::AnnotationStyle;
+        let name = name.trim();
+        if name.is_empty() {
+            return None;
+        }
+        let dim = self.cad.dim_styles.get(name);
+        // The text style of the same name, else the one the dimension style names.
+        let text = self
+            .cad
+            .text_styles
+            .get(name)
+            .or_else(|| dim.and_then(|d| self.cad.text_styles.get(d.dimtxsty.as_str())));
+        if dim.is_none() && text.is_none() {
+            return None;
+        }
+        let unit = doc.state().unit;
+        let imperial = matches!(unit, Unit::Feet | Unit::Inches);
+        let per_unit = unit.millimetres() / if imperial { 25.4 } else { 1.0 };
+        let font = text
+            .map(|t| t.true_type_font.trim().to_owned())
+            .filter(|f| !f.is_empty());
+        let height = dim
+            .map(|d| d.dimtxt)
+            .or_else(|| text.map(|t| t.height))
+            .filter(|h| *h > 0.0)
+            .map_or(2.5, |h| h * per_unit);
+        let sized = |v: f64| Some(v * per_unit);
+        let style = AnnotationStyle {
+            id: 0,
+            name: name.to_owned(),
+            font,
+            text_height: height,
+            imperial,
+            arrow_size: dim.and_then(|d| sized(d.dimasz)),
+            extension_offset: dim.and_then(|d| sized(d.dimexo)),
+            extension_extension: dim.and_then(|d| sized(d.dimexe)),
+            text_gap: dim.and_then(|d| sized(d.dimgap)),
+            linear_resolution: dim.and_then(|d| u8::try_from(d.dimdec).ok()),
+        };
+        Some(doc.add_annotation_style(style))
+    }
+
+    /// An object's own colour, linetype, line weight and annotation style, as its entity gives
+    /// them.
     fn properties(&mut self, doc: &mut Document, id: u64, entity: &EntityType) {
+        let style_name = match entity {
+            EntityType::Text(t) => Some(t.style.as_str()),
+            EntityType::MText(t) => Some(t.style.as_str()),
+            EntityType::Dimension(d) => Some(dims::style_name_of(d)),
+            EntityType::Leader(l) => Some(l.dimension_style.as_str()),
+            _ => None,
+        };
+        if let Some(style) = style_name.and_then(|n| self.style(doc, n)) {
+            doc.set_annotation_style_of(&[id], style);
+        }
         let common = entity.common();
         let linetype = self.linetype(doc, &common.linetype);
         if !linetype.is_by_layer() {
@@ -1376,6 +1488,95 @@ mod tests {
             assert_eq!(walls_back.linetype, wall_back, "{format:?}");
             let colours: Vec<Option<[f32; 3]>> = state.objects.iter().map(|o| o.colour).collect();
             assert_eq!(colours, [Some([1.0, 0.0, 0.0]), None], "{format:?}");
+        }
+    }
+
+    #[test]
+    fn annotation_styles_go_out_and_come_back_as_dxf_and_dwg() {
+        use curva_document::annotation::{
+            AnnotationStyle, Dimension as Dim, DimensionKind, Text, TextAlign,
+        };
+        let mut doc = Document::default();
+        let plans = doc.add_annotation_style(AnnotationStyle {
+            id: 0,
+            name: "Plans".to_owned(),
+            font: Some("Arial".to_owned()),
+            text_height: 3.5,
+            imperial: false,
+            arrow_size: Some(2.0),
+            extension_offset: Some(1.0),
+            extension_extension: Some(1.5),
+            text_gap: Some(0.8),
+            linear_resolution: Some(1),
+        });
+        doc.add_annotation(Annotation::Dimension(Dim {
+            kind: DimensionKind::Horizontal,
+            first: [0.0; 3],
+            second: [5000.0, 0.0, 0.0],
+            line: [0.0, 800.0, 0.0],
+            x: [1.0, 0.0, 0.0],
+            y: [0.0, 1.0, 0.0],
+            style: plans,
+            text: None,
+        }));
+        doc.add_annotation(Annotation::Text(Text {
+            content: "Kitchen".to_owned(),
+            origin: [0.0, 2000.0, 0.0],
+            x: [1.0, 0.0, 0.0],
+            y: [0.0, 1.0, 0.0],
+            height: 3.5,
+            font: None,
+            align: TextAlign::Left,
+            style: plans,
+        }));
+        for format in [Format::Dxf, Format::Dwg] {
+            let (bytes, _) = export(&doc, None, format).unwrap();
+            let cad = read(&bytes, format).unwrap();
+            let text = cad.text_styles.get("Plans").expect("the text style");
+            assert_eq!(text.true_type_font, "Arial", "{format:?}");
+            let dim = cad.dim_styles.get("Plans").expect("the dimension style");
+            assert_eq!(
+                (
+                    dim.dimtxt, dim.dimasz, dim.dimexo, dim.dimexe, dim.dimgap, dim.dimdec
+                ),
+                (3.5, 2.0, 1.0, 1.5, 0.8, 1),
+                "{format:?}"
+            );
+            assert_eq!(
+                dim.dimtxsty, "Plans",
+                "{format:?}: its text style, by handle"
+            );
+            // A DWG keeps the suffix as written; acadrust leaves an empty one out of a DXF and
+            // reads it back as its own "<>".
+            if format == Format::Dwg {
+                assert!(dim.dimpost.is_empty(), "no suffix after the value");
+            }
+            let mut back = Document::default();
+            import(&cad, &mut back);
+            let styles: Vec<AnnotationStyle> = back
+                .annotation_styles()
+                .into_iter()
+                .filter(|s| s.name == "Plans")
+                .collect();
+            assert_eq!(styles.len(), 1, "{format:?}");
+            let style = &styles[0];
+            assert_eq!(style.font.as_deref(), Some("Arial"));
+            assert_eq!(style.text_height, 3.5);
+            assert_eq!(style.arrow_size, Some(2.0));
+            assert_eq!(style.extension_offset, Some(1.0));
+            assert_eq!(style.extension_extension, Some(1.5));
+            assert_eq!(style.text_gap, Some(0.8));
+            assert_eq!(style.linear_resolution, Some(1));
+            let named: Vec<u64> = back
+                .state()
+                .objects
+                .iter()
+                .filter_map(|o| match &o.shape {
+                    Shape::Annotation(a) => Some(a.style()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(named, [style.id, style.id], "{format:?}");
         }
     }
 }

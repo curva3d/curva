@@ -79,14 +79,14 @@ pub(crate) fn dimension_out(
         }
         _ => return None,
     };
-    let base = dimension_base(&mut dimension);
+    let base = base_of(&mut dimension);
     base.block_name = block.to_owned();
     base.text_middle_point = v3(parts.text.origin);
     base.style_name = "Standard".to_owned();
     Some((EntityType::Dimension(Box::new(dimension)), contents))
 }
 
-fn dimension_base(d: &mut Dimension) -> &mut acadrust::entities::dimension::DimensionBase {
+pub(crate) fn base_of(d: &mut Dimension) -> &mut acadrust::entities::dimension::DimensionBase {
     match d {
         Dimension::Aligned(x) => &mut x.base,
         Dimension::Linear(x) => &mut x.base,
@@ -228,6 +228,21 @@ pub(crate) fn leader_in(l: &CadLeader) -> Option<Leader> {
         landing: false,
         style: 0,
     })
+}
+
+/// The dimension style a DIMENSION names.
+pub(crate) fn style_name_of(d: &Dimension) -> &str {
+    match d {
+        Dimension::Aligned(x) => &x.base.style_name,
+        Dimension::Linear(x) => &x.base.style_name,
+        Dimension::Radius(x) => &x.base.style_name,
+        Dimension::Diameter(x) => &x.base.style_name,
+        Dimension::Angular2Ln(x) => &x.base.style_name,
+        Dimension::Angular3Pt(x) => &x.base.style_name,
+        Dimension::Ordinate(x) => &x.base.style_name,
+        Dimension::Arc(x) => &x.base.style_name,
+        Dimension::LargeRadial(x) => &x.base.style_name,
+    }
 }
 
 #[cfg(test)]
