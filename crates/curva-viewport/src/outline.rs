@@ -52,13 +52,13 @@ fn jumps(before: f32, a: f32, b: f32) -> bool {
     let p = vec2<i32>(at.xy);
     // Only on objects: the background is never outlined, the object beside it is.
     if (depth_at(p) >= 1.0) { discard; }
-    // Written out with no loops: DirectX 12's shader compiler refuses to unroll a loop that
-    // leaves early, and Curva must run there (Windows CI caught it).
-    if (near_step(p, vec2<i32>(1, 0)) || near_step(p, vec2<i32>(-1, 0))
-        || near_step(p, vec2<i32>(0, 1)) || near_step(p, vec2<i32>(0, -1))) {
-        return look.colour;
-    }
-    discard;
+    // Written out with no loops, and ending in a return: DirectX 12's older shader compiler
+    // (FXC) refuses to unroll a loop that leaves early, and does not count `discard` as leaving
+    // the function. Curva must run there (Windows CI caught both).
+    let outline = near_step(p, vec2<i32>(1, 0)) || near_step(p, vec2<i32>(-1, 0))
+        || near_step(p, vec2<i32>(0, 1)) || near_step(p, vec2<i32>(0, -1));
+    if (!outline) { discard; }
+    return look.colour;
 }
 
 // Whether a step back lies within two pixels of `p` in direction `step`: between `p` and the next
