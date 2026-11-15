@@ -50,6 +50,25 @@ to the screen.
   shows and Escape cancels.
 - **Custom:** listed in `docs/kernel/custom-operations.md` and checked against solidcore before each
   release, as decision 0019 requires.
+- **As built (15 November 2026), on the engine:**
+  - Edges are the engine's exact edge curves from its B-rep record (lines between their vertices,
+    circles and splines as held); seams are left out, and edges between smoothly joined faces
+    are drawn only with `TangentEdges` (judged by the faces' normals from the engine's face
+    surfaces).
+  - Visibility is solidcore's B-rep ray firing (`topology::brep::p2::ray_fire`, with its search
+    limit), faces' trims respected. Each body is read into a kernel of Curva's own from its native
+    text, because the ops layer keeps its kernel private; its query keeps the B-rep's search
+    structures from ray to ray. Rays start on the eye's side and stop short of the tested point,
+    since the engine fires two bounding radii from its start and refuses a hit at the start.
+  - Silhouettes of cylinders and spheres are worked out exactly and trimmed to their faces by the
+    engine's point classification, their ends snapped onto the outline's edges. Other curved
+    faces' silhouettes still come from the tessellation (`surface_silhouette` is a low-level
+    tracer that needs the same plumbing), tested on their exact surfaces.
+  - Cleaning: polylines are drawn as their segments; same-visibility pieces rejoin (a line stays
+    one line); lines seen end-on, hidden lines under visible ones and lines drawn twice are
+    removed. A square gives four lines; a box from above, its four outline lines.
+  - Spheres are now the engine's own primitive, with one exact spherical face.
+  - Speed: 25 boxes in under half a second in a debug build, on one thread.
 
 ## 3. Prior work checked
 

@@ -31,7 +31,7 @@ use curves::{
     weight,
 };
 use files::{import_export, new, open, save, save_as};
-use layouts::{clipping_plane, copy_layout, detail, layout, layouts_panel, print};
+use layouts::{clipping_plane, copy_layout, detail, layout, layouts_panel, make2d, print};
 use modify::{
     align, array, array_crv, array_linear, array_polar, bend, boolean_difference,
     boolean_intersection, boolean_split, boolean_union, cage_edit, change_degree, copy, delete,
@@ -115,7 +115,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 258] = [
+pub static COMMANDS: [CommandDef; 259] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -485,6 +485,7 @@ pub static COMMANDS: [CommandDef; 258] = [
     listed!("Detail", [], false, true, detail::Detail),
     listed!("Print", ["printsheets", "plot"], false, false, print::Print),
     listed!("ExportPDF", [], false, false, print::ExportPdf),
+    listed!("Make2D", [], false, true, make2d::Make2D),
     listed!("Text", [], true, true, text::Text),
     listed!("Dim", [], true, true, dimension::Dim),
     listed!("DimAligned", [], true, true, dimension::DimAligned),
@@ -871,7 +872,8 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 70] = [
+    const NOTHING_TO_PREVIEW: [&str; 71] = [
+        "Make2D",
         "Print",
         "ExportPDF",
         "Hatch",

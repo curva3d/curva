@@ -284,6 +284,26 @@ impl Camera {
         out
     }
 
+    /// The view as hidden-line removal needs it (spec `make2d.md`). A parallel view's eye is
+    /// moved far back so it is behind everything.
+    #[must_use]
+    pub fn look(&self) -> curva_kernel::hidden::View {
+        let (forward, right, up) = self.axes();
+        let eye = if self.parallel {
+            let back = self.distance.max(1.0) * 1e4;
+            std::array::from_fn(|i| self.target[i] - forward[i] * back)
+        } else {
+            self.eye()
+        };
+        curva_kernel::hidden::View {
+            eye,
+            forward,
+            right,
+            up,
+            parallel: self.parallel,
+        }
+    }
+
     /// Where a model point lands on screen, or `None` behind the camera.
     #[must_use]
     pub fn project(&self, p: Point, size: [f64; 2]) -> Option<[f64; 2]> {

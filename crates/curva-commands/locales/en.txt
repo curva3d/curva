@@ -973,3 +973,6 @@ error.print_no_layouts = There are no layouts to print. Make one with Layout.
 done.print_pdf = {0} page(s) saved to {1}.
 done.print_printer = {0} page(s) sent to the printer.
 error.print_failed = Could not print: {0}
+prompt.make2d.objects = Select objects to draw
+error.make2d_nothing = Choose curves, surfaces or solids to draw.
+done.make2d = Drawing made: {0} curve(s).
