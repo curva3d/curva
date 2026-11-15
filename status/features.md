@@ -38,9 +38,10 @@ Properties yet; built-in title blocks are one design per standard, not one per s
 - In review: scale bars and tables to `.3dm` as their plain drawing; fields only Curva can work out written as
   they read.
 
-**Next:** DXF dimensions and leaders (real DIMENSION entities) and layouts; layout user text in `.3dm`. Note: the website's
-Cloudflare build (`Workers Builds`, from #155) fails on pull request branches; it is not a required check. DXF
-dimensions and layouts after.
+**Next:** DXF dimensions and leaders (real DIMENSION entities) and layouts; layout user text in `.3dm`.
+
+**Note:** the website's Cloudflare build (`Workers Builds`, from #155) fails on pull request branches. It is not a
+required check, and pull requests that touch no website files merge without it.
 
 ## Current state — 8 November 2026
 
