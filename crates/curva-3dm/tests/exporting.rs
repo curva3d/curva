@@ -545,3 +545,48 @@ fn hatches_come_back_with_their_pattern_scale_and_holes() {
     );
     assert_eq!(hatches[1].pattern, "Solid");
 }
+
+#[test]
+fn notes_come_back_with_their_words_height_alignment_and_place() {
+    use curva_document::annotation::{Annotation, Text, TextAlign};
+    let mut state = State::default();
+    let (s, c) = 0.5_f64.sin_cos();
+    let note = |words: &str, height: f64, align: TextAlign, origin: [f64; 3]| Text {
+        content: words.to_owned(),
+        origin,
+        x: [c, s, 0.0],
+        y: [-s, c, 0.0],
+        height,
+        font: None,
+        align,
+        style: 0,
+    };
+    let notes = [
+        note("Hall", 3.5, TextAlign::Left, [10.0, 20.0, 0.0]),
+        note(
+            "Ground floor\nPlan",
+            5.0,
+            TextAlign::Centre,
+            [50.0, 0.0, 2.0],
+        ),
+        note("%<PageName()>%", 3.5, TextAlign::Right, [0.0, -30.0, 0.0]),
+    ];
+    for (i, n) in notes.iter().enumerate() {
+        state
+            .objects
+            .push(object(i as u64, Shape::Annotation(Annotation::Text(n.clone())), 0).into());
+    }
+    state.next_id = 3;
+    let back = round_trip(&state);
+    let near = |a: [f64; 3], b: [f64; 3]| (0..3).all(|i| (a[i] - b[i]).abs() < 1e-9);
+    for (o, wanted) in back.objects.iter().zip(&notes) {
+        let Shape::Annotation(Annotation::Text(t)) = &o.shape else {
+            panic!("not a note");
+        };
+        assert_eq!(t.content, wanted.content);
+        assert!((t.height - wanted.height).abs() < 1e-12);
+        assert_eq!(t.align, wanted.align);
+        assert!(near(t.origin, wanted.origin), "{:?}", t.origin);
+        assert!(near(t.x, wanted.x) && near(t.y, wanted.y));
+    }
+}

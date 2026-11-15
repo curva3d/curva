@@ -13,11 +13,12 @@ fn written_as_is(s: &Surface) -> bool {
 }
 
 /// The objects the writer takes as they are: no extrusion objects, no revolved or summed surfaces,
-/// and no notes, which are read but not yet written (they need Rhino's annotation styles).
+/// and no notes that override their style, as those overrides are not written yet.
 fn writable(model: &Model) -> Model {
     let mut out = model.clone();
     out.objects.retain(|o| match &o.geometry {
-        Geometry::Extrusion(_) | Geometry::Text(_) => false,
+        Geometry::Extrusion(_) => false,
+        Geometry::Text(t) => t.own.is_none(),
         Geometry::Surface(s) => written_as_is(s),
         Geometry::Brep(b) => b.surfaces.iter().flatten().all(written_as_is),
         _ => true,

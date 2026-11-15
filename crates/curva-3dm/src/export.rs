@@ -119,6 +119,46 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
         .map(|b| (b.id, ids.next()))
         .collect();
 
+    // Annotation styles: one for each height and alignment the notes use, so no note needs to
+    // override its style.
+    let mut style_ids: BTreeMap<(u64, u32), Uuid> = BTreeMap::new();
+    let notes = state
+        .objects
+        .iter()
+        .map(|o| &o.shape)
+        .chain(
+            state
+                .blocks
+                .iter()
+                .flat_map(|b| b.objects.iter().map(|o| &o.shape)),
+        )
+        .filter_map(|s| match s {
+            Shape::Annotation(curva_document::annotation::Annotation::Text(t)) => Some(t),
+            _ => None,
+        });
+    for note in notes {
+        let align = align_code(note.align);
+        let key = (note.height.to_bits(), align);
+        if style_ids.contains_key(&key) {
+            continue;
+        }
+        let id = ids.next();
+        style_ids.insert(key, id);
+        model.dim_styles.push(model::DimStyle {
+            id,
+            name: format!(
+                "Curva {} {}",
+                format!("{:.4}", note.height)
+                    .trim_end_matches('0')
+                    .trim_end_matches('.'),
+                ["Left", "Centre", "Right"][align as usize]
+            ),
+            text_height: note.height,
+            h_align: align,
+            v_align: 3,
+        });
+    }
+
     // Hatch patterns: those the hatches use, in Rhino's model units at scale one.
     let mut pattern_index: BTreeMap<String, i32> = BTreeMap::new();
     let per_mm = 1.0 / state.unit.millimetres();
@@ -168,7 +208,7 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
 
     let mut groups: BTreeMap<u64, usize> = BTreeMap::new();
     let mut add = |o: &Object, in_block: bool, model: &mut Model, report: &mut Report| {
-        let geometry = match geometry_of(&o.shape, &block_ids, &pattern_index) {
+        let geometry = match geometry_of(&o.shape, &block_ids, &pattern_index, &style_ids) {
             Ok(g) => g,
             Err(why) => {
                 count(&mut report.skipped, &format!("not written ({why})"));
@@ -297,6 +337,7 @@ fn geometry_of(
     shape: &Shape,
     blocks: &BTreeMap<u64, Uuid>,
     patterns: &BTreeMap<String, i32>,
+    styles: &BTreeMap<(u64, u32), Uuid>,
 ) -> Result<Geometry, String> {
     Ok(match shape {
         Shape::Curve(Curve::Point { at }) => Geometry::Point(*at),
@@ -320,6 +361,26 @@ fn geometry_of(
         },
         Shape::Annotation(curva_document::annotation::Annotation::Hatch(h)) => {
             Geometry::Hatch(hatch(h, patterns)?)
+        }
+        Shape::Annotation(curva_document::annotation::Annotation::Text(t)) => {
+            let style = *styles
+                .get(&(t.height.to_bits(), align_code(t.align)))
+                .ok_or("a note without its style")?;
+            // Rhino aligns these notes by the top of their first line, one text height above
+            // the baseline Curva places them by.
+            let origin: P3 = std::array::from_fn(|k| t.origin[k] + t.y[k] * t.height);
+            Geometry::Text(model::Text {
+                rich: t.content.clone(),
+                plane: Plane {
+                    origin,
+                    x: t.x,
+                    y: t.y,
+                    z: cross(t.x, t.y),
+                },
+                style,
+                own: None,
+                rotation: 0.0,
+            })
         }
         // Annotation goes into .3dm files with the round trip at the end of Milestone 3.
         Shape::Annotation(_) => {
@@ -897,5 +958,14 @@ fn flat2(c: model::Curve) -> model::Curve {
             params,
         },
         other => other,
+    }
+}
+
+/// A note's horizontal alignment as Rhino 5 numbered it: 0 left, 1 centre, 2 right.
+fn align_code(align: curva_document::annotation::TextAlign) -> u32 {
+    match align {
+        curva_document::annotation::TextAlign::Left => 0,
+        curva_document::annotation::TextAlign::Centre => 1,
+        curva_document::annotation::TextAlign::Right => 2,
     }
 }
