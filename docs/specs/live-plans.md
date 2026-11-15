@@ -1,6 +1,6 @@
 # Spec: Live plans and sections
 
-**Status:** Approach agreed by the owner in chat · 16 November 2026. Waiting for the owner's approval of this text before anything is built.
+**Status:** Approved by the owner in chat · 16 November 2026.
 **Covers:** the owner's direction of 16 November 2026: model in 3D, switch to plan at once, edit the same elements there, and **the plan on screen must match the PDF that is sent out**. Builds on decision 0027 (Vello for 2D views) and `views-and-styles.md`; replaces the part of `views-and-styles.md` §4.1 that draws cut lines and fills of plans and sections on the graphics card.
 **Rules:** 100% pure Rust. Recommended machine: an RTX 3060-class card (decision 0026); weaker machines run with fallbacks.
 
@@ -97,7 +97,7 @@ Steps 1 to 4 can start now. Steps 5 to 7 follow the Vello adoption work. None of
 
 - **A. Vector page as the single source for plans, sections and every line in a PDF** (§2). Agreed in chat on 16 November 2026.
 - **B. No 3D stand-in** (§3). Decided in chat on 16 November 2026: the plan waits for the exact update, which must be fast enough not to be seen, with the edit's preview held on screen meanwhile.
-- **C. Targets** (§6): confirm or change.
+- **C. Targets** (§6): approved with the spec on 16 November 2026.
 
 ## 10. Not covered
 
