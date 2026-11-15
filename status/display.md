@@ -6,7 +6,7 @@
 ## 15 November 2026
 
 **Done**
-- **Snapping about twice as fast** (#130, first part): the objects and snap places sit in a tree
+- **Snapping about twice as fast** (#130, first part, merged as #151): the objects and snap places sit in a tree
   of boxes made once per model change, so snapping looks only near the cursor and finds the same
   points. Snapping per frame: *Medium* 3.2 → 1.3 ms, *Large* 45 → 20.5 ms; frame gaps *Medium*
   4.8 → 2.6 ms, *Large* 47 → 23.5 ms. What is left on *Large* is crowding (zoomed all the way out,
@@ -58,6 +58,19 @@
   2.1 GB), then **4c** (an edit sends only the changed object), then step 13 (memory limit), then
   steps 2 and 3. The object index made for snapping (`crates/curva-viewport/src/index.rs`) is the
   one step 12 (off-screen culling) will use.
+
+**Handoff for the next display session**
+- Start with step 11: findings and the plan in four pull requests are on #153. It needs two
+  additions to `curva-kernel` (the shared unplaced mesh and the placement), announced here first.
+- Measuring: build with `cargo build --release -p curva-app`, check nothing else is building
+  (`tasklist | grep -ci "^rustc.exe\|^cargo.exe"` is 0), run each scene twice:
+  `curva-app --orbit-benchmark --scene medium|large [--trees 0] [--select]`. The machine is
+  reached over Parsec at 1280×800; note the size used.
+- Repository habits that bit this session: files have Windows line endings, so multi-line `sed` or
+  `perl` replacements silently do nothing (use the Edit tool); `git push --force`, `reset --hard`
+  and `branch -D` are blocked by the project's hooks (merge `origin/main` into a branch instead of
+  rebasing); after a pull request it builds on is squash-merged, merge `origin/main` and keep this
+  branch's side of `status/display.md`.
 
 **Heads-up for the features stream** (changes outside the viewport, decision B)
 - Done: `crates/curva-app/src/benchmark.rs` and the `--orbit-benchmark` arguments in
