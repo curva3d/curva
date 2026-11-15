@@ -4,6 +4,8 @@
 
 <h1 align="center">Curva</h1>
 
+<p align="center"><a href="https://curva3d.com">curva3d.com</a> · <a href="https://curva3d.com/docs/">Documentation</a> · <a href="https://github.com/curva3d/curva/releases">Download</a></p>
+
 Curva is an open-source, design-oriented 3D suite for architects and designers, written in Rust.
 It combines Rhino-style freeform modelling with the "memory" of Archicad and Revit: objects that
 remember how they were made, live 2D plans and sections, and sheets.
