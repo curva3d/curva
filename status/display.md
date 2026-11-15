@@ -6,7 +6,13 @@
 ## 15 November 2026
 
 **Done**
-- Step 1c, the baseline kept (#138): pictures made without a window (for agents and `--picture`)
+- Step 4a, **Large opens** (#141): uploads of lines and faces go in blocks of at most 64 MB, and
+  views showing the same lines share one copy instead of each sending its own. *Large* orbits at
+  47 ms between frames (it crashed before); *Medium* is unchanged. Its first frame takes 58 s and
+  it holds about 2.1 GB on the card, both from the 2,000 trees written out one by one (step 11).
+  The benchmark's work figure now leaves out the opening frames. Fixed on the way: the card's timer
+  dropped passes shorter than one tick of its clock, which made its test fail now and then.
+- Step 1c, the baseline kept (#138, merged as #139): pictures made without a window (for agents and `--picture`)
   ask for their device as the window does, and a test draws a shaded face and lines of three
   widths with every optional extra off and on and checks the pictures are identical. Step 1 is
   complete.
@@ -36,9 +42,10 @@
 - Status split per stream and the display stream's rules in `AGENTS.md` (#125).
 
 **In progress / next**
-- **Step 4 next, before steps 2 and 3**: *Large* crashing matters more to users than shimmer or
-  jagged edges, so objects kept on the graphics card (which removes the 256 MB ceiling for lines
-  and faces) comes first.
+- Order, by what users notice most: **4b** (objects kept on the card one by one, so selecting
+  sends a few bytes instead of the whole scene), then **#130 with the object index of step 12**
+  (snapping is most of each frame on every large scene), then **step 11** (instancing: *Large*'s
+  58 s first frame and 2.1 GB), then step 13 (memory limit), then steps 2 and 3.
 
 **Heads-up for the features stream** (changes outside the viewport, decision B)
 - Done: `crates/curva-app/src/benchmark.rs` and the `--orbit-benchmark` arguments in
@@ -60,7 +67,8 @@
 - Frosted glass panels blur the viewport texture (`crates/curva-viewport/src/glass.rs`).
 
 **Known problems / risks**
-- *Large* scenes crash on opening (see above); a model of that size made by a user would crash too.
+- *Large* opens but needs about 2.1 GB on the graphics card; on integrated graphics, which share
+  the computer's memory, a model that size could still fail until steps 11 and 13.
 - No measurements on the target low-end machine (2020 Intel integrated graphics); there will be
   none (owner's decision A).
 - Benchmarks are noisy when another session builds on the same machine: rerun any result that
