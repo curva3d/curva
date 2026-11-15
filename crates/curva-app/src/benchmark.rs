@@ -160,7 +160,6 @@ pub(crate) fn benchmark_scene(doc: &mut Document, scene: BenchmarkScene) -> Resu
     ))
 }
 
-
 /// A small building for pictures of visualisation styles (spec `views-and-styles.md` §5), in
 /// millimetres: a plinth, a ground-floor volume, an upper volume cantilevered over the entrance,
 /// a roof box, slender columns under the cantilever, and trees as block instances.
