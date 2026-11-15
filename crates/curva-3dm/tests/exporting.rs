@@ -1239,3 +1239,61 @@ fn annotation_styles_go_out_and_come_back_with_their_looks() {
         assert_eq!(a.style(), style.id, "everything names the style");
     }
 }
+
+#[test]
+fn details_keep_their_display_mode_and_lock() {
+    use curva_document::layouts::{Detail, Layout, PaperUnit};
+    let mut state = State::default();
+    let frame = |x: f64| {
+        Curve::polyline(
+            vec![
+                [x, 20.0, 0.0],
+                [x + 150.0, 20.0, 0.0],
+                [x + 150.0, 170.0, 0.0],
+                [x, 170.0, 0.0],
+            ],
+            true,
+        )
+        .unwrap()
+    };
+    for (id, x) in [(0, 20.0), (1, 200.0)] {
+        let mut o = object(id, Shape::Curve(frame(x)), 0);
+        o.space = Some(0);
+        state.objects.push(o.into());
+    }
+    state.next_id = 2;
+    let detail = |frame: u64, display: &str, locked: bool| Detail {
+        frame,
+        projection: "Top".to_owned(),
+        target: [0.0; 3],
+        distance: 100.0,
+        scale: Some(0.01),
+        display: display.to_owned(),
+        locked,
+        hidden_layers: Vec::new(),
+    };
+    state.layouts = vec![Layout {
+        id: 0,
+        name: "Plan".to_owned(),
+        size: [420.0, 297.0],
+        unit: PaperUnit::Millimetres,
+        details: vec![detail(0, "Ghosted", true), detail(1, "Technical", false)],
+        user_text: Default::default(),
+        revisions: Vec::new(),
+    }];
+    state.next_layout = 1;
+    let back = round_trip(&state);
+    let mut got: Vec<(String, bool)> = back.layouts[0]
+        .details
+        .iter()
+        .map(|d| (d.display.clone(), d.locked))
+        .collect();
+    got.sort();
+    assert_eq!(
+        got,
+        [
+            ("Ghosted".to_owned(), true),
+            ("Technical".to_owned(), false)
+        ]
+    );
+}

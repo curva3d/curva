@@ -695,4 +695,64 @@ pub struct Detail {
     pub boundary: NurbsCurve,
     /// Page length per model length in the same unit (1:50 is 0.02); 0 for no set scale.
     pub ratio: f64,
+    /// Its display mode's id (one of Rhino's standard modes); nil for the page's.
+    pub display: Uuid,
+    /// Whether its projection is locked (it cannot be panned or zoomed).
+    pub locked: bool,
+}
+
+/// Rhino's standard display modes by name and id (openNURBS' `ON_StandardDisplayModeId`).
+pub const DISPLAY_MODES: [(&str, Uuid); 10] = [
+    (
+        "Wireframe",
+        Uuid::parse("1311ADCB-D89E-4051-A3F0-F64441FB8EC6"),
+    ),
+    (
+        "Shaded",
+        Uuid::parse("8BC8DEBE-C83B-4c47-B13C-9DB074510CAC"),
+    ),
+    (
+        "Rendered",
+        Uuid::parse("CAE60BAE-2D51-4299-ABF7-A339FCA86F3B"),
+    ),
+    (
+        "Ghosted",
+        Uuid::parse("FF608B97-81D3-4186-831C-41F7DC140881"),
+    ),
+    ("X-Ray", Uuid::parse("B5C19D5D-0AEC-4ff7-A10E-E052E660263A")),
+    (
+        "Rendered with shadows",
+        Uuid::parse("A5545314-9D87-428d-95AE-91052EEAD0FA"),
+    ),
+    (
+        "Technical",
+        Uuid::parse("63612C72-778F-4afd-B81B-17426FDFE8A6"),
+    ),
+    (
+        "Artistic",
+        Uuid::parse("B46AB226-05A0-4568-B454-4B1AB721C675"),
+    ),
+    ("Pen", Uuid::parse("F4616FA5-A831-4620-A97E-9B807D5EC376")),
+    (
+        "Monochrome",
+        Uuid::parse("E1B5C8A2-ED43-4872-9A01-814E612D5363"),
+    ),
+];
+
+/// A display mode's id by name, ignoring case; nil (Rhino's default) for one it does not have.
+#[must_use]
+pub fn display_mode_id(name: &str) -> Uuid {
+    DISPLAY_MODES
+        .iter()
+        .find(|(n, _)| n.eq_ignore_ascii_case(name.trim()))
+        .map_or(Uuid::NIL, |(_, id)| *id)
+}
+
+/// A display mode's name by id, if it is one of Rhino's standard ones.
+#[must_use]
+pub fn display_mode_name(id: Uuid) -> Option<&'static str> {
+    DISPLAY_MODES
+        .iter()
+        .find(|(_, m)| *m == id)
+        .map(|(n, _)| *n)
 }

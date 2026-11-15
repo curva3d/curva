@@ -516,6 +516,28 @@ fn unit(a: P3) -> P3 {
     a.map(|v| v / length)
 }
 
+/// What a view's attributes say: its kind (0 a model view, 1 a page, 2 a view nested in a
+/// page), its paper size in millimetres, its display mode's id (nil for Rhino's default) and
+/// whether its projection is locked.
+#[derive(Clone, Copy)]
+struct ViewKind {
+    kind: i32,
+    size: [f64; 2],
+    display: Uuid,
+    locked: bool,
+}
+
+impl ViewKind {
+    fn plain(kind: i32, size: [f64; 2]) -> Self {
+        Self {
+            kind,
+            size,
+            display: Uuid::NIL,
+            locked: false,
+        }
+    }
+}
+
 /// A named view: its viewport (camera and frustum), the construction plane its kind of view
 /// has, its target and its name.
 /// A view: its camera, construction plane, target and name, and for a layout or a detail its
@@ -524,7 +546,7 @@ fn write_view(
     w: &mut Writer,
     v: &View,
     id: Uuid,
-    kind: Option<(i32, [f64; 2])>,
+    kind: Option<ViewKind>,
     user_text: &[(String, String)],
 ) {
     let direction = unit(v.direction);
@@ -586,15 +608,23 @@ fn write_view(
     w.begin(tcode::VIEW_NAME);
     w.wstring(&v.name);
     w.end();
-    if let Some((kind, size)) = kind {
-        // Version 1.1 of the view's attributes: kind, paper size, then an unused parent id
-        // and nested position.
+    if let Some(kind) = kind {
+        // Version 1.3 of the view's attributes: kind, paper size, an unused parent id and
+        // nested position, the display mode, page settings (version 1.0: page number, size,
+        // margins, printer), and whether the projection is locked.
         w.begin(tcode::VIEW_ATTRIBUTES);
-        w.chunk_version(1, 1);
-        w.i32(kind);
-        w.f64s(&size);
+        w.chunk_version(1, 3);
+        w.i32(kind.kind);
+        w.f64s(&kind.size);
         w.uuid(Uuid::NIL);
         w.f64s(&[1.0, 0.0, 0.0, -1.0, 0.0, 0.0]);
+        w.uuid(kind.display);
+        w.begin_versioned(tcode::ANONYMOUS_CHUNK, 1, 0);
+        w.i32(0);
+        w.f64s(&[kind.size[0], kind.size[1], 0.0, 0.0, 0.0, 0.0]);
+        w.wstring("");
+        w.end();
+        w.bool(kind.locked);
         w.end();
     }
     w.short(tcode::ENDOFTABLE, 0);
@@ -1191,7 +1221,17 @@ fn write_leader(w: &mut Writer, l: &Leader) {
 fn write_detail(w: &mut Writer, d: &Detail) {
     w.begin_versioned(tcode::ANONYMOUS_CHUNK, 1, 1);
     w.begin_versioned(tcode::ANONYMOUS_CHUNK, 1, 0);
-    write_view(w, &d.view, Uuid::NIL, Some((2, [0.0, 0.0])), &[]);
+    write_view(
+        w,
+        &d.view,
+        Uuid::NIL,
+        Some(ViewKind {
+            display: d.display,
+            locked: d.locked,
+            ..ViewKind::plain(2, [0.0, 0.0])
+        }),
+        &[],
+    );
     w.end();
     w.begin_versioned(tcode::ANONYMOUS_CHUNK, 1, 0);
     write_nurbs_curve(w, &d.boundary);
@@ -1232,7 +1272,7 @@ fn write_view_list(w: &mut Writer, model: &Model) {
             w,
             v,
             Uuid::fresh(0x5354_4456 + i as u64),
-            Some((0, [0.0, 0.0])),
+            Some(ViewKind::plain(0, [0.0, 0.0])),
             &[],
         );
         w.end();
@@ -1257,7 +1297,13 @@ fn write_view_list(w: &mut Writer, model: &Model) {
             ],
         };
         w.begin(tcode::VIEW_RECORD);
-        write_view(w, &view, page.id, Some((1, page.size_mm)), &page.user_text);
+        write_view(
+            w,
+            &view,
+            page.id,
+            Some(ViewKind::plain(1, page.size_mm)),
+            &page.user_text,
+        );
         w.end();
     }
     w.end();
