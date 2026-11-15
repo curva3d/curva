@@ -124,6 +124,9 @@ pub(crate) fn benchmark_scene(doc: &mut Document, scene: BenchmarkScene) -> Resu
         };
         doc.add_body(body);
     }
+    if scene.building {
+        benchmark_building(doc)?;
+    }
     let mut tree_triangles = 0;
     if scene.trees > 0 {
         let trees = grid(scene.trees, BENCHMARK_TREE_SPACING);
@@ -157,6 +160,51 @@ pub(crate) fn benchmark_scene(doc: &mut Document, scene: BenchmarkScene) -> Resu
     ))
 }
 
+
+/// A small building for pictures of visualisation styles (spec `views-and-styles.md` §5), in
+/// millimetres: a plinth, a ground-floor volume, an upper volume cantilevered over the entrance,
+/// a roof box, slender columns under the cantilever, and trees as block instances.
+fn benchmark_building(doc: &mut Document) -> Result<(), String> {
+    let text = |error: curva_kernel::KernelError| error.to_string();
+    let block = |low: Point, size: Point| curva_kernel::Body::cuboid(low, size).map_err(text);
+    let parts = [
+        // Plinth.
+        ([-3000.0, -6000.0, -400.0], [20000.0, 18000.0, 400.0]),
+        // Ground floor.
+        ([0.0, 0.0, 0.0], [12000.0, 8000.0, 3200.0]),
+        // Upper floor, reaching out over the entrance.
+        ([4000.0, -3500.0, 3200.0], [9000.0, 9500.0, 3200.0]),
+        // Roof box.
+        ([6000.0, 0.0, 6400.0], [4500.0, 4500.0, 2200.0]),
+    ];
+    for (low, size) in parts {
+        doc.add_body(block(low, size)?);
+    }
+    for x in [5000.0, 8500.0, 12000.0] {
+        doc.add_body(block([x - 150.0, -3350.0, 0.0], [300.0, 300.0, 3200.0])?);
+    }
+    let trunk = curva_kernel::Body::extruded(
+        &[Curve::circle([0.0; 3], 180.0).map_err(text)?],
+        [0.0, 0.0, 1.0],
+        3000.0,
+        true,
+    )
+    .map_err(text)?;
+    let crown = curva_kernel::Body::sphere([0.0, 0.0, 4300.0], 1800.0).map_err(text)?;
+    let ids = [doc.add_body(trunk), doc.add_body(crown)];
+    let (tree, first) = doc.define_block("building tree".to_owned(), [0.0; 3], &ids);
+    doc.remove(&[first]);
+    for at in [
+        [-1500.0, -4500.0, 0.0],
+        [15500.0, -4000.0, 0.0],
+        [15000.0, 9500.0, 0.0],
+        [-1800.0, 10000.0, 0.0],
+        [2500.0, -5200.0, 0.0],
+    ] {
+        doc.insert_block(tree, curva_document::blocks::moved_by(at));
+    }
+    Ok(())
+}
 /// One of the different solids of the Large scene, at the origin: cylinders and boxes of several
 /// sizes, each fitting within a grid cell.
 fn benchmark_shape(index: usize) -> Result<curva_kernel::Body, String> {
@@ -203,6 +251,8 @@ pub(crate) struct BenchmarkScene {
     pub(crate) offset: Point,
     /// Whether the benchmark also selects and deselects an object now and then (`--select`).
     pub(crate) select: bool,
+    /// A small two-storey building with trees, for pictures of visualisation styles.
+    pub(crate) building: bool,
 }
 
 impl BenchmarkScene {
@@ -216,6 +266,7 @@ impl BenchmarkScene {
             trees: 2_000,
             offset: [0.0; 3],
             select: false,
+            building: false,
         };
         match name {
             "medium" => Some(Self {
@@ -225,6 +276,10 @@ impl BenchmarkScene {
             }),
             "large" => Some(large),
             // 500 km from the origin along X and Y, in millimetres.
+            "building" => Some(Self {
+                building: true,
+                ..Self::default()
+            }),
             "far" => Some(Self {
                 offset: [5.0e8, 5.0e8, 0.0],
                 ..large
@@ -368,6 +423,7 @@ mod tests {
             trees: 3,
             offset,
             select: false,
+            building: false,
         }
     }
 

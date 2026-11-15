@@ -448,7 +448,15 @@ fn run() -> Result<(), String> {
     }
     if let Some(path) = value("--picture") {
         let script = value("--run").map_or("", String::as_str);
-        return picture(path, script);
+        let style = match value("--style") {
+            Some(name) => Some(
+                curva_viewport::PictureStyle::named(name)
+                    .ok_or_else(|| format!("unknown style: {name}"))?,
+            ),
+            None => None,
+        };
+        let scene = value("--scene").and_then(|name| BenchmarkScene::named(name));
+        return picture(path, script, style, scene);
     }
     // A model given on the command line opens, as after an update.
     let file = arguments
