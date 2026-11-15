@@ -55,9 +55,10 @@
 
 **In progress / next**
 - **Correct drawing first** (owner, 15 November 2026), before styles are tuned: (1) seams no
-  longer drawn in shaded views (this pull request); (2) outlines of curved shapes in every live
-  view, Wireframe included, found from the depth picture; then wireframe and previews drop seams
-  too; (3) edges that stay whole where a surface is seen at a steep angle; (4) edges that follow
+  longer drawn in shaded views (#183, merged); (2) outlines of curved shapes from the depth
+  picture: shaded views done (this pull request; Medium's card time 1.6 → 2.1 ms per frame),
+  Ghosted and Wireframe next, with a depth-only surface pass; then wireframe and previews drop
+  seams; (3) edges that stay whole where a surface is seen at a steep angle; (4) edges that follow
   the true shape when zooming in (spec steps 5 to 7).
 - **Spec: views and visualisation styles** (`docs/specs/views-and-styles.md`, #160), approved by
   the owner on 15 November 2026: modelling layers and per-view layers, the model carries its styles,
