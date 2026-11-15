@@ -304,6 +304,13 @@ impl Body {
         Self::from_engine(&body)
     }
 
+    /// A sphere, the engine's own: one exact spherical face, which drawings and hidden lines
+    /// know as a sphere.
+    pub fn sphere(centre: Point, radius: f64) -> Result<Self, KernelError> {
+        let body = solidcore_ops::make_sphere(centre, radius).map_err(|e| failed("a sphere", e))?;
+        Self::from_engine(&body)
+    }
+
     /// A solid box with one corner at `corner`, its sides along the directions `x` and `y`
     /// (at right angles, of length 1) and the direction straight out of them. `size` is how far
     /// it reaches along each; negative values reach the other way.
@@ -693,6 +700,87 @@ impl Body {
                 2 => Curve::line(run[0], run[1]).ok(),
                 _ => Curve::polyline(run, false).ok(),
             })
+            .collect())
+    }
+
+    /// The body's edges as their exact curves (lines between their vertices, circles and
+    /// splines as the engine holds them), each with the faces that meet at it, by number. For
+    /// drawings, which want edges exact rather than as the display draws them.
+    pub fn exact_edges(&self) -> Result<Vec<(Curve, Vec<usize>)>, KernelError> {
+        use solidcore_record::brep::Curve as RecordCurve;
+        let record = self.record()?;
+        let point = |index: u32| {
+            record
+                .vertices
+                .get(index as usize)
+                .map(|v| v.point)
+                .ok_or_else(|| KernelError("an edge's vertex is missing".to_owned()))
+        };
+        let mut out = Vec::new();
+        for edge in &record.edges {
+            let curve = match &edge.curve {
+                RecordCurve::Line { .. } => {
+                    Curve::line(point(edge.vertices[0])?, point(edge.vertices[1])?)?
+                }
+                curve => crate::from_record_curve(
+                    edge.nurbs.as_ref().unwrap_or(curve),
+                    Some(edge.interval),
+                )?,
+            };
+            let faces = edge.uses.iter().map(|used| used.face as usize).collect();
+            out.push((curve, faces));
+        }
+        Ok(out)
+    }
+
+    /// The body's faces' surfaces as the engine names them (planes, cylinders, spheres…), by
+    /// face number.
+    pub fn face_surfaces(&self) -> Result<Vec<solidcore_record::brep::Surface>, KernelError> {
+        Ok(self
+            .record()?
+            .faces
+            .iter()
+            .map(|face| face.surface.clone())
+            .collect())
+    }
+
+    /// The point of face `face`'s surface nearest `near`.
+    pub fn face_closest_point(&self, face: usize, near: Point) -> Result<Point, KernelError> {
+        let record = self.record()?;
+        let surface = solidcore_ops::face_surface::FaceSurface::of(&record, face)
+            .map_err(|e| failed("reading a face's surface", e))?;
+        let [[u0, u1], [v0, v1]] = surface.domain();
+        let closest = surface
+            .closest_point(near, [(u0 + u1) / 2.0, (v0 + v1) / 2.0])
+            .map_err(|e| failed("finding the nearest point on a face", e))?;
+        Ok(closest.point)
+    }
+
+    /// The outward normal of face `face` at the point of it nearest `near`.
+    pub fn face_normal_near(&self, face: usize, near: Point) -> Result<Point, KernelError> {
+        let record = self.record()?;
+        let surface = solidcore_ops::face_surface::FaceSurface::of(&record, face)
+            .map_err(|e| failed("reading a face's surface", e))?;
+        let [[u0, u1], [v0, v1]] = surface.domain();
+        let closest = surface
+            .closest_point(near, [(u0 + u1) / 2.0, (v0 + v1) / 2.0])
+            .map_err(|e| failed("finding the nearest point on a face", e))?;
+        surface
+            .normal(closest.uv)
+            .map_err(|e| failed("finding a face's normal", e))
+    }
+
+    /// For each point, whether it lies on the body's surface (on a face, an edge or a vertex,
+    /// within the body's tolerance), by the engine's point classification.
+    pub fn on_surface(&self, points: &[Point]) -> Result<Vec<bool>, KernelError> {
+        use solidcore_ops::measure::PointClass;
+        let classes = self
+            .engine()?
+            .classify_points(points)
+            .map_err(|e| failed("classifying points", e))?;
+        Ok(classes
+            .into_iter()
+            .map(|class| matches!(class, Ok(PointClass::OnBoundary)))
             .collect())
     }
 }

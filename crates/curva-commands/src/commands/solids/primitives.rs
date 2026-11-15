@@ -100,7 +100,6 @@ impl Recipe for Sphere {
     }
 
     fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
-        let (x, _, up) = frame(cx);
         let (centre, r) = if cx.mode == Some("2Point") {
             let (Some(a), Some(b)) = (point(cx, 0), point(cx, 1)) else {
                 return Ok(Made::default());
@@ -118,16 +117,9 @@ impl Recipe for Sphere {
         if r <= 1e-9 {
             return Err(Message::new("error.bad_radius"));
         }
-        // A half circle closed along its axis, spun a whole turn.
-        let bottom = plus(centre, up, -r);
-        let top = plus(centre, up, r);
-        let arc = Curve::arc(centre, bottom, top, x, up).map_err(|e| failed(&e))?;
-        let axis = Curve::line(top, bottom).map_err(|e| failed(&e))?;
-        let half = Curve::compound(vec![arc, axis]).map_err(|e| failed(&e))?;
-        made(
-            Body::revolved(&[half], centre, up, TAU, true),
-            "done.sphere",
-        )
+        // The engine's own sphere: one exact spherical face, as drawings need it (a half circle
+        // spun round made a general spline face).
+        made(Body::sphere(centre, r), "done.sphere")
     }
 }
 

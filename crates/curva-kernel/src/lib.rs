@@ -28,6 +28,7 @@ pub use engine_ops::{Carry, Contact};
 pub mod hidden;
 mod making;
 mod making2;
+pub mod rays;
 pub use making::nested_groups;
 pub use making2::TaperCorners;
 mod offset;

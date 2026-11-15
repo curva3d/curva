@@ -35,7 +35,7 @@ the release notes. Then update "Checked at".
 | planar-capping | `curva-kernel/src/assemble.rs` (`Body::capped`) | Cap | `stitch` closes the shell but leaves no solid region inside it (tangency-labs/solidcore#3266); Curva fills and sews with `face-assembly` | `9342f32` |
 | mesh-area-centroid | `curva-commands/src/commands/support.rs` (`area_centroid`) | AreaCentroid of solids | `mass_properties` gives a solid's volume centroid, not its area centroid | `9342f32` |
 | hatch-patterns | `curva-document/src/hatch.rs` (`pattern_pieces`) | Hatch | none: `cell_grid` fills a field with closed cells, not lines; `prism::profile::Loop2::holds` tests one point. No Rust crate reads `.pat` files | `9342f32` |
-| hidden-lines | `curva-kernel/src/hidden.rs` (`hidden_lines`) | Make2D, printed technical views | `intersect::surface_silhouette` traces exact silhouettes and `topology::brep::ray_fire` fires rays through a B-rep, but neither is wrapped for Curva yet (they need the B-rep cache and its keys); no hidden-line removal. Curva splits exact edges and tests each piece against a tessellation | `9342f32` |
+| hidden-lines | `curva-kernel/src/hidden.rs` (`hidden_lines`) | Make2D, printed technical views | Visibility is solidcore's (`topology::brep::p2::ray_fire`, `curva-kernel/src/rays.rs`); edges are the engine's exact curves. Curva's own: splitting where projected lines cross, joining and cleaning the pieces, exact silhouettes of cylinders and spheres (trimmed by the engine's point classification), and tessellation silhouettes for other curved faces (`intersect::surface_silhouette` needs the B-rep cache plumbing first). No hidden-line removal in solidcore | `9342f32` |
 
 ## Moved to solidcore at the 0.4.2 check (`377457d`)
 

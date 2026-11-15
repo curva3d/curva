@@ -5,11 +5,12 @@
 use crate::commands::{bodies_of, curves_of, geometry_failed, unexpected};
 use crate::{Answer, Command, Kind, Message, Request, Step};
 use curva_document::{Document, Linetype};
-use curva_kernel::hidden::{DrawnLine, LineKind, View, hidden_lines};
+use curva_kernel::hidden::{DrawnLine, LineKind, Options, View, hidden_lines};
 use curva_kernel::{Curve, Point};
 
 const PROJECTION: &str = "Projection";
 const HIDDEN: &str = "HiddenLines";
+const TANGENTS: &str = "TangentEdges";
 
 /// Where the drawing is seen from.
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -29,6 +30,7 @@ type Placer = Box<dyn Fn([f64; 2]) -> Point>;
 pub struct Make2D {
     projection: Projection,
     without_hidden: bool,
+    tangent_edges: bool,
 }
 
 fn cross(a: Point, b: Point) -> Point {
@@ -37,6 +39,28 @@ fn cross(a: Point, b: Point) -> Point {
         a[2] * b[0] - a[0] * b[2],
         a[0] * b[1] - a[1] * b[0],
     ]
+}
+
+/// A drawn curve, from the view plane into the model: moved by `shift` in the plane, then put
+/// where `place` puts the plane's points. Lines stay exact lines, other curves are mapped
+/// exactly, as `place` is affine.
+fn placed(curve: &Curve, shift: [f64; 2], place: &Placer) -> Option<Curve> {
+    let at = |p: Point| place([p[0] + shift[0], p[1] + shift[1]]);
+    if let Curve::Line { start, end } = curve {
+        return Curve::line(at(*start), at(*end)).ok();
+    }
+    // The affine map `place` stands for, from where it puts the plane's origin and axes.
+    let o = at([0.0; 3]);
+    let x: Point = std::array::from_fn(|i| at([1.0, 0.0, 0.0])[i] - o[i]);
+    let y: Point = std::array::from_fn(|i| at([0.0, 1.0, 0.0])[i] - o[i]);
+    curve
+        .mapped_affine([
+            [x[0], x[1], x[2], 0.0],
+            [y[0], y[1], y[2], 0.0],
+            [0.0, 0.0, 0.0, 0.0],
+            [o[0], o[1], o[2], 1.0],
+        ])
+        .ok()
 }
 
 /// The layer named `name`, made if there is none, with hidden lines dashed.
@@ -54,7 +78,7 @@ fn layer_named(doc: &mut Document, name: &str, hidden: bool) -> u64 {
 impl Make2D {
     fn ask(&self) -> Step {
         Step::Ask(Request {
-            options: vec![PROJECTION, HIDDEN],
+            options: vec![PROJECTION, HIDDEN, TANGENTS],
             option_labels: vec![
                 format!(
                     "{PROJECTION}={}",
@@ -66,6 +90,10 @@ impl Make2D {
                 format!(
                     "{HIDDEN}={}",
                     if self.without_hidden { "No" } else { "Yes" }
+                ),
+                format!(
+                    "{TANGENTS}={}",
+                    if self.tangent_edges { "Yes" } else { "No" }
                 ),
             ],
             ..Request::new("prompt.make2d.objects", Kind::Objects)
@@ -100,43 +128,41 @@ impl Make2D {
             return Step::Failed(Message::new("error.make2d_nothing"));
         }
         let (view, place) = self.view(doc);
-        let lines = match hidden_lines(&bodies, &curves, &view) {
+        let options = Options {
+            tangent_edges: self.tangent_edges,
+        };
+        let lines = match hidden_lines(&bodies, &curves, &view, options) {
             Ok(lines) => lines,
             Err(error) => return geometry_failed(&error),
         };
-        let mut lines: Vec<DrawnLine> = lines
+        let lines: Vec<DrawnLine> = lines
             .into_iter()
             .filter(|l| l.visible || !self.without_hidden)
             .collect();
         // From a view, the drawing's lower left corner goes to the world origin, as in Rhino.
+        let mut shift = [0.0, 0.0];
         if self.projection == Projection::View && doc.view().is_some() {
             let low = lines
                 .iter()
-                .flat_map(|l| l.points.iter())
+                .filter_map(|l| l.curve.sample().ok())
+                .flatten()
                 .fold([f64::INFINITY; 2], |m, p| [m[0].min(p[0]), m[1].min(p[1])]);
             if low.iter().all(|v| v.is_finite()) {
-                for line in &mut lines {
-                    for p in &mut line.points {
-                        *p = [p[0] - low[0], p[1] - low[1]];
-                    }
-                }
+                shift = [-low[0], -low[1]];
             }
         }
         let mut made = 0;
         for line in lines {
-            let points: Vec<Point> = line.points.iter().map(|p| place(*p)).collect();
-            let curve = match points.as_slice() {
-                [a, b] => Curve::line(*a, *b),
-                _ => Curve::polyline(points, false),
-            };
-            let Ok(curve) = curve else {
+            let Some(curve) = placed(&line.curve, shift, &place) else {
                 continue;
             };
             let name = match (line.visible, line.kind) {
                 (true, LineKind::Curve) => "Make2D Visible Curves",
                 (true, LineKind::Silhouette) => "Make2D Visible Silhouettes",
+                (true, LineKind::Tangent) => "Make2D Visible Tangents",
                 (false, LineKind::Curve) => "Make2D Hidden Curves",
                 (false, LineKind::Silhouette) => "Make2D Hidden Silhouettes",
+                (false, LineKind::Tangent) => "Make2D Hidden Tangents",
             };
             let layer = layer_named(doc, name, !line.visible);
             let id = doc.add(curve);
@@ -156,6 +182,10 @@ impl Command for Make2D {
                     Projection::View => Projection::CPlane,
                     Projection::CPlane => Projection::View,
                 };
+                self.ask()
+            }
+            Some(Answer::Option(TANGENTS)) => {
+                self.tangent_edges = !self.tangent_edges;
                 self.ask()
             }
             Some(Answer::Option(HIDDEN)) => {
@@ -185,15 +215,99 @@ mod tests {
             .count()
     }
 
+    /// The curves Make2D made.
+    fn drawn(doc: &Document) -> Vec<curva_kernel::Curve> {
+        doc.state()
+            .objects
+            .iter()
+            .filter_map(|o| o.curve().cloned())
+            .collect()
+    }
+
+    /// A view looking down at the corner of a box at `[0, 0, 0]`–`[10, 10, 10]`.
+    fn at_an_angle() -> curva_kernel::hidden::View {
+        let d = [-1.0_f64, 1.2, -0.8];
+        let l = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+        let forward = d.map(|c| c / l);
+        let r = [forward[1], -forward[0], 0.0];
+        let rl = (r[0] * r[0] + r[1] * r[1]).sqrt();
+        let right = r.map(|c| c / rl);
+        let up = [
+            right[1] * forward[2] - right[2] * forward[1],
+            right[2] * forward[0] - right[0] * forward[2],
+            right[0] * forward[1] - right[1] * forward[0],
+        ];
+        curva_kernel::hidden::View {
+            eye: std::array::from_fn(|i| 5.0 - forward[i] * 1000.0),
+            forward,
+            right,
+            up,
+            parallel: true,
+        }
+    }
+
     #[test]
-    fn a_box_seen_from_above_shows_its_top_and_hides_its_bottom() {
+    fn a_box_seen_from_above_is_four_clean_lines() {
         let mut doc = Document::default();
         let cube = doc.add_body(Body::cuboid([0.0; 3], [10.0, 10.0, 10.0]).unwrap());
         doc.select(&[cube]);
         let _ = run(&mut doc, &["Make2D", "Projection", ""]);
-        // The top's four edges show, the bottom's four are hidden under them.
+        // Its outline only: the bottom lies under the top and the upright edges are points.
         assert_eq!(layer_lines(&doc, "Make2D Visible Curves"), 4);
-        assert_eq!(layer_lines(&doc, "Make2D Hidden Curves"), 4);
+        assert_eq!(layer_lines(&doc, "Make2D Hidden Curves"), 0);
+        let curves = drawn(&doc);
+        assert!(
+            curves
+                .iter()
+                .all(|c| matches!(c, curva_kernel::Curve::Line { .. }))
+        );
+        // Flat on the construction plane, and closed: every end meets another.
+        let ends: Vec<[f64; 3]> = curves.iter().flat_map(|c| c.sample().unwrap()).collect();
+        assert!(ends.iter().all(|p| p[2].abs() < 1e-12));
+        for p in &ends {
+            let meeting = ends
+                .iter()
+                .filter(|q| (0..3).all(|i| (p[i] - q[i]).abs() < 1e-9))
+                .count();
+            assert_eq!(meeting, 2, "{p:?}");
+        }
+    }
+
+    #[test]
+    fn a_square_is_four_lines() {
+        let mut doc = Document::default();
+        let square = doc.add(
+            curva_kernel::Curve::polyline(
+                vec![
+                    [0.0; 3],
+                    [10.0, 0.0, 0.0],
+                    [10.0, 10.0, 0.0],
+                    [0.0, 10.0, 0.0],
+                ],
+                true,
+            )
+            .unwrap(),
+        );
+        doc.select(&[square]);
+        let _ = run(&mut doc, &["Make2D", "Projection", ""]);
+        // The square itself is the first object; the drawing is the rest.
+        let made: Vec<_> = drawn(&doc).into_iter().skip(1).collect();
+        assert_eq!(made.len(), 4);
+        assert!(
+            made.iter()
+                .all(|c| matches!(c, curva_kernel::Curve::Line { .. }))
+        );
+    }
+
+    #[test]
+    fn a_box_at_an_angle_has_its_hidden_edges_dashed() {
+        let mut doc = Document::default();
+        doc.set_view(at_an_angle());
+        let cube = doc.add_body(Body::cuboid([0.0; 3], [10.0, 10.0, 10.0]).unwrap());
+        doc.select(&[cube]);
+        let _ = run(&mut doc, &["Make2D", ""]);
+        assert_eq!(layer_lines(&doc, "Make2D Visible Curves"), 9);
+        assert_eq!(layer_lines(&doc, "Make2D Hidden Curves"), 3);
         let hidden = doc
             .state()
             .layers
@@ -201,51 +315,44 @@ mod tests {
             .find(|l| l.name == "Make2D Hidden Curves")
             .unwrap();
         assert_eq!(hidden.linetype, curva_document::Linetype::Hidden);
-        // On the construction plane, flat.
-        let flat = doc
-            .state()
-            .objects
-            .iter()
-            .filter_map(|o| o.curve())
-            .filter_map(|c| c.sample().ok())
-            .flatten()
-            .all(|p| p[2].abs() < 1e-9);
-        assert!(flat);
-    }
-
-    #[test]
-    fn a_sphere_seen_at_an_angle_draws_its_outline() {
-        let mut doc = Document::default();
-        doc.set_view(curva_kernel::hidden::View {
-            eye: [100.0, -120.0, 80.0],
-            forward: {
-                let d: [f64; 3] = [-100.0, 120.0, -80.0];
-                let l = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
-                d.map(|c| c / l)
-            },
-            right: {
-                let r: [f64; 3] = [120.0, 100.0, 0.0];
-                let l = (r[0] * r[0] + r[1] * r[1]).sqrt();
-                r.map(|c| c / l)
-            },
-            up: [0.0, 0.0, 1.0],
-            parallel: false,
-        });
-        let _ = run(&mut doc, &["Sphere", "0,0,0", "10", "SelAll", "Make2D", ""]);
-        assert!(
-            layer_lines(&doc, "Make2D Visible Silhouettes") > 0,
-            "no outline"
-        );
     }
 
     #[test]
     fn hidden_lines_can_be_left_out() {
         let mut doc = Document::default();
+        doc.set_view(at_an_angle());
         let cube = doc.add_body(Body::cuboid([0.0; 3], [10.0, 10.0, 10.0]).unwrap());
         doc.select(&[cube]);
-        let _ = run(&mut doc, &["Make2D", "Projection", "HiddenLines", ""]);
-        assert_eq!(layer_lines(&doc, "Make2D Visible Curves"), 4);
+        let _ = run(&mut doc, &["Make2D", "HiddenLines", ""]);
+        assert_eq!(layer_lines(&doc, "Make2D Visible Curves"), 9);
         assert_eq!(layer_lines(&doc, "Make2D Hidden Curves"), 0);
+    }
+
+    #[test]
+    fn a_sphere_seen_at_an_angle_draws_its_outline() {
+        let mut doc = Document::default();
+        let eye = [100.0_f64, -120.0, 80.0];
+        let l = (eye[0] * eye[0] + eye[1] * eye[1] + eye[2] * eye[2]).sqrt();
+        let forward = eye.map(|c| -c / l);
+        let r = [forward[1], -forward[0], 0.0];
+        let rl = (r[0] * r[0] + r[1] * r[1]).sqrt();
+        let right = r.map(|c| c / rl);
+        let up = [
+            right[1] * forward[2] - right[2] * forward[1],
+            right[2] * forward[0] - right[0] * forward[2],
+            right[0] * forward[1] - right[1] * forward[0],
+        ];
+        doc.set_view(curva_kernel::hidden::View {
+            eye,
+            forward,
+            right,
+            up,
+            parallel: false,
+        });
+        let _ = run(&mut doc, &["Sphere", "0,0,0", "10", "SelAll", "Make2D", ""]);
+        // One clean outline, nothing hidden.
+        assert_eq!(layer_lines(&doc, "Make2D Visible Silhouettes"), 1);
+        assert_eq!(layer_lines(&doc, "Make2D Hidden Silhouettes"), 0);
     }
 
     #[test]
