@@ -13,4 +13,4 @@ Closes #
 - [ ] New or changed behaviour has tests
 - [ ] No tests deleted, ignored or loosened (if any were, the reason is stated and the owner is asked)
 - [ ] New dependencies are explained and pass `cargo-deny`
-- [ ] `STATUS.md` updated
+- [ ] My stream's status page updated (`status/display.md` or `status/features.md`)
