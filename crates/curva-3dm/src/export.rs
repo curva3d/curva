@@ -221,9 +221,37 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
         });
     }
 
+    // Layouts: Rhino's pages, in millimetres.
+    let page_ids: BTreeMap<u64, Uuid> = state.layouts.iter().map(|l| (l.id, ids.next())).collect();
+    for (index, layout) in state.layouts.iter().enumerate() {
+        let mm = layout.unit.millimetres();
+        model.pages.push(model::Page {
+            id: page_ids[&layout.id],
+            name: if layout.name.is_empty() {
+                format!("Layout {}", index + 1)
+            } else {
+                layout.name.clone()
+            },
+            size_mm: [layout.size[0] * mm, layout.size[1] * mm],
+        });
+    }
+    if !state.layouts.is_empty() {
+        model.page_unit = Some(2);
+    }
+
     let mut groups: BTreeMap<u64, usize> = BTreeMap::new();
     let mut add = |o: &Object, in_block: bool, model: &mut Model, report: &mut Report| {
-        let geometry = match geometry_of(&o.shape, &block_ids, &pattern_index, &style_ids, state) {
+        let sheet = o
+            .space
+            .and_then(|id| state.layouts.iter().find(|l| l.id == id));
+        let made = match sheet {
+            // On a layout: drawn in millimetres on its page, a detail's frame as the detail.
+            Some(layout) => {
+                sheet_geometry(o, layout, &block_ids, &pattern_index, &style_ids, state)
+            }
+            None => geometry_of(&o.shape, &block_ids, &pattern_index, &style_ids, state),
+        };
+        let geometry = match made {
             Ok(g) => g,
             Err(why) => {
                 count(&mut report.skipped, &format!("not written ({why})"));
@@ -259,6 +287,8 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
                     0
                 },
                 groups: group.into_iter().collect(),
+                page_space: sheet.is_some(),
+                viewport: sheet.map_or(Uuid::NIL, |l| page_ids[&l.id]),
                 user_text: o
                     .user_text
                     .iter()
@@ -1125,4 +1155,139 @@ fn local(plane: &Plane, p: P3) -> [f64; 2] {
         (0..3).map(|k| v[k] * plane.x[k]).sum(),
         (0..3).map(|k| v[k] * plane.y[k]).sum(),
     ]
+}
+
+/// An object on a layout, as Rhino keeps it: in millimetres on its page; a detail's frame as the
+/// detail itself, with its camera and scale.
+fn sheet_geometry(
+    o: &Object,
+    layout: &curva_document::layouts::Layout,
+    blocks: &BTreeMap<u64, Uuid>,
+    patterns: &BTreeMap<String, i32>,
+    styles: &BTreeMap<(u64, u32), Uuid>,
+    state: &State,
+) -> Result<Geometry, String> {
+    let mm = layout.unit.millimetres();
+    let to_mm = [
+        [mm, 0.0, 0.0, 0.0],
+        [0.0, mm, 0.0, 0.0],
+        [0.0, 0.0, mm, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ];
+    // A millimetre sheet is drawn as it is, so its lines stay lines.
+    let shape = if (mm - 1.0).abs() < 1e-12 {
+        o.shape.clone()
+    } else {
+        curva_document::blocks::shape_placed(&o.shape, &to_mm).ok_or("scaling failed")?
+    };
+    let Some(detail) = layout.details.iter().find(|d| d.frame == o.id) else {
+        return geometry_of(&shape, blocks, patterns, styles, state);
+    };
+    let Shape::Curve(frame) = &shape else {
+        return Err("a detail without its frame".to_owned());
+    };
+    let boundary = outline(frame)?;
+    let (low, high) = shape.bounds().ok_or("a detail without a size")?;
+    let model_mm = state.unit.millimetres();
+    Ok(Geometry::Detail(model::Detail {
+        view: detail_camera(detail, [high[0] - low[0], high[1] - low[1]], model_mm),
+        boundary,
+        ratio: detail.scale.map_or(0.0, |s| 1.0 / s),
+    }))
+}
+
+/// The camera a detail looks through, in model units: its standard view's direction at its
+/// target, the frustum the frame's size covers at its scale (or a 50 mm lens for a perspective).
+fn detail_camera(
+    detail: &curva_document::layouts::Detail,
+    frame_mm: [f64; 2],
+    model_mm: f64,
+) -> model::View {
+    let (direction, up): (P3, P3) = match detail.projection.as_str() {
+        "Top" => ([0.0, 0.0, -1.0], [0.0, 1.0, 0.0]),
+        "Front" => ([0.0, 1.0, 0.0], [0.0, 0.0, 1.0]),
+        "Right" => ([-1.0, 0.0, 0.0], [0.0, 0.0, 1.0]),
+        _ => {
+            let s = 1.0 / 3f64.sqrt();
+            ([-s, s, -s], [0.0, 0.0, 1.0])
+        }
+    };
+    let up = {
+        let along: f64 = (0..3).map(|k| up[k] * direction[k]).sum();
+        let v: P3 = std::array::from_fn(|k| up[k] - direction[k] * along);
+        let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt().max(1e-12);
+        v.map(|c| c / l)
+    };
+    let target = detail.target;
+    match detail.scale {
+        Some(scale) => {
+            let [w, h] = frame_mm.map(|v| v / scale / model_mm);
+            let depth = 1000.0 * w.max(h).max(1.0);
+            model::View {
+                name: String::new(),
+                location: std::array::from_fn(|k| target[k] - direction[k] * depth),
+                direction,
+                up,
+                target,
+                parallel: true,
+                frustum: [
+                    -w / 2.0,
+                    w / 2.0,
+                    -h / 2.0,
+                    h / 2.0,
+                    depth * 1e-3,
+                    depth * 2.0,
+                ],
+            }
+        }
+        None => {
+            let distance = detail.distance.max(1e-6);
+            let near = distance / 100.0;
+            // A 50 mm lens on 36 mm film across the frame's longer side.
+            let half = near * 18.0 / 50.0;
+            let aspect = frame_mm[1] / frame_mm[0].max(1e-12);
+            model::View {
+                name: String::new(),
+                location: std::array::from_fn(|k| target[k] - direction[k] * distance),
+                direction,
+                up,
+                target,
+                parallel: false,
+                frustum: [
+                    -half,
+                    half,
+                    -half * aspect,
+                    half * aspect,
+                    near,
+                    distance * 100.0,
+                ],
+            }
+        }
+    }
+}
+
+/// A detail's outline as Rhino keeps it: a 2D NURBS curve, of degree one for a polyline
+/// (openNURBS' knot vector, without the end knots NURBS books add).
+fn outline(frame: &Curve) -> Result<model::NurbsCurve, String> {
+    if let Curve::Polyline { points, closed } = frame {
+        let mut corners: Vec<[f64; 4]> = points.iter().map(|p| [p[0], p[1], 0.0, 1.0]).collect();
+        if *closed && let Some(first) = corners.first().copied() {
+            corners.push(first);
+        }
+        #[allow(clippy::cast_precision_loss)]
+        let knots = (0..corners.len()).map(|i| i as f64).collect();
+        return Ok(model::NurbsCurve {
+            dimension: 2,
+            order: 2,
+            knots,
+            points: corners,
+            rational: false,
+        });
+    }
+    let nurbs = frame.to_nurbs().map_err(|e| e.0)?;
+    let model::Curve::Nurbs(mut boundary) = curve(&nurbs)? else {
+        return Err("a detail frame that is not a NURBS curve".to_owned());
+    };
+    boundary.dimension = 2;
+    Ok(boundary)
 }

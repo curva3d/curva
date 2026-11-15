@@ -730,3 +730,95 @@ fn radial_and_angle_dimensions_and_leaders_come_back() {
         }
     }
 }
+
+#[test]
+fn layouts_come_back_with_their_details_and_sheet_drawing() {
+    use curva_document::layouts::{Detail, Layout, PaperUnit};
+    let mut state = State::default();
+    let on_sheet = |id: u64, curve: Curve, space: Option<u64>| {
+        let mut o = object(id, Shape::Curve(curve), 0);
+        o.space = space;
+        o
+    };
+    let frame = Curve::polyline(
+        vec![
+            [20.0, 20.0, 0.0],
+            [220.0, 20.0, 0.0],
+            [220.0, 170.0, 0.0],
+            [20.0, 170.0, 0.0],
+        ],
+        true,
+    )
+    .unwrap();
+    let note = Curve::line([250.0, 20.0, 0.0], [400.0, 20.0, 0.0]).unwrap();
+    // An imperial sheet too: its drawing goes out in millimetres and comes back in them.
+    let small = Curve::line([1.0, 1.0, 0.0], [2.0, 1.0, 0.0]).unwrap();
+    state.objects.push(
+        on_sheet(
+            0,
+            Curve::line([0.0; 3], [10_000.0, 0.0, 0.0]).unwrap(),
+            None,
+        )
+        .into(),
+    );
+    state.objects.push(on_sheet(1, frame, Some(0)).into());
+    state.objects.push(on_sheet(2, note, Some(0)).into());
+    state.objects.push(on_sheet(3, small, Some(1)).into());
+    state.next_id = 4;
+    let detail = Detail {
+        frame: 1,
+        projection: "Top".to_owned(),
+        target: [5000.0, 0.0, 0.0],
+        distance: 100.0,
+        scale: Some(0.02),
+        display: "Wireframe".to_owned(),
+        locked: false,
+        hidden_layers: Vec::new(),
+    };
+    state.layouts = vec![
+        Layout {
+            id: 0,
+            name: "Plan".to_owned(),
+            size: [420.0, 297.0],
+            unit: PaperUnit::Millimetres,
+            details: vec![detail],
+            user_text: Default::default(),
+            revisions: Vec::new(),
+        },
+        Layout {
+            id: 1,
+            name: "Notes".to_owned(),
+            size: [17.0, 11.0],
+            unit: PaperUnit::Inches,
+            details: Vec::new(),
+            user_text: Default::default(),
+            revisions: Vec::new(),
+        },
+    ];
+    state.next_layout = 2;
+    let back = round_trip(&state);
+    assert_eq!(back.layouts.len(), 2);
+    let plan = &back.layouts[0];
+    assert_eq!((plan.name.as_str(), plan.size), ("Plan", [420.0, 297.0]));
+    let d = &plan.details[0];
+    assert_eq!(d.projection, "Top");
+    assert!((d.scale.unwrap() - 0.02).abs() < 1e-12);
+    assert!((d.target[0] - 5000.0).abs() < 1e-9);
+    let frame = back.objects.iter().find(|o| o.id == d.frame).unwrap();
+    assert_eq!(frame.space, Some(plan.id));
+    let (low, high) = frame.shape.bounds().unwrap();
+    assert!((low[0] - 20.0).abs() < 1e-9 && (high[0] - 220.0).abs() < 1e-9);
+    let notes = &back.layouts[1];
+    assert_eq!(notes.size, [17.0 * 25.4, 11.0 * 25.4], "in millimetres");
+    let small = back
+        .objects
+        .iter()
+        .find(|o| o.space == Some(notes.id))
+        .unwrap();
+    assert!((small.curve().unwrap().length().unwrap() - 25.4).abs() < 1e-9);
+    assert_eq!(
+        back.objects.iter().filter(|o| o.space.is_none()).count(),
+        1,
+        "the model's line stays in the model"
+    );
+}

@@ -247,8 +247,76 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
     let mut definitions: BTreeMap<crate::archive::Uuid, Vec<Object>> = BTreeMap::new();
     let mut own_colours = 0;
 
+    // Layouts: one for each of the file's pages, in millimetres; what is drawn on a page comes
+    // from the file's page unit.
+    let page_mm = millimetres_per(model.page_unit.unwrap_or(model.unit)).unwrap_or(file_mm);
+    let mut page_ids: BTreeMap<crate::archive::Uuid, u64> = BTreeMap::new();
+    for page in &model.pages {
+        let id = state.next_layout;
+        state.next_layout += 1;
+        page_ids.insert(page.id, id);
+        state.layouts.push(curva_document::layouts::Layout {
+            id,
+            name: page.name.clone(),
+            size: page.size_mm,
+            unit: curva_document::layouts::PaperUnit::Millimetres,
+            details: Vec::new(),
+            user_text: BTreeMap::new(),
+            revisions: Vec::new(),
+        });
+    }
+
     for object in &model.objects {
         let a = &object.attributes;
+        let space = if a.page_space {
+            match page_ids.get(&a.viewport) {
+                Some(layout) => Some(*layout),
+                None => {
+                    Report::count(
+                        &mut report.skipped,
+                        "objects on a layout the file does not list",
+                    );
+                    continue;
+                }
+            }
+        } else {
+            None
+        };
+        if let Geometry::Detail(d) = &object.geometry {
+            match (space, detail_in(d, page_mm, scale)) {
+                (Some(layout), Ok((frame, mut detail))) => {
+                    let id = state.next_id;
+                    state.next_id += 1;
+                    detail.frame = id;
+                    state.objects.push(std::sync::Arc::new(Object {
+                        space: Some(layout),
+                        id,
+                        shape: Shape::Curve(frame),
+                        layer: layer_of(a.layer).unwrap_or(state.current_layer),
+                        hidden: false,
+                        name: a.name.clone(),
+                        recipe: None,
+                        print_width: PrintWidth::ByLayer,
+                        locked: false,
+                        group: None,
+                        live: None,
+                        input_of: None,
+                        linetype: Linetype::ByLayer,
+                        user_text: BTreeMap::new(),
+                    }));
+                    if let Some(sheet) = state.layouts.iter_mut().find(|l| l.id == layout) {
+                        sheet.details.push(detail);
+                    }
+                    Report::count(&mut report.brought, "details");
+                }
+                (_, Err(why)) => {
+                    Report::count(&mut report.skipped, &format!("unreadable ({why})"));
+                }
+                (None, _) => Report::count(&mut report.skipped, "details outside a layout"),
+            }
+            continue;
+        }
+        let scale = if space.is_some() { page_mm } else { scale };
         let (shape, kind) = match shape_of(
             &object.geometry,
             &block_ids,
@@ -276,7 +344,7 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
         let id = state.next_id;
         state.next_id += 1;
         let made = Object {
-            space: None,
+            space,
             id,
             shape,
             layer: layer_of(a.layer).unwrap_or(state.current_layer),
@@ -399,6 +467,7 @@ fn shape_of(
             Shape::Annotation(curva_document::annotation::Annotation::Angle(angular_in(d))),
             "dimensions",
         ),
+        Geometry::Detail(_) => return Err("details come in with their layout".to_owned()),
         Geometry::Leader(l) => (
             Shape::Annotation(curva_document::annotation::Annotation::Leader(leader_in(l))),
             "leaders",
@@ -1810,4 +1879,58 @@ fn leader_in(l: &model::Leader) -> curva_document::annotation::Leader {
         landing: true,
         style: 0,
     }
+}
+
+/// A detail from a file: its outline as a curve on the sheet (in millimetres), and what it shows:
+/// its standard view by the way it looks (else a perspective), the point it looks at, and its
+/// scale (Rhino keeps model length per page length).
+fn detail_in(
+    d: &model::Detail,
+    page_mm: f64,
+    model_scale: f64,
+) -> Result<(Curve, curva_document::layouts::Detail), String> {
+    let outline = curve(&model::Curve::Nurbs(d.boundary.clone())).map_err(|e| e.0)?;
+    let Shape::Curve(frame) = scaled(Shape::Curve(outline), page_mm)? else {
+        return Err("a detail without an outline".to_owned());
+    };
+    let v = &d.view;
+    let length = (v.direction.iter().map(|c| c * c).sum::<f64>())
+        .sqrt()
+        .max(1e-12);
+    let dir: P3 = v.direction.map(|c| c / length);
+    let along = |axis: P3| (0..3).map(|k| dir[k] * axis[k]).sum::<f64>() > 1.0 - 1e-9;
+    let projection = if !v.parallel {
+        "Perspective"
+    } else if along([0.0, 0.0, -1.0]) {
+        "Top"
+    } else if along([0.0, 1.0, 0.0]) {
+        "Front"
+    } else if along([-1.0, 0.0, 0.0]) {
+        "Right"
+    } else {
+        "Perspective"
+    };
+    let target: P3 = v.target.map(|c| c * model_scale);
+    let gap: f64 = (0..3)
+        .map(|k| (v.target[k] - v.location[k]).powi(2))
+        .sum::<f64>()
+        .sqrt()
+        * model_scale;
+    Ok((
+        frame,
+        curva_document::layouts::Detail {
+            frame: 0,
+            projection: projection.to_owned(),
+            target,
+            distance: gap,
+            scale: (v.parallel && d.ratio > 0.0).then(|| 1.0 / d.ratio),
+            display: if projection == "Perspective" {
+                "Shaded".to_owned()
+            } else {
+                "Wireframe".to_owned()
+            },
+            locked: false,
+            hidden_layers: Vec::new(),
+        },
+    ))
 }

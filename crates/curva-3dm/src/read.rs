@@ -3,8 +3,8 @@
 use crate::archive::{Reader, Result, Uuid, bad, tcode};
 use crate::model::{
     AngularDimension, Attributes, Block, Brep, BrepEdge, BrepFace, BrepLoop, BrepTrim, BrepVertex,
-    Curve, DimStyle, Extrusion, Geometry, Group, Hatch, HatchLine, HatchPattern, Layer, Leader,
-    LinearDimension, Model, NamedCPlane, NurbsCurve, NurbsSurface, Object, P3, Plane,
+    Curve, Detail, DimStyle, Extrusion, Geometry, Group, Hatch, HatchLine, HatchPattern, Layer,
+    Leader, LinearDimension, Model, NamedCPlane, NurbsCurve, NurbsSurface, Object, P3, Page, Plane,
     RadialDimension, Source, Surface, Text, View,
 };
 
@@ -41,6 +41,7 @@ pub mod class {
     pub const DIM_RADIAL: Uuid = Uuid::parse("FC749C2F-4C00-41FD-9840-26D94F047AD3");
     pub const DIM_ANGULAR: Uuid = Uuid::parse("D417786B-F6CD-4F12-9E1F-063F414DBEB6");
     pub const LEADER: Uuid = Uuid::parse("945BF594-6FF9-4F5C-BFC0-B3AF528F29D2");
+    pub const DETAIL: Uuid = Uuid::parse("C8C66EFA-B3CB-4e00-9440-2AD66203379E");
     pub const DIM_STYLE: Uuid = Uuid::parse("67AA51A5-791D-4BEC-8AED-D23B462B6F87");
     /// The class an older id stands for, as openNURBS reads Rhino's older classes as today's.
     #[must_use]
@@ -188,10 +189,20 @@ fn settings(table: &mut Reader<'_>, model: &mut Model) -> Result<()> {
                     model.angle_tolerance = body.f64()?;
                 }
             }
+            tcode::SETTINGS_ATTRIBUTES => {
+                if let Ok(unit) = page_unit(&mut chunk.body) {
+                    model.page_unit = unit;
+                }
+            }
             // A damaged list loses its views or planes, not the file.
             tcode::SETTINGS_NAMED_CPLANE_LIST => {
                 if let Ok(planes) = named_cplanes(&mut chunk.body) {
                     model.cplanes = planes;
+                }
+            }
+            tcode::SETTINGS_VIEW_LIST => {
+                if let Ok(found) = pages(&mut chunk.body) {
+                    model.pages = found;
                 }
             }
             tcode::SETTINGS_NAMED_VIEW_LIST => {
@@ -626,6 +637,10 @@ fn read_attributes(r: &mut Reader<'_>) -> Result<Attributes> {
                 let c = r.color()?;
                 a.color = [c[0], c[1], c[2]];
             }
+            // Rendering attributes, in a chunk of their own.
+            5 => {
+                r.chunk()?;
+            }
             7 => r.skip(4)?,
             8 => a.print_width = r.f64()?,
             9 | 14 | 16 | 17 => r.skip(1)?,
@@ -641,8 +656,9 @@ fn read_attributes(r: &mut Reader<'_>) -> Result<Attributes> {
                     }
                 }
             }
-            19 => r.skip(1)?,
-            20 => r.skip(16)?,
+            // openNURBS' active space: 1 the model, 2 a page.
+            19 => a.page_space = r.u8()? == 2,
+            20 => a.viewport = r.uuid()?,
             // Rendering attributes and later items: nothing more Curva needs.
             _ => break,
         }
@@ -674,6 +690,7 @@ fn geometry_of(id: Uuid, r: &mut Reader<'_>) -> Result<std::result::Result<Geome
         class::DIM_RADIAL => Geometry::Radial(radial_dimension(r)?),
         class::DIM_ANGULAR => Geometry::Angular(angular_dimension(r)?),
         class::LEADER => Geometry::Leader(leader(r)?),
+        class::DETAIL => Geometry::Detail(detail(r)?),
         class::TEXT_DOT => {
             let (_, minor) = r.chunk_version()?;
             let at = point(r)?;
@@ -1414,5 +1431,76 @@ fn leader(r: &mut Reader<'_>) -> Result<Leader> {
         own: core.own,
         rich: core.rich,
         points,
+    })
+}
+
+/// The layouts among the views of the settings' view list: views of openNURBS' page type
+/// (`ON_3dmView` with `ON::page_view_type`), with their viewport id, name and paper size.
+fn pages(r: &mut Reader<'_>) -> Result<Vec<Page>> {
+    let count = list_count(r)?;
+    let mut out = Vec::new();
+    for _ in 0..count {
+        let mut record = r.expect(tcode::VIEW_RECORD)?;
+        let mut id = Uuid::NIL;
+        let mut name = String::new();
+        let mut page = None;
+        while !record.body.is_done() {
+            let mut part = record.body.chunk()?;
+            match part.tcode {
+                tcode::ENDOFTABLE => break,
+                tcode::VIEW_VIEWPORT => {
+                    let (_, minor) = part.body.chunk_version()?;
+                    // Valid flags and projection, the camera's six vectors, frustum and port.
+                    part.body.skip(4 * 4 + 6 * 24 + 6 * 8 + 6 * 4)?;
+                    if minor >= 1 {
+                        id = part.body.uuid()?;
+                    }
+                }
+                tcode::VIEW_NAME => name = part.body.wstring()?,
+                tcode::VIEW_ATTRIBUTES => {
+                    let (_, minor) = part.body.chunk_version()?;
+                    if minor >= 1 && part.body.i32()? == 1 {
+                        page = Some([part.body.f64()?, part.body.f64()?]);
+                    }
+                }
+                _ => {}
+            }
+        }
+        if let Some(size_mm) = page {
+            out.push(Page { id, name, size_mm });
+        }
+    }
+    Ok(out)
+}
+
+/// The page unit in the settings' attributes (version 1.1 and later): after the linetype
+/// scale, plot colour and its source, and the current linetype and its source, the page's
+/// units and tolerances in their own chunk.
+fn page_unit(r: &mut Reader<'_>) -> Result<Option<u32>> {
+    let (major, minor) = r.chunk_version()?;
+    if major != 1 || minor < 1 {
+        return Ok(None);
+    }
+    r.skip(8 + 4 + 4 + 4 + 4)?;
+    let (_, _, mut units) = r.versioned(tcode::ANONYMOUS_CHUNK)?;
+    let version = units.i32()?;
+    (100..200)
+        .contains(&version)
+        .then(|| units.u32())
+        .transpose()
+}
+
+/// A detail view (`ON_DetailView::Read`): its camera, its outline, and its scale.
+fn detail(r: &mut Reader<'_>) -> Result<Detail> {
+    let (_, minor, mut body) = r.versioned(tcode::ANONYMOUS_CHUNK)?;
+    let (_, _, mut view_chunk) = body.versioned(tcode::ANONYMOUS_CHUNK)?;
+    let view = view(&mut view_chunk)?;
+    let (_, _, mut outline) = body.versioned(tcode::ANONYMOUS_CHUNK)?;
+    let boundary = nurbs_curve(&mut outline)?;
+    let ratio = if minor >= 1 { body.f64()? } else { 0.0 };
+    Ok(Detail {
+        view,
+        boundary,
+        ratio,
     })
 }

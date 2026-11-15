@@ -41,6 +41,10 @@ fn main() {
                         curva_3dm::model::Geometry::Radial(_) => "radial dimension".to_owned(),
                         curva_3dm::model::Geometry::Angular(_) => "angle dimension".to_owned(),
                         curva_3dm::model::Geometry::Leader(_) => "leader".to_owned(),
+                        curva_3dm::model::Geometry::Detail(d) => format!(
+                            "detail ratio {} dir {:?} target {:?}",
+                            d.ratio, d.view.direction, d.view.target
+                        ),
                         curva_3dm::model::Geometry::Text(t) => format!(
                             "text {:?} own {:?} x {:?}",
                             t.rich,
@@ -78,6 +82,7 @@ fn main() {
                 }
                 println!("  objects {kinds:?}");
                 println!("  styles {:?}", m.dim_styles);
+                println!("  pages {:?} page unit {:?}", m.pages, m.page_unit);
                 println!(
                     "  names {:?}",
                     m.objects

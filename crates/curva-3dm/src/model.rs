@@ -28,6 +28,11 @@ pub struct Model {
     pub hatch_patterns: Vec<HatchPattern>,
     /// Annotation (dimension) styles, in the file's order.
     pub dim_styles: Vec<DimStyle>,
+    /// Layouts (Rhino's page views), in the file's order.
+    pub pages: Vec<Page>,
+    /// The unit layouts are drawn in, as openNURBS numbers units; the model's when the file
+    /// does not say.
+    pub page_unit: Option<u32>,
     /// Objects, those of block definitions included (their attributes say so).
     pub objects: Vec<Object>,
     /// Named views, in the file's order.
@@ -128,6 +133,10 @@ pub struct Attributes {
     pub groups: Vec<usize>,
     /// Its user text, key and value.
     pub user_text: Vec<(String, String)>,
+    /// Whether it is drawn on a layout's paper rather than in the model.
+    pub page_space: bool,
+    /// The view it belongs to: for an object on a layout, its page's id.
+    pub viewport: Uuid,
 }
 
 impl Default for Attributes {
@@ -144,6 +153,8 @@ impl Default for Attributes {
             mode: 0,
             groups: Vec::new(),
             user_text: Vec::new(),
+            page_space: false,
+            viewport: Uuid::NIL,
         }
     }
 }
@@ -420,6 +431,8 @@ pub enum Geometry {
     Angular(AngularDimension),
     /// A leader (`ON_Leader`).
     Leader(Leader),
+    /// A detail view on a layout (`ON_DetailView`).
+    Detail(Detail),
     /// A hatch.
     Hatch(Hatch),
     /// A text dot (`ON_TextDot`): a label at a point, the same size on screen.
@@ -619,4 +632,26 @@ pub struct Leader {
     pub rich: String,
     /// The arrow's tip, then the points the line passes through, in the plane.
     pub points: Vec<[f64; 2]>,
+}
+
+/// A layout: one of Rhino's page views.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Page {
+    /// Its viewport's id, by which objects on it name it.
+    pub id: Uuid,
+    /// Its name.
+    pub name: String,
+    /// Its paper's width and height, in millimetres.
+    pub size_mm: [f64; 2],
+}
+
+/// A detail view on a layout (`ON_DetailView`): a window onto the model.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Detail {
+    /// The camera it looks through.
+    pub view: View,
+    /// Its outline on the page, a 2D curve in millimetres from the page's lower left corner.
+    pub boundary: NurbsCurve,
+    /// Page length per model length in the same unit (1:50 is 0.02); 0 for no set scale.
+    pub ratio: f64,
 }

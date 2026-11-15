@@ -31,7 +31,9 @@ version, which Rhino 7 and 8 open.
 | Annotation styles (`ON_DimStyle`): name, text height, alignment | yes | yes, as Rhino 6 reads them (version 1.1; later settings take Rhino's defaults) |
 | Linear dimensions (`ON_DimLinear`): points, dimension line, aligned or rotated, typed text | yes (their looks from Curva's current style) | yes, with a style of their annotation style's text height |
 | Radius, diameter and angle dimensions (`ON_DimRadial`, `ON_DimAngular`), leaders (`ON_Leader`) | yes (looks from Curva's current style; leaders with a landing) | yes |
-| Layouts, details, materials, render settings | skipped, counted (Milestone 3, layouts next) | no |
+| Layouts (page views) with their size, and what is drawn on them (in the file's page unit) | yes | yes, in millimetres, with Rhino's four standard views beside them |
+| Detail views: frame, standard view or perspective, target, scale | yes | yes |
+| Materials, render settings | no | no |
 
 ## 3. Commands and menus
 
