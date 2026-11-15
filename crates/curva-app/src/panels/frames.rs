@@ -589,6 +589,11 @@ impl Curva {
                                 .auto_shrink([false, false])
                                 .show(ui, |ui| self.annotation_styles_panel(ui));
                         }
+                        layout::Piece::Notes => {
+                            egui::ScrollArea::vertical()
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| self.notes_panel(ui));
+                        }
                         layout::Piece::Print => {
                             egui::ScrollArea::vertical()
                                 .auto_shrink([false, false])

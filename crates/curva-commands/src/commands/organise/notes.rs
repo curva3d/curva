@@ -4,9 +4,9 @@ use super::set_document_user_text::typed_text;
 use crate::{Answer, Command, Kind, Message, Request, Step};
 use curva_document::Document;
 
-/// `Notes`: the model's notes, kept with the file and read by the `Notes` field. Rhino edits them
-/// in a panel; here they are typed at the prompt (`\n` for a new line, `""` to clear), and
-/// Enter alone keeps them.
+/// `Notes`: the model's notes, kept with the file and read by the `Notes` field. As in Rhino,
+/// Enter opens the Notes panel to edit them; they can also be typed at the prompt (`\n` for a
+/// new line, `""` to clear), for scripts and the assistant.
 #[derive(Default)]
 pub struct Notes;
 
@@ -18,7 +18,7 @@ impl Command for Notes {
                 doc.set_notes(&notes);
                 Step::Done(Some(Message::new("done.notes")))
             }
-            Some(Answer::Empty) => Step::Done(None),
+            Some(Answer::Empty) => Step::View(crate::ViewRequest::ShowNotes),
             _ => {
                 let now = doc.state().notes.replace('\n', "\\n");
                 Step::Ask(Request {
@@ -56,5 +56,19 @@ mod tests {
         );
         run(&mut doc, &["Notes", "\"\""]);
         assert!(doc.state().notes.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod panel {
+    use crate::ViewRequest;
+    use crate::commands::run;
+    use curva_document::Document;
+
+    #[test]
+    fn enter_opens_the_notes_panel() {
+        let mut doc = Document::default();
+        let mut processor = run(&mut doc, &["Notes", ""]);
+        assert_eq!(processor.take_view_request(), Some(ViewRequest::ShowNotes));
     }
 }

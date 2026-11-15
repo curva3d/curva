@@ -432,7 +432,7 @@ refused to load (HTTP 403); Rhino sets layout user text there, Curva with SetLay
 | SetDocumentUserText | The key (a leading full stop hides it from lists); the value (`""` removes the key). Read by the `DocumentText` field | none | as Rhino; Enter alone also removes the key, `\n` types a new line (not on the command framework, which has no typed-text step yet) | partly |
 | GetDocumentUserText | Shows text kept with SetDocumentUserText | none | the key, or Enter for every key that is not hidden (not on the command framework yet) | partly |
 | SetLayoutUserText | Curva's: Rhino sets layout user text in Layout Properties. The key; the value, on the current layout. Read by the `LayoutUserText` field | none | as SetDocumentUserText, on the open layout (not on the command framework yet) | partly |
-| Notes | Opens the Notes panel, where the model's notes are typed; a Locked checkbox. Read by the `Notes` field | none | typed at the prompt (`\n` for a new line, `""` clears, Enter keeps); not yet a panel or Locked | partly |
+| Notes | Opens the Notes panel, where the model's notes are typed; a Locked checkbox. Read by the `Notes` field | none | Enter opens the Notes panel, edited in place (undoable); also typed at the prompt (`\n` for a new line, `""` clears) for scripts. Not yet: Locked | partly |
 
 ### Title blocks, scale bars, sheet index and revisions
 
