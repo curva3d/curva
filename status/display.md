@@ -59,8 +59,9 @@
   the display stream builds the model and interface parts. Replaces display modes. Next: the
   prototype pictures (Diagram, Architectural, Textured), then step 11.
 - **Prototype 1 of 3, Diagram** (this pull request): `curva --picture out.png --scene building
-  --style diagram` draws a small test building on white with near-white surfaces, thin black
-  edges and thick black outlines (found from a hidden picture of object numbers, drawn at twice
+  --style diagram` draws a small test building on white with white surfaces, thin grey
+  inner edges and bold black outlines, as the owner asked (found from a hidden picture of object
+  numbers, drawn at twice
   the size and shrunk). Pictures only; the live viewport comes after the owner judges the look.
   Known: a thin seam line shows across each sphere.
 - Order, by what users notice most: **step 11** (instancing: *Large*'s 58 s first frame and

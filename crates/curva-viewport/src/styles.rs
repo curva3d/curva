@@ -33,13 +33,17 @@ impl PictureStyle {
 
 /// How many times larger the picture is drawn before being shrunk, for smooth outlines.
 const SUPERSAMPLE: u32 = 2;
-/// The Diagram look, at the final size, in pixels: outlines and edges.
-const OUTLINE_PIXELS: f32 = 3.6;
-const EDGE_PIXELS: f32 = 1.2;
-/// Near-white surfaces, near-black lines, on white paper.
-const SURFACE: [f32; 3] = [1.0, 1.0, 0.99];
+/// The Diagram look, at the final size, in pixels (owner, 15 November 2026: bold outer lines,
+/// thin grey inner lines, white surfaces).
+const OUTLINE_PIXELS: f32 = 4.0;
+const EDGE_PIXELS: f32 = 1.0;
+/// Bold outlines in near-black; inner edges in mid grey; surfaces and paper pure white.
 const INK: [f32; 3] = [0.08, 0.08, 0.08];
+const INNER: [u8; 3] = [140, 140, 140];
 const PAPER: [u8; 3] = [255, 255, 255];
+/// The colour inner edges are first drawn in, which no lit surface can take (surfaces are grey),
+/// so they can be told apart and recoloured once drawing has hidden the ones behind surfaces.
+const MARKER: [f32; 3] = [1.0, 0.0, 1.0];
 
 /// Draws `picture` in `style` and saves it as a PNG file. The picture's faces must carry object
 /// numbers ([`crate::SceneParts`]), which is how outlines find where one object ends.
@@ -72,7 +76,7 @@ pub(crate) fn draw_diagram(picture: Picture, size: [u32; 2]) -> Result<Vec<u8>, 
             .lines
             .iter()
             .map(|vertex| Vertex {
-                colour: INK,
+                colour: MARKER,
                 width: -EDGE_PIXELS * scale,
                 ..*vertex
             })
@@ -81,19 +85,19 @@ pub(crate) fn draw_diagram(picture: Picture, size: [u32; 2]) -> Result<Vec<u8>, 
             .faces
             .iter()
             .map(|vertex| MeshVertex {
-                colour: SURFACE,
+                colour: [1.0; 3],
                 ..*vertex
             })
             .collect(),
         ..picture
     };
     let mut base = draw_picture(recoloured, big, true)?;
-    // Where no object was drawn is paper. The object numbers and the faces cover the same
-    // pixels, so this leaves no dark fringe.
-    for (pixel, id) in base.chunks_mut(4).zip(&ids) {
-        if *id == 0 {
-            pixel[..3].copy_from_slice(&PAPER);
-        }
+    // Edges that survived being hidden behind surfaces become grey; everything else, surfaces
+    // and background alike, is white.
+    let marker = MARKER.map(|c| (c * 255.0) as u8);
+    for pixel in base.chunks_mut(4) {
+        let colour = if pixel[..3] == marker { INNER } else { PAPER };
+        pixel[..3].copy_from_slice(&colour);
     }
     outline(&mut base, &ids, big, OUTLINE_PIXELS * scale);
     Ok(shrink(&base, big, SUPERSAMPLE))
