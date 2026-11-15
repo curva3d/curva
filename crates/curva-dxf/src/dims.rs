@@ -1,0 +1,348 @@
+//! Dimensions and leaders to and from DXF and DWG (spec `drawing-output.md` §3).
+//!
+//! A DIMENSION entity names a block that holds its drawing (AutoCAD DXF Reference, "DIMENSION":
+//! the anonymous `*D` blocks), so each goes out as that block, drawn as Curva draws it (lines,
+//! filled arrowheads, its value as text), and the entity with its measured points. Linear
+//! dimensions measure in their plane, which DXF takes as the world's XY plane; one on any other
+//! plane goes out as its drawing alone. Leaders go out as LEADER entities with their note as
+//! text. Coming in, each kind becomes Curva's own dimension or leader from its points.
+
+use crate::{P, cross, dot, p3, unit, v3};
+use acadrust::entities::dimension::{
+    Dimension, DimensionAligned, DimensionAngular2Ln, DimensionDiameter, DimensionLinear,
+    DimensionRadius,
+};
+use acadrust::entities::{EntityType, Leader as CadLeader, Line, Solid};
+use curva_document::State;
+use curva_document::annotation::{
+    AngleDimension, Annotation, Dimension as Linear, DimensionKind, Leader, RadialDimension,
+};
+
+/// A dimension's drawing as block contents: its lines, its arrowheads as filled triangles and
+/// its value as text.
+fn drawing(annotation: &Annotation, state: &State, space: Option<u64>) -> Option<Vec<EntityType>> {
+    let parts = curva_document::shape::annotation_parts(annotation, state, space)?;
+    let mut out: Vec<EntityType> = parts
+        .lines
+        .iter()
+        .map(|(a, b)| EntityType::Line(Line::from_points(v3(*a), v3(*b))))
+        .collect();
+    for [tip, left, right] in &parts.arrows {
+        let solid = Solid::new(v3(*tip), v3(*left), v3(*right), v3(*right));
+        out.push(EntityType::Solid(solid));
+    }
+    out.extend(crate::annotation::text_out(
+        &parts.text,
+        &parts.text.content,
+    ));
+    Some(out)
+}
+
+/// Whether a plane is the world's XY plane, facing up.
+fn flat(x: P, y: P) -> bool {
+    unit(cross(x, y)).is_some_and(|n| n[2] > 1.0 - 1e-9)
+}
+
+/// A dimension's typed text for DXF: `<>` stands for the value there too.
+fn typed(text: &Option<String>) -> Option<String> {
+    text.clone()
+}
+
+/// The DIMENSION entity for a dimension, naming the block that holds its drawing, and that
+/// block's contents; `None` for annotation that is not a dimension.
+pub(crate) fn dimension_out(
+    annotation: &Annotation,
+    state: &State,
+    space: Option<u64>,
+    block: &str,
+) -> Option<(EntityType, Vec<EntityType>)> {
+    let contents = drawing(annotation, state, space)?;
+    let parts = curva_document::shape::annotation_parts(annotation, state, space)?;
+    let mut dimension = match annotation {
+        Annotation::Dimension(d) => linear_out(d)?,
+        Annotation::Radial(r) if r.diameter => {
+            let far: P = std::array::from_fn(|k| 2.0 * r.centre[k] - r.on_curve[k]);
+            let mut d = DimensionDiameter::new(v3(r.on_curve), v3(far));
+            d.base.user_text = typed(&r.text);
+            Dimension::Diameter(d)
+        }
+        Annotation::Radial(r) => {
+            let mut d = DimensionRadius::new(v3(r.centre), v3(r.on_curve));
+            d.base.user_text = typed(&r.text);
+            Dimension::Radius(d)
+        }
+        Annotation::Angle(a) => {
+            let mut d = DimensionAngular2Ln::new(v3(a.apex), v3(a.first), v3(a.second));
+            d.dimension_arc = v3(a.arc_at);
+            d.base.user_text = typed(&a.text);
+            Dimension::Angular2Ln(d)
+        }
+        _ => return None,
+    };
+    let base = dimension_base(&mut dimension);
+    base.block_name = block.to_owned();
+    base.text_middle_point = v3(parts.text.origin);
+    base.style_name = "Standard".to_owned();
+    Some((EntityType::Dimension(Box::new(dimension)), contents))
+}
+
+fn dimension_base(d: &mut Dimension) -> &mut acadrust::entities::dimension::DimensionBase {
+    match d {
+        Dimension::Aligned(x) => &mut x.base,
+        Dimension::Linear(x) => &mut x.base,
+        Dimension::Radius(x) => &mut x.base,
+        Dimension::Diameter(x) => &mut x.base,
+        Dimension::Angular2Ln(x) => &mut x.base,
+        Dimension::Angular3Pt(x) => &mut x.base,
+        Dimension::Ordinate(x) => &mut x.base,
+        Dimension::Arc(x) => &mut x.base,
+        Dimension::LargeRadial(x) => &mut x.base,
+    }
+}
+
+/// A linear dimension as DXF's: aligned, or linear at the angle it measures along, with the
+/// point where its dimension line meets the second extension line. Only in the world's XY plane.
+fn linear_out(d: &Linear) -> Option<Dimension> {
+    if !flat(d.x, d.y) {
+        return None;
+    }
+    let along = d.direction();
+    let across = cross([0.0, 0.0, 1.0], along);
+    let offset = dot(std::array::from_fn(|k| d.line[k] - d.second[k]), across);
+    let on_line: P = std::array::from_fn(|k| d.second[k] + across[k] * offset);
+    let measured = d.value();
+    Some(match d.kind {
+        DimensionKind::Aligned => {
+            let mut x = DimensionAligned::new(v3(d.first), v3(d.second));
+            x.definition_point = v3(on_line);
+            x.base.definition_point = v3(on_line);
+            x.base.actual_measurement = measured;
+            x.base.user_text = typed(&d.text);
+            Dimension::Aligned(x)
+        }
+        _ => {
+            let angle = along[1].atan2(along[0]);
+            let mut x = DimensionLinear::rotated(v3(d.first), v3(d.second), angle);
+            x.definition_point = v3(on_line);
+            x.base.definition_point = v3(on_line);
+            x.base.actual_measurement = measured;
+            x.base.user_text = typed(&d.text);
+            Dimension::Linear(x)
+        }
+    })
+}
+
+/// A leader as a LEADER entity through its points, with its note as text beside its end.
+pub(crate) fn leader_out(l: &Leader, state: &State, space: Option<u64>) -> Vec<EntityType> {
+    let mut leader = CadLeader::new();
+    leader.vertices = l.points.iter().map(|p| v3(*p)).collect();
+    leader.arrow_enabled = true;
+    leader.normal = v3(unit(cross(l.x, l.y)).unwrap_or([0.0, 0.0, 1.0]));
+    let mut out = vec![EntityType::Leader(leader)];
+    if let Some(parts) =
+        curva_document::shape::annotation_parts(&Annotation::Leader(l.clone()), state, space)
+    {
+        out.extend(crate::annotation::text_out(&parts.text, &l.content));
+    }
+    out
+}
+
+/// Typed dimension text from DXF, or none when it shows the value alone.
+fn typed_in(base: &acadrust::entities::dimension::DimensionBase) -> Option<String> {
+    let text = base.user_text.clone().unwrap_or_else(|| base.text.clone());
+    let trimmed = text.trim();
+    (!trimmed.is_empty() && trimmed != "<>").then_some(text)
+}
+
+/// A DIMENSION entity as Curva's dimension, on the world's XY plane, or the kind it is when
+/// Curva has no such dimension.
+pub(crate) fn dimension_in(d: &Dimension) -> Result<Annotation, &'static str> {
+    let (x, y) = ([1.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+    Ok(match d {
+        Dimension::Aligned(a) => Annotation::Dimension(Linear {
+            kind: DimensionKind::Aligned,
+            first: p3(&a.first_point),
+            second: p3(&a.second_point),
+            line: p3(&a.definition_point),
+            x,
+            y,
+            style: 0,
+            text: typed_in(&a.base),
+        }),
+        Dimension::Linear(l) => Annotation::Dimension(Linear {
+            kind: DimensionKind::Rotated(l.rotation),
+            first: p3(&l.first_point),
+            second: p3(&l.second_point),
+            line: p3(&l.definition_point),
+            x,
+            y,
+            style: 0,
+            text: typed_in(&l.base),
+        }),
+        Dimension::Radius(r) => Annotation::Radial(RadialDimension {
+            diameter: false,
+            centre: p3(&r.angle_vertex),
+            on_curve: p3(&r.definition_point),
+            text_at: p3(&r.base.text_middle_point),
+            x,
+            y,
+            style: 0,
+            text: typed_in(&r.base),
+        }),
+        Dimension::Diameter(r) => {
+            let (a, b) = (p3(&r.angle_vertex), p3(&r.definition_point));
+            Annotation::Radial(RadialDimension {
+                diameter: true,
+                centre: std::array::from_fn(|k| (a[k] + b[k]) / 2.0),
+                on_curve: a,
+                text_at: p3(&r.base.text_middle_point),
+                x,
+                y,
+                style: 0,
+                text: typed_in(&r.base),
+            })
+        }
+        Dimension::Angular2Ln(a) => Annotation::Angle(AngleDimension {
+            apex: p3(&a.angle_vertex),
+            first: p3(&a.second_point),
+            second: p3(&a.definition_point),
+            arc_at: p3(&a.dimension_arc),
+            x,
+            y,
+            style: 0,
+            text: typed_in(&a.base),
+        }),
+        _ => return Err("dimensions of other kinds"),
+    })
+}
+
+/// A LEADER entity as Curva's leader, its note coming in as text of its own.
+pub(crate) fn leader_in(l: &CadLeader) -> Option<Leader> {
+    let normal = unit(p3(&l.normal)).unwrap_or([0.0, 0.0, 1.0]);
+    let (x, y) = crate::object_axes(normal);
+    (l.vertices.len() >= 2).then(|| Leader {
+        points: l.vertices.iter().map(p3).collect(),
+        content: String::new(),
+        x,
+        y,
+        landing: false,
+        style: 0,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Format, export, import, read};
+    use curva_document::annotation::{
+        AngleDimension, Annotation, Dimension, DimensionKind, Leader, RadialDimension,
+    };
+    use curva_document::{Document, Shape};
+
+    fn annotations(doc: &Document) -> Vec<Annotation> {
+        doc.state()
+            .objects
+            .iter()
+            .filter_map(|o| match &o.shape {
+                Shape::Annotation(a) => Some(a.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn dimensions_and_leaders_go_out_and_come_back() {
+        let mut doc = Document::default();
+        let (x, y) = ([1.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        let linear = |kind, text: Option<&str>| {
+            Annotation::Dimension(Dimension {
+                kind,
+                first: [10.0, 10.0, 0.0],
+                second: [60.0, 30.0, 0.0],
+                line: [20.0, 50.0, 0.0],
+                x,
+                y,
+                style: 0,
+                text: text.map(str::to_owned),
+            })
+        };
+        let wanted = [
+            linear(DimensionKind::Horizontal, None),
+            linear(DimensionKind::Aligned, Some("<> clear")),
+            linear(DimensionKind::Rotated(0.3), None),
+            Annotation::Radial(RadialDimension {
+                diameter: true,
+                centre: [100.0, 100.0, 0.0],
+                on_curve: [103.0, 104.0, 0.0],
+                text_at: [120.0, 120.0, 0.0],
+                x,
+                y,
+                style: 0,
+                text: None,
+            }),
+            Annotation::Angle(AngleDimension {
+                apex: [0.0; 3],
+                first: [10.0, 0.0, 0.0],
+                second: [0.0, 5.0, 0.0],
+                arc_at: [3.0, 3.0, 0.0],
+                x,
+                y,
+                style: 0,
+                text: None,
+            }),
+            Annotation::Leader(Leader {
+                points: vec![[0.0, 0.0, 0.0], [10.0, 10.0, 0.0], [20.0, 10.0, 0.0]],
+                content: "Oak floor".to_owned(),
+                x,
+                y,
+                landing: true,
+                style: 0,
+            }),
+        ];
+        for a in &wanted {
+            doc.add_annotation(a.clone());
+        }
+        for format in [Format::Dxf, Format::Dwg] {
+            let (bytes, report) = export(&doc, None, format).unwrap();
+            // For opening in Rhino or AutoCAD by hand.
+            if let (Format::Dxf, Ok(path)) = (format, std::env::var("CURVA_DXF_SAMPLE")) {
+                std::fs::write(path, &bytes).unwrap();
+            }
+            assert!(report.skipped.is_empty(), "{report:?}");
+            let cad = read(&bytes, format).unwrap();
+            assert!(
+                cad.block_records.get("*D1").is_some(),
+                "{format:?}: each dimension's drawing in a block"
+            );
+            let mut back = Document::default();
+            import(&cad, &mut back);
+            let got = annotations(&back);
+            let value = |a: &Annotation| match a {
+                Annotation::Dimension(d) => Some(d.value()),
+                Annotation::Radial(r) => Some(r.value()),
+                Annotation::Angle(a) => Some(a.value()),
+                _ => None,
+            };
+            let values: Vec<f64> = got.iter().filter_map(value).collect();
+            for w in wanted.iter().filter_map(value) {
+                assert!(
+                    values.iter().any(|v| (v - w).abs() < 1e-6),
+                    "{format:?}: {w} in {values:?}"
+                );
+            }
+            assert!(
+                got.iter().any(|a| matches!(a, Annotation::Dimension(d) if d.text.as_deref() == Some("<> clear"))),
+                "{format:?}: typed text"
+            );
+            assert!(
+                got.iter()
+                    .any(|a| matches!(a, Annotation::Leader(l) if l.points.len() == 3)),
+                "{format:?}: the leader"
+            );
+            assert!(
+                got.iter()
+                    .any(|a| matches!(a, Annotation::Text(t) if t.content == "Oak floor")),
+                "{format:?}: the leader's note"
+            );
+        }
+    }
+}
