@@ -234,6 +234,7 @@ fn object_type(g: &Geometry) -> i64 {
         Geometry::Surface(_) => 8,
         Geometry::Brep(_) | Geometry::Extrusion(_) => 0x10,
         Geometry::Instance { .. } => 0x1000,
+        Geometry::Dot { .. } => 0x2000,
     }
 }
 
@@ -250,6 +251,23 @@ fn write_object(w: &mut Writer, object: &Object) {
         Geometry::Surface(s) => write_surface(w, s),
         Geometry::Brep(b) => class_object(w, class::BREP, |w| write_brep(w, b)),
         Geometry::Extrusion(_) => {}
+        Geometry::Dot {
+            at,
+            text,
+            secondary,
+            height,
+            font,
+        } => class_object(w, class::TEXT_DOT, |w| {
+            // openNURBS' ON_TextDot, version 1.1: the point, height, words, font, display bits
+            // (none), then the secondary words.
+            w.chunk_version(1, 1);
+            w.f64s(at);
+            w.i32(*height);
+            w.wstring(text);
+            w.wstring(font);
+            w.i32(0);
+            w.wstring(secondary);
+        }),
         Geometry::Instance { block, xform } => class_object(w, class::INSTANCE_REF, |w| {
             w.chunk_version(1, 0);
             w.uuid(*block);

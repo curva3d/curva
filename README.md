@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="packaging/icons/curva.svg" width="128" height="128" alt="Curva's icon: a C drawn as an arc with its orange control points, over the construction lines that set it out">
+  <img src="packaging/icons/curva.svg" width="128" height="128" alt="Curva's icon: a C extruded into a solid, lit from the top left">
 </p>
 
 <h1 align="center">Curva</h1>

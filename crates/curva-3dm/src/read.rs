@@ -32,6 +32,7 @@ pub mod class {
     pub const POINT_CLOUD: Uuid = Uuid::parse("2488F347-F8FA-11d3-BFEC-0010830122F0");
     pub const SUBD: Uuid = Uuid::parse("F09BA4D9-455B-42C3-BA3B-E6CCACEF853B");
     pub const USER_STRING_LIST: Uuid = Uuid::parse("CE28DE29-F4C5-4faa-A50A-C3A6849B6329");
+    pub const TEXT_DOT: Uuid = Uuid::parse("74198302-CDF4-4f95-9609-6D684F22AB37");
     /// The class an older id stands for, as openNURBS reads Rhino's older classes as today's.
     #[must_use]
     pub fn current(id: Uuid) -> Uuid {
@@ -641,6 +642,26 @@ fn geometry_of(id: Uuid, r: &mut Reader<'_>) -> Result<std::result::Result<Geome
                 *row = r.f64s::<4>()?;
             }
             Geometry::Instance { block, xform }
+        }
+        class::TEXT_DOT => {
+            let (_, minor) = r.chunk_version()?;
+            let at = point(r)?;
+            let height = r.i32()?;
+            let text = r.wstring()?;
+            let font = r.wstring()?;
+            let _display = r.i32()?;
+            let secondary = if minor >= 1 {
+                r.wstring()?
+            } else {
+                String::new()
+            };
+            Geometry::Dot {
+                at,
+                text,
+                secondary,
+                height,
+                font,
+            }
         }
         class::MESH => return Ok(Err("mesh".to_owned())),
         class::POINT_CLOUD => return Ok(Err("point cloud".to_owned())),

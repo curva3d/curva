@@ -454,3 +454,26 @@ fn named_views_and_planes_saved_by_rhino_come_in() {
     let wall = doc.saved_cplane("Wall A").unwrap();
     assert!(near(&wall.y, &[0.0, 0.0, 1.0]));
 }
+
+#[test]
+fn dots_come_back_with_their_words_height_and_font() {
+    use curva_document::annotation::{Annotation, Dot};
+    let mut state = State::default();
+    let dot = Dot {
+        at: [1.0, 2.0, 3.0],
+        content: "Room 101".to_owned(),
+        secondary: "Storage".to_owned(),
+        height: 14.0,
+        font: Some("Arial".to_owned()),
+    };
+    state
+        .objects
+        .push(object(0, Shape::Annotation(Annotation::Dot(dot.clone())), 0).into());
+    state.next_id = 1;
+    let back = round_trip(&state);
+    assert_eq!(back.objects.len(), 1);
+    assert_eq!(
+        back.objects[0].shape,
+        Shape::Annotation(Annotation::Dot(dot))
+    );
+}
