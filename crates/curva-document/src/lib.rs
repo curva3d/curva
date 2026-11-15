@@ -68,6 +68,8 @@ pub struct Object {
     pub live: Option<crate::live::LiveBoolean>,
     /// For an input kept by a live boolean: the result it belongs to.
     pub input_of: Option<u64>,
+    /// Its own colour, red, green and blue from 0 to 1; `None` takes its layer's.
+    pub colour: Option<[f32; 3]>,
     /// How its lines are drawn: continuous, dashed and so on, or as its layer says.
     pub linetype: Linetype,
     /// Key–value text kept with it (`SetUserText`).
@@ -115,6 +117,8 @@ struct StoredObject {
     live: Option<crate::live::LiveBoolean>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     input_of: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    colour: Option<[f32; 3]>,
     #[serde(default, skip_serializing_if = "Linetype::is_by_layer")]
     linetype: Linetype,
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
@@ -151,6 +155,7 @@ impl TryFrom<StoredObject> for Object {
             group: stored.group,
             live: stored.live,
             input_of: stored.input_of,
+            colour: stored.colour,
             linetype: stored.linetype,
             user_text: stored.user_text,
             space: stored.space,
@@ -181,6 +186,7 @@ impl From<Object> for StoredObject {
             group: object.group,
             live: object.live,
             input_of: object.input_of,
+            colour: object.colour,
             linetype: object.linetype,
             user_text: object.user_text,
             space: object.space,
@@ -282,6 +288,19 @@ pub enum Linetype {
     Center,
     /// Two dashes and a dot.
     Border,
+    /// One of the document's own linetypes, by its place in [`State::linetypes`]: one a file
+    /// brought that Curva does not have.
+    Custom(u16),
+}
+
+/// A linetype the document holds beside Curva's own, as a file brought it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LinetypeDefinition {
+    /// Its name.
+    pub name: String,
+    /// Its pattern in millimetres on paper: lengths drawn and left out in turn (a drawn length
+    /// of 0 is a dot); empty for a solid line.
+    pub pattern: Vec<f64>,
 }
 
 impl Linetype {
@@ -308,10 +327,12 @@ impl Linetype {
         matches!(self, Self::Continuous)
     }
 
-    /// Its name, as Rhino names it.
+    /// Its name, as Rhino names it; a document's own linetype is named by
+    /// [`State::linetype_name`].
     #[must_use]
     pub fn name(self) -> &'static str {
         match self {
+            Self::Custom(_) => "Custom",
             Self::ByLayer => "ByLayer",
             Self::Continuous => "Continuous",
             Self::Dashed => "Dashed",
@@ -332,11 +353,13 @@ impl Linetype {
         })
     }
 
-    /// Its pattern in model units: lengths drawn and left out in turn; empty for a solid line.
+    /// Its pattern in millimetres on paper (as printed, and as Rhino keeps linetypes): lengths
+    /// drawn and left out in turn; empty for a solid line. A document's own linetype has its
+    /// pattern in the document: [`State::linetype_pattern`].
     #[must_use]
     pub fn pattern(self) -> &'static [f64] {
         match self {
-            Self::ByLayer | Self::Continuous => &[],
+            Self::ByLayer | Self::Continuous | Self::Custom(_) => &[],
             Self::Dashed => &[3.0, 1.5],
             Self::Dotted => &[0.25, 1.0],
             Self::DashDot => &[3.0, 1.0, 0.25, 1.0],
@@ -354,6 +377,36 @@ impl Linetype {
             other => other,
         }
     }
+}
+
+/// Segments as files keep them (each a length and whether it is drawn, a drawn length of 0
+/// being a dot) as a [`LinetypeDefinition`]'s pattern: lengths drawn and left out in turn,
+/// starting with one drawn, neighbours of the same kind joined. A pattern starting with a gap
+/// moves it to the end, where it repeats the same; one with nothing left out is solid (empty).
+#[must_use]
+pub fn alternating(segments: &[(f64, bool)]) -> Vec<f64> {
+    let mut out: Vec<f64> = Vec::new();
+    let mut lead_gap = 0.0;
+    for &(length, drawn) in segments {
+        let length = length.abs();
+        if out.is_empty() && !drawn {
+            lead_gap += length;
+        } else if drawn == out.len().is_multiple_of(2) {
+            out.push(length);
+        } else if let Some(last) = out.last_mut() {
+            *last += length;
+        }
+    }
+    if lead_gap > 0.0 {
+        if out.len().is_multiple_of(2) {
+            if let Some(last) = out.last_mut() {
+                *last += lead_gap;
+            }
+        } else {
+            out.push(lead_gap);
+        }
+    }
+    if out.len() < 2 { Vec::new() } else { out }
 }
 
 /// A layer's linetype when its file names none.
@@ -432,9 +485,94 @@ pub struct State {
     /// The model's notes (Rhino's `Notes`), read by the `Notes` field.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub notes: String,
+    /// Linetypes the document holds beside Curva's own, which [`Linetype::Custom`] names by
+    /// place; files leave out an empty list.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub linetypes: Vec<LinetypeDefinition>,
 }
 
 impl State {
+    /// A linetype's name: Curva's own, or the document's.
+    #[must_use]
+    pub fn linetype_name(&self, linetype: Linetype) -> String {
+        match linetype {
+            Linetype::Custom(i) => self
+                .linetypes
+                .get(usize::from(i))
+                .map_or_else(|| "Continuous".to_owned(), |l| l.name.clone()),
+            other => other.name().to_owned(),
+        }
+    }
+
+    /// A linetype's pattern in millimetres on paper: lengths drawn and left out in turn; empty
+    /// for a solid line. What the viewport and printing draw with.
+    #[must_use]
+    pub fn linetype_pattern(&self, linetype: Linetype) -> &[f64] {
+        match linetype {
+            Linetype::Custom(i) => self
+                .linetypes
+                .get(usize::from(i))
+                .map_or(&[], |l| l.pattern.as_slice()),
+            other => other.pattern(),
+        }
+    }
+
+    /// The linetype with this name, ignoring case: Curva's own, then the document's.
+    #[must_use]
+    pub fn linetype_named(&self, name: &str) -> Option<Linetype> {
+        Linetype::named(name).or_else(|| {
+            self.linetypes
+                .iter()
+                .position(|l| l.name.eq_ignore_ascii_case(name.trim()))
+                .and_then(|i| u16::try_from(i).ok())
+                .map(Linetype::Custom)
+        })
+    }
+
+    /// A linetype with this name and pattern, as files bring them: Curva's own of that name,
+    /// the document's of that name, or a new one of the document's (see
+    /// [`Document::add_linetype`]).
+    pub fn add_linetype(&mut self, name: &str, pattern: &[f64]) -> Linetype {
+        if let Some(found) = self.linetype_named(name) {
+            return found;
+        }
+        let Ok(index) = u16::try_from(self.linetypes.len()) else {
+            return Linetype::Continuous;
+        };
+        self.linetypes.push(LinetypeDefinition {
+            name: name.trim().to_owned(),
+            pattern: pattern.to_vec(),
+        });
+        Linetype::Custom(index)
+    }
+
+    /// The linetypes on offer, after `ByLayer`: Curva's own, then the document's.
+    #[must_use]
+    pub fn linetypes_offered(&self) -> Vec<Linetype> {
+        Linetype::ALL
+            .into_iter()
+            .chain(
+                (0..self.linetypes.len())
+                    .filter_map(|i| u16::try_from(i).ok().map(Linetype::Custom)),
+            )
+            .collect()
+    }
+
+    /// The pattern an object draws with: its own linetype's, or its layer's.
+    #[must_use]
+    pub fn object_pattern(&self, object: &Object) -> &[f64] {
+        self.linetype_pattern(object.linetype.resolved(self.layer(object.layer)))
+    }
+
+    /// The colour an object draws with: its own, or its layer's.
+    #[must_use]
+    pub fn object_colour(&self, object: &Object) -> [f32; 3] {
+        object.colour.unwrap_or_else(|| {
+            self.layer(object.layer)
+                .map_or(STANDARD_COLOUR, |l| l.colour)
+        })
+    }
+
     /// The hatch patterns on offer: the built-in ones, with the document's own added or in
     /// their place.
     #[must_use]
@@ -583,6 +721,7 @@ impl State {
             hatch_patterns,
             document_text,
             notes,
+            linetypes,
         } = self;
         objects.len() == other.objects.len()
             && objects
@@ -607,6 +746,7 @@ impl State {
             && *hatch_patterns == other.hatch_patterns
             && *document_text == other.document_text
             && *notes == other.notes
+            && *linetypes == other.linetypes
     }
 }
 
@@ -684,6 +824,7 @@ impl Default for State {
             hatch_patterns: Vec::new(),
             document_text: std::collections::BTreeMap::new(),
             notes: String::new(),
+            linetypes: Vec::new(),
         }
     }
 }
@@ -906,6 +1047,7 @@ impl Document {
             group: None,
             live: None,
             input_of: None,
+            colour: None,
             linetype: Linetype::ByLayer,
             user_text: std::collections::BTreeMap::new(),
             space: self.space,

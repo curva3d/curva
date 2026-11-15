@@ -91,14 +91,19 @@ What does not yet, as of 15 November 2026, to close before 0.4.3:
   frames are not carried.
 - Rhino 5 annotation (its older text and dimension objects) is not read.
 - Details: display mode, per-detail layer visibility and a perspective's lens are not carried.
-- Clipping planes and section styles, and layers' linetypes (the linetype table), are not written or
-  read.
+- Clipping planes and section styles are not written or read.
+- A standard linetype (Rhino's share Curva's seven names) takes Curva's dash lengths rather than the
+  file's (Rhino's Dashed is 5 on, 5 off; Curva's 3 and 1.5). Other linetypes cross with their names
+  and patterns. Objects' own colours cross, but the viewport draws neither those colours nor the
+  document's own linetypes yet, and lays dashes out in model units rather than paper millimetres (#170).
 - Hatch gradients are not carried.
 - Scale bars and tables go out as their drawing (Rhino has no such objects), which is as far as Rhino
   can take them.
 
 **DXF and DWG (AutoCAD)**
-- Linetypes are not written; colours by object are not carried.
+- Objects' colours, line weights and linetypes cross as in `.3dm` (AutoCAD's `DOT` is Dotted; a
+  linetype a file names without defining is drawn continuous and reported); lengths are converted
+  between Curva's paper millimetres and drawing units, as Rhino's DXF does.
 - Text styles and dimension styles are not written (everything uses `Standard`); MTEXT formatting is
   dropped on reading.
 - Ellipses, solids and surfaces (ACIS bodies), meshes, MLEADERs, block attributes, external

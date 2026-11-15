@@ -18,6 +18,7 @@ fn object(id: u64, shape: Shape, layer: u64) -> Object {
         group: None,
         live: None,
         input_of: None,
+        colour: None,
         linetype: Linetype::ByLayer,
         user_text: Default::default(),
     }
@@ -1056,4 +1057,92 @@ fn fields_only_curva_can_work_out_go_out_worked_out() {
         panic!("not a note");
     };
     assert_eq!(t.content, "North wall / %<PageName()>%");
+}
+
+#[test]
+fn linetypes_come_back_on_layers_and_objects() {
+    let mut state = State {
+        layers: vec![
+            Layer {
+                linetype: Linetype::Hidden,
+                ..layer(0, "Hidden lines", [0.5, 0.5, 0.5])
+            },
+            Layer {
+                linetype: Linetype::Center,
+                ..layer(1, "Axes", [0.0, 0.0, 1.0])
+            },
+            layer(2, "Plain", [0.0, 0.0, 0.0]),
+        ],
+        ..State::default()
+    };
+    let line = |y: f64| Shape::Curve(Curve::line([0.0, y, 0.0], [100.0, y, 0.0]).unwrap());
+    state.objects.push(object(0, line(0.0), 0).into());
+    state.objects.push(
+        Object {
+            linetype: Linetype::Border,
+            ..object(1, line(10.0), 1)
+        }
+        .into(),
+    );
+    state.objects.push(
+        Object {
+            linetype: Linetype::Continuous,
+            ..object(2, line(20.0), 0)
+        }
+        .into(),
+    );
+    state.next_id = 3;
+    state.next_layer = 3;
+    let (model, _) = curva_3dm::export::export(&state, None);
+    let names: Vec<&str> = model.linetypes.iter().map(|l| l.name.as_str()).collect();
+    assert_eq!(names, ["Hidden", "Center", "Border"], "only the ones used");
+    assert_eq!(
+        model.linetypes[0].segments,
+        [(1.5, true), (1.0, false)],
+        "Curva's pattern"
+    );
+    let back = round_trip(&state);
+    let by_name = |n: &str| back.layers.iter().find(|l| l.name == n).unwrap().linetype;
+    assert_eq!(by_name("Hidden lines"), Linetype::Hidden);
+    assert_eq!(by_name("Axes"), Linetype::Center);
+    assert_eq!(by_name("Plain"), Linetype::Continuous);
+    let kinds: Vec<Linetype> = back.objects.iter().map(|o| o.linetype).collect();
+    assert_eq!(
+        kinds,
+        [Linetype::ByLayer, Linetype::Border, Linetype::Continuous]
+    );
+}
+
+#[test]
+fn object_colours_and_the_documents_own_linetypes_come_back() {
+    let mut state = State {
+        layers: vec![layer(0, "Walls", [0.5, 0.5, 0.5])],
+        ..State::default()
+    };
+    let wall = state.add_linetype("Wall dash", &[8.0, 2.0, 1.0, 2.0]);
+    state.layers[0].linetype = wall;
+    let line = |y: f64| Shape::Curve(Curve::line([0.0, y, 0.0], [100.0, y, 0.0]).unwrap());
+    state.objects.push(
+        Object {
+            colour: Some([1.0, 0.0, 0.0]),
+            ..object(0, line(0.0), 0)
+        }
+        .into(),
+    );
+    state.objects.push(
+        Object {
+            linetype: wall,
+            ..object(1, line(10.0), 0)
+        }
+        .into(),
+    );
+    state.next_id = 2;
+    state.next_layer = 1;
+    let back = round_trip(&state);
+    assert_eq!(back.objects[0].colour, Some([1.0, 0.0, 0.0]));
+    assert_eq!(back.objects[1].colour, None, "by layer");
+    let wall_back = back.linetype_named("Wall dash").expect("the linetype");
+    assert_eq!(back.linetype_pattern(wall_back), [8.0, 2.0, 1.0, 2.0]);
+    assert_eq!(back.layers[0].linetype, wall_back);
+    assert_eq!(back.objects[1].linetype, wall_back);
 }

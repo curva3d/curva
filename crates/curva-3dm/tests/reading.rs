@@ -1,6 +1,6 @@
 //! Reading Rhino files: openNURBS' example files (spec `docs/specs/3dm-files.md` §4).
 
-use curva_document::Shape;
+use curva_document::{Linetype, Shape};
 
 fn open(name: &str) -> (curva_document::Document, curva_3dm::import::Report) {
     let path = format!("{}/tests/files/{name}", env!("CARGO_MANIFEST_DIR"));
@@ -307,4 +307,25 @@ fn rhinos_layout_user_text_comes_in_with_its_fields() {
         .collect();
     shown.sort();
     assert_eq!(shown, ["Ground floor plan", "LP"]);
+}
+
+#[test]
+fn rhinos_linetypes_come_in_on_layers_and_objects() {
+    // Made in Rhino 8: layers with Dashed, Hidden and a custom "Wall dash" linetype; lines by
+    // layer, one with Border and one with "Wall dash" of their own.
+    let (doc, report) = open("v8_linetypes.3dm");
+    let state = doc.state();
+    let layer = |n: &str| state.layers.iter().find(|l| l.name == n).unwrap().linetype;
+    assert_eq!(layer("Dashed layer"), Linetype::Dashed);
+    assert_eq!(layer("Hidden layer"), Linetype::Hidden);
+    let wall = state
+        .linetype_named("Wall dash")
+        .expect("the document's own");
+    assert_eq!(layer("Wall layer"), wall);
+    assert_eq!(state.linetype_pattern(wall), [8.0, 2.0, 1.0, 2.0]);
+    let object = |n: &str| state.objects.iter().find(|o| o.name == n).unwrap().linetype;
+    assert_eq!(object("by layer"), Linetype::ByLayer);
+    assert_eq!(object("border by object"), Linetype::Border);
+    assert_eq!(object("wall dash by object"), wall);
+    assert!(report.skipped.is_empty(), "{}", report.summary());
 }

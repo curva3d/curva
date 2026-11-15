@@ -37,10 +37,16 @@ Properties yet; built-in title blocks are one design per standard, not one per s
   written with annotation styles (#150). Each checked by opening Curva's file in Rhino 8.
 - Merged (#152): linear, radius, diameter and angle dimensions and leaders, both ways.
 - Merged (#156): layouts and details, both ways.
-- In review: document user text, layout user text and notes, both ways; the `DocumentText`,
+- Merged (#169): document user text, layout user text and notes, both ways; the `DocumentText`,
   `LayoutUserText` and `Notes` fields stay fields for Rhino (a layout named by number goes out as its
   page id and comes back as a number). Checked in Rhino 8 both ways. Rhino writes layout user text
   only when plug-in data is saved (`SaveSmall` with `SavePlugInData=No` drops it).
+- In review: linetypes and objects' own colours both ways in `.3dm`, DXF and DWG. The document gains
+  object colours (`ObjectColour`, a Colour row in Properties) and linetypes of its own that files bring
+  (with their patterns, offered in the Linetype command and drop-downs). Linetype lengths are paper
+  millimetres, as in Rhino and printing; DXF lengths convert to drawing units. DXF and DWG import also
+  takes layers' on, locked and line weight. Checked in Rhino 8 both ways. Drawing the colours and the
+  document's linetypes, and dashes at paper size, is the display stream's (#170).
 - Merged (#158): scale bars and tables to `.3dm` as their plain drawing; fields only Curva can work out written as
   they read.
 

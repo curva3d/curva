@@ -20,7 +20,8 @@ version, which Rhino 7 and 8 open.
 | NURBS surfaces, planes, surfaces of revolution and extrusions | yes, as surfaces | yes |
 | Polysurfaces and solids (B-reps, trimmed faces) | yes | yes |
 | Extrusion objects (Rhino's light solids) | yes, as solids | not written (B-reps instead) |
-| Object names, colours by layer or object, print widths, user text | yes | yes |
+| Object names, colours by layer or object (own colours kept), print widths, user text | yes | yes |
+| Linetypes of layers and objects (the linetype table), lengths in millimetres | yes: Curva's seven by name, others as the document's own with their patterns | yes, the ones used, with their patterns |
 | Groups, locked and hidden objects | yes | yes |
 | Blocks: definitions, instances, linked definitions | yes | yes |
 | Named views and construction planes | yes | yes |

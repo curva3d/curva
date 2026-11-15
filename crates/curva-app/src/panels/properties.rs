@@ -428,6 +428,43 @@ impl Curva {
         if let Some(layer) = chosen {
             self.undoable(|doc| doc.move_to_layer(&selection, layer));
         }
+        // Colour: the layer's, or one of the objects' own (Rhino's display colour).
+        let (own, shown_colour) = {
+            let state = self.doc.state();
+            let chosen: Vec<&curva_document::Object> = state
+                .objects
+                .iter()
+                .filter(|object| selection.contains(&object.id))
+                .map(|object| &**object)
+                .collect();
+            let own: Vec<Option<[f32; 3]>> = chosen.iter().map(|o| o.colour).collect();
+            let same = own
+                .first()
+                .copied()
+                .filter(|first| own.iter().all(|c| c == first));
+            let shown = chosen
+                .first()
+                .map_or(curva_document::STANDARD_COLOUR, |o| state.object_colour(o));
+            (same, shown)
+        };
+        ui.horizontal(|ui| {
+            ui.label(self.text.render(&Message::new("ui.properties.colour")));
+            let by_layer = matches!(own, Some(None));
+            if ui
+                .selectable_label(
+                    by_layer,
+                    self.text.render(&Message::new("ui.width.by_layer")),
+                )
+                .clicked()
+                && !by_layer
+            {
+                self.undoable(|doc| doc.set_colour(&selection, None));
+            }
+            let mut colour = shown_colour;
+            if ui.color_edit_button_rgb(&mut colour).changed() {
+                self.undoable(|doc| doc.set_colour(&selection, Some(colour)));
+            }
+        });
         let widths: Vec<curva_document::PrintWidth> = self
             .doc
             .state()

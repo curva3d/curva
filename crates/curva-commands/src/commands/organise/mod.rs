@@ -15,6 +15,7 @@ pub(crate) mod lock;
 pub(crate) mod lock_swap;
 pub(crate) mod match_properties;
 pub(crate) mod notes;
+pub(crate) mod object_colour;
 pub(crate) mod print_width_command;
 pub(crate) mod purge;
 pub(crate) mod rename;

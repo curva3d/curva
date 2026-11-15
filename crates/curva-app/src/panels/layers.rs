@@ -64,10 +64,11 @@ impl Curva {
         width: f32,
     ) -> Option<curva_document::Linetype> {
         use curva_document::Linetype;
+        let state = self.doc.state();
         let mut chosen = None;
         let label = shown.map_or_else(
             || self.text.render(&Message::new("ui.width.varies")),
-            |l| l.name().to_owned(),
+            |l| state.linetype_name(l),
         );
         egui::ComboBox::from_id_salt(id)
             .selected_text(label)
@@ -76,10 +77,10 @@ impl Curva {
                 let choices = by_layer
                     .then_some(Linetype::ByLayer)
                     .into_iter()
-                    .chain(Linetype::ALL);
+                    .chain(state.linetypes_offered());
                 for choice in choices {
                     if ui
-                        .selectable_label(shown == Some(choice), choice.name())
+                        .selectable_label(shown == Some(choice), state.linetype_name(choice))
                         .clicked()
                     {
                         chosen = Some(choice);
