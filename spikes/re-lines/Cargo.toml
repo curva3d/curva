@@ -1,0 +1,20 @@
+# Spike for #186 (decision 0024): draw the Medium scene's lines with re_renderer and compare with
+# Curva's own. Not part of Curva's workspace or build; not merged.
+[package]
+name = "re-lines-spike"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+re_renderer = { version = "=0.43.2", default-features = false }
+re_math = "=0.33.0"
+glam = "=0.33.12"
+curva-kernel = { path = "../../crates/curva-kernel" }
+curva-document = { path = "../../crates/curva-document" }
+curva-viewport = { path = "../../crates/curva-viewport" }
+egui-wgpu = "0.37"
+pollster = "0.4"
+png = "0.18"
