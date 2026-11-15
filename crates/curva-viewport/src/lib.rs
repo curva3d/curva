@@ -178,6 +178,9 @@ pub struct Outlines {
     dashes: Vec<&'static [f64]>,
     /// Whether each entry is an edge of a surface or solid, in the same order.
     on_faces: Vec<bool>,
+    /// Whether each entry is a seam of a surface or solid (`curva_kernel::BodyMesh::seams`), which
+    /// views showing faces leave out, in the same order.
+    seams: Vec<bool>,
     /// For an edge of a surface or solid, its number among the body's edges, in the same order.
     edge_of: Vec<Option<usize>>,
     /// The box around each object, in the same order, so snapping can skip far-off ones.
@@ -411,6 +414,7 @@ impl Outlines {
         self.widths.extend_from_slice(&other.widths);
         self.dashes.extend_from_slice(&other.dashes);
         self.on_faces.extend_from_slice(&other.on_faces);
+        self.seams.extend_from_slice(&other.seams);
         self.edge_of.extend_from_slice(&other.edge_of);
         self.boxes.extend_from_slice(&other.boxes);
         self.kinds.extend_from_slice(&other.kinds);
@@ -449,6 +453,8 @@ impl Outlines {
                 // A body is meshed once: its triangles for shading, and its edges, each listed
                 // under the body's id, for wireframe, picking and snapping.
                 let mut kind = PickKind::Curve;
+                // A body's seams, by edge number, which shaded views leave out.
+                let mut seam_edges: Vec<usize> = Vec::new();
                 let pieces: Vec<(Curve, Option<usize>)> = match shape {
                     Shape::Curve(curve) => {
                         if matches!(curve, Curve::Point { .. }) {
@@ -465,6 +471,12 @@ impl Outlines {
                         } else {
                             PickKind::Surface
                         };
+                        seam_edges = mesh
+                            .edge_ids
+                            .iter()
+                            .zip(&mesh.seams)
+                            .filter_map(|(id, seam)| seam.then_some(*id))
+                            .collect();
                         let edges = mesh
                             .edges
                             .iter()
@@ -527,6 +539,9 @@ impl Outlines {
                     outlines.widths.push(width);
                     outlines.dashes.push(dashes);
                     outlines.on_faces.push(shape.body().is_some());
+                    outlines
+                        .seams
+                        .push(edge.is_some_and(|e| seam_edges.contains(&e)));
                     outlines.edge_of.push(edge);
                     outlines.kinds.push(kind);
                     outlines.objects.push((object.id, points));
@@ -1257,6 +1272,12 @@ fn lines_of(
             outlines.widths.get(index).copied().flatten(),
             selected.contains(id),
         );
+        // Views showing faces leave seams out: the shading already shows the smooth surface,
+        // which a seam would cut across. Wireframe keeps them until outlines of curved shapes
+        // are drawn there.
+        if shaded && outlines.seams.get(index).copied().unwrap_or(false) {
+            continue;
+        }
         let on_faces = outlines.on_faces.get(index).copied().unwrap_or(false);
         let colour = if selected.contains(id) {
             SELECTED_COLOUR
@@ -2134,5 +2155,19 @@ mod tests {
         let wire = crate::SnapSet::default();
         let hit = outlines.snap(&camera, at, SIZE, &wire, None).unwrap();
         assert_eq!(hit.point, [200.0, 200.0, -10.0]);
+    }
+
+    /// A sphere's only edge is a seam: shaded views, where the shading shows the sphere, leave
+    /// it out; wireframe keeps it, so the sphere does not vanish there.
+    #[test]
+    fn shaded_views_leave_seams_out_and_wireframe_keeps_them() {
+        let mut doc = curva_document::Document::default();
+        doc.add_body(curva_kernel::Body::sphere([0.0; 3], 10.0).unwrap());
+        let outlines = Outlines::of(doc.state());
+        assert!(shaded_object_lines(&outlines, &[]).is_empty());
+        assert!(!object_lines(&outlines, &[]).is_empty());
+        let parts = SceneParts::of(&outlines);
+        assert!(parts.shaded_lines.is_empty());
+        assert!(!parts.lines.is_empty());
     }
 }
