@@ -12,7 +12,7 @@
 | Switching from 3D to plan is instant | Plans are kept up to date in the background, so there is nothing to wait for |
 | Click a wall in plan and it's the same wall as in 3D | Every line on the page remembers the object it came from; selecting, snapping and the gumball are Curva's own and work the same in every view |
 | An edit shows in plan almost at once | Only the changed objects and their neighbours are recalculated, on all cores |
-| You never wait, even on a big model | While the exact plan is recalculated, a fast stand-in from the 3D view shows; the exact plan replaces it a moment later, and only the exact one prints |
+| Edits look instant, with no flicker between 2D and 3D | The plan only ever shows the exact vector page; updates are fast enough to be invisible, and the edit's own preview stays on screen until the updated plan arrives |
 
 This is how Archicad and Revit work: a computed vector drawing for plans and sheets, separate from the shaded 3D view. It avoids Rhino's problem, where the viewport and the vector print come from two methods and can differ. Unlike Archicad, Curva's plan is cut from the real 3D geometry, not drawn by separate 2D scripts, so plan and 3D cannot disagree.
 
@@ -34,10 +34,14 @@ Anything that goes into a PDF as lines comes from the vector page. Nothing in a 
 
 ## 3. What the user sees
 
-- **Switching:** choosing a plan (or the Plan view of a level) in a viewport shows its vector page at once. The camera may glide down to the top view first, then the plan takes over in the same viewport.
+- **Switching:** choosing a plan (or the Plan view of a level) in a viewport shows its vector page at once, in the same viewport.
 - **Editing in plan:** every command works in plan as in 3D, drawing on the plan's level and cut. Picking takes the nearest line on the page and selects its object; window and crossing selection work on the page's lines; snaps (end, mid, near, intersection, perpendicular…) work on the plan's lines, in paper or model units as now.
-- **During a drag:** the usual ghost preview (AGENTS.md command rules) shows the moving objects over the plan. On release, the plan updates for real.
-- **While catching up:** if an edit needs longer than one frame to recalculate, the changed area shows the 3D engine's cut top view (same cut height, same style colours) until the exact page is ready, then switches without a jump. A small marker in the status line shows the plan is updating. Printing and export always wait for the exact page.
+- **During a drag:** the usual ghost preview (AGENTS.md command rules) shows the moving objects over the plan.
+- **After an edit (owner's decision B):** the plan **waits for the exact update**. There is no stand-in from the 3D view, because switching from the old 2D plan to a 3D picture and back to the new plan would be jarring. Instead:
+  - the update is made fast enough not to be seen (targets in §6);
+  - the edit's preview stays on screen over the old plan until the updated page arrives, so the edited object never jumps back to where it was;
+  - only if an update takes longer than 0.3 s does a small marker in the status line say the plan is updating.
+- Printing and export always use the exact page.
 
 ## 4. How it stays fast
 
@@ -62,10 +66,10 @@ Measured on the RTX 3060 at 1920×1080, test house and a larger plan (the *Large
 | What | Target |
 |---|---|
 | Switch from 3D to an open plan | Under one frame (16 ms) |
-| Edit one wall: exact plan updated | Test house under 0.1 s; *Large* under 0.5 s |
-| Edit one wall: something shown in its place | Next frame (the stand-in) |
+| Edit one wall: exact plan updated | Test house under 50 ms (about three frames); *Large* under 0.1 s. Below about a tenth of a second, a change feels instant |
+| Edit many objects at once (moving a whole floor) | Test house under 0.2 s; *Large* under 1 s, with the edit's preview shown meanwhile |
 | Pan and zoom a plan | Under 16 ms per frame (spike: 1.4 ms) |
-| Open a plan never opened before | Test house under 1 s; *Large* under 5 s, with the stand-in shown meanwhile |
+| Open a plan never opened before | Test house under 1 s; *Large* under 5 s, with a progress marker meanwhile |
 | Screen against PDF | No pixel differs by more than a quarter of the colour range (as in the spike), on every reference plan |
 
 If a target looks unreachable after the profiling step, the owner is told with numbers before the work goes on.
@@ -78,21 +82,21 @@ If a target looks unreachable after the profiling step, the owner is told with n
 4. **Features stream:** per-object results kept, and incremental hidden lines (§4.1–4.2), with the from-scratch comparison test.
 5. **Display stream:** plans and sections shown in viewports with Vello from the page, kept current in the background (§4.3–4.4), with the screen-against-PDF test.
 6. **Display stream:** picking, selection and snapping on the page; command previews over plans; the gumball in plan.
-7. **Display stream:** the 3D stand-in while catching up, and the glide from 3D to plan.
+7. **Display stream:** the edit's preview held over the plan until its update arrives, and the status-line marker for slow updates.
 
-Steps 1 to 4 can start now. Steps 5 to 7 follow the Vello adoption work, and the stand-in (7) waits for the 3D engine decision (#186, #198, #199).
+Steps 1 to 4 can start now. Steps 5 to 7 follow the Vello adoption work. None of them depend on the 3D engine decision (#186, #198, #199).
 
 ## 8. Changes outside each stream's own area
 
 - `curva-kernel`: faster cutting and hidden lines; per-object results; incremental hidden lines. Additions; existing results unchanged.
 - `curva-document`: `Mark` carries a source object; views know which plans are open or placed on sheets.
-- `curva-viewport` (display stream): Vello plan views, picking and snapping on pages, the stand-in.
+- `curva-viewport` (display stream): Vello plan views, picking and snapping on pages, previews held until the update arrives.
 - `curva-app`: the status-line marker; viewport title menus open plans.
 
 ## 9. Decisions for the owner
 
 - **A. Vector page as the single source for plans, sections and every line in a PDF** (§2). Agreed in chat on 16 November 2026.
-- **B. A fast 3D stand-in while the exact plan updates** (§3): it's never printed and is replaced within moments. Alternative: no stand-in, and the old plan stays visible until the new one is ready.
+- **B. No 3D stand-in** (§3). Decided in chat on 16 November 2026: the plan waits for the exact update, which must be fast enough not to be seen, with the edit's preview held on screen meanwhile.
 - **C. Targets** (§6): confirm or change.
 
 ## 10. Not covered
