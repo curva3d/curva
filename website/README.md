@@ -23,13 +23,15 @@ npm run dev      # http://localhost:4321, reloads as you edit
 npm run build    # the finished site in website/dist
 ```
 
-## Hosting on Cloudflare Pages
+## Hosting on Cloudflare
 
-The owner connects it once, in the Cloudflare dashboard:
+The site is served by Cloudflare Workers as static files, at **https://curva3d.com**. `wrangler.jsonc` says what to upload (`dist/`) and how: missing pages show `404.html`, and addresses work with or without a trailing slash. Its `name`, `curva`, must match the Worker's name in the dashboard.
 
-1. Workers & Pages → Create → Pages → Connect to Git → choose `curva3d/curva`.
-2. Production branch: `main`. Framework preset: **Astro**. Root directory: `website`. Build command: `npm run build`. Build output directory: `dist`.
-3. Under Environment variables, add `NODE_VERSION` = `22`.
-4. Save and deploy. The site appears at `https://<project-name>.pages.dev`, and every pull request gets its own preview link.
+Set up once, in the Cloudflare dashboard:
 
-After that, every merge to `main` publishes the site. A custom domain can be added later under the project's Custom domains tab. Then set `site` in `astro.config.mjs` to the address (it turns on the sitemap), and make `canonical`, the `hreflang` links and `og:image` in the home pages full addresses (`https://…`).
+1. Workers & Pages → Create application → Import a repository → choose `curva3d/curva`.
+2. Project name `curva`. Build command `npm run build`. Deploy command `npx wrangler deploy`. Under Advanced settings, root directory `website`.
+3. Deploy. Then, in the Worker's Settings → Domains & Routes, add the custom domains `curva3d.com` and `www.curva3d.com`.
+4. Settings → Build → Build watch paths: include `website/*`, so commits to the app don't rebuild the site.
+
+After that, every merge to `main` that touches `website/` publishes the site. Pull requests get a preview link while preview builds are on.

@@ -4,6 +4,7 @@ import starlight from '@astrojs/starlight';
 
 // One site: the home page lives in public/ (index.html, pt/index.html) and the docs under /docs/.
 export default defineConfig({
+	site: 'https://curva3d.com',
 	integrations: [
 		starlight({
 			title: 'Curva',
