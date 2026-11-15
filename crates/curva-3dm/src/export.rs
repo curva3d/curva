@@ -259,6 +259,14 @@ fn geometry_of(shape: &Shape, blocks: &BTreeMap<u64, Uuid>) -> Result<Geometry, 
             let xform = std::array::from_fn(|i2| std::array::from_fn(|j| i.placement[j][i2]));
             Geometry::Instance { block, xform }
         }
+        Shape::Annotation(curva_document::annotation::Annotation::Dot(dot)) => Geometry::Dot {
+            at: dot.at,
+            text: dot.content.clone(),
+            secondary: dot.secondary.clone(),
+            #[allow(clippy::cast_possible_truncation)]
+            height: dot.height.round() as i32,
+            font: dot.font.clone().unwrap_or_default(),
+        },
         // Annotation goes into .3dm files with the round trip at the end of Milestone 3.
         Shape::Annotation(_) => {
             return Err("annotation is not written to .3dm files yet".to_owned());

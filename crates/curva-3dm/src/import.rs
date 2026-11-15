@@ -379,6 +379,24 @@ fn shape_of(
     let text = |e: KernelError| e.0;
     Ok(match geometry {
         Geometry::Point(p) => (Shape::Curve(Curve::Point { at: *p }), "points"),
+        Geometry::Dot {
+            at,
+            text,
+            secondary,
+            height,
+            font,
+        } => (
+            Shape::Annotation(curva_document::annotation::Annotation::Dot(
+                curva_document::annotation::Dot {
+                    at: *at,
+                    content: text.clone(),
+                    secondary: secondary.clone(),
+                    height: f64::from(*height),
+                    font: (!font.trim().is_empty()).then(|| font.clone()),
+                },
+            )),
+            "dots",
+        ),
         Geometry::Curve(c) => (Shape::Curve(curve(c).map_err(text)?), "curves"),
         Geometry::Surface(s) => (Shape::Body(surface_body(s).map_err(text)?), "surfaces"),
         Geometry::Brep(b) => (Shape::Body(brep_body(b).map_err(text)?), "polysurfaces"),
