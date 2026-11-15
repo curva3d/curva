@@ -161,7 +161,7 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | Save | File name | `Version` `SaveSmall` `GeometryOnly` `SaveTextures` `SavePlugInData` `Browse` | none | partly |
 | SaveAs | Asks for a file name; saves there and keeps saving there | none | none | partly |
 | Import | Choose a file (.3dm or .curva); its contents join the model, layers merged by name | none | none | partly |
-| Export | Choose a file; the model is written as .3dm | none | none | partly |
+| Export | Choose a file and its type; the model is written in that format | none | none; `.3dm`, and `.svg` for drawings: the open layout as it prints, or every layout (one file each, named after them) from the model | partly |
 | ExportSelected | Select objects; choose a file; they are written as .3dm | none | none | partly |
 
 ## Added for Rhino parity (after 0.3.0)
