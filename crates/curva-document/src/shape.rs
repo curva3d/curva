@@ -127,6 +127,19 @@ pub fn annotation_curves(annotation: &crate::annotation::Annotation) -> Vec<Curv
             .collect(),
         crate::annotation::Annotation::Dot(d) => vec![Curve::Point { at: d.at }],
         crate::annotation::Annotation::Hatch(h) => h.loops.clone(),
+        crate::annotation::Annotation::ScaleBar(b) => crate::sheet::outline(&b.at, 25.0, 2.0),
+        crate::annotation::Annotation::Table(t) => {
+            let wide = t.width.map_or(30.0, |w| w / t.at.height.max(1e-12));
+            crate::sheet::outline(
+                &t.at,
+                wide,
+                if matches!(t.kind, crate::sheet::TableKind::SheetIndex) {
+                    -4.0
+                } else {
+                    4.0
+                },
+            )
+        }
     }
 }
 
@@ -165,6 +178,8 @@ pub fn annotation_drawing(
             };
         }
         Annotation::Hatch(h) => return hatch_drawing(h, state, space),
+        Annotation::ScaleBar(b) => return crate::sheet::scale_bar_drawing(b, state, space),
+        Annotation::Table(t) => return crate::sheet::table_drawing(t, state),
         _ => {}
     }
     let styles = if state.annotation_styles.is_empty() {
@@ -199,7 +214,11 @@ pub fn annotation_drawing(
         None => shown,
     };
     let parts = match annotation {
-        Annotation::Text(_) | Annotation::Dot(_) | Annotation::Hatch(_) => {
+        Annotation::Text(_)
+        | Annotation::Dot(_)
+        | Annotation::Hatch(_)
+        | Annotation::ScaleBar(_)
+        | Annotation::Table(_) => {
             return AnnotationDrawing::default();
         }
         Annotation::Dimension(d) => d.parts(&style, scale, typed(&d.text, length(d.value()))),
