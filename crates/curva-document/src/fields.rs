@@ -412,7 +412,7 @@ impl Evaluator<'_> {
 
 /// A detail scale in one of Rhino's formats: none (`0.1`), `#:1` (`0.1:1`), `1:#` (`1:10`),
 /// `1=#` (paper inch = model feet, `1" = 10'`), `#=1` (`1/8" = 1'`), `#=1-0` (`1/8" = 1'-0"`).
-fn scale_in_format(scale: f64, format: &str) -> String {
+pub(crate) fn scale_in_format(scale: f64, format: &str) -> String {
     let tidy = |v: f64| {
         let text = format!("{v:.4}");
         text.trim_end_matches('0').trim_end_matches('.').to_owned()

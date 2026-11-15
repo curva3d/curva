@@ -463,6 +463,38 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
             pen.line((8.0, 9.0), (8.0, 12.0));
             pen.line((8.0, 14.0), (11.0, 14.0));
         }
+        // A sheet's border with the title block in its lower right corner.
+        "titleblock" => {
+            pen.rect(2.0, 3.0, 18.0, 16.0);
+            pen.rect(10.0, 13.0, 10.0, 6.0);
+            pen.line_in((10.0, 16.0), (20.0, 16.0), pen.accent());
+        }
+        // A bar of alternate filled and empty blocks over a ruler's ticks.
+        "scalebar" => {
+            pen.rect(2.0, 9.0, 18.0, 4.0);
+            pen.filled(&[(2.0, 9.0), (6.5, 9.0), (6.5, 13.0), (2.0, 13.0)], pen.ink);
+            pen.filled(
+                &[(11.0, 9.0), (15.5, 9.0), (15.5, 13.0), (11.0, 13.0)],
+                pen.ink,
+            );
+            for x in [2.0, 11.0, 20.0] {
+                pen.line((x, 5.0), (x, 8.0));
+            }
+        }
+        // A table with numbered rows.
+        "sheetindex" => {
+            pen.rect(3.0, 3.0, 16.0, 16.0);
+            pen.line((3.0, 7.0), (19.0, 7.0));
+            pen.line((8.0, 7.0), (8.0, 19.0));
+            for y in [11.0, 15.0] {
+                pen.line_in((3.0, y), (19.0, y), pen.accent());
+            }
+        }
+        // A revision triangle with a row of the table under it.
+        "revision" => {
+            pen.path(&[(11.0, 3.0), (18.0, 14.0), (4.0, 14.0)], true);
+            pen.line_in((3.0, 18.0), (19.0, 18.0), pen.accent());
+        }
         // A printer with a sheet coming out.
         "print" => {
             pen.rect(6.0, 2.0, 10.0, 6.0);

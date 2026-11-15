@@ -50,6 +50,17 @@ impl Recipe for What {
                 Shape::Annotation(curva_document::annotation::Annotation::Hatch(h)) => {
                     format!("hatch of {} at scale {}", h.pattern, h.scale)
                 }
+                Shape::Annotation(curva_document::annotation::Annotation::ScaleBar(_)) => {
+                    "scale bar".to_owned()
+                }
+                Shape::Annotation(curva_document::annotation::Annotation::Table(t)) => {
+                    match t.kind {
+                        curva_document::sheet::TableKind::SheetIndex => "sheet index".to_owned(),
+                        curva_document::sheet::TableKind::Revisions(_) => {
+                            "revision table".to_owned()
+                        }
+                    }
+                }
                 Shape::Instance(i) => {
                     let name = cx
                         .doc

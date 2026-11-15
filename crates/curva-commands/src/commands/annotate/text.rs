@@ -32,7 +32,7 @@ pub struct Text {
 
 /// The style's text height where the text goes: a paper size on a layout, else in the model's
 /// unit.
-fn usual_height(doc: &Document) -> f64 {
+pub(crate) fn usual_height(doc: &Document) -> f64 {
     let style = doc.annotation_style(doc.current_annotation_style());
     match doc.space().and_then(|id| doc.layout(id)) {
         Some(layout) => {
