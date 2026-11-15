@@ -66,21 +66,26 @@
   cavity effect, with no Blender code except in GPL crates (decision 0025, #190).
 - **2D direction** (decision 0027): Vello draws 2D views and sheets, vello_cpu the fallback. Its
   production follow-up is not started.
-- Order of work:
-  1. **Finish what is open:** #189 merged (outlines in shaded views); this documentation pull
-     request (decisions 0026 and 0027).
-  2. **#186, re_renderer lines** (spike): report to the owner with pictures, numbers and a
-     recommendation, then wait for the decision.
-  3. **#197, the shaded look from Bevy's shaders, jump-flood outlines and our own cavity**
-     (spike): the same report, then wait.
-  4. **While waiting: #180,** splitting the viewport's large files, with no behaviour change and
-     speed checked before and after.
-  5. **Then, adjusted to the decisions on #186 and #197:** step 11 (instancing, #153), 4c (an edit
-     sends only the changed object), step 12 (off-screen culling, using
-     `crates/curva-viewport/src/index.rs`), step 13 (memory limit).
-  6. If either spike recommends adopting something: propose, as choices with a recommendation, how
-     the remaining steps and the 3D part of `docs/specs/views-and-styles.md` change, before writing
-     production code.
+- Order of work (owner, 16 November 2026: test existing 3D pipelines before deciding):
+  1. **#186, re_renderer: reported, decision on hold.** Borrowing its line and outline technique
+     stands whichever way the 3D route goes. No decision recorded yet. Spike on branch
+     `186-re-renderer-spike`, not merged.
+  2. **#199, viewport-lib as Curva's 3D viewport** (spike, about one session), then **#198, Bevy's
+     renderer inside Curva's 3D views** (spike, about two sessions). Both on branches, nothing
+     merged; the same scenes and measurements as #186 (*Medium*, *Large* with instanced trees,
+     *Far*; RTX 3060 at 1920×1080; two runs each); pictures of the test building next to the
+     Diagram prototype; what Curva would still build on top (dashes, exact arcs, paper-millimetre
+     widths, styles, precision far from the origin). Each reported to the owner with a
+     recommendation, then wait.
+  3. **After both:** one short comparison of the three routes (borrow from re_renderer,
+     viewport-lib, Bevy): looks, speed, what Curva still builds, dependency risk; one
+     recommendation.
+  4. **Between the tests: #180,** splitting the viewport's large files, with no behaviour change
+     and speed checked before and after.
+  5. **#197 (shaded look from Bevy's shaders) waits** for the 3D route decision.
+  6. **Then, adjusted to the decision:** step 11 (instancing, #153), 4c, step 12, step 13; any
+     change to the remaining steps or the 3D part of `docs/specs/views-and-styles.md` proposed as
+     choices first.
 - **Shelved** (decision 0024): steps 14 (occlusion culling) and 15 (clusters, mesh shaders), back
   only if a measured real model is still too slow after steps 11 to 13. The styles prototype's
   third look (Textured) and fine-tuning of the looks wait until the drawing is correct.
