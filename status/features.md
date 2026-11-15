@@ -127,6 +127,8 @@ to then (display modes, glass, line widths, speed measurements).*
 
 **Icon (13 November 2026):** the owner chose the Drafting mark with its architectural construction (`docs/design/curva-logo-drafting.svg`, centred on its circle). `packaging/icons/` holds it as `curva.svg`, PNGs at 256 and 1024 px, and `curva.ico` (16 to 256 px; the sizes up to 48 from `curva-logo-drafting-small.svg`, which leaves the construction out). The PNGs are rendered from the SVGs with headless Edge, and the `.ico` packs them as PNG entries.
 
+**Icon (15 November 2026):** the owner chose a new logo, replacing the Drafting mark (decision 0022, `docs/specs/logo-final.md`): a C drawn as an arc in plan and extruded into a solid, in greyscale, lit from the top left, with no orange. `packaging/icons/` holds it under the same names (`curva.svg`, PNGs at 256 and 1024 px, `curva.ico` at 16 to 256 px, `hicolor/` at 16 to 512 px); 48, 32 and 16–24 px come from versions drawn for those sizes. All logo sources are in `docs/design/brand/`; the Drafting files moved to `docs/design/archive/` and `docs/specs/archive/`. The brand guidelines live in the Curva design system on claude.ai.
+
 **Waiting for the owner**
 - Nothing yet. The engine is solidcore, with Serpentine3D's commands as the base (decision 0010). SolidCraft
   reuse is parked (0009).
