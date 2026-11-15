@@ -54,7 +54,7 @@ jobs:
           stage="$RUNNER_TEMP/stage"
           mkdir -p "$stage/licenses" dist
           cp "target/release/${{ matrix.exe }}" "$stage/${{ matrix.out }}"
-          cp README.md LICENSE-APACHE LICENSE-MIT ATTRIBUTION.md "$stage/"
+          cp README.md LICENSE PLUGIN-EXCEPTION.md LICENSE-APACHE LICENSE-MIT ATTRIBUTION.md "$stage/"
           cp -r licenses/. "$stage/licenses/"
           cargo about generate --locked -m crates/curva-app/Cargo.toml \
             about.hbs -o "$stage/THIRD-PARTY-LICENSES.html"
@@ -110,6 +110,8 @@ jobs:
           cd "$RUNNER_TEMP" && "$GITHUB_WORKSPACE"/dist/*.AppImage --appimage-extract >/dev/null
           test -x squashfs-root/usr/bin/curva
           test -f squashfs-root/usr/share/doc/curva/THIRD-PARTY-LICENSES.html
+          test -f squashfs-root/usr/share/doc/curva/LICENSE
+          test -f squashfs-root/usr/share/doc/curva/PLUGIN-EXCEPTION.md
           for s in 16 24 32 48 64 128 256 512; do
             test -f "squashfs-root/usr/share/icons/hicolor/${s}x${s}/apps/curva.png"
           done
