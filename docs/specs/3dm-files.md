@@ -33,6 +33,7 @@ version, which Rhino 7 and 8 open.
 | Radius, diameter and angle dimensions (`ON_DimRadial`, `ON_DimAngular`), leaders (`ON_Leader`) | yes (looks from Curva's current style; leaders with a landing) | yes |
 | Layouts (page views) with their size, and what is drawn on them (in the file's page unit) | yes | yes, in millimetres, with Rhino's four standard views beside them |
 | Detail views: frame, standard view or perspective, target, scale | yes | yes |
+| Scale bars and tables | — (Rhino has none) | as the plain drawing they make: lines, solid hatches and notes, grouped |
 | Materials, render settings | no | no |
 
 ## 3. Commands and menus

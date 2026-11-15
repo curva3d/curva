@@ -114,6 +114,35 @@ impl Table {
     }
 }
 
+/// A scale bar or table as plain parts, for files that have no such object: lines, closed shapes
+/// to fill, and notes.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SheetParts {
+    /// Lines, the outlines of filled shapes among them.
+    pub lines: Vec<Curve>,
+    /// Closed shapes to fill, each with its holes.
+    pub fills: Vec<Vec<Curve>>,
+    /// Words, as notes.
+    pub texts: Vec<Text>,
+}
+
+impl SheetParts {
+    /// What the parts draw: the notes' letters added as lines and filled shapes.
+    #[must_use]
+    pub fn drawing(self) -> AnnotationDrawing {
+        let mut drawing = AnnotationDrawing {
+            lines: self.lines,
+            fills: self.fills,
+        };
+        for text in &self.texts {
+            let glyphs = text_glyphs(text);
+            drawing.lines.extend(glyphs.iter().flatten().cloned());
+            drawing.fills.extend(glyphs);
+        }
+        drawing
+    }
+}
+
 /// How many paper units one millimetre is, for the layout an annotation is on.
 fn paper_units_per_millimetre(state: &State, space: Option<u64>) -> f64 {
     let unit = space
@@ -151,15 +180,13 @@ fn width_of(place: &Text, content: &str, height: f64) -> f64 {
         .fold(0.0_f64, f64::max)
 }
 
-/// Adds text to a drawing: its letters are lines and filled shapes.
-fn add_text(drawing: &mut AnnotationDrawing, text: &Text) {
-    let glyphs = text_glyphs(text);
-    drawing.lines.extend(glyphs.iter().flatten().cloned());
-    drawing.fills.extend(glyphs);
+/// Adds a note to the parts.
+fn add_text(drawing: &mut SheetParts, text: &Text) {
+    drawing.texts.push(text.clone());
 }
 
 /// Adds a line between two placement coordinates.
-fn add_line(drawing: &mut AnnotationDrawing, place: &Text, a: [f64; 2], b: [f64; 2]) {
+fn add_line(drawing: &mut SheetParts, place: &Text, a: [f64; 2], b: [f64; 2]) {
     if let Ok(line) = Curve::line(at(place, a[0], a[1]), at(place, b[0], b[1])) {
         drawing.lines.push(line);
     }
@@ -193,7 +220,13 @@ fn round_length(wanted: f64) -> (f64, u32) {
 /// What a scale bar draws.
 #[must_use]
 pub fn scale_bar_drawing(bar: &ScaleBar, state: &State, space: Option<u64>) -> AnnotationDrawing {
-    let mut drawing = AnnotationDrawing::default();
+    scale_bar_parts(bar, state, space).drawing()
+}
+
+/// A scale bar as plain parts: its blocks' outlines, the filled ones, and its numbers as notes.
+#[must_use]
+pub fn scale_bar_parts(bar: &ScaleBar, state: &State, space: Option<u64>) -> SheetParts {
+    let mut drawing = SheetParts::default();
     let place = &bar.at;
     let h = place.height;
     let detail = state
@@ -342,7 +375,13 @@ pub fn table_rows(table: &Table, state: &State) -> Vec<Vec<String>> {
 /// What a table draws: a grid of cells with their words, the headings in their own row.
 #[must_use]
 pub fn table_drawing(table: &Table, state: &State) -> AnnotationDrawing {
-    let mut drawing = AnnotationDrawing::default();
+    table_parts(table, state).drawing()
+}
+
+/// A table as plain parts: its grid lines and its words as notes.
+#[must_use]
+pub fn table_parts(table: &Table, state: &State) -> SheetParts {
+    let mut drawing = SheetParts::default();
     let place = &table.at;
     let h = place.height;
     let pad = 0.6 * h;

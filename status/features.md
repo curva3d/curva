@@ -34,10 +34,14 @@ Properties yet; built-in title blocks are one design per standard, not one per s
 - Merged: dots (#146), hatches with the hatch pattern table (#147), Rhino's notes read (#149), Curva's notes
   written with annotation styles (#150). Each checked by opening Curva's file in Rhino 8.
 - Merged (#152): linear, radius, diameter and angle dimensions and leaders, both ways.
-- In review: layouts and details, both ways.
+- Merged (#156): layouts and details, both ways.
+- In review: scale bars and tables to `.3dm` as their plain drawing; fields only Curva can work out written as
+  they read.
 
-**Next:** scale bars, tables and title blocks as plain drawing for Rhino; layout user text and order; DXF
-dimensions and layouts after.
+**Next:** DXF dimensions and leaders (real DIMENSION entities) and layouts; layout user text in `.3dm`.
+
+**Note:** the website's Cloudflare build (`Workers Builds`, from #155) fails on pull request branches. It is not a
+required check, and pull requests that touch no website files merge without it.
 
 ## Current state — 8 November 2026
 
