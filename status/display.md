@@ -6,7 +6,14 @@
 ## 15 November 2026
 
 **Done**
-- Step 4a, **Large opens** (#141): uploads of lines and faces go in blocks of at most 64 MB, and
+- Step 4b, **selecting no longer freezes Curva** (#144): one selection change took 117 ms on
+  *Medium* and 2.3 s on *Large*; now 5.7 ms and 57 ms, about an ordinary frame. Scene vertices
+  carry their object's number and the graphics card looks it up in a selection table (one byte
+  per object), drawing selected objects in the selection colour and lines a pixel wider, exactly
+  as before (a test compares the pictures pixel for pixel). The benchmark measures it with
+  `--select`. Cost: the card's time per frame is up 8–17%. A change on *Large* still costs about
+  9 ms more than an ordinary frame (the spec aims under 1 ms): to look at.
+- Step 4a, **Large opens** (#141, merged as #143): uploads of lines and faces go in blocks of at most 64 MB, and
   views showing the same lines share one copy instead of each sending its own. *Large* orbits at
   47 ms between frames (it crashed before); *Medium* is unchanged. Its first frame takes 58 s and
   it holds about 2.1 GB on the card, both from the 2,000 trees written out one by one (step 11).
@@ -42,17 +49,21 @@
 - Status split per stream and the display stream's rules in `AGENTS.md` (#125).
 
 **In progress / next**
-- Order, by what users notice most: **4b** (objects kept on the card one by one, so selecting
-  sends a few bytes instead of the whole scene), then **#130 with the object index of step 12**
-  (snapping is most of each frame on every large scene), then **step 11** (instancing: *Large*'s
-  58 s first frame and 2.1 GB), then step 13 (memory limit), then steps 2 and 3.
+- Order, by what users notice most: **#130 with the object index of step 12** (snapping is most
+  of each frame on every large scene), then **step 11** (instancing: *Large*'s 58 s first frame and
+  2.1 GB), then **4c** (an edit sends only the changed object), then step 13 (memory limit), then
+  steps 2 and 3.
 
 **Heads-up for the features stream** (changes outside the viewport, decision B)
 - Done: `crates/curva-app/src/benchmark.rs` and the `--orbit-benchmark` arguments in
   `crates/curva-app/src/main.rs` (#131); the window's graphics set-up in `main.rs` now uses
   `curva_viewport::device_descriptor` (#132).
-- Next: step 4 changes what the window hands the viewport each frame (`Drawing`, built in
-  `crates/curva-app/src/viewports.rs` and `sheets.rs`), so selection no longer rebuilds the scene.
+- Done in step 4b (#144): `refresh_scene` in `crates/curva-app/src/viewports.rs` builds the scene
+  with `curva_viewport::SceneParts` once per model change and hands the selection to the viewport
+  through `Drawing::objects` and `Drawing::selection`; `sheets.rs` and `clipping.rs` give the new
+  fields. Pictures for agents still draw the selection into colours, unchanged.
+- **`curva_viewport::Vertex` and `MeshVertex` have a new field `object`** (#144). Code that makes
+  them by hand sets `object: curva_viewport::NO_OBJECT`, as `clipping.rs` now does.
 
 **Open `display` issues**
 - #130: snapping takes most of each frame on large scenes; to use the object index of step 12.

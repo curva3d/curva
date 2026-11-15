@@ -13,6 +13,12 @@ pub(crate) struct ViewportCache {
     pub(crate) meshes: MeshCache,
     /// The faces with those a preview replaces left out, and which those are.
     pub(crate) faces_without: (Vec<u64>, Arc<Vec<MeshVertex>>),
+    /// Which object each number in the scene's lines and faces stands for
+    /// ([`curva_viewport::SceneParts`]).
+    pub(crate) objects: Arc<Vec<u64>>,
+    /// The selection as the viewport draws it: the graphics card colours the selected objects,
+    /// so a new selection is all a selection change sends.
+    pub(crate) selection: Arc<Vec<u64>>,
 }
 
 /// One viewport: what it looks at and what it is tracking.
@@ -196,7 +202,8 @@ impl Curva {
                 (state.same_as(self.doc.state()), chosen == &selection)
             });
         // A changed model is drawn again, reusing what unchanged objects drew as; a changed
-        // selection only recolours.
+        // selection only goes to the graphics card's selection table (spec
+        // `display-pipeline.md` step 4).
         if !model_same {
             // Text fields read the file and the time as well as the model.
             self.drawing.meshes.fields = curva_document::fields::FieldContext::now(self.doc.path());
@@ -208,12 +215,17 @@ impl Curva {
                         theme::current().viewport.ink
                     });
         }
-        if !model_same || !selection_same {
-            self.scene = Arc::new(object_lines(&self.outlines, &selection));
-            self.drawing.shaded_scene = Arc::new(shaded_object_lines(&self.outlines, &selection));
-            self.drawing.faces = Arc::new(face_vertices(&self.outlines, &selection));
-            self.drawn = Some((self.doc.state().clone(), selection));
+        if !model_same {
+            let parts = curva_viewport::SceneParts::of(&self.outlines);
+            self.scene = Arc::new(parts.lines);
+            self.drawing.shaded_scene = Arc::new(parts.shaded_lines);
+            self.drawing.faces = Arc::new(parts.faces);
+            self.drawing.objects = Arc::new(parts.objects);
             self.drawing.faces_without.0.clear();
+        }
+        if !model_same || !selection_same {
+            self.drawing.selection = Arc::new(selection.clone());
+            self.drawn = Some((self.doc.state().clone(), selection));
         }
         // The filter can change without the model changing, so it is passed on every frame.
         self.outlines.set_filter(self.pick_filter);
@@ -711,9 +723,11 @@ impl Curva {
             Arc::clone(&self.drawing.faces)
         } else {
             if self.drawing.faces_without.0 != replaced {
-                let selection = self.doc.selection();
-                let made =
-                    curva_viewport::face_vertices_without(&self.outlines, &selection, &replaced);
+                let made = curva_viewport::scene_faces_without(
+                    &self.outlines,
+                    &self.drawing.objects,
+                    &replaced,
+                );
                 self.drawing.faces_without = (replaced, Arc::new(made));
             }
             Arc::clone(&self.drawing.faces_without.1)
@@ -743,6 +757,8 @@ impl Curva {
                     &self.scene
                 }),
                 faces: pane_faces,
+                objects: Arc::clone(&self.drawing.objects),
+                selection: Arc::clone(&self.drawing.selection),
                 overlay: Arc::clone(&overlay),
                 preview_faces: Arc::clone(&preview_faces),
                 matrix: camera.matrix(size[0] / size[1]),

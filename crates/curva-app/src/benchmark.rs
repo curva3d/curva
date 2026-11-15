@@ -10,6 +10,51 @@ pub(crate) struct Benchmark {
     pub(crate) snapping: Vec<f64>,
     /// Whether the graphics card has a timer, so its own time per frame is reported.
     pub(crate) gpu_timer: bool,
+    /// Whether to select and deselect an object every [`SELECT_EVERY`] frames (`--select`).
+    pub(crate) select: bool,
+    /// The frames at which the selection changed.
+    pub(crate) toggles: Vec<usize>,
+}
+
+/// How often `--select` changes the selection, in frames.
+pub(crate) const SELECT_EVERY: usize = 10;
+
+impl Benchmark {
+    /// With `--select`, once the window has settled: selects the first object that can be
+    /// selected, or clears the selection, every [`SELECT_EVERY`] frames, as clicking would.
+    pub(crate) fn select_step(&mut self, doc: &mut Document) {
+        let frame = self.times.len();
+        if !self.select || frame < SETTLE_FRAMES || !frame.is_multiple_of(SELECT_EVERY) {
+            return;
+        }
+        let Some(first) = doc.selectable().first().copied() else {
+            return;
+        };
+        if doc.selection().is_empty() {
+            doc.select(&[first]);
+        } else {
+            doc.select(&[]);
+        }
+        self.toggles.push(frame);
+    }
+
+    /// The slowest gap between frames in the few frames after each selection change, as the
+    /// change is drawn in the next frame or two; the median over all changes, in milliseconds.
+    fn selection_gap_ms(&self) -> Option<f64> {
+        let mut slowest: Vec<f64> = self
+            .toggles
+            .iter()
+            .filter_map(|&at| {
+                let after = self.times.get(at..(at + 4).min(self.times.len()))?;
+                after
+                    .windows(2)
+                    .map(|pair| (pair[1] - pair[0]) * 1000.0)
+                    .max_by(f64::total_cmp)
+            })
+            .collect();
+        slowest.sort_by(f64::total_cmp);
+        slowest.get(slowest.len() / 2).copied()
+    }
 }
 
 /// Builds a benchmark scene: square grids side by side along X, in this order: circles, spline
@@ -156,6 +201,8 @@ pub(crate) struct BenchmarkScene {
     pub(crate) trees: usize,
     /// Where the scene is moved to, for drawing far from the origin.
     pub(crate) offset: Point,
+    /// Whether the benchmark also selects and deselects an object now and then (`--select`).
+    pub(crate) select: bool,
 }
 
 impl BenchmarkScene {
@@ -168,6 +215,7 @@ impl BenchmarkScene {
             shapes: 100,
             trees: 2_000,
             offset: [0.0; 3],
+            select: false,
         };
         match name {
             "medium" => Some(Self {
@@ -255,6 +303,12 @@ impl Benchmark {
             Some(ms) if self.gpu_timer => println!("graphics card per frame: {ms:.2} ms"),
             _ => println!("graphics card per frame: not measured (the card has no timer)"),
         }
+        if let Some(gap) = self.selection_gap_ms() {
+            println!(
+                "after a selection change: median slowest frame gap {gap:.1} ms ({} changes)",
+                self.toggles.len()
+            );
+        }
     }
 }
 
@@ -313,6 +367,7 @@ mod tests {
             shapes: 2,
             trees: 3,
             offset,
+            select: false,
         }
     }
 
@@ -368,5 +423,54 @@ mod tests {
             assert!((far_low[axis] - near_low[axis] - shift).abs() < 1e-3);
             assert!((far_high[axis] - near_high[axis] - shift).abs() < 1e-3);
         }
+    }
+
+    #[test]
+    fn select_changes_the_selection_every_few_frames_once_settled() {
+        let mut doc = Document::default();
+        let scene = BenchmarkScene {
+            curves: 2,
+            ..BenchmarkScene::default()
+        };
+        benchmark_scene(&mut doc, scene).unwrap();
+        let mut benchmark = Benchmark {
+            select: true,
+            ..Benchmark::default()
+        };
+        let mut selected = Vec::new();
+        for frame in 0..SETTLE_FRAMES + 3 * SELECT_EVERY {
+            // A frame every 5 ms, and 30 ms just after each change, as a slow redraw would be.
+            let gap = if benchmark.toggles.last().is_some_and(|&at| at + 1 == frame) {
+                0.030
+            } else {
+                0.005
+            };
+            let last = benchmark.times.last().copied().unwrap_or(0.0);
+            benchmark.times.push(last + gap);
+            benchmark.select_step(&mut doc);
+            selected.push(doc.selection().len());
+        }
+        assert_eq!(
+            benchmark.toggles,
+            [
+                SETTLE_FRAMES,
+                SETTLE_FRAMES + 10,
+                SETTLE_FRAMES + 20,
+                SETTLE_FRAMES + 30
+            ]
+        );
+        // Nothing selected while settling, then on, off, on, off.
+        assert!(selected[..SETTLE_FRAMES - 1].iter().all(|&n| n == 0));
+        assert_eq!(selected[SETTLE_FRAMES - 1], 1);
+        assert_eq!(selected.last(), Some(&0));
+        let gap = benchmark.selection_gap_ms().unwrap();
+        assert!((gap - 30.0).abs() < 1e-6, "{gap}");
+        // Without `--select`, nothing changes.
+        let mut idle = Benchmark {
+            times: vec![0.0; SETTLE_FRAMES],
+            ..Benchmark::default()
+        };
+        idle.select_step(&mut doc);
+        assert!(idle.toggles.is_empty());
     }
 }

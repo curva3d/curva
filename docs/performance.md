@@ -151,3 +151,24 @@ opens** (before: crashed). Its first frame takes 58 s, nearly all of it writing 
 2,000 trees' 5,344 triangles one by one (instancing, step 11, removes that), and by the block sizes measured above the card's memory
 holds about 2.1 GB for it, too much for integrated graphics (memory limit, step 13). Snapping is
 still most of each frame (#130). (*Medium*'s first frame is mostly building its cylinders, #136.)
+
+## Selecting without rebuilding the scene (step 4b)
+
+`--orbit-benchmark --select` selects and deselects one object every 10 frames once the window
+has settled, and reports the median of the slowest frame gap in the few frames after each change.
+Before, the window baked the selection colour into every vertex, so each change rebuilt and sent
+all lines and faces again. Now each vertex carries its object's number, and the graphics card
+looks it up in a small selection table (one byte per object) that is all a change sends. Same
+machine, display and build as above, nothing else building, each run twice:
+
+| Scene | One selection change, before | After | Ordinary frame gap after |
+|---|---|---|---|
+| `--scene medium` | 116.7–118.3 ms | 5.6–5.7 ms | 4.8 ms |
+| `--scene large --trees 0` | 1,113.8–1,121.2 ms | 52.6–52.8 ms | 43.6–43.9 ms |
+| `--scene large` | 2,264.6–2,301.7 ms | 56.7–57.9 ms | 47.8–48.7 ms |
+
+(The second "before" run of `--scene large` overlapped another session's build; it agreed with
+the first, so it was kept.) A change on *Large* still costs about 9 ms more than an ordinary
+frame, against the spec's aim of under 1 ms; the rest of the window's work on a change is next to
+look at. The graphics card's time per frame rose from 1.52 to 1.65 ms on *Medium* and from 18.7 to
+22.0 ms on *Large*: vertices are 4 bytes larger and each looks the table up.

@@ -29,7 +29,7 @@ const PICK_SEARCH_STEPS: usize = 48;
 const HIDING_ALLOWANCE: f64 = 0.002;
 const GRID_COLOUR: [f32; 3] = [0.30, 0.31, 0.34];
 const CURVE_COLOUR: [f32; 3] = [0.92, 0.92, 0.95];
-const SELECTED_COLOUR: [f32; 3] = PREVIEW_COLOUR;
+pub(crate) const SELECTED_COLOUR: [f32; 3] = PREVIEW_COLOUR;
 const LOCKED_COLOUR: [f32; 3] = [0.45, 0.45, 0.48];
 /// Edges of surfaces and solids in shaded views.
 const EDGE_ON_FACES_COLOUR: [f32; 3] = [0.08, 0.08, 0.1];
@@ -103,13 +103,20 @@ pub struct Vertex {
     /// How thick its line is drawn: millimetres on the screen when positive, or that many
     /// pixels, negated, when zero or negative ([`line_width`]).
     pub width: f32,
+    /// The object's number in the scene's list ([`SceneParts::objects`]), whose selection the
+    /// graphics card looks up, or [`NO_OBJECT`] for lines whose look is final as given.
+    pub object: u32,
 }
+
+/// The [`Vertex::object`] of lines and faces that belong to no object in the scene's list:
+/// previews, the grid, and pictures, whose selection is drawn into their colours.
+pub const NO_OBJECT: u32 = u32::MAX;
 
 /// How thick the default line is, in pixels.
 pub const DEFAULT_LINE_PIXELS: f32 = 2.0;
 
 /// A pixel of a 96 dpi screen, in millimetres.
-const MM_PER_PIXEL: f32 = 25.4 / 96.0;
+pub(crate) const MM_PER_PIXEL: f32 = 25.4 / 96.0;
 
 /// The grid and axes stay a pixel thick.
 pub(crate) const GRID_WIDTH: f32 = -1.0;
@@ -133,6 +140,8 @@ pub struct MeshVertex {
     pub normal: [f32; 3],
     /// Colour, red, green and blue from 0 to 1.
     pub colour: [f32; 3],
+    /// As [`Vertex::object`].
+    pub object: u32,
 }
 
 /// A body's triangles, ready to shade.
@@ -1053,11 +1062,13 @@ fn segment_with(out: &mut Vec<Vertex>, a: [f32; 3], b: [f32; 3], colour: [f32; 3
         position: a,
         colour,
         width,
+        object: NO_OBJECT,
     });
     out.push(Vertex {
         position: b,
         colour,
         width,
+        object: NO_OBJECT,
     });
 }
 
@@ -1160,19 +1171,81 @@ pub fn shaded_scene_lines(outlines: &Outlines, selected: &[u64]) -> Vec<Vertex> 
 /// The objects as line segments.
 #[must_use]
 pub fn object_lines(outlines: &Outlines, selected: &[u64]) -> Vec<Vertex> {
-    lines_of(outlines, selected, false)
+    lines_of(outlines, selected, false, None)
 }
 
 /// The objects as line segments for a shaded view, where the edges of surfaces and solids
 /// are dark so they show against the faces, as in Rhino. Curves keep their layer's colour.
 #[must_use]
 pub fn shaded_object_lines(outlines: &Outlines, selected: &[u64]) -> Vec<Vertex> {
-    lines_of(outlines, selected, true)
+    lines_of(outlines, selected, true, None)
 }
 
-fn lines_of(outlines: &Outlines, selected: &[u64], shaded: bool) -> Vec<Vertex> {
+/// The window's scene (spec `display-pipeline.md` step 4): the lines and faces of every object,
+/// each vertex carrying its object's number in [`Self::objects`] and drawn unselected. The
+/// graphics card looks each number up in its selection table, so a change of selection sends a
+/// few bytes instead of the whole scene again.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SceneParts {
+    /// The objects' lines, for wireframe and ghosted views.
+    pub lines: Vec<Vertex>,
+    /// The objects' lines for shaded views, with dark edges on faces.
+    pub shaded_lines: Vec<Vertex>,
+    /// The faces of surfaces and solids.
+    pub faces: Vec<MeshVertex>,
+    /// Which object each number stands for: number `n` is `objects[n]`.
+    pub objects: Vec<u64>,
+}
+
+impl SceneParts {
+    /// The scene of `outlines`, numbered.
+    #[must_use]
+    pub fn of(outlines: &Outlines) -> Self {
+        let mut objects = Vec::new();
+        let mut numbers = std::collections::HashMap::new();
+        let ids = outlines.objects.iter().map(|(id, _)| *id);
+        for id in ids.chain(outlines.faces.iter().map(|faces| faces.id)) {
+            numbers.entry(id).or_insert_with(|| {
+                objects.push(id);
+                (objects.len() - 1) as u32
+            });
+        }
+        Self {
+            lines: lines_of(outlines, &[], false, Some(&numbers)),
+            shaded_lines: lines_of(outlines, &[], true, Some(&numbers)),
+            faces: faces_of(outlines, &[], &[], Some(&numbers)),
+            objects,
+        }
+    }
+}
+
+/// The faces of a [`SceneParts`] numbered by its `objects`, leaving out the objects `hidden`, as
+/// while a preview stands in for them.
+#[must_use]
+pub fn scene_faces_without(
+    outlines: &Outlines,
+    objects: &[u64],
+    hidden: &[u64],
+) -> Vec<MeshVertex> {
+    let numbers = objects
+        .iter()
+        .enumerate()
+        .map(|(number, id)| (*id, number as u32))
+        .collect();
+    faces_of(outlines, &[], hidden, Some(&numbers))
+}
+
+/// Lines of every object. With `numbers`, each vertex carries its object's number and the
+/// selection is left to the graphics card; without, selected objects are drawn so here.
+fn lines_of(
+    outlines: &Outlines,
+    selected: &[u64],
+    shaded: bool,
+    numbers: Option<&std::collections::HashMap<u64, u32>>,
+) -> Vec<Vertex> {
     let mut out = Vec::new();
     for (index, (id, points)) in outlines.objects.iter().enumerate() {
+        let start = out.len();
         let width = line_width(
             outlines.widths.get(index).copied().flatten(),
             selected.contains(id),
@@ -1193,6 +1266,11 @@ fn lines_of(outlines: &Outlines, selected: &[u64], shaded: bool) -> Vec<Vertex> 
         } else {
             dashed(&mut out, points, dashes, colour, width);
         }
+        if let Some(&number) = numbers.and_then(|numbers| numbers.get(id)) {
+            for vertex in &mut out[start..] {
+                vertex.object = number;
+            }
+        }
     }
     out
 }
@@ -1210,6 +1288,16 @@ pub fn face_vertices_without(
     selected: &[u64],
     hidden: &[u64],
 ) -> Vec<MeshVertex> {
+    faces_of(outlines, selected, hidden, None)
+}
+
+/// Faces of every object not `hidden`, numbered as [`lines_of`] numbers lines.
+fn faces_of(
+    outlines: &Outlines,
+    selected: &[u64],
+    hidden: &[u64],
+    numbers: Option<&std::collections::HashMap<u64, u32>>,
+) -> Vec<MeshVertex> {
     let mut out = Vec::new();
     for faces in outlines
         .faces
@@ -1223,6 +1311,10 @@ pub fn face_vertices_without(
         } else {
             faces.colour
         };
+        let object = numbers
+            .and_then(|numbers| numbers.get(&faces.id))
+            .copied()
+            .unwrap_or(NO_OBJECT);
         let mesh = &faces.mesh;
         for triangle in &mesh.triangles {
             for &corner in triangle {
@@ -1236,6 +1328,7 @@ pub fn face_vertices_without(
                     position: narrow(*position),
                     normal: narrow(*normal),
                     colour,
+                    object,
                 });
             }
         }
@@ -1258,6 +1351,7 @@ pub fn ghost_faces(meshes: &[curva_kernel::BodyMesh]) -> Vec<MeshVertex> {
                     position: narrow(*position),
                     normal: narrow(*normal),
                     colour: PREVIEW_COLOUR,
+                    object: NO_OBJECT,
                 });
             }
         }

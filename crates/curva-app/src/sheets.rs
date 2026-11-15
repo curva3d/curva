@@ -211,6 +211,8 @@ impl Curva {
                 faces,
                 overlay: Arc::default(),
                 preview_faces: Arc::default(),
+                objects: Arc::default(),
+                selection: Arc::default(),
                 matrix: camera.matrix(f64::from(shown.width() / shown.height())),
                 light: camera.forward().map(|value| value as f32),
                 shaded,

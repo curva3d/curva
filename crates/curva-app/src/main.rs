@@ -274,7 +274,10 @@ impl Curva {
             scene: Arc::new(Vec::new()),
             measured: None,
             drawn: None,
-            benchmark: benchmark.map(|_| Benchmark::default()),
+            benchmark: benchmark.map(|scene| Benchmark {
+                select: scene.select,
+                ..Benchmark::default()
+            }),
             autosave,
             settings: theme::file()
                 .filter(|_| benchmark.is_none())
@@ -401,6 +404,7 @@ impl eframe::App for Curva {
             benchmark
                 .snapping
                 .push(started.elapsed().as_secs_f64() * 1000.0);
+            benchmark.select_step(&mut self.doc);
             if benchmark.record(ui, frame) {
                 benchmark.report(frame);
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
@@ -466,6 +470,7 @@ fn run() -> Result<(), String> {
                 solids: count("--solids").unwrap_or(scene.solids),
                 splines: count("--splines").unwrap_or(scene.splines),
                 trees: count("--trees").unwrap_or(scene.trees),
+                select: arguments.iter().any(|argument| argument == "--select"),
                 ..scene
             }
         });

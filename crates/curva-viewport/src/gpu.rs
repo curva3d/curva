@@ -1,8 +1,39 @@
 //! Drawing lines and shaded surfaces on the graphics card, on screen and into a picture file.
 
-use crate::{MeshVertex, Vertex};
+use crate::{MeshVertex, NO_OBJECT, Vertex};
 use egui_wgpu::wgpu;
 use std::sync::Arc;
+
+/// How many objects one row of the selection table holds (spec `display-pipeline.md` step 4).
+const PICK_ROW: u32 = 4096;
+
+/// Put in front of the line and face shaders: the selection table, one byte per object, 1 where
+/// the object is selected. It is a texture, not a storage buffer, so the OpenGL fallback reads it
+/// too. `picked` looks an object up; `widened` makes a selected line a pixel wider, as
+/// [`crate::line_width`] does.
+fn table_wgsl() -> String {
+    let [r, g, b] = crate::SELECTED_COLOUR;
+    format!(
+        "
+@group(0) @binding(1) var picks: texture_2d<u32>;
+const SELECTED: vec3<f32> = vec3<f32>({r:?}, {g:?}, {b:?});
+const NO_OBJECT: u32 = {NO_OBJECT}u;
+const MM_PER_PIXEL: f32 = {mm:?};
+fn picked(object: u32) -> bool {{
+    if (object == NO_OBJECT) {{ return false; }}
+    let size = textureDimensions(picks);
+    let at = vec2<u32>(object % size.x, object / size.x);
+    if (at.y >= size.y) {{ return false; }}
+    return textureLoad(picks, at, 0).r != 0u;
+}}
+fn widened(width: f32, chosen: bool) -> f32 {{
+    if (!chosen) {{ return width; }}
+    return select(width - 1.0, width + MM_PER_PIXEL, width > 0.0);
+}}
+",
+        mm = crate::MM_PER_PIXEL,
+    )
+}
 
 /// The grid: true one-pixel lines, two vertices a segment.
 const GRID_SHADER: &str = "
@@ -44,9 +75,17 @@ fn pixels(width: f32) -> f32 {
 }
 @vertex fn vertex_main(
     @builtin(vertex_index) corner: u32,
-    @location(0) a: vec3<f32>, @location(1) ca: vec3<f32>, @location(2) wa: f32,
-    @location(3) b: vec3<f32>, @location(4) cb: vec3<f32>, @location(5) wb: f32,
+    @location(0) a: vec3<f32>, @location(1) given_ca: vec3<f32>, @location(2) given_wa: f32,
+    @location(6) object: u32,
+    @location(3) b: vec3<f32>, @location(4) given_cb: vec3<f32>, @location(5) given_wb: f32,
+    @location(7) object_b: u32,
 ) -> Out {
+    // A selected object draws in the selection colour and a pixel wider (`line_width`).
+    let chosen = picked(object);
+    let ca = select(given_ca, SELECTED, chosen);
+    let cb = select(given_cb, SELECTED, chosen);
+    let wa = widened(given_wa, chosen);
+    let wb = widened(given_wb, chosen);
     var pa = uniforms.matrix * vec4<f32>(a, 1.0);
     var pb = uniforms.matrix * vec4<f32>(b, 1.0);
     // Behind the camera: cut the segment where it crosses the near plane.
@@ -108,8 +147,9 @@ struct Out {
 };
 @vertex fn vertex_main(
     @location(0) p: vec3<f32>, @location(1) n: vec3<f32>, @location(2) c: vec3<f32>,
+    @location(3) object: u32,
 ) -> Out {
-    return Out(uniforms.matrix * vec4<f32>(p, 1.0), n, c, p);
+    return Out(uniforms.matrix * vec4<f32>(p, 1.0), n, select(c, SELECTED, picked(object)), p);
 }
 @fragment fn fragment_main(input: Out) -> @location(0) vec4<f32> {
     if (clipped(input.world)) { discard; }
@@ -144,8 +184,9 @@ struct Out {
 };
 @vertex fn vertex_main(
     @location(0) p: vec3<f32>, @location(1) n: vec3<f32>, @location(2) c: vec3<f32>,
+    @location(3) object: u32,
 ) -> Out {
-    return Out(uniforms.matrix * vec4<f32>(p, 1.0), n, c, p);
+    return Out(uniforms.matrix * vec4<f32>(p, 1.0), n, select(c, SELECTED, picked(object)), p);
 }
 @fragment fn fragment_main(input: Out) -> @location(0) vec4<f32> {
     if (clipped(input.world)) { discard; }
@@ -182,8 +223,9 @@ struct Out {
 };
 @vertex fn vertex_main(
     @location(0) p: vec3<f32>, @location(1) n: vec3<f32>, @location(2) c: vec3<f32>,
+    @location(3) object: u32,
 ) -> Out {
-    return Out(uniforms.matrix * vec4<f32>(p, 1.0), n, c, p);
+    return Out(uniforms.matrix * vec4<f32>(p, 1.0), n, select(c, SELECTED, picked(object)), p);
 }
 @fragment fn fragment_main(input: Out) -> @location(0) vec4<f32> {
     if (clipped(input.world)) { discard; }
@@ -219,8 +261,9 @@ struct Out {
 };
 @vertex fn vertex_main(
     @location(0) p: vec3<f32>, @location(1) n: vec3<f32>, @location(2) c: vec3<f32>,
+    @location(3) object: u32,
 ) -> Out {
-    return Out(uniforms.matrix * vec4<f32>(p, 1.0), n, c, p);
+    return Out(uniforms.matrix * vec4<f32>(p, 1.0), n, select(c, SELECTED, picked(object)), p);
 }
 @fragment fn fragment_main(input: Out) -> @location(0) vec4<f32> {
     if (clipped(input.world)) { discard; }
@@ -236,13 +279,14 @@ pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
 /// Bits of depth to ask the window for, matching [`DEPTH_FORMAT`].
 pub const DEPTH_BITS: u8 = 24;
 
-/// A line vertex: position, colour and width.
-const LINE_VERTEX_SIZE: u64 = 28;
+/// A line vertex: position, colour, width and object number.
+const LINE_VERTEX_SIZE: u64 = 32;
 /// A segment, both its ends, read as one instance by [`LINE_SHADER`].
 const SEGMENT_SIZE: u64 = 2 * LINE_VERTEX_SIZE;
 /// The corners of the two triangles of a segment's quad.
 const SEGMENT_CORNERS: u32 = 6;
-const FACE_VERTEX_SIZE: u64 = 36;
+/// A face vertex: position, normal, colour and object number.
+const FACE_VERTEX_SIZE: u64 = 40;
 const UNIFORM_SIZE: u64 = 160;
 
 /// The most clipping planes one view is cut by.
@@ -280,6 +324,7 @@ fn line_bytes(lines: &[Vertex]) -> Vec<u8> {
         {
             bytes.extend(value.to_le_bytes());
         }
+        bytes.extend(vertex.object.to_le_bytes());
     }
     bytes
 }
@@ -295,6 +340,7 @@ fn face_bytes(faces: &[MeshVertex]) -> Vec<u8> {
         {
             bytes.extend(value.to_le_bytes());
         }
+        bytes.extend(vertex.object.to_le_bytes());
     }
     bytes
 }
@@ -394,6 +440,99 @@ pub const VIEW_SLOTS: usize = 4;
 /// holds buffers only once it draws something.
 pub const DETAIL_SLOTS: usize = 12;
 
+/// The selection table on the graphics card (`table_wgsl`): one byte per numbered object,
+/// [`PICK_ROW`] to a row, 1 where the object is selected, and the object list and selection it
+/// was last written for.
+struct Picks {
+    texture: wgpu::Texture,
+    view: wgpu::TextureView,
+    rows: u32,
+    objects: Arc<Vec<u64>>,
+    selection: Arc<Vec<u64>>,
+}
+
+impl Picks {
+    /// An empty table of `rows` rows.
+    fn new(device: &wgpu::Device, rows: u32) -> Self {
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("curva selection table"),
+            size: wgpu::Extent3d {
+                width: PICK_ROW,
+                height: rows,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::R8Uint,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        Self {
+            texture,
+            view,
+            rows,
+            // Never the same as a drawing's lists, so the first drawing writes the table.
+            objects: Arc::default(),
+            selection: Arc::default(),
+        }
+    }
+
+    fn write(&self, queue: &wgpu::Queue, bytes: &[u8]) {
+        queue.write_texture(
+            self.texture.as_image_copy(),
+            bytes,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(PICK_ROW),
+                rows_per_image: Some(self.rows),
+            },
+            wgpu::Extent3d {
+                width: PICK_ROW,
+                height: self.rows,
+                depth_or_array_layers: 1,
+            },
+        );
+    }
+}
+
+/// What the selection table holds, row by row, for `rows` rows of objects numbered as in
+/// `objects` with `selection` chosen: 1 for a selected object, 0 otherwise.
+fn table_bytes(rows: u32, objects: &[u64], selection: &[u64]) -> Vec<u8> {
+    let mut bytes = vec![0; (PICK_ROW * rows) as usize];
+    if !selection.is_empty() {
+        let chosen: std::collections::HashSet<&u64> = selection.iter().collect();
+        for (byte, id) in bytes.iter_mut().zip(objects) {
+            *byte = u8::from(chosen.contains(id));
+        }
+    }
+    bytes
+}
+
+/// A view's bindings: its camera and the selection table.
+fn bind_view(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    uniforms: &wgpu::Buffer,
+    picks: &Picks,
+) -> wgpu::BindGroup {
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("curva camera"),
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniforms.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::TextureView(&picks.view),
+            },
+        ],
+    })
+}
+
 /// What each view keeps for itself on the graphics card.
 struct ViewSlot {
     uniforms: wgpu::Buffer,
@@ -427,6 +566,10 @@ pub struct LineRenderer {
     background: Background,
     /// The graphics card's timer for the benchmark, once asked for and if the card has one.
     timer: Option<crate::timer::GpuTimer>,
+    /// The bindings every view uses, kept to bind again when the selection table grows.
+    layout: wgpu::BindGroupLayout,
+    /// The selection table.
+    picks: Picks,
     /// The largest block one upload is split into ([`CHUNK_BYTES`]; smaller in tests).
     chunk_bytes: u64,
 }
@@ -542,7 +685,7 @@ impl Background {
 
 struct PipelineParts<'a> {
     label: &'static str,
-    shader: &'static str,
+    shader: &'a str,
     stride: u64,
     attributes: &'a [wgpu::VertexAttribute],
     topology: wgpu::PrimitiveTopology,
@@ -616,17 +759,31 @@ impl LineRenderer {
     pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("curva camera"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                // The selection table (`table_wgsl`).
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Uint,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+            ],
         });
+        let picks = Picks::new(device, 1);
         let slots = (0..VIEW_SLOTS + DETAIL_SLOTS)
             .map(|_| {
                 let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
@@ -635,14 +792,7 @@ impl LineRenderer {
                     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                     mapped_at_creation: false,
                 });
-                let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("curva camera"),
-                    layout: &layout,
-                    entries: &[wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: uniforms.as_entire_binding(),
-                    }],
-                });
+                let bind_group = bind_view(device, &layout, &uniforms, &picks);
                 ViewSlot {
                     uniforms,
                     bind_group,
@@ -683,11 +833,11 @@ impl LineRenderer {
             &pipeline_layout,
             &PipelineParts {
                 label: "curva lines",
-                shader: LINE_SHADER,
+                shader: &format!("{}{LINE_SHADER}", table_wgsl()),
                 stride: SEGMENT_SIZE,
                 attributes: &wgpu::vertex_attr_array![
-                    0 => Float32x3, 1 => Float32x3, 2 => Float32,
-                    3 => Float32x3, 4 => Float32x3, 5 => Float32
+                    0 => Float32x3, 1 => Float32x3, 2 => Float32, 6 => Uint32,
+                    3 => Float32x3, 4 => Float32x3, 5 => Float32, 7 => Uint32
                 ],
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 // Pulled a little toward the camera, so a line wins over a face or grid at its own depth.
@@ -697,7 +847,7 @@ impl LineRenderer {
             },
         );
         let face_attributes = wgpu::vertex_attr_array![
-            0 => Float32x3, 1 => Float32x3, 2 => Float32x3
+            0 => Float32x3, 1 => Float32x3, 2 => Float32x3, 3 => Uint32
         ];
         let faces = pipeline(
             device,
@@ -705,7 +855,7 @@ impl LineRenderer {
             &pipeline_layout,
             &PipelineParts {
                 label: "curva faces",
-                shader: FACE_SHADER,
+                shader: &format!("{}{FACE_SHADER}", table_wgsl()),
                 stride: FACE_VERTEX_SIZE,
                 attributes: &face_attributes,
                 topology: wgpu::PrimitiveTopology::TriangleList,
@@ -720,7 +870,7 @@ impl LineRenderer {
             &pipeline_layout,
             &PipelineParts {
                 label: "curva ghosted faces",
-                shader: GHOST_FACE_SHADER,
+                shader: &format!("{}{GHOST_FACE_SHADER}", table_wgsl()),
                 stride: FACE_VERTEX_SIZE,
                 attributes: &face_attributes,
                 topology: wgpu::PrimitiveTopology::TriangleList,
@@ -735,7 +885,7 @@ impl LineRenderer {
             &pipeline_layout,
             &PipelineParts {
                 label: "curva zebra faces",
-                shader: ZEBRA_FACE_SHADER,
+                shader: &format!("{}{ZEBRA_FACE_SHADER}", table_wgsl()),
                 stride: FACE_VERTEX_SIZE,
                 attributes: &face_attributes,
                 topology: wgpu::PrimitiveTopology::TriangleList,
@@ -750,7 +900,7 @@ impl LineRenderer {
             &pipeline_layout,
             &PipelineParts {
                 label: "curva draft faces",
-                shader: DRAFT_FACE_SHADER,
+                shader: &format!("{}{DRAFT_FACE_SHADER}", table_wgsl()),
                 stride: FACE_VERTEX_SIZE,
                 attributes: &face_attributes,
                 topology: wgpu::PrimitiveTopology::TriangleList,
@@ -770,6 +920,8 @@ impl LineRenderer {
             background,
             timer: None,
             chunk_bytes: CHUNK_BYTES,
+            layout,
+            picks,
             slots,
             surfaces: None,
             overlay: None,
@@ -806,6 +958,35 @@ impl LineRenderer {
         self.timer.as_ref()?.per_frame_ms()
     }
 
+    /// Writes the selection table again when the numbered objects or the selection changed: one
+    /// byte per object, so even a large scene's table is a small, quick copy. The views of a
+    /// frame share the lists, so only the first of them writes.
+    fn update_picks(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        objects: &Arc<Vec<u64>>,
+        selection: &Arc<Vec<u64>>,
+    ) {
+        if Arc::ptr_eq(&self.picks.objects, objects)
+            && Arc::ptr_eq(&self.picks.selection, selection)
+        {
+            return;
+        }
+        let rows = (objects.len() as u32).div_ceil(PICK_ROW).max(1);
+        if rows > self.picks.rows {
+            // Grown with room to spare, so a model growing object by object rarely binds again.
+            self.picks = Picks::new(device, rows.next_power_of_two());
+            for slot in &mut self.slots {
+                slot.bind_group = bind_view(device, &self.layout, &slot.uniforms, &self.picks);
+            }
+        }
+        let bytes = table_bytes(self.picks.rows, objects, selection);
+        self.picks.write(queue, &bytes);
+        self.picks.objects = Arc::clone(objects);
+        self.picks.selection = Arc::clone(selection);
+    }
+
     /// Sends one view's camera and grid, and anything that changed, to the graphics card.
     fn update(
         &mut self,
@@ -814,6 +995,8 @@ impl LineRenderer {
         drawing: &Drawing,
         pixel: [f32; 3],
     ) {
+        // Before the view's own bindings are used: growing the table binds every view again.
+        self.update_picks(device, queue, &drawing.objects, &drawing.selection);
         let Some(slot) = self.slots.get_mut(drawing.slot) else {
             return;
         };
@@ -981,6 +1164,11 @@ pub struct Drawing {
     pub scene: Arc<Vec<Vertex>>,
     /// The faces of surfaces and solids, drawn when the view is shaded.
     pub faces: Arc<Vec<MeshVertex>>,
+    /// Which object each number in `scene` and `faces` stands for ([`crate::SceneParts`]);
+    /// empty when their vertices carry no numbers.
+    pub objects: Arc<Vec<u64>>,
+    /// The selected objects, drawn in the selection colour through the selection table.
+    pub selection: Arc<Vec<u64>>,
     /// The live preview.
     pub overlay: Arc<Vec<Vertex>>,
     /// The live preview's surfaces and solids, ghosted ([`crate::ghost_faces`]).
@@ -1150,7 +1338,15 @@ pub(crate) fn draw_picture(
     size: [u32; 2],
     extras: bool,
 ) -> Result<Vec<u8>, String> {
-    draw_picture_in_chunks(picture, size, extras, CHUNK_BYTES)
+    draw_picture_in_chunks(picture, size, extras, CHUNK_BYTES, &Scene::default())
+}
+
+/// The object list and selection a picture's numbered lines and faces are drawn with; empty
+/// for a picture whose selection is drawn into its colours.
+#[derive(Default)]
+struct Scene {
+    objects: Arc<Vec<u64>>,
+    selection: Arc<Vec<u64>>,
 }
 
 /// [`draw_picture`], with uploads split into blocks of at most `chunk_bytes`.
@@ -1159,6 +1355,7 @@ fn draw_picture_in_chunks(
     size: [u32; 2],
     extras: bool,
     chunk_bytes: u64,
+    scene: &Scene,
 ) -> Result<Vec<u8>, String> {
     let [width, height] = size;
     let format = wgpu::TextureFormat::Rgba8UnormSrgb;
@@ -1213,6 +1410,8 @@ fn draw_picture_in_chunks(
         faces: Arc::new(picture.faces),
         overlay: Arc::clone(&empty),
         preview_faces: Arc::new(Vec::new()),
+        objects: Arc::clone(&scene.objects),
+        selection: Arc::clone(&scene.selection),
         matrix: picture.matrix,
         light: picture.light,
         shaded,
@@ -1294,8 +1493,12 @@ fn draw_picture_in_chunks(
 
 #[cfg(test)]
 mod tests {
-    use super::{Picture, chunk_ranges, draw_picture, draw_picture_in_chunks, save_picture};
-    use crate::{MeshVertex, Vertex};
+    use super::{
+        PICK_ROW, Picture, Scene, chunk_ranges, draw_picture, draw_picture_in_chunks, save_picture,
+        table_bytes,
+    };
+    use crate::{MeshVertex, NO_OBJECT, Vertex};
+    use std::sync::Arc;
 
     const SIZE: [u32; 2] = [64, 64];
 
@@ -1308,6 +1511,7 @@ mod tests {
             position: [x, y, 0.5],
             normal: [0.0, 0.0, 1.0],
             colour: [0.3, 0.3, 0.3],
+            object: NO_OBJECT,
         };
         let faces = vec![corner(-0.9, -0.9), corner(0.9, -0.9), corner(0.0, 0.9)];
         let lines = (-2..=2)
@@ -1318,11 +1522,13 @@ mod tests {
                         position: [-0.5, y, 0.8],
                         colour: [1.0; 3],
                         width: -1.0,
+                        object: NO_OBJECT,
                     },
                     Vertex {
                         position: [0.5, y, 0.8],
                         colour: [1.0; 3],
                         width: -1.0,
+                        object: NO_OBJECT,
                     },
                 ]
             })
@@ -1375,6 +1581,7 @@ mod tests {
             position: [x, 0.0, 0.5],
             colour: [1.0; 3],
             width,
+            object: NO_OBJECT,
         };
         let identity = [
             [1.0, 0.0, 0.0, 0.0],
@@ -1428,12 +1635,14 @@ mod tests {
             position: [x, y, 0.5],
             normal: [0.0, 0.0, 1.0],
             colour: [0.4, 0.4, 0.4],
+            object: NO_OBJECT,
         };
         let line = |y: f32, width: f32| {
             [-0.8, 0.8].map(|x| Vertex {
                 position: [x, y, 0.3],
                 colour: [0.9, 0.5, 0.2],
                 width,
+                object: NO_OBJECT,
             })
         };
         Picture {
@@ -1504,12 +1713,99 @@ mod tests {
         // Blocks of 100 bytes: one segment or one triangle each.
         let (Ok(whole), Ok(split)) = (
             draw_picture(mixed_picture(), SIZE, true),
-            draw_picture_in_chunks(mixed_picture(), SIZE, true, 100),
+            draw_picture_in_chunks(mixed_picture(), SIZE, true, 100, &Scene::default()),
         ) else {
             eprintln!("no graphics adapter to draw with, so not checked");
             return;
         };
         assert!(whole.chunks(4).any(|pixel| pixel != &whole[0..4]));
         assert_eq!(whole, split);
+    }
+
+    /// A small model, seen whole: two circles and a box, so lines, edges on faces and faces all
+    /// show. Returns its outlines, the camera's matrix, the light and the ids made.
+    fn small_model() -> (crate::Outlines, [[f32; 4]; 4], [f32; 3], Vec<u64>) {
+        let mut doc = curva_document::Document::default();
+        let ids = vec![
+            doc.add(curva_kernel::Curve::circle([0.0, 0.0, 0.0], 5.0).unwrap()),
+            doc.add(curva_kernel::Curve::circle([12.0, 0.0, 0.0], 5.0).unwrap()),
+            doc.add_body(curva_kernel::Body::cuboid([-4.0, 8.0, 0.0], [8.0, 8.0, 8.0]).unwrap()),
+        ];
+        let outlines = crate::Outlines::of(doc.state());
+        let (low, high) = outlines.bounds().unwrap();
+        let mut camera = crate::Camera::default();
+        camera.frame(low, high);
+        let light = camera.forward().map(|value| value as f32);
+        (outlines, camera.matrix(1.0), light, ids)
+    }
+
+    /// Spec `display-pipeline.md` step 4: the selection drawn through the graphics card's table
+    /// looks exactly as when it was drawn into the vertices' colours, lines a pixel wider
+    /// included, in a shaded and in a wireframe view.
+    #[test]
+    fn the_selection_table_draws_what_coloured_vertices_drew() {
+        let (outlines, matrix, light, ids) = small_model();
+        // One circle and the box selected; the other circle not.
+        let selected = vec![ids[0], ids[2]];
+        let parts = crate::SceneParts::of(&outlines);
+        for shaded in [true, false] {
+            let picture = |lines: Vec<Vertex>, faces: Vec<MeshVertex>| Picture {
+                lines,
+                faces: if shaded { faces } else { Vec::new() },
+                matrix,
+                light,
+                ghosted: false,
+            };
+            let coloured = picture(
+                if shaded {
+                    crate::shaded_object_lines(&outlines, &selected)
+                } else {
+                    crate::object_lines(&outlines, &selected)
+                },
+                crate::face_vertices(&outlines, &selected),
+            );
+            let numbered = picture(
+                if shaded {
+                    parts.shaded_lines.clone()
+                } else {
+                    parts.lines.clone()
+                },
+                parts.faces.clone(),
+            );
+            let scene = Scene {
+                objects: Arc::new(parts.objects.clone()),
+                selection: Arc::new(selected.clone()),
+            };
+            let size = [96, 96];
+            let (Ok(before), Ok(after)) = (
+                draw_picture(coloured, size, true),
+                draw_picture_in_chunks(numbered, size, true, super::CHUNK_BYTES, &scene),
+            ) else {
+                eprintln!("no graphics adapter to draw with, so not checked");
+                return;
+            };
+            // The selection colour shows, so the comparison is about something.
+            let orange = before
+                .chunks(4)
+                .filter(|p| p[0] > 180 && p[2] < 120)
+                .count();
+            assert!(orange > 20, "only {orange} selected pixels");
+            assert_eq!(before, after, "shaded: {shaded}");
+        }
+    }
+
+    #[test]
+    fn the_selection_table_marks_only_the_selected_objects() {
+        let objects = [10, 20, 30, 40];
+        let table = table_bytes(1, &objects, &[20, 40, 99]);
+        assert_eq!(table.len(), PICK_ROW as usize);
+        assert_eq!(&table[..5], &[0, 1, 0, 1, 0]);
+        assert_eq!(table.iter().map(|&b| usize::from(b)).sum::<usize>(), 2);
+        // Nothing selected: all zeros; more rows: still one byte per object, in order.
+        assert!(table_bytes(1, &objects, &[]).iter().all(|&b| b == 0));
+        let big: Vec<u64> = (0..5000).collect();
+        let two_rows = table_bytes(2, &big, &[4999]);
+        assert_eq!(two_rows.len(), 2 * PICK_ROW as usize);
+        assert_eq!(two_rows[4999], 1);
     }
 }
