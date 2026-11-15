@@ -144,11 +144,12 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
         .map(|b| (b.id, ids.next()))
         .collect();
 
-    // Annotation styles: one for each height and alignment the notes use, so no note needs to
+    // Annotation styles: each Curva style the annotation uses, under its own name with its font,
+    // sizes (in the model's unit) and decimals. A note of another height or alignment than its
+    // style's gets a style of its own beside it ("ISO 3.5 7 Centre"), so no note needs to
     // override its style.
-    // Dimensions take their style's text height, in the model's unit.
-    let mut style_ids: BTreeMap<(u64, u32), Uuid> = BTreeMap::new();
-    let wanted: Vec<(f64, u32)> = chosen
+    let mut style_ids: StyleIds = BTreeMap::new();
+    let wanted: Vec<StyleKey> = chosen
         .iter()
         .map(|o| &o.shape)
         .chain(
@@ -158,43 +159,50 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
                 .flat_map(|b| b.objects.iter().map(|o| &o.shape)),
         )
         .filter_map(|s| match s {
-            Shape::Annotation(curva_document::annotation::Annotation::Text(t)) => {
-                Some((t.height, align_code(t.align)))
-            }
-            Shape::Annotation(curva_document::annotation::Annotation::Dimension(d)) => {
-                Some((dimension_height(state, d.style), 0))
-            }
-            Shape::Annotation(curva_document::annotation::Annotation::Radial(d)) => {
-                Some((dimension_height(state, d.style), 0))
-            }
-            Shape::Annotation(curva_document::annotation::Annotation::Angle(d)) => {
-                Some((dimension_height(state, d.style), 0))
-            }
-            Shape::Annotation(curva_document::annotation::Annotation::Leader(l)) => {
-                Some((dimension_height(state, l.style), 0))
-            }
+            Shape::Annotation(curva_document::annotation::Annotation::Text(t)) => Some(note_key(t)),
+            Shape::Annotation(
+                a @ (curva_document::annotation::Annotation::Dimension(_)
+                | curva_document::annotation::Annotation::Radial(_)
+                | curva_document::annotation::Annotation::Angle(_)
+                | curva_document::annotation::Annotation::Leader(_)),
+            ) => Some(dimension_key(state, a.style())),
             _ => None,
         })
         .collect();
-    for (height, align) in wanted {
-        let key = (height.to_bits(), align);
+    for key in wanted {
         if style_ids.contains_key(&key) {
             continue;
         }
+        let (style_id, height_bits, align) = key;
+        let height = f64::from_bits(height_bits);
+        let style = annotation_style(state, style_id);
+        let scale = style.scale_to(state.unit, None);
+        let own = (height - style.height_in(state.unit)).abs() < 1e-9 && align == 0;
         let id = ids.next();
         style_ids.insert(key, id);
         model.dim_styles.push(model::DimStyle {
             id,
-            name: format!(
-                "Curva {} {}",
-                format!("{height:.4}")
-                    .trim_end_matches('0')
-                    .trim_end_matches('.'),
-                ["Left", "Centre", "Right"][align as usize]
-            ),
+            name: if own {
+                style.name.clone()
+            } else {
+                format!(
+                    "{} {} {}",
+                    style.name,
+                    format!("{height:.4}")
+                        .trim_end_matches('0')
+                        .trim_end_matches('.'),
+                    ["Left", "Centre", "Right"][align as usize]
+                )
+            },
             text_height: height,
             h_align: align,
             v_align: 3,
+            arrow_size: style.arrow_size() * scale,
+            extension_extension: style.extension_extension() * scale,
+            extension_offset: style.extension_offset() * scale,
+            text_gap: style.text_gap() * scale,
+            length_resolution: i32::try_from(style.linear_resolution()).unwrap_or(2),
+            font: style.font.clone(),
         });
     }
 
@@ -457,7 +465,7 @@ fn geometry_of(
     shape: &Shape,
     blocks: &BTreeMap<u64, Uuid>,
     patterns: &BTreeMap<String, i32>,
-    styles: &BTreeMap<(u64, u32), Uuid>,
+    styles: &StyleIds,
     state: &State,
 ) -> Result<Geometry, String> {
     Ok(match shape {
@@ -484,9 +492,7 @@ fn geometry_of(
             Geometry::Hatch(hatch(h, patterns)?)
         }
         Shape::Annotation(curva_document::annotation::Annotation::Text(t)) => {
-            let style = *styles
-                .get(&(t.height.to_bits(), align_code(t.align)))
-                .ok_or("a note without its style")?;
+            let style = *styles.get(&note_key(t)).ok_or("a note without its style")?;
             // Rhino aligns these notes by the top of their first line, one text height above
             // the baseline Curva places them by.
             let origin: P3 = std::array::from_fn(|k| t.origin[k] + t.y[k] * t.height);
@@ -508,7 +514,7 @@ fn geometry_of(
         }
         Shape::Annotation(curva_document::annotation::Annotation::Radial(d)) => {
             let style = *styles
-                .get(&(dimension_height(state, d.style).to_bits(), 0))
+                .get(&dimension_key(state, d.style))
                 .ok_or("a dimension without its style")?;
             let plane = plane_at(d.centre, d.x, d.y);
             Geometry::Radial(model::RadialDimension {
@@ -523,7 +529,7 @@ fn geometry_of(
         }
         Shape::Annotation(curva_document::annotation::Annotation::Angle(d)) => {
             let style = *styles
-                .get(&(dimension_height(state, d.style).to_bits(), 0))
+                .get(&dimension_key(state, d.style))
                 .ok_or("a dimension without its style")?;
             let plane = plane_at(d.apex, d.x, d.y);
             let side = |p: P3| {
@@ -545,7 +551,7 @@ fn geometry_of(
         }
         Shape::Annotation(curva_document::annotation::Annotation::Leader(l)) => {
             let style = *styles
-                .get(&(dimension_height(state, l.style).to_bits(), 0))
+                .get(&dimension_key(state, l.style))
                 .ok_or("a leader without its style")?;
             let start = *l.points.first().ok_or("a leader without points")?;
             let plane = plane_at(start, l.x, l.y);
@@ -1145,8 +1151,9 @@ fn align_code(align: curva_document::annotation::TextAlign) -> u32 {
     }
 }
 
-/// A dimension's text height: its annotation style's, in the model's unit.
-fn dimension_height(state: &State, style: u64) -> f64 {
+/// The annotation style with this id: the document's own, or the standard ones for its unit;
+/// the first when there is none of that id.
+fn annotation_style(state: &State, style: u64) -> curva_document::annotation::AnnotationStyle {
     let styles = if state.annotation_styles.is_empty() {
         curva_document::annotation::standard_styles(matches!(state.unit, Unit::Feet | Unit::Inches))
     } else {
@@ -1156,14 +1163,32 @@ fn dimension_height(state: &State, style: u64) -> f64 {
         .iter()
         .find(|s| s.id == style)
         .or_else(|| styles.first())
-        .map_or(1.0, |s| s.height_in(state.unit))
+        .cloned()
+        .unwrap_or_else(|| curva_document::annotation::standard_styles(false).remove(0))
+}
+
+/// The Rhino style a note or dimension takes: by Curva style, text height (in the model's
+/// unit, as bits) and alignment code.
+type StyleKey = (u64, u64, u32);
+/// The Rhino styles written, by [`StyleKey`].
+type StyleIds = BTreeMap<StyleKey, Uuid>;
+
+/// A note's Rhino style: its Curva style with its own height and alignment.
+fn note_key(t: &curva_document::annotation::Text) -> StyleKey {
+    (t.style, t.height.to_bits(), align_code(t.align))
+}
+
+/// A dimension's or leader's Rhino style: its Curva style as it is.
+fn dimension_key(state: &State, style: u64) -> StyleKey {
+    let held = annotation_style(state, style);
+    (held.id, held.height_in(state.unit).to_bits(), 0)
 }
 
 /// A linear dimension as Rhino holds one: its plane at the first point, its X the direction it
 /// measures along (rotated) or from point to point (aligned), the other points in that plane.
 fn linear_dimension(
     d: &curva_document::annotation::Dimension,
-    styles: &BTreeMap<(u64, u32), Uuid>,
+    styles: &StyleIds,
     state: &State,
 ) -> Result<model::LinearDimension, String> {
     use curva_document::annotation::DimensionKind;
@@ -1195,7 +1220,7 @@ fn linear_dimension(
         ]
     };
     let style = *styles
-        .get(&(dimension_height(state, d.style).to_bits(), 0))
+        .get(&dimension_key(state, d.style))
         .ok_or("a dimension without its style")?;
     Ok(model::LinearDimension {
         plane: Plane {
@@ -1239,7 +1264,7 @@ fn sheet_geometry(
     layout: &curva_document::layouts::Layout,
     blocks: &BTreeMap<u64, Uuid>,
     patterns: &BTreeMap<String, i32>,
-    styles: &BTreeMap<(u64, u32), Uuid>,
+    styles: &StyleIds,
     state: &State,
 ) -> Result<Geometry, String> {
     let mm = layout.unit.millimetres();
