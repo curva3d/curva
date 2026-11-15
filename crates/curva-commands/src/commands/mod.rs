@@ -41,9 +41,10 @@ use modify::{
     shear, smooth, split, taper, trim, twist, undo,
 };
 use organise::{
-    block, block_edit, block_manager, change_layer, draw_order, explode_block, get_user_text,
-    group, insert, linetype_command, lock, lock_swap, match_properties, print_width_command, purge,
-    rename, replace_block, set_user_text, ungroup, unlock, unlock_selected,
+    block, block_edit, block_manager, change_layer, draw_order, explode_block,
+    get_document_user_text, get_user_text, group, insert, linetype_command, lock, lock_swap,
+    match_properties, notes, print_width_command, purge, rename, replace_block,
+    set_document_user_text, set_user_text, ungroup, unlock, unlock_selected,
 };
 use select::{
     hide, hide_swap, invert, isolate, sel_all, sel_arc, sel_block_instance_named, sel_body,
@@ -115,7 +116,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 259] = [
+pub static COMMANDS: [CommandDef; 263] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -363,6 +364,28 @@ pub static COMMANDS: [CommandDef; 259] = [
     ),
     listed!("SetUserText", [], true, true, set_user_text::SetUserText),
     listed!("GetUserText", [], false, false, get_user_text::GetUserText),
+    listed!(
+        "SetDocumentUserText",
+        [],
+        true,
+        true,
+        set_document_user_text::SetDocumentUserText<false>
+    ),
+    listed!(
+        "SetLayoutUserText",
+        [],
+        true,
+        true,
+        set_document_user_text::SetDocumentUserText<true>
+    ),
+    listed!(
+        "GetDocumentUserText",
+        [],
+        false,
+        false,
+        get_document_user_text::GetDocumentUserText
+    ),
+    listed!("Notes", [], false, true, notes::Notes),
     listed!("Purge", [], true, true, purge::Purge),
     listed!("Audit", [], false, false, audit::Audit),
     listed!("LockSwap", [], true, true, lock_swap::LockSwap),
@@ -872,7 +895,7 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 71] = [
+    const NOTHING_TO_PREVIEW: [&str; 74] = [
         "Make2D",
         "Print",
         "ExportPDF",
@@ -893,6 +916,9 @@ mod tests {
         "Linetype",
         "PrintWidth",
         "SetUserText",
+        "SetDocumentUserText",
+        "SetLayoutUserText",
+        "Notes",
         "Purge",
         "LockSwap",
         "UnlockSelected",

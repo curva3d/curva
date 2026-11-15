@@ -313,6 +313,25 @@ impl Evaluator<'_> {
                 text(self.object(args)?.user_text.get(key)?)
             }
             "ObjectName" => text(&self.object(args)?.name),
+            "DocumentText" => match args.first() {
+                Some(Value::Text(key)) => text(self.state.document_text.get(key)?),
+                _ => None,
+            },
+            "LayoutUserText" => {
+                let (layout, key) = match args {
+                    [Value::Text(key)] => (self.page(&[])?.1, key),
+                    [id, Value::Text(key)] => {
+                        let id = match id {
+                            Value::Number(n) => Value::Number(*n),
+                            Value::Text(t) => Value::Number(t.trim().parse().ok()?),
+                        };
+                        (self.page(&[id])?.1, key)
+                    }
+                    _ => return None,
+                };
+                text(layout.user_text.get(key)?)
+            }
+            "Notes" => text(&self.state.notes),
             "ObjectLayer" => {
                 let layer = self.object(args)?.layer;
                 text(&self.state.layers.iter().find(|l| l.id == layer)?.name)
@@ -566,6 +585,37 @@ mod tests {
             "#### and ####"
         );
         assert_eq!(show("no fields", None), "no fields");
+    }
+
+    #[test]
+    fn fields_read_document_and_layout_user_text_and_notes() {
+        let mut doc = Document::default();
+        let paper = crate::layouts::paper_size("A3").unwrap();
+        let first = doc.add_layout("Plans".to_owned(), paper, true);
+        let second = doc.add_layout("Sections".to_owned(), paper, true);
+        doc.set_document_text("Project", "Harbour Library");
+        doc.set_layout_text(first, "Revision", "B");
+        doc.set_layout_text(second, "Revision", "A");
+        doc.set_notes("Issued for planning");
+        let state = doc.state();
+        let show = |text: &str, space| resolve(text, state, space, &context());
+        assert_eq!(
+            show("%<DocumentText(\"Project\")>%", None),
+            "Harbour Library"
+        );
+        assert_eq!(show("%<DocumentText(\"Client\")>%", None), "####");
+        assert_eq!(show("%<LayoutUserText(\"Revision\")>%", Some(first)), "B");
+        assert_eq!(
+            show(
+                &format!("%<LayoutUserText(\"{second}\",\"Revision\")>%"),
+                Some(first)
+            ),
+            "A"
+        );
+        assert_eq!(show("%<LayoutUserText(\"Revision\")>%", None), "####");
+        assert_eq!(show("%<Notes()>%", None), "Issued for planning");
+        doc.set_document_text("Project", "");
+        assert!(doc.state().document_text.is_empty());
     }
 
     #[test]

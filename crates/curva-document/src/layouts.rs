@@ -38,6 +38,9 @@ pub struct Layout {
     /// Its detail views; files leave out an empty list.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub details: Vec<Detail>,
+    /// Rhino's layout user text, read by the `LayoutUserText` field; files leave out none.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub user_text: std::collections::BTreeMap<String, String>,
 }
 
 impl PaperUnit {
@@ -208,6 +211,7 @@ impl Document {
             size,
             unit,
             details: Vec::new(),
+            user_text: std::collections::BTreeMap::new(),
         });
         id
     }

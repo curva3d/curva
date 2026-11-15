@@ -1889,9 +1889,21 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
             pen.line((3.0, 11.0), (19.0, 11.0));
             pen.line_in((3.0, 17.0), (19.0, 17.0), thin(3.5));
         }
-        "setusertext" | "getusertext" => {
+        "setusertext"
+        | "getusertext"
+        | "setdocumentusertext"
+        | "getdocumentusertext"
+        | "setlayoutusertext" => {
             pen.rect(4.0, 4.0, 14.0, 14.0);
             for y in [8.0, 11.0, 14.0] {
+                pen.line_in((7.0, y), (15.0, y), pen.accent());
+            }
+        }
+        // A notepad: a page with its binding along the top and lines of writing.
+        "notes" => {
+            pen.rect(4.0, 3.0, 14.0, 17.0);
+            pen.line((4.0, 6.0), (18.0, 6.0));
+            for y in [10.0, 13.0, 16.0] {
                 pen.line_in((7.0, y), (15.0, y), pen.accent());
             }
         }
