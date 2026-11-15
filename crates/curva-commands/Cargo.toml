@@ -13,4 +13,5 @@ workspace = true
 [dependencies]
 curva-document = { path = "../curva-document" }
 curva-3dm = { path = "../curva-3dm" }
+curva-dxf = { path = "../curva-dxf" }
 curva-kernel = { path = "../curva-kernel" }

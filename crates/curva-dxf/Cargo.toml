@@ -1,0 +1,19 @@
+[package]
+name = "curva-dxf"
+description = "DXF and DWG files: drawings out of and into Curva, through acadrust."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+curva-document = { path = "../curva-document" }
+curva-kernel = { path = "../curva-kernel" }
+# DXF and DWG reading and writing (spec `drawing-output.md` §4). MPL-2.0, an exception the owner
+# approved for this crate alone (decision 0021, point 5); used unmodified. No default features:
+# DWG work stays on the calling thread rather than starting its own thread pool.
+acadrust = { version = "0.6.8", default-features = false }

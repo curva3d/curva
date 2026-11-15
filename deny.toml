@@ -24,6 +24,12 @@ allow = [
 crate = "epaint_default_fonts"
 allow = ["OFL-1.1", "Ubuntu-font-1.0"]
 
+# Owner approved 14 November 2026 (decision 0021, point 5): MPL-2.0 for acadrust alone, used
+# unmodified for DXF and DWG files.
+[[licenses.exceptions]]
+crate = "acadrust"
+allow = ["MPL-2.0"]
+
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
