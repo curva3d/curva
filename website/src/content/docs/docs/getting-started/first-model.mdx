@@ -1,0 +1,102 @@
+---
+title: Your first model
+description: A ten-minute walk-through. Draw a plan, pull it into a solid, cut an opening with a live boolean, and save.
+sidebar:
+  order: 3
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+In this walk-through you'll make a small pavilion: a solid block with a round opening through it. Along the way you'll use the command bar, options, the gumball and a **live boolean**, a result that remembers what it was made from.
+
+It takes about ten minutes. Sizes are in millimetres, the unit new models start in.
+
+## 1. Draw the plan
+
+<Steps>
+
+1. Click in the **Top** viewport to make it the one you work in.
+
+2. Type `Rectangle` (or `rec`) in the command bar and press <kbd>Enter</kbd>.
+
+3. The prompt asks for the first corner. Click the **Center** option, or type `c` and <kbd>Enter</kbd>, so the rectangle grows from its middle.
+
+4. Click the grid's origin, where the red and green axes cross, for the centre.
+
+5. For the corner, type `4000,3000` and press <kbd>Enter</kbd>. You get a rectangle 8 m by 6 m, centred on the origin.
+
+</Steps>
+
+<Aside type="tip">
+Typed values and clicks are interchangeable everywhere. Turn on **Grid snap** in the command bar to land clicks on the grid.
+</Aside>
+
+## 2. Pull it into 3D
+
+<Steps>
+
+1. Type `ExtrudeCrv` and press <kbd>Enter</kbd>.
+
+2. Click the rectangle to select it, then press <kbd>Enter</kbd>.
+
+3. Check the options in the prompt: **Solid** should say *Yes*, so the ends are closed. If it says *No*, click it to switch.
+
+4. Type `3000` and press <kbd>Enter</kbd>. The rectangle becomes a block 3 m tall.
+
+</Steps>
+
+Look at the **Perspective** viewport: right-drag to orbit around the block, and use the wheel to zoom.
+
+## 3. Make the opening
+
+<Steps>
+
+1. Back in **Top**, type `Circle` (or `c`) and press <kbd>Enter</kbd>.
+
+2. Click the origin for the centre, then type `1200` and press <kbd>Enter</kbd> for the radius.
+
+3. Run `ExtrudeCrv` on the circle as before. This time click the **BothSides** option, then type `2000`. You get a cylinder that pokes out above and below the block.
+
+4. Type `BooleanDifference` and press <kbd>Enter</kbd>. Select the block and press <kbd>Enter</kbd>, then select the cylinder and press <kbd>Enter</kbd>.
+
+</Steps>
+
+The block now has a round hole through it.
+
+## 4. Change your mind
+
+The difference you just made is a **live boolean**: Curva kept the block and the cylinder inside the result.
+
+<Steps>
+
+1. Select the pavilion and type `EditBoolean`. The cylinder you cut with appears again.
+
+2. Click the cylinder. A **gumball** appears on it: arrows to move, arcs to turn.
+
+3. Drag the red arrow to slide the cylinder along. The opening follows as you drag.
+
+4. Run `EditBoolean` again to hide the cylinder.
+
+</Steps>
+
+To make the result a plain solid that no longer remembers its inputs, use `BreakBoolean`.
+
+## 5. Put it on a layer and save
+
+<Steps>
+
+1. In the **Layers** panel, add a layer and name it `Pavilion`.
+
+2. Select the pavilion, type `ChangeLayer` and choose **Pavilion** when Curva asks which layer.
+
+3. Press <kbd>Ctrl</kbd> + <kbd>S</kbd>. Curva asks where to save: in version 0.4.2, type a full path in the command bar, such as `C:\Users\you\Documents\pavilion.curva`. From 0.4.3, your system's own save window opens instead.
+
+   Curva files end in `.curva`, and they keep everything, live booleans included.
+
+</Steps>
+
+## Where next
+
+- **Undo** anything with <kbd>Ctrl</kbd> + <kbd>Z</kbd>.
+- **Send it to Rhino:** `Export` writes a `.3dm` file. Live booleans arrive in Rhino as plain solids.
+- **Coming from Rhino?** [See what's the same and what's different](/docs/getting-started/from-rhino/).

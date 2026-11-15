@@ -1,0 +1,83 @@
+---
+title: Install Curva
+description: Download and install Curva on Windows, macOS or Linux, and keep it up to date.
+sidebar:
+  order: 1
+---
+
+import { Tabs, TabItem, Steps, Aside, LinkButton } from '@astrojs/starlight/components';
+
+Curva is free. Each release comes as a Windows installer, a macOS disk image and a Linux AppImage, all on the [Releases page](https://github.com/curva3d/curva/releases/latest).
+
+<LinkButton href="https://github.com/curva3d/curva/releases/latest" icon="external">Get the latest release</LinkButton>
+
+## What you need
+
+- **Windows** 10 or 11, 64-bit.
+- **macOS** on Apple silicon (M1 or later).
+- **Linux** on a 64-bit PC, with a distribution from 2022 or later (Curva is built on Ubuntu 22.04).
+- **Graphics:** anything from a 2020-era laptop with Intel integrated graphics upwards. A dedicated graphics card helps with large models.
+
+## Install
+
+<Tabs syncKey="os">
+<TabItem label="Windows">
+<Steps>
+
+1. Download the file ending in `-setup.exe` from the Releases page.
+
+2. Open it. The installer is for your user only, so it doesn't need administrator rights.
+
+   If Windows SmartScreen says it protected your PC, choose **More info**, then **Run anyway**. Curva isn't signed with a paid certificate yet, so Windows doesn't recognise it.
+
+3. Curva opens when the installer finishes, and it's in the Start menu from then on.
+
+</Steps>
+
+To uninstall, go to **Settings → Apps → Installed apps**, find Curva and choose **Uninstall**.
+</TabItem>
+<TabItem label="macOS">
+<Steps>
+
+1. Download the file ending in `-macos-arm64.dmg` from the Releases page.
+
+2. Open it and drag **Curva** into **Applications**.
+
+3. The first time, macOS may say Curva can't be opened because Apple can't check it. Open **System Settings → Privacy & Security**, scroll down and choose **Open Anyway** next to Curva. You only do this once.
+
+</Steps>
+
+Curva isn't notarised by Apple yet, which is why macOS asks. To uninstall, drag Curva from Applications to the Bin.
+</TabItem>
+<TabItem label="Linux">
+<Steps>
+
+1. Download the file ending in `-linux-x86_64.AppImage` from the Releases page.
+
+2. Make it runnable: right-click it, open **Properties → Permissions** and tick **Allow executing file as program**. Or, in a terminal:
+
+   ```sh
+   chmod +x curva-*-linux-x86_64.AppImage
+   ```
+
+3. Double-click it to open Curva.
+
+</Steps>
+
+An AppImage is the whole program in one file: keep it wherever you like, and delete it to uninstall.
+</TabItem>
+</Tabs>
+
+## Updates
+
+When Curva opens, it checks GitHub for a newer version in the background. If there is one, the first line of the command bar says so: **click it to update**. Curva downloads the new version, checks it isn't damaged, installs it and opens again with your model.
+
+- **Windows:** Curva offers to save your model, closes, installs the update and reopens.
+- **Linux:** Curva replaces its AppImage with the new one and reopens.
+- **macOS:** Curva opens the new disk image for you to drag to Applications, then opens the new copy.
+
+After an update, the command bar links to what's new in that version.
+
+<Aside>
+To stop Curva checking for updates, turn off **Check for updates on opening** in **Settings → General**. You can always download a new version from the Releases page yourself.
+</Aside>

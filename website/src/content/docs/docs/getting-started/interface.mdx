@@ -1,0 +1,76 @@
+---
+title: The interface
+description: A tour of Curva's window, the panels, the command bar and how to move around the model.
+sidebar:
+  order: 2
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Curva's window is the model, with panels floating over it. Every panel can be moved, docked to an edge, merged with others as tabs, hidden or closed, and Curva remembers how you arranged them.
+
+## The pieces
+
+| Piece | Where it starts | What it's for |
+|---|---|---|
+| **Top bar** | Top | Curva's **File** and **Settings** menus, the **specialization dial**, and the name of the open model. Always there. |
+| **Commands** | Under the top bar | The commands for the current specialization, as tabs of buttons. Hover a button to see its name. From version 0.4.3 this panel is called **Operations**. |
+| **Viewports** | Behind everything | The model, in four views: Top, Front, Right and Perspective. |
+| **Display** | Top left | How the viewport draws the model: **Wireframe**, **Shaded** or **Ghosted**. |
+| **Layers** | Right | Layers: name, colour, visible, locked, print width. |
+| **Properties** | Right | The selected objects: name, layer, colour and anything else they remember. |
+| **Command bar** | Bottom centre | Where you type commands and answer their questions. See below. |
+| **AI Assistant** | A panel of its own | Ask for help or have it run commands for you, with a local model or an API key you set in **Settings → AI Assistant**. |
+| **Agent access** | Bottom right | Lets AI agents outside Curva use its commands through MCP. On by default: untick it if you don't want other programs to reach Curva. |
+
+The version number sits in small text at the window's bottom right.
+
+### The specialization dial
+
+Curva is one program whose tools change with the kind of work. The dial in the top bar turns between **Freeform**, **Architecture**, **Publisher** and **Analysis**: click a name, or scroll over the dial. Today only Freeform has its tools. The others show "Coming in a later milestone".
+
+## The command bar
+
+Almost everything in Curva is a command, and the command bar is where you run them. It works like Rhino's.
+
+- **Type a command's name** and press <kbd>Enter</kbd>. As you type, a list shows the commands that match. Most have short names too: `l` for Line, `c` for Circle, `m` for Move.
+- **The command asks its questions** in the prompt: pick a point, select objects, type a distance. Its **options** are listed after the question: click one, or type its name.
+- **Press <kbd>Enter</kbd> on an empty line** to repeat the last command. <kbd>Esc</kbd> cancels.
+- **The history** above the prompt shows what you've run and what Curva answered.
+- **Under the prompt:** object snaps, **Ortho**, **Grid snap**, the **Gumball** and the selection filter, each one click to turn on or off.
+
+You can also start commands from the buttons in the Commands panel: it's the same command either way.
+
+## Moving around
+
+| To | In Top, Front, Right | In Perspective |
+|---|---|---|
+| Pan | Right-drag | <kbd>Shift</kbd> + right-drag |
+| Orbit | | Right-drag |
+| Zoom | Wheel, or <kbd>Ctrl</kbd> + right-drag | Wheel, or <kbd>Ctrl</kbd> + right-drag |
+
+- **Double-click a viewport's title** to fill the window with it, and again to go back to four. The `4View` command also brings back the standard four.
+- **`ZoomExtents`** (`ze`) fits the whole model in every viewport.
+- **<kbd>Alt</kbd> + <kbd>Z</kbd>** steps back to the previous view, and <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd> forward again. View changes aren't part of undo, as in Rhino.
+
+## Selecting
+
+- **Click** an object to select it. Clicking anywhere on a surface or solid's faces selects it, not only its edges.
+- **Drag a box from left to right** to select what's wholly inside it, or **right to left** to select everything it touches.
+- **<kbd>Esc</kbd>** clears the selection when no command is running.
+- The **selection filter** in the command bar limits what can be picked, for example curves only.
+
+## Undo
+
+<kbd>Ctrl</kbd> + <kbd>Z</kbd> undoes the last change to the model, and <kbd>Ctrl</kbd> + <kbd>Y</kbd> or <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd> redoes it. It works even while you're typing in the command bar.
+
+## Arranging panels
+
+- **Drag a panel by its title** to move it. Drop it on an edge to dock it, or onto another panel to merge them as tabs. Drag tabs to reorder them.
+- **Drag a panel's edge** to resize it: the edge glows when you're on it.
+- **The V** at a panel's top right slides it out of the way to the nearest edge, leaving a tab to pull it back.
+- **The cross** closes a panel. Bring it back from **Settings → Interface**, which lists every panel with a switch, and has **Reset interface** to go back to the standard layout.
+
+<Aside title="Light, dark and glass">
+Curva follows your system's light or dark setting. To choose one, or to switch the panels between frosted **glass** and **solid**, open **Settings → General**. That's also where you set the model's units.
+</Aside>
