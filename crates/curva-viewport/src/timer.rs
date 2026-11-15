@@ -136,6 +136,15 @@ impl GpuTimer {
         self.frames.clear();
     }
 
+    /// For one view drawn in several passes: the clock's queries and the first of the two slots
+    /// it writes, its first pass writing the start and its last the end. `None` when off or out
+    /// of room.
+    pub(crate) fn begin_view(&mut self, frame: u64) -> Option<(wgpu::QuerySet, u32)> {
+        let whole = self.writes(frame)?;
+        let first = whole.beginning_of_pass_write_index?;
+        Some((whole.query_set.clone(), first))
+    }
+
     /// The clock writes for a pass in `frame`, or `None` when off or out of room.
     pub(crate) fn writes(&mut self, frame: u64) -> Option<wgpu::RenderPassTimestampWrites<'_>> {
         if !self.on {

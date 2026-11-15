@@ -5,6 +5,7 @@ mod glass;
 mod gpu;
 mod gumball;
 mod index;
+mod outline;
 pub mod print;
 mod snap;
 mod styles;
@@ -35,7 +36,7 @@ const CURVE_COLOUR: [f32; 3] = [0.92, 0.92, 0.95];
 pub(crate) const SELECTED_COLOUR: [f32; 3] = PREVIEW_COLOUR;
 const LOCKED_COLOUR: [f32; 3] = [0.45, 0.45, 0.48];
 /// Edges of surfaces and solids in shaded views.
-const EDGE_ON_FACES_COLOUR: [f32; 3] = [0.08, 0.08, 0.1];
+pub(crate) const EDGE_ON_FACES_COLOUR: [f32; 3] = [0.08, 0.08, 0.1];
 /// The colour every preview is drawn in: the accent orange, `#e0782f` (decision 0016).
 pub const PREVIEW_COLOUR: [f32; 3] = [0.878, 0.471, 0.184];
 const X_AXIS_COLOUR: [f32; 3] = [0.85, 0.3, 0.3];

@@ -343,7 +343,8 @@ impl Compositor {
                 "curva scene depth",
                 size,
                 crate::gpu::DEPTH_FORMAT,
-                wgpu::TextureUsages::RENDER_ATTACHMENT,
+                // Read by the outline pass (`crate::outline`).
+                wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             );
             let copy_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("curva scene copy"),

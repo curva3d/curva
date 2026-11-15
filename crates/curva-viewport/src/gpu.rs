@@ -566,6 +566,8 @@ pub struct LineRenderer {
     background: Background,
     /// The graphics card's timer for the benchmark, once asked for and if the card has one.
     timer: Option<crate::timer::GpuTimer>,
+    /// Draws outlines of curved shapes from the depth picture (#182).
+    outliner: crate::outline::Outliner,
     /// The bindings every view uses, kept to bind again when the selection table grows.
     layout: wgpu::BindGroupLayout,
     /// The selection table.
@@ -920,6 +922,7 @@ impl LineRenderer {
             background,
             timer: None,
             chunk_bytes: CHUNK_BYTES,
+            outliner: crate::outline::Outliner::new(device, format),
             layout,
             picks,
             slots,
@@ -1080,20 +1083,37 @@ impl LineRenderer {
         }
     }
 
-    fn draw(&self, pass: &mut wgpu::RenderPass<'_>, slot: usize) {
+    /// Whether this view's depth picture holds surfaces to find outlines in (#182): shaded, not
+    /// ghosted (ghosted faces write no depth), with faces to show.
+    fn outlines_wanted(&self, slot: usize) -> bool {
+        self.slots.get(slot).is_some_and(|slot| {
+            slot.shaded
+                && !slot.ghosted
+                && self.surfaces.as_ref().is_some_and(|faces| faces.count > 0)
+        })
+    }
+
+    /// Draws faces with `pipeline`, block by block.
+    fn draw_faces(
+        pass: &mut wgpu::RenderPass<'_>,
+        pipeline: &wgpu::RenderPipeline,
+        faces: &Uploaded<MeshVertex>,
+    ) {
+        pass.set_pipeline(pipeline);
+        for (buffer, count) in &faces.chunks {
+            pass.set_vertex_buffer(0, buffer.slice(..));
+            pass.draw(0..*count, 0..1);
+        }
+    }
+
+    /// The first part of a view: the grid and solid surfaces. The outline pass reads the depth
+    /// they leave before lines are drawn over them, so lines never count as outlines.
+    fn draw_under(&self, pass: &mut wgpu::RenderPass<'_>, slot: usize) {
         let Some(slot) = self.slots.get(slot) else {
             return;
         };
         pass.set_bind_group(0, &slot.bind_group, &[]);
         let faces = self.surfaces.as_ref().filter(|faces| faces.count > 0);
-        let draw_faces =
-            |pass: &mut wgpu::RenderPass<'_>, pipeline, faces: &Uploaded<MeshVertex>| {
-                pass.set_pipeline(pipeline);
-                for (buffer, count) in &faces.chunks {
-                    pass.set_vertex_buffer(0, buffer.slice(..));
-                    pass.draw(0..*count, 0..1);
-                }
-            };
         // The grid goes first, writing no depth, so whatever lies on it or near it draws over
         // it, as in Rhino; drawn after faces, it showed through faces lying exactly on it. It
         // stays a pixel wide; the model's lines have their own widths.
@@ -1109,7 +1129,7 @@ impl LineRenderer {
             && !slot.ghosted
             && let Some(faces) = faces
         {
-            draw_faces(
+            Self::draw_faces(
                 pass,
                 if slot.zebra {
                     &self.zebra_faces
@@ -1121,6 +1141,15 @@ impl LineRenderer {
                 faces,
             );
         }
+    }
+
+    /// The second part of a view, after the outline pass: lines, ghosted surfaces, previews.
+    fn draw_over(&self, pass: &mut wgpu::RenderPass<'_>, slot: usize) {
+        let Some(slot) = self.slots.get(slot) else {
+            return;
+        };
+        pass.set_bind_group(0, &slot.bind_group, &[]);
+        let faces = self.surfaces.as_ref().filter(|faces| faces.count > 0);
         if let Some(scene) = slot.scene.as_deref() {
             self.draw_segments(pass, scene);
         }
@@ -1130,11 +1159,11 @@ impl LineRenderer {
             && slot.ghosted
             && let Some(faces) = faces
         {
-            draw_faces(pass, &self.ghost_faces, faces);
+            Self::draw_faces(pass, &self.ghost_faces, faces);
         }
         // A command's solid preview is ghosted in every display mode, over the model.
         if let Some(preview) = self.preview_faces.as_ref().filter(|faces| faces.count > 0) {
-            draw_faces(pass, &self.ghost_faces, preview);
+            Self::draw_faces(pass, &self.ghost_faces, preview);
         }
         if let Some(overlay) = self.overlay.as_ref() {
             self.draw_segments(pass, overlay);
@@ -1237,6 +1266,21 @@ impl egui_wgpu::CallbackTrait for Drawing {
         // Written as stored, like every colour Curva draws: egui gives the window a texture that
         // is not converted to linear light.
         let channel = |value: u8| f64::from(value) / 255.0;
+        // A view is drawn in up to three passes: surfaces, outlines found from their depth, then
+        // lines and previews. The card's clock times them as one.
+        let timing = renderer
+            .timer
+            .as_mut()
+            .and_then(|timer| timer.begin_view(self.frame));
+        let clock = |end: bool| {
+            timing
+                .as_ref()
+                .map(|(queries, first)| wgpu::RenderPassTimestampWrites {
+                    query_set: queries,
+                    beginning_of_pass_write_index: (!end).then_some(*first),
+                    end_of_pass_write_index: end.then_some(*first + 1),
+                })
+        };
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("curva viewport"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -1262,23 +1306,65 @@ impl egui_wgpu::CallbackTrait for Drawing {
                 view: &depth,
                 depth_ops: Some(wgpu::Operations {
                     load: wgpu::LoadOp::Clear(1.0),
+                    // Kept for the outline pass and for the lines drawn after it.
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
+            timestamp_writes: clock(false),
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        let area = [low.x, low.y, high.x - low.x, high.y - low.y];
+        let fit = |pass: &mut wgpu::RenderPass<'_>| {
+            pass.set_viewport(area[0], area[1], area[2], area[3], 0.0, 1.0);
+            pass.set_scissor_rect(
+                area[0] as u32,
+                area[1] as u32,
+                area[2] as u32,
+                area[3] as u32,
+            );
+        };
+        fit(&mut pass);
+        renderer.background.draw(&mut pass);
+        renderer.draw_under(&mut pass, self.slot);
+        drop(pass);
+        if renderer.outlines_wanted(self.slot) {
+            renderer.outliner.draw(
+                device,
+                queue,
+                encoder,
+                &colour,
+                &depth,
+                area,
+                crate::EDGE_ON_FACES_COLOUR,
+            );
+        }
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("curva viewport lines"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &colour,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &depth,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
                     store: wgpu::StoreOp::Discard,
                 }),
                 stencil_ops: None,
             }),
-            timestamp_writes: renderer.timer.as_mut().and_then(|t| t.writes(self.frame)),
+            timestamp_writes: clock(true),
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        pass.set_viewport(low.x, low.y, high.x - low.x, high.y - low.y, 0.0, 1.0);
-        pass.set_scissor_rect(
-            low.x as u32,
-            low.y as u32,
-            (high.x - low.x) as u32,
-            (high.y - low.y) as u32,
-        );
-        renderer.background.draw(&mut pass);
-        renderer.draw(&mut pass, self.slot);
+        fit(&mut pass);
+        renderer.draw_over(&mut pass, self.slot);
         drop(pass);
         if let Some(timer) = &mut renderer.timer {
             timer.finish_pass(encoder);
@@ -1389,7 +1475,7 @@ fn draw_picture_in_chunks(
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
         format: DEPTH_FORMAT,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
         view_formats: &[],
     });
     let depth_view = depth.create_view(&wgpu::TextureViewDescriptor::default());
@@ -1453,6 +1539,44 @@ fn draw_picture_in_chunks(
                 view: &depth_view,
                 depth_ops: Some(wgpu::Operations {
                     load: wgpu::LoadOp::Clear(1.0),
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        renderer.draw_under(&mut pass, 0);
+    }
+    // As in a window: outlines from the surfaces' depth, then lines over them.
+    if renderer.outlines_wanted(0) {
+        renderer.outliner.draw(
+            &device,
+            &queue,
+            &mut encoder,
+            &view,
+            &depth_view,
+            [0.0, 0.0, width as f32, height as f32],
+            crate::EDGE_ON_FACES_COLOUR,
+        );
+    }
+    {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("curva picture lines"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &depth_view,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
                     store: wgpu::StoreOp::Discard,
                 }),
                 stencil_ops: None,
@@ -1461,7 +1585,7 @@ fn draw_picture_in_chunks(
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        renderer.draw(&mut pass, 0);
+        renderer.draw_over(&mut pass, 0);
     }
     encoder.copy_texture_to_buffer(
         texture.as_image_copy(),
@@ -1807,5 +1931,57 @@ mod tests {
         let two_rows = table_bytes(2, &big, &[4999]);
         assert_eq!(two_rows.len(), 2 * PICK_ROW as usize);
         assert_eq!(two_rows[4999], 1);
+    }
+
+    /// #182: a sphere, which has no edges to draw, gets an outline at its rim from the depth
+    /// picture, and nothing inside it: the outline test never mistakes the curved surface itself
+    /// for a step back.
+    #[test]
+    fn a_sphere_is_outlined_at_its_rim_and_clean_inside() {
+        let mut doc = curva_document::Document::default();
+        doc.add_body(curva_kernel::Body::sphere([0.0; 3], 10.0).unwrap());
+        let outlines = crate::Outlines::of(doc.state());
+        // Seen straight down, so the rim on screen is exactly the sphere's radius.
+        let mut camera = crate::StandardView::Top.camera();
+        camera.frame([-12.0, -12.0, -10.0], [12.0, 12.0, 10.0]);
+        let size = [128u32, 128];
+        let picture = Picture {
+            lines: crate::shaded_object_lines(&outlines, &[]),
+            faces: crate::face_vertices(&outlines, &[]),
+            matrix: camera.matrix(1.0),
+            light: camera.forward().map(|v| v as f32),
+            ghosted: false,
+        };
+        let Ok(pixels) = draw_picture(picture, size, true) else {
+            eprintln!("no graphics adapter to draw with, so not checked");
+            return;
+        };
+        let red = |x: usize, y: usize| pixels[(y * 128 + x) * 4];
+        let screen = |p: [f64; 3]| camera.project(p, [128.0, 128.0]).unwrap();
+        let [cx, cy] = screen([0.0; 3]);
+        let rim = screen([10.0, 0.0, 0.0])[0] - cx;
+        // Within the last few pixels inside the rim, on every side: the outline's ink. (The
+        // meshed sphere lies a fraction of a pixel inside the true one. Pictures store colours
+        // converted for display, so the near-black ink reads about 80, the lit surface 180 up.)
+        for (dx, dy) in [(1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)] {
+            let darkest = (1..=4)
+                .map(|inside| {
+                    let at = rim - f64::from(inside);
+                    red((cx + dx * at) as usize, (cy + dy * at) as usize)
+                })
+                .min()
+                .unwrap_or(255);
+            assert!(darkest <= 90, "rim towards {dx},{dy}: {darkest}");
+        }
+        // Inside, well clear of the rim, no ink at all: the curved surface is never taken for a
+        // step back.
+        for y in 0..128 {
+            for x in 0..128 {
+                let from = (x as f64 + 0.5 - cx).hypot(y as f64 + 0.5 - cy);
+                if from < rim - 5.0 {
+                    assert!(red(x, y) > 120, "ink inside at {x},{y}: {}", red(x, y));
+                }
+            }
+        }
     }
 }
