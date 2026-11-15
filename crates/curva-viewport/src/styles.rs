@@ -44,6 +44,11 @@ const PAPER: [u8; 3] = [255, 255, 255];
 /// The colour inner edges are first drawn in, which no lit surface can take (surfaces are grey),
 /// so they can be told apart and recoloured once drawing has hidden the ones behind surfaces.
 const MARKER: [f32; 3] = [1.0, 0.0, 1.0];
+/// How much of a surface's shading is kept: 1 is as lit, 0 is flat white.
+const SHADING: f32 = 0.55;
+/// How dark full occlusion makes a surface, and how far occlusion reaches, in millimetres.
+const OCCLUSION_STRENGTH: f32 = 0.7;
+const OCCLUSION_REACH: f32 = 1200.0;
 
 /// Draws `picture` in `style` and saves it as a PNG file. The picture's faces must carry object
 /// numbers ([`crate::SceneParts`]), which is how outlines find where one object ends.
@@ -70,7 +75,11 @@ pub fn save_styled_picture(
 pub(crate) fn draw_diagram(picture: Picture, size: [u32; 2]) -> Result<Vec<u8>, String> {
     let big = [size[0] * SUPERSAMPLE, size[1] * SUPERSAMPLE];
     let scale = SUPERSAMPLE as f32;
-    let ids = draw_object_numbers(&picture.faces, picture.matrix, big)?;
+    let ids = draw_object_numbers(&picture.faces, picture.matrix, big, NUMBERS_SHADER)?;
+    let depths: Vec<f32> = draw_object_numbers(&picture.faces, picture.matrix, big, DEPTH_SHADER)?
+        .into_iter()
+        .map(f32::from_bits)
+        .collect();
     let recoloured = Picture {
         lines: picture
             .lines
@@ -92,11 +101,24 @@ pub(crate) fn draw_diagram(picture: Picture, size: [u32; 2]) -> Result<Vec<u8>, 
         ..picture
     };
     let mut base = draw_picture(recoloured, big, true)?;
-    // Edges that survived being hidden behind surfaces become grey; everything else, surfaces
-    // and background alike, is white.
+    let occlusion = ambient_occlusion(&ids, &depths, big, picture.matrix[1][1]);
+    // Edges that survived being hidden behind surfaces become grey; surfaces keep a soft
+    // version of their shading, darkened where occluded (owner: shading and occlusion); the
+    // background is paper.
     let marker = MARKER.map(|c| (c * 255.0) as u8);
-    for pixel in base.chunks_mut(4) {
-        let colour = if pixel[..3] == marker { INNER } else { PAPER };
+    for ((pixel, id), occluded) in base.chunks_mut(4).zip(&ids).zip(&occlusion) {
+        let colour = if pixel[..3] == marker {
+            INNER
+        } else if *id == 0 {
+            PAPER
+        } else {
+            let darken = 1.0 - OCCLUSION_STRENGTH * occluded;
+            [0, 1, 2].map(|channel| {
+                let lit = f32::from(pixel[channel]);
+                let soft = 255.0 - (255.0 - lit) * SHADING;
+                (soft * darken).round().clamp(0.0, 255.0) as u8
+            })
+        };
         pixel[..3].copy_from_slice(&colour);
     }
     outline(&mut base, &ids, big, OUTLINE_PIXELS * scale);
@@ -150,6 +172,58 @@ fn outline(pixels: &mut [u8], ids: &[u32], size: [u32; 2], width: f32) {
     }
 }
 
+/// How occluded each pixel is, 0 to 1, from the distances alone (screen-space ambient occlusion,
+/// after Mittring, "Finding next gen: CryEngine 2", SIGGRAPH 2007 course notes): pairs
+/// of points opposite each other around a pixel are compared with it, and where the surface there
+/// lies deeper than the average of the pair, as in an inside corner or where one object stands on
+/// another, it is occluded. Comparing pairs keeps a flat surface seen at an angle from darkening
+/// itself. Points much nearer the camera than the reach (an object far in front) do not count.
+/// `focal` is the camera matrix's vertical scale, which sets how many pixels the reach covers.
+fn ambient_occlusion(ids: &[u32], depths: &[f32], size: [u32; 2], focal: f32) -> Vec<f32> {
+    let [w, h] = size.map(|v| v as usize);
+    let pixels_per_mm_at_unit = focal * h as f32 / 2.0;
+    // Eight directions over half a turn, each at two distances: 16 pairs.
+    let steps: Vec<(f32, f32)> = (0..8)
+        .flat_map(|k| {
+            let angle = std::f32::consts::PI * (k as f32 + 0.5) / 8.0;
+            [0.45, 1.0].map(|part| (angle.cos() * part, angle.sin() * part))
+        })
+        .collect();
+    let mut out = vec![0.0; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            let at = y * w + x;
+            let depth = depths[at];
+            if ids[at] == 0 || depth <= 0.0 {
+                continue;
+            }
+            let reach_pixels = (OCCLUSION_REACH * pixels_per_mm_at_unit / depth).clamp(2.0, 80.0);
+            let sample = |dx: f32, dy: f32| {
+                let (sx, sy) = (x as f32 + dx, y as f32 + dy);
+                if sx < 0.0 || sy < 0.0 || sx >= w as f32 || sy >= h as f32 {
+                    return None;
+                }
+                let s = sy as usize * w + sx as usize;
+                (ids[s] != 0).then_some(depths[s])
+            };
+            let mut total = 0.0;
+            for &(cx, cy) in &steps {
+                let (dx, dy) = (cx * reach_pixels, cy * reach_pixels);
+                let (Some(a), Some(b)) = (sample(dx, dy), sample(-dx, -dy)) else {
+                    continue;
+                };
+                let deeper = depth - (a + b) / 2.0;
+                let nearest = depth - a.min(b);
+                if nearest > 2.0 * OCCLUSION_REACH {
+                    continue;
+                }
+                total += (deeper / OCCLUSION_REACH * 6.0).clamp(0.0, 1.0);
+            }
+            out[at] = total / steps.len() as f32;
+        }
+    }
+    out
+}
 /// Shrinks a picture by `factor`, averaging each square of pixels.
 fn shrink(pixels: &[u8], size: [u32; 2], factor: u32) -> Vec<u8> {
     let [w, h] = size.map(|v| v as usize);
@@ -178,6 +252,7 @@ fn draw_object_numbers(
     faces: &[MeshVertex],
     matrix: [[f32; 4]; 4],
     size: [u32; 2],
+    shader: &str,
 ) -> Result<Vec<u32>, String> {
     let [width, height] = size;
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
@@ -263,7 +338,7 @@ fn draw_object_numbers(
     });
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("curva object numbers"),
-        source: wgpu::ShaderSource::Wgsl(NUMBERS_SHADER.into()),
+        source: wgpu::ShaderSource::Wgsl(shader.into()),
     });
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("curva object numbers"),
@@ -393,6 +468,22 @@ struct Out {
     return input.number;
 }";
 
+/// Each pixel's distance from the camera along its view (the clip-space w of a perspective
+/// view), as the bits of a float, nearest face winning; 0 where nothing is drawn.
+const DEPTH_SHADER: &str = "
+struct Camera { matrix: mat4x4<f32> };
+@group(0) @binding(0) var<uniform> camera: Camera;
+struct Out {
+    @builtin(position) position: vec4<f32>,
+    @location(0) distance: f32,
+};
+@vertex fn vertex_main(@location(0) p: vec3<f32>, @location(1) number: u32) -> Out {
+    let at = camera.matrix * vec4<f32>(p, 1.0);
+    return Out(at, at.w);
+}
+@fragment fn fragment_main(input: Out) -> @location(0) u32 {
+    return bitcast<u32>(input.distance);
+}";
 #[cfg(test)]
 mod tests {
     use super::*;

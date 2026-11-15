@@ -60,7 +60,8 @@
   prototype pictures (Diagram, Architectural, Textured), then step 11.
 - **Prototype 1 of 3, Diagram** (this pull request): `curva --picture out.png --scene building
   --style diagram` draws a small test building on white with white surfaces, thin grey
-  inner edges and bold black outlines, as the owner asked (found from a hidden picture of object
+  inner edges and bold black outlines, soft shading and ambient occlusion, as the owner asked
+  (outlines found from a hidden picture of object
   numbers, drawn at twice
   the size and shrunk). Pictures only; the live viewport comes after the owner judges the look.
   Known: a thin seam line shows across each sphere.
