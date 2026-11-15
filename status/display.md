@@ -61,10 +61,10 @@
 - Order of work:
   1. **Finish what is open:** #189 (outlines of curved shapes in shaded views; two DirectX 12
      shader fixes, checked locally with DirectX 12's older compiler).
-  2. **#185, Vello for 2D views and sheets** (spike, nearly done): with the RTX 3060 recommended,
-     the verdict is full GPU Vello, with vello_cpu as the fallback; Vello Hybrid not needed. Waiting
-     for the owner's decision before building on it; the decision record goes in
-     `docs/decisions/`. **Then #186, re_renderer for 3D lines** (spike), reported the same way.
+  2. **#185, Vello for 2D views and sheets: done** (decision 0026): full GPU Vello, with vello_cpu
+     as the fallback; spike on branch `185-vello-spike`, not merged. Found #193 (wrong sections of
+     moved solids). Building on it waits for the re_renderer comparison and a plan for how the
+     styles spec changes (point 5). **Next: #186, re_renderer for 3D lines** (spike).
   3. **While waiting: #180,** splitting the viewport's large files, with no behaviour change and
      speed checked before and after.
   4. **Then:** step 11 (instancing, #153), 4c (an edit sends only the changed object), step 12
