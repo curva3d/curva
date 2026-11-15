@@ -22,8 +22,13 @@ impl Curva {
             .state()
             .objects
             .iter()
+            // Text, dimensions and leaders take styles; dots and hatches have none.
             .filter_map(|o| match &o.shape {
-                Shape::Annotation(curva_document::annotation::Annotation::Text(t)) => Some(t.style),
+                Shape::Annotation(
+                    curva_document::annotation::Annotation::Dot(_)
+                    | curva_document::annotation::Annotation::Hatch(_),
+                ) => None,
+                Shape::Annotation(annotation) => Some(annotation.style()),
                 _ => None,
             })
             .collect();

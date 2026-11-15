@@ -99,6 +99,29 @@ pub const CURVA_FILES: FileFormat = ("files.curva", &["curva"]);
 /// Rhino's files.
 pub const RHINO_FILES: FileFormat = ("files.rhino", &["3dm"]);
 
+/// PDF drawings.
+pub const PDF_FILES: FileFormat = ("files.pdf", &["pdf"]);
+
+/// Where a print goes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PrintTo {
+    /// A PDF file at this location, every page in it.
+    Pdf(String),
+    /// The system's printer, through its print command.
+    Printer,
+}
+
+/// What to print and how (spec `drawing-output.md` §1).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PrintJob {
+    /// The layouts, in order, one page each.
+    pub layouts: Vec<u64>,
+    /// Whether everything prints black, rather than in its colours.
+    pub black: bool,
+    /// Where it goes.
+    pub to: PrintTo,
+}
+
 /// A file dialog to show for a [`Kind::Path`] request.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FileDialog {
@@ -310,6 +333,8 @@ pub enum ViewRequest {
     ShowLayouts,
     /// Open the Annotation Styles panel.
     ShowAnnotationStyles,
+    /// Print or export layouts; the interface makes the pages.
+    Print(PrintJob),
     /// Clipping planes, by their rectangles, cut (`true`) or stop cutting the active viewport,
     /// or the detail being worked in.
     ClipIn(Vec<u64>, bool),

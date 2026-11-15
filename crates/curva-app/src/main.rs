@@ -39,6 +39,7 @@ mod layout;
 mod mouse;
 mod notices;
 mod panels;
+mod printing;
 mod recovery;
 mod settings;
 mod sheets;

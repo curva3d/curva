@@ -1,0 +1,17 @@
+[package]
+name = "curva-pdf"
+description = "Drawings to PDF: pages of lines and fills written with krilla."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+curva-document = { path = "../curva-document" }
+# PDF writing (spec `drawing-output.md` §4): from the Typst project, on pdf-writer and subsetter.
+# MIT OR Apache-2.0. No default features: no raster image or font-system loading yet.
+krilla = { version = "0.8.2", default-features = false }
