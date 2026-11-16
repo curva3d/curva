@@ -132,30 +132,39 @@ impl Document {
             .clipping_planes
             .iter()
             .filter(|c| c.views.contains(&view))
-            .filter_map(|c| {
-                let frame = self.state.objects.iter().find(|o| o.id == c.frame)?;
-                if frame.hidden {
-                    return None;
-                }
-                let mut points = frame.curve()?.sample().ok()?;
-                // A closed curve's samples end where they start.
-                if points.len() > 3 && points.first() == points.last() {
-                    points.pop();
-                }
-                let (origin, normal) = plane_of(&points)?;
-                let keep = if c.flipped {
-                    normal.map(|v| -v)
-                } else {
-                    normal
-                };
-                Some(PlaneCut {
-                    frame: c.frame,
-                    origin,
-                    keep,
-                    section: c.section,
-                })
-            })
+            .filter_map(|c| self.cut_of(c))
             .collect()
+    }
+
+    /// The clipping plane whose rectangle is `frame`, where it lies now, whatever views it
+    /// cuts; `None` for an object that is not a clipping plane, or one hidden or not flat.
+    #[must_use]
+    pub fn plane_cut_of(&self, frame: u64) -> Option<PlaneCut> {
+        self.cut_of(self.clipping_plane_of(frame)?)
+    }
+
+    fn cut_of(&self, c: &ClippingPlane) -> Option<PlaneCut> {
+        let frame = self.state.objects.iter().find(|o| o.id == c.frame)?;
+        if frame.hidden {
+            return None;
+        }
+        let mut points = frame.curve()?.sample().ok()?;
+        // A closed curve's samples end where they start.
+        if points.len() > 3 && points.first() == points.last() {
+            points.pop();
+        }
+        let (origin, normal) = plane_of(&points)?;
+        let keep = if c.flipped {
+            normal.map(|v| -v)
+        } else {
+            normal
+        };
+        Some(PlaneCut {
+            frame: c.frame,
+            origin,
+            keep,
+            section: c.section,
+        })
     }
 }
 

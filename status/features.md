@@ -61,9 +61,23 @@ views, shaded details, and PNG output from the viewport. Work on files, commands
 (`;%UNITS=INCH` files turned into millimetres). Merged (#219): `SetHatchBasePoint` moves where hatches' patterns
 start.
 
-**Next (features):** dimensions that follow their geometry; DimArcLength's `Partial` and `Leader`; DimArea on
-hatches; Make2D pieces that need no viewport. Meshes in DXF and DWG need the owner's decision first:
-Curva has no mesh objects.
+**Milestone 3, point 11 (Make2D):**
+- Merged (#254): four-view drawings, `Projection=ThirdAngle` and `FirstAngle`: top, front, right and perspective
+  lined up by drafting convention, gaps a tenth of the largest view, lower left at the origin. The perspective is
+  Rhino 8's standard Perspective direction drawn flat (the document keeps no camera per viewport). Rhino's own
+  spacing is unchecked: its four-view comes only from its dialog.
+- Merged (#257): `GroupOutput` and `MaintainSourceLayers` (`Make2D::Visible::Curves::Walls`).
+- Merged (#258): annotation lying flat to a view is copied into that view's drawing on
+  `Make2D::Visible::Annotations`; annotation standing across a view is left out for now.
+- Merged (#261): clipping planes chosen with the objects cut the drawing (solids by the engine's split, curves
+  where they cross); `ClippingPlaneIntersections` draws the cuts on their own layer. No section fill yet.
+- Merged (#260): DimArea and the `Area` field measure hatches (what they fill).
+
+**Next (features):** dimensions that follow their geometry (needs a decision: Rhino links a dimension to what it
+snapped to, but the viewport's snaps carry no object, and changing them is display work; the alternative is to
+link points that coincide with an object's snap points); DimArcLength's `Partial` and `Leader`; Make2D's section
+fills. Meshes in DXF and DWG need the owner's decision first: Curva has
+no mesh objects.
 
 ## Features stream — 15 November 2026
 

@@ -12,6 +12,13 @@ point 3).
 - **Steps and options:** Rhino 8's Make2D dialog, as the command's options and a small panel:
   - **View:** current view, current construction plane, or a four-view drawing (top, front, right
     and perspective, in US or European projection).
+    - As built (16 November 2026): `Projection=ThirdAngle` puts the top view above the front and
+      the right view to its right; `FirstAngle` puts them below and to the left. Each lines up with
+      the front; the perspective goes at the upper right; the gaps are a tenth of the largest view,
+      and the whole drawing's lower left corner is at the world origin. The perspective is Rhino
+      8's standard Perspective direction drawn flat, since the document does not keep each
+      viewport's camera. Rhino's own spacing and perspective camera are unchecked: its four-view
+      drawing is made only from its dialog, which a scripted Rhino cannot drive.
   - **Options:** show tangent edges, show tangent seams, hidden lines, scene silhouettes (outlines of
     objects against the background), clipping-plane intersections (with the section fill as a
     hatch), group the output, and maintain source layers.
@@ -21,10 +28,20 @@ point 3).
   `Curves`, `Tangents`, `Silhouettes`, `Clipping plane intersections` and `Annotations`; with
   "maintain source layers", the source layer tree is repeated under each.
 - **Annotation:** text and dimensions in the selection are copied into the drawing, flattened, as in
-  Rhino.
+  Rhino. As built (16 November 2026): annotation lying flat to a flat view (and dots) is copied
+  into that view's drawing as it lies there, on `Make2D::Visible::Annotations`; annotation standing
+  across the view, and annotation in a perspective view, is left out for now. A four-view drawing's
+  spacing does not make room for annotation.
 - **What it draws:** edges of solids and surfaces, curves, silhouettes of curved faces, block
   instances (their contents), and clipping-plane cuts. Points, dots and hatches as Rhino draws
   them.
+- **Clipping planes, as built (16 November 2026):** clipping planes chosen with the objects cut the
+  drawing, as in Rhino (their rectangles are not drawn): each solid is split by a sheet on the plane
+  through the engine (`split_by`) and the kept side drawn; curves are cut where their samples cross
+  the plane, the crossings put back on the curve. With `ClippingPlaneIntersections` (on at first)
+  the cuts through the solids (`Body::section`) are drawn on `Clipping plane intersections`, where
+  they win over the cut edges they lie on (the hidden-line cleaning's `first_from`). The section
+  fill is not drawn yet.
 
 ## 2. The hidden-line removal
 
