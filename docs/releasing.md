@@ -23,5 +23,10 @@ for each row of `docs/kernel/custom-operations.md` see whether solidcore now cov
 fully. Switch those to solidcore's, delete Curva's code and the row, note it in the release notes, and
 update "Checked at" on the rest.
 
+Also before every release, and at every Bevy upgrade (the owner's rule, decision 0030): **check the
+custom Bevy parts** in `docs/bevy/custom-parts.md` the same way. Where Bevy now ships a part and it
+works at least as well, switch to it, delete Curva's code and the row, and note it in the release
+notes.
+
 Then: bump the version in `Cargo.toml`, write `docs/releases/vX.Y.Z.md`, merge, tag `vX.Y.Z` and push the
 tag; the release workflow builds the Windows installer, the Linux AppImage and the macOS disk image.
