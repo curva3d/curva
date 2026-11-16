@@ -26,6 +26,14 @@ pub struct ArcLengthDimension {
     /// Typed text in place of the value; `<>` stands for the value.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
+    /// Whether it measures only part of the arc, as AutoCAD's `Partial`: `start` and `end` are
+    /// then points chosen on the arc rather than its ends. It draws the same; files keep the flag.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub partial: bool,
+    /// Whether a leader runs from the dimension arc to the measured arc, as AutoCAD's `Leader`:
+    /// straight towards the centre, at the middle of the measured part, its arrow on the arc.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub leader: bool,
 }
 
 impl ArcLengthDimension {
@@ -58,6 +66,23 @@ impl ArcLengthDimension {
     #[must_use]
     pub fn turn(&self) -> f64 {
         self.sweep().1
+    }
+
+    /// Where its leader starts, on the dimension arc, and where it ends, on the measured arc, if
+    /// it has one. Both lie on the line from the centre through the middle of the measured part,
+    /// as AutoCAD draws it.
+    #[must_use]
+    pub fn leader_points(&self) -> Option<(Point, Point)> {
+        if !self.leader {
+            return None;
+        }
+        let (start, span) = self.sweep();
+        let (s, c) = (start + span / 2.0).sin_cos();
+        let way: Point = std::array::from_fn(|i| self.x[i] * c + self.y[i] * s);
+        Some((
+            plus(self.centre, way, self.radius_to(self.arc_at)),
+            plus(self.centre, way, self.radius_to(self.start)),
+        ))
     }
 
     pub(super) fn transformed(
@@ -136,29 +161,22 @@ impl ArcLengthDimension {
             ]
         };
         let tangent_at = |angle: f64| along(angle + FRAC_PI_2);
-        let arrows = vec![
+        let mut arrows = vec![
             head(at(reach, start), tangent_at(start)),
             head(
                 at(reach, start + span),
                 tangent_at(start + span).map(|v| -v),
             ),
         ];
+        // The leader: a line from the dimension arc in to the measured arc, its arrow on the arc,
+        // pointing along the line.
+        if let Some((from, to)) = self.leader_points() {
+            lines.push((from, to));
+            arrows.push(head(to, unit(sub(from, to))));
+        }
         let height = style.text_height * scale;
         let origin = plus(at(reach, middle), along(middle), style.text_gap() * scale);
-        // The arc symbol over the value, as AutoCAD draws it with the symbol above.
-        let symbol_centre = plus(origin, self.y, height * 1.1);
-        let half = height * 0.6;
-        for k in 0..8 {
-            #[allow(clippy::cast_precision_loss)]
-            let angle = |k: usize| std::f64::consts::PI * k as f64 / 8.0;
-            let point = |a: f64| {
-                let (s, c) = a.sin_cos();
-                std::array::from_fn(|i| {
-                    symbol_centre[i] + half * c * self.x[i] + half * 0.6 * s * self.y[i]
-                })
-            };
-            lines.push((point(angle(k)), point(angle(k + 1))));
-        }
+        lines.extend(self.arc_symbol(origin, height));
         let text = Text {
             content: shown,
             origin,
@@ -175,5 +193,21 @@ impl ArcLengthDimension {
             arrows,
             text,
         }
+    }
+
+    /// The arc symbol over a value written at `origin` with letters `height` tall, as AutoCAD
+    /// draws it with the symbol above: half an ellipse, as eight short lines.
+    fn arc_symbol(&self, origin: Point, height: f64) -> Vec<(Point, Point)> {
+        let centre = plus(origin, self.y, height * 1.1);
+        let half = height * 0.6;
+        #[allow(clippy::cast_precision_loss)]
+        let angle = |k: usize| std::f64::consts::PI * k as f64 / 8.0;
+        let point = |a: f64| -> Point {
+            let (s, c) = a.sin_cos();
+            std::array::from_fn(|i| centre[i] + half * c * self.x[i] + half * 0.6 * s * self.y[i])
+        };
+        (0..8)
+            .map(|k| (point(angle(k)), point(angle(k + 1))))
+            .collect()
     }
 }

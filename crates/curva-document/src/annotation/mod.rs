@@ -620,6 +620,8 @@ mod tests {
             y: [0.0, 1.0, 0.0],
             style: 0,
             text: None,
+            partial: false,
+            leader: false,
         }
     }
 

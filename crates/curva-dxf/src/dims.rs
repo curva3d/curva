@@ -100,9 +100,15 @@ pub(crate) fn dimension_out(
                 center_point: v3(a.centre),
                 arc_start_parameter: start,
                 arc_end_parameter: start + a.turn(),
+                is_partial: a.partial,
                 ..DimensionArc::default()
             };
             d.base.definition_point = v3(a.arc_at);
+            if let Some((from, to)) = a.leader_points() {
+                d.has_leader = true;
+                d.first_leader_point = v3(from);
+                d.second_leader_point = v3(to);
+            }
             d.base.actual_measurement = a.value();
             d.base.user_text = typed(&a.text);
             Dimension::Arc(d)
@@ -265,8 +271,8 @@ pub(crate) fn dimension_in(d: &Dimension) -> Annotation {
             text: typed_in(&r.base),
         }),
         // An arc length (DIMARC): the arc's centre and ends, counter-clockwise from the first,
-        // and a point on the dimension arc. A partial one measures between its ends as given;
-        // its leader is left out.
+        // and a point on the dimension arc. A partial one measures between its ends as given and
+        // keeps its flag; a leader is drawn from the dimension again, as AutoCAD places it.
         Dimension::Arc(a) => Annotation::ArcLength(ArcLengthDimension {
             centre: p3(&a.center_point),
             start: p3(&a.first_extension_point),
@@ -276,6 +282,8 @@ pub(crate) fn dimension_in(d: &Dimension) -> Annotation {
             y,
             style: 0,
             text: typed_in(&a.base),
+            partial: a.is_partial,
+            leader: a.has_leader,
         }),
         Dimension::Ordinate(o) => Annotation::Ordinate(OrdinateDimension {
             base: p3(&o.definition_point),
@@ -402,6 +410,8 @@ mod tests {
             y: [0.0, 1.0, 0.0],
             style: 0,
             text: None,
+            partial: false,
+            leader: false,
         };
         doc.add_annotation(Annotation::ArcLength(wanted.clone()));
         for format in [Format::Dxf, Format::Dwg] {
@@ -424,6 +434,65 @@ mod tests {
             // AutoCAD's own measure of it agrees.
             assert!(
                 (arc.measurement() - wanted.value()).abs() < 1e-9,
+                "{format:?}"
+            );
+            let mut back = Document::default();
+            import(&cad, &mut back);
+            assert_eq!(
+                annotations(&back),
+                vec![Annotation::ArcLength(wanted.clone())],
+                "{format:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_partial_arc_length_with_a_leader_goes_out_and_comes_back() {
+        use curva_document::annotation::ArcLengthDimension;
+        let mut doc = Document::default();
+        // Part of an arc of radius 10 about the origin, from 20° to 160°, with its leader.
+        let on = |r: f64, degrees: f64| {
+            let (s, c) = f64::to_radians(degrees).sin_cos();
+            [r * c, r * s, 0.0]
+        };
+        let wanted = ArcLengthDimension {
+            centre: [0.0; 3],
+            start: on(10.0, 20.0),
+            end: on(10.0, 160.0),
+            arc_at: on(15.0, 90.0),
+            x: [1.0, 0.0, 0.0],
+            y: [0.0, 1.0, 0.0],
+            style: 0,
+            text: None,
+            partial: true,
+            leader: true,
+        };
+        doc.add_annotation(Annotation::ArcLength(wanted.clone()));
+        for format in [Format::Dxf, Format::Dwg] {
+            let (bytes, _) = export(&doc, None, format).unwrap();
+            let cad = read(&bytes, format).unwrap();
+            let arc = cad
+                .entities()
+                .find_map(|e| match e {
+                    acadrust::entities::EntityType::Dimension(d) => match d.as_ref() {
+                        acadrust::entities::dimension::Dimension::Arc(a) => Some(a.clone()),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("{format:?}: no ARC_DIMENSION"));
+            assert!(arc.is_partial && arc.has_leader, "{format:?}");
+            // The leader runs in from the dimension arc to the measured arc, straight up at 90°.
+            let gap = |p: &acadrust::types::Vector3, q: [f64; 3]| {
+                let p = crate::p3(p);
+                ((p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2)).sqrt()
+            };
+            assert!(
+                gap(&arc.first_leader_point, on(15.0, 90.0)) < 1e-9,
+                "{format:?}"
+            );
+            assert!(
+                gap(&arc.second_leader_point, on(10.0, 90.0)) < 1e-9,
                 "{format:?}"
             );
             let mut back = Document::default();
