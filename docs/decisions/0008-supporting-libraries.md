@@ -1,6 +1,7 @@
 # 0008 — Licence and health check of supporting libraries
 
 **Status:** Accepted · 8 November 2026 · The owner chose the recommended option for both decisions
+**Decision 1 (IFC library) updated by 0031** (16 November 2026): Curva is now GPL, so the library is chosen by a test at the start of M4.
 **Answers:** architecture open decisions 4 and 5 · task M0-17
 
 **What we checked:** each library's licence, latest release and recent activity, on 8 November 2026.

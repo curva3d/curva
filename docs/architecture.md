@@ -134,7 +134,7 @@ A smart object (a door, window, tree, person, furniture piece, wall style) carri
 | SubD (later stage, section 10d) | **subdiv-kernels** | MIT / Apache-2.0 / Zlib / BSD-3 | Pure-Rust Catmull–Clark with creases and the true limit surface, matching OpenSubdiv. Very young |
 | Sketch constraints | Reuse **SolidCraft's** Rust constraint solver | MIT / Apache | Our own solver later only if needed |
 | BIM model (Architecture) | **Our own**, built on IFC 4.3 concepts: storeys, walls, slabs, openings, types, property sets | — | No stable open-source BIM base exists in Rust. BIMCraft, Rustit and Bonsai are references only |
-| IFC import / export | **openbim-ifc** crates (Rust, actively developed) as the first candidate | check | IFC2x3, IFC4 and IFC 4.3. Tested against the official schemas and buildingSMART samples |
+| IFC import / export | **OpenBIM.rs** (`openbim-ifc`) or **IFClite**, chosen by a head-to-head test at the start of M4 (decision 0031) | AGPL or commercial / MPL-2.0: owner's choice | Every object carries its IFC identity from creation; vocabulary from the official IFC 4.3 schema; IDS checks and round trips in CI from the first wall. Tested against the official schemas and buildingSMART samples |
 | STEP | Reuse SolidCraft's STEP reader and writer | MIT / Apache | Main exchange format with other CAD tools |
 | Rhino 3DM files | Our own Rust reader and writer, from the published openNURBS file format | — | High priority for Freeform. STEP until it's ready |
 | Native file container | **redb** or a zip-style package | MIT / Apache | See section 8 |
