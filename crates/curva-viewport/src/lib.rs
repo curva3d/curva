@@ -10,6 +10,7 @@ mod outline;
 mod outlines;
 mod palette;
 mod pick;
+mod pilot;
 pub mod print;
 mod snap;
 mod styles;
@@ -34,6 +35,7 @@ pub use lines::*;
 pub use outlines::*;
 pub use palette::*;
 pub use pick::*;
+pub use pilot::{Engine, PilotSeed};
 
 const GRID_HALF_SIZE: i32 = 100;
 const GRID_STEP: i32 = 10;

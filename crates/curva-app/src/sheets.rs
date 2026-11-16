@@ -223,6 +223,7 @@ impl Curva {
                 frame: ui.ctx().cumulative_frame_nr(),
                 background: PAPER,
                 background_low: PAPER,
+                engine: curva_viewport::Engine::Curva,
             };
             ui.painter()
                 .with_clip_rect(on_screen)

@@ -222,7 +222,7 @@ struct BlurChain {
 
 /// The pipelines and textures for drawing the viewports through a texture and blurring it.
 pub(crate) struct Compositor {
-    format: wgpu::TextureFormat,
+    pub(crate) format: wgpu::TextureFormat,
     sampler: wgpu::Sampler,
     copy_layout: wgpu::BindGroupLayout,
     step_layout: wgpu::BindGroupLayout,

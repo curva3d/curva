@@ -1,5 +1,6 @@
 //! One frame of the viewport, drawn into the window by egui.
 
+use crate::pilot::{Engine, Pilot, PilotSeed};
 use crate::{MeshVertex, Vertex};
 use egui_wgpu::wgpu;
 use std::sync::Arc;
@@ -49,6 +50,47 @@ pub struct Drawing {
     /// The 3D background's colour at the bottom, which it shades to from `background` at the
     /// top.
     pub background_low: epaint::Color32,
+    /// Which engine draws the view: Curva, or Bevy for the pilot (decision 0028).
+    pub engine: Engine,
+}
+
+impl Drawing {
+    /// The view's place on a window texture of `size` pixels, its corners in pixels; `None`
+    /// when less than a pixel of it shows.
+    fn pixel_area(
+        &self,
+        size: [u32; 2],
+        pixels_per_point: f32,
+    ) -> Option<(epaint::Pos2, epaint::Pos2)> {
+        let low = (self.area.min * pixels_per_point).max(epaint::Pos2::ZERO);
+        let high =
+            (self.area.max * pixels_per_point).min(epaint::pos2(size[0] as f32, size[1] as f32));
+        (high.x - low.x >= 1.0 && high.y - low.y >= 1.0).then_some((low, high))
+    }
+
+    /// For a pilot view, Bevy's picture of it, starting Bevy the first time; `None` for a
+    /// Curva view, or while Bevy's picture is not ready, when Curva draws the view instead.
+    fn pilot_picture(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        screen: &egui_wgpu::ScreenDescriptor,
+        resources: &mut egui_wgpu::CallbackResources,
+    ) -> Option<wgpu::Texture> {
+        if self.engine != Engine::BevyPilot {
+            return None;
+        }
+        let (low, high) = self.pixel_area(screen.size_in_pixels, screen.pixels_per_point)?;
+        if resources.get::<Pilot>().is_none() {
+            let format = resources.get::<LineRenderer>()?.compositor.format;
+            let seed = resources.get::<PilotSeed>()?.clone();
+            resources.insert(Pilot::new(&seed, device, queue, format));
+        }
+        let size = [(high.x - low.x) as u32, (high.y - low.y) as u32];
+        resources
+            .get_mut::<Pilot>()?
+            .draw(self.slot, size, self.background)
+    }
 }
 
 impl egui_wgpu::CallbackTrait for Drawing {
@@ -60,6 +102,9 @@ impl egui_wgpu::CallbackTrait for Drawing {
         encoder: &mut wgpu::CommandEncoder,
         resources: &mut egui_wgpu::CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
+        // Bevy draws and sends its own work to the card first, so its picture is ready for
+        // the copy below.
+        let pilot = self.pilot_picture(device, queue, screen, resources);
         let Some(renderer) = resources.get_mut::<LineRenderer>() else {
             return Vec::new();
         };
@@ -80,10 +125,38 @@ impl egui_wgpu::CallbackTrait for Drawing {
         let first = target.cleared != Some(self.frame);
         target.cleared = Some(self.frame);
         let (colour, depth) = (target.colour.clone(), target.depth.clone());
-        let scale = screen.pixels_per_point;
-        let low = (self.area.min * scale).max(epaint::Pos2::ZERO);
-        let high = (self.area.max * scale).min(epaint::pos2(size[0] as f32, size[1] as f32));
-        if high.x - low.x < 1.0 || high.y - low.y < 1.0 {
+        let Some((low, high)) = self.pixel_area(size, screen.pixels_per_point) else {
+            return Vec::new();
+        };
+        if let Some(picture) = pilot {
+            // The first viewport of a frame clears the whole texture, gaps included.
+            if first {
+                drop(surfaces_pass(
+                    encoder,
+                    &colour,
+                    &depth,
+                    Some(self.background),
+                    None,
+                ));
+            }
+            encoder.copy_texture_to_texture(
+                picture.as_image_copy(),
+                wgpu::TexelCopyTextureInfo {
+                    texture: colour.texture(),
+                    mip_level: 0,
+                    origin: wgpu::Origin3d {
+                        x: low.x as u32,
+                        y: low.y as u32,
+                        z: 0,
+                    },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::Extent3d {
+                    width: picture.width().min(size[0] - low.x as u32),
+                    height: picture.height().min(size[1] - low.y as u32),
+                    depth_or_array_layers: 1,
+                },
+            );
             return Vec::new();
         }
         // A view is drawn in up to three passes: surfaces, outlines found from their depth, then
