@@ -1,6 +1,6 @@
 # Spec: mesh and SubD objects
 
-**Status:** Draft for the owner's approval (issue #246). No code before it is approved.
+**Status:** Approved by the owner in chat · 17 November 2026, with the decisions in §9.
 **Covers:** decision 0032 (and updates it: QuadRemesh now, §3.5); `architecture.md` §10d. The mesh stream's plan (`AGENTS.md`, Streams).
 **Target:** Rhino 8's mesh and SubD objects and commands. Each command's exact steps and options are
 taken from Rhino itself into `docs/commands/rhino-reference.md` before it is written, as for every
@@ -302,7 +302,7 @@ Checked with `cargo-deny` on a branch with both libraries added (16 November 202
 |---|---|---|
 | manifold-rust | Apache-2.0 | Yes |
 | dashu (exact arithmetic, for the robust engine) | MIT or Apache-2.0 | Yes |
-| **clipper2-rust** (2D polygon clipping, used by manifold-rust) | **BSL-1.0** (the Boost licence) | **No** |
+| clipper2-rust (2D polygon clipping, used by manifold-rust) | BSL-1.0 (the Boost licence) | Yes, from 17 November 2026 (decision 0034) |
 | subdiv-kernels | MIT, Apache-2.0, Zlib or BSD-3 | Yes |
 | quadrs | MIT | Yes |
 | glam (vector maths, used by quadrs; already in Curva through Bevy) | MIT or Apache-2.0 | Yes |
@@ -310,28 +310,22 @@ Checked with `cargo-deny` on a branch with both libraries added (16 November 202
 
 **The Boost licence** is a short permissive licence, like MIT: free use, change and sale, and it
 asks for its notice in source copies only, not in the shipped program. It is common in C++ and
-compatible with both of Curva's licences. Your decision 1, §9.
+compatible with both of Curva's licences. The owner allowed it for all of Curva (decision 0034).
 
 No other problems: no copyleft, nothing unmaintained flagged. subdiv-kernels' optional Bevy and
 graphics-card parts are switched off, so no second Bevy is built.
 
-## 9. Your decisions
+## 9. The owner's decisions (17 November 2026)
 
-**1. Allow the Boost licence (BSL-1.0) for clipper2-rust, which manifold-rust needs.**
-- **(a) Allow it for clipper2-rust only (recommended).** Mesh booleans as planned. Same as the
-  exception you gave acadrust's licence.
-- (b) Allow BSL-1.0 generally. Same now; fewer questions later, less control.
-- (c) Refuse it. manifold-rust cannot be used; mesh booleans would need another library (the ones
-  decision 0032 dropped crack more often) or years of Curva's own work.
-
-**2. The order of the stages: decided** (owner, 17 November 2026): mesh tools first (Mesh from
-NURBS, booleans, repair), with the files they need (STL, OBJ, PLY, `.3dm` meshes); then SubDs come
-in; then SubD modelling with QuadRemesh.
-
-**3. QuadRemesh: decided** (owner, 17 November 2026, decision 0033): in Stage B, on quadrs, with
-Curva adding Rhino's options on top. No well-maintained pure-Rust alternative exists (§3.5).
-
-**4. Approve the plan** (stages, objects, libraries, tests, steps), or tell me what to change.
+1. **The Boost licence (BSL-1.0) is allowed for all of Curva** (decision 0034), so manifold-rust can
+   be used.
+2. **Mesh tools first** (Mesh from NURBS, booleans, repair), with the files they need (STL, OBJ,
+   PLY, `.3dm` meshes); then SubDs come in; then SubD modelling with QuadRemesh.
+3. **QuadRemesh now, on quadrs** (decision 0033), in Stage C with SubD modelling, Curva adding
+   Rhino's options on top. No well-maintained pure-Rust alternative exists (§3.5).
+4. **Flat or smooth SubD display is a command like any other** (`SubDDisplayToggle`, Tab as its
+   shortcut).
+5. **Everything else approved as written.**
 
 ## 10. Steps
 

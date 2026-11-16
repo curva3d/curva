@@ -6,7 +6,9 @@ first.*
 
 ## 16 November 2026 (second session, after the move to E:)
 
-**In review: the spec** (`docs/specs/mesh-and-subd.md`, #246), waiting for the owner's approval.
+**Spec approved by the owner** (17 November 2026, `docs/specs/mesh-and-subd.md`, #246). The Boost
+licence is allowed for all of Curva (decision 0034, in `deny.toml` and `about.toml`).
+First draft, as sent for approval:
 Three stages: A, Rhino's meshes and SubDs come in (objects, display, `.3dm`, OBJ, STL, PLY);
 B, SubD modelling; C, mesh tools. Owner's decisions asked: the Boost licence (BSL-1.0) for
 clipper2-rust, which manifold-rust needs (`cargo-deny` rejects it today; everything else passes);
@@ -15,7 +17,10 @@ the order of the stages; the plan as a whole.
 **Owner's changes (16 November 2026):** QuadRemesh is important and comes in Stage B, on quadrs
 (decision 0033, 17 November; no well-maintained pure-Rust alternative was found). Stage order
 (owner, 17 November): A meshes and mesh tools, B SubDs come in, C SubD modelling with QuadRemesh.
-Still open: the Boost licence, and approval of the plan. Flat or smooth SubD display is a command like any other,
+
+
+**Next:** Stage A (spec §10): step 1, the mesh structure in `crates/curva-mesh`; the features issue
+for the two shape kinds; the display issues for drawing meshes. Flat or smooth SubD display is a command like any other,
 `SubDDisplayToggle`, with Tab as its shortcut.
 
 **Found on the way**

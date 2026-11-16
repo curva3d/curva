@@ -11,6 +11,8 @@ accepted = [
     "Unicode-DFS-2016",
     "OFL-1.1",
     "Ubuntu-font-1.0",
+    # Boost licence, allowed for all of Curva (decision 0034), as in deny.toml.
+    "BSL-1.0",
 ]
 ignore-build-dependencies = true
 ignore-dev-dependencies = true
