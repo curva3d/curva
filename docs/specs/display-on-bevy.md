@@ -1,6 +1,6 @@
 # Spec: the display on Bevy
 
-**Status:** Draft, for the owner's approval.
+**Status:** Approved by the owner in chat · 16 November 2026, with the decisions in §5.
 **Covers:** the owner's direction of 16 November 2026: add Bevy fully to Curva, make the display
 solid, reliable, quick and customisable, then return to the view styles. Decisions 0028 to 0030.
 **Replaces:** steps 3 to 6 of `bevy-pilot.md`; steps 5 to 15 of `display-pipeline.md` (5 to 7 move
@@ -58,8 +58,8 @@ scenes (`docs/performance.md`):
    with filled cut faces from the kernel's exact cut outlines (custom part `cut-caps`); pictures for
    agents drawn by Bevy.
 3. **Bevy draws every 3D view:** the "3D engine" setting goes; Curva's own surface drawing, its
-   outline pass and their tests' surface parts are deleted; Zebra and Draft as a small Curva
-   material (custom part `analysis-looks`, decision B). Lines of code removed are counted.
+   outline pass and their tests' surface parts are deleted; Zebra and Draft angle are removed for
+   now (decision B). Lines of code removed are counted.
 4. **Copies drawn once, accuracy far away:** shared shapes from the kernel (one Bevy mesh, many
    placements, which Bevy draws together), the moving origin (custom part `far-origin`), Bevy's
    settings in millimetres. *Large* first frame and memory; *Far* without shimmer.
@@ -84,11 +84,11 @@ Announced in `status/display.md` before each step, as before: the benchmark's `-
 (step 1) and its removal (step 3); the kernel's shared shape and placement (step 4, additive); the
 views, styles and Style panel of `views-and-styles.md` §7 (step 6).
 
-## 5. For the owner's decision
+## 5. The owner's decisions (16 November 2026)
 
-- **A. Bevy becomes the only 3D engine at step 3,** as soon as lines are drawn on Bevy's pictures,
-  rather than after all steps (recommended: less code carried twice, fewer places for bugs).
-- **B. Zebra and Draft angle as a small Curva material** on Bevy (recommended): Bevy has no such
-  analysis looks; listed as a custom part and checked at each upgrade.
+- **A. Bevy becomes the only 3D engine at step 3,** as soon as lines are drawn on Bevy's pictures.
+- **B. Zebra and Draft angle are dropped for now:** removed at step 3, to come back later as their
+  own piece of work (Bevy has no such analysis looks; they would be a listed custom part).
 - **C. Machines without a graphics card** run Bevy on the system's software graphics, slowly, with
-  the effects off, rather than a separate engine (recommended: one engine). Measured in step 5.
+  the effects off; no separate engine. Measured in step 5.
+- The plan and its targets approved as written, including "faster than Rhino" on every scene.
