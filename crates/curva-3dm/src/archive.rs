@@ -89,6 +89,7 @@ pub mod tcode {
     pub const LINETYPE_RECORD: u32 = TABLEREC | CRC | 0x0078;
     pub const HATCHPATTERN_RECORD: u32 = TABLEREC | CRC | 0x0077;
     pub const DIMSTYLE_RECORD: u32 = TABLEREC | CRC | 0x0075;
+    pub const FONT_RECORD: u32 = TABLEREC | CRC | 0x0074;
 
     pub const OBJECT_RECORD: u32 = TABLEREC | CRC | 0x0070;
     pub const OBJECT_RECORD_TYPE: u32 = INTERFACE | SHORT | 0x0071;

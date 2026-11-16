@@ -47,6 +47,8 @@ pub mod class {
     pub const DETAIL: Uuid = Uuid::parse("C8C66EFA-B3CB-4e00-9440-2AD66203379E");
     pub const CLIPPING_PLANE_SURFACE: Uuid = Uuid::parse("DBC5A584-CE3F-4170-98A8-497069CA5C36");
     pub const DIM_STYLE: Uuid = Uuid::parse("67AA51A5-791D-4BEC-8AED-D23B462B6F87");
+    /// Rhino 5's annotation style (`ON_V5x_DimStyle`).
+    pub const V5_DIM_STYLE: Uuid = Uuid::parse("81BD83D5-7120-41c4-9A57-C449336FF12C");
     pub const LINETYPE: Uuid = Uuid::parse("26F10A24-7D13-4F05-8FDA-8E364DAF8EA6");
     // Rhino 5's annotation (openNURBS' `ON_OBSOLETE_V5_*`, Rhino 5's `ON_TextEntity2` and kin).
     pub const V5_DIM_LINEAR: Uuid = Uuid::parse("BD57F33B-A1B2-46e9-9C6E-AF09D30FFDDE");
@@ -106,6 +108,9 @@ pub fn read(data: &[u8]) -> Result<Model> {
         angle_tolerance: 1f64.to_radians(),
         ..Model::default()
     };
+    // Rhino 5's fonts and styles by their index in their tables.
+    let mut v5_fonts: Vec<(i32, String)> = Vec::new();
+    let mut v5_styles: Vec<(i32, Uuid)> = Vec::new();
     while !file.is_done() {
         let mut chunk = file.chunk()?;
         match chunk.tcode {
@@ -133,10 +138,29 @@ pub fn read(data: &[u8]) -> Result<Model> {
                 }
                 Ok(())
             })?,
+            // Rhino 5's fonts, which its styles name by index; later files keep a style's font
+            // in the style.
+            tcode::FONT_TABLE if version < 60 => {
+                records(&mut chunk.body, tcode::FONT_RECORD, |body| {
+                    if let Ok(Some(font)) = v5_font(body) {
+                        v5_fonts.push(font);
+                    }
+                    Ok(())
+                })?;
+            }
             tcode::DIMSTYLE_TABLE => {
                 records(&mut chunk.body, tcode::DIMSTYLE_RECORD, |body| {
-                    if let Some(style) = dim_style(body)? {
-                        model.dim_styles.push(style);
+                    match dim_style(body)? {
+                        Some((mut style, Some((index, font)))) => {
+                            style.font = v5_fonts
+                                .iter()
+                                .find(|(i, _)| *i == font)
+                                .map(|(_, name)| name.clone());
+                            v5_styles.push((index, style.id));
+                            model.dim_styles.push(style);
+                        }
+                        Some((style, None)) => model.dim_styles.push(style),
+                        None => {}
                     }
                     Ok(())
                 })?;
@@ -178,6 +202,11 @@ pub fn read(data: &[u8]) -> Result<Model> {
                     Ok(())
                 })?;
                 model.objects = objects;
+                if version < 60 {
+                    for object in &mut model.objects {
+                        name_v5_style(&mut object.geometry, &v5_styles);
+                    }
+                }
                 for kind in skipped {
                     model.skip(&kind);
                 }
@@ -1502,13 +1531,130 @@ fn font_name(r: &mut Reader<'_>) -> Result<Option<String>> {
     Ok((!text.is_empty()).then_some(text))
 }
 
-/// A dimension style table record; Rhino 5's older form is left out.
-fn dim_style(record: &mut Reader<'_>) -> Result<Option<DimStyle>> {
+/// Where a Rhino 5 style sits: its index in the style table and its font's in the font table.
+type V5Place = (i32, i32);
+
+/// A dimension style table record. Rhino 5's form also gives its index in the table and its
+/// font's, which annotation and the style name it by.
+fn dim_style(record: &mut Reader<'_>) -> Result<Option<(DimStyle, Option<V5Place>)>> {
     let (id, mut r) = class_object(record)?;
-    if id != class::DIM_STYLE || r.version < 60 || r.peek_tcode() != Some(tcode::ANONYMOUS_CHUNK) {
+    if id != class::DIM_STYLE && id != class::V5_DIM_STYLE {
         return Ok(None);
     }
-    dim_style_fields(&mut r).map(Some)
+    if r.version < 60 {
+        return v5_dim_style(&mut r).map(|(style, at)| Some((style, Some(at))));
+    }
+    if r.peek_tcode() != Some(tcode::ANONYMOUS_CHUNK) {
+        return Ok(None);
+    }
+    dim_style_fields(&mut r).map(|style| Some((style, None)))
+}
+
+/// A Rhino 5 annotation style (`ON_V5x_DimStyle::Internal_Read_v5`): a bare chunk version, its
+/// index, name, extension line extension and offset, arrow size, centre mark, text gap, text
+/// alignment, arrow type, angle units, length and angle formats, length and angle resolutions,
+/// its font's index, then (from version 1.1) its text height and (from 1.3) its id. Notes'
+/// alignment takes Rhino 8's default for a Rhino 5 style: left and top.
+fn v5_dim_style(r: &mut Reader<'_>) -> Result<(DimStyle, (i32, i32))> {
+    let (major, minor) = r.chunk_version()?;
+    if major != 1 {
+        return Err(bad(format!(
+            "a Rhino 5 annotation style of version {major}"
+        )));
+    }
+    let index = r.i32()?;
+    let name = r.wstring()?;
+    let [
+        extension_extension,
+        extension_offset,
+        arrow_size,
+        _centre_mark,
+        text_gap,
+    ] = r.f64s::<5>()?;
+    r.skip(4 * 5)?; // text alignment, arrow type, angle units, length and angle formats
+    let length_resolution = r.i32()?;
+    r.i32()?; // angle resolution
+    let font = r.i32()?;
+    let text_height = if minor >= 1 { r.f64()? } else { 1.0 };
+    // Without an id, the style is named by one made from its index, as Rhino gives it a new one.
+    let mut id = Uuid([0; 16]);
+    id.0[..4].copy_from_slice(b"crv5");
+    id.0[12..].copy_from_slice(&index.to_le_bytes());
+    if minor >= 3 {
+        r.f64()?; // length factor
+        r.wstring()?; // prefix
+        r.wstring()?; // suffix
+        r.bool()?; // alternate units
+        r.f64()?; // alternate length factor
+        r.skip(4 * 4)?; // alternate length and angle formats and resolutions
+        r.wstring()?; // alternate prefix
+        r.wstring()?; // alternate suffix
+        r.u32()?; // unused
+        let own = r.uuid()?;
+        if own != Uuid::NIL {
+            id = own;
+        }
+    }
+    Ok((
+        DimStyle {
+            id,
+            name,
+            text_height,
+            h_align: 0,
+            v_align: 3,
+            arrow_size,
+            extension_extension,
+            extension_offset,
+            text_gap,
+            length_resolution,
+            font: None,
+        },
+        (index, font),
+    ))
+}
+
+/// A Rhino 5 font table record (`ON_Font::ReadV5`): a bare chunk version, its index, a
+/// description, then its Windows face name as 64 UTF-16 units, which names the family.
+fn v5_font(record: &mut Reader<'_>) -> Result<Option<(i32, String)>> {
+    let (_, mut r) = class_object(record)?;
+    if r.chunk_version()?.0 != 1 {
+        return Ok(None);
+    }
+    let index = r.i32()?;
+    r.wstring()?; // description
+    let units = (0..64).map(|_| r.u16()).collect::<Result<Vec<_>>>()?;
+    let end = units.iter().position(|&u| u == 0).unwrap_or(units.len());
+    let face = String::from_utf16_lossy(&units[..end]).trim().to_owned();
+    Ok((!face.is_empty()).then_some((index, face)))
+}
+
+/// The id Rhino 5 annotation is given while its file is read, standing for its style's index in
+/// the style table until that is known.
+fn v5_style_ref(index: i32) -> Uuid {
+    let mut id = Uuid([0; 16]);
+    id.0[..4].copy_from_slice(b"ref5");
+    id.0[12..].copy_from_slice(&index.to_le_bytes());
+    id
+}
+
+/// Names Rhino 5 annotation's style by its id, from the index it was read with; the default
+/// style when the index names none.
+fn name_v5_style(geometry: &mut Geometry, styles: &[(i32, Uuid)]) {
+    let style = match geometry {
+        Geometry::Text(Text { style, .. })
+        | Geometry::Dimension(LinearDimension { style, .. })
+        | Geometry::Radial(RadialDimension { style, .. })
+        | Geometry::Angular(AngularDimension { style, .. })
+        | Geometry::Leader(Leader { style, .. }) => style,
+        _ => return,
+    };
+    if style.0[..4] == *b"ref5" {
+        let index = i32::from_le_bytes([style.0[12], style.0[13], style.0[14], style.0[15]]);
+        *style = styles
+            .iter()
+            .find(|(i, _)| *i == index)
+            .map_or(Uuid::NIL, |(_, id)| *id);
+    }
 }
 
 /// A note (`ON_Text::Read`, then `ON_Annotation::Internal_ReadAnnotation` and
@@ -1676,9 +1822,9 @@ fn leader(r: &mut Reader<'_>) -> Result<Leader> {
 /// Rhino 5's annotation (`ON_OBSOLETE_V5_Annotation::Read` and its kinds' `Read`): its kind, plane,
 /// points in that plane, typed words and text height; an angle dimension adds its angle and
 /// radius. Files from openNURBS of October 2007 on wrap each part in a chunk; older ones start
-/// with a bare chunk version. The style is named by its index in Rhino 5's style table, which
-/// Curva does not read, so the annotation takes the default style (a note keeps its height and
-/// alignment as its own).
+/// with a bare chunk version. The style is named by its index in Rhino 5's style table, resolved
+/// once the file is read; a note goes on the first style whatever it names, as Rhino 8 reads it,
+/// keeping its height and alignment as its own.
 fn v5_annotation(r: &mut Reader<'_>) -> Result<std::result::Result<Geometry, String>> {
     let chunked = r.peek_tcode() == Some(tcode::ANONYMOUS_CHUNK);
     // A kind's own chunk, then the shared part's; older files have only a bare chunk version.
@@ -1697,7 +1843,7 @@ fn v5_annotation(r: &mut Reader<'_>) -> Result<std::result::Result<Geometry, Str
         .collect::<Result<Vec<_>>>()?;
     let words = a.wstring()?;
     let _user_positioned = a.u32()?;
-    let _style_index = a.i32()?;
+    let style = v5_style_ref(a.i32()?);
     let height = a.f64()?;
     let justification = if chunked { a.u32()? } else { 0 };
     let point = |i: usize| points.get(i).copied().unwrap_or([0.0, 0.0]);
@@ -1727,7 +1873,7 @@ fn v5_annotation(r: &mut Reader<'_>) -> Result<std::result::Result<Geometry, Str
             Geometry::Text(Text {
                 rich: words,
                 plane,
-                style: Uuid::NIL,
+                style: v5_style_ref(0),
                 own: Some(DimStyle {
                     id: Uuid::NIL,
                     name: String::new(),
@@ -1760,7 +1906,7 @@ fn v5_annotation(r: &mut Reader<'_>) -> Result<std::result::Result<Geometry, Str
                     }),
                     ..plane
                 },
-                style: Uuid::NIL,
+                style,
                 own: None,
                 rotated: along_x,
                 text: words,
@@ -1778,7 +1924,7 @@ fn v5_annotation(r: &mut Reader<'_>) -> Result<std::result::Result<Geometry, Str
                     }),
                     ..plane
                 },
-                style: Uuid::NIL,
+                style,
                 own: None,
                 diameter: kind == 4,
                 text: words,
@@ -1793,7 +1939,7 @@ fn v5_annotation(r: &mut Reader<'_>) -> Result<std::result::Result<Geometry, Str
             let (start, end) = (point(1), point(2));
             Geometry::Angular(AngularDimension {
                 plane,
-                style: Uuid::NIL,
+                style,
                 own: None,
                 text: words,
                 sides: [start, end],
@@ -1804,7 +1950,7 @@ fn v5_annotation(r: &mut Reader<'_>) -> Result<std::result::Result<Geometry, Str
         // A leader (6): the arrow's tip first, the words at the last point.
         6 => Geometry::Leader(Leader {
             plane,
-            style: Uuid::NIL,
+            style,
             own: None,
             rich: words,
             points,
