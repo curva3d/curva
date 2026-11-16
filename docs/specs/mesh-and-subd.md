@@ -1,7 +1,7 @@
 # Spec: mesh and SubD objects
 
 **Status:** Draft for the owner's approval (issue #246). No code before it is approved.
-**Covers:** decision 0032; `architecture.md` §10d. The mesh stream's plan (`AGENTS.md`, Streams).
+**Covers:** decision 0032 (and updates it: QuadRemesh now, §3.5); `architecture.md` §10d. The mesh stream's plan (`AGENTS.md`, Streams).
 **Target:** Rhino 8's mesh and SubD objects and commands. Each command's exact steps and options are
 taken from Rhino itself into `docs/commands/rhino-reference.md` before it is written, as for every
 command; the command names below are the plan, checked against Rhino at that point.
@@ -13,11 +13,12 @@ command; the command names below are the plan, checked against Rhino at that poi
 | What you will notice | How |
 |---|---|
 | Your Rhino files' meshes and SubDs open in Curva, look right, and save back | Curva's own mesh and SubD objects; `.3dm` reading and writing; OBJ, STL and PLY too |
-| SubD modelling as in Rhino: primitives, push and pull vertices, edges and faces, creases, Tab for flat or smooth | Curva keeps the cage (the coarse control net you edit); subdiv-kernels works out the smooth surface |
+| SubD modelling as in Rhino: primitives, push and pull vertices, edges and faces, creases | Curva keeps the cage (the coarse control net you edit); subdiv-kernels works out the smooth surface |
+| Flat or smooth SubD display is a command like any other (typed, in the menu, undoable, usable by the assistant), with Tab as its shortcut | `SubDDisplayToggle` (§1, Stage A) |
+| QuadRemesh: a mesh, scan or NURBS object turned into a clean quad SubD or mesh, with Rhino's options | quadrs, behind Curva's interface, with what Rhino has and quadrs lacks added by Curva (§3.5) |
 | SubD turns into NURBS as Rhino does: exact where the net is regular, close-fitting near star points | subdiv-kernels' exact patches become solidcore surfaces through Curva's kernel |
 | Mesh booleans that do not crack, even on messy downloaded or scanned meshes | manifold-rust, with its robust engine for broken meshes |
 | Mesh repair, reduce, weld, join and explode | manifold-rust's repair, plus Curva's own small tools |
-| Not yet: quad remeshing (Rhino's QuadRemesh) | Held back until someone needs it (decision 0032) |
 
 ## 1. What you get, in stages
 
@@ -31,9 +32,14 @@ this is the recommended one.
 - **Files:** `.3dm` meshes and SubDs read and written (Rhino 8 opens Curva's file with the same
   shape). OBJ, STL and PLY open, import and export.
 - **Display:** meshes shaded with their edges; SubDs shaded smooth with their crease edges and
-  outline; **Tab** switches a SubD between smooth and flat, as in Rhino.
+  outline.
 - **Commands:** `What` and `Properties` describe them (vertex, face and edge counts, closed or not);
   `Explode` and `Join` for meshes.
+- **SubDDisplayToggle** switches SubDs between smooth and flat, as a command like any other: typed,
+  in the menu and the command list, undoable, saved in the file with the object, and usable by the
+  assistant. **Tab** is its shortcut, as in Rhino. Which SubDs it switches (the selected ones, or
+  all when none is selected) and its exact name are taken from Rhino first, as for every command.
+  It changes how a SubD shows, not its shape, so it needs no preview.
 
 ### Stage B: SubD modelling
 
@@ -45,6 +51,11 @@ this is the recommended one.
 - **ToSubD** (from a mesh), **ToNURBS** (from a SubD, §3.3).
 - **Crease** and **RemoveCrease**, **InsertEdge**, **Bridge**, **Fill**, **Stitch**, **Weld** and
   **Unweld** on SubD edges, **DeleteSubDFaces**.
+- **QuadRemesh** (§3.5): a mesh, SubD, surface or solid turned into an even grid of quads, as a SubD
+  (Rhino's default) or a mesh. Rhino's options: target quad count or edge length, adaptive size
+  (smaller quads where the shape curves), hard edges kept, guide curves the quads follow, symmetry,
+  and keeping the original. It belongs in this stage because its main use is turning scans,
+  imported meshes and NURBS into SubDs you can then edit.
 
 ### Stage C: mesh tools
 
@@ -63,8 +74,8 @@ to SubD, live booleans on meshes (as `live-booleans.md` does for solids), Make2D
 mesh analysis colours (curvature, draft angle), meshes in DXF and DWG (the features stream is waiting
 for mesh objects, `status/features.md`), textures shown on meshes.
 
-**Held back:** quad remeshing (QuadRemesh). When it is needed, quadrs is the candidate
-(decision 0032), with its own decision then.
+**Held back:** nothing on purpose. Decision 0032 held QuadRemesh back; the owner moved it into
+Stage B on 16 November 2026 (§9, decision 3).
 
 ## 2. The objects
 
@@ -90,6 +101,7 @@ Curva's own small structure, in `crates/curva-mesh`. Two object kinds, as in Rhi
 - **Vertex tags:** smooth, crease, corner and dart, as Rhino tags them; corners keep a SubD's box
   corners sharp.
 - **Optional data:** texture coordinates and per-face colours, carried through subdivision.
+- **Display:** flat or smooth, stored with the object and in files, set by `SubDDisplayToggle`.
 - **The smooth surface is worked out, never stored:** subdiv-kernels turns the cage into triangles
   for display and into exact patches for ToNURBS. When a cage edit only moves points, Curva reuses
   the last subdivision and only recomputes the positions, which is what keeps dragging smooth.
@@ -155,11 +167,30 @@ As Rhino does it:
 
 ### 3.4 Upgrades
 
-- Both libraries pinned to an exact version. Upgraded once per Curva release, on a branch, with
+- All three libraries pinned to an exact version. Upgraded once per Curva release, on a branch, with
   the whole test suite (§7); any changed result is explained before it merges.
 - Anything Curva adds on top of a library is marked in the code (`// CUSTOM MESH OPERATION: <name>`)
   and listed in `docs/mesh/custom-operations.md`, as the kernel and Bevy lists do. A test fails if
   the marks and the list disagree. At each upgrade, rows the library now covers are removed.
+
+### 3.5 quadrs: QuadRemesh
+
+Version **1.0.0**, pinned exactly. MIT licence. It follows Instant Meshes (Jakob, Tarini, Panozzo
+and Sorkine-Hornung, 2015), the published method behind most free quad remeshers: it lays a field
+of directions over the surface and grows quads along it.
+
+- **What it does today:** turns a triangle mesh into quads near a target count, the same quads
+  every time for the same input.
+- **What Rhino's QuadRemesh has and quadrs lacks:** hard edges kept, guide curves, symmetry,
+  adaptive size, and output as a SubD. Curva adds these on top, in the same interface, as listed
+  custom operations (§3.4). Most of them steer the field of directions before quadrs grows the
+  quads, which is how Instant Meshes was designed to be steered.
+- **Honest risk:** quadrs is young and experimental: one author, about 3,000 lines, unchanged
+  since March 2026. Curva pins it and does not depend on its author: if it stops fitting, Curva
+  writes its own QuadRemesh from the same published method behind the same interface, and no
+  command changes. Your decision 3, §9.
+- **NURBS and SubD inputs** are first turned into a fine mesh (by solidcore, or by subdivision),
+  as Rhino does.
 
 ## 4. Display
 
@@ -171,7 +202,7 @@ stream gives the viewport triangles, normals, edges and points; the viewport dra
 | Meshes shaded, with smooth or hard edges from their normals | Display, from the mesh stream's triangles | **Yes:** the viewport learns the two new kinds of object (today it only knows bodies' triangles) |
 | Mesh edges (wires) drawn as lines | Display's line drawer | **Yes:** a mesh can have millions of edges; drawing them fast is display work |
 | Vertex colours on meshes | Display | **Yes**, Stage A |
-| SubD smooth surface; Tab for flat | Mesh stream makes the triangles; display draws | Included in the first issue |
+| SubD smooth surface; flat when `SubDDisplayToggle` says so | Mesh stream makes the triangles; display draws | Included in the first issue |
 | SubD crease edges, borders and outline | Display's line drawer, from curves the mesh stream gives | Included in the first issue |
 | The cage, shown while a SubD is being edited, and picked vertices, edges and faces highlighted | Display | **Yes**, Stage B |
 | Picking vertices, edges and faces under the cursor | Display (picking is the viewport's) | **Yes**, Stage B |
@@ -249,6 +280,11 @@ The mesh stream may add its own new files in shared crates and one-line registra
   Curva the same.
 - **By eye:** side-by-side pictures of Curva and Rhino for each stage (the same SubD, smooth and
   flat; a boolean; a ToNURBS result with its patch edges), for you to judge.
+- **QuadRemesh:** on a set of test models (a scanned bust, a mechanical part with hard edges, a
+  NURBS facade panel): every face a quad, the count within 10% of the target, the result within a
+  set distance of the original, hard edges kept along their whole length. Rhino's QuadRemesh runs
+  on the same models, with pictures side by side for you to judge the flow of the quads, which
+  numbers cannot.
 - **Upgrade guard:** every library call has tests whose results are pinned, so an upgrade that
   changes a result fails until the change is explained (§3.4).
 
@@ -262,6 +298,8 @@ Checked with `cargo-deny` on a branch with both libraries added (16 November 202
 | dashu (exact arithmetic, for the robust engine) | MIT or Apache-2.0 | Yes |
 | **clipper2-rust** (2D polygon clipping, used by manifold-rust) | **BSL-1.0** (the Boost licence) | **No** |
 | subdiv-kernels | MIT, Apache-2.0, Zlib or BSD-3 | Yes |
+| quadrs | MIT | Yes |
+| glam (vector maths, used by quadrs; already in Curva through Bevy) | MIT or Apache-2.0 | Yes |
 | Their smaller helpers (rayon, smallvec, thiserror, serde and others) | MIT or Apache-2.0 | Yes, most already in Curva |
 
 **The Boost licence** is a short permissive licence, like MIT: free use, change and sale, and it
@@ -289,7 +327,15 @@ graphics-card parts are switched off, so no second Bevy is built.
 - (c) Mesh tools first (Mesh from NURBS, booleans, repair). Useful for 3D printing and scans
   sooner; SubD later.
 
-**3. Approve the plan** (stages, objects, libraries, tests, steps), or tell me what to change.
+**3. QuadRemesh: how to build it.** You asked for it in Stage B (decision 0032 held it back; this
+updates that decision).
+- **(a) On quadrs, with Curva adding Rhino's options on top (recommended).** Quickest to a working
+  QuadRemesh. Its quality is checked against Rhino on the test models in its first pull request,
+  before anything is built on it; if it falls short, switch to (b) behind the same interface.
+- (b) Curva's own, from the published Instant Meshes method, from the start. Full control and no
+  dependence on a young library, but several more weeks of work before the first quads.
+
+**4. Approve the plan** (stages, objects, libraries, tests, steps), or tell me what to change.
 
 ## 10. Steps
 
@@ -310,13 +356,15 @@ broken into issues of the same size when A ends.
 6. `.3dm` SubDs read and written, checked against Rhino 8 both ways.
 7. `curva-meshfiles`: OBJ read and write.
 8. STL and PLY read and write.
-9. `What`, `Properties`, `Join` and `Explode` for meshes; Tab for SubD flat and smooth (once the
-   display can show it). Pictures beside Rhino's for you.
+9. `What`, `Properties`, `Join` and `Explode` for meshes; `SubDDisplayToggle` with Tab as its
+   shortcut (once the display can show flat SubDs). Pictures beside Rhino's for you.
 
 **Stage B** (first issues): the six SubD primitives (one pull request for the shared part, one for
 the rest); ToSubD; sub-object picking (after its features and display issues); gumball editing of
 the cage with live redraw; Crease and RemoveCrease; InsertEdge; Bridge; Fill; Stitch, Weld, Unweld,
-DeleteSubDFaces; ToNURBS regular patches; ToNURBS around star points and creases.
+DeleteSubDFaces; ToNURBS regular patches; ToNURBS around star points and creases; QuadRemesh in
+three pull requests: the quadrs interface and the basic command (target count, SubD or mesh out),
+checked against Rhino on the test models; hard edges and adaptive size; guide curves and symmetry.
 
 **Stage C** (first issues): the manifold-rust interface and its licence entry; MeshBoolean commands;
 Mesh from NURBS; mesh primitives; Check and MeshRepair; ReduceMesh; Triangulate, Quadrangulate,
