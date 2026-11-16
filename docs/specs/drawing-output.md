@@ -112,7 +112,9 @@ What does not yet, as of 15 November 2026, to close before 0.4.3:
   arrow size, extension lines, text gap, decimals) under the style's name, and come back as Curva's;
   arrowhead blocks, tolerances, units and colours take AutoCAD's defaults. MTEXT formatting is
   dropped on reading.
-- Ellipses, solids and surfaces (ACIS bodies), meshes, MLEADERs, block attributes, external
+- Ellipses go out as ELLIPSE entities and come back exact, whole or in part; Rhino's own DXF writes
+  them as rational splines, which Curva also reads as exact ellipses.
+- Solids and surfaces (ACIS bodies), meshes, MLEADERs, block attributes, external
   references and images are left out.
 - Viewports: per-viewport frozen layers and plot settings are not carried; Rhino's own DXF writes a
   viewport's view height against AutoCAD's reference, so its details read at an inverted scale.
