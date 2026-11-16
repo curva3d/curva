@@ -365,6 +365,44 @@ fn rhinos_annotation_style_comes_in_with_its_looks() {
 }
 
 #[test]
+fn rhino_5_annotation_styles_come_in_as_rhino_reads_them() {
+    // Rhino 8 saved as a Rhino 5 file, in millimetres: a style "Wide" in Courier New, text 5,
+    // arrows 3, extension line extension 2 and offset 1.5, text gap 0.8, three decimals; a note,
+    // an aligned dimension and a leader in it, and a dimension in "Default". Rhino 8 reads the
+    // file back with the same style on the dimensions and the leader, and the note on
+    // "Default" (keeping its own height).
+    let (doc, report) = open("v5_styles.3dm");
+    assert!(report.skipped.is_empty(), "{}", report.summary());
+    let state = doc.state();
+    let style = |name: &str| {
+        state
+            .annotation_styles
+            .iter()
+            .find(|s| s.name == name)
+            .unwrap_or_else(|| panic!("the style {name}: {}", report.summary()))
+    };
+    let wide = style("Wide");
+    assert_eq!(wide.font.as_deref(), Some("Courier New"));
+    assert!((wide.text_height - 5.0).abs() < 1e-9);
+    assert_eq!(wide.arrow_size, Some(3.0));
+    assert_eq!(wide.extension_extension, Some(2.0));
+    assert_eq!(wide.extension_offset, Some(1.5));
+    assert_eq!(wide.text_gap, Some(0.8));
+    assert_eq!(wide.linear_resolution, Some(3));
+    let default = style("Default");
+    assert_eq!(default.font.as_deref(), Some("Arial"));
+    let styles: Vec<u64> = state
+        .objects
+        .iter()
+        .filter_map(|o| match &o.shape {
+            Shape::Annotation(a) => Some(a.style()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(styles, [default.id, wide.id, default.id, wide.id]);
+}
+
+#[test]
 fn a_layer_rhino_turned_off_in_one_detail_comes_in_off_in_it() {
     // Made in Rhino 8: layout "Plan" with details "Left" (20 to 170 mm) and "Right" (200 to
     // 350 mm), and a layer "Furniture" turned off in the left one only.
@@ -489,11 +527,16 @@ fn rhino_5_annotation_comes_in_as_rhino_reads_it() {
         panic!("{:?}", old[5]);
     };
     assert!(diameter.diameter);
+    // The same angle, on the Rhino 5 file's own style (each document numbers its styles).
+    let Annotation::Angle(old_angle) = &old[6] else {
+        panic!("{:?}", old[6]);
+    };
+    assert_ne!(old_angle.style, 0, "the file's style, not Curva's default");
     assert_eq!(old[6], {
         let Annotation::Angle(mut b) = new[6].clone() else {
             panic!("{:?}", new[6]);
         };
-        b.style = 0;
+        b.style = old_angle.style;
         Annotation::Angle(b)
     });
     let Annotation::Leader(leader) = &old[7] else {
