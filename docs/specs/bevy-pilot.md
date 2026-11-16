@@ -1,6 +1,6 @@
 # Spec: Bevy pilot for the 3D views
 
-**Status:** Draft, for the owner's approval.
+**Status:** Approved by the owner, 16 November 2026.
 **Covers:** the first step of decision 0028: Bevy draws one 3D view's faces, Curva keeps its CAD
 layer, and the result is measured against today's Curva before anything else moves.
 **Rules:** 100% pure Rust. Recommended machine: an RTX 3060-class card (decision 0026); weaker
@@ -106,9 +106,12 @@ Meshes and SubD as Curva objects (features stream, after Milestone 4); textures;
 (Vello, decision 0027); Bevy's own picking or user interface; moving all views to Bevy, which waits for
 the report.
 
-## 9. For the owner's decision
+## 9. The owner's decisions (16 November 2026)
 
-1. **Pilot in one view behind a setting** (recommended): safe, measurable, removable. *Or* switch all
-   3D views at once: faster to finish, but nothing to compare against and harder to undo.
-2. **Pass targets as in §5** (recommended). They ask the pilot to be at least as good as Curva today
-   everywhere, and clearly better on *Large* and meshes.
+1. **Pilot in one view behind a setting.** Each 3D view gets "3D engine: Curva / Bevy (pilot)",
+   Curva by default; the rest of Curva is unchanged until the report.
+2. **Pass targets as in §5.** At least as good as Curva today everywhere, clearly better on *Large*
+   and meshes.
+3. Bevy's own lines were considered and not used: they lack paper-millimetre weights and dashes,
+   exact arcs, outlines of curved shapes, cuts, snapping and precision far from the origin. Curva's
+   lines are drawn into Bevy's picture with its depth (§2).
