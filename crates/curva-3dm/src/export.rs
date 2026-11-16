@@ -186,6 +186,7 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
                 a @ (curva_document::annotation::Annotation::Dimension(_)
                 | curva_document::annotation::Annotation::Radial(_)
                 | curva_document::annotation::Annotation::Angle(_)
+                | curva_document::annotation::Annotation::Ordinate(_)
                 | curva_document::annotation::Annotation::Leader(_)),
             ) => Some(dimension_key(state, a.style())),
             _ => None,
@@ -561,6 +562,25 @@ fn geometry_of(
                 own: None,
                 diameter: d.diameter,
                 text: d.text.clone().unwrap_or_else(|| "<>".to_owned()),
+            })
+        }
+        Shape::Annotation(curva_document::annotation::Annotation::Ordinate(d)) => {
+            let style = *styles
+                .get(&dimension_key(state, d.style))
+                .ok_or("a dimension without its style")?;
+            let plane = plane_at(d.base, d.x, d.y);
+            Geometry::Ordinate(model::OrdinateDimension {
+                point: local(&plane, d.point),
+                leader: local(&plane, d.leader),
+                plane,
+                style,
+                own: None,
+                text: d.text.clone().unwrap_or_else(|| "<>".to_owned()),
+                direction: match d.axis {
+                    curva_document::annotation::OrdinateAxis::X => 1,
+                    curva_document::annotation::OrdinateAxis::Y => 2,
+                },
+                kinks: d.kinks.unwrap_or([model::UNSET_VALUE; 2]),
             })
         }
         Shape::Annotation(curva_document::annotation::Annotation::Angle(d)) => {

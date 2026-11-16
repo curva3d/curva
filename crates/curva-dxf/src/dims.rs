@@ -10,12 +10,13 @@
 use crate::{P, cross, dot, p3, unit, v3};
 use acadrust::entities::dimension::{
     Dimension, DimensionAligned, DimensionAngular2Ln, DimensionDiameter, DimensionLinear,
-    DimensionRadius,
+    DimensionOrdinate, DimensionRadius,
 };
 use acadrust::entities::{EntityType, Leader as CadLeader, Line, MultiLeader, Solid};
 use curva_document::State;
 use curva_document::annotation::{
-    AngleDimension, Annotation, Dimension as Linear, DimensionKind, Leader, RadialDimension,
+    AngleDimension, Annotation, Dimension as Linear, DimensionKind, Leader, OrdinateAxis,
+    OrdinateDimension, RadialDimension,
 };
 
 /// A dimension's drawing as block contents: its lines, its arrowheads as filled triangles and
@@ -76,6 +77,17 @@ pub(crate) fn dimension_out(
             d.dimension_arc = v3(a.arc_at);
             d.base.user_text = typed(&a.text);
             Dimension::Angular2Ln(d)
+        }
+        // AutoCAD measures from its definition point (the base) along the world's X or Y and
+        // draws its own jog, so only a dimension on the world's plane goes out, without kinks.
+        Annotation::Ordinate(o) if flat(o.x, o.y) && (o.x[0] - 1.0).abs() < 1e-9 => {
+            let mut d =
+                DimensionOrdinate::new(v3(o.point), v3(o.leader), o.axis == OrdinateAxis::X);
+            d.definition_point = v3(o.base);
+            d.base.definition_point = v3(o.base);
+            d.base.actual_measurement = o.value();
+            d.base.user_text = typed(&o.text);
+            Dimension::Ordinate(d)
         }
         _ => return None,
     };
@@ -212,6 +224,21 @@ pub(crate) fn dimension_in(d: &Dimension) -> Result<Annotation, &'static str> {
             style: 0,
             text: typed_in(&a.base),
         }),
+        Dimension::Ordinate(o) => Annotation::Ordinate(OrdinateDimension {
+            base: p3(&o.definition_point),
+            point: p3(&o.feature_location),
+            leader: p3(&o.leader_endpoint),
+            axis: if o.is_ordinate_type_x {
+                OrdinateAxis::X
+            } else {
+                OrdinateAxis::Y
+            },
+            kinks: None,
+            x,
+            y,
+            style: 0,
+            text: typed_in(&o.base),
+        }),
         _ => return Err("dimensions of other kinds"),
     })
 }
@@ -303,6 +330,47 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    #[test]
+    fn ordinate_dimensions_go_out_and_come_back() {
+        use curva_document::annotation::{OrdinateAxis, OrdinateDimension};
+        let mut doc = Document::default();
+        let ordinate = |leader, axis| OrdinateDimension {
+            base: [10.0, 10.0, 0.0],
+            point: [40.0, 25.0, 0.0],
+            leader,
+            axis,
+            kinks: None,
+            x: [1.0, 0.0, 0.0],
+            y: [0.0, 1.0, 0.0],
+            style: 0,
+            text: None,
+        };
+        let wanted = [
+            ordinate([45.0, 60.0, 0.0], OrdinateAxis::X),
+            ordinate([0.0, 20.0, 0.0], OrdinateAxis::Y),
+        ];
+        for d in &wanted {
+            doc.add_annotation(Annotation::Ordinate(d.clone()));
+        }
+        for format in [Format::Dxf, Format::Dwg] {
+            let (bytes, report) = export(&doc, None, format).unwrap();
+            if let (Format::Dxf, Ok(path)) = (format, std::env::var("CURVA_DXF_ORDINATE_SAMPLE")) {
+                std::fs::write(path, &bytes).unwrap();
+            }
+            assert!(report.skipped.is_empty(), "{report:?}");
+            let mut back = Document::default();
+            import(&read(&bytes, format).unwrap(), &mut back);
+            let got: Vec<OrdinateDimension> = annotations(&back)
+                .into_iter()
+                .filter_map(|a| match a {
+                    Annotation::Ordinate(d) => Some(d),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(got, wanted, "{format:?}");
+        }
     }
 
     #[test]

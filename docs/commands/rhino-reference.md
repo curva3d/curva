@@ -369,7 +369,7 @@ measured value.
 | DimAngle | An arc, or two lines (polyline segments, linear edges); the dimension location | `AnnotationStyle` `Points` | the current annotation style; lines only (no polyline segments or edges yet); the smaller of the four angles that holds the arc point | partly |
 | DimRadius | A curve; the dimension location; measured as projected to the construction plane | `AnnotationStyle` `PointOnCurve` | the current annotation style; the pick sets where the arrow lands (PointOnCurve behaviour); circles and arcs only, in their own plane | partly |
 | DimDiameter | A curve; the dimension location | `AnnotationStyle` | the current annotation style; circles and arcs only | partly |
-| DimOrdinate | A dimension point; a leader end (X or Y implied by direction); Enter ends | `AnnotationStyle` `XDatum` `YDatum` `Basepoint` `KinkOffset` | none | missing |
+| DimOrdinate | A dimension point; a leader end (X or Y implied by direction); Enter ends | `AnnotationStyle` `XDatum` `YDatum` `Basepoint` `KinkOffset` | `XDatum` `YDatum` (chosen again, back to implied) `Basepoint` (the world origin until set) `KinkOffset` (both kinks; unset is twice the text height); the current annotation style | partly |
 | DimArcLength | Not read: its help page refused to load | not read | none | missing |
 | DimCurveLength | A curve; a start point for the text or leader | `Type` | none | missing |
 | DimArea | A closed planar curve, surface or hatch; a start point for the text or leader | `Type` | none | missing |

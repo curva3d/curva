@@ -7,6 +7,7 @@ pub(crate) mod hatch;
 pub(crate) mod hatch_base;
 pub(crate) mod hatch_patterns;
 pub(crate) mod leader;
+pub(crate) mod ordinate;
 pub(crate) mod radial;
 pub(crate) mod styles;
 pub(crate) mod text;

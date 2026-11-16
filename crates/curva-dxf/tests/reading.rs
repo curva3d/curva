@@ -155,3 +155,26 @@ fn user_text_rhino_wrote_comes_in_on_its_object() {
         Some("900")
     );
 }
+
+#[test]
+fn ordinate_dimensions_rhino_wrote_come_in_measuring_the_same() {
+    use curva_document::annotation::{Annotation, OrdinateAxis};
+    // Rhino 8's DXF of two ordinate dimensions from base (10, 10) of the point (40, 25): X with
+    // its leader up to (45, 60), and Y with its leader left to (0, 20).
+    let doc = open("rhino8_ordinate.dxf");
+    let state = doc.state();
+    let mut got: Vec<(OrdinateAxis, f64)> = state
+        .objects
+        .iter()
+        .filter_map(|o| match &o.shape {
+            curva_document::Shape::Annotation(Annotation::Ordinate(d)) => Some((d.axis, d.value())),
+            _ => None,
+        })
+        .collect();
+    got.sort_by(|a, b| a.1.total_cmp(&b.1));
+    assert_eq!(got.len(), 2, "{got:?}");
+    assert_eq!(got[0].0, OrdinateAxis::Y);
+    assert!((got[0].1 - 15.0).abs() < 1e-9);
+    assert_eq!(got[1].0, OrdinateAxis::X);
+    assert!((got[1].1 - 30.0).abs() < 1e-9);
+}

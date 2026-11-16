@@ -17,6 +17,8 @@ pub enum Annotation {
     Radial(RadialDimension),
     /// An angle dimension.
     Angle(AngleDimension),
+    /// An ordinate dimension: a point's X or Y from a base point.
+    Ordinate(OrdinateDimension),
     /// A leader: an arrow and line to a note (spec `annotation.md` §4).
     Leader(Leader),
     /// A dot: a label at a point that keeps its size on screen (spec `annotation.md` §4).
@@ -38,6 +40,7 @@ impl Annotation {
             Self::Dimension(d) => Self::Dimension(d.translated(by)),
             Self::Radial(r) => Self::Radial(r.transformed(&|p| plus(p, by, 1.0), &|d| d)),
             Self::Angle(a) => Self::Angle(a.transformed(&|p| plus(p, by, 1.0), &|d| d)),
+            Self::Ordinate(o) => Self::Ordinate(o.transformed(&|p| plus(p, by, 1.0), &|d| d)),
             Self::Leader(l) => Self::Leader(l.transformed(&|p| plus(p, by, 1.0), &|d| d)),
             Self::Dot(d) => Self::Dot(Dot {
                 at: plus(d.at, by, 1.0),
@@ -64,6 +67,7 @@ impl Annotation {
             Self::Dimension(d) => Self::Dimension(d.mapped(change)),
             Self::Radial(r) => Self::Radial(r.transformed(&point, &direction)),
             Self::Angle(a) => Self::Angle(a.transformed(&point, &direction)),
+            Self::Ordinate(o) => Self::Ordinate(o.transformed(&point, &direction)),
             Self::Leader(l) => Self::Leader(l.transformed(&point, &direction)),
             Self::Dot(d) => Self::Dot(Dot {
                 at: point(d.at),
@@ -97,6 +101,7 @@ impl Annotation {
             Self::Dimension(d) => Self::Dimension(d.placed(m)),
             Self::Radial(r) => Self::Radial(r.transformed(&point, &direction)),
             Self::Angle(a) => Self::Angle(a.transformed(&point, &direction)),
+            Self::Ordinate(o) => Self::Ordinate(o.transformed(&point, &direction)),
             Self::Leader(l) => Self::Leader(l.transformed(&point, &direction)),
             Self::Dot(d) => Self::Dot(Dot {
                 at: point(d.at),
@@ -133,6 +138,7 @@ impl Annotation {
             Self::Dimension(d) => d.style,
             Self::Radial(r) => r.style,
             Self::Angle(a) => a.style,
+            Self::Ordinate(o) => o.style,
             Self::Leader(l) => l.style,
             Self::ScaleBar(b) => b.at.style,
             Self::Table(t) => t.at.style,
@@ -147,6 +153,7 @@ impl Annotation {
             Self::Dimension(d) => d.style = style,
             Self::Radial(r) => r.style = style,
             Self::Angle(a) => a.style = style,
+            Self::Ordinate(o) => o.style = style,
             Self::Leader(l) => l.style = style,
             Self::ScaleBar(b) => b.at.style = style,
             Self::Table(t) => t.at.style = style,
@@ -167,6 +174,7 @@ impl Annotation {
             Self::Dimension(d) => Some(&d.text),
             Self::Radial(r) => Some(&r.text),
             Self::Angle(a) => Some(&a.text),
+            Self::Ordinate(o) => Some(&o.text),
         }
     }
 
@@ -184,6 +192,7 @@ impl Annotation {
             Self::Dimension(d) => d.text = text,
             Self::Radial(r) => r.text = text,
             Self::Angle(a) => a.text = text,
+            Self::Ordinate(o) => o.text = text,
         }
         changed
     }
@@ -315,6 +324,175 @@ impl RadialDimension {
             text,
         }
     }
+}
+
+/// Which coordinate an ordinate dimension gives.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OrdinateAxis {
+    /// The distance along the plane's X from the base point; its leader runs along Y.
+    #[default]
+    X,
+    /// The distance along the plane's Y; its leader runs along X.
+    Y,
+}
+
+impl OrdinateAxis {
+    /// The coordinate a leader from `point` to `leader` gives, as Rhino implies it: X when the
+    /// leader runs more along Y than along X (`ON_DimOrdinate::ImpliedDirection`).
+    #[must_use]
+    pub fn implied(point: [f64; 2], leader: [f64; 2]) -> Self {
+        if (leader[0] - point[0]).abs() <= (leader[1] - point[1]).abs() {
+            Self::X
+        } else {
+            Self::Y
+        }
+    }
+}
+
+/// An ordinate dimension (Rhino's DimOrdinate): a point's X or Y distance from a base point, on a
+/// leader that leaves the point along the other axis, jogs at two kinks and ends at its text.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OrdinateDimension {
+    /// The base point (Rhino's datum), from which the distance is measured.
+    pub base: Point,
+    /// The point measured.
+    pub point: Point,
+    /// Where the leader ends and the text starts.
+    pub leader: Point,
+    /// Which coordinate it gives.
+    pub axis: OrdinateAxis,
+    /// How far back from the leader's end the kinks are: the first, then the second beyond it
+    /// (Rhino's kink offsets), in model units; `None` for the default, twice the text height
+    /// as drawn.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kinks: Option<[f64; 2]>,
+    /// The plane it lies on: its X direction.
+    pub x: Point,
+    /// The plane's Y direction.
+    pub y: Point,
+    /// The annotation style it takes its looks from, by id.
+    #[serde(default)]
+    pub style: u64,
+    /// Typed text in place of the value; `<>` stands for the value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+}
+
+impl OrdinateDimension {
+    /// A point's coordinates in the dimension's plane, from its base point.
+    #[must_use]
+    pub fn local(&self, p: Point) -> [f64; 2] {
+        let d = std::array::from_fn(|i| p[i] - self.base[i]);
+        [dot(d, self.x), dot(d, self.y)]
+    }
+
+    /// The distance it gives, never negative (as Rhino shows it).
+    #[must_use]
+    pub fn value(&self) -> f64 {
+        let at = self.local(self.point);
+        match self.axis {
+            OrdinateAxis::X => at[0].abs(),
+            OrdinateAxis::Y => at[1].abs(),
+        }
+    }
+
+    /// The two kinks, in the world: the one in line with the point, then the one in line with the
+    /// leader's end (`ON_DimOrdinate::Get3dPoints`), with `default` for unset kinks.
+    #[must_use]
+    pub fn kink_points(&self, default: f64) -> [Point; 2] {
+        let kinks = self.kinks.unwrap_or([default; 2]);
+        let (p, l) = (self.local(self.point), self.local(self.leader));
+        let at = |u: f64, v: f64| plus(plus(self.base, self.x, u), self.y, v);
+        match self.axis {
+            OrdinateAxis::X => {
+                let sign = if l[1] < p[1] { -1.0 } else { 1.0 };
+                let (k1, k2) = (kinks[0] * sign, kinks[1] * sign);
+                [at(p[0], l[1] - k1 - k2), at(l[0], l[1] - k1)]
+            }
+            OrdinateAxis::Y => {
+                let sign = if l[0] < p[0] { -1.0 } else { 1.0 };
+                let (k1, k2) = (kinks[0] * sign, kinks[1] * sign);
+                [at(l[0] - k1 - k2, p[1]), at(l[0] - k1, l[1])]
+            }
+        }
+    }
+
+    fn transformed(
+        &self,
+        point: &dyn Fn(Point) -> Point,
+        direction: &dyn Fn(Point) -> Point,
+    ) -> Self {
+        // Kinks keep their share of the leader's length, as a resize changes it.
+        let length = |a: Point, b: Point| dot(sub(b, a), sub(b, a)).sqrt();
+        let before = length(self.point, self.leader);
+        let after = length(point(self.point), point(self.leader));
+        let stretch = if before > 1e-12 { after / before } else { 1.0 };
+        Self {
+            base: point(self.base),
+            point: point(self.point),
+            leader: point(self.leader),
+            kinks: self.kinks.map(|k| k.map(|v| v * stretch)),
+            x: direction(self.x),
+            y: direction(self.y),
+            ..self.clone()
+        }
+    }
+
+    /// Its leader and text, with sizes from `style` scaled by `scale`: the leader starts the
+    /// style's extension offset from the point and the text reads along its last stretch, beyond
+    /// its end (`ON_DimOrdinate::GetDisplayLines` and `GetTextXform`).
+    #[must_use]
+    pub fn parts(&self, style: &AnnotationStyle, scale: f64, shown: String) -> DimensionParts {
+        let [first, second] = self.kink_points(2.0 * style.text_height * scale);
+        let gap_from_point = style.extension_offset() * scale;
+        let toward = unit(sub(first, self.point));
+        let start = if dot(sub(first, self.point), sub(first, self.point)).sqrt() > gap_from_point {
+            plus(self.point, toward, gap_from_point)
+        } else {
+            self.point
+        };
+        let lines: Vec<(Point, Point)> = [(start, first), (first, second), (second, self.leader)]
+            .into_iter()
+            .filter(|(a, b)| dot(sub(*b, *a), sub(*b, *a)) > 1e-18)
+            .collect();
+        // The text reads along the leader's last stretch, away from the point.
+        let (p, l) = (self.local(self.point), self.local(self.leader));
+        let (along, forward) = match self.axis {
+            OrdinateAxis::X => (self.y, l[1] >= p[1]),
+            OrdinateAxis::Y => (self.x, l[0] >= p[0]),
+        };
+        let normal = cross(self.x, self.y);
+        let across = cross(normal, along);
+        let gap = style.text_gap() * scale;
+        let height = style.text_height * scale;
+        let text = Text {
+            content: shown,
+            origin: plus(
+                plus(self.leader, along, if forward { gap } else { -gap }),
+                across,
+                -height / 2.0,
+            ),
+            x: along,
+            y: across,
+            height,
+            font: style.font.clone(),
+            align: if forward {
+                TextAlign::Left
+            } else {
+                TextAlign::Right
+            },
+            style: self.style,
+        };
+        DimensionParts {
+            lines,
+            arrows: Vec::new(),
+            text,
+        }
+    }
+}
+
+fn sub(a: Point, b: Point) -> Point {
+    std::array::from_fn(|i| a[i] - b[i])
 }
 
 /// An angle dimension (Rhino's DimAngle): the apex, a point along each side, and a point the arc
@@ -1266,6 +1444,84 @@ impl Document {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn ordinate(leader: Point, axis: OrdinateAxis) -> OrdinateDimension {
+        OrdinateDimension {
+            base: [10.0, 10.0, 0.0],
+            point: [40.0, 25.0, 0.0],
+            leader,
+            axis,
+            kinks: Some([2.0, 3.0]),
+            x: [1.0, 0.0, 0.0],
+            y: [0.0, 1.0, 0.0],
+            style: 0,
+            text: None,
+        }
+    }
+
+    #[test]
+    fn an_ordinate_dimension_gives_one_coordinate_from_its_base() {
+        let up = ordinate([45.0, 60.0, 0.0], OrdinateAxis::X);
+        assert!((up.value() - 30.0).abs() < 1e-12);
+        let left = ordinate([0.0, 20.0, 0.0], OrdinateAxis::Y);
+        assert!((left.value() - 15.0).abs() < 1e-12);
+        // Rhino implies X when the leader runs more along Y.
+        assert_eq!(
+            OrdinateAxis::implied([30.0, 15.0], [35.0, 50.0]),
+            OrdinateAxis::X
+        );
+        assert_eq!(
+            OrdinateAxis::implied([30.0, 15.0], [-10.0, 10.0]),
+            OrdinateAxis::Y
+        );
+    }
+
+    #[test]
+    fn an_ordinate_dimensions_kinks_sit_where_rhino_puts_them() {
+        // Measuring X with the leader above: the first kink is in line with the point, the
+        // kink offsets below the leader's end; the second is in line with the end.
+        let up = ordinate([45.0, 60.0, 0.0], OrdinateAxis::X);
+        assert_eq!(up.kink_points(0.0), [[40.0, 55.0, 0.0], [45.0, 58.0, 0.0]]);
+        // Measuring Y with the leader to the left: the offsets turn round.
+        let left = ordinate([0.0, 20.0, 0.0], OrdinateAxis::Y);
+        assert_eq!(left.kink_points(0.0), [[5.0, 25.0, 0.0], [2.0, 20.0, 0.0]]);
+        // Unset kinks take the default given.
+        let unset = OrdinateDimension {
+            kinks: None,
+            ..up.clone()
+        };
+        assert_eq!(
+            unset.kink_points(4.0),
+            [[40.0, 52.0, 0.0], [45.0, 56.0, 0.0]]
+        );
+    }
+
+    #[test]
+    fn an_ordinate_dimension_draws_its_leader_and_reads_along_it() {
+        let style = &standard_styles(false)[0];
+        let up = ordinate([45.0, 60.0, 0.0], OrdinateAxis::X);
+        let parts = up.parts(style, 1.0, "30".to_owned());
+        assert_eq!(parts.lines.len(), 3);
+        assert!(parts.arrows.is_empty());
+        // The leader starts the extension offset above the point and ends at the leader's end.
+        let start = parts.lines[0].0;
+        assert!((start[1] - (25.0 + style.extension_offset())).abs() < 1e-12);
+        assert_eq!(parts.lines[2].1, [45.0, 60.0, 0.0]);
+        // The text reads up the leader, beyond its end.
+        assert_eq!(parts.text.x, [0.0, 1.0, 0.0]);
+        assert!(parts.text.origin[1] > 60.0);
+        assert_eq!(parts.text.align, TextAlign::Left);
+        // Moved and turned, it keeps its value; resized, its kinks grow with it.
+        let turned = Annotation::Ordinate(up.clone()).mapped(&Similarity::rotation(
+            [0.0; 3],
+            [0.0, 0.0, 1.0],
+            1.0,
+        ));
+        let Annotation::Ordinate(turned) = turned else {
+            unreachable!()
+        };
+        assert!((turned.value() - 30.0).abs() < 1e-9);
+    }
 
     fn note() -> Text {
         Text {

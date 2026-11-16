@@ -33,6 +33,7 @@ version, which Rhino 7 and 8 open.
 | Linear dimensions (`ON_DimLinear`): points, dimension line, aligned or rotated, typed text | yes, with their style | yes, with a style of their annotation style's text height |
 | Radius, diameter and angle dimensions (`ON_DimRadial`, `ON_DimAngular`), leaders (`ON_Leader`) | yes (looks from Curva's current style; leaders with a landing) | yes |
 | Rhino 5 annotation (`ON_OBSOLETE_V5_*`, Rhino 5's `ON_TextEntity2`, `ON_LinearDimension2` and kin): notes, linear, aligned, radius, diameter and angle dimensions, leaders | yes, as Rhino 8 reads them: a note keeps its height and alignment, the rest take the default style (Rhino 5's style table is not read); leaders end at their words | no (Curva writes Rhino 7 files) |
+| Ordinate dimensions (`ON_DimOrdinate`): base point, point, leader end, X or Y (implied when unset), kink offsets (unset kept unset) | yes | yes |
 | Layouts (page views) with their size, and what is drawn on them (in the file's page unit) | yes | yes, in millimetres, with Rhino's four standard views beside them |
 | Clipping planes (`ON_ClippingPlaneSurface`): rectangle, side kept, views cut | yes | yes (version 1.4) |
 | Detail views: frame, standard view or perspective, target, scale, display mode (Rhino's standard modes), lock, layers turned off in them | yes | yes (view attributes version 1.3; layers' `ON__LayerExtensions` user data) |
