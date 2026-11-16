@@ -783,7 +783,8 @@ fn curve_of(entity: &EntityType) -> Result<Vec<Curve>, &'static str> {
             Curve::elliptical_arc(p3(&e.center), major, minor, e.start_parameter, sweep)
                 .map_err(|_| "ellipses")?
         }
-        EntityType::Leader(_) | EntityType::MultiLeader(_) => return Err("leaders"),
+        EntityType::Leader(_) => return Err("leaders"),
+        EntityType::MultiLeader(_) => return Err("multileaders"),
         _ => return Err("other objects"),
     };
     Ok(vec![made])
@@ -1060,6 +1061,13 @@ impl Reader<'_> {
                 dims::leader_in(l)
                     .map(|l| Shape::Annotation(Annotation::Leader(l)))
                     .into_iter()
+                    .collect(),
+                "leaders",
+            ),
+            EntityType::MultiLeader(m) => (
+                dims::multileader_in(m)
+                    .into_iter()
+                    .map(|l| Shape::Annotation(Annotation::Leader(l)))
                     .collect(),
                 "leaders",
             ),
@@ -1518,6 +1526,55 @@ mod tests {
             "{:?}",
             report.skipped
         );
+    }
+
+    #[test]
+    fn multileaders_come_in_as_leaders_with_their_note() {
+        use acadrust::entities::MultiLeader;
+        let mut cad = CadDocument::new();
+        let mut m = MultiLeader::with_text(
+            r"{\fArial|b1;Oak} floor",
+            Vector3::new(20.0, 10.0, 0.0),
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(10.0, 10.0, 0.0)],
+        );
+        m.context.has_text_contents = true;
+        m.context.text_direction = Vector3::new(1.0, 0.0, 0.0);
+        m.context.text_normal = Vector3::new(0.0, 0.0, 1.0);
+        let root = m.add_leader_root();
+        root.connection_point = Vector3::new(20.0, 10.0, 0.0);
+        root.create_line(vec![Vector3::new(5.0, 30.0, 0.0)]);
+        let _ = cad.add_entity(EntityType::MultiLeader(Box::new(m)));
+        for format in [Format::Dxf, Format::Dwg] {
+            let bytes = match format {
+                Format::Dxf => DxfWriter::new(&cad).write_to_vec(),
+                Format::Dwg => DwgWriter::write_to_vec(&cad),
+            }
+            .unwrap();
+            let mut doc = Document::default();
+            let report = import(&read(&bytes, format).unwrap(), &mut doc);
+            assert_eq!(
+                report.brought,
+                vec![("leaders".to_owned(), 2)],
+                "{format:?}"
+            );
+            let leaders: Vec<_> = doc
+                .state()
+                .objects
+                .iter()
+                .filter_map(|o| match &o.shape {
+                    Shape::Annotation(Annotation::Leader(l)) => Some(l.clone()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(leaders[0].content, "Oak floor", "{format:?}");
+            assert_eq!(
+                leaders[0].points,
+                vec![[0.0; 3], [10.0, 10.0, 0.0], [20.0, 10.0, 0.0]],
+                "{format:?}: to the connection point"
+            );
+            assert_eq!(leaders[1].content, "", "the note goes with one line");
+            assert_eq!(leaders[1].points, vec![[5.0, 30.0, 0.0], [20.0, 10.0, 0.0]]);
+        }
     }
 
     #[test]

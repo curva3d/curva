@@ -12,7 +12,7 @@ use acadrust::entities::dimension::{
     Dimension, DimensionAligned, DimensionAngular2Ln, DimensionDiameter, DimensionLinear,
     DimensionRadius,
 };
-use acadrust::entities::{EntityType, Leader as CadLeader, Line, Solid};
+use acadrust::entities::{EntityType, Leader as CadLeader, Line, MultiLeader, Solid};
 use curva_document::State;
 use curva_document::annotation::{
     AngleDimension, Annotation, Dimension as Linear, DimensionKind, Leader, RadialDimension,
@@ -228,6 +228,47 @@ pub(crate) fn leader_in(l: &CadLeader) -> Option<Leader> {
         landing: false,
         style: 0,
     })
+}
+
+/// An MLEADER's leader lines as leaders: each line runs from its arrow through its points to its
+/// root's connection point, where the landing starts. The note (formatting dropped) goes with the
+/// first line; any others come in as lines alone.
+pub(crate) fn multileader_in(m: &MultiLeader) -> Vec<Leader> {
+    let context = &m.context;
+    let normal = unit(p3(&context.text_normal)).unwrap_or([0.0, 0.0, 1.0]);
+    let (ox, _) = crate::object_axes(normal);
+    let along = p3(&context.text_direction);
+    let level = dot(along, normal);
+    let x = unit(std::array::from_fn(|k| along[k] - normal[k] * level)).unwrap_or(ox);
+    let y = cross(normal, x);
+    let mut note = if context.has_text_contents {
+        crate::annotation::plain_mtext(&context.text_string)
+    } else {
+        String::new()
+    };
+    let near = |a: P, b: P| (0..3).all(|k| (a[k] - b[k]).abs() < 1e-9);
+    let mut out = Vec::new();
+    for root in &context.leader_roots {
+        let connection = p3(&root.connection_point);
+        for line in &root.lines {
+            let mut points: Vec<P> = line.points.iter().map(p3).collect();
+            if !points.last().is_some_and(|last| near(*last, connection)) {
+                points.push(connection);
+            }
+            if points.len() < 2 {
+                continue;
+            }
+            out.push(Leader {
+                points,
+                content: std::mem::take(&mut note),
+                x,
+                y,
+                landing: m.enable_landing && root.landing_distance > 0.0,
+                style: 0,
+            });
+        }
+    }
+    out
 }
 
 /// The dimension style a DIMENSION names.
