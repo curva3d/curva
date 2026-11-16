@@ -194,3 +194,155 @@ pub(super) fn local(plane: &Plane, p: P3) -> [f64; 2] {
         (0..3).map(|k| v[k] * plane.y[k]).sum(),
     ]
 }
+
+/// Annotation as Rhino's: dots, hatches, notes, dimensions and leaders.
+pub(super) fn annotation_geometry(
+    annotation: &curva_document::annotation::Annotation,
+    patterns: &BTreeMap<String, i32>,
+    styles: &StyleIds,
+    state: &State,
+) -> Result<Geometry, String> {
+    use curva_document::annotation::Annotation;
+    Ok(match annotation {
+        Annotation::Dot(dot) => Geometry::Dot {
+            at: dot.at,
+            text: dot.content.clone(),
+            secondary: dot.secondary.clone(),
+            #[allow(clippy::cast_possible_truncation)]
+            height: dot.height.round() as i32,
+            font: dot.font.clone().unwrap_or_default(),
+        },
+        Annotation::Hatch(h) => Geometry::Hatch(hatch(h, patterns)?),
+        Annotation::Text(t) => text_out(t, styles, state)?,
+        Annotation::Dimension(d) => Geometry::Dimension(linear_dimension(d, styles, state)?),
+        Annotation::Radial(d) => radial_out(d, styles, state)?,
+        Annotation::Ordinate(d) => ordinate_out(d, styles, state)?,
+        Annotation::Angle(d) => angle_out(d, styles, state)?,
+        Annotation::Leader(l) => leader_out(l, styles, state)?,
+        // Annotation goes into .3dm files with the round trip at the end of Milestone 3.
+        _ => return Err("annotation is not written to .3dm files yet".to_owned()),
+    })
+}
+
+/// A note as Rhino's text, on its annotation style.
+pub(super) fn text_out(
+    t: &curva_document::annotation::Text,
+    styles: &StyleIds,
+    state: &State,
+) -> Result<Geometry, String> {
+    let key = dimension_key(state, t.style);
+    let style = *styles.get(&key).ok_or("a note without its style")?;
+    // A note of another height or alignment than its style's overrides them in it.
+    let align = align_code(t.align);
+    let own = ((t.height - f64::from_bits(key.1)).abs() > 1e-9 || align != 0)
+        .then(|| rhino_style(state, key.0, t.height, align));
+    // Rhino aligns these notes by the top of their first line, one text height above
+    // the baseline Curva places them by.
+    let origin: P3 = std::array::from_fn(|k| t.origin[k] + t.y[k] * t.height);
+    Ok(Geometry::Text(model::Text {
+        rich: t.content.clone(),
+        plane: Plane {
+            origin,
+            x: t.x,
+            y: t.y,
+            z: cross(t.x, t.y),
+        },
+        style,
+        own,
+        rotation: 0.0,
+    }))
+}
+
+/// A radius or diameter dimension as Rhino's.
+pub(super) fn radial_out(
+    d: &curva_document::annotation::RadialDimension,
+    styles: &StyleIds,
+    state: &State,
+) -> Result<Geometry, String> {
+    let style = *styles
+        .get(&dimension_key(state, d.style))
+        .ok_or("a dimension without its style")?;
+    let plane = plane_at(d.centre, d.x, d.y);
+    Ok(Geometry::Radial(model::RadialDimension {
+        radius_point: local(&plane, d.on_curve),
+        text_point: local(&plane, d.text_at),
+        plane,
+        style,
+        own: None,
+        diameter: d.diameter,
+        text: d.text.clone().unwrap_or_else(|| "<>".to_owned()),
+    }))
+}
+
+/// An ordinate dimension as Rhino's.
+pub(super) fn ordinate_out(
+    d: &curva_document::annotation::OrdinateDimension,
+    styles: &StyleIds,
+    state: &State,
+) -> Result<Geometry, String> {
+    let style = *styles
+        .get(&dimension_key(state, d.style))
+        .ok_or("a dimension without its style")?;
+    let plane = plane_at(d.base, d.x, d.y);
+    Ok(Geometry::Ordinate(model::OrdinateDimension {
+        point: local(&plane, d.point),
+        leader: local(&plane, d.leader),
+        plane,
+        style,
+        own: None,
+        text: d.text.clone().unwrap_or_else(|| "<>".to_owned()),
+        direction: match d.axis {
+            curva_document::annotation::OrdinateAxis::X => 1,
+            curva_document::annotation::OrdinateAxis::Y => 2,
+        },
+        kinks: d.kinks.unwrap_or([model::UNSET_VALUE; 2]),
+    }))
+}
+
+/// An angle dimension as Rhino's.
+pub(super) fn angle_out(
+    d: &curva_document::annotation::AngleDimension,
+    styles: &StyleIds,
+    state: &State,
+) -> Result<Geometry, String> {
+    let style = *styles
+        .get(&dimension_key(state, d.style))
+        .ok_or("a dimension without its style")?;
+    let plane = plane_at(d.apex, d.x, d.y);
+    let side = |p: P3| {
+        let q = local(&plane, p);
+        let length = (q[0] * q[0] + q[1] * q[1]).sqrt();
+        ([q[0] / length.max(1e-12), q[1] / length.max(1e-12)], length)
+    };
+    let (first, near) = side(d.first);
+    let (second, far) = side(d.second);
+    Ok(Geometry::Angular(model::AngularDimension {
+        arc_point: local(&plane, d.arc_at),
+        plane,
+        style,
+        own: None,
+        text: d.text.clone().unwrap_or_else(|| "<>".to_owned()),
+        sides: [first, second],
+        offsets: [near, far],
+    }))
+}
+
+/// A leader as Rhino's.
+pub(super) fn leader_out(
+    l: &curva_document::annotation::Leader,
+    styles: &StyleIds,
+    state: &State,
+) -> Result<Geometry, String> {
+    let style = *styles
+        .get(&dimension_key(state, l.style))
+        .ok_or("a leader without its style")?;
+    let start = *l.points.first().ok_or("a leader without points")?;
+    let plane = plane_at(start, l.x, l.y);
+    Ok(Geometry::Leader(model::Leader {
+        points: l.points.iter().map(|p| local(&plane, *p)).collect(),
+        plane,
+        style,
+        own: None,
+        rich: l.content.clone(),
+    }))
+}

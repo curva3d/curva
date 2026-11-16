@@ -85,31 +85,7 @@ fn lookups(model: &Model, state: &mut State, report: &mut Report) -> Lookups {
         .iter()
         .map(|p| p.name.clone())
         .collect();
-    let file_mm = millimetres_per(model.unit).unwrap_or_else(|| {
-        report
-            .notes
-            .push("the file's unit is unknown, read as millimetres".to_owned());
-        1.0
-    });
-    let scale = file_mm / state.unit.millimetres();
-    if (scale - 1.0).abs() > 1e-12 {
-        report.notes.push(format!(
-            "converted from {} to {}",
-            unit_name(model.unit),
-            state.unit.symbol()
-        ));
-    }
-    for (kind, n) in &model.skipped {
-        report.skipped.push((kind.clone(), *n));
-    }
-    // Document user text joins the model's (the file's value where both have a key); its notes
-    // fill notes the model has not got.
-    for (key, value) in &model.document_text {
-        state.document_text.insert(key.clone(), value.clone());
-    }
-    if state.notes.is_empty() {
-        state.notes.clone_from(&model.notes);
-    }
+    let (file_mm, scale) = settings_in(model, state, report);
     // Linetypes: the file's table as Curva's own or the document's.
     let linetypes: Vec<Linetype> = model
         .linetypes
@@ -173,6 +149,37 @@ fn lookups(model: &Model, state: &mut State, report: &mut Report) -> Lookups {
         .collect();
     look.page_ids = pages_in(model, state);
     look
+}
+
+/// The file's unit (noted when it is converted or unknown), what it left out, its document
+/// text and notes into the model; millimetres per file unit, and the file's unit in Curva's.
+fn settings_in(model: &Model, state: &mut State, report: &mut Report) -> (f64, f64) {
+    let file_mm = millimetres_per(model.unit).unwrap_or_else(|| {
+        report
+            .notes
+            .push("the file's unit is unknown, read as millimetres".to_owned());
+        1.0
+    });
+    let scale = file_mm / state.unit.millimetres();
+    if (scale - 1.0).abs() > 1e-12 {
+        report.notes.push(format!(
+            "converted from {} to {}",
+            unit_name(model.unit),
+            state.unit.symbol()
+        ));
+    }
+    for (kind, n) in &model.skipped {
+        report.skipped.push((kind.clone(), *n));
+    }
+    // Document user text joins the model's (the file's value where both have a key); its notes
+    // fill notes the model has not got.
+    for (key, value) in &model.document_text {
+        state.document_text.insert(key.clone(), value.clone());
+    }
+    if state.notes.is_empty() {
+        state.notes.clone_from(&model.notes);
+    }
+    (file_mm, scale)
 }
 
 /// Layers: the file's tree as sublayers (spec `sublayers.md` §3), parents first, each merged
