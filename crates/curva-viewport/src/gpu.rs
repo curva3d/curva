@@ -4,6 +4,7 @@ use crate::{MeshVertex, Vertex};
 use egui_wgpu::wgpu;
 use std::sync::Arc;
 
+mod depth;
 mod drawing;
 mod picture;
 mod shaders;
@@ -33,6 +34,8 @@ struct ViewSlot {
 
 /// The graphics card's side of the viewport.
 pub struct LineRenderer {
+    /// Hands Bevy's depth to Curva's lines, for views Bevy draws; made when first needed.
+    pub(crate) handover: Option<depth::Handover>,
     grid: wgpu::RenderPipeline,
     lines: wgpu::RenderPipeline,
     faces: wgpu::RenderPipeline,
@@ -291,6 +294,7 @@ impl LineRenderer {
             timer: None,
             chunk_bytes: CHUNK_BYTES,
             outliner: crate::outline::Outliner::new(device, format),
+            handover: None,
             layout,
             picks,
             slots,

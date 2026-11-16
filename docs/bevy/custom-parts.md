@@ -4,6 +4,8 @@ Drawing Curva does itself because Bevy cannot do it yet (decision 0030). The sam
 kernel's custom operations (`docs/kernel/custom-operations.md`, decision 0019): **use what Bevy ships
 wherever it does the job; anything Curva adds is marked and checked at every Bevy upgrade.**
 
+What Bevy offers for each of Curva's needs, and the rules that follow: `docs/bevy/guide.md`.
+
 Each row has a `// CUSTOM BEVY PART: <name>` mark on the code that does it; a test
 (`custom_bevy_parts_match_their_list`) fails if a mark has no row or a row no mark.
 
@@ -20,6 +22,7 @@ small as Bevy allows.
 | Part | Code | Used by | Bevy today | Checked at |
 |---|---|---|---|---|
 | bevy-host | `curva-viewport/src/pilot.rs` (`Pilot`) | Views drawn by Bevy | Bevy draws into a picture on a device it is given (`RenderCreation::manual`), but has no way to sit inside an egui window drawn by eframe and draw only when that window asks; Curva runs Bevy's update itself and copies the picture into the view. (`bevy_egui`, outside Bevy, puts egui inside Bevy's window, the other way round) | 0.20.1 |
+| cad-lines | `curva-viewport/src/gpu/depth.rs` (`Handover`), `gpu/drawing.rs` (`lines_on_bevy`) | Lines, outlines, previews and the gumball on views Bevy draws | Bevy's gizmo lines have widths in pixels and simple dashes, and no paper millimetres, exact hidden lines or printer-like edges, so Curva draws its own lines on Bevy's picture. Bevy keeps its depth readable (`Camera3d::depth_texture_usages`); Curva turns it into its own depth there, so its lines hide behind Bevy's surfaces | 0.20.1 |
 
 ## Planned (no code yet)
 
@@ -28,7 +31,6 @@ Curva to add. Each gets its row and mark when its code lands; before then, check
 
 | Part | What Bevy lacks | Comes with |
 |---|---|---|
-| cad-lines | Lines with widths in paper millimetres (screen size in 3D, paper size in plans and sheets), dashes measured along whole curves, edges mixed as printers mix them, drawn after Bevy's own passes. Bevy's gizmo lines have pixel widths and simple dashes | Move step 3 (#224) |
 | page-drawing | Plans, sections and sheets from the vector page: lines and fills as triangles with true widths, colours as printed. Bevy has 2D meshes but no vector paths | Live plans step 5 |
 | cut-caps | Clipping planes, per view, including shadows and ambient occlusion, and filled, hatched cut faces. Bevy has no clipping planes | Move step 3 |
 | object-numbers | A hidden picture of which object each pixel shows, for Diagram outlines. Bevy has depth and normal pictures, not object numbers | Diagram style |
