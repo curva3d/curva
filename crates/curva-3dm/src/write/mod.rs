@@ -428,6 +428,22 @@ fn write_object(w: &mut Writer, object: &Object) {
     let g = &object.geometry;
     w.begin(tcode::OBJECT_RECORD);
     w.short(tcode::OBJECT_RECORD_TYPE, object_type(g));
+    write_geometry(w, g);
+    w.begin(tcode::OBJECT_RECORD_ATTRIBUTES);
+    write_attributes(w, &object.attributes);
+    w.end();
+    if !object.attributes.user_text.is_empty() {
+        w.begin(tcode::OBJECT_RECORD_ATTRIBUTES_USERDATA);
+        write_user_text(w, &object.attributes.user_text);
+        w.short(tcode::OPENNURBS_CLASS_END, 0);
+        w.end();
+    }
+    w.short(tcode::OBJECT_RECORD_END, 0);
+    w.end();
+}
+
+/// An object's geometry as openNURBS writes its class.
+fn write_geometry(w: &mut Writer, g: &Geometry) {
     match g {
         Geometry::Point(p) => class_object(w, class::POINT, |w| {
             w.chunk_version(1, 0);
@@ -457,22 +473,7 @@ fn write_object(w: &mut Writer, object: &Object) {
                 write_clipping_plane(w, c)
             });
         }
-        Geometry::Hatch(h) => class_object(w, class::HATCH, |w| {
-            // openNURBS' ON_Hatch, version 1.2: plane, scale, turn, pattern, outlines as 2D
-            // curves in the plane, then the base point.
-            w.chunk_version(1, 2);
-            write_plane(w, &h.plane);
-            w.f64(h.scale);
-            w.f64(h.rotation);
-            w.i32(h.pattern);
-            w.count(h.loops.len());
-            for (outer, curve) in &h.loops {
-                w.chunk_version(1, 1);
-                w.i32(i32::from(!outer));
-                write_curve2(w, curve);
-            }
-            w.f64s(&h.base);
-        }),
+        Geometry::Hatch(h) => class_object(w, class::HATCH, |w| write_hatch(w, h)),
         Geometry::Dot {
             at,
             text,
@@ -499,17 +500,23 @@ fn write_object(w: &mut Writer, object: &Object) {
             empty_box(w);
         }),
     }
-    w.begin(tcode::OBJECT_RECORD_ATTRIBUTES);
-    write_attributes(w, &object.attributes);
-    w.end();
-    if !object.attributes.user_text.is_empty() {
-        w.begin(tcode::OBJECT_RECORD_ATTRIBUTES_USERDATA);
-        write_user_text(w, &object.attributes.user_text);
-        w.short(tcode::OPENNURBS_CLASS_END, 0);
-        w.end();
+}
+
+/// A hatch as openNURBS' `ON_Hatch`, version 1.2: plane, scale, turn, pattern, outlines as 2D
+/// curves in the plane, then the base point.
+fn write_hatch(w: &mut Writer, h: &crate::model::Hatch) {
+    w.chunk_version(1, 2);
+    write_plane(w, &h.plane);
+    w.f64(h.scale);
+    w.f64(h.rotation);
+    w.i32(h.pattern);
+    w.count(h.loops.len());
+    for (outer, curve) in &h.loops {
+        w.chunk_version(1, 1);
+        w.i32(i32::from(!outer));
+        write_curve2(w, curve);
     }
-    w.short(tcode::OBJECT_RECORD_END, 0);
-    w.end();
+    w.f64s(&h.base);
 }
 
 fn source(s: Source) -> u8 {

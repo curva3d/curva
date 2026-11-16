@@ -69,34 +69,7 @@ pub(super) fn write_view(
     kind: Option<ViewKind>,
     user_text: &[(String, String)],
 ) {
-    let direction = unit(v.direction);
-    let x = unit(cross(direction, v.up));
-    let y = cross(x, direction);
-    w.begin(tcode::VIEW_VIEWPORT);
-    w.chunk_version(1, 5);
-    w.i32(1); // camera valid
-    w.i32(1); // frustum valid
-    w.i32(1); // port valid
-    w.i32(if v.parallel { 1 } else { 2 });
-    w.f64s(&v.location);
-    w.f64s(&direction);
-    w.f64s(&y);
-    w.f64s(&x);
-    w.f64s(&y);
-    w.f64s(&direction.map(|c| -c));
-    w.f64s(&v.frustum);
-    // A square port, as the frustum is: left, right, bottom, top (pixels run down), near, far.
-    for p in [0, 1000, 1000, 0, 0, 255] {
-        w.i32(p);
-    }
-    w.uuid(id);
-    for locked in [false, false, false, true, true] {
-        w.bool(locked);
-    }
-    w.f64s(&v.target);
-    w.bool(true); // the camera frame is valid
-    w.f64s(&[1.0, 1.0, 1.0]);
-    w.end();
+    let direction = write_viewport(w, v, id);
     // A layout's user text, in its viewport's user data.
     if !user_text.is_empty() {
         w.begin(tcode::VIEW_VIEWPORT_USERDATA);
@@ -129,25 +102,62 @@ pub(super) fn write_view(
     w.wstring(&v.name);
     w.end();
     if let Some(kind) = kind {
-        // Version 1.3 of the view's attributes: kind, paper size, an unused parent id and
-        // nested position, the display mode, page settings (version 1.0: page number, size,
-        // margins, printer), and whether the projection is locked.
-        w.begin(tcode::VIEW_ATTRIBUTES);
-        w.chunk_version(1, 3);
-        w.i32(kind.kind);
-        w.f64s(&kind.size);
-        w.uuid(Uuid::NIL);
-        w.f64s(&[1.0, 0.0, 0.0, -1.0, 0.0, 0.0]);
-        w.uuid(kind.display);
-        w.begin_versioned(tcode::ANONYMOUS_CHUNK, 1, 0);
-        w.i32(0);
-        w.f64s(&[kind.size[0], kind.size[1], 0.0, 0.0, 0.0, 0.0]);
-        w.wstring("");
-        w.end();
-        w.bool(kind.locked);
-        w.end();
+        write_view_attributes(w, &kind);
     }
     w.short(tcode::ENDOFTABLE, 0);
+}
+
+/// A view's camera and frustum as openNURBS' viewport, version 1.5; its direction, of length 1.
+fn write_viewport(w: &mut Writer, v: &View, id: Uuid) -> [f64; 3] {
+    let direction = unit(v.direction);
+    let x = unit(cross(direction, v.up));
+    let y = cross(x, direction);
+    w.begin(tcode::VIEW_VIEWPORT);
+    w.chunk_version(1, 5);
+    w.i32(1); // camera valid
+    w.i32(1); // frustum valid
+    w.i32(1); // port valid
+    w.i32(if v.parallel { 1 } else { 2 });
+    w.f64s(&v.location);
+    w.f64s(&direction);
+    w.f64s(&y);
+    w.f64s(&x);
+    w.f64s(&y);
+    w.f64s(&direction.map(|c| -c));
+    w.f64s(&v.frustum);
+    // A square port, as the frustum is: left, right, bottom, top (pixels run down), near, far.
+    for p in [0, 1000, 1000, 0, 0, 255] {
+        w.i32(p);
+    }
+    w.uuid(id);
+    for locked in [false, false, false, true, true] {
+        w.bool(locked);
+    }
+    w.f64s(&v.target);
+    w.bool(true); // the camera frame is valid
+    w.f64s(&[1.0, 1.0, 1.0]);
+    w.end();
+    direction
+}
+
+/// A page's or detail's view attributes, version 1.3: kind, paper size, an unused parent id and
+/// nested position, the display mode, page settings (version 1.0: page number, size, margins,
+/// printer), and whether the projection is locked.
+fn write_view_attributes(w: &mut Writer, kind: &ViewKind) {
+    w.begin(tcode::VIEW_ATTRIBUTES);
+    w.chunk_version(1, 3);
+    w.i32(kind.kind);
+    w.f64s(&kind.size);
+    w.uuid(Uuid::NIL);
+    w.f64s(&[1.0, 0.0, 0.0, -1.0, 0.0, 0.0]);
+    w.uuid(kind.display);
+    w.begin_versioned(tcode::ANONYMOUS_CHUNK, 1, 0);
+    w.i32(0);
+    w.f64s(&[kind.size[0], kind.size[1], 0.0, 0.0, 0.0, 0.0]);
+    w.wstring("");
+    w.end();
+    w.bool(kind.locked);
+    w.end();
 }
 
 /// A detail view (`ON_DetailView::Write`, version 1.1): its camera as a view nested in its

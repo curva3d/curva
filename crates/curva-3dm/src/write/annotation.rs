@@ -76,6 +76,18 @@ fn write_style_fields(
         1,
         if style.font.is_some() { 2 } else { 1 },
     );
+    write_style_head(w, style, index);
+    write_style_sizes(w, style, parent);
+    write_style_looks(w, style);
+    w.u32(0); // unit system: none (the model's)
+    if let Some(font) = &style.font {
+        write_font(w, font);
+    }
+    w.end();
+}
+
+/// A style's component attributes: its id, index and name, or none for a note's own style.
+fn write_style_head(w: &mut Writer, style: &DimStyle, index: Option<usize>) {
     w.begin_versioned(tcode::MODEL_ATTRIBUTES_CHUNK, 1, 0);
     w.u8(0); // model serial number
     if let Some(index) = index {
@@ -93,6 +105,11 @@ fn write_style_fields(
         w.u8(2); // no name
     }
     w.end();
+}
+
+/// A style's sizes, formats and units, and, for a note's own style, its parent and the fields
+/// it overrides.
+fn write_style_sizes(w: &mut Writer, style: &DimStyle, parent: Option<Uuid>) {
     let h = style.text_height;
     // Extension line extension and offset, arrow and leader arrow sizes, centre mark, text gap,
     // text height.
@@ -135,6 +152,12 @@ fn write_style_fields(
         w.i32(0);
         w.bool(false); // no overridden fields
     }
+}
+
+/// The rest of a style: tolerances, mask, colours, arrows, leaders, the notes' alignment and
+/// the style's scale.
+fn write_style_looks(w: &mut Writer, style: &DimStyle) {
+    let h = style.text_height;
     w.i32(0); // tolerance format
     w.i32(4);
     w.f64s(&[0.0, 0.0, 1.0, 3.0 * h]);
@@ -201,11 +224,6 @@ fn write_style_fields(
     write_length_value(w, 1.0);
     write_length_value(w, 1.0);
     w.u32(1); // ratio format
-    w.end();
-    w.u32(0); // unit system: none (the model's)
-    if let Some(font) = &style.font {
-        write_font(w, font);
-    }
     w.end();
 }
 
