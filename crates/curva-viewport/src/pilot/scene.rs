@@ -13,6 +13,7 @@ use bevy::{
     prelude::*,
 };
 
+use super::clip::{Clipping, Clips, CurvaMaterial};
 use crate::{Drawing, MeshVertex};
 
 /// How surfaces are lit (`views-and-styles.md` §2.1, the Surfaces layer's lighting).
@@ -129,7 +130,9 @@ pub(super) struct ViewScene {
     ghosted: Option<bool>,
     parts: HashMap<PartKey, Part>,
     /// This view's material for each colour, so a style change touches only this view.
-    materials: HashMap<[u32; 3], Handle<StandardMaterial>>,
+    materials: HashMap<[u32; 3], Handle<CurvaMaterial>>,
+    /// The planes this view's surfaces were last cut by.
+    clips: Option<Clips>,
 }
 
 impl ViewScene {
@@ -179,6 +182,7 @@ impl ViewScene {
             ghosted: None,
             parts: HashMap::new(),
             materials: HashMap::new(),
+            clips: None,
         }
     }
 
@@ -228,10 +232,10 @@ impl ViewScene {
             self.look = Some(look);
             self.light(world, look);
             let materials = self.materials.values().cloned().collect::<Vec<_>>();
-            let mut assets = world.resource_mut::<Assets<StandardMaterial>>();
+            let mut assets = world.resource_mut::<Assets<CurvaMaterial>>();
             for handle in materials {
                 if let Some(mut material) = assets.get_mut(&handle) {
-                    set_shine(&mut material, look.shine);
+                    set_shine(&mut material.base, look.shine);
                 }
             }
         }
@@ -260,10 +264,21 @@ impl ViewScene {
         if self.ghosted != Some(drawing.ghosted) {
             self.ghosted = Some(drawing.ghosted);
             let materials = self.materials.values().cloned().collect::<Vec<_>>();
-            let mut assets = world.resource_mut::<Assets<StandardMaterial>>();
+            let mut assets = world.resource_mut::<Assets<CurvaMaterial>>();
             for handle in materials {
                 if let Some(mut material) = assets.get_mut(&handle) {
-                    set_ghosted(&mut material, drawing.ghosted);
+                    set_ghosted(&mut material.base, drawing.ghosted);
+                }
+            }
+        }
+        let clips = Clips::of(&drawing.clips);
+        if self.clips != Some(clips) {
+            self.clips = Some(clips);
+            let materials = self.materials.values().cloned().collect::<Vec<_>>();
+            let mut assets = world.resource_mut::<Assets<CurvaMaterial>>();
+            for handle in materials {
+                if let Some(mut material) = assets.get_mut(&handle) {
+                    material.extension.clips = clips;
                 }
             }
         }
@@ -388,6 +403,7 @@ impl ViewScene {
         let selected: HashSet<u64> = selection.iter().copied().collect();
         let ghosted = self.ghosted.unwrap_or(false);
         let shine = self.look.unwrap_or_default().shine;
+        let clips = self.clips.unwrap_or_default();
         let picks: Vec<(Entity, [u32; 3])> = self
             .parts
             .iter()
@@ -422,8 +438,11 @@ impl ViewScene {
                     set_ghosted(&mut material, ghosted);
                     set_shine(&mut material, shine);
                     world
-                        .resource_mut::<Assets<StandardMaterial>>()
-                        .add(material)
+                        .resource_mut::<Assets<CurvaMaterial>>()
+                        .add(CurvaMaterial {
+                            base: material,
+                            extension: Clipping { clips },
+                        })
                 })
                 .clone();
             world.entity_mut(entity).insert(MeshMaterial3d(material));

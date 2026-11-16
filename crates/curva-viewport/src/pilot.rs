@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+mod clip;
 mod scene;
 pub use scene::{Lighting, Look};
 use scene::{SharedMeshes, ViewScene};
@@ -128,6 +129,7 @@ impl Pilot {
             brightness: 0.0,
             ..default()
         });
+        clip::install(&mut app);
         app.finish();
         app.cleanup();
         Self {
@@ -709,6 +711,27 @@ mod tests {
             .filter(|p| p[2] > 200 && p[0] < 80)
             .count();
         assert!(shown > 10, "the blue line above the face should show");
+    }
+
+    /// A clipping plane cuts Bevy's surfaces as it cuts Curva's: a grey face seen from above,
+    /// cut by a plane through the middle, shows the background where it is cut away.
+    #[test]
+    fn clipping_planes_cut_bevy_surfaces() {
+        let Some((mut pilot, device, queue)) = pilot() else {
+            return;
+        };
+        let mut view = drawing(StandardView::Top, square([0.0, 0.0, 1.0], [0.6; 3]));
+        // Cuts away where x > 0: the right half of the picture seen from above.
+        view.clips = vec![[1.0, 0.0, 0.0, 0.0]];
+        let texture = pilot.draw(&view, SIZE).expect("Bevy's picture");
+        let pixels = crate::gpu::read_texture(&device, &queue, &texture, SIZE);
+        let at = |x: u32| {
+            let i = (((SIZE[1] / 2) * SIZE[0] + x) * 4) as usize;
+            [pixels[i], pixels[i + 1], pixels[i + 2]]
+        };
+        let (kept, cut) = (at(SIZE[0] / 4), at(SIZE[0] * 3 / 4));
+        assert_eq!(kept[0], kept[2], "the kept half is the grey face: {kept:?}");
+        assert_eq!(cut, [200, 120, 40], "the cut half shows the background");
     }
 
     /// In the Studio look a white face is light grey, as in Rhino's Shaded, but not burnt out:
