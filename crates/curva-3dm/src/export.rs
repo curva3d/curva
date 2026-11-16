@@ -168,8 +168,7 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
 
     // Annotation styles: each Curva style the annotation uses, under its own name with its font,
     // sizes (in the model's unit) and decimals. A note of another height or alignment than its
-    // style's gets a style of its own beside it ("ISO 3.5 7 Centre"), so no note needs to
-    // override its style.
+    // style's overrides those in its style, as Rhino's notes do.
     let mut style_ids: StyleIds = BTreeMap::new();
     let wanted: Vec<StyleKey> = chosen
         .iter()
@@ -181,9 +180,9 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
                 .flat_map(|b| b.objects.iter().map(|o| &o.shape)),
         )
         .filter_map(|s| match s {
-            Shape::Annotation(curva_document::annotation::Annotation::Text(t)) => Some(note_key(t)),
             Shape::Annotation(
-                a @ (curva_document::annotation::Annotation::Dimension(_)
+                a @ (curva_document::annotation::Annotation::Text(_)
+                | curva_document::annotation::Annotation::Dimension(_)
                 | curva_document::annotation::Annotation::Radial(_)
                 | curva_document::annotation::Annotation::Angle(_)
                 | curva_document::annotation::Annotation::Ordinate(_)
@@ -196,36 +195,13 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
         if style_ids.contains_key(&key) {
             continue;
         }
-        let (style_id, height_bits, align) = key;
-        let height = f64::from_bits(height_bits);
-        let style = annotation_style(state, style_id);
-        let scale = style.scale_to(state.unit, None);
-        let own = (height - style.height_in(state.unit)).abs() < 1e-9 && align == 0;
         let id = ids.next();
         style_ids.insert(key, id);
+        let style = annotation_style(state, key.0);
         model.dim_styles.push(model::DimStyle {
             id,
-            name: if own {
-                style.name.clone()
-            } else {
-                format!(
-                    "{} {} {}",
-                    style.name,
-                    format!("{height:.4}")
-                        .trim_end_matches('0')
-                        .trim_end_matches('.'),
-                    ["Left", "Centre", "Right"][align as usize]
-                )
-            },
-            text_height: height,
-            h_align: align,
-            v_align: 3,
-            arrow_size: style.arrow_size() * scale,
-            extension_extension: style.extension_extension() * scale,
-            extension_offset: style.extension_offset() * scale,
-            text_gap: style.text_gap() * scale,
-            length_resolution: i32::try_from(style.linear_resolution()).unwrap_or(2),
-            font: style.font.clone(),
+            name: style.name.clone(),
+            ..rhino_style(state, key.0, f64::from_bits(key.1), 0)
         });
     }
 
@@ -529,7 +505,12 @@ fn geometry_of(
             Geometry::Hatch(hatch(h, patterns)?)
         }
         Shape::Annotation(curva_document::annotation::Annotation::Text(t)) => {
-            let style = *styles.get(&note_key(t)).ok_or("a note without its style")?;
+            let key = dimension_key(state, t.style);
+            let style = *styles.get(&key).ok_or("a note without its style")?;
+            // A note of another height or alignment than its style's overrides them in it.
+            let align = align_code(t.align);
+            let own = ((t.height - f64::from_bits(key.1)).abs() > 1e-9 || align != 0)
+                .then(|| rhino_style(state, key.0, t.height, align));
             // Rhino aligns these notes by the top of their first line, one text height above
             // the baseline Curva places them by.
             let origin: P3 = std::array::from_fn(|k| t.origin[k] + t.y[k] * t.height);
@@ -542,7 +523,7 @@ fn geometry_of(
                     z: cross(t.x, t.y),
                 },
                 style,
-                own: None,
+                own,
                 rotation: 0.0,
             })
         }
@@ -1223,18 +1204,34 @@ fn annotation_style(state: &State, style: u64) -> curva_document::annotation::An
         .unwrap_or_else(|| curva_document::annotation::standard_styles(false).remove(0))
 }
 
-/// The Rhino style a note or dimension takes: by Curva style, text height (in the model's
-/// unit, as bits) and alignment code.
+/// The Rhino style an annotation takes: by Curva style and its text height (in the model's
+/// unit, as bits); the last part, an alignment code, is 0, notes overriding theirs.
 type StyleKey = (u64, u64, u32);
 /// The Rhino styles written, by [`StyleKey`].
 type StyleIds = BTreeMap<StyleKey, Uuid>;
 
-/// A note's Rhino style: its Curva style with its own height and alignment.
-fn note_key(t: &curva_document::annotation::Text) -> StyleKey {
-    (t.style, t.height.to_bits(), align_code(t.align))
+/// A Curva style as Rhino's, with the given text height (in the model's unit) and notes'
+/// horizontal alignment: its font, sizes in the model's unit and decimals, with no id or name
+/// (an override's, until the caller gives it the style's).
+fn rhino_style(state: &State, style: u64, height: f64, align: u32) -> model::DimStyle {
+    let style = annotation_style(state, style);
+    let scale = style.scale_to(state.unit, None);
+    model::DimStyle {
+        id: Uuid::NIL,
+        name: String::new(),
+        text_height: height,
+        h_align: align,
+        v_align: 3,
+        arrow_size: style.arrow_size() * scale,
+        extension_extension: style.extension_extension() * scale,
+        extension_offset: style.extension_offset() * scale,
+        text_gap: style.text_gap() * scale,
+        length_resolution: i32::try_from(style.linear_resolution()).unwrap_or(2),
+        font: style.font.clone(),
+    }
 }
 
-/// A dimension's or leader's Rhino style: its Curva style as it is.
+/// An annotation's Rhino style: its Curva style as it is.
 fn dimension_key(state: &State, style: u64) -> StyleKey {
     let held = annotation_style(state, style);
     (held.id, held.height_in(state.unit).to_bits(), 0)

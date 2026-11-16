@@ -1212,7 +1212,28 @@ fn annotation_styles_go_out_and_come_back_with_their_looks() {
         (2.0, 1.0, 1.5)
     );
     assert_eq!((plans.text_gap, plans.length_resolution), (0.8, 1));
-    assert!(model.dim_styles.iter().any(|s| s.name == "Plans 7 Centre"));
+    // The note of another height and alignment overrides them in the style, as Rhino's notes do,
+    // rather than getting a style of its own.
+    assert_eq!(
+        model
+            .dim_styles
+            .iter()
+            .filter(|s| s.name.starts_with("Plans"))
+            .count(),
+        1
+    );
+    let owns: Vec<Option<(f64, u32)>> = model
+        .objects
+        .iter()
+        .filter_map(|o| match &o.geometry {
+            curva_3dm::model::Geometry::Text(t) => {
+                assert_eq!(t.style, plans.id);
+                Some(t.own.as_ref().map(|s| (s.text_height, s.h_align)))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(owns, [None, Some((7.0, 1))]);
     let back = round_trip(&state);
     let held: Vec<&AnnotationStyle> = back
         .annotation_styles
