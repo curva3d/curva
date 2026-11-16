@@ -1,6 +1,6 @@
 //! One frame of the viewport, drawn into the window by egui.
 
-use crate::pilot::{Engine, Pilot, PilotSeed};
+use crate::pilot::{BevyPicture, Engine, Pilot, PilotSeed};
 use crate::{MeshVertex, Vertex};
 use egui_wgpu::wgpu;
 use std::sync::Arc;
@@ -84,7 +84,7 @@ impl Drawing {
         queue: &wgpu::Queue,
         screen: &egui_wgpu::ScreenDescriptor,
         resources: &mut egui_wgpu::CallbackResources,
-    ) -> Option<Vec<([u32; 2], wgpu::Texture)>> {
+    ) -> Option<Vec<BevyPicture>> {
         if self.engine != Engine::BevyPilot {
             return None;
         }
@@ -150,10 +150,12 @@ impl egui_wgpu::CallbackTrait for Drawing {
                     None,
                 ));
             }
-            // At the frame's last Bevy view, every Bevy view's picture goes to its place.
-            for ([x, y], picture) in pictures {
+            // At the frame's last Bevy view, every Bevy view's picture goes to its place, then
+            // Curva's outlines and lines are drawn on it, hidden by Bevy's depth.
+            for picture in pictures {
+                let [x, y] = picture.low;
                 encoder.copy_texture_to_texture(
-                    picture.as_image_copy(),
+                    picture.colour.as_image_copy(),
                     wgpu::TexelCopyTextureInfo {
                         texture: colour.texture(),
                         mip_level: 0,
@@ -161,10 +163,19 @@ impl egui_wgpu::CallbackTrait for Drawing {
                         aspect: wgpu::TextureAspect::All,
                     },
                     wgpu::Extent3d {
-                        width: picture.width().min(size[0].saturating_sub(x)),
-                        height: picture.height().min(size[1].saturating_sub(y)),
+                        width: picture.colour.width().min(size[0].saturating_sub(x)),
+                        height: picture.colour.height().min(size[1].saturating_sub(y)),
                         depth_or_array_layers: 1,
                     },
+                );
+                lines_on_bevy(
+                    renderer,
+                    device,
+                    queue,
+                    encoder,
+                    screen,
+                    &picture,
+                    [&colour, &depth],
                 );
             }
             return Vec::new();
@@ -311,4 +322,58 @@ fn fit(pass: &mut wgpu::RenderPass<'_>, area: [f32; 4]) {
         area[2] as u32,
         area[3] as u32,
     );
+}
+
+/// Curva's outlines, lines and previews on a view Bevy drew, already on the scene texture
+/// (`targets`: its colour and depth): Bevy's depth is handed over first, so they are hidden
+/// behind Bevy's surfaces as behind Curva's own.
+fn lines_on_bevy(
+    renderer: &mut LineRenderer,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    encoder: &mut wgpu::CommandEncoder,
+    screen: &egui_wgpu::ScreenDescriptor,
+    picture: &BevyPicture,
+    [colour, depth]: [&wgpu::TextureView; 2],
+) {
+    let drawing = &picture.drawing;
+    let scale = screen.pixels_per_point;
+    let Some((low, high)) = drawing.pixel_area(screen.size_in_pixels, scale) else {
+        return;
+    };
+    let area = [low.x, low.y, high.x - low.x, high.y - low.y];
+    let pixels = drawing.area.size() * scale;
+    let pixel = [
+        2.0 / pixels.x.max(1.0),
+        2.0 / pixels.y.max(1.0),
+        PIXELS_PER_MM * scale,
+    ];
+    renderer.update(device, queue, drawing, pixel);
+    if let Some(bevy_depth) = &picture.depth {
+        let handover = renderer
+            .handover
+            .get_or_insert_with(|| super::depth::Handover::new(device));
+        handover.write(
+            (device, queue),
+            encoder,
+            bevy_depth,
+            depth,
+            area,
+            &drawing.camera.lens(),
+        );
+    }
+    if renderer.outlines_wanted(drawing.slot) {
+        renderer.outliner.draw(
+            device,
+            queue,
+            encoder,
+            colour,
+            depth,
+            area,
+            crate::EDGE_ON_FACES_COLOUR,
+        );
+    }
+    let mut pass = lines_pass(encoder, colour, depth, None);
+    fit(&mut pass, area);
+    renderer.draw_over(&mut pass, drawing.slot);
 }

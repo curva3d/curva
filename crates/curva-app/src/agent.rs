@@ -258,3 +258,93 @@ impl Curva {
         });
     }
 }
+
+/// Rhino's Shaded viewport grey, behind the look pictures for comparing with it.
+const RHINO_GREY: egui::Color32 = egui::Color32::from_rgb(158, 163, 171);
+
+/// Pictures of Bevy's looks with Curva's lines, beside Curva's own Shaded, with what each costs
+/// per frame, for the owner to choose from (`curva --look-pictures <folder>`): the test building,
+/// and a box, a sphere and a flat four-sided surface as in Rhino's example.
+pub(crate) fn look_pictures(out: &std::path::Path) -> Result<(), String> {
+    use curva_viewport::{Lighting, Look};
+    let text = |error: curva_kernel::KernelError| error.to_string();
+    std::fs::create_dir_all(out).map_err(|error| error.to_string())?;
+    let mut building = Document::default();
+    benchmark_scene(
+        &mut building,
+        BenchmarkScene::named("building").ok_or("no building scene")?,
+    )?;
+    let mut shapes = Document::default();
+    shapes.add_body(
+        curva_kernel::Body::cuboid([3000.0, 2500.0, 0.0], [1600.0, 1600.0, 2000.0])
+            .map_err(text)?,
+    );
+    shapes.add_body(curva_kernel::Body::sphere([4200.0, -800.0, 900.0], 900.0).map_err(text)?);
+    let outline = curva_kernel::Curve::polyline(
+        vec![
+            [-3000.0, -2500.0, 0.0],
+            [1200.0, -3200.0, 0.0],
+            [1500.0, 1800.0, 0.0],
+            [-2600.0, 2600.0, 0.0],
+        ],
+        true,
+    )
+    .map_err(text)?;
+    shapes.add_body(curva_kernel::Body::planar(&[outline]).map_err(text)?);
+    let looks = [
+        (
+            "studio",
+            Look {
+                lighting: Lighting::Studio,
+                shine: 0.6,
+            },
+        ),
+        (
+            "sunlit",
+            Look {
+                lighting: Lighting::Sunlit,
+                shine: 0.6,
+            },
+        ),
+    ];
+    // The shapes closer, as in Rhino's example.
+    for (scene, doc, zoom) in [
+        ("building", &building, SCENE_PICTURE_ZOOM),
+        ("shapes", &shapes, 0.55),
+    ] {
+        let outlines = Outlines::of(doc.state());
+        let mut camera = Camera::default();
+        let (low, high) = outlines.bounds().ok_or("an empty scene")?;
+        camera.frame(low, high);
+        camera.zoom(zoom);
+        let aspect = f64::from(PICTURE_SIZE[0]) / f64::from(PICTURE_SIZE[1]);
+        let curva = picture_of(doc, &outlines, &camera, aspect, false);
+        save_picture(
+            curva,
+            PICTURE_SIZE,
+            &out.join(format!("{scene}-0-curva.png")),
+        )?;
+        // Bevy's surfaces with Curva's lines, numbered as the window numbers them.
+        let parts = curva_viewport::SceneParts::of(&outlines);
+        for (index, (name, look)) in looks.iter().enumerate() {
+            let picture = Picture {
+                lines: parts.shaded_lines.clone(),
+                faces: parts.faces.clone(),
+                matrix: camera.matrix(aspect),
+                light: camera.forward().map(|value| value as f32),
+                ghosted: false,
+            };
+            let ms = curva_viewport::save_bevy_picture(
+                picture,
+                parts.objects.clone(),
+                camera,
+                *look,
+                RHINO_GREY,
+                PICTURE_SIZE,
+                &out.join(format!("{scene}-{}-{name}.png", index + 1)),
+            )?;
+            println!("{scene} {name}: {ms:.2} ms per frame");
+        }
+    }
+    Ok(())
+}

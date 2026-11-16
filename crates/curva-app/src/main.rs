@@ -1,5 +1,6 @@
 //! The Curva application: a window with a viewport and a command line.
 //!
+//! `curva --look-pictures <folder>` saves pictures of Bevy's looks beside Curva's own Shaded.
 //! `curva --picture out.png --run "line;0,0;50,20"` runs commands without a window and saves a
 //! picture of the viewport, which is how automatic runs check the drawing.
 //! `curva --mcp` runs as an MCP server for AI agents, on standard input and output, on a model of
@@ -457,6 +458,9 @@ fn run() -> Result<(), String> {
         return server
             .serve(std::io::stdin().lock(), std::io::stdout().lock())
             .map_err(|error| error.to_string());
+    }
+    if let Some(folder) = value("--look-pictures") {
+        return agent::look_pictures(std::path::Path::new(folder));
     }
     if let Some(path) = value("--picture") {
         let script = value("--run").map_or("", String::as_str);

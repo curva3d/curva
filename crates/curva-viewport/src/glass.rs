@@ -333,10 +333,12 @@ impl Compositor {
                 "curva scene",
                 size,
                 self.format,
-                // Writable too, for the test that checks the blur.
+                // Writable and readable too, for the tests that check the blur and the lines on
+                // Bevy's views.
                 wgpu::TextureUsages::RENDER_ATTACHMENT
                     | wgpu::TextureUsages::TEXTURE_BINDING
-                    | wgpu::TextureUsages::COPY_DST,
+                    | wgpu::TextureUsages::COPY_DST
+                    | wgpu::TextureUsages::COPY_SRC,
             );
             let depth = texture(
                 device,
