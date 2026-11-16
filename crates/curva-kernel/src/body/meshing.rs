@@ -154,6 +154,57 @@ mod tests {
         assert!(Arc::ptr_eq(&shared, &turned.shared_mesh().unwrap()));
     }
 
+    /// A block instance's map that turns, scales evenly, mirrors and moves shares the mesh and
+    /// gives the same solid as the engine makes; a shear is remade by the engine.
+    #[test]
+    fn an_even_map_shares_the_mesh_and_a_shear_does_not() {
+        let cube = Body::cuboid([1.0, 2.0, 3.0], [2.0, 3.0, 4.0]).unwrap();
+        let (c, s) = (0.6 * 2.0, 0.8 * 2.0);
+        // Turned about Z, doubled, mirrored in Z, moved.
+        let even = [
+            [c, s, 0.0, 0.0],
+            [-s, c, 0.0, 0.0],
+            [0.0, 0.0, -2.0, 0.0],
+            [5.0, 6.0, 7.0, 1.0],
+        ];
+        let placed = cube.transformed(even).unwrap();
+        assert!(Arc::ptr_eq(
+            &cube.shared_mesh().unwrap(),
+            &placed.shared_mesh().unwrap()
+        ));
+        assert!((placed.volume().unwrap() - 8.0 * 24.0).abs() < 1e-6);
+        // The box's eight corners, mapped by hand, bound the placed solid.
+        let (mut p, mut q) = ([f64::MAX; 3], [f64::MIN; 3]);
+        for corner in 0..8 {
+            let v = [
+                [1.0, 3.0][corner & 1],
+                [2.0, 5.0][(corner >> 1) & 1],
+                [3.0, 7.0][corner >> 2],
+            ];
+            for j in 0..3 {
+                let mapped = (0..3).map(|k| v[k] * even[k][j]).sum::<f64>() + even[3][j];
+                p[j] = p[j].min(mapped);
+                q[j] = q[j].max(mapped);
+            }
+        }
+        let (a, b) = placed.bounds().unwrap();
+        for axis in 0..3 {
+            assert!((a[axis] - p[axis]).abs() < 1e-6 && (b[axis] - q[axis]).abs() < 1e-6);
+        }
+        let shear = [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.5, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ];
+        let sheared = cube.transformed(shear).unwrap();
+        assert!(!Arc::ptr_eq(
+            &cube.shared_mesh().unwrap(),
+            &sheared.shared_mesh().unwrap()
+        ));
+        assert!((sheared.volume().unwrap() - 24.0).abs() < 1e-6);
+    }
+
     /// The shared mesh, each point placed by `placement` as its rows say, is the body's own mesh.
     #[test]
     fn the_shared_mesh_placed_is_the_mesh() {
