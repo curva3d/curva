@@ -40,13 +40,17 @@ views, shaded details, and PNG output from the viewport. Work on files, commands
 - Merged (#232): DXF and DWG MLEADER block content comes in as an instance of the block where the MLEADER puts it.
 - Merged (#233): DXF and DWG angles by three points come in as angle dimensions (as Rhino 8 reads them), jogged
   radii as plain radius dimensions (Rhino 8 skips them). Arc length dimensions wait for Curva to have one.
+- Merged (#238): DXF and DWG splines given only by fit points come in as Rhino 8 reads AutoCAD's: a cubic
+  spline with knots at the points' spacing (chord, square root, uniform), the end tangents as derivatives and
+  natural ends otherwise. New kernel `Curve::fitted` on solidcore's `cubic_spline_interp`; only the natural end
+  derivatives are Curva's own (solidcore has none). Seven Rhino 8 imports agree to about 1e-12. A closed one
+  stays on Curva's own interpolation: Rhino 8 reads it open and AutoCAD's shape is unchecked.
 
 **Milestone 3, point 9:** merged (#213): `HatchPatterns` loads a `.pat` file's patterns into the model
 (`;%UNITS=INCH` files turned into millimetres). Merged (#219): `SetHatchBasePoint` moves where hatches' patterns
 start.
 
-**Next (features):** fit-point splines through AutoCAD's interpolation (a kernel change; check solidcore
-first); arc length and curve length dimensions (which also close the DXF arc length gap), and dimensions that
+**Next (features):** arc length and curve length dimensions (which also close the DXF arc length gap), and dimensions that
 follow their geometry; Make2D pieces that need no viewport. Meshes in DXF and DWG need the owner's decision first:
 Curva has no mesh objects.
 

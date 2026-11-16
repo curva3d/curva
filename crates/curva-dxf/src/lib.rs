@@ -22,7 +22,7 @@ use acadrust::{CadDocument, DwgReader, DwgWriter, DxfReader, DxfWriter, Layer};
 use curva_document::annotation::Annotation;
 use curva_document::fields::{FieldContext, resolve};
 use curva_document::{Document, Linetype, PrintWidth, Shape, Unit};
-use curva_kernel::Curve;
+use curva_kernel::{Curve, Spacing};
 use std::collections::BTreeMap;
 use std::io::Cursor;
 
@@ -820,8 +820,21 @@ fn curve_of(entity: &EntityType) -> Result<Vec<Curve>, &'static str> {
         EntityType::Spline(s) => {
             let degree = usize::try_from(s.degree).map_err(|_| "splines")?;
             if s.control_points.is_empty() && s.fit_points.len() > 1 {
-                Curve::interpolated(s.fit_points.iter().map(p3).collect(), s.flags.closed)
-                    .map_err(|_| "splines")?
+                // AutoCAD fits through the points with the spline's end tangents (zero when
+                // unset) and its knot parameterization: 0 chord, 1 square root, 2 uniform.
+                let spacing = match s.knot_parameterization {
+                    1 => Spacing::SquareRoot,
+                    2 => Spacing::Uniform,
+                    _ => Spacing::Chord,
+                };
+                Curve::fitted(
+                    s.fit_points.iter().map(p3).collect(),
+                    s.flags.closed,
+                    Some(p3(&s.begin_tangent)),
+                    Some(p3(&s.end_tangent)),
+                    spacing,
+                )
+                .map_err(|_| "splines")?
             } else {
                 let weights = if s.flags.rational {
                     s.weights.clone()
@@ -1889,6 +1902,50 @@ mod tests {
                     && near(m[3], [20.0, 10.0, 0.0, 1.0]),
                 "{format:?}: {m:?}"
             );
+        }
+    }
+
+    #[test]
+    fn a_fit_point_spline_comes_in_with_its_end_tangents_and_spacing() {
+        use acadrust::types::Vector3;
+        let fit = [
+            [0.0, 0.0, 0.0],
+            [10.0, 5.0, 0.0],
+            [20.0, 0.0, 0.0],
+            [30.0, 4.0, 0.0],
+        ];
+        let mut spline = Spline::from_fit_points(fit.iter().map(|p| v3(*p)).collect());
+        spline.begin_tangent = Vector3::new(0.0, 1.0, 0.0);
+        spline.end_tangent = Vector3::new(0.0, -1.0, 0.0);
+        spline.knot_parameterization = 1;
+        let mut cad = CadDocument::new();
+        let _ = cad.add_entity(EntityType::Spline(spline));
+        let expected = Curve::fitted(
+            fit.to_vec(),
+            false,
+            Some([0.0, 1.0, 0.0]),
+            Some([0.0, -1.0, 0.0]),
+            Spacing::SquareRoot,
+        )
+        .unwrap();
+        for format in [Format::Dxf, Format::Dwg] {
+            let bytes = match format {
+                Format::Dxf => DxfWriter::new(&cad).write_to_vec(),
+                Format::Dwg => DwgWriter::write_to_vec(&cad),
+            }
+            .unwrap();
+            let mut doc = Document::default();
+            import(&read(&bytes, format).unwrap(), &mut doc);
+            let curves: Vec<&Curve> = doc
+                .state()
+                .objects
+                .iter()
+                .filter_map(|o| match &o.shape {
+                    Shape::Curve(c) => Some(c),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(curves, vec![&expected], "{format:?}");
         }
     }
 

@@ -5,9 +5,10 @@ use serde::{Deserialize, Serialize};
 use solidcore::curve::curve::Curve as CoreCurve;
 use solidcore::nurbs::b_spline_curve::BSplineCurve;
 use solidcore::nurbs::crv_fit::p1::ParamMethod;
+use solidcore::nurbs::crv_fit::p3::cubic_spline_interp;
 use solidcore::nurbs::math::{CPoint, NOW};
 use solidcore::query::api_queries::curve_closest_point;
-use solidcore::{Kernel, Point3};
+use solidcore::{Kernel, Point3, Vec3};
 use std::f64::consts::TAU;
 
 mod area;
@@ -955,6 +956,148 @@ impl Curve {
         Ok(Self::Interpolated { points, closed })
     }
 
+    /// A smooth curve through the points as a fitted spline (AutoCAD's SPLINE by fit points)
+    /// describes it: optional vectors at its two ends and a way of spacing the points along it.
+    ///
+    /// Open, it is the cubic spline whose knots are the points' parameters, running through
+    /// the summed steps themselves (distances, their square roots, or ones), with each end
+    /// vector as the derivative there and no bending at an end without one (a natural end),
+    /// as AutoCAD's are read by Rhino and the Open Design Alliance. It is kept as exact NURBS, since an interpolated
+    /// curve holds only its points. Closed, it is smooth at its seam and takes no end vectors.
+    pub fn fitted(
+        points: Vec<Point>,
+        closed: bool,
+        start: Option<Point>,
+        end: Option<Point>,
+        spacing: Spacing,
+    ) -> Result<Self, KernelError> {
+        if points.len() < 2 {
+            return Err(KernelError("a curve needs two points".to_owned()));
+        }
+        if closed && spacing == Spacing::Chord {
+            return Self::interpolated(points, closed);
+        }
+        let method = match spacing {
+            Spacing::Chord => ParamMethod::ChordLength,
+            Spacing::SquareRoot => ParamMethod::Centripetal,
+            Spacing::Uniform => ParamMethod::Uniform,
+        };
+        let mut through: Vec<Point3> = points
+            .iter()
+            .map(|p| Point3::new(p[0], p[1], p[2]))
+            .collect();
+        if closed {
+            through.push(through[0]);
+            let engine = BSplineCurve::interpolate_points(
+                &through,
+                None,
+                3.min(points.len()),
+                None,
+                None,
+                true,
+                method,
+            )
+            .map_err(engine_error)?;
+            return curve_from_engine(&engine);
+        }
+        let steps = spacing.steps(&points);
+        if steps.iter().any(|h| *h <= 1e-12) {
+            return Err(KernelError(
+                "a fitted curve's points must differ".to_owned(),
+            ));
+        }
+        let given = |d: Option<Point>| d.filter(|v| gap(*v, [0.0; 3]) > 1e-12);
+        let (first, last) = spline_ends(&points, &steps, given(start), given(end));
+        // The engine's parameter runs from 0 to 1, so the derivatives grow by the whole span.
+        let span: f64 = steps.iter().sum();
+        let scaled = |v: Point| Vec3::new(v[0], v[1], v[2]) * span;
+        let vectors: Vec<Vec3> = through.iter().map(|p| Vec3::new(p.x, p.y, p.z)).collect();
+        let cubic = cubic_spline_interp(&vectors, scaled(first), scaled(last), method)
+            .map_err(engine_error)?;
+        curve_from_engine(&BSplineCurve::from_gw_nurb(3, &cubic))
+    }
+}
+
+/// How a fitted curve spaces its points along itself (AutoCAD's knot parameterization).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Spacing {
+    /// In proportion to the distances between points.
+    Chord,
+    /// In proportion to the square roots of those distances.
+    SquareRoot,
+    /// Evenly, whatever the distances.
+    Uniform,
+}
+
+impl Spacing {
+    /// The parameter's steps between the points.
+    fn steps(self, points: &[Point]) -> Vec<f64> {
+        points
+            .windows(2)
+            .map(|pair| match self {
+                Self::Chord => gap(pair[0], pair[1]),
+                Self::SquareRoot => gap(pair[0], pair[1]).sqrt(),
+                Self::Uniform => 1.0,
+            })
+            .collect()
+    }
+}
+
+/// The end derivatives of the cubic spline through `points` (C2 throughout) whose parameter
+/// steps are `steps`: an end given keeps its derivative, and one not given has no second
+/// derivative there (a natural end). Solved as the spline's tridiagonal system for the
+/// derivatives at every point.
+fn spline_ends(
+    points: &[Point],
+    steps: &[f64],
+    start: Option<Point>,
+    end: Option<Point>,
+) -> (Point, Point) {
+    let n = points.len() - 1;
+    let slope = |i: usize| -> Point {
+        std::array::from_fn(|k| (points[i + 1][k] - points[i][k]) / steps[i])
+    };
+    // Row i: lower * m[i-1] + diagonal * m[i] + upper * m[i+1] = right.
+    let mut lower = vec![0.0; n + 1];
+    let mut diagonal = vec![0.0; n + 1];
+    let mut upper = vec![0.0; n + 1];
+    let mut right = vec![[0.0; 3]; n + 1];
+    match start {
+        Some(d) => (diagonal[0], right[0]) = (1.0, d),
+        None => (diagonal[0], upper[0], right[0]) = (2.0, 1.0, slope(0).map(|c| 3.0 * c)),
+    }
+    for i in 1..n {
+        let (before, after) = (steps[i - 1], steps[i]);
+        let (s0, s1) = (slope(i - 1), slope(i));
+        lower[i] = after;
+        diagonal[i] = 2.0 * (before + after);
+        upper[i] = before;
+        right[i] = std::array::from_fn(|k| 3.0 * (after * s0[k] + before * s1[k]));
+    }
+    match end {
+        Some(d) => (diagonal[n], right[n]) = (1.0, d),
+        None => {
+            (lower[n], diagonal[n], right[n]) = (1.0, 2.0, slope(n - 1).map(|c| 3.0 * c));
+        }
+    }
+    // Forward sweep, then back substitution.
+    for i in 1..=n {
+        let factor = lower[i] / diagonal[i - 1];
+        diagonal[i] -= factor * upper[i - 1];
+        let above = right[i - 1];
+        for k in 0..3 {
+            right[i][k] -= factor * above[k];
+        }
+    }
+    let mut m = vec![[0.0; 3]; n + 1];
+    m[n] = right[n].map(|c| c / diagonal[n]);
+    for i in (0..n).rev() {
+        m[i] = std::array::from_fn(|k| (right[i][k] - upper[i] * m[i + 1][k]) / diagonal[i]);
+    }
+    (m[0], m[n])
+}
+
+impl Curve {
     /// A control-point curve, as Rhino's `Curve` draws it. Open, it is clamped: it starts on
     /// the first point and ends on the last. Closed, it is smooth all the way round, with no
     /// kink where it joins. The degree is lowered when there are too few points for it.
@@ -1238,6 +1381,134 @@ mod control_point_tests {
     fn ends(curve: &Curve) -> (Point, Point) {
         let path = curve.sample().unwrap();
         (path[0], path[path.len() - 1])
+    }
+
+    /// The direction a clamped NURBS curve leaves its start in, and arrives at its end in: along
+    /// its first and last legs of control points.
+    fn end_directions(curve: &Curve) -> (Point, Point) {
+        let path = control_points(curve);
+        let n = path.len();
+        let along = |a: Point, b: Point| {
+            let d = gap(a, b);
+            [(b[0] - a[0]) / d, (b[1] - a[1]) / d, (b[2] - a[2]) / d]
+        };
+        (along(path[0], path[1]), along(path[n - 2], path[n - 1]))
+    }
+
+    #[test]
+    fn a_fitted_curve_passes_its_points_leaving_and_arriving_as_told() {
+        let points = vec![
+            [0.0, 0.0, 0.0],
+            [10.0, 5.0, 0.0],
+            [20.0, 0.0, 0.0],
+            [30.0, 4.0, 0.0],
+        ];
+        let up = [0.0, 1.0, 0.0];
+        let down = [0.0, -1.0, 0.0];
+        for spacing in [Spacing::Chord, Spacing::SquareRoot, Spacing::Uniform] {
+            let curve =
+                Curve::fitted(points.clone(), false, Some(up), Some(down), spacing).unwrap();
+            assert!(matches!(curve, Curve::Nurbs { .. }), "{spacing:?}");
+            for p in &points {
+                let on = curve.closest_point(*p).unwrap();
+                assert!(gap(on, *p) < 1e-6, "{spacing:?}: {p:?} missed by {on:?}");
+            }
+            let (leaving, arriving) = end_directions(&curve);
+            assert!(
+                gap(leaving, up) < 1e-9,
+                "{spacing:?}: leaves along {leaving:?}"
+            );
+            assert!(
+                gap(arriving, down) < 1e-9,
+                "{spacing:?}: arrives along {arriving:?}"
+            );
+        }
+        // Spacing alone changes the shape between the points.
+        let plain = Curve::fitted(points.clone(), false, None, None, Spacing::Chord).unwrap();
+        let even = Curve::fitted(points.clone(), false, None, None, Spacing::Uniform).unwrap();
+        assert!((even.length().unwrap() - plain.length().unwrap()).abs() > 1e-6);
+    }
+
+    fn control_points(curve: &Curve) -> Vec<Point> {
+        match curve {
+            Curve::Nurbs { points, .. } => points.clone(),
+            other => panic!("not NURBS: {other:?}"),
+        }
+    }
+
+    fn same_points(a: &[Point], b: &[Point], within: f64) -> bool {
+        a.len() == b.len() && a.iter().zip(b).all(|(p, q)| gap(*p, *q) < within)
+    }
+
+    /// Rhino 8's control points for these AutoCAD fit-point splines (read from DXF files that
+    /// held only the fit points, the tangents and the knot parameterization).
+    #[test]
+    fn fitted_curves_are_the_ones_rhino_reads_autocads_fit_points_as() {
+        let four = vec![
+            [0.0, 0.0, 0.0],
+            [10.0, 5.0, 0.0],
+            [20.0, 0.0, 0.0],
+            [30.0, 4.0, 0.0],
+        ];
+        let tangents = Curve::fitted(
+            four,
+            false,
+            Some([0.0, 1.0, 0.0]),
+            Some([0.0, -1.0, 0.0]),
+            Spacing::SquareRoot,
+        )
+        .unwrap();
+        let rhino = [
+            [0.0, 0.0, 0.0],
+            [0.0, 1.114_567_174_960_703_3, 0.0],
+            [12.030_339_317_999_369, 9.517_497_655_124_64, 0.0],
+            [17.857_639_682_973_49, -4.893_636_093_012_162, 0.0],
+            [30.0, 5.093_939_344_970_43, 0.0],
+            [30.0, 4.0, 0.0],
+        ];
+        assert!(same_points(&control_points(&tangents), &rhino, 1e-9));
+        // Without tangents both ends are natural (not bent).
+        let five = vec![
+            [0.0, 0.0, 0.0],
+            [10.0, 5.0, 0.0],
+            [20.0, 0.0, 0.0],
+            [30.0, 4.0, 0.0],
+            [36.0, 12.0, 0.0],
+        ];
+        let chord = Curve::fitted(five.clone(), false, None, None, Spacing::Chord).unwrap();
+        let rhino = [
+            [0.0, 0.0, 0.0],
+            [3.365_745, 2.753_141, 0.0],
+            [10.097_235, 8.259_423, 0.0],
+            [19.494_761, -2.899_595, 0.0],
+            [30.739_718, 3.382_552, 0.0],
+            [34.290_469, 9.199_429, 0.0],
+            [36.0, 12.0, 0.0],
+        ];
+        assert!(same_points(&control_points(&chord), &rhino, 1e-6));
+        let uniform = Curve::fitted(five.clone(), false, None, None, Spacing::Uniform).unwrap();
+        let rhino = [
+            [0.0, 0.0, 0.0],
+            [47.0 / 14.0, 2.75, 0.0],
+            [141.0 / 14.0, 8.25, 0.0],
+            [138.0 / 7.0, -3.0, 0.0],
+            [435.0 / 14.0, 3.75, 0.0],
+            [481.0 / 14.0, 9.25, 0.0],
+            [36.0, 12.0, 0.0],
+        ];
+        assert!(same_points(&control_points(&uniform), &rhino, 1e-9));
+        // One tangent: the other end natural.
+        let one = Curve::fitted(five, false, Some([0.0, 1.0, 0.0]), None, Spacing::Chord).unwrap();
+        let rhino = [
+            [0.0, 0.0, 0.0],
+            [0.0, 3.726_780, 0.0],
+            [11.661_228, 7.806_993, 0.0],
+            [19.093_722, -2.783_583, 0.0],
+            [30.830_210, 3.356_375, 0.0],
+            [34.319_878, 9.190_922, 0.0],
+            [36.0, 12.0, 0.0],
+        ];
+        assert!(same_points(&control_points(&one), &rhino, 1e-6));
     }
 
     #[test]

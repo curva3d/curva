@@ -22,7 +22,8 @@ use analyze::{
     silhouette, volume_centroid, what, zebra,
 };
 use annotate::{
-    dimension, dot, hatch, hatch_base, hatch_patterns, leader, ordinate, radial, styles, text,
+    dimension, dot, hatch, hatch_base, hatch_patterns, leader, measure, ordinate, radial, styles,
+    text,
 };
 use curva_kernel::{KernelError, Point};
 use curves::{
@@ -121,7 +122,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 271] = [
+pub static COMMANDS: [CommandDef; 274] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -533,6 +534,9 @@ pub static COMMANDS: [CommandDef; 271] = [
     listed!("DimDiameter", [], true, true, radial::DimDiameter),
     listed!("DimAngle", [], true, true, radial::DimAngle),
     listed!("DimOrdinate", [], true, true, ordinate::DimOrdinate),
+    listed!("DimCurveLength", [], true, true, measure::DimCurveLength),
+    listed!("DimArea", [], true, true, measure::DimArea),
+    listed!("DimVolume", [], true, true, measure::DimVolume),
     listed!("Leader", [], true, true, leader::Leader),
     listed!("Dot", [], true, true, dot::Dot),
     listed!("Hatch", [], true, true, hatch::Hatch),
@@ -1008,7 +1012,10 @@ mod tests {
     ];
 
     /// Commands whose preview needs its own setup, tested in their own files.
-    const PREVIEW_TESTED_ELSEWHERE: [&str; 72] = [
+    const PREVIEW_TESTED_ELSEWHERE: [&str; 75] = [
+        "DimCurveLength",
+        "DimArea",
+        "DimVolume",
         "TitleBlock",
         "ScaleBar",
         "SheetIndex",
