@@ -38,6 +38,7 @@ version, which Rhino 7 and 8 open.
 | Clipping planes (`ON_ClippingPlaneSurface`): rectangle, side kept, views cut | yes | yes (version 1.4) |
 | Detail views: frame, standard view or perspective, target, scale, display mode (Rhino's standard modes), lock, layers turned off in them | yes | yes (view attributes version 1.3; layers' `ON__LayerExtensions` user data) |
 | Scale bars and tables | — (Rhino has none) | as the plain drawing they make: lines, solid hatches and notes, grouped |
+| Arc length dimensions | — (Rhino has none) | as the plain drawing they make: lines, solid hatches for the arrowheads and the value as a note, grouped |
 | Document user text (`DocumentText` field), layout user text (`LayoutUserText`, on the page's viewport) and the model's notes (`Notes` field) | yes | yes, with those fields kept for Rhino to work out (a field naming a layout names its page) |
 | Fields measuring an object (`CurveLength`, `Area`, `Volume`), as DimCurveLength, DimArea and DimVolume write them | yes, naming the object by its Rhino id | yes, kept for Rhino to work out, naming the object by its Rhino id |
 | Materials, render settings | no | no |

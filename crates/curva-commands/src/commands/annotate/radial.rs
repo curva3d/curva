@@ -16,7 +16,7 @@ const POINTS: &str = "Points";
 
 /// The curve nearest a pick, and the exact point on it nearest the pick, when the pick is
 /// within [`PICK_SHARE`] of the curve's size.
-fn picked_curve(doc: &Document, at: Point) -> Option<(Curve, Point)> {
+pub(crate) fn picked_curve(doc: &Document, at: Point) -> Option<(Curve, Point)> {
     let mut best: Option<(f64, Curve, Point)> = None;
     for object in &doc.state().objects {
         let Some(curve) = object.curve() else {

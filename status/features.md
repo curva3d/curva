@@ -39,19 +39,30 @@ views, shaded details, and PNG output from the viewport. Work on files, commands
   "Plans 7 Centre" styles); Rhino 8 reads Curva's note on its style with the override.
 - Merged (#232): DXF and DWG MLEADER block content comes in as an instance of the block where the MLEADER puts it.
 - Merged (#233): DXF and DWG angles by three points come in as angle dimensions (as Rhino 8 reads them), jogged
-  radii as plain radius dimensions (Rhino 8 skips them). Arc length dimensions wait for Curva to have one.
+  radii as plain radius dimensions (Rhino 8 skips them). Arc length dimensions came in #247.
 - Merged (#238): DXF and DWG splines given only by fit points come in as Rhino 8 reads AutoCAD's: a cubic
   spline with knots at the points' spacing (chord, square root, uniform), the end tangents as derivatives and
   natural ends otherwise. New kernel `Curve::fitted` on solidcore's `cubic_spline_interp`; only the natural end
   derivatives are Curva's own (solidcore has none). Seven Rhino 8 imports agree to about 1e-12. A closed one
   stays on Curva's own interpolation: Rhino 8 reads it open and AutoCAD's shape is unchecked.
+- Merged (#247): arc length dimensions both ways in DXF and DWG (ARC_DIMENSION; a partial one's leader is not
+  carried). Rhino 8 skips them and has none, so `.3dm` takes them as their plain drawing, grouped.
+
+**Milestone 3, point 7 (dimensions):**
+- Merged (#241): DimCurveLength, DimArea and DimVolume as Rhino makes them: text or a leader holding the
+  `CurveLength`, `Area` or `Volume` field, so the value follows the object. In `.3dm` those fields now name the
+  object by its Rhino id (Rhino 8 works them out) and come back naming Curva's number; before, they went out as
+  fixed numbers.
+- Merged (#247): DimArcLength and Curva's arc length dimension, drawn as AutoCAD's DIMARC (Rhino 8 has no such
+  command): parallel extension lines under a quarter turn, from the centre otherwise, the arc symbol over the
+  value. AutoCAD's `Partial` and `Leader` options are not there yet.
 
 **Milestone 3, point 9:** merged (#213): `HatchPatterns` loads a `.pat` file's patterns into the model
 (`;%UNITS=INCH` files turned into millimetres). Merged (#219): `SetHatchBasePoint` moves where hatches' patterns
 start.
 
-**Next (features):** arc length and curve length dimensions (which also close the DXF arc length gap), and dimensions that
-follow their geometry; Make2D pieces that need no viewport. Meshes in DXF and DWG need the owner's decision first:
+**Next (features):** dimensions that follow their geometry; DimArcLength's `Partial` and `Leader`; DimArea on
+hatches; Make2D pieces that need no viewport. Meshes in DXF and DWG need the owner's decision first:
 Curva has no mesh objects.
 
 ## Features stream — 15 November 2026
