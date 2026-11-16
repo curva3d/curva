@@ -4,6 +4,8 @@ Drawing Curva does itself because Bevy cannot do it yet (decision 0030). The sam
 kernel's custom operations (`docs/kernel/custom-operations.md`, decision 0019): **use what Bevy ships
 wherever it does the job; anything Curva adds is marked and checked at every Bevy upgrade.**
 
+What Bevy offers for each of Curva's needs, and the rules that follow: `docs/bevy/guide.md`.
+
 Each row has a `// CUSTOM BEVY PART: <name>` mark on the code that does it; a test
 (`custom_bevy_parts_match_their_list`) fails if a mark has no row or a row no mark.
 
