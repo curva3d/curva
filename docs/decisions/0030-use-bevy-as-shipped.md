@@ -25,8 +25,40 @@
   outlines, the moving origin for models far away, CAD picking and snapping, and the glue that runs
   Bevy inside Curva's window.
 
+**The aim: less code to maintain.** The owner's goal is a simpler Curva, built on existing
+solutions, with as little code of Curva's own as possible. Expected effect of the move (rough):
+
+| | Before | After the move to Bevy |
+|---|---|---|
+| Curva's own drawing of surfaces, shading, see-through views, outlines | about 4,200 lines of Curva's own graphics code | mostly deleted; Bevy does it |
+| Planned speed work (`display-pipeline.md` steps 11 to 15: repeated shapes, smarter uploads, skipping hidden objects) | still to write | never written; Bevy has it |
+| Shadows, ambient occlusion, smoothing, big meshes, SubD display | still to write | Bevy has them |
+| Lines in 3D (paper millimetres) | exists | kept, moved into Bevy's frame |
+| Plans and sheets on screen | not started | about 200 lines of glue over lyon and kurbo |
+| Running Bevy inside Curva's window, handing it the scene | none | a few hundred lines |
+
+**Agreed workflow** (owner, 16 November 2026):
+1. **Bevy first.** Before writing any drawing code, check what Bevy ships; use it if it does the job.
+2. **Then existing libraries.** Where Bevy lacks something, use a maintained library before writing
+   Curva's own: **lyon** turns lines and fills into triangles with their true widths; **kurbo**
+   (already in Curva's build, through egui) handles curves and cuts lines into dashes. Licences are
+   checked with `cargo-deny` as for any dependency.
+3. **No add-ons from outside Bevy** for drawing (such as `bevy_prototype_lyon`): they often lag a
+   Bevy version behind and would hold up every upgrade. A small part of Curva's own is cheaper to
+   carry.
+4. **Only then Curva's own code**, as small as possible, marked `// CUSTOM BEVY PART`, listed in
+   `docs/bevy/custom-parts.md`, and checked at every Bevy upgrade and before every release.
+5. **One drawing description** for plans and sheets, shared by the screen and every export (PDF,
+   SVG, DWG, DXF; Illustrator takes the PDF and SVG with their layers), keeping CAD meaning: exact
+   arcs and curves, layers, line types, hatches as patterns, real text and dimensions, blocks, the
+   object each mark came from. Its spec change comes to the owner for approval before live plans
+   are built.
+
+How Curva, solidcore and Bevy fit together: `docs/architecture.md` §6b.
+
 **Rejected.** Writing Curva's own look on top of Bevy where Bevy's does the job: more code to carry
-through each Bevy upgrade, for no gain the owner asked for.
+through each Bevy upgrade, for no gain the owner asked for. Vello for 2D beside Bevy (decision
+0029): two engines and two line drawers, while the drawing description is needed either way.
 
 **Revisit if** a Bevy part proves clearly worse for Curva's drawings than a small custom one (then it
 becomes a listed custom part, with the reason).
