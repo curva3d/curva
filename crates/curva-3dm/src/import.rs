@@ -142,6 +142,12 @@ pub fn import(model: &Model, doc: &mut Document) -> Report {
 }
 
 fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
+    // The file's hatch patterns by index, which section styles name them by.
+    let pattern_names: Vec<String> = model
+        .hatch_patterns
+        .iter()
+        .map(|p| p.name.clone())
+        .collect();
     let file_mm = millimetres_per(model.unit).unwrap_or_else(|| {
         report
             .notes
@@ -238,7 +244,10 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
                     linetype: linetype_of(layer.linetype),
                     parent,
                     collapsed: false,
-                    section: None,
+                    section: layer
+                        .section
+                        .as_ref()
+                        .map(|s| crate::sections::from_rhino(s, &pattern_names)),
                 });
                 id
             });
@@ -285,7 +294,12 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
     // Each detail by its viewport id: its layout and frame, for the layers turned off in it.
     let mut detail_by_viewport: BTreeMap<crate::archive::Uuid, (u64, u64)> = BTreeMap::new();
     // Clipping planes as they come in: their rectangle, viewports and whether they cut.
-    let mut clips: Vec<(u64, Vec<crate::archive::Uuid>, bool)> = Vec::new();
+    let mut clips: Vec<(
+        u64,
+        Vec<crate::archive::Uuid>,
+        bool,
+        Option<crate::sections::SectionStyle>,
+    )> = Vec::new();
     let mut object_numbers: BTreeMap<crate::archive::Uuid, u64> = BTreeMap::new();
     for page in &model.pages {
         let id = state.next_layout;
@@ -417,7 +431,12 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
                 Linetype::ByLayer
             },
             user_text: a.user_text.iter().cloned().collect(),
-            section: None,
+            // A clipping plane's own style is the plane's, below.
+            section: (a.section_source == crate::sections::FROM_OBJECT
+                && !matches!(object.geometry, Geometry::ClippingPlane(_)))
+            .then_some(a.section.as_ref())
+            .flatten()
+            .map(|s| crate::sections::from_rhino(s, &pattern_names)),
         };
         if let Some(block) = in_blocks.get(&a.id) {
             definitions.entry(*block).or_default().push(made);
@@ -427,7 +446,7 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
         } else {
             Report::count(&mut report.brought, kind);
             if let Geometry::ClippingPlane(c) = &object.geometry {
-                clips.push((made.id, c.viewports.clone(), c.enabled));
+                clips.push((made.id, c.viewports.clone(), c.enabled, a.section.clone()));
             }
             object_numbers.insert(a.id, made.id);
             state.objects.push(std::sync::Arc::new(made));
@@ -460,7 +479,7 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
     // Clipping planes: the views they cut, by the file's viewport ids: the model's standard
     // views as Curva's viewports in Rhino's layout (Top, Perspective, Front, Right), details by
     // their frames. One that is off cuts nothing.
-    for (frame, viewports, enabled) in clips {
+    for (frame, viewports, enabled, style) in clips {
         use curva_document::clipping::{ClipView, ClippingPlane, SectionFill};
         let views = if enabled {
             viewports
@@ -481,12 +500,14 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
         } else {
             Vec::new()
         };
+        // Its style, else Rhino's default (the viewport's fill), which is Curva's standard one.
+        let style = style.map(|s| crate::sections::from_rhino(&s, &pattern_names));
         state.clipping_planes.push(ClippingPlane {
             frame,
             flipped: false,
             views,
-            section: SectionFill::default(),
-            hatch: None,
+            section: style.as_ref().map_or(SectionFill::default(), |s| s.fill),
+            hatch: style.and_then(|s| s.hatch),
         });
     }
     // Layers turned off in particular details.

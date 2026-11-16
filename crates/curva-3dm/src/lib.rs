@@ -7,6 +7,7 @@ pub mod import;
 pub mod model;
 pub mod notes;
 pub mod read;
+pub mod sections;
 pub mod write;
 
 pub use archive::{Error, Result};

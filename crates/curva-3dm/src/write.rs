@@ -261,10 +261,11 @@ fn color(c: [u8; 3]) -> [u8; 4] {
 }
 
 /// openNURBS' unset colour.
-const UNSET_COLOR: [u8; 4] = [255, 255, 255, 255];
+pub(crate) const UNSET_COLOR: [u8; 4] = [255, 255, 255, 255];
 
 fn write_layer(w: &mut Writer, layer: &Layer, index: usize) {
-    w.chunk_version(1, 6);
+    // Version 1.15, as Rhino 8 writes, only for a section style, which comes among its items.
+    w.chunk_version(1, if layer.section.is_some() { 15 } else { 6 });
     let mode = if !layer.visible {
         1
     } else if layer.locked {
@@ -291,6 +292,16 @@ fn write_layer(w: &mut Writer, layer: &Layer, index: usize) {
     w.uuid(layer.id);
     w.uuid(layer.parent);
     w.bool(true); // expanded
+    if let Some(style) = &layer.section {
+        // Rendering attributes with no material mappings, no display material, then the items.
+        w.begin_anonymous(0);
+        w.i32(0);
+        w.end();
+        w.uuid(Uuid::NIL);
+        w.u8(35);
+        crate::sections::write(w, style);
+        w.u8(0);
+    }
 }
 
 /// A linetype as Rhino 8 writes one (`ON_Linetype::Write`, version 2.3): its id, index and
@@ -476,7 +487,9 @@ fn source(s: Source) -> u8 {
 }
 
 fn write_attributes(w: &mut Writer, a: &Attributes) {
-    w.chunk_version(2, 1);
+    // Version 2.13, as Rhino 8 writes, only for section styles, which older readers skip.
+    let sectioned = a.section_source != crate::sections::FROM_LAYER || a.section.is_some();
+    w.chunk_version(2, if sectioned { 13 } else { 1 });
     w.uuid(a.id);
     w.count(a.layer);
     if !a.name.is_empty() {
@@ -530,6 +543,14 @@ fn write_attributes(w: &mut Writer, a: &Attributes) {
     if a.viewport != Uuid::NIL {
         w.u8(20);
         w.uuid(a.viewport);
+    }
+    if a.section_source != crate::sections::FROM_LAYER {
+        w.u8(29);
+        w.u8(a.section_source);
+    }
+    if let Some(style) = &a.section {
+        w.u8(39);
+        crate::sections::write(w, style);
     }
     w.u8(0);
 }

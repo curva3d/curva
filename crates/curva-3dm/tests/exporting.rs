@@ -1683,3 +1683,89 @@ fn ordinate_dimensions_come_back_measuring_the_same() {
         assert_eq!(a.kink_points(1.0), w.kink_points(1.0));
     }
 }
+
+#[test]
+fn section_styles_come_back_on_objects_layers_and_clipping_planes() {
+    use curva_document::clipping::{ClipView, ClippingPlane, SectionFill};
+    use curva_document::section::{SectionHatch, SectionStyle};
+    let mut state = State {
+        layers: vec![layer(0, "Walls", [0.5, 0.5, 0.5])],
+        ..State::default()
+    };
+    state.layers[0].section = Some(SectionStyle {
+        fill: SectionFill::Solid([0.0, 0.0, 1.0]),
+        hatch: Some(SectionHatch::new("Hatch1")),
+    });
+    let own = SectionStyle {
+        fill: SectionFill::Solid([1.0, 0.0, 0.0]),
+        hatch: Some(SectionHatch {
+            pattern: "Grid".to_owned(),
+            scale: 2.0,
+            rotation: 0.5,
+        }),
+    };
+    let mut wall = object(
+        0,
+        Shape::Body(Body::cuboid([0.0; 3], [10.0, 10.0, 10.0]).unwrap()),
+        0,
+    );
+    wall.section = Some(own.clone());
+    state.objects.push(wall.into());
+    // A second solid with no style of its own: it takes its layer's.
+    state.objects.push(
+        object(
+            1,
+            Shape::Body(Body::cuboid([20.0, 0.0, 0.0], [30.0, 10.0, 10.0]).unwrap()),
+            0,
+        )
+        .into(),
+    );
+    let rectangle = Curve::polyline(
+        vec![
+            [-5.0, -5.0, 5.0],
+            [35.0, -5.0, 5.0],
+            [35.0, 15.0, 5.0],
+            [-5.0, 15.0, 5.0],
+        ],
+        true,
+    )
+    .unwrap();
+    state
+        .objects
+        .push(object(2, Shape::Curve(rectangle), 0).into());
+    state.next_id = 3;
+    state.clipping_planes = vec![ClippingPlane {
+        frame: 2,
+        flipped: false,
+        views: vec![ClipView::Viewport(0)],
+        section: SectionFill::None,
+        hatch: Some(SectionHatch::new("Plus")),
+    }];
+    let back = round_trip(&state);
+    let body = |x: f64| {
+        back.objects
+            .iter()
+            .find(|o| {
+                o.shape.body().is_some()
+                    && o.shape
+                        .bounds()
+                        .is_some_and(|(lo, _)| (lo[0] - x).abs() < 1e-6)
+            })
+            .unwrap()
+    };
+    assert_eq!(body(0.0).section, Some(own));
+    assert_eq!(body(20.0).section, None, "its layer's, not its own");
+    let walls = back.layers.iter().find(|l| l.name == "Walls").unwrap();
+    assert_eq!(
+        walls.section,
+        Some(SectionStyle {
+            fill: SectionFill::Solid([0.0, 0.0, 1.0]),
+            hatch: Some(SectionHatch::new("Hatch1")),
+        })
+    );
+    let clip = &back.clipping_planes[0];
+    assert_eq!(clip.section, SectionFill::None);
+    assert_eq!(clip.hatch, Some(SectionHatch::new("Plus")));
+    let frame = back.objects.iter().find(|o| o.id == clip.frame).unwrap();
+    assert_eq!(frame.section, None, "the plane's style is the plane's");
+}
