@@ -19,8 +19,9 @@ the order of the stages; the plan as a whole.
 (owner, 17 November): A meshes and mesh tools, B SubDs come in, C SubD modelling with QuadRemesh.
 
 
-**Next:** Stage A (spec §10): step 1, the mesh structure in `crates/curva-mesh`; the features issue
-for the two shape kinds; the display issues for drawing meshes. Flat or smooth SubD display is a command like any other,
+**Next:** Stage A (spec §10), issues filed 17 November: step 1, the mesh structure in
+`crates/curva-mesh` (#268), then #269 to #275. Asked of the other streams: the two shape kinds
+(#266, features) and drawing meshes (#267, display). Flat or smooth SubD display is a command like any other,
 `SubDDisplayToggle`, with Tab as its shortcut.
 
 **Found on the way**
