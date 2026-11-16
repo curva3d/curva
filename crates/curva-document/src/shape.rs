@@ -122,6 +122,11 @@ pub fn annotation_curves(annotation: &crate::annotation::Annotation) -> Vec<Curv
                 .into_iter()
                 .collect()
         }
+        crate::annotation::Annotation::ArcLength(a) => {
+            Curve::polyline(vec![a.start, a.centre, a.end, a.arc_at], false)
+                .into_iter()
+                .collect()
+        }
         crate::annotation::Annotation::Ordinate(o) => {
             // The kinks at their default for a text height of one, enough for an extent.
             let [first, second] = o.kink_points(2.0);
@@ -263,6 +268,7 @@ pub fn annotation_parts(
             a.parts(&style, scale, typed(&a.text, shown))
         }
         Annotation::Ordinate(o) => o.parts(&style, scale, typed(&o.text, length(o.value()))),
+        Annotation::ArcLength(a) => a.parts(&style, scale, typed(&a.text, length(a.value()))),
         Annotation::Leader(l) => l.parts(&style, scale, l.content.clone()),
     };
     Some(parts)

@@ -489,7 +489,8 @@ impl Writer<'_> {
                 a @ (Annotation::Dimension(_)
                 | Annotation::Radial(_)
                 | Annotation::Angle(_)
-                | Annotation::Ordinate(_)),
+                | Annotation::Ordinate(_)
+                | Annotation::ArcLength(_)),
             ) => {
                 let name = format!("*D{}", self.dimensions + 1);
                 let written = dims::dimension_out(a, state, object.space, &name)
@@ -1169,10 +1170,9 @@ impl Reader<'_> {
                 }
                 None => (Vec::new(), "hatches"),
             },
-            EntityType::Dimension(d) => match dims::dimension_in(d) {
-                Ok(a) => (vec![Shape::Annotation(a)], "dimensions"),
-                Err(kind) => (Vec::new(), kind),
-            },
+            EntityType::Dimension(d) => {
+                (vec![Shape::Annotation(dims::dimension_in(d))], "dimensions")
+            }
             EntityType::Leader(l) => (
                 dims::leader_in(l)
                     .map(|l| Shape::Annotation(Annotation::Leader(l)))
