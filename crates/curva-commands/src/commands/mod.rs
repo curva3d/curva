@@ -36,7 +36,7 @@ use curves::{
 use files::{import_export, new, open, save, save_as};
 use layouts::{
     clipping_plane, copy_layout, detail, layout, layouts_panel, make2d, print, revision, scale_bar,
-    sheet_index, title_block,
+    section_style, sheet_index, title_block,
 };
 use modify::{
     align, array, array_crv, array_linear, array_polar, bend, boolean_difference,
@@ -122,7 +122,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 275] = [
+pub static COMMANDS: [CommandDef; 276] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -597,6 +597,12 @@ pub static COMMANDS: [CommandDef; 275] = [
         true,
         clipping_plane::DisableClippingPlane
     ),
+    recipe!(
+        "SectionStyle",
+        ["sectionhatch"],
+        true,
+        section_style::SectionStyle
+    ),
     listed!(
         "ZoomExtents",
         ["ze", "zea"],
@@ -931,7 +937,8 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 78] = [
+    const NOTHING_TO_PREVIEW: [&str; 79] = [
+        "SectionStyle",
         "Make2D",
         "Print",
         "ExportPDF",

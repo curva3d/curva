@@ -36,6 +36,9 @@ pub enum OptionKind {
     Finish,
     /// Takes back the last answer, as Rhino's `Undo` option does while drawing.
     Undo,
+    /// A name, typed after choosing it, such as a hatch pattern's; one of the recipe's
+    /// [`Recipe::choices`](super::Recipe::choices) when it gives them. Remembered between runs.
+    Name(&'static str),
 }
 
 /// One option of a command.
@@ -122,6 +125,15 @@ impl OptionDef {
         Self {
             name,
             kind: OptionKind::Finish,
+        }
+    }
+
+    /// A name option, `default` until another is typed.
+    #[must_use]
+    pub const fn name(name: &'static str, default: &'static str) -> Self {
+        Self {
+            name,
+            kind: OptionKind::Name(default),
         }
     }
 

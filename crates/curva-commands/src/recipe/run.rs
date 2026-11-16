@@ -68,6 +68,7 @@ impl<R: Recipe> RecipeCommand<R> {
                     | OptionKind::Distance { .. } => {
                         format!("{}={}", o.name, cx.number(o.name))
                     }
+                    OptionKind::Name(_) => format!("{}={}", o.name, cx.name(o.name)),
                     OptionKind::Mode | OptionKind::Finish | OptionKind::Undo => o.name.to_owned(),
                 };
                 (o.name, label)
@@ -166,6 +167,30 @@ impl<R: Recipe> RecipeCommand<R> {
         self.ask(doc)
     }
 
+    /// Sets a name option to what was typed: one of the recipe's choices, written as it gives
+    /// it, or asked again when it is none of them.
+    fn set_name(&mut self, doc: &mut Document, name: &'static str, typed: &str) -> Step {
+        let typed = typed.trim();
+        if typed.is_empty() {
+            return self.ask(doc);
+        }
+        let choices = self.recipe.choices(&self.context(doc, &self.values), name);
+        let chosen = match choices {
+            None => Some(typed.to_owned()),
+            Some(list) => list.into_iter().find(|c| c.eq_ignore_ascii_case(typed)),
+        };
+        let Some(chosen) = chosen else {
+            self.typing_option = Some(name);
+            return Step::Ask(Request {
+                prompt: Message::with("prompt.option.no_such_name", vec![typed.to_owned()]),
+                allow_empty: true,
+                ..Request::new("prompt.option.no_such_name", Kind::Path)
+            });
+        };
+        doc.remember_text(&key(R::NAME, name), &chosen);
+        self.ask(doc)
+    }
+
     fn finish(&mut self, doc: &mut Document) -> Step {
         doc.remove(&std::mem::take(&mut self.placed));
         let made = match self.recipe.make(&self.context(doc, &self.values)) {
@@ -220,6 +245,12 @@ impl<R: Recipe> RecipeCommand<R> {
                     doc.ungroup(&ids);
                 }
                 Edit::Select(ids) => doc.select(&ids),
+                Edit::SectionStyle(ids, style) => doc.set_section_style(&ids, style),
+                Edit::LayerSectionStyle(layers, style) => {
+                    for layer in layers {
+                        doc.set_layer_section_style(layer, style.clone());
+                    }
+                }
             }
         }
         added
@@ -244,6 +275,15 @@ impl<R: Recipe> RecipeCommand<R> {
                     ),
                     allow_empty: true,
                     ..Request::new("prompt.option.number", Kind::Number)
+                })
+            }
+            Some(OptionKind::Name(_)) => {
+                self.typing_option = Some(name);
+                let value = self.context(doc, &self.values).name(name);
+                Step::Ask(Request {
+                    prompt: Message::with("prompt.option.name", vec![name.to_owned(), value]),
+                    allow_empty: true,
+                    ..Request::new("prompt.option.name", Kind::Path)
                 })
             }
             Some(OptionKind::Mode) => {
@@ -271,6 +311,7 @@ impl<R: Recipe> Command for RecipeCommand<R> {
         if let Some(name) = self.typing_option.take() {
             return match answer {
                 Some(Answer::Number(value)) => self.set_option(doc, name, value),
+                Some(Answer::Path(typed)) => self.set_name(doc, name, &typed),
                 _ => self.ask(doc),
             };
         }

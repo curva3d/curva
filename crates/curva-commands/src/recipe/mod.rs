@@ -104,6 +104,11 @@ pub enum Edit {
     Ungroup(Vec<u64>),
     /// Selects these objects, and only these.
     Select(Vec<u64>),
+    /// Sets these objects' own section style, or clears it so they take their layer's; for a
+    /// clipping plane's rectangle, sets the plane's.
+    SectionStyle(Vec<u64>, Option<curva_document::section::SectionStyle>),
+    /// Sets these layers' section style, or clears it.
+    LayerSectionStyle(Vec<u64>, Option<curva_document::section::SectionStyle>),
 }
 
 /// A new object made from an existing one, such as an offset.
@@ -190,6 +195,19 @@ impl Context<'_> {
         }
     }
 
+    /// A name option's value.
+    #[must_use]
+    pub fn name(&self, name: &str) -> String {
+        match self.options.iter().find(|o| o.name == name).map(|o| o.kind) {
+            Some(OptionKind::Name(default)) => self
+                .doc
+                .remembered_text(&key(self.command, name))
+                .unwrap_or(default)
+                .to_owned(),
+            _ => String::new(),
+        }
+    }
+
     /// A number option's value.
     #[must_use]
     pub fn number(&self, name: &str) -> f64 {
@@ -254,6 +272,12 @@ pub trait Recipe: Default + 'static {
     /// A message saying why the command cannot go on.
     fn check(&self, _cx: &Context<'_>) -> Result<(), Message> {
         Ok(())
+    }
+
+    /// The names a name option may take, such as the document's hatch patterns; `None` (the
+    /// default) takes any. A typed name matches one of them whatever its capitals.
+    fn choices(&self, _cx: &Context<'_>, _option: &str) -> Option<Vec<String>> {
+        None
     }
 
     /// Whether the answer just given can be taken. If not, it is dropped and the step asked
