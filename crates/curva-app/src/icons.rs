@@ -389,6 +389,24 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
                 false,
             );
         }
+        // A curve with a leader from it to its length's note.
+        "dimcurvelength" => {
+            pen.cubic((3.0, 19.0), (6.0, 9.0), (11.0, 21.0), (14.0, 12.0));
+            pen.line((9.0, 15.0), (14.0, 6.0));
+            pen.line((14.0, 6.0), (21.0, 6.0));
+        }
+        // A closed outline with a leader from inside it to its area's note.
+        "dimarea" => {
+            pen.path(&[(3.0, 10.0), (12.0, 9.0), (13.0, 20.0), (4.0, 20.0)], true);
+            pen.line((8.0, 15.0), (15.0, 6.0));
+            pen.line((15.0, 6.0), (21.0, 6.0));
+        }
+        // A box with a leader from it to its volume's note.
+        "dimvolume" => {
+            pen.cube(3.0, 10.0, 9.0);
+            pen.line((9.0, 14.0), (15.0, 6.0));
+            pen.line((15.0, 6.0), (21.0, 6.0));
+        }
         // A circle with a leader from its centre out past the edge, ending in a landing.
         "dimradius" => {
             pen.ellipse((2.0, 6.0, 14.0, 14.0));

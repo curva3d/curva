@@ -285,6 +285,7 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
     let mut detail_by_viewport: BTreeMap<crate::archive::Uuid, (u64, u64)> = BTreeMap::new();
     // Clipping planes as they come in: their rectangle, viewports and whether they cut.
     let mut clips: Vec<(u64, Vec<crate::archive::Uuid>, bool)> = Vec::new();
+    let mut object_numbers: BTreeMap<crate::archive::Uuid, u64> = BTreeMap::new();
     for page in &model.pages {
         let id = state.next_layout;
         state.next_layout += 1;
@@ -425,7 +426,32 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
             if let Geometry::ClippingPlane(c) = &object.geometry {
                 clips.push((made.id, c.viewports.clone(), c.enabled));
             }
+            object_numbers.insert(a.id, made.id);
             state.objects.push(std::sync::Arc::new(made));
+        }
+    }
+    // Fields measuring an object name it by the file's object id: Curva's name it by number.
+    for object in &mut state.objects {
+        let Shape::Annotation(annotation) = &object.shape else {
+            continue;
+        };
+        let words = match annotation {
+            curva_document::annotation::Annotation::Text(t) => &t.content,
+            curva_document::annotation::Annotation::Leader(l) => &l.content,
+            _ => continue,
+        };
+        let swapped = object_numbers_in(words, &object_numbers);
+        if swapped != *words {
+            let object = std::sync::Arc::make_mut(object);
+            match &mut object.shape {
+                Shape::Annotation(curva_document::annotation::Annotation::Text(t)) => {
+                    t.content = swapped;
+                }
+                Shape::Annotation(curva_document::annotation::Annotation::Leader(l)) => {
+                    l.content = swapped;
+                }
+                _ => {}
+            }
         }
     }
     // Clipping planes: the views they cut, by the file's viewport ids: the model's standard
@@ -2020,6 +2046,39 @@ fn layout_numbers_in(words: &str, page_ids: &BTreeMap<crate::archive::Uuid, u64>
                 .map(|layout| format!("%<LayoutUserText(\"{layout}\",\"{key}\")>%")),
             _ => None,
         };
+        out.push_str(swapped.as_deref().unwrap_or(field));
+        rest = &rest[start + end + 2..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Words whose fields measuring an object name it by the file's id, with Curva's number for it
+/// instead; a field naming an object that did not come in is kept as it is.
+fn object_numbers_in(words: &str, numbers: &BTreeMap<crate::archive::Uuid, u64>) -> String {
+    let mut out = String::new();
+    let mut rest = words;
+    while let Some(start) = rest.find("%<") {
+        out.push_str(&rest[..start]);
+        let Some(end) = rest[start..].find(">%") else {
+            out.push_str(&rest[start..]);
+            return out;
+        };
+        let field = &rest[start..start + end + 2];
+        let name: String = field[2..]
+            .chars()
+            .take_while(char::is_ascii_alphanumeric)
+            .collect();
+        let swapped = crate::export::OBJECT_FIELDS
+            .contains(&name.as_str())
+            .then(|| {
+                crate::export::with_first_part(field, |id| {
+                    numbers
+                        .get(&crate::archive::Uuid::parse(id.trim()))
+                        .map(u64::to_string)
+                })
+            })
+            .flatten();
         out.push_str(swapped.as_deref().unwrap_or(field));
         rest = &rest[start + end + 2..];
     }

@@ -2,6 +2,7 @@
 //! its picture, on Curva's own graphics device, and the picture is copied into the scene texture
 //! where the view sits. Step 1 draws the background only; faces come in step 2, Curva's lines on
 //! top in step 3.
+// CUSTOM BEVY PART: bevy-host
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -522,6 +523,39 @@ mod tests {
         let pixels = crate::gpu::read_texture(device, queue, &texture, SIZE);
         let at = ((SIZE[1] / 2 * SIZE[0] + SIZE[0] / 2) * 4) as usize;
         pixels[at..at + 4].try_into().unwrap()
+    }
+
+    /// Every `// CUSTOM BEVY PART:` mark has a row in `docs/bevy/custom-parts.md`, and every row a
+    /// mark (decision 0030), as the kernel's custom operations are kept.
+    #[test]
+    fn custom_bevy_parts_match_their_list() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let list = std::fs::read_to_string(root.join("docs/bevy/custom-parts.md")).unwrap();
+        let rows: std::collections::BTreeSet<String> = list
+            .lines()
+            .skip_while(|line| !line.starts_with("| Part | Code"))
+            .skip(2)
+            .take_while(|line| line.starts_with("| "))
+            .map(|line| line.split('|').nth(1).unwrap().trim().to_owned())
+            .collect();
+        let mut marks = std::collections::BTreeSet::new();
+        let mut stack = vec![root.join("crates")];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().is_some_and(|e| e == "rs") {
+                    let text = std::fs::read_to_string(&path).unwrap();
+                    for line in text.lines() {
+                        if let Some(name) = line.trim().strip_prefix("// CUSTOM BEVY PART: ") {
+                            marks.insert(name.trim().to_owned());
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(marks, rows, "marks in the code and rows in the list differ");
     }
 
     /// With nothing to show, a view's picture is its background colour, made by Bevy on a device

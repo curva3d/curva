@@ -66,8 +66,8 @@ Rhino.
 | DimRadius, DimDiameter | Arcs and circles |
 | DimAngle | Between two lines, or three points |
 | DimOrdinate | X or Y from an origin |
-| DimArcLength | The length of an arc |
-| DimCurveLength | The length of a curve |
+| DimArcLength | The length of an arc, as AutoCAD's arc length dimension (Rhino 8 has none) |
+| DimCurveLength, DimArea, DimVolume | A curve's length, an area or a volume, as Rhino's: text or a leader holding the field for it, so it follows the object |
 | DimRecenterText | Puts moved dimension text back in its default place |
 
 Each takes Rhino 8's steps and options (`rhino-reference.md`). Grips move the dimension line, the

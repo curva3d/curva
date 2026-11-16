@@ -138,11 +138,55 @@ A smart object (a door, window, tree, person, furniture piece, wall style) carri
 | STEP | Reuse SolidCraft's STEP reader and writer | MIT / Apache | Main exchange format with other CAD tools |
 | Rhino 3DM files | Our own Rust reader and writer, from the published openNURBS file format | — | High priority for Freeform. STEP until it's ready |
 | Native file container | **redb** or a zip-style package | MIT / Apache | See section 8 |
-| Viewport | **wgpu** (Vulkan / Metal / DX12) | MIT / Apache | GPU drawing with instancing, level of detail and culling |
+| Drawing on screen (every view: 3D, plans, sections, sheets) | **Bevy** (decisions 0028 to 0030), on **wgpu** (Vulkan / Metal / DX12) | MIT / Apache | Bevy draws surfaces, shading, shadows, instancing, culling; Curva adds its CAD layer as listed custom parts (`docs/bevy/custom-parts.md`) |
+| Lines and fills of 2D drawings | **lyon** (triangles from lines and fills) and **kurbo** (curves, dashes) | MIT / Apache | Curva keeps only a thin layer over them (decision 0030) |
+| Vector exports | Curva's own writers from one drawing description: **krilla** for PDF, Curva's SVG, **acadrust** for DWG and DXF | MIT / Apache; MPL-2.0 (acadrust, decision 0021) | Illustrator takes the PDF and SVG with their layers |
 | Interface | **egui** to start. Look at Slint or iced as well | MIT / Apache | Must support a different layout per specialization |
 | Scripting | **Rhai** for user scripts. **WebAssembly plug-ins** through wasmtime for extensions | MIT / Apache | Visual (node-based) scripting later, as shared core |
 | AI agents | **MCP server** on the command layer | — | Agents use the same commands as the interface |
 | Photoreal rendering (**exception**) | **Blender / Cycles**: export the scene as USD or glTF and render in Cycles, run as a separate program | Apache-2.0 (Cycles) / GPL (Blender) | The only place C++ and Python are allowed. Curva talks to it through files or a socket, never by linking |
+
+## 6b. How Curva, solidcore and Bevy fit together
+
+Decisions 0019, 0028 to 0030. Each part has one job, and the two engines never know about each
+other:
+
+```
+  you ──► CURVA: window, commands, panels, clicking, snapping, gumball, previews
+                 │ edits                                   ▲ what is under the cursor
+                 ▼                                         │
+          THE MODEL (curva-document): objects, layers, views, styles, sheets
+          the only copy of the work
+                 │                                         │
+                 ▼                                         ▼
+  SOLIDCORE (geometry engine)              CURVA'S DISPLAY LAYER (curva-viewport)
+  exact shapes: booleans, fillets,  ─────► which objects each view shows, its style,
+  cuts, hidden lines, shadow shapes,       the drawing description of plans and sheets,
+  triangles for display                    Curva's line drawer
+                                                 │                      │
+                                  triangles,     ▼                      ▼ drawing description
+                                  cameras, suns  BEVY                   EXPORT WRITERS
+                                                 the pictures on        PDF, SVG, DWG, DXF:
+                                                 screen                 exact vectors
+```
+
+- **The model** is the one true copy. Solidcore and Bevy never change it.
+- **Solidcore works out shapes**: the exact geometry, and triangles of curved surfaces for display.
+- **Bevy only draws**: it gets triangles, cameras and suns and makes the picture, with shading,
+  shadows and smoothing. It never sees the model and never decides what a drawing contains.
+- **Curva draws every line**: its line drawer (paper-millimetre widths, dashes, hatches, cut
+  fills) draws into the same picture after Bevy, hidden behind faces by Bevy's depth. Plans and
+  sheets are drawn from the drawing description through lyon and kurbo by the same drawer.
+- **Exports never go through Bevy**: the writers take the same drawing description the screen
+  shows, so screen and every file match.
+- Moving a wall: Curva records the move; solidcore works out the wall's new shape, its cut and the
+  lines it now hides; Curva hands Bevy the new triangles and the plan its new lines; Bevy draws. A
+  click is Curva's: Bevy is not involved.
+
+Separate geometry and drawing engines are the usual build for CAD programs (Parasolid or
+ShapeManager under their own graphics; OpenCascade with Coin3D). Each engine comes with a list of
+what Curva had to add, checked at every update: `docs/kernel/custom-operations.md` and
+`docs/bevy/custom-parts.md`.
 
 ## 7. Performance and the kernel
 
