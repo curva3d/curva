@@ -6,6 +6,17 @@
 ## 16 November 2026
 
 **Done**
+- **The owner chose Bevy for the 3D views** ("go ahead with your recommendation"): decision 0028
+  (#217, checks passed; my merge was blocked by the app's permission check, so it waits for the
+  owner or a permission rule). Bevy draws faces, meshes and SubD; Curva keeps its CAD layer. 0027
+  marked partly replaced (its 3D sentence).
+- **Pilot spec drafted, waiting for the owner's approval** (`docs/specs/bevy-pilot.md`, draft #218):
+  Bevy draws one view's faces behind a setting, Curva's lines and outlines on top; pass targets on
+  *Medium*, *Large*, *Far* and a meshes scene; six small steps.
+- **#180 tidy-up in review** (#220): `lib.rs` and `gpu.rs` split into modules named by what they
+  do, the nine functions over 80 lines broken into named steps, tests unchanged (119 pass). Speed
+  unchanged: *Medium* 2.6–3.0 → 2.7 ms between frames, *Large* 23.1–23.2 → 23.3–23.4 ms, card time
+  the same, two runs each on a quiet machine.
 - **#199 viewport-lib and #198 Bevy tried inside Curva, reported, waiting for the owner.** Both on
   Curva's device, from Curva's camera, on the same scenes (`spikes/common/scenes.rs`, shared by all
   renderer spikes), each measured twice on the RTX 3060. Branches `199-viewport-lib-spike` and
@@ -79,35 +90,30 @@
   Curva online account.
 - Status split per stream and the display stream's rules in `AGENTS.md` (#125).
 
-**In progress / next** (owner, 15 November 2026: decisions 0024 and 0026)
+**In progress / next** (owner, 15–16 November 2026: decisions 0024, 0026 and 0028)
 - **Recommended graphics card** (decision 0026): an RTX 3060, or an AMD or Intel card of the same
   class, with fallbacks for weaker machines. Speed targets are set on the RTX 3060 itself
   (`docs/specs/display-pipeline.md` §5 and §6); 2020 Intel integrated graphics are the fallback
   case.
-- **3D direction** (owner, 15 November 2026): re_renderer for lines, points, outlines and picking
-  (its latest version uses wgpu 30 and ecolor 0.37, as Curva does); Bevy's WGSL shaders (MIT/Apache)
-  for ambient occlusion, edge smoothing, tonemapping and materials, copied and adapted with credit;
-  our own code for the CAD basics (exact arcs, precision far from the origin, instancing, off-screen
-  culling, the memory limit, the styles); Blender Workbench only as the picture to match for the
-  cavity effect, with no Blender code except in GPL crates (decision 0025, #190).
+- **3D direction** (owner, 16 November 2026, decision 0028, replacing the 15 November direction):
+  Bevy draws the 3D views' faces, meshes and SubD, with its shading, shadows, ambient occlusion,
+  smoothing and instancing; Curva keeps its CAD layer (paper-millimetre lines, exact arcs, dashes,
+  outlines, cuts and fills, styles, picking and snapping, precision far from the origin). A pilot
+  comes first. re_renderer and viewport-lib are not used as renderers; re_renderer's line and
+  outline technique may still be borrowed for the CAD layer.
 - **2D direction** (decision 0027): Vello draws 2D views and sheets, vello_cpu the fallback. Its
   production follow-up is not started.
-- Order of work (owner, 16 November 2026: test existing 3D pipelines before deciding):
-  1. **#186, re_renderer: reported, decision on hold.** Borrowing its line and outline technique
-     stands whichever way the 3D route goes. No decision recorded yet. Spike on branch
-     `186-re-renderer-spike`, not merged.
-  2. **#199 viewport-lib and #198 Bevy: reported 16 November, waiting for the owner's decision.**
-     Spikes on branches `199-viewport-lib-spike` and `198-bevy-spike`, not merged. No decision
-     recorded in `docs/decisions/` until the owner chooses.
-  3. **Comparison of the three routes: reported, updated for meshes and SubD.** Recommendation:
-     adopt Bevy for the 3D views on conditions, starting with a pilot; Curva keeps its CAD layer;
-     viewport-lib stays out. Waiting for the owner.
-  4. **Between the tests: #180,** splitting the viewport's large files, with no behaviour change
-     and speed checked before and after.
-  5. **#197 (shaded look from Bevy's shaders) waits** for the 3D route decision.
-  6. **Then, adjusted to the decision:** step 11 (instancing, #153), 4c, step 12, step 13; any
-     change to the remaining steps or the 3D part of `docs/specs/views-and-styles.md` proposed as
-     choices first.
+- Order of work (owner, 16 November 2026):
+  1. **Bevy pilot spec (#218): waiting for the owner's approval.** Then its six steps
+     (`docs/specs/bevy-pilot.md` §6), each a small pull request, ending in a measured report.
+  2. **#180 tidy-up (#220): in review**, merge once checks pass.
+  3. **#186, #198, #199:** reported and decided (0028); spike branches stay unmerged for reference.
+     To close with a pointer to 0028 once #217 is merged.
+  4. **#197 (shaded look from Bevy's shaders): superseded** by 0028, as Bevy itself draws the
+     shading; to close once #217 is merged, its Diagram-look comparison folded into pilot step 5.
+  5. **After the pilot:** if it holds, every 3D view moves to Bevy and step 11 (instancing, #153)
+     is dropped; if not, step 11, 4c, 12 and 13 as before. Any change to the remaining steps or
+     the 3D part of `docs/specs/views-and-styles.md` proposed as choices first.
 - **Shelved** (decision 0024): steps 14 (occlusion culling) and 15 (clusters, mesh shaders), back
   only if a measured real model is still too slow after steps 11 to 13. The styles prototype's
   third look (Textured) and fine-tuning of the looks wait until the drawing is correct.
