@@ -564,6 +564,7 @@ fn layer(record: &mut Reader<'_>) -> Result<Option<Layer>> {
         print_width: 0.0,
         linetype: -1,
         hidden_in: Vec::new(),
+        section: None,
     };
     if minor >= 1 {
         layer.visible = r.bool()? && mode != 1;
@@ -584,8 +585,29 @@ fn layer(record: &mut Reader<'_>) -> Result<Option<Layer>> {
     if minor >= 6 {
         layer.parent = r.uuid()?;
     }
+    if minor >= 15 {
+        layer.section = layer_section(&mut r)?;
+    }
     layer.hidden_in = layer_off_in(&mut rest);
     Ok(Some(layer))
+}
+
+/// The section style among a version 1.15 layer's items: after whether it is expanded, its
+/// rendering attributes and its display material, as Rhino 8 writes them.
+fn layer_section(r: &mut Reader<'_>) -> Result<Option<crate::sections::SectionStyle>> {
+    r.bool()?;
+    r.chunk()?;
+    r.uuid()?;
+    loop {
+        match r.u8()? {
+            34 => {
+                r.bool()?;
+            }
+            35 => return Ok(Some(crate::sections::read(r)?)),
+            // 0 ends the items; others are not written by Rhino 8.
+            _ => return Ok(None),
+        }
+    }
 }
 
 fn group(record: &mut Reader<'_>) -> Result<Option<Group>> {
@@ -837,6 +859,20 @@ fn read_attributes(r: &mut Reader<'_>) -> Result<Attributes> {
             // openNURBS' active space: 1 the model, 2 a page.
             19 => a.page_space = r.u8()? == 2,
             20 => a.viewport = r.uuid()?,
+            // Display material references, two ids each.
+            21 => {
+                let n = r.count(32)?;
+                r.skip(n * 32)?;
+            }
+            22 | 30 => r.skip(4)?,
+            23..=27 | 35 | 37 | 40 | 41 => r.skip(1)?,
+            29 => a.section_source = r.u8()?,
+            31..=33 => r.skip(8)?,
+            34 => {
+                r.color()?;
+            }
+            36 => r.skip(16 * 8)?,
+            39 => a.section = Some(crate::sections::read(r)?),
             // Rendering attributes and later items: nothing more Curva needs.
             _ => break,
         }

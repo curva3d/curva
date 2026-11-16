@@ -85,6 +85,7 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
                         print_width: 0.0,
                         linetype: -1,
                         hidden_in: Vec::new(),
+                        section: None,
                     });
                     by_path.insert(path, model.layers.len() - 1);
                     model.layers.len() - 1
@@ -121,6 +122,7 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
             print_width: 0.0,
             linetype: -1,
             hidden_in: Vec::new(),
+            section: None,
         });
     }
 
@@ -230,7 +232,11 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
                 Some(h.pattern.to_lowercase())
             }
             _ => None,
-        });
+        })
+        .chain(crate::sections::patterns_used(
+            state,
+            chosen.iter().copied(),
+        ));
     for name in hatch_patterns {
         if pattern_index.contains_key(&name) {
             continue;
@@ -256,6 +262,13 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
                 })
                 .collect(),
         });
+    }
+
+    // Section styles on layers, now that the patterns they name have their places.
+    for layer in &state.layers {
+        if let (Some(style), Some(&index)) = (&layer.section, layer_index.get(&layer.id)) {
+            model.layers[index].section = Some(crate::sections::to_rhino(style, &pattern_index));
+        }
     }
 
     // Layouts: Rhino's pages, in millimetres.
@@ -334,9 +347,26 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
                 Source::Object,
             )
         };
+        // A clipping plane's style is its object's own, with the source left at its layer, as
+        // Rhino 8 writes it; another object's own style says it comes from the object.
+        let plane = state.clipping_planes.iter().find(|c| c.frame == o.id);
+        let (section_source, section) = match (plane, &o.section) {
+            (Some(c), _) => (
+                crate::sections::FROM_LAYER,
+                Some(curva_document::section::SectionStyle {
+                    fill: c.section,
+                    hatch: c.hatch.clone(),
+                }),
+            ),
+            (None, Some(own)) => (crate::sections::FROM_OBJECT, Some(own.clone())),
+            (None, None) => (crate::sections::FROM_LAYER, None),
+        };
+        let section = section.map(|s| crate::sections::to_rhino(&s, &pattern_index));
         model.objects.push(model::Object {
             geometry,
             attributes: Attributes {
+                section_source,
+                section,
                 id,
                 layer: layer_index.get(&o.layer).copied().unwrap_or(0),
                 name: o.name.clone(),
