@@ -1167,13 +1167,38 @@ impl Reader<'_> {
                     .collect(),
                 "leaders",
             ),
-            EntityType::MultiLeader(m) => (
-                dims::multileader_in(m)
+            EntityType::MultiLeader(m) => {
+                let mut made: Vec<Shape> = dims::multileader_in(m)
                     .into_iter()
                     .map(|l| Shape::Annotation(Annotation::Leader(l)))
-                    .collect(),
-                "leaders",
-            ),
+                    .collect();
+                // Block content: an instance of the block where the MLEADER puts it.
+                let c = &m.context;
+                let block = c.block_content_handle.or(m.block_content_handle);
+                if c.has_block_contents
+                    && let Some(name) = block.and_then(|h| {
+                        self.cad
+                            .block_records
+                            .iter()
+                            .find(|b| b.handle == h)
+                            .map(|b| b.name.clone())
+                    })
+                    && let Some(definition) = self.block(doc, &name)
+                {
+                    let scale = p3(&c.block_content_scale);
+                    let scale = scale.map(|s| if s == 0.0 { 1.0 } else { s });
+                    made.push(Shape::Instance(curva_document::Instance {
+                        definition,
+                        placement: blocks::placement(
+                            p3(&c.block_content_normal),
+                            c.block_rotation,
+                            scale,
+                            p3(&c.block_content_location),
+                        ),
+                    }));
+                }
+                (made, "leaders")
+            }
             EntityType::Insert(insert) => match self.block(doc, &insert.block_name) {
                 Some(definition) if insert.column_count <= 1 && insert.row_count <= 1 => (
                     vec![Shape::Instance(curva_document::Instance {
@@ -1794,6 +1819,76 @@ mod tests {
             );
             assert_eq!(leaders[1].content, "", "the note goes with one line");
             assert_eq!(leaders[1].points, vec![[5.0, 30.0, 0.0], [20.0, 10.0, 0.0]]);
+        }
+    }
+
+    #[test]
+    fn a_multileaders_block_comes_in_where_it_puts_it() {
+        use acadrust::entities::{Circle, MultiLeader};
+        use acadrust::types::Vector3;
+        // An MLEADER whose content is the block "Tag" (a circle of radius 2 at its base point),
+        // at (20, 10), twice the size and a quarter turn round.
+        let mut cad = CadDocument::new();
+        crate::blocks::write_block(
+            &mut cad,
+            "Tag",
+            vec![EntityType::Circle(Circle::from_center_radius(
+                Vector3::ZERO,
+                2.0,
+            ))],
+        )
+        .unwrap();
+        let tag = cad.block_records.get("Tag").unwrap().handle;
+        let mut m = MultiLeader::new();
+        m.context.has_text_contents = false;
+        m.context.has_block_contents = true;
+        m.context.block_content_handle = Some(tag);
+        m.block_content_handle = Some(tag);
+        m.context.block_content_location = Vector3::new(20.0, 10.0, 0.0);
+        m.context.block_content_normal = Vector3::new(0.0, 0.0, 1.0);
+        m.context.block_content_scale = Vector3::new(2.0, 2.0, 2.0);
+        m.context.block_rotation = std::f64::consts::FRAC_PI_2;
+        let root = m.add_leader_root();
+        root.connection_point = Vector3::new(18.0, 10.0, 0.0);
+        root.create_line(vec![Vector3::new(0.0, 0.0, 0.0)]);
+        let _ = cad.add_entity(EntityType::MultiLeader(Box::new(m)));
+        for format in [Format::Dxf, Format::Dwg] {
+            let bytes = match format {
+                Format::Dxf => DxfWriter::new(&cad).write_to_vec(),
+                Format::Dwg => DwgWriter::write_to_vec(&cad),
+            }
+            .unwrap();
+            let mut doc = Document::default();
+            import(&read(&bytes, format).unwrap(), &mut doc);
+            let state = doc.state();
+            let leaders = state
+                .objects
+                .iter()
+                .filter(|o| matches!(o.shape, Shape::Annotation(Annotation::Leader(_))))
+                .count();
+            assert_eq!(leaders, 1, "{format:?}");
+            let instance = state
+                .objects
+                .iter()
+                .find_map(|o| match &o.shape {
+                    Shape::Instance(i) => Some(*i),
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("{format:?}: the block"));
+            let block = state
+                .blocks
+                .iter()
+                .find(|b| b.id == instance.definition)
+                .unwrap();
+            assert_eq!(block.name, "Tag", "{format:?}");
+            let m = instance.placement;
+            let near = |a: [f64; 4], b: [f64; 4]| (0..4).all(|k| (a[k] - b[k]).abs() < 1e-9);
+            assert!(
+                near(m[0], [0.0, 2.0, 0.0, 0.0])
+                    && near(m[1], [-2.0, 0.0, 0.0, 0.0])
+                    && near(m[3], [20.0, 10.0, 0.0, 1.0]),
+                "{format:?}: {m:?}"
+            );
         }
     }
 
