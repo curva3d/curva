@@ -35,6 +35,13 @@ point 3).
 - **What it draws:** edges of solids and surfaces, curves, silhouettes of curved faces, block
   instances (their contents), and clipping-plane cuts. Points, dots and hatches as Rhino draws
   them.
+- **Clipping planes, as built (16 November 2026):** clipping planes chosen with the objects cut the
+  drawing, as in Rhino (their rectangles are not drawn): each solid is split by a sheet on the plane
+  through the engine (`split_by`) and the kept side drawn; curves are cut where their samples cross
+  the plane, the crossings put back on the curve. With `ClippingPlaneIntersections` (on at first)
+  the cuts through the solids (`Body::section`) are drawn on `Clipping plane intersections`, where
+  they win over the cut edges they lie on (the hidden-line cleaning's `first_from`). The section
+  fill is not drawn yet.
 
 ## 2. The hidden-line removal
 
