@@ -3,6 +3,32 @@
 *Written only by the display stream, which owns the inside of `crates/curva-viewport` (see
 `AGENTS.md`). Updated at the end of every work session. Newest first.*
 
+## 16 November 2026
+
+**Done**
+- **#199 viewport-lib and #198 Bevy tried inside Curva, reported, waiting for the owner.** Both on
+  Curva's device, from Curva's camera, on the same scenes (`spikes/common/scenes.rs`, shared by all
+  renderer spikes), each measured twice on the RTX 3060. Branches `199-viewport-lib-spike` and
+  `198-bevy-spike`, sources only, not merged. *Large* at 1920×1080: viewport-lib 38 ms per frame
+  with lines kept (540 ms its normal way), 1 GB; Bevy 13.4 ms (21 ms with SSAO, TAA, shadows), 374 MB,
+  first frame under 1 s. Curva today at 1280×800: *Large* 22 ms on the card, first frame 62 s, about
+  2.1 GB; the difference is mostly instancing (step 11).
+  - viewport-lib: GPL-3.0-only (clashes with decision 0025), one author, a crash with 4-sample
+    smoothing plus lines, no splitting of big line blocks. Recommendation: borrow ideas only.
+  - Bevy: MIT/Apache; SSAO and TAA need more than Curva's baseline device (allowed on recommended
+    cards by decision 0026); metres assumed; single precision far away; no cuts, selection outline
+    or usable picking. Recommendation: adopt with conditions (updated for meshes and SubD).
+  - Updated for meshes and SubD (owner, 16 November): two more tests. Big one-off meshes
+    (15.7 million triangles): Bevy 3.8 ms per frame and 569 MB, viewport-lib 11.9 ms and 1.2 GB;
+    Curva's face format would need about 1.9 GB (120 bytes per triangle, no shared corners). SubD
+    surface of 524,000 triangles changing every frame: Bevy 4 ms, viewport-lib 11 ms. On Curva's
+    own route, meshes bring back steps 13 to 15 and add shared corners, textures, mesh wires and
+    live edits.
+  - Comparison of the three routes: adopt Bevy for the 3D views on conditions, Curva keeping its
+    CAD layer (lines, outlines, cuts, styles, picking, precision). First a pilot the owner approves:
+    Bevy draws one view's faces behind a setting, Curva's lines and outlines as a Bevy pass.
+- Status order updated (#200, merged).
+
 ## 15 November 2026
 
 **Done**
@@ -70,16 +96,12 @@
   1. **#186, re_renderer: reported, decision on hold.** Borrowing its line and outline technique
      stands whichever way the 3D route goes. No decision recorded yet. Spike on branch
      `186-re-renderer-spike`, not merged.
-  2. **#199, viewport-lib as Curva's 3D viewport** (spike, about one session), then **#198, Bevy's
-     renderer inside Curva's 3D views** (spike, about two sessions). Both on branches, nothing
-     merged; the same scenes and measurements as #186 (*Medium*, *Large* with instanced trees,
-     *Far*; RTX 3060 at 1920×1080; two runs each); pictures of the test building next to the
-     Diagram prototype; what Curva would still build on top (dashes, exact arcs, paper-millimetre
-     widths, styles, precision far from the origin). Each reported to the owner with a
-     recommendation, then wait.
-  3. **After both:** one short comparison of the three routes (borrow from re_renderer,
-     viewport-lib, Bevy): looks, speed, what Curva still builds, dependency risk; one
-     recommendation.
+  2. **#199 viewport-lib and #198 Bevy: reported 16 November, waiting for the owner's decision.**
+     Spikes on branches `199-viewport-lib-spike` and `198-bevy-spike`, not merged. No decision
+     recorded in `docs/decisions/` until the owner chooses.
+  3. **Comparison of the three routes: reported, updated for meshes and SubD.** Recommendation:
+     adopt Bevy for the 3D views on conditions, starting with a pilot; Curva keeps its CAD layer;
+     viewport-lib stays out. Waiting for the owner.
   4. **Between the tests: #180,** splitting the viewport's large files, with no behaviour change
      and speed checked before and after.
   5. **#197 (shaded look from Bevy's shaders) waits** for the 3D route decision.
