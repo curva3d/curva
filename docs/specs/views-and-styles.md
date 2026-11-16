@@ -103,7 +103,7 @@ Each layer draws one kind of thing with its own look. Every layer has an on/off 
 | Background | Behind the model | One colour, a gradient of two colours (direction), or paper (a texture and its colour) |
 | Surfaces | The faces | Colour from the object, its layer, or one colour for all; opacity 0–100%; lighting: soft studio light, sun-lit, or flat |
 | Ambient occlusion | Soft darkening where surfaces meet and where objects stand on others | Strength, spread (how far it reaches), colour |
-| Shadows | Shadows cast by this view's sun | Strength, colour, softness |
+| Shadows | Shadows cast by this view's sun | **Crisp** (vector shapes) or **soft** (a picture); colour, strength; softness when soft. Plans, sections and elevations default to crisp |
 | Outlines | Where an object ends against what is behind it | Width, colour |
 | Cut lines | Where a plan or section cuts through an object | Width, colour; cut fill: a colour or a hatch |
 | Edges | The edges of faces and folds in surfaces | Width, colour |
@@ -199,6 +199,27 @@ and cut lines come from the geometry engine, with the hidden-line method `Make2D
 each line gets its width, colour and dashes from the same style rules, so the export matches what
 was on screen. Surfaces, ambient occlusion, shadows, gradients and paper have no line form; they
 go into the PDF or SVG as a picture underneath the lines, at print resolution (owner's decision).
+
+#### Shadows in drawings (owner, 16 November 2026)
+
+Shadows come in two kinds, set per style in the Shadows layer, both cast by the view's own sun.
+Either way, the drawing on screen matches the PDF (`live-plans.md`).
+
+- **Crisp shadows, the default for plans, sections and elevations.** The geometry engine projects
+  each object along the sun's direction onto the surfaces behind it (floors, ground, walls) and
+  works out the shadow shapes exactly. They go onto the drawing's vector page as filled shapes,
+  under the lines, with the style's shadow colour and strength. So they print sharp at any scale,
+  arrive as real shapes in other CAD programs, and update live with the plan. Each object's shadow
+  is kept and recalculated only when that object, what it falls on, or the sun changes, as
+  `live-plans.md` §4 does for hidden lines.
+- **Soft shadows, for presentation drawings.** A shadow picture is made once at print resolution
+  and placed under the page's lines. The view on screen shows that same picture, so screen and PDF
+  still match. It is slower to update than crisp shadows; while it is redrawn after an edit, the
+  previous picture stays until the new one is ready, with no jump to a different look.
+
+Checked by: crisp shadows of the test house against hand-checked shapes for two sun positions;
+screen against PDF for both kinds (the `live-plans.md` §6 picture comparison); a moved object
+updates its own shadow and those falling on it, and nothing else.
 
 ### 4.3 Checked by
 
