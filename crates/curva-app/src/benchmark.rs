@@ -349,6 +349,8 @@ pub(crate) struct BenchmarkScene {
     pub(crate) select: bool,
     /// A small two-storey building with trees, for pictures of visualisation styles.
     pub(crate) building: bool,
+    /// Every view drawn by Bevy (`--bevy`, decision 0029).
+    pub(crate) bevy: bool,
     /// A small house with walls, openings, a table and a stair, for cut drawings.
     pub(crate) house: bool,
 }
@@ -365,6 +367,7 @@ impl BenchmarkScene {
             offset: [0.0; 3],
             select: false,
             building: false,
+            bevy: false,
             house: false,
         };
         match name {
@@ -527,6 +530,7 @@ mod tests {
             offset,
             select: false,
             building: false,
+            bevy: false,
             house: false,
         }
     }

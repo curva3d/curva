@@ -798,6 +798,7 @@ impl Curva {
                 background: self.pane_background(*pane).0,
                 background_low: self.pane_background(*pane).1,
                 engine: self.panes[*pane].engine,
+                camera: *camera,
             };
             ui.painter().add(egui_wgpu_callback(*rect, drawing));
             self.paint_details(ui, *pane, *rect, size);

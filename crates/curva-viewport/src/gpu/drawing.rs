@@ -52,6 +52,8 @@ pub struct Drawing {
     pub background_low: epaint::Color32,
     /// Which engine draws the view: Curva, or Bevy for the pilot (decision 0028).
     pub engine: Engine,
+    /// The camera `matrix` was made from, for views Bevy draws.
+    pub camera: crate::Camera,
 }
 
 impl Drawing {
@@ -87,9 +89,7 @@ impl Drawing {
             resources.insert(Pilot::new(&seed, device, queue, format));
         }
         let size = [(high.x - low.x) as u32, (high.y - low.y) as u32];
-        resources
-            .get_mut::<Pilot>()?
-            .draw(self.slot, size, self.background)
+        resources.get_mut::<Pilot>()?.draw(self, size)
     }
 }
 

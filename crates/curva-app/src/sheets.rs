@@ -224,6 +224,7 @@ impl Curva {
                 background: PAPER,
                 background_low: PAPER,
                 engine: curva_viewport::Engine::Curva,
+                camera,
             };
             ui.painter()
                 .with_clip_rect(on_screen)

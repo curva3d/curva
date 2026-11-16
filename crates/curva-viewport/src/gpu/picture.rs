@@ -198,6 +198,7 @@ fn picture_drawing(picture: Picture, scene: &Scene) -> Drawing {
         background: epaint::Color32::BLACK,
         background_low: epaint::Color32::BLACK,
         engine: crate::Engine::Curva,
+        camera: crate::Camera::default(),
     }
 }
 
@@ -274,8 +275,7 @@ fn draw_picture_passes(
     renderer.draw_over(&mut pass, 0);
 }
 
-/// Reads a four-byte-per-pixel texture of `size` back from the card, for tests.
-#[cfg(test)]
+/// Reads a four-byte-per-pixel texture of `size` back from the card.
 pub(crate) fn read_texture(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
