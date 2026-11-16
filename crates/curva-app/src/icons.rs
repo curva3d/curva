@@ -409,6 +409,14 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
             pen.line((3.0, 19.0), (19.0, 3.0));
             pen.line((11.0, 19.0), (19.0, 11.0));
         }
+        // A hatched square with its pattern's base point marked.
+        "sethatchbasepoint" => {
+            pen.path(&[(3.0, 3.0), (19.0, 3.0), (19.0, 19.0), (3.0, 19.0)], true);
+            pen.line((3.0, 11.0), (11.0, 3.0));
+            pen.line((11.0, 19.0), (19.0, 11.0));
+            pen.ellipse((11.0, 11.0, 4.0, 4.0));
+            pen.dot(13.0, 13.0);
+        }
         // Three swatches of patterns, as a pattern list shows them.
         "hatchpatterns" => {
             pen.path(&[(3.0, 3.0), (10.0, 3.0), (10.0, 10.0), (3.0, 10.0)], true);
