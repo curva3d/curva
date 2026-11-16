@@ -129,7 +129,11 @@ What does not yet, as of 15 November 2026, to close before 0.4.3:
   in as Rhino reads them: each as user text on its instance (tag and value) and, when shown, as a
   note; Curva writes no attributes, as it has none.
 - Solids and surfaces (ACIS bodies), meshes, external references and images are left out.
-- Splines given only by fit points come in through Curva's interpolation, not AutoCAD's.
+- Splines given only by fit points come in as Rhino 8 reads AutoCAD's: the cubic spline through
+  them with its knots at their spacing (chord, square root or uniform), its end tangents as the
+  derivatives there and natural ends where none is given, kept as exact NURBS. A closed one comes
+  in closed through Curva's own interpolation; Rhino 8 reads it open, and AutoCAD's own shape for
+  it is unchecked.
 
 Each gap is checked by a test reading a file the other program wrote, and a file Curva wrote opened in
 the other program (Rhino through its connection; AutoCAD's side through files it wrote, or the owner).
