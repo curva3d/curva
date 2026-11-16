@@ -1,6 +1,7 @@
 # 0027: Vello draws 2D views and sheets, with vello_cpu as the fallback
 
 **Status:** Decided by the owner in chat · 15 November 2026, after the Vello spike (#185).
+Partly replaced by 0028 (3D views move to Bevy); the 2D part stands.
 
 **What was decided.**
 - Live 2D views (plans, sections) and sheets are drawn with **Vello**, fully on the graphics card,
