@@ -206,9 +206,28 @@ they finish), so "all four" is the sum. Rhino's views were 431 × 410 pixels; Cu
 
 | Scene | Rhino Perspective, Shaded | Rhino Top | Rhino Front | Rhino Right | Rhino, all four | Curva, all four (frame gap) |
 |---|---|---|---|---|---|---|
-| *Medium* | 1.6–1.9 ms | 5.0 ms | 1.4 ms | 1.6 ms | about 10 ms | 2.9–3.4 ms (Bevy views: 6.5–6.8 ms) |
+| *Medium* | 1.6–1.9 ms | 5.0 ms | 1.4 ms | 1.6 ms | about 10 ms | 2.9–3.4 ms (Bevy views: 5.7–5.8 ms) |
 | *Large* | 33–35 ms | 101 ms | 18 ms | 15 ms | about 167 ms | 24.9–26.2 ms (Bevy views: 25.6–26.4 ms) |
 
 Rhino's *Large* figures are from the second run, after Rhino had made its display meshes. Rhino's
 Top view is its slowest: it draws all the circles face-on. Curva's *Large* frame gap is mostly
 snapping (about 23 ms, #130); its graphics card's own time is 22 ms.
+
+## Faces drawn by Bevy (16 November 2026, display-on-Bevy step 1, #223)
+
+Every view drawn by Bevy (`--orbit-benchmark --bevy`), faces only (Curva's lines come in step 2),
+against Curva's own drawing on the same runs, alternated, two each:
+
+| Scene | Curva's own | Bevy |
+|---|---|---|
+| *Medium* | 2.9–3.4 ms between frames | 5.7–5.8 ms |
+| *Large* | 24.9–26.2 ms | 22.4–28.2 ms |
+
+- **Bevy's fixed cost:** about 2.5 ms of processor time per frame even with an empty scene (its
+  update 0.5 ms, handing over 0.2 ms, preparing the drawing 1.9 ms), plus about 0.5 ms per 500
+  solids. On *Medium* that fixed cost is the gap. Run on one thread instead of all cores, the empty
+  scene costs 1.5 ms, but the gain shrinks with larger scenes; decided in step 5 on *Large*.
+- **What did not help:** one Bevy update for all views instead of one per view; handing Bevy only
+  what changed; the graphics card's full features (2.6 → 2.4 ms). **What did:** not preparing
+  Curva's own copy of the scene for views Bevy draws (6.7 → 5.8 ms).
+- *Large*: Bevy draws a 1200 × 800 picture of it in 1.8 ms; the frame gap is snapping (#130).

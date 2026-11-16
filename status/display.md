@@ -6,12 +6,26 @@
 ## 16 November 2026
 
 **Done**
-- **Pilot step 1 in review** (#222, #228): each view's menu has "3D engine: Curva / Bevy (pilot)",
-  Curva by default. A view set to Bevy has Bevy, running on Curva's own device, draw its picture
-  (background only until step 2), copied into the scene texture where the view sits. Bevy starts
-  the first time a view is set to it. The full-features device moves to step 5, where Bevy's
-  effects first need it, so nothing changes with the setting on Curva. A clean build takes about twice as long (306 →
-  601 s, debug). The owner allowed the MIT-0 licence, which Bevy needs through `encase`.
+- **Plan for the display on Bevy approved** (`docs/specs/display-on-bevy.md`, #242): seven steps
+  (faces, lines, Bevy only, copies and far coordinates, speed, styles as settings, plans and
+  sheets), targets including "faster than Rhino" on every scene. Owner's decisions: Bevy becomes
+  the only 3D engine at step 3; Zebra and Draft angle dropped for now; machines without a graphics
+  card run Bevy on software graphics.
+- **Decisions 0029 and 0030 merged:** Bevy draws every view, 3D and 2D (Vello not adopted, after
+  the plan accuracy test #235); use Bevy as it ships, custom parts marked, listed
+  (`docs/bevy/custom-parts.md`) and checked at every upgrade; `architecture.md` §6b on how Curva,
+  solidcore and Bevy fit together.
+- **Step 1, faces in Bevy, in review** (#223): each Bevy view has its own copy of the objects on
+  its own render layer, sharing meshes, with Bevy's own materials and lights. The owner chose the
+  Studio look for base Shaded (a light from the viewer, slightly above and to the left, one from
+  above, Bevy's gradient environment reflected, shine 0.6), after pictures beside Rhino's Shaded;
+  Sunlit (a sun with shadows) for presentation. Curva's own background gradient stays, as a flat
+  backdrop. Selection, Wireframe, Ghosted. `--bevy` on the benchmark.
+- **Rhino measured on the same scenes** (the owner's reference, `docs/performance.md`): all four
+  views about 10 ms on *Medium*, 167 ms on *Large*; Curva 2.9–3.4 and 24.9–26.2 ms; Bevy faces
+  5.7–5.8 ms on *Medium* (Bevy's fixed cost per frame, about 2.5 ms, to work on in step 5).
+- **Pilot step 1 merged** (#228): Bevy running inside Curva on its own device. A clean build takes
+  about twice as long (306 → 601 s, debug). The owner allowed the MIT-0 licence (`encase`).
 - **Disk full on V:**, builds failed. Cleaned the display stream's old build folders and the main
   folder's stale debug cache (about 60 GB). From now on worktrees and spike build folders are
   removed when done.
@@ -110,16 +124,15 @@
   outlines, cuts and fills, styles, picking and snapping, precision far from the origin). A pilot
   comes first. re_renderer and viewport-lib are not used as renderers; re_renderer's line and
   outline technique may still be borrowed for the CAD layer.
-- **2D direction** (decision 0027): Vello draws 2D views and sheets, vello_cpu the fallback. Its
-  production follow-up is not started.
+- **2D direction** (decision 0029, replacing 0027): Bevy draws plans, sections and sheets too,
+  from the drawing description; Vello not adopted.
 - Order of work (owner, 16 November 2026):
-  1. **Bevy pilot** (`docs/specs/bevy-pilot.md`, approved): six steps, issues #222 to #227, each a
-     small pull request, ending in a measured report. Step 1 (#222) in review.
+  1. **The display on Bevy** (`docs/specs/display-on-bevy.md`, approved): step 1 faces in review
+     (#223); next step 2, Curva's lines on Bevy's pictures (#224), then Bevy only (step 3).
   2. **Closed:** #180 (merged), #186, #198, #199 (decided by 0028; spike branches kept unmerged for
      reference), #197 (superseded; its Diagram-look comparison is in pilot step 5).
-  3. **After the pilot:** if it holds, every 3D view moves to Bevy and step 11 (instancing, #153)
-     is dropped; if not, step 11, 4c, 12 and 13 as before. Any change to the remaining steps or
-     the 3D part of `docs/specs/views-and-styles.md` proposed as choices first.
+  3. **Retired:** steps 5 to 15 of `display-pipeline.md` (Bevy has instancing and culling; exact
+     curves move into the line drawer); #153 to close once step 4 lands.
 - **Shelved** (decision 0024): steps 14 (occlusion culling) and 15 (clusters, mesh shaders), back
   only if a measured real model is still too slow after steps 11 to 13. The styles prototype's
   third look (Textured) and fine-tuning of the looks wait until the drawing is correct.
@@ -132,6 +145,9 @@
   solid black cut walls and lines that thin and lighten with distance).
 
 **Heads-up for the features stream** (changes outside the viewport, decision B)
+- **Bevy step 1 (#223):** `curva_viewport::Drawing` has new fields `camera` (the view's camera)
+  and `bevy_last` (the last Bevy view of a frame), set in `viewports.rs` and `sheets.rs`; the
+  benchmark takes `--bevy`. `save_bevy_picture` makes a Bevy picture of a scene for agents.
 - **Bevy pilot step 1 (#228):** `Pane` in `crates/curva-app/src/viewports.rs` has a new field
   `engine`, and the view's menu a "3D engine" choice; `curva_viewport::Drawing` has a new field
   `engine` (`Engine::Curva` keeps today's drawing, as `sheets.rs` does); `main.rs` stores a

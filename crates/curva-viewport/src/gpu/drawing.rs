@@ -122,7 +122,11 @@ impl egui_wgpu::CallbackTrait for Drawing {
             2.0 / pixels.y.max(1.0),
             PIXELS_PER_MM * screen.pixels_per_point,
         ];
-        renderer.update(device, queue, self, pixel);
+        // A view Bevy draws needs none of Curva's own uploads (until Curva's lines are drawn on
+        // Bevy's pictures, step 3).
+        if bevy.is_none() {
+            renderer.update(device, queue, self, pixel);
+        }
         renderer
             .background
             .set(queue, self.background, self.background_low);
