@@ -11,6 +11,33 @@ to then (display modes, glass, line widths, speed measurements).*
 `CLA.md`, `CONTRIBUTING.md` and the `CLA` check (`.github/workflows/cla.yml`). Outside contributors sign
 once by commenting on their first pull request; signatures go to the `cla-signatures` branch.
 
+## Features stream — 16 November 2026
+
+**Owner's instruction (15 November 2026):** work that relies on the display is paused while a new display
+architecture is weighed: drawing objects' own colours and the document's linetypes (#170), Technical and Hidden
+views, shaded details, and PNG output from the viewport. Work on files, commands, documents and the kernel goes on.
+
+**Interoperability gaps (`drawing-output.md` §7, decision 0023):**
+- Merged (#209): DXF and DWG ellipses both ways, exact (ELLIPSE entities, whole or in part). The kernel gains
+  `Curve::elliptical_arc` and `Curve::as_ellipse`, which also recognises Rhino's ellipses, written as rational
+  splines. Rhino 8 reads Curva's ellipses with the same centre, radii and ends.
+- Merged (#211): DXF and DWG MLEADERs come in as leaders with their note. Rhino 8 skips MLEADERs, so it cannot
+  check this.
+- Merged (#210): a detail's hidden layers as the DXF and DWG viewport's frozen layers, both ways; a Rhino 8
+  file reads with the same layer hidden. Rhino reading Curva's layouts could not be checked: Rhino only brings in
+  layouts when it opens a DXF, which closes a scripted Rhino slot.
+- Merged (#212): `.3dm` Rhino 5 annotation (notes, linear, aligned, radius, diameter and angle dimensions,
+  leaders), matched to what Rhino 8 reads back from a Rhino 5 file. Rhino 5's style table is still not read.
+- In review (#214): DXF and DWG objects' user text both ways (Rhino's XDATA), and block attributes read as Rhino
+  reads them (user text on the instance, notes where shown). Rhino 8 reads Curva's user text.
+
+**Milestone 3, point 9:** merged (#213): `HatchPatterns` loads a `.pat` file's patterns into the model
+(`;%UNITS=INCH` files turned into millimetres).
+
+**Next (features):** the remaining non-display gaps (a Rhino note's own style written back as its override,
+MLEADER block content, fit-point splines); ordinate, arc length and curve length dimensions, and dimensions that
+follow their geometry; hatch base point; Make2D pieces that need no viewport.
+
 ## Features stream — 15 November 2026
 
 **Licence (decision 0025, owner's decision in chat):** the application crates (`curva-app`,
