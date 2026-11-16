@@ -12,6 +12,13 @@ point 3).
 - **Steps and options:** Rhino 8's Make2D dialog, as the command's options and a small panel:
   - **View:** current view, current construction plane, or a four-view drawing (top, front, right
     and perspective, in US or European projection).
+    - As built (16 November 2026): `Projection=ThirdAngle` puts the top view above the front and
+      the right view to its right; `FirstAngle` puts them below and to the left. Each lines up with
+      the front; the perspective goes at the upper right; the gaps are a tenth of the largest view,
+      and the whole drawing's lower left corner is at the world origin. The perspective is Rhino
+      8's standard Perspective direction drawn flat, since the document does not keep each
+      viewport's camera. Rhino's own spacing and perspective camera are unchecked: its four-view
+      drawing is made only from its dialog, which a scripted Rhino cannot drive.
   - **Options:** show tangent edges, show tangent seams, hidden lines, scene silhouettes (outlines of
     objects against the background), clipping-plane intersections (with the section fill as a
     hatch), group the output, and maintain source layers.

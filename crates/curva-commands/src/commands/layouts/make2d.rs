@@ -1,6 +1,7 @@
 //! `Make2D`, as in Rhino 8 (spec `make2d.md`; `rhino-reference.md`): the chosen objects drawn as
-//! flat curves seen from the last-used view or straight down on the construction plane, with the
-//! lines other objects cover hidden or left out. The curves are plain, with no link back.
+//! flat curves seen from the last-used view, straight down on the construction plane, or as a
+//! four-view drawing (top, front, right and perspective, third or first angle), with the lines
+//! other objects cover hidden or left out. The curves are plain, with no link back.
 
 use crate::commands::{bodies_of, curves_of, geometry_failed, unexpected};
 use crate::{Answer, Command, Kind, Message, Request, Step};
@@ -20,10 +21,135 @@ enum Projection {
     View,
     /// Straight down on the construction plane; the drawing lies on that plane.
     CPlane,
+    /// Top, front, right and perspective, in third angle projection (US): the top view above the
+    /// front, the right view to its right. The lower left corner goes to the world origin.
+    ThirdAngle,
+    /// The same in first angle projection (European): the top view below the front, the right
+    /// view to its left.
+    FirstAngle,
+}
+
+impl Projection {
+    fn name(self) -> &'static str {
+        match self {
+            Self::View => "View",
+            Self::CPlane => "CPlane",
+            Self::ThirdAngle => "ThirdAngle",
+            Self::FirstAngle => "FirstAngle",
+        }
+    }
+
+    fn next(self) -> Self {
+        match self {
+            Self::View => Self::CPlane,
+            Self::CPlane => Self::ThirdAngle,
+            Self::ThirdAngle => Self::FirstAngle,
+            Self::FirstAngle => Self::View,
+        }
+    }
+}
+
+/// A flat view looking along `forward` through the world origin, so that its drawing measures
+/// world coordinates along `right` and `up`.
+fn standard_view(forward: Point, right: Point, up: Point) -> View {
+    View {
+        eye: forward.map(|c| -c * 1e9),
+        forward,
+        right,
+        up,
+        parallel: true,
+    }
+}
+
+/// The four views of a four-view drawing: top, front, right, and Rhino 8's standard Perspective
+/// direction, drawn flat.
+fn four_views() -> [View; 4] {
+    let forward: Point = [-0.433_012_701_892_219_3, 0.75, -0.5];
+    let right = {
+        let r = [forward[1], -forward[0], 0.0];
+        let l = (r[0] * r[0] + r[1] * r[1]).sqrt();
+        r.map(|c| c / l)
+    };
+    [
+        standard_view([0.0, 0.0, -1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]),
+        standard_view([0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]),
+        standard_view([-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]),
+        standard_view(forward, right, cross(right, forward)),
+    ]
+}
+
+/// The lowest and highest corners of a view's drawing.
+type Extent = ([f64; 2], [f64; 2]);
+
+fn extent(lines: &[DrawnLine]) -> Option<Extent> {
+    let mut low = [f64::INFINITY; 2];
+    let mut high = [f64::NEG_INFINITY; 2];
+    for p in lines.iter().filter_map(|l| l.curve.sample().ok()).flatten() {
+        for i in 0..2 {
+            low[i] = low[i].min(p[i]);
+            high[i] = high[i].max(p[i]);
+        }
+    }
+    low[0].is_finite().then_some((low, high))
+}
+
+/// How far to move each of the top, front, right and perspective drawings so they sit as a
+/// four-view drawing: the top and right views lined up with the front (third angle: above and to
+/// the right; first angle: below and to the left), the perspective at the upper right, with gaps
+/// of a tenth of the largest view between them, and the whole drawing's lower left corner at the
+/// origin. A view with nothing in it stays where it is.
+fn four_view_shifts(extents: &[Option<Extent>; 4], first_angle: bool) -> [[f64; 2]; 4] {
+    let [top, front, right, perspective] = *extents;
+    let size = extents
+        .iter()
+        .flatten()
+        .map(|(lo, hi)| (hi[0] - lo[0]).max(hi[1] - lo[1]))
+        .fold(0.0, f64::max);
+    let gap = size / 10.0;
+    let (f_lo, f_hi) = front.unwrap_or(([0.0; 2], [0.0; 2]));
+    let mut shifts = [[0.0; 2]; 4];
+    if let Some((lo, hi)) = top {
+        shifts[0][1] = if first_angle {
+            f_lo[1] - gap - hi[1]
+        } else {
+            f_hi[1] + gap - lo[1]
+        };
+    }
+    if let Some((lo, hi)) = right {
+        shifts[2][0] = if first_angle {
+            f_lo[0] - gap - hi[0]
+        } else {
+            f_hi[0] + gap - lo[0]
+        };
+    }
+    if let Some((lo, _)) = perspective {
+        // Beyond the front and the views beside and above it.
+        let beside = [top, front, right]
+            .iter()
+            .zip(&shifts)
+            .filter_map(|(e, s)| e.map(|(_, hi)| [hi[0] + s[0], hi[1] + s[1]]))
+            .fold([f_hi[0], f_hi[1]], |m, p| [m[0].max(p[0]), m[1].max(p[1])]);
+        shifts[3] = [beside[0] + gap - lo[0], beside[1] + gap - lo[1]];
+    }
+    // The whole drawing's lower left corner to the origin.
+    let low = extents
+        .iter()
+        .zip(&shifts)
+        .filter_map(|(e, s)| e.map(|(lo, _)| [lo[0] + s[0], lo[1] + s[1]]))
+        .fold([f64::INFINITY; 2], |m, p| [m[0].min(p[0]), m[1].min(p[1])]);
+    if low[0].is_finite() {
+        for s in &mut shifts {
+            *s = [s[0] - low[0], s[1] - low[1]];
+        }
+    }
+    shifts
 }
 
 /// Where a point of the drawing goes in the model.
 type Placer = Box<dyn Fn([f64; 2]) -> Point>;
+
+/// A view's drawn lines, with how far they move on the plane.
+type Drawing = (Vec<DrawnLine>, [f64; 2]);
 
 /// The running command.
 #[derive(Default)]
@@ -79,13 +205,7 @@ impl Make2D {
         Step::Ask(Request {
             options: vec![PROJECTION, HIDDEN, TANGENTS],
             option_labels: vec![
-                format!(
-                    "{PROJECTION}={}",
-                    match self.projection {
-                        Projection::View => "View",
-                        Projection::CPlane => "CPlane",
-                    }
-                ),
+                format!("{PROJECTION}={}", self.projection.name()),
                 format!(
                     "{HIDDEN}={}",
                     if self.without_hidden { "No" } else { "Yes" }
@@ -126,32 +246,56 @@ impl Make2D {
         if bodies.is_empty() && curves.is_empty() {
             return Step::Failed(Message::new("error.make2d_nothing"));
         }
-        let (view, place) = self.view(doc);
         let options = Options {
             tangent_edges: self.tangent_edges,
         };
-        let lines = match hidden_lines(&bodies, &curves, &view, options) {
-            Ok(lines) => lines,
-            Err(error) => return geometry_failed(&error),
+        let draw = |view: &View| -> Result<Vec<DrawnLine>, curva_kernel::KernelError> {
+            Ok(hidden_lines(&bodies, &curves, view, options)?
+                .into_iter()
+                .filter(|l| l.visible || !self.without_hidden)
+                .collect())
         };
-        let lines: Vec<DrawnLine> = lines
-            .into_iter()
-            .filter(|l| l.visible || !self.without_hidden)
-            .collect();
-        // From a view, the drawing's lower left corner goes to the world origin, as in Rhino.
-        let mut shift = [0.0, 0.0];
-        if self.projection == Projection::View && doc.view().is_some() {
-            let low = lines
-                .iter()
-                .filter_map(|l| l.curve.sample().ok())
-                .flatten()
-                .fold([f64::INFINITY; 2], |m, p| [m[0].min(p[0]), m[1].min(p[1])]);
-            if low.iter().all(|v| v.is_finite()) {
-                shift = [-low[0], -low[1]];
+        // Each drawing with how far it moves on the plane, and where the plane goes.
+        let (drawings, place): (Vec<Drawing>, Placer) = match self.projection {
+            Projection::ThirdAngle | Projection::FirstAngle => {
+                let mut sets = Vec::new();
+                for view in four_views() {
+                    match draw(&view) {
+                        Ok(lines) => sets.push(lines),
+                        Err(error) => return geometry_failed(&error),
+                    }
+                }
+                let extents: [Option<Extent>; 4] = std::array::from_fn(|i| extent(&sets[i]));
+                let shifts = four_view_shifts(&extents, self.projection == Projection::FirstAngle);
+                (
+                    sets.into_iter().zip(shifts).collect(),
+                    Box::new(|p| [p[0], p[1], 0.0]),
+                )
             }
-        }
+            _ => {
+                let (view, place) = self.view(doc);
+                let lines = match draw(&view) {
+                    Ok(lines) => lines,
+                    Err(error) => return geometry_failed(&error),
+                };
+                // From a view, the drawing's lower left corner goes to the world origin, as
+                // in Rhino.
+                let shift = match extent(&lines) {
+                    Some((low, _))
+                        if self.projection == Projection::View && doc.view().is_some() =>
+                    {
+                        [-low[0], -low[1]]
+                    }
+                    _ => [0.0, 0.0],
+                };
+                (vec![(lines, shift)], place)
+            }
+        };
         let mut made = 0;
-        for line in lines {
+        for (line, shift) in drawings
+            .into_iter()
+            .flat_map(|(lines, shift)| lines.into_iter().map(move |l| (l, shift)))
+        {
             let Some(curve) = placed(&line.curve, shift, &place) else {
                 continue;
             };
@@ -177,10 +321,7 @@ impl Command for Make2D {
         match answer {
             None => self.ask(),
             Some(Answer::Option(PROJECTION)) => {
-                self.projection = match self.projection {
-                    Projection::View => Projection::CPlane,
-                    Projection::CPlane => Projection::View,
-                };
+                self.projection = self.projection.next();
                 self.ask()
             }
             Some(Answer::Option(TANGENTS)) => {
@@ -379,5 +520,83 @@ mod tests {
             .iter()
             .fold([f64::INFINITY; 2], |m, p| [m[0].min(p[0]), m[1].min(p[1])]);
         assert!(low[0].abs() < 1e-9 && low[1].abs() < 1e-9, "{low:?}");
+    }
+
+    #[test]
+    fn a_four_view_drawing_lines_its_views_up_as_its_projection_says() {
+        use super::four_view_shifts;
+        // Top 10 × 20, front 10 × 30, right 20 × 30, perspective 25 × 25, each as drawn; the
+        // largest is 30 across, so the gaps are 3.
+        let extents = [
+            Some(([0.0, 0.0], [10.0, 20.0])),
+            Some(([0.0, 0.0], [10.0, 30.0])),
+            Some(([0.0, 0.0], [20.0, 30.0])),
+            Some(([-5.0, -5.0], [20.0, 20.0])),
+        ];
+        // Third angle: the front at the lower left, the top above it, the right to its right,
+        // the perspective beyond both.
+        let third = four_view_shifts(&extents, false);
+        assert_eq!(third[1], [0.0, 0.0]);
+        assert_eq!(third[0], [0.0, 33.0]);
+        assert_eq!(third[2], [13.0, 0.0]);
+        assert_eq!(third[3], [41.0, 61.0]);
+        // First angle: the top below the front, the right to its left; the lower left corner
+        // (the right view's, and the top's) at the origin.
+        let first = four_view_shifts(&extents, true);
+        let front = first[1];
+        assert_eq!(first[0], [front[0], front[1] - 23.0]);
+        assert_eq!(first[2], [front[0] - 23.0, front[1]]);
+        assert_eq!(first[2][0], 0.0);
+        assert_eq!(first[0][1], 0.0);
+        assert!(first[3][0] > front[0] + 10.0 && first[3][1] > front[1] + 30.0);
+    }
+
+    #[test]
+    fn make2d_draws_a_four_view_drawing_of_a_box() {
+        // A box 10 wide (X), 20 deep (Y) and 30 high (Z).
+        let mut doc = Document::default();
+        let block = doc.add_body(Body::cuboid([0.0; 3], [10.0, 20.0, 30.0]).unwrap());
+        doc.select(&[block]);
+        let _ = run(
+            &mut doc,
+            &["Make2D", "Projection", "Projection", "HiddenLines", ""],
+        );
+        let curves = drawn(&doc);
+        // The top, front and right views are four outline lines each; the perspective more.
+        assert!(curves.len() > 12, "{}", curves.len());
+        let boxes: Vec<([f64; 3], [f64; 3])> = curves
+            .iter()
+            .map(|c| {
+                let points = c.sample().unwrap();
+                let low = points.iter().fold([f64::INFINITY; 3], |m, p| {
+                    std::array::from_fn(|i| m[i].min(p[i]))
+                });
+                let high = points.iter().fold([f64::NEG_INFINITY; 3], |m, p| {
+                    std::array::from_fn(|i| m[i].max(p[i]))
+                });
+                (low, high)
+            })
+            .collect();
+        let near = |a: f64, b: f64| (a - b).abs() < 1e-6;
+        // The front view's left edge: upright from the origin, the box's height.
+        assert!(boxes.iter().any(|(lo, hi)| near(lo[0], 0.0)
+            && near(hi[0], 0.0)
+            && near(lo[1], 0.0)
+            && near(hi[1], 30.0)));
+        // The top view above it, the box's depth high and its width wide, lined up with it.
+        assert!(boxes.iter().any(|(lo, hi)| near(lo[0], 0.0)
+            && near(hi[0], 0.0)
+            && lo[1] > 30.0
+            && near(hi[1] - lo[1], 20.0)));
+        // The right view to its right, the box's depth wide and its height high.
+        assert!(boxes.iter().any(|(lo, hi)| lo[0] > 10.0
+            && near(hi[0] - lo[0], 20.0)
+            && near(lo[1], 0.0)
+            && near(hi[1], 0.0)));
+        assert!(
+            boxes
+                .iter()
+                .all(|(lo, _)| lo[0] > -1e-9 && lo[1] > -1e-9 && near(lo[2], 0.0))
+        );
     }
 }
