@@ -728,6 +728,7 @@ mod tests {
     /// cut by a plane through the middle, shows the background where it is cut away.
     #[test]
     fn clipping_planes_cut_bevy_surfaces() {
+        let _turn = one_at_a_time();
         let Some((mut pilot, device, queue)) = pilot() else {
             return;
         };
