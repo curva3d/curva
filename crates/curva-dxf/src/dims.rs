@@ -224,6 +224,29 @@ pub(crate) fn dimension_in(d: &Dimension) -> Result<Annotation, &'static str> {
             style: 0,
             text: typed_in(&a.base),
         }),
+        // An angle by three points: its vertex, a point on each side, the arc's place.
+        Dimension::Angular3Pt(a) => Annotation::Angle(AngleDimension {
+            apex: p3(&a.angle_vertex),
+            first: p3(&a.first_point),
+            second: p3(&a.second_point),
+            arc_at: p3(&a.definition_point),
+            x,
+            y,
+            style: 0,
+            text: typed_in(&a.base),
+        }),
+        // A jogged radius (DIMJOGGED) as a plain one: its centre, the point it measures to and
+        // its text; the jog and the moved centre it is drawn from are left out.
+        Dimension::LargeRadial(r) => Annotation::Radial(RadialDimension {
+            diameter: false,
+            centre: p3(&r.definition_point),
+            on_curve: p3(&r.chord_point),
+            text_at: p3(&r.base.text_middle_point),
+            x,
+            y,
+            style: 0,
+            text: typed_in(&r.base),
+        }),
         Dimension::Ordinate(o) => Annotation::Ordinate(OrdinateDimension {
             base: p3(&o.definition_point),
             point: p3(&o.feature_location),
@@ -370,6 +393,73 @@ mod tests {
                 })
                 .collect();
             assert_eq!(got, wanted, "{format:?}");
+        }
+    }
+
+    #[test]
+    fn three_point_angles_and_jogged_radii_come_in() {
+        use acadrust::entities::EntityType;
+        use acadrust::entities::dimension::{
+            Dimension as Cad, DimensionAngular3Pt, DimensionLargeRadial,
+        };
+        use acadrust::types::Vector3;
+        use acadrust::{CadDocument, DwgWriter, DxfWriter};
+        // AutoCAD's angle by three points (vertex (0, 0), sides through (10, 0) and (0, 10), its
+        // arc through (5, 5)) and a jogged radius (centre (50, 0), to (60, 0), text at (70, 5)).
+        let mut cad = CadDocument::new();
+        let mut angle = DimensionAngular3Pt::new(
+            Vector3::ZERO,
+            Vector3::new(10.0, 0.0, 0.0),
+            Vector3::new(0.0, 10.0, 0.0),
+        );
+        angle.definition_point = Vector3::new(5.0, 5.0, 0.0);
+        let mut jogged = DimensionLargeRadial {
+            definition_point: Vector3::new(50.0, 0.0, 0.0),
+            chord_point: Vector3::new(60.0, 0.0, 0.0),
+            override_center: Vector3::new(55.0, -20.0, 0.0),
+            jog_point: Vector3::new(57.0, -10.0, 0.0),
+            ..Default::default()
+        };
+        jogged.base.text_middle_point = Vector3::new(70.0, 5.0, 0.0);
+        let _ = cad.add_entity(EntityType::Dimension(Box::new(Cad::Angular3Pt(angle))));
+        let _ = cad.add_entity(EntityType::Dimension(Box::new(Cad::LargeRadial(jogged))));
+        for format in [Format::Dxf, Format::Dwg] {
+            let bytes = match format {
+                Format::Dxf => DxfWriter::new(&cad).write_to_vec(),
+                Format::Dwg => DwgWriter::write_to_vec(&cad),
+            }
+            .unwrap();
+            if let (Format::Dxf, Ok(path)) = (format, std::env::var("CURVA_DXF_ANGLE3_SAMPLE")) {
+                std::fs::write(path, &bytes).unwrap();
+            }
+            let mut doc = Document::default();
+            let report = import(&read(&bytes, format).unwrap(), &mut doc);
+            assert!(report.skipped.is_empty(), "{format:?}: {report:?}");
+            let got = annotations(&doc);
+            assert_eq!(got.len(), 2, "{format:?}");
+            let Annotation::Angle(a) = &got[0] else {
+                panic!("{format:?}: {:?}", got[0]);
+            };
+            assert_eq!(
+                (a.apex, a.first, a.second, a.arc_at),
+                (
+                    [0.0; 3],
+                    [10.0, 0.0, 0.0],
+                    [0.0, 10.0, 0.0],
+                    [5.0, 5.0, 0.0]
+                ),
+                "{format:?}"
+            );
+            assert!((a.value() - 90.0).abs() < 1e-9, "{format:?}: {}", a.value());
+            let Annotation::Radial(r) = &got[1] else {
+                panic!("{format:?}: {:?}", got[1]);
+            };
+            assert!(!r.diameter);
+            assert_eq!(
+                (r.centre, r.on_curve, r.text_at),
+                ([50.0, 0.0, 0.0], [60.0, 0.0, 0.0], [70.0, 5.0, 0.0]),
+                "{format:?}"
+            );
         }
     }
 
