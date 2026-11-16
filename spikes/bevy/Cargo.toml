@@ -1,0 +1,17 @@
+# Spike for #198: Bevy's renderer inside Curva's 3D views. Not part of Curva's build; not merged.
+[package]
+name = "bevy-spike"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+bevy = { version = "=0.20.1", default-features = false, features = ["std", "multi_threaded", "async_executor", "bevy_asset", "bevy_log", "bevy_window", "bevy_render", "bevy_core_pipeline", "bevy_pbr", "bevy_light", "bevy_camera", "bevy_mesh", "bevy_gizmos", "bevy_gizmos_render", "bevy_anti_alias", "bevy_post_process", "tonemapping_luts", "smaa_luts", "ktx2", "zstd_rust", "png", "bluenoise_texture"] }
+curva-kernel = { path = "../../crates/curva-kernel" }
+curva-document = { path = "../../crates/curva-document" }
+curva-viewport = { path = "../../crates/curva-viewport" }
+pollster = "0.4"
+png = "0.18"
+wgpu = "30"
