@@ -409,6 +409,22 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
             pen.line((3.0, 19.0), (19.0, 3.0));
             pen.line((11.0, 19.0), (19.0, 11.0));
         }
+        // Three swatches of patterns, as a pattern list shows them.
+        "hatchpatterns" => {
+            pen.path(&[(3.0, 3.0), (10.0, 3.0), (10.0, 10.0), (3.0, 10.0)], true);
+            pen.line((3.0, 10.0), (10.0, 3.0));
+            pen.path(
+                &[(12.0, 3.0), (19.0, 3.0), (19.0, 10.0), (12.0, 10.0)],
+                true,
+            );
+            pen.line((15.5, 3.0), (15.5, 10.0));
+            pen.line((12.0, 6.5), (19.0, 6.5));
+            pen.path(
+                &[(3.0, 12.0), (19.0, 12.0), (19.0, 19.0), (3.0, 19.0)],
+                true,
+            );
+            pen.line((3.0, 15.5), (19.0, 15.5));
+        }
         // An arrow up to a bend, then on to lines of a note.
         "leader" => {
             pen.path(&[(3.0, 19.0), (9.0, 8.0), (12.0, 8.0)], false);

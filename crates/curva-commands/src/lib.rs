@@ -111,6 +111,9 @@ pub const DXF_FILES: FileFormat = ("files.dxf", &["dxf"]);
 /// AutoCAD's drawing files.
 pub const DWG_FILES: FileFormat = ("files.dwg", &["dwg"]);
 
+/// Hatch pattern files, as AutoCAD and Rhino write them.
+pub const PAT_FILES: FileFormat = ("files.pat", &["pat"]);
+
 /// Where a print goes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PrintTo {
