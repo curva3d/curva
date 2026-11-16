@@ -9,9 +9,10 @@ use curva_document::annotation::Annotation;
 use curva_document::clipping::PlaneCut;
 use curva_document::{Document, Linetype, Shape};
 use curva_kernel::hidden::{DrawnLine, LineKind, Options, View, hidden_lines};
-use curva_kernel::{Body, Curve, Point};
+use curva_kernel::{Body, Curve, Point, sub};
 
 mod cuts;
+mod fills;
 use cuts::{clipped_body, clipped_curve, straight_pieces};
 
 const PROJECTION: &str = "Projection";
@@ -322,9 +323,11 @@ impl Make2D {
         let mut body_layers = Vec::new();
         let mut curve_layers = Vec::new();
         let mut cut_layers = Vec::new();
+        let mut fills = Vec::new();
         let mut sections = Vec::new();
         for (id, body) in bodies_of(doc, ids) {
             if !self.without_clip_cuts {
+                fills.extend(fills::fills_of(doc, id, &body, cuts, &layer_of(id)));
                 for cut in cuts {
                     if let Ok(outline) = body.section(cut.origin, cut.keep) {
                         // Only where the rest of the cuts keep it.
@@ -369,6 +372,7 @@ impl Make2D {
                 .chain(cut_layers)
                 .collect(),
             sections_from,
+            fills,
         })
     }
 
@@ -422,9 +426,9 @@ impl Make2D {
             _ => name.to_owned(),
         };
         for (view, lines, shift) in drawings {
+            let to_drawing = drawing_map(view, *shift, place);
             // Annotation lying flat to a flat view, copied into the drawing as it lies there.
             if view.parallel {
-                let to_drawing = drawing_map(view, *shift, place);
                 for (annotation, source) in notes {
                     if !faces(annotation, view) {
                         continue;
@@ -432,6 +436,24 @@ impl Make2D {
                     let path = on_layer("Make2D::Visible::Annotations", Some(source));
                     let layer = layer_named(doc, &path, false);
                     let id = doc.add_annotation(annotation.placed(&to_drawing));
+                    doc.move_to_layer(&[id], layer);
+                    made.push(id);
+                }
+            }
+            // Section fills first, so the lines lie over them.
+            let plane = (
+                place([0.0, 0.0]),
+                sub(place([1.0, 0.0]), place([0.0, 0.0])),
+                sub(place([0.0, 1.0]), place([0.0, 0.0])),
+            );
+            for fill in &inputs.fills {
+                for (hatch, colour) in fills::hatches(fill, view, &to_drawing, plane) {
+                    let path = on_layer(
+                        "Make2D::Visible::Clipping plane intersections",
+                        Some(&fill.source),
+                    );
+                    let layer = layer_named(doc, &path, false);
+                    let id = fills::add(doc, hatch, colour);
                     doc.move_to_layer(&[id], layer);
                     made.push(id);
                 }
@@ -500,6 +522,8 @@ struct Inputs {
     source_layers: Vec<String>,
     /// Where the cut outlines start among the sources.
     sections_from: usize,
+    /// The cut faces to fill.
+    fills: Vec<fills::Fill>,
 }
 
 /// The chosen annotation, to copy flat into the drawing, each with its layer's path.
@@ -1050,5 +1074,161 @@ mod tests {
             layer_lines(&again, "Make2D::Visible::Clipping plane intersections"),
             0
         );
+    }
+
+    /// A 10-unit cube and a level clipping plane through its middle, keeping the lower half
+    /// (`below`) or the upper; the cube and the plane's frame.
+    fn cut_cube(
+        doc: &mut Document,
+        below: bool,
+        fill: curva_document::clipping::SectionFill,
+    ) -> (u64, u64) {
+        use curva_document::clipping::{ClipView, ClippingPlane};
+        let cube = doc.add_body(Body::cuboid([0.0; 3], [10.0, 10.0, 10.0]).unwrap());
+        let frame = doc.add(
+            curva_kernel::Curve::polyline(
+                vec![
+                    [-5.0, -5.0, 5.0],
+                    [15.0, -5.0, 5.0],
+                    [15.0, 15.0, 5.0],
+                    [-5.0, 15.0, 5.0],
+                ],
+                true,
+            )
+            .unwrap(),
+        );
+        doc.add_clipping_plane(ClippingPlane {
+            frame,
+            flipped: false,
+            views: vec![ClipView::Viewport(0)],
+            section: fill,
+            hatch: None,
+        });
+        let keeps_below = doc.plane_cut_of(frame).unwrap().keep[2] < 0.0;
+        if keeps_below != below {
+            doc.change_clipping_plane(frame, |c| c.flipped = true);
+        }
+        (cube, frame)
+    }
+
+    /// The hatches Make2D made on a layer, with their colours.
+    fn hatches_on(
+        doc: &Document,
+        name: &str,
+    ) -> Vec<(curva_document::annotation::Hatch, Option<[f32; 3]>)> {
+        let Some(layer) = doc.state().layer_named(name) else {
+            return Vec::new();
+        };
+        doc.state()
+            .objects
+            .iter()
+            .filter(|o| o.layer == layer)
+            .filter_map(|o| match &o.shape {
+                curva_document::Shape::Annotation(
+                    curva_document::annotation::Annotation::Hatch(h),
+                ) => Some((h.clone(), o.colour)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    const CUTS: &str = "Make2D::Visible::Clipping plane intersections";
+
+    #[test]
+    fn a_cut_seen_face_on_is_filled_with_its_section_style() {
+        use curva_document::clipping::SectionFill;
+        let mut doc = Document::default();
+        let (cube, frame) = cut_cube(&mut doc, true, SectionFill::Solid([0.2, 0.3, 0.4]));
+        doc.select(&[cube, frame]);
+        let _ = run(&mut doc, &["Make2D", "Projection", ""]);
+        // From above, the cut face of the kept lower half looks up at the viewer: one solid
+        // hatch in the plane's fill colour, filling the 10 × 10 square.
+        let found = hatches_on(&doc, CUTS);
+        assert_eq!(found.len(), 1, "{found:?}");
+        let (hatch, colour) = &found[0];
+        assert_eq!(hatch.pattern, "Solid");
+        assert_eq!(*colour, Some([0.2, 0.3, 0.4]));
+        let points: Vec<[f64; 3]> = hatch
+            .loops
+            .iter()
+            .flat_map(|c| c.sample().unwrap())
+            .collect();
+        let span = |k: usize| {
+            let (lo, hi) = points.iter().fold((f64::MAX, f64::MIN), |(lo, hi), p| {
+                (lo.min(p[k]), hi.max(p[k]))
+            });
+            hi - lo
+        };
+        assert!((span(0) - 10.0).abs() < 1e-6 && (span(1) - 10.0).abs() < 1e-6);
+        assert!(
+            points.iter().all(|p| p[2].abs() < 1e-9),
+            "flat in the drawing"
+        );
+        // The cut's outline is still drawn, over the fill.
+        assert!(layer_lines(&doc, CUTS) >= 1);
+    }
+
+    #[test]
+    fn a_solids_own_hatch_goes_over_its_fill() {
+        use curva_document::clipping::SectionFill;
+        use curva_document::section::{SectionHatch, SectionStyle};
+        let mut doc = Document::default();
+        let (cube, frame) = cut_cube(&mut doc, true, SectionFill::None);
+        let style = SectionStyle {
+            fill: SectionFill::Solid([1.0, 1.0, 1.0]),
+            hatch: Some(SectionHatch {
+                pattern: "Grid".to_owned(),
+                scale: 2.0,
+                rotation: 0.25,
+            }),
+        };
+        doc.set_section_style(&[cube], Some(style));
+        doc.select(&[cube, frame]);
+        let _ = run(&mut doc, &["Make2D", "Projection", ""]);
+        let found = hatches_on(&doc, CUTS);
+        let patterns: Vec<&str> = found.iter().map(|(h, _)| h.pattern.as_str()).collect();
+        assert_eq!(patterns, ["Solid", "Grid"]);
+        let (grid, colour) = &found[1];
+        assert!((grid.scale - 2.0).abs() < 1e-12 && (grid.rotation - 0.25).abs() < 1e-12);
+        assert_eq!(*colour, None, "the pattern takes its layer's colour");
+    }
+
+    #[test]
+    fn no_fill_for_no_style_a_back_facing_cut_or_with_cuts_left_out() {
+        use curva_document::clipping::SectionFill;
+        let make = |below: bool, fill: SectionFill, extra: &[&str]| {
+            let mut doc = Document::default();
+            let (cube, frame) = cut_cube(&mut doc, below, fill);
+            doc.select(&[cube, frame]);
+            let mut lines = vec!["Make2D", "Projection"];
+            lines.extend_from_slice(extra);
+            lines.push("");
+            let _ = run(&mut doc, &lines);
+            hatches_on(&doc, CUTS).len()
+        };
+        assert_eq!(make(true, SectionFill::None, &[]), 0, "a style of none");
+        // Keeping the upper half, the cut face looks down, away from a viewer above.
+        assert_eq!(make(false, SectionFill::default(), &[]), 0, "facing away");
+        assert_eq!(
+            make(
+                true,
+                SectionFill::default(),
+                &["ClippingPlaneIntersections"]
+            ),
+            0,
+            "cuts left out"
+        );
+    }
+
+    #[test]
+    fn in_a_four_view_drawing_the_views_edge_on_to_the_cut_are_not_filled() {
+        use curva_document::clipping::SectionFill;
+        let mut doc = Document::default();
+        let (cube, frame) = cut_cube(&mut doc, true, SectionFill::default());
+        doc.select(&[cube, frame]);
+        // Projection twice: third angle. The level cut is edge-on to the front and right views,
+        // so they get none; the top view and the perspective (drawn flat, from above) see it.
+        let _ = run(&mut doc, &["Make2D", "Projection", "Projection", ""]);
+        assert_eq!(hatches_on(&doc, CUTS).len(), 2);
     }
 }

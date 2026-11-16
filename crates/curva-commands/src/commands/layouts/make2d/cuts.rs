@@ -6,7 +6,7 @@ use curva_document::clipping::PlaneCut;
 use curva_kernel::{Body, Curve, KernelError, Point};
 
 /// How far a point lies on the side a cut keeps (below zero: cut away).
-fn ahead(cut: &PlaneCut, p: Point) -> f64 {
+pub(super) fn ahead(cut: &PlaneCut, p: Point) -> f64 {
     (0..3).map(|i| cut.keep[i] * (p[i] - cut.origin[i])).sum()
 }
 
