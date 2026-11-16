@@ -17,9 +17,16 @@
     smoothing plus lines, no splitting of big line blocks. Recommendation: borrow ideas only.
   - Bevy: MIT/Apache; SSAO and TAA need more than Curva's baseline device (allowed on recommended
     cards by decision 0026); metres assumed; single precision far away; no cuts, selection outline
-    or usable picking. Recommendation: don't adopt now; adopt with conditions if step 11 falls short.
-  - Comparison of the three routes: keep Curva's own renderer, borrow re_renderer's line technique
-    and Bevy's SSAO, smoothing and shadow shaders, do step 11 next measured against Bevy's 13.4 ms.
+    or usable picking. Recommendation: adopt with conditions (updated for meshes and SubD).
+  - Updated for meshes and SubD (owner, 16 November): two more tests. Big one-off meshes
+    (15.7 million triangles): Bevy 3.8 ms per frame and 569 MB, viewport-lib 11.9 ms and 1.2 GB;
+    Curva's face format would need about 1.9 GB (120 bytes per triangle, no shared corners). SubD
+    surface of 524,000 triangles changing every frame: Bevy 4 ms, viewport-lib 11 ms. On Curva's
+    own route, meshes bring back steps 13 to 15 and add shared corners, textures, mesh wires and
+    live edits.
+  - Comparison of the three routes: adopt Bevy for the 3D views on conditions, Curva keeping its
+    CAD layer (lines, outlines, cuts, styles, picking, precision). First a pilot the owner approves:
+    Bevy draws one view's faces behind a setting, Curva's lines and outlines as a Bevy pass.
 - Status order updated (#200, merged).
 
 ## 15 November 2026
@@ -92,9 +99,9 @@
   2. **#199 viewport-lib and #198 Bevy: reported 16 November, waiting for the owner's decision.**
      Spikes on branches `199-viewport-lib-spike` and `198-bevy-spike`, not merged. No decision
      recorded in `docs/decisions/` until the owner chooses.
-  3. **Comparison of the three routes: reported with the two tests.** Recommendation: keep
-     Curva's own renderer and borrow (re_renderer lines, Bevy's shaders); step 11 next; Bevy as the
-     fallback plan.
+  3. **Comparison of the three routes: reported, updated for meshes and SubD.** Recommendation:
+     adopt Bevy for the 3D views on conditions, starting with a pilot; Curva keeps its CAD layer;
+     viewport-lib stays out. Waiting for the owner.
   4. **Between the tests: #180,** splitting the viewport's large files, with no behaviour change
      and speed checked before and after.
   5. **#197 (shaded look from Bevy's shaders) waits** for the 3D route decision.
