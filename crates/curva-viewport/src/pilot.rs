@@ -645,6 +645,7 @@ mod tests {
     #[test]
     fn lines_on_bevy_views_hide_behind_bevy_surfaces() {
         use egui_wgpu::CallbackTrait;
+        let _turn = one_at_a_time();
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
         let Ok(adapter) =
             pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
