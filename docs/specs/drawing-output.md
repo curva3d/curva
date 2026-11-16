@@ -119,8 +119,9 @@ What does not yet, as of 15 November 2026, to close before 0.4.3:
   and MTEXT, which Rhino reads (Rhino 8 skips MLEADERs).
 - Solids and surfaces (ACIS bodies), meshes, block attributes, external references and images are
   left out.
-- Viewports: per-viewport frozen layers and plot settings are not carried; Rhino's own DXF writes a
-  viewport's view height against AutoCAD's reference, so its details read at an inverted scale.
+- Viewports: the layers hidden in a detail only cross as the viewport's frozen layers; plot settings
+  are not carried. Rhino's own DXF writes a viewport's view height against AutoCAD's reference,
+  so its details read at an inverted scale.
 - Splines given only by fit points come in through Curva's interpolation, not AutoCAD's.
 
 Each gap is checked by a test reading a file the other program wrote, and a file Curva wrote opened in
