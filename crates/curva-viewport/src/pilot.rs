@@ -717,6 +717,7 @@ mod tests {
     /// preview colour and half see-through, and goes when the command has none.
     #[test]
     fn previews_show_half_see_through() {
+        let _turn = one_at_a_time();
         let Some((mut pilot, device, queue)) = pilot() else {
             return;
         };
