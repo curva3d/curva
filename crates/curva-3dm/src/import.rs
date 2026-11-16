@@ -2019,14 +2019,14 @@ fn linetype_in(state: &mut State, linetype: &model::Linetype) -> Linetype {
     state.add_linetype(name, &curva_document::alternating(&linetype.segments))
 }
 
-/// A leader from a file, its words made plain and a landing drawn, as Rhino's usual style does.
+/// A leader from a file, its words made plain, with a landing when the file has one (Rhino 6 on).
 fn leader_in(l: &model::Leader) -> curva_document::annotation::Leader {
     curva_document::annotation::Leader {
         points: l.points.iter().map(|q| in_plane(&l.plane, *q)).collect(),
         content: crate::notes::plain_text(&l.rich),
         x: l.plane.x,
         y: l.plane.y,
-        landing: true,
+        landing: l.landing,
         style: 0,
     }
 }

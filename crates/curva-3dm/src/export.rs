@@ -597,6 +597,7 @@ fn geometry_of(
                 style,
                 own: None,
                 rich: l.content.clone(),
+                landing: true,
             })
         }
         // Annotation goes into .3dm files with the round trip at the end of Milestone 3.
