@@ -25,6 +25,30 @@ const OPENNURBS_VERSION: i64 = 2_382_393_748;
 #[must_use]
 pub fn write(model: &Model) -> Vec<u8> {
     let mut w = Writer::default();
+    write_start(&mut w);
+    write_properties(&mut w, model);
+    write_settings(&mut w, model);
+    write_component_tables(&mut w, model);
+    write_definition_tables(&mut w, model);
+    table(&mut w, tcode::OBJECT_TABLE, |w| {
+        for object in &model.objects {
+            write_object(w, object);
+        }
+    });
+    table(&mut w, tcode::HISTORYRECORD_TABLE, |_| {});
+    if !model.document_text.is_empty() {
+        write_document_text(&mut w, &model.document_text);
+    }
+    // The end mark holds the size of the whole file, itself included.
+    let size = w.out.len() as i64 + 4 + 8 + 8;
+    w.u32(tcode::ENDOFFILE);
+    w.i64(8);
+    w.i64(size);
+    w.out
+}
+
+/// The file's opening words and its comment block naming Curva.
+fn write_start(w: &mut Writer) {
     w.out.extend_from_slice(b"3D Geometry File Format       70");
     w.u32(tcode::COMMENTBLOCK);
     let comment = format!(
@@ -33,8 +57,11 @@ pub fn write(model: &Model) -> Vec<u8> {
     );
     w.i64(comment.len() as i64);
     w.out.extend_from_slice(comment.as_bytes());
+}
 
-    table(&mut w, tcode::PROPERTIES_TABLE, |w| {
+/// The properties table: the openNURBS version, the application, and the notes.
+fn write_properties(w: &mut Writer, model: &Model) {
+    table(w, tcode::PROPERTIES_TABLE, |w| {
         w.short(tcode::PROPERTIES_OPENNURBS_VERSION, OPENNURBS_VERSION);
         w.begin(tcode::PROPERTIES_APPLICATION);
         w.chunk_version(1, 0);
@@ -55,7 +82,12 @@ pub fn write(model: &Model) -> Vec<u8> {
             w.end();
         }
     });
-    table(&mut w, tcode::SETTINGS_TABLE, |w| {
+}
+
+/// The settings table: units and tolerances, named construction planes and views, and the
+/// pages' view list and unit.
+fn write_settings(w: &mut Writer, model: &Model) {
+    table(w, tcode::SETTINGS_TABLE, |w| {
         w.begin(tcode::SETTINGS_UNITSANDTOLS);
         w.i32(102);
         w.u32(model.unit);
@@ -88,21 +120,26 @@ pub fn write(model: &Model) -> Vec<u8> {
             write_page_unit(w, model);
         }
     });
+}
+
+/// The empty bitmap, texture mapping and material tables, then the linetype, layer and group
+/// tables.
+fn write_component_tables(w: &mut Writer, model: &Model) {
     for empty in [
         tcode::BITMAP_TABLE,
         tcode::TEXTURE_MAPPING_TABLE,
         tcode::MATERIAL_TABLE,
     ] {
-        table(&mut w, empty, |_| {});
+        table(w, empty, |_| {});
     }
-    table(&mut w, tcode::LINETYPE_TABLE, |w| {
+    table(w, tcode::LINETYPE_TABLE, |w| {
         for (index, linetype) in model.linetypes.iter().enumerate() {
             w.begin(tcode::LINETYPE_RECORD);
             class_object(w, class::LINETYPE, |w| write_linetype(w, linetype, index));
             w.end();
         }
     });
-    table(&mut w, tcode::LAYER_TABLE, |w| {
+    table(w, tcode::LAYER_TABLE, |w| {
         for (index, layer) in model.layers.iter().enumerate() {
             w.begin(tcode::LAYER_RECORD);
             class_object_with(
@@ -118,23 +155,27 @@ pub fn write(model: &Model) -> Vec<u8> {
             w.end();
         }
     });
-    table(&mut w, tcode::GROUP_TABLE, |w| {
+    table(w, tcode::GROUP_TABLE, |w| {
         for (index, group) in model.groups.iter().enumerate() {
             w.begin(tcode::GROUP_RECORD);
             class_object(w, class::GROUP, |w| write_group(w, group, index));
             w.end();
         }
     });
-    table(&mut w, tcode::FONT_TABLE, |_| {});
-    table(&mut w, tcode::DIMSTYLE_TABLE, |w| {
+}
+
+/// The font, annotation style, light, hatch pattern and block definition tables.
+fn write_definition_tables(w: &mut Writer, model: &Model) {
+    table(w, tcode::FONT_TABLE, |_| {});
+    table(w, tcode::DIMSTYLE_TABLE, |w| {
         for (index, style) in model.dim_styles.iter().enumerate() {
             w.begin(tcode::DIMSTYLE_RECORD);
             class_object(w, class::DIM_STYLE, |w| write_dim_style(w, style, index));
             w.end();
         }
     });
-    table(&mut w, tcode::LIGHT_TABLE, |_| {});
-    table(&mut w, tcode::HATCHPATTERN_TABLE, |w| {
+    table(w, tcode::LIGHT_TABLE, |_| {});
+    table(w, tcode::HATCHPATTERN_TABLE, |w| {
         for (index, pattern) in model.hatch_patterns.iter().enumerate() {
             w.begin(tcode::HATCHPATTERN_RECORD);
             class_object(w, class::HATCH_PATTERN, |w| {
@@ -143,7 +184,7 @@ pub fn write(model: &Model) -> Vec<u8> {
             w.end();
         }
     });
-    table(&mut w, tcode::INSTANCE_DEFINITION_TABLE, |w| {
+    table(w, tcode::INSTANCE_DEFINITION_TABLE, |w| {
         for (index, block) in model.blocks.iter().enumerate() {
             w.begin(tcode::INSTANCE_DEFINITION_RECORD);
             class_object(w, class::INSTANCE_DEFINITION, |w| {
@@ -152,21 +193,6 @@ pub fn write(model: &Model) -> Vec<u8> {
             w.end();
         }
     });
-    table(&mut w, tcode::OBJECT_TABLE, |w| {
-        for object in &model.objects {
-            write_object(w, object);
-        }
-    });
-    table(&mut w, tcode::HISTORYRECORD_TABLE, |_| {});
-    if !model.document_text.is_empty() {
-        write_document_text(&mut w, &model.document_text);
-    }
-    // The end mark holds the size of the whole file, itself included.
-    let size = w.out.len() as i64 + 4 + 8 + 8;
-    w.u32(tcode::ENDOFFILE);
-    w.i64(8);
-    w.i64(size);
-    w.out
 }
 
 fn metres_per(unit: u32) -> f64 {
