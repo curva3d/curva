@@ -287,126 +287,158 @@ impl Outlines {
         cache: &mut MeshCache,
     ) -> Self {
         let mut outlines = Self::default();
-        {
-            // A layer shows only with all its parents on (spec `sublayers.md` §1).
-            if object.hidden || !state.layer_shown(object.layer) {
-                return outlines;
-            }
-            let colour = layer.map_or(CURVE_COLOUR, |l| l.colour);
-            let locked = object.locked || state.layer_locked(object.layer);
-            let width = object.print_width.resolved(layer);
-            let dashes = object.linetype.resolved(layer).pattern();
-            // An instance draws its definition's objects, placed, all under its own id.
-            let parts: Vec<(Shape, u64)> = match &object.shape {
-                Shape::Instance(instance) => state
-                    .instance_shapes(instance)
-                    .into_iter()
-                    .enumerate()
-                    .map(|(index, (shape, _))| {
-                        (shape, INSTANCE_KEYS + (object.id << 12) + index as u64)
-                    })
-                    .collect(),
-                shape => vec![(shape.clone(), object.id)],
-            };
-            for (shape, key) in &parts {
-                // A body is meshed once: its triangles for shading, and its edges, each listed
-                // under the body's id, for wireframe, picking and snapping.
-                let mut kind = PickKind::Curve;
-                // A body's seams, by edge number, which shaded views leave out.
-                let mut seam_edges: Vec<usize> = Vec::new();
-                let pieces: Vec<(Curve, Option<usize>)> = match shape {
-                    Shape::Curve(curve) => {
-                        if matches!(curve, Curve::Point { .. }) {
-                            kind = PickKind::Point;
-                        }
-                        vec![(curve.clone(), None)]
+        // A layer shows only with all its parents on (spec `sublayers.md` §1).
+        if object.hidden || !state.layer_shown(object.layer) {
+            return outlines;
+        }
+        let look = Look {
+            colour: layer.map_or(CURVE_COLOUR, |l| l.colour),
+            locked: object.locked || state.layer_locked(object.layer),
+            width: object.print_width.resolved(layer),
+            dashes: object.linetype.resolved(layer).pattern(),
+        };
+        // An instance draws its definition's objects, placed, all under its own id.
+        let parts: Vec<(Shape, u64)> = match &object.shape {
+            Shape::Instance(instance) => state
+                .instance_shapes(instance)
+                .into_iter()
+                .enumerate()
+                .map(|(index, (shape, _))| {
+                    (shape, INSTANCE_KEYS + (object.id << 12) + index as u64)
+                })
+                .collect(),
+            shape => vec![(shape.clone(), object.id)],
+        };
+        for (shape, key) in &parts {
+            // A body is meshed once: its triangles for shading, and its edges, each listed
+            // under the body's id, for wireframe, picking and snapping.
+            let mut kind = PickKind::Curve;
+            // A body's seams, by edge number, which shaded views leave out.
+            let mut seam_edges: Vec<usize> = Vec::new();
+            let pieces: Vec<(Curve, Option<usize>)> = match shape {
+                Shape::Curve(curve) => {
+                    if matches!(curve, Curve::Point { .. }) {
+                        kind = PickKind::Point;
                     }
-                    Shape::Body(body) => {
-                        let Some((mesh, solid)) = cache.mesh(*key, body) else {
-                            continue;
-                        };
-                        kind = if solid {
-                            PickKind::Solid
-                        } else {
-                            PickKind::Surface
-                        };
-                        seam_edges = mesh
-                            .edge_ids
-                            .iter()
-                            .zip(&mesh.seams)
-                            .filter_map(|(id, seam)| seam.then_some(*id))
-                            .collect();
-                        let edges = mesh
-                            .edges
-                            .iter()
-                            .zip(&mesh.edge_ids)
-                            .filter_map(|(run, id)| match run.len() {
-                                0 | 1 => None,
-                                2 => Curve::line(run[0], run[1]).ok().map(|c| (c, Some(*id))),
-                                _ => Curve::polyline(run.clone(), false)
-                                    .ok()
-                                    .map(|c| (c, Some(*id))),
-                            })
-                            .collect();
-                        outlines.faces.push(Faces {
-                            id: object.id,
-                            colour,
-                            locked,
-                            around: mesh_box(&mesh),
-                            mesh,
-                        });
-                        edges
-                    }
-                    // Instances inside definitions are opened before this.
-                    Shape::Instance(_) => continue,
-                    // Annotation: its letters and arrowheads filled for shading, and its lines
-                    // and outlines for wireframe, picking and snapping.
-                    Shape::Annotation(annotation) => {
-                        if matches!(annotation, curva_document::annotation::Annotation::Dot(_)) {
-                            kind = PickKind::Point;
-                        }
-                        // Fields are worked out for showing; the object keeps them as typed.
-                        let annotation =
-                            &shown_annotation(annotation, state, object.space, &cache.fields);
-                        let drawing = curva_document::shape::annotation_drawing(
-                            annotation,
-                            state,
-                            object.space,
-                        );
-                        if let Some(mesh) = cache.annotation_mesh(*key, &drawing.fills) {
-                            outlines.faces.push(Faces {
-                                id: object.id,
-                                colour,
-                                locked,
-                                around: mesh_box(&mesh),
-                                mesh,
-                            });
-                        }
-                        drawing.lines.into_iter().map(|c| (c, None)).collect()
-                    }
-                };
-                for (outline, edge) in pieces {
-                    let Ok(points) = outline.sample() else {
+                    vec![(curve.clone(), None)]
+                }
+                Shape::Body(body) => {
+                    let Some((mesh, solid)) = cache.mesh(*key, body) else {
                         continue;
                     };
-                    outlines.sites.extend(snap::sites_of(&outline, &points));
-                    let first = points.first().copied().unwrap_or_default();
-                    let around = snap::box_around(&points).unwrap_or((first, first));
-                    outlines.boxes.push(around);
-                    outlines.colours.push(colour);
-                    outlines.locked.push(locked);
-                    outlines.widths.push(width);
-                    outlines.dashes.push(dashes);
-                    outlines.on_faces.push(shape.body().is_some());
-                    outlines
-                        .seams
-                        .push(edge.is_some_and(|e| seam_edges.contains(&e)));
-                    outlines.edge_of.push(edge);
-                    outlines.kinds.push(kind);
-                    outlines.objects.push((object.id, points));
+                    kind = if solid {
+                        PickKind::Solid
+                    } else {
+                        PickKind::Surface
+                    };
+                    seam_edges = mesh
+                        .edge_ids
+                        .iter()
+                        .zip(&mesh.seams)
+                        .filter_map(|(id, seam)| seam.then_some(*id))
+                        .collect();
+                    let edges = edge_curves(&mesh);
+                    outlines.push_faces(object.id, look, mesh);
+                    edges
                 }
-            }
+                // Instances inside definitions are opened before this.
+                Shape::Instance(_) => continue,
+                Shape::Annotation(annotation) => {
+                    if matches!(annotation, curva_document::annotation::Annotation::Dot(_)) {
+                        kind = PickKind::Point;
+                    }
+                    outlines.annotation_lines(state, object, *key, annotation, look, cache)
+                }
+            };
+            let on_faces = shape.body().is_some();
+            outlines.push_pieces(object.id, pieces, look, kind, &seam_edges, on_faces);
         }
         outlines
     }
+
+    /// A body's or annotation's filled faces, for shading.
+    fn push_faces(&mut self, id: u64, look: Look, mesh: std::sync::Arc<curva_kernel::BodyMesh>) {
+        self.faces.push(Faces {
+            id,
+            colour: look.colour,
+            locked: look.locked,
+            around: mesh_box(&mesh),
+            mesh,
+        });
+    }
+
+    /// Annotation: its letters and arrowheads filled for shading, and its lines and outlines,
+    /// returned, for wireframe, picking and snapping.
+    fn annotation_lines(
+        &mut self,
+        state: &State,
+        object: &Object,
+        key: u64,
+        annotation: &curva_document::annotation::Annotation,
+        look: Look,
+        cache: &mut MeshCache,
+    ) -> Vec<(Curve, Option<usize>)> {
+        // Fields are worked out for showing; the object keeps them as typed.
+        let annotation = &shown_annotation(annotation, state, object.space, &cache.fields);
+        let drawing = curva_document::shape::annotation_drawing(annotation, state, object.space);
+        if let Some(mesh) = cache.annotation_mesh(key, &drawing.fills) {
+            self.push_faces(object.id, look, mesh);
+        }
+        drawing.lines.into_iter().map(|c| (c, None)).collect()
+    }
+
+    /// Samples each piece of an object and lists it, with its look, box and snap places.
+    fn push_pieces(
+        &mut self,
+        id: u64,
+        pieces: Vec<(Curve, Option<usize>)>,
+        look: Look,
+        kind: PickKind,
+        seam_edges: &[usize],
+        on_faces: bool,
+    ) {
+        for (outline, edge) in pieces {
+            let Ok(points) = outline.sample() else {
+                continue;
+            };
+            self.sites.extend(snap::sites_of(&outline, &points));
+            let first = points.first().copied().unwrap_or_default();
+            let around = snap::box_around(&points).unwrap_or((first, first));
+            self.boxes.push(around);
+            self.colours.push(look.colour);
+            self.locked.push(look.locked);
+            self.widths.push(look.width);
+            self.dashes.push(look.dashes);
+            self.on_faces.push(on_faces);
+            self.seams
+                .push(edge.is_some_and(|e| seam_edges.contains(&e)));
+            self.edge_of.push(edge);
+            self.kinds.push(kind);
+            self.objects.push((id, points));
+        }
+    }
+}
+
+/// How an object's pieces draw: its colour, whether it is locked, its width and its dashes.
+#[derive(Clone, Copy)]
+struct Look {
+    colour: [f32; 3],
+    locked: bool,
+    width: Option<f64>,
+    dashes: &'static [f64],
+}
+
+/// A mesh's edges as curves, each with its number among the body's edges.
+fn edge_curves(mesh: &curva_kernel::BodyMesh) -> Vec<(Curve, Option<usize>)> {
+    mesh.edges
+        .iter()
+        .zip(&mesh.edge_ids)
+        .filter_map(|(run, id)| match run.len() {
+            0 | 1 => None,
+            2 => Curve::line(run[0], run[1]).ok().map(|c| (c, Some(*id))),
+            _ => Curve::polyline(run.clone(), false)
+                .ok()
+                .map(|c| (c, Some(*id))),
+        })
+        .collect()
 }
