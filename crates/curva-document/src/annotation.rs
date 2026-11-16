@@ -19,6 +19,8 @@ pub enum Annotation {
     Angle(AngleDimension),
     /// An ordinate dimension: a point's X or Y from a base point.
     Ordinate(OrdinateDimension),
+    /// An arc length dimension, as AutoCAD's.
+    ArcLength(ArcLengthDimension),
     /// A leader: an arrow and line to a note (spec `annotation.md` §4).
     Leader(Leader),
     /// A dot: a label at a point that keeps its size on screen (spec `annotation.md` §4).
@@ -41,6 +43,7 @@ impl Annotation {
             Self::Radial(r) => Self::Radial(r.transformed(&|p| plus(p, by, 1.0), &|d| d)),
             Self::Angle(a) => Self::Angle(a.transformed(&|p| plus(p, by, 1.0), &|d| d)),
             Self::Ordinate(o) => Self::Ordinate(o.transformed(&|p| plus(p, by, 1.0), &|d| d)),
+            Self::ArcLength(a) => Self::ArcLength(a.transformed(&|p| plus(p, by, 1.0), &|d| d)),
             Self::Leader(l) => Self::Leader(l.transformed(&|p| plus(p, by, 1.0), &|d| d)),
             Self::Dot(d) => Self::Dot(Dot {
                 at: plus(d.at, by, 1.0),
@@ -68,6 +71,7 @@ impl Annotation {
             Self::Radial(r) => Self::Radial(r.transformed(&point, &direction)),
             Self::Angle(a) => Self::Angle(a.transformed(&point, &direction)),
             Self::Ordinate(o) => Self::Ordinate(o.transformed(&point, &direction)),
+            Self::ArcLength(a) => Self::ArcLength(a.transformed(&point, &direction)),
             Self::Leader(l) => Self::Leader(l.transformed(&point, &direction)),
             Self::Dot(d) => Self::Dot(Dot {
                 at: point(d.at),
@@ -102,6 +106,7 @@ impl Annotation {
             Self::Radial(r) => Self::Radial(r.transformed(&point, &direction)),
             Self::Angle(a) => Self::Angle(a.transformed(&point, &direction)),
             Self::Ordinate(o) => Self::Ordinate(o.transformed(&point, &direction)),
+            Self::ArcLength(a) => Self::ArcLength(a.transformed(&point, &direction)),
             Self::Leader(l) => Self::Leader(l.transformed(&point, &direction)),
             Self::Dot(d) => Self::Dot(Dot {
                 at: point(d.at),
@@ -139,6 +144,7 @@ impl Annotation {
             Self::Radial(r) => r.style,
             Self::Angle(a) => a.style,
             Self::Ordinate(o) => o.style,
+            Self::ArcLength(a) => a.style,
             Self::Leader(l) => l.style,
             Self::ScaleBar(b) => b.at.style,
             Self::Table(t) => t.at.style,
@@ -154,6 +160,7 @@ impl Annotation {
             Self::Radial(r) => r.style = style,
             Self::Angle(a) => a.style = style,
             Self::Ordinate(o) => o.style = style,
+            Self::ArcLength(a) => a.style = style,
             Self::Leader(l) => l.style = style,
             Self::ScaleBar(b) => b.at.style = style,
             Self::Table(t) => t.at.style = style,
@@ -175,6 +182,7 @@ impl Annotation {
             Self::Radial(r) => Some(&r.text),
             Self::Angle(a) => Some(&a.text),
             Self::Ordinate(o) => Some(&o.text),
+            Self::ArcLength(a) => Some(&a.text),
         }
     }
 
@@ -193,6 +201,7 @@ impl Annotation {
             Self::Radial(r) => r.text = text,
             Self::Angle(a) => a.text = text,
             Self::Ordinate(o) => o.text = text,
+            Self::ArcLength(a) => a.text = text,
         }
         changed
     }
@@ -630,6 +639,181 @@ impl AngleDimension {
             x: self.x,
             y: self.y,
             height: style.text_height * scale,
+            font: style.font.clone(),
+            align: TextAlign::Centre,
+            style: self.style,
+        };
+        lines.retain(|(a, b)| a != b);
+        DimensionParts {
+            lines,
+            arrows,
+            text,
+        }
+    }
+}
+
+/// An arc length dimension, as AutoCAD's (`DIMARC`; Rhino 8 has none): the length along an arc,
+/// drawn as a dimension arc about the same centre with arrowheads, extension lines from the
+/// arc's ends, and its value under the arc symbol.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ArcLengthDimension {
+    /// The arc's centre.
+    pub centre: Point,
+    /// Where the measured arc starts.
+    pub start: Point,
+    /// Where it ends: it runs counter-clockwise on the plane from `start` to here.
+    pub end: Point,
+    /// A point the dimension arc passes through.
+    pub arc_at: Point,
+    /// The plane it lies on: its X direction.
+    pub x: Point,
+    /// The plane's Y direction.
+    pub y: Point,
+    /// The annotation style it takes its looks from, by id.
+    #[serde(default)]
+    pub style: u64,
+    /// Typed text in place of the value; `<>` stands for the value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+}
+
+impl ArcLengthDimension {
+    /// The angle on the plane, in radians from its X, of a point seen from the centre.
+    fn bearing(&self, p: Point) -> f64 {
+        let d: Point = std::array::from_fn(|i| p[i] - self.centre[i]);
+        dot(d, self.y).atan2(dot(d, self.x))
+    }
+
+    /// Where the arc starts and how far it turns (radians, counter-clockwise on the plane).
+    fn sweep(&self) -> (f64, f64) {
+        use std::f64::consts::TAU;
+        let from = self.bearing(self.start);
+        let span = (self.bearing(self.end) - from).rem_euclid(TAU);
+        (from, if span < 1e-12 { TAU } else { span })
+    }
+
+    fn radius_to(&self, p: Point) -> f64 {
+        let d: Point = std::array::from_fn(|i| p[i] - self.centre[i]);
+        dot(d, d).sqrt()
+    }
+
+    /// The length measured: the arc's radius times its turn.
+    #[must_use]
+    pub fn value(&self) -> f64 {
+        self.radius_to(self.start) * self.sweep().1
+    }
+
+    /// The measured arc's turn, in radians.
+    #[must_use]
+    pub fn turn(&self) -> f64 {
+        self.sweep().1
+    }
+
+    fn transformed(
+        &self,
+        point: &dyn Fn(Point) -> Point,
+        direction: &dyn Fn(Point) -> Point,
+    ) -> Self {
+        Self {
+            centre: point(self.centre),
+            start: point(self.start),
+            end: point(self.end),
+            arc_at: point(self.arc_at),
+            x: direction(self.x),
+            y: direction(self.y),
+            ..self.clone()
+        }
+    }
+
+    /// Its dimension arc (as short lines), extension lines, arrowheads, arc symbol and text,
+    /// with sizes from `style` scaled by `scale`. As AutoCAD draws it, the extension lines run
+    /// parallel (along the arc's middle direction) for a turn under a quarter, and out from the
+    /// centre otherwise.
+    #[must_use]
+    pub fn parts(&self, style: &AnnotationStyle, scale: f64, shown: String) -> DimensionParts {
+        use std::f64::consts::FRAC_PI_2;
+        let (start, span) = self.sweep();
+        let r = self.radius_to(self.start);
+        let reach = self.radius_to(self.arc_at);
+        let along = |angle: f64| -> Point {
+            let (s, c) = angle.sin_cos();
+            std::array::from_fn(|i| self.x[i] * c + self.y[i] * s)
+        };
+        let at = |radius: f64, angle: f64| plus(self.centre, along(angle), radius);
+        let middle = start + span / 2.0;
+        let sign = if reach >= r { 1.0 } else { -1.0 };
+        let (offset, extension) = (
+            style.extension_offset() * scale,
+            style.extension_extension() * scale,
+        );
+        // Each end's extension line, from the arc's end towards the circle the dimension arc
+        // lies on, and how far along it that circle is met.
+        let mut lines: Vec<(Point, Point)> = Vec::new();
+        let mut ends = [start, start + span];
+        for end in &mut ends {
+            let foot = at(r, *end);
+            let way = along(if span < FRAC_PI_2 { middle } else { *end }).map(|c| c * sign);
+            let d: Point = std::array::from_fn(|i| foot[i] - self.centre[i]);
+            let b = dot(d, way);
+            let t = -b + sign * (b * b - (dot(d, d) - reach * reach)).max(0.0).sqrt();
+            let meet = plus(foot, way, t);
+            if t > offset {
+                lines.push((plus(foot, way, offset), plus(meet, way, extension)));
+            }
+            *end = self.bearing(meet);
+        }
+        // The dimension arc between where the extension lines meet it.
+        let from = ends[0];
+        let span = (ends[1] - from).rem_euclid(std::f64::consts::TAU);
+        let span = if span < 1e-12 { self.sweep().1 } else { span };
+        let steps = 32;
+        lines.extend((0..steps).map(|k| {
+            #[allow(clippy::cast_precision_loss)]
+            let (t0, t1) = (k as f64 / steps as f64, (k + 1) as f64 / steps as f64);
+            (at(reach, from + span * t0), at(reach, from + span * t1))
+        }));
+        let start = from;
+        let arrow = style.arrow_size() * scale;
+        let normal = cross(self.x, self.y);
+        let head = |tip: Point, tangent: Point| {
+            let across = unit(cross(normal, tangent));
+            let base = plus(tip, tangent, arrow);
+            [
+                tip,
+                plus(base, across, arrow / 6.0),
+                plus(base, across, -arrow / 6.0),
+            ]
+        };
+        let tangent_at = |angle: f64| along(angle + FRAC_PI_2);
+        let arrows = vec![
+            head(at(reach, start), tangent_at(start)),
+            head(
+                at(reach, start + span),
+                tangent_at(start + span).map(|v| -v),
+            ),
+        ];
+        let height = style.text_height * scale;
+        let origin = plus(at(reach, middle), along(middle), style.text_gap() * scale);
+        // The arc symbol over the value, as AutoCAD draws it with the symbol above.
+        let symbol_centre = plus(origin, self.y, height * 1.1);
+        let half = height * 0.6;
+        for k in 0..8 {
+            #[allow(clippy::cast_precision_loss)]
+            let angle = |k: usize| std::f64::consts::PI * k as f64 / 8.0;
+            let point = |a: f64| {
+                let (s, c) = a.sin_cos();
+                std::array::from_fn(|i| {
+                    symbol_centre[i] + half * c * self.x[i] + half * 0.6 * s * self.y[i]
+                })
+            };
+            lines.push((point(angle(k)), point(angle(k + 1))));
+        }
+        let text = Text {
+            content: shown,
+            origin,
+            x: self.x,
+            y: self.y,
+            height,
             font: style.font.clone(),
             align: TextAlign::Centre,
             style: self.style,
@@ -1605,5 +1789,71 @@ mod tests {
         );
         doc.remove(&[id]);
         assert!(doc.delete_annotation_style(copy));
+    }
+
+    /// An arc of radius 10 about the origin from `from` to `to` degrees, its dimension arc at
+    /// radius `at`, through the middle.
+    fn arc_length(from: f64, to: f64, at: f64) -> ArcLengthDimension {
+        let on = |r: f64, degrees: f64| {
+            let (s, c) = degrees.to_radians().sin_cos();
+            [r * c, r * s, 0.0]
+        };
+        ArcLengthDimension {
+            centre: [0.0; 3],
+            start: on(10.0, from),
+            end: on(10.0, to),
+            arc_at: on(at, (from + to) / 2.0),
+            x: [1.0, 0.0, 0.0],
+            y: [0.0, 1.0, 0.0],
+            style: 0,
+            text: None,
+        }
+    }
+
+    #[test]
+    fn an_arc_length_dimension_measures_along_the_arc_counter_clockwise() {
+        use std::f64::consts::PI;
+        let half = arc_length(0.0, 180.0, 15.0);
+        assert!((half.value() - 10.0 * PI).abs() < 1e-9);
+        // From 300° on to 60°: a third of a turn, past the X axis.
+        let third = arc_length(300.0, 420.0, 15.0);
+        assert!((third.value() - 10.0 * 2.0 * PI / 3.0).abs() < 1e-9);
+        // Moved and turned, it measures the same.
+        let turned = Annotation::ArcLength(third.clone()).mapped(&Similarity::rotation(
+            [5.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0],
+            1.0,
+        ));
+        let Annotation::ArcLength(turned) = turned else {
+            panic!("not an arc length dimension");
+        };
+        assert!((turned.value() - third.value()).abs() < 1e-9);
+    }
+
+    #[test]
+    fn an_arc_length_dimensions_extension_lines_are_parallel_under_a_quarter_turn() {
+        let style = &standard_styles(false)[0];
+        let offset = style.extension_offset();
+        // A wide arc: the extension lines run out from the centre.
+        let wide = arc_length(0.0, 120.0, 15.0).parts(style, 1.0, "20.94".to_owned());
+        let first = wide.lines[0];
+        assert!((first.0[0] - (10.0 + offset)).abs() < 1e-9 && first.0[1].abs() < 1e-9);
+        assert!(first.1[1].abs() < 1e-9, "radial along X: {first:?}");
+        // A narrow arc: both run along its middle direction, here straight up.
+        let narrow = arc_length(60.0, 120.0, 15.0).parts(style, 1.0, "10.47".to_owned());
+        for (a, b) in &narrow.lines[..2] {
+            assert!((a[0] - b[0]).abs() < 1e-9, "parallel to Y: {a:?} {b:?}");
+            assert!(b[1] > a[1]);
+        }
+        // The arrows sit on the dimension arc, the text beyond its middle under the symbol.
+        for arrow in &narrow.arrows {
+            assert!((arrow[0][0].hypot(arrow[0][1]) - 15.0).abs() < 1e-9);
+        }
+        assert!(narrow.text.origin[1] > 15.0);
+        assert_eq!(narrow.text.content, "10.47");
+        // A dimension arc inside the arc points its extension lines inwards.
+        let inside = arc_length(0.0, 120.0, 6.0).parts(style, 1.0, String::new());
+        let (a, b) = inside.lines[0];
+        assert!(b[0] < a[0]);
     }
 }

@@ -121,7 +121,8 @@ What does not yet, as of 15 November 2026, to close before 0.4.3:
   are not carried (Curva draws them at their default).
 - AutoCAD's angles by three points come in as angle dimensions, as Rhino 8 reads them. A jogged
   radius comes in as a plain radius dimension, without its jog (Rhino 8 skips it). Arc length
-  dimensions are left out: Curva has none yet.
+  dimensions (ARC_DIMENSION) cross both ways on the world's plane; a partial one's leader is not
+  carried. Rhino 8 skips them.
 - Viewports: the layers hidden in a detail only cross as the viewport's frozen layers; plot settings
   are not carried. Rhino's own DXF writes a viewport's view height against AutoCAD's reference,
   so its details read at an inverted scale.

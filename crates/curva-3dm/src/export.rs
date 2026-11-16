@@ -1459,18 +1459,43 @@ fn outline(frame: &Curve) -> Result<model::NurbsCurve, String> {
     Ok(boundary)
 }
 
-/// A scale bar or table as the plain objects it draws, for a file that has neither: its lines,
-/// its filled blocks as solid hatches, and its words as notes, on its layer and sheet and in a
-/// group of their own. `None` for any other object.
+/// A scale bar, table or arc length dimension as the plain objects it draws, for a file that has
+/// none (Rhino has no arc length dimension): its lines, its filled blocks and arrowheads as solid
+/// hatches, and its words as notes, on its layer and sheet and in a group of their own. `None`
+/// for any other object.
 fn plain_parts(o: &Object, state: &State, group: u64, before: usize) -> Option<Vec<Object>> {
     use curva_document::annotation::{Annotation, Hatch};
-    let (parts, place) = match &o.shape {
+    use curva_document::sheet::SheetParts;
+    let (parts, origin, x, y) = match &o.shape {
         Shape::Annotation(Annotation::ScaleBar(bar)) => (
             curva_document::sheet::scale_bar_parts(bar, state, o.space),
-            &bar.at,
+            bar.at.origin,
+            bar.at.x,
+            bar.at.y,
         ),
-        Shape::Annotation(Annotation::Table(table)) => {
-            (curva_document::sheet::table_parts(table, state), &table.at)
+        Shape::Annotation(Annotation::Table(table)) => (
+            curva_document::sheet::table_parts(table, state),
+            table.at.origin,
+            table.at.x,
+            table.at.y,
+        ),
+        Shape::Annotation(a @ Annotation::ArcLength(d)) => {
+            let drawn = curva_document::shape::annotation_parts(a, state, o.space)?;
+            let parts = SheetParts {
+                lines: drawn
+                    .lines
+                    .iter()
+                    .filter_map(|(s, e)| Curve::line(*s, *e).ok())
+                    .collect(),
+                fills: drawn
+                    .arrows
+                    .iter()
+                    .filter_map(|head| Curve::polyline(head.to_vec(), true).ok())
+                    .map(|outline| vec![outline])
+                    .collect(),
+                texts: vec![drawn.text],
+            };
+            (parts, d.centre, d.x, d.y)
         }
         _ => return None,
     };
@@ -1484,9 +1509,9 @@ fn plain_parts(o: &Object, state: &State, group: u64, before: usize) -> Option<V
                 pattern: "Solid".to_owned(),
                 scale: 1.0,
                 rotation: 0.0,
-                base: place.origin,
-                x: place.x,
-                y: place.y,
+                base: origin,
+                x,
+                y,
             }))
         }))
         .chain(
