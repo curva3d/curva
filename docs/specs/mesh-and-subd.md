@@ -14,7 +14,7 @@ command; the command names below are the plan, checked against Rhino at that poi
 |---|---|
 | Your Rhino files' meshes and SubDs open in Curva, look right, and save back | Curva's own mesh and SubD objects; `.3dm` reading and writing; OBJ, STL and PLY too |
 | SubD modelling as in Rhino: primitives, push and pull vertices, edges and faces, creases | Curva keeps the cage (the coarse control net you edit); subdiv-kernels works out the smooth surface |
-| Flat or smooth SubD display is a command like any other (typed, in the menu, undoable, usable by the assistant), with Tab as its shortcut | `SubDDisplayToggle` (§1, Stage A) |
+| Flat or smooth SubD display is a command like any other (typed, in the menu, undoable, usable by the assistant), with Tab as its shortcut | `SubDDisplayToggle` (§1, Stage B) |
 | QuadRemesh: a mesh, scan or NURBS object turned into a clean quad SubD or mesh, with Rhino's options | quadrs, behind Curva's interface, with what Rhino has and quadrs lacks added by Curva (§3.5) |
 | SubD turns into NURBS as Rhino does: exact where the net is regular, close-fitting near star points | subdiv-kernels' exact patches become solidcore surfaces through Curva's kernel |
 | Mesh booleans that do not crack, even on messy downloaded or scanned meshes | manifold-rust, with its robust engine for broken meshes |
@@ -22,33 +22,46 @@ command; the command names below are the plan, checked against Rhino at that poi
 
 ## 1. What you get, in stages
 
-Each stage ends with something you can open and try. The order is your decision (§9, decision 2);
-this is the recommended one.
+Each stage ends with something you can open and try. Mesh tools come first (owner's choice,
+17 November 2026, §9 decision 2).
 
-### Stage A: Rhino's meshes and SubDs come in (first slice)
+### Stage A: meshes and mesh tools (first slice)
 
-- Meshes and SubDs are objects like any other: on layers, with colour, name, locking, hiding,
-  groups, copy, move, rotate, scale, mirror, array, undo.
-- **Files:** `.3dm` meshes and SubDs read and written (Rhino 8 opens Curva's file with the same
-  shape). OBJ, STL and PLY open, import and export.
-- **Display:** meshes shaded with their edges; SubDs shaded smooth with their crease edges and
-  outline.
-- **Commands:** `What` and `Properties` describe them (vertex, face and edge counts, closed or not);
-  `Explode` and `Join` for meshes.
+- Meshes are objects like any other: on layers, with colour, name, locking, hiding, groups, copy,
+  move, rotate, scale, mirror, array, undo.
+- **Display:** meshes shaded with their edges and vertex colours.
+- **Making meshes:** **Mesh** (a NURBS surface or solid to a mesh, with Rhino's simple density
+  slider first; the detailed controls later) and the mesh primitives (MeshBox, MeshSphere,
+  MeshCylinder, MeshCone, MeshPlane, MeshTorus).
+- **MeshBooleanUnion, MeshBooleanDifference, MeshBooleanIntersection, MeshBooleanSplit.**
+- **Repair:** `Check` on meshes, MeshRepair's main fixes (unify normals, fill holes, remove
+  degenerate faces, weld, rebuild normals), **ReduceMesh**, **TriangulateMesh**,
+  **QuadrangulateMesh**, **ExtractMeshFaces**, **MeshToNURB**, `Join` and `Explode`.
+- `What` and `Properties` describe meshes (vertex, face and edge counts, closed or not).
+- **Files, as far as mesh tools need them:** STL and OBJ in and out (for 3D printing, scans and
+  downloads), PLY in and out (scans with colours), and `.3dm` meshes read and written, so Rhino's
+  meshes come in and Curva's go back to Rhino.
+
+### Stage B: SubDs come in
+
+- SubDs are objects like any other, shown smooth with their crease edges and outline.
+- **Files:** `.3dm` SubDs read and written (Rhino 8 opens Curva's file with the same shape); SubDs
+  written to OBJ as their cage or as a mesh, and to STL and PLY as a mesh.
 - **SubDDisplayToggle** switches SubDs between smooth and flat, as a command like any other: typed,
   in the menu and the command list, undoable, saved in the file with the object, and usable by the
   assistant. **Tab** is its shortcut, as in Rhino. Which SubDs it switches (the selected ones, or
   all when none is selected) and its exact name are taken from Rhino first, as for every command.
   It changes how a SubD shows, not its shape, so it needs no preview.
+- `What` and `Properties` describe SubDs; **ToSubD** (a mesh to a SubD).
 
-### Stage B: SubD modelling
+### Stage C: SubD modelling
 
 - **Primitives:** SubDBox, SubDSphere, SubDCylinder, SubDCone, SubDTorus, SubDPlane, with Rhino's
   options (faces in each direction, corner or smooth edges).
 - **Editing the cage:** pick vertices, edges and faces (Ctrl+Shift-click, as in Rhino) and move,
   turn and scale them with the gumball, with the live preview every command has. Extrude faces with
   the gumball (Ctrl-drag, as in Rhino).
-- **ToSubD** (from a mesh), **ToNURBS** (from a SubD, §3.3).
+- **ToNURBS** (from a SubD, §3.3).
 - **Crease** and **RemoveCrease**, **InsertEdge**, **Bridge**, **Fill**, **Stitch**, **Weld** and
   **Unweld** on SubD edges, **DeleteSubDFaces**.
 - **QuadRemesh** (§3.5): a mesh, SubD, surface or solid turned into an even grid of quads, as a SubD
@@ -56,16 +69,6 @@ this is the recommended one.
   (smaller quads where the shape curves), hard edges kept, guide curves the quads follow, symmetry,
   and keeping the original. It belongs in this stage because its main use is turning scans,
   imported meshes and NURBS into SubDs you can then edit.
-
-### Stage C: mesh tools
-
-- **Mesh** (a NURBS surface or solid to a mesh, with Rhino's simple density slider first; the
-  detailed controls later) and the mesh primitives (MeshBox, MeshSphere, MeshCylinder, MeshCone,
-  MeshPlane, MeshTorus).
-- **MeshBooleanUnion, MeshBooleanDifference, MeshBooleanIntersection, MeshBooleanSplit.**
-- **Repair:** `Check` on meshes, MeshRepair's main fixes (unify normals, fill holes, remove
-  degenerate faces, weld, rebuild normals), **ReduceMesh**, **TriangulateMesh**,
-  **QuadrangulateMesh**, **ExtractMeshFaces**, **MeshToNURB**.
 
 ### Later stages (not planned in detail yet)
 
@@ -207,9 +210,9 @@ stream gives the viewport triangles, normals, edges and points; the viewport dra
 | Vertex colours on meshes | Display | **Yes**, Stage A |
 | SubD smooth surface; flat when `SubDDisplayToggle` says so | Mesh stream makes the triangles; display draws | Included in the first issue |
 | SubD crease edges, borders and outline | Display's line drawer, from curves the mesh stream gives | Included in the first issue |
-| The cage, shown while a SubD is being edited, and picked vertices, edges and faces highlighted | Display | **Yes**, Stage B |
-| Picking vertices, edges and faces under the cursor | Display (picking is the viewport's) | **Yes**, Stage B |
-| Live redraw while dragging a cage point (the surface changes every frame) | Mesh stream recomputes positions only; display updates them in place | **Yes**, Stage B. Bevy redrew a changing 524,000-triangle SubD in 4 ms in the display stream's test |
+| The cage, shown while a SubD is being edited, and picked vertices, edges and faces highlighted | Display | **Yes**, Stage C |
+| Picking vertices, edges and faces under the cursor | Display (picking is the viewport's) | **Yes**, Stage C |
+| Live redraw while dragging a cage point (the surface changes every frame) | Mesh stream recomputes positions only; display updates them in place | **Yes**, Stage C. Bevy redrew a changing 524,000-triangle SubD in 4 ms in the display stream's test |
 | Textures on meshes | Display | Later |
 
 The display stream is midway through moving to Bevy (`display-on-bevy.md`). The issues will say
@@ -254,10 +257,10 @@ The mesh stream may add its own new files in shared crates and one-line registra
    features stream first, before Stage A.
 2. **Sub-object picking in commands** (picking vertices, edges and faces of a SubD for the gumball
    and for commands), in the command framework, if the framework cannot express it today. Before
-   Stage B.
+   Stage C.
 3. **Recipes for meshes** (history kinds such as "a mesh of that surface") in the document's history,
-   if they cannot be added as one-line entries. Stage C.
-4. **Anything ToNURBS needs from `curva-kernel`** that its public functions lack. Found in Stage B.
+   if they cannot be added as one-line entries. Stage A.
+4. **Anything ToNURBS needs from `curva-kernel`** that its public functions lack. Found in Stage C.
 
 **Needs display issues:** the items marked in §4.
 
@@ -276,7 +279,7 @@ The mesh stream may add its own new files in shared crates and one-line registra
 - **Rhino as the reference:** for each primitive and command, Rhino 8 makes the same object
   (through the Rhino connection already used for other goldens), and Curva's result is compared:
   counts, volumes, the smooth surface's points, ToNURBS's patch count and distance from Rhino's.
-  Near star points Rhino's exact rule may differ slightly from OpenSubdiv's; Stage B measures it
+  Near star points Rhino's exact rule may differ slightly from OpenSubdiv's; Stage C measures it
   and reports it to you with pictures if it shows.
 - **Files:** round trips (Curva → file → Curva identical) for every format; Rhino 8 opens Curva's
   `.3dm`, OBJ, STL and PLY files and reads the same counts and shape; Rhino 8's own files open in
@@ -321,14 +324,9 @@ graphics-card parts are switched off, so no second Bevy is built.
 - (c) Refuse it. manifold-rust cannot be used; mesh booleans would need another library (the ones
   decision 0032 dropped crack more often) or years of Curva's own work.
 
-**2. The order of the stages.**
-- **(a) Files first, then SubD modelling, then mesh tools (recommended).** Your own Rhino meshes and
-  SubDs show up in Curva first, which tests the objects, the display and the files early on real
-  models; SubD modelling, the bigger design tool, comes next.
-- (b) SubD modelling first. You can model SubDs sooner, but cannot bring in your existing ones
-  until after.
-- (c) Mesh tools first (Mesh from NURBS, booleans, repair). Useful for 3D printing and scans
-  sooner; SubD later.
+**2. The order of the stages: decided** (owner, 17 November 2026): mesh tools first (Mesh from
+NURBS, booleans, repair), with the files they need (STL, OBJ, PLY, `.3dm` meshes); then SubDs come
+in; then SubD modelling with QuadRemesh.
 
 **3. QuadRemesh: decided** (owner, 17 November 2026, decision 0033): in Stage B, on quadrs, with
 Curva adding Rhino's options on top. No well-maintained pure-Rust alternative exists (§3.5).
@@ -343,27 +341,28 @@ broken into issues of the same size when A ends.
 **Stage A**
 1. `crates/curva-mesh`: the mesh structure (vertices, n-gon faces, normals, UVs, colours, welded
    and unwelded edges), splitting n-gons into triangles, counts, volume, area, bounds. Tests.
-2. The SubD structure (cage, edge and vertex tags), and the subdiv-kernels interface: smooth
-   triangles at a chosen density, the precision measurement (§3.2). Tests on known answers and on
-   the regular-grid exactness.
-3. Features issue (§6.1) for the two shape kinds; once merged, `curva-document`'s mesh module:
-   mesh and SubD objects, `.curva` storage, transforms. Tests.
-4. Display issues (§4, Stage A rows). Meanwhile, triangles, edges and outlines handed to the
-   viewport in the form it asks for.
-5. `.3dm` meshes read and written, checked against Rhino 8 both ways.
-6. `.3dm` SubDs read and written, checked against Rhino 8 both ways.
-7. `curva-meshfiles`: OBJ read and write.
-8. STL and PLY read and write.
-9. `What`, `Properties`, `Join` and `Explode` for meshes; `SubDDisplayToggle` with Tab as its
-   shortcut (once the display can show flat SubDs). Pictures beside Rhino's for you.
+2. Features issue (§6.1) for the two shape kinds; once merged, `curva-document`'s mesh module:
+   mesh objects, `.curva` storage, transforms. Tests.
+3. Display issues (§4, Stage A rows). Meanwhile, triangles and edges handed to the viewport in the
+   form it asks for.
+4. `curva-meshfiles`: STL and OBJ read and write, so results can be checked in other programs
+   from the start.
+5. Mesh primitives; `What`, `Properties`, `Join` and `Explode` for meshes.
+6. **Mesh** from NURBS (the simple density slider).
+7. The manifold-rust interface and its licence entry (§8); MeshBooleanUnion, Difference,
+   Intersection, Split. Pictures beside Rhino's for you.
+8. `Check` and MeshRepair's main fixes.
+9. ReduceMesh; TriangulateMesh, QuadrangulateMesh, ExtractMeshFaces, MeshToNURB.
+10. PLY read and write; `.3dm` meshes read and written, checked against Rhino 8 both ways.
 
-**Stage B** (first issues): the six SubD primitives (one pull request for the shared part, one for
-the rest); ToSubD; sub-object picking (after its features and display issues); gumball editing of
-the cage with live redraw; Crease and RemoveCrease; InsertEdge; Bridge; Fill; Stitch, Weld, Unweld,
+**Stage B** (first issues): the SubD structure and the subdiv-kernels interface, with the precision
+measurement (§3.2) and the regular-grid exactness test; SubD objects in the document; `.3dm` SubDs
+read and written, checked against Rhino 8; SubD display issues; `SubDDisplayToggle` with Tab; ToSubD;
+SubDs out to OBJ, STL and PLY.
+
+**Stage C** (first issues): the six SubD primitives (one pull request for the shared part, one for
+the rest); sub-object picking (after its features and display issues); gumball editing of the cage
+with live redraw; Crease and RemoveCrease; InsertEdge; Bridge; Fill; Stitch, Weld, Unweld,
 DeleteSubDFaces; ToNURBS regular patches; ToNURBS around star points and creases; QuadRemesh in
 three pull requests: the quadrs interface and the basic command (target count, SubD or mesh out),
 checked against Rhino on the test models; hard edges and adaptive size; guide curves and symmetry.
-
-**Stage C** (first issues): the manifold-rust interface and its licence entry; MeshBoolean commands;
-Mesh from NURBS; mesh primitives; Check and MeshRepair; ReduceMesh; Triangulate, Quadrangulate,
-ExtractMeshFaces, MeshToNURB.

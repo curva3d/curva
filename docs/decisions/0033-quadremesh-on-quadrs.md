@@ -3,7 +3,7 @@
 **Status:** Decided by the owner in chat · 17 November 2026. Replaces the quad remeshing row of
 decision 0032 ("nothing for now").
 
-**What was decided.** QuadRemesh is an important command, so it comes with SubD modelling (stage B
+**What was decided.** QuadRemesh is an important command, so it comes with SubD modelling (stage C
 of `docs/specs/mesh-and-subd.md`) instead of waiting until someone asks. It is built on **quadrs**
 (MIT), pinned at 1.0.0, behind Curva's one mesh interface in `crates/curva-mesh`, like the other
 mesh libraries. What Rhino's QuadRemesh has and quadrs lacks (hard edges, guide curves, symmetry,

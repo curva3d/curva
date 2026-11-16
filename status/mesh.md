@@ -13,7 +13,9 @@ clipper2-rust, which manifold-rust needs (`cargo-deny` rejects it today; everyth
 the order of the stages; the plan as a whole.
 
 **Owner's changes (16 November 2026):** QuadRemesh is important and comes in Stage B, on quadrs
-(decision 0033, 17 November; no well-maintained pure-Rust alternative was found). Flat or smooth SubD display is a command like any other,
+(decision 0033, 17 November; no well-maintained pure-Rust alternative was found). Stage order
+(owner, 17 November): A meshes and mesh tools, B SubDs come in, C SubD modelling with QuadRemesh.
+Still open: the Boost licence, and approval of the plan. Flat or smooth SubD display is a command like any other,
 `SubDDisplayToggle`, with Tab as its shortcut.
 
 **Found on the way**
