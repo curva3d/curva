@@ -23,15 +23,15 @@ views, shaded details, and PNG output from the viewport. Work on files, commands
   splines. Rhino 8 reads Curva's ellipses with the same centre, radii and ends.
 - Merged (#211): DXF and DWG MLEADERs come in as leaders with their note. Rhino 8 skips MLEADERs, so it cannot
   check this.
-- In review (#210): a detail's hidden layers as the DXF and DWG viewport's frozen layers, both ways; a Rhino 8
+- Merged (#210): a detail's hidden layers as the DXF and DWG viewport's frozen layers, both ways; a Rhino 8
   file reads with the same layer hidden. Rhino reading Curva's layouts could not be checked: Rhino only brings in
   layouts when it opens a DXF, which closes a scripted Rhino slot.
-- In review (#212): `.3dm` Rhino 5 annotation (notes, linear, aligned, radius, diameter and angle dimensions,
+- Merged (#212): `.3dm` Rhino 5 annotation (notes, linear, aligned, radius, diameter and angle dimensions,
   leaders), matched to what Rhino 8 reads back from a Rhino 5 file. Rhino 5's style table is still not read.
 - In review (#214): DXF and DWG objects' user text both ways (Rhino's XDATA), and block attributes read as Rhino
   reads them (user text on the instance, notes where shown). Rhino 8 reads Curva's user text.
 
-**Milestone 3, point 9:** in review (#213): `HatchPatterns` loads a `.pat` file's patterns into the model
+**Milestone 3, point 9:** merged (#213): `HatchPatterns` loads a `.pat` file's patterns into the model
 (`;%UNITS=INCH` files turned into millimetres).
 
 **Next (features):** the remaining non-display gaps (a Rhino note's own style written back as its override,
