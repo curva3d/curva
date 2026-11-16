@@ -12,6 +12,8 @@ use curva_kernel::{Curve, Point};
 const PROJECTION: &str = "Projection";
 const HIDDEN: &str = "HiddenLines";
 const TANGENTS: &str = "TangentEdges";
+const GROUP: &str = "GroupOutput";
+const SOURCE_LAYERS: &str = "MaintainSourceLayers";
 
 /// Where the drawing is seen from.
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -157,6 +159,10 @@ pub struct Make2D {
     projection: Projection,
     without_hidden: bool,
     tangent_edges: bool,
+    /// Whether the drawing's curves go into one group.
+    group: bool,
+    /// Whether each curve goes on its source's layer tree, repeated under Make2D's layers.
+    source_layers: bool,
 }
 
 fn cross(a: Point, b: Point) -> Point {
@@ -189,6 +195,10 @@ fn placed(curve: &Curve, shift: [f64; 2], place: &Placer) -> Option<Curve> {
         .ok()
 }
 
+fn yes(on: bool) -> &'static str {
+    if on { "Yes" } else { "No" }
+}
+
 /// The layer at `path` (`Make2D::Hidden::Curves`), made with its parents if missing; new hidden
 /// layers draw dashed.
 fn layer_named(doc: &mut Document, path: &str, hidden: bool) -> u64 {
@@ -203,17 +213,13 @@ fn layer_named(doc: &mut Document, path: &str, hidden: bool) -> u64 {
 impl Make2D {
     fn ask(&self) -> Step {
         Step::Ask(Request {
-            options: vec![PROJECTION, HIDDEN, TANGENTS],
+            options: vec![PROJECTION, HIDDEN, TANGENTS, GROUP, SOURCE_LAYERS],
             option_labels: vec![
                 format!("{PROJECTION}={}", self.projection.name()),
-                format!(
-                    "{HIDDEN}={}",
-                    if self.without_hidden { "No" } else { "Yes" }
-                ),
-                format!(
-                    "{TANGENTS}={}",
-                    if self.tangent_edges { "Yes" } else { "No" }
-                ),
+                format!("{HIDDEN}={}", yes(!self.without_hidden)),
+                format!("{TANGENTS}={}", yes(self.tangent_edges)),
+                format!("{GROUP}={}", yes(self.group)),
+                format!("{SOURCE_LAYERS}={}", yes(self.source_layers)),
             ],
             ..Request::new("prompt.make2d.objects", Kind::Objects)
         })
@@ -241,11 +247,25 @@ impl Make2D {
     }
 
     fn make(&self, doc: &mut Document, ids: &[u64]) -> Step {
-        let bodies: Vec<_> = bodies_of(doc, ids).into_iter().map(|(_, b)| b).collect();
-        let curves: Vec<_> = curves_of(doc, ids).into_iter().map(|(_, c)| c).collect();
+        let (body_ids, bodies): (Vec<u64>, Vec<_>) = bodies_of(doc, ids).into_iter().unzip();
+        let (curve_ids, curves): (Vec<u64>, Vec<_>) = curves_of(doc, ids).into_iter().unzip();
         if bodies.is_empty() && curves.is_empty() {
             return Step::Failed(Message::new("error.make2d_nothing"));
         }
+        // Each input's layer path, in the order the drawn lines name their sources.
+        let source_layers: Vec<String> = body_ids
+            .iter()
+            .chain(&curve_ids)
+            .map(|id| {
+                let layer = doc
+                    .state()
+                    .objects
+                    .iter()
+                    .find(|o| o.id == *id)
+                    .map_or(0, |o| o.layer);
+                doc.state().layer_path(layer)
+            })
+            .collect();
         let options = Options {
             tangent_edges: self.tangent_edges,
         };
@@ -291,7 +311,7 @@ impl Make2D {
                 (vec![(lines, shift)], place)
             }
         };
-        let mut made = 0;
+        let mut made: Vec<u64> = Vec::new();
         for (line, shift) in drawings
             .into_iter()
             .flat_map(|(lines, shift)| lines.into_iter().map(move |l| (l, shift)))
@@ -307,12 +327,25 @@ impl Make2D {
                 (false, LineKind::Silhouette) => "Make2D::Hidden::Silhouettes",
                 (false, LineKind::Tangent) => "Make2D::Hidden::Tangents",
             };
-            let layer = layer_named(doc, name, !line.visible);
+            // With source layers kept, the source's layer tree is repeated under Make2D's.
+            let path = match source_layers.get(line.source) {
+                Some(source) if self.source_layers && !source.is_empty() => {
+                    format!("{name}::{source}")
+                }
+                _ => name.to_owned(),
+            };
+            let layer = layer_named(doc, &path, !line.visible);
             let id = doc.add(curve);
             doc.move_to_layer(&[id], layer);
-            made += 1;
+            made.push(id);
         }
-        Step::Done(Some(Message::with("done.make2d", vec![made.to_string()])))
+        if self.group && !made.is_empty() {
+            doc.group(&made);
+        }
+        Step::Done(Some(Message::with(
+            "done.make2d",
+            vec![made.len().to_string()],
+        )))
     }
 }
 
@@ -330,6 +363,14 @@ impl Command for Make2D {
             }
             Some(Answer::Option(HIDDEN)) => {
                 self.without_hidden = !self.without_hidden;
+                self.ask()
+            }
+            Some(Answer::Option(GROUP)) => {
+                self.group = !self.group;
+                self.ask()
+            }
+            Some(Answer::Option(SOURCE_LAYERS)) => {
+                self.source_layers = !self.source_layers;
                 self.ask()
             }
             Some(Answer::Objects(ids)) => self.make(doc, &ids),
@@ -597,6 +638,52 @@ mod tests {
             boxes
                 .iter()
                 .all(|(lo, _)| lo[0] > -1e-9 && lo[1] > -1e-9 && near(lo[2], 0.0))
+        );
+    }
+
+    #[test]
+    fn the_drawing_can_keep_its_sources_layers_and_go_in_one_group() {
+        let mut doc = Document::default();
+        let wall = doc.add_body(Body::cuboid([0.0; 3], [10.0, 10.0, 10.0]).unwrap());
+        let door = doc.add_body(Body::cuboid([20.0, 0.0, 0.0], [5.0, 5.0, 5.0]).unwrap());
+        let walls = doc.layer_at_path("Walls");
+        let frames = doc.layer_at_path("Doors::Frames");
+        doc.move_to_layer(&[wall], walls);
+        doc.move_to_layer(&[door], frames);
+        doc.select(&[wall, door]);
+        let _ = run(
+            &mut doc,
+            &[
+                "Make2D",
+                "Projection",
+                "MaintainSourceLayers",
+                "GroupOutput",
+                "",
+            ],
+        );
+        // Each box's outline from above, under its own layer tree repeated under Make2D's.
+        assert_eq!(layer_lines(&doc, "Make2D::Visible::Curves::Walls"), 4);
+        assert_eq!(
+            layer_lines(&doc, "Make2D::Visible::Curves::Doors::Frames"),
+            4
+        );
+        assert_eq!(layer_lines(&doc, "Make2D::Visible::Curves"), 0);
+        // All eight in one group, which the boxes are not in.
+        let groups: Vec<Option<u64>> = doc
+            .state()
+            .objects
+            .iter()
+            .filter(|o| o.curve().is_some())
+            .map(|o| o.group)
+            .collect();
+        assert_eq!(groups.len(), 8);
+        assert!(groups[0].is_some() && groups.iter().all(|g| *g == groups[0]));
+        assert!(
+            doc.state()
+                .objects
+                .iter()
+                .filter(|o| o.curve().is_none())
+                .all(|o| o.group.is_none())
         );
     }
 }
