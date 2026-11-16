@@ -30,7 +30,9 @@ use bevy::{
         render_resource::{TextureFormat, TextureUsages},
         renderer::{RenderAdapter, RenderAdapterInfo, RenderDevice, RenderInstance, RenderQueue},
         settings::RenderCreation,
+        sync_world::RenderEntity,
         texture::GpuImage,
+        view::ViewDepthStencilTexture,
     },
     window::ExitCondition,
 };
@@ -141,19 +143,21 @@ impl Pilot {
     /// Has Bevy draw `drawing`'s view, `size` pixels, and returns the picture; `None` while
     /// Bevy has not made it yet.
     pub(crate) fn draw(&mut self, drawing: &Drawing, size: [u32; 2]) -> Option<wgpu::Texture> {
-        self.draw_all(&[(drawing, size)]).pop().flatten()
+        self.draw_all(&[(drawing, size)])
+            .pop()
+            .flatten()
+            .map(|(colour, _)| colour)
     }
 
     /// Takes one view of this frame. Bevy draws all of a frame's views together, in one update,
     /// when the last of them comes ([`Drawing::bevy_last`]): then it returns every view's
-    /// picture with where it goes, `low` being its top left corner on the scene texture; before
-    /// that, nothing.
+    /// picture, with its drawing, its place and its depth; before that, nothing.
     pub(crate) fn turn(
         &mut self,
         drawing: &Drawing,
         size: [u32; 2],
         low: [u32; 2],
-    ) -> Vec<([u32; 2], wgpu::Texture)> {
+    ) -> Vec<BevyPicture> {
         self.pending.retain(|(frame, ..)| *frame == drawing.frame);
         self.pending
             .push((drawing.frame, drawing.clone(), size, low));
@@ -167,15 +171,25 @@ impl Pilot {
             .collect();
         let pictures = self.draw_all(&views);
         pending
-            .iter()
+            .into_iter()
             .zip(pictures)
-            .filter_map(|((.., low), picture)| picture.map(|picture| (*low, picture)))
+            .filter_map(|((_, drawing, _, low), picture)| {
+                picture.map(|(colour, depth)| BevyPicture {
+                    drawing,
+                    low,
+                    colour,
+                    depth,
+                })
+            })
             .collect()
     }
 
-    /// Has Bevy draw each of `views`, at its size, in one update, and returns their pictures in
-    /// order; `None` for one Bevy has not made yet.
-    fn draw_all(&mut self, views: &[(&Drawing, [u32; 2])]) -> Vec<Option<wgpu::Texture>> {
+    /// Has Bevy draw each of `views`, at its size, in one update, and returns their pictures and
+    /// depths in order; `None` for one Bevy has not made yet.
+    fn draw_all(
+        &mut self,
+        views: &[(&Drawing, [u32; 2])],
+    ) -> Vec<Option<(wgpu::Texture, Option<wgpu::Texture>)>> {
         let Ok(mut apps) = self.apps.lock() else {
             return vec![None; views.len()];
         };
@@ -253,18 +267,35 @@ impl Pilot {
         if fresh {
             apps.update();
         }
-        let images = apps
+        let main = apps.main.world();
+        let render = apps
             .sub_apps
             .get(&RenderApp.intern())
-            .and_then(|render| render.world().get_resource::<RenderAssets<GpuImage>>());
+            .map(bevy::app::SubApp::world);
+        let images = render.and_then(|render| render.get_resource::<RenderAssets<GpuImage>>());
         views
             .iter()
             .map(|(drawing, _)| {
-                let target = &self.views.get(&drawing.slot)?.target;
-                images?.get(target).map(|image| (*image.texture).clone())
+                let view = self.views.get(&drawing.slot)?;
+                let colour = images?.get(&view.target)?.texture.clone();
+                // The depth Bevy drew this view with, in its render world.
+                let depth = main
+                    .get::<RenderEntity>(view.camera)
+                    .and_then(|entity| render?.get::<ViewDepthStencilTexture>(entity.id()))
+                    .map(|depth| (**depth.texture()).clone());
+                Some(((*colour).clone(), depth))
             })
             .collect()
     }
+}
+
+/// A view Bevy drew this frame: its drawing, its top left corner on the scene texture, its
+/// picture, and its depth (four samples per pixel, reversed: near is 1).
+pub(crate) struct BevyPicture {
+    pub(crate) drawing: Drawing,
+    pub(crate) low: [u32; 2],
+    pub(crate) colour: wgpu::Texture,
+    pub(crate) depth: Option<wgpu::Texture>,
 }
 
 /// A camera on render layer `layer` drawing into a new picture of `size`.
@@ -282,7 +313,15 @@ fn make_camera(
     // Colours as Curva writes them: no tone mapping or dithering changing the stored values.
     let camera = world
         .spawn((
-            Camera3d::default(),
+            Camera3d {
+                // Curva reads Bevy's depth, to hide its lines behind Bevy's surfaces.
+                depth_texture_usages: (TextureUsages::RENDER_ATTACHMENT
+                    | TextureUsages::TEXTURE_BINDING)
+                    .into(),
+                ..default()
+            },
+            // Four samples per pixel, which the depth handover reads (`gpu/depth.rs`).
+            Msaa::Sample4,
             RenderTarget::Image(target.clone().into()),
             Tonemapping::None,
             DebandDither::Disabled,
@@ -530,6 +569,88 @@ mod tests {
             "middle {:?}",
             at(SIZE[1] / 2)
         );
+    }
+
+    /// Curva's lines on a view Bevy draws are hidden behind Bevy's surfaces exactly as behind
+    /// Curva's own: seen from above, a red line just above a grey face shows, a blue line just
+    /// below it does not. Drawn through the window's own path (`Drawing::prepare`).
+    #[test]
+    fn lines_on_bevy_views_hide_behind_bevy_surfaces() {
+        use egui_wgpu::CallbackTrait;
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let Ok(adapter) =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+        else {
+            return;
+        };
+        let (device, queue) =
+            pollster::block_on(adapter.request_device(&crate::device_descriptor(&adapter, true)))
+                .expect("device");
+        let format = wgpu::TextureFormat::Rgba8Unorm;
+        let mut resources = egui_wgpu::CallbackResources::default();
+        resources.insert(crate::LineRenderer::new(&device, format));
+        resources.insert(PilotSeed { instance, adapter });
+        let mut lines = Vec::new();
+        let (red, blue) = ([1.0, 0.0, 0.0], [0.0, 0.0, 1.0]);
+        crate::lines::segment_with(&mut lines, [-1.0e5, 0.0, 10.0], [0.0, 0.0, 10.0], red, 4.0);
+        crate::lines::segment_with(
+            &mut lines,
+            [0.0, 0.0, -10.0],
+            [1.0e5, 0.0, -10.0],
+            blue,
+            4.0,
+        );
+        let mut view = drawing(StandardView::Top, square([0.0, 0.0, 1.0], [0.6; 3]));
+        view.scene = Arc::new(lines);
+        let screen = egui_wgpu::ScreenDescriptor {
+            size_in_pixels: SIZE,
+            pixels_per_point: 1.0,
+        };
+        // Twice: Bevy's first picture of a new view comes ready on its second update.
+        for frame in 0..2 {
+            view.frame = frame;
+            let mut encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            let extra = view.prepare(&device, &queue, &screen, &mut encoder, &mut resources);
+            queue.submit(extra.into_iter().chain([encoder.finish()]));
+        }
+        let renderer = resources.get_mut::<crate::LineRenderer>().unwrap();
+        let target = renderer.compositor.target(&device, SIZE);
+        let pixels = crate::gpu::read_texture(&device, &queue, target.colour.texture(), SIZE);
+        let row = SIZE[1] / 2;
+        let along = |x: u32| {
+            let i = ((row * SIZE[0] + x) * 4) as usize;
+            [pixels[i], pixels[i + 1], pixels[i + 2]]
+        };
+        let left = (0..SIZE[0] / 2)
+            .map(along)
+            .filter(|p| p[0] > 200 && p[2] < 80)
+            .count();
+        let right = (SIZE[0] / 2..SIZE[0])
+            .map(along)
+            .filter(|p| p[2] > 200 && p[0] < 80)
+            .count();
+        assert!(left > 10, "the red line above the face should show");
+        assert_eq!(right, 0, "the blue line below the face should be hidden");
+        // Raised above the face, the blue line shows: it was hidden by the face, not missing.
+        let mut lines = Vec::new();
+        crate::lines::segment_with(&mut lines, [0.0, 0.0, 10.0], [1.0e5, 0.0, 10.0], blue, 4.0);
+        view.scene = Arc::new(lines);
+        view.frame = 2;
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let extra = view.prepare(&device, &queue, &screen, &mut encoder, &mut resources);
+        queue.submit(extra.into_iter().chain([encoder.finish()]));
+        let renderer = resources.get_mut::<crate::LineRenderer>().unwrap();
+        let target = renderer.compositor.target(&device, SIZE);
+        let pixels = crate::gpu::read_texture(&device, &queue, target.colour.texture(), SIZE);
+        let shown = (SIZE[0] / 2..SIZE[0])
+            .map(|x| {
+                let i = ((row * SIZE[0] + x) * 4) as usize;
+                [pixels[i], pixels[i + 1], pixels[i + 2]]
+            })
+            .filter(|p| p[2] > 200 && p[0] < 80)
+            .count();
+        assert!(shown > 10, "the blue line above the face should show");
     }
 
     /// In the Studio look a white face is light grey, as in Rhino's Shaded, but not burnt out:
