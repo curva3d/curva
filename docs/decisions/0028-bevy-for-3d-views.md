@@ -3,6 +3,8 @@
 **Status:** Decided by the owner in chat · 16 November 2026, after the renderer tests (#186, #198,
 #199). Partly replaces 0027 ("3D views keep Curva's own pipeline") and the 3D direction of
 15 November in `status/display.md` (re_renderer plus Bevy's shaders copied into Curva's own pipeline).
+Extended by 0029: Bevy now, without waiting for the pilot's report, and Bevy also for 2D views and
+sheets.
 
 **What was decided.**
 - The 3D views move to **Bevy** (an open-source Rust engine, MIT/Apache, built on the same graphics

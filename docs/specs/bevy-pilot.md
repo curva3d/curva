@@ -1,6 +1,8 @@
 # Spec: Bevy pilot for the 3D views
 
-**Status:** Approved by the owner, 16 November 2026.
+**Status:** Approved by the owner, 16 November 2026. Decision 0029 (same day): Bevy now, so the steps
+below are the move itself, each still measured against §5; the setting stays only until Bevy draws
+faces and lines, then Bevy draws every view. Bevy also draws 2D views and sheets.
 **Covers:** the first step of decision 0028: Bevy draws one 3D view's faces, Curva keeps its CAD
 layer, and the result is measured against today's Curva before anything else moves.
 **Rules:** 100% pure Rust. Recommended machine: an RTX 3060-class card (decision 0026); weaker
@@ -103,7 +105,7 @@ Announced in `status/display.md` first, as before:
 ## 8. Not in the pilot
 
 Meshes and SubD as Curva objects (features stream, after Milestone 4); textures; prints and sheets
-(Vello, decision 0027); Bevy's own picking or user interface; moving all views to Bevy, which waits for
+(now Bevy too, decision 0029, after the pilot steps); Bevy's own picking or user interface; moving all views to Bevy, which waits for
 the report.
 
 ## 9. The owner's decisions (16 November 2026)

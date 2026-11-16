@@ -1,14 +1,14 @@
 # Spec: Live plans and sections
 
 **Status:** Approved by the owner in chat · 16 November 2026.
-**Covers:** the owner's direction of 16 November 2026: model in 3D, switch to plan at once, edit the same elements there, and **the plan on screen must match the PDF that is sent out**. Builds on decision 0027 (Vello for 2D views) and `views-and-styles.md`; replaces the part of `views-and-styles.md` §4.1 that draws cut lines and fills of plans and sections on the graphics card.
+**Covers:** the owner's direction of 16 November 2026: model in 3D, switch to plan at once, edit the same elements there, and **the plan on screen must match the PDF that is sent out**. Builds on decision 0029 (Bevy draws 2D views, replacing 0027's Vello) and `views-and-styles.md`; replaces the part of `views-and-styles.md` §4.1 that draws cut lines and fills of plans and sections on the graphics card.
 **Rules:** 100% pure Rust. Recommended machine: an RTX 3060-class card (decision 0026); weaker machines run with fallbacks.
 
 ## 0. In short
 
 | What you will notice | How |
 |---|---|
-| The plan on screen is exactly the plan in the PDF | Both are drawn from **one vector page**: the screen with Vello, the PDF by the PDF writer |
+| The plan on screen is exactly the plan in the PDF | Both are drawn from **one vector page**: the screen with Bevy, the PDF by the PDF writer |
 | Switching from 3D to plan is instant | Plans are kept up to date in the background, so there is nothing to wait for |
 | Click a wall in plan and it's the same wall as in 3D | Every line on the page remembers the object it came from; selecting, snapping and the gumball are Curva's own and work the same in every view |
 | An edit shows in plan almost at once | Only the changed objects and their neighbours are recalculated, on all cores |
@@ -19,14 +19,14 @@ This is how Archicad and Revit work: a computed vector drawing for plans and she
 ## 1. Three things shared by every view
 
 1. **One model.** Plans, sections, elevations and 3D views are live views of the same document. There is no separate 2D copy of an element.
-2. **One interaction layer.** Picking, snapping, selection, highlighting, the gumball and command previews belong to Curva, not to any drawing engine. They behave the same in 3D and in plan. The 3D engine (whichever wins #198, #199 or #186) and Vello only draw.
+2. **One interaction layer.** Picking, snapping, selection, highlighting, the gumball and command previews belong to Curva, not to any drawing engine. They behave the same in 3D and in plan. Bevy (decision 0029) only draws.
 3. **One style definition.** A style (`views-and-styles.md` §2) is defined once. In plans and sections, its line widths, colours, dashes and cut fills are applied to the vector page; in 3D views, to the 3D drawing.
 
 ## 2. Where each view comes from
 
 | View | Drawn from | Drawn by | Matches the PDF |
 |---|---|---|---|
-| Plan, section, elevation | The vector page, computed by the kernel (cut, projection, hidden lines) | Vello on screen; `curva-pdf` / SVG for files | Yes, by construction |
+| Plan, section, elevation | The vector page, computed by the kernel (cut, projection, hidden lines) | Bevy on screen, through Curva's line drawer; `curva-pdf` / SVG for files | Yes, by construction |
 | Hidden-line axonometric or perspective (Technical, Hidden) | The same vector page, from that camera | Same | Yes, by construction |
 | Shaded 3D views (Shaded, Diagram, Textured…) | The 3D model | The 3D engine | Goes into a PDF as a picture, under any lines (`views-and-styles.md` §4.2) |
 
@@ -80,17 +80,17 @@ If a target looks unreachable after the profiling step, the owner is told with n
 2. **Features stream:** marks carry their source object (`drawing::Mark`), filled in by everything that makes pages today.
 3. **Features stream:** profile the plan build and speed up the slowest parts; numbers in `docs/performance.md`.
 4. **Features stream:** per-object results kept, and incremental hidden lines (§4.1–4.2), with the from-scratch comparison test.
-5. **Display stream:** plans and sections shown in viewports with Vello from the page, kept current in the background (§4.3–4.4), with the screen-against-PDF test.
+5. **Display stream:** plans and sections shown in viewports with Bevy from the page (Curva's line drawer), kept current in the background (§4.3–4.4), with the screen-against-PDF test.
 6. **Display stream:** picking, selection and snapping on the page; command previews over plans; the gumball in plan.
 7. **Display stream:** the edit's preview held over the plan until its update arrives, and the status-line marker for slow updates.
 
-Steps 1 to 4 can start now. Steps 5 to 7 follow the Vello adoption work. None of them depend on the 3D engine decision (#186, #198, #199).
+Steps 1 to 4 can start now. Steps 5 to 7 follow the line drawer (Bevy move step 3, #224).
 
 ## 8. Changes outside each stream's own area
 
 - `curva-kernel`: faster cutting and hidden lines; per-object results; incremental hidden lines. Additions; existing results unchanged.
 - `curva-document`: `Mark` carries a source object; views know which plans are open or placed on sheets.
-- `curva-viewport` (display stream): Vello plan views, picking and snapping on pages, previews held until the update arrives.
+- `curva-viewport` (display stream): plan views drawn by Bevy, picking and snapping on pages, previews held until the update arrives.
 - `curva-app`: the status-line marker; viewport title menus open plans.
 
 ## 9. Decisions for the owner
