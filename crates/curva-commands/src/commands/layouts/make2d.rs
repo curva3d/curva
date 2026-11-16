@@ -5,7 +5,8 @@
 
 use crate::commands::{bodies_of, curves_of, geometry_failed, unexpected};
 use crate::{Answer, Command, Kind, Message, Request, Step};
-use curva_document::{Document, Linetype};
+use curva_document::annotation::Annotation;
+use curva_document::{Document, Linetype, Shape};
 use curva_kernel::hidden::{DrawnLine, LineKind, Options, View, hidden_lines};
 use curva_kernel::{Curve, Point};
 
@@ -150,8 +151,8 @@ fn four_view_shifts(extents: &[Option<Extent>; 4], first_angle: bool) -> [[f64; 
 /// Where a point of the drawing goes in the model.
 type Placer = Box<dyn Fn([f64; 2]) -> Point>;
 
-/// A view's drawn lines, with how far they move on the plane.
-type Drawing = (Vec<DrawnLine>, [f64; 2]);
+/// A view, its drawn lines, and how far they move on the plane.
+type Drawing = (View, Vec<DrawnLine>, [f64; 2]);
 
 /// The running command.
 #[derive(Default)]
@@ -249,7 +250,18 @@ impl Make2D {
     fn make(&self, doc: &mut Document, ids: &[u64]) -> Step {
         let (body_ids, bodies): (Vec<u64>, Vec<_>) = bodies_of(doc, ids).into_iter().unzip();
         let (curve_ids, curves): (Vec<u64>, Vec<_>) = curves_of(doc, ids).into_iter().unzip();
-        if bodies.is_empty() && curves.is_empty() {
+        // The chosen annotation, copied flat into the drawing, each with its layer's path.
+        let notes: Vec<(Annotation, String)> = doc
+            .state()
+            .objects
+            .iter()
+            .filter(|o| ids.contains(&o.id))
+            .filter_map(|o| match &o.shape {
+                Shape::Annotation(a) => Some((a.clone(), doc.state().layer_path(o.layer))),
+                _ => None,
+            })
+            .collect();
+        if bodies.is_empty() && curves.is_empty() && notes.is_empty() {
             return Step::Failed(Message::new("error.make2d_nothing"));
         }
         // Each input's layer path, in the order the drawn lines name their sources.
@@ -278,9 +290,10 @@ impl Make2D {
         // Each drawing with how far it moves on the plane, and where the plane goes.
         let (drawings, place): (Vec<Drawing>, Placer) = match self.projection {
             Projection::ThirdAngle | Projection::FirstAngle => {
+                let views = four_views();
                 let mut sets = Vec::new();
-                for view in four_views() {
-                    match draw(&view) {
+                for view in &views {
+                    match draw(view) {
                         Ok(lines) => sets.push(lines),
                         Err(error) => return geometry_failed(&error),
                     }
@@ -288,7 +301,12 @@ impl Make2D {
                 let extents: [Option<Extent>; 4] = std::array::from_fn(|i| extent(&sets[i]));
                 let shifts = four_view_shifts(&extents, self.projection == Projection::FirstAngle);
                 (
-                    sets.into_iter().zip(shifts).collect(),
+                    views
+                        .into_iter()
+                        .zip(sets)
+                        .zip(shifts)
+                        .map(|((view, lines), shift)| (view, lines, shift))
+                        .collect(),
                     Box::new(|p| [p[0], p[1], 0.0]),
                 )
             }
@@ -308,36 +326,43 @@ impl Make2D {
                     }
                     _ => [0.0, 0.0],
                 };
-                (vec![(lines, shift)], place)
+                (vec![(view, lines, shift)], place)
             }
         };
         let mut made: Vec<u64> = Vec::new();
-        for (line, shift) in drawings
-            .into_iter()
-            .flat_map(|(lines, shift)| lines.into_iter().map(move |l| (l, shift)))
-        {
-            let Some(curve) = placed(&line.curve, shift, &place) else {
-                continue;
-            };
-            let name = match (line.visible, line.kind) {
-                (true, LineKind::Curve) => "Make2D::Visible::Curves",
-                (true, LineKind::Silhouette) => "Make2D::Visible::Silhouettes",
-                (true, LineKind::Tangent) => "Make2D::Visible::Tangents",
-                (false, LineKind::Curve) => "Make2D::Hidden::Curves",
-                (false, LineKind::Silhouette) => "Make2D::Hidden::Silhouettes",
-                (false, LineKind::Tangent) => "Make2D::Hidden::Tangents",
-            };
-            // With source layers kept, the source's layer tree is repeated under Make2D's.
-            let path = match source_layers.get(line.source) {
-                Some(source) if self.source_layers && !source.is_empty() => {
-                    format!("{name}::{source}")
+        // With source layers kept, the source's layer tree is repeated under Make2D's.
+        let on_layer = |name: &str, source: Option<&String>| match source {
+            Some(source) if self.source_layers && !source.is_empty() => {
+                format!("{name}::{source}")
+            }
+            _ => name.to_owned(),
+        };
+        for (view, lines, shift) in &drawings {
+            // Annotation lying flat to a flat view, copied into the drawing as it lies there.
+            if view.parallel {
+                let to_drawing = drawing_map(view, *shift, &place);
+                for (annotation, source) in &notes {
+                    if !faces(annotation, view) {
+                        continue;
+                    }
+                    let path = on_layer("Make2D::Visible::Annotations", Some(source));
+                    let layer = layer_named(doc, &path, false);
+                    let id = doc.add_annotation(annotation.placed(&to_drawing));
+                    doc.move_to_layer(&[id], layer);
+                    made.push(id);
                 }
-                _ => name.to_owned(),
-            };
-            let layer = layer_named(doc, &path, !line.visible);
-            let id = doc.add(curve);
-            doc.move_to_layer(&[id], layer);
-            made.push(id);
+            }
+            for line in lines {
+                Self::add_line(
+                    doc,
+                    line,
+                    *shift,
+                    &place,
+                    &source_layers,
+                    &on_layer,
+                    &mut made,
+                );
+            }
         }
         if self.group && !made.is_empty() {
             doc.group(&made);
@@ -347,6 +372,82 @@ impl Make2D {
             vec![made.len().to_string()],
         )))
     }
+
+    /// One drawn line into the model, on its Make2D layer.
+    #[allow(clippy::too_many_arguments)]
+    fn add_line(
+        doc: &mut Document,
+        line: &DrawnLine,
+        shift: [f64; 2],
+        place: &Placer,
+        source_layers: &[String],
+        on_layer: &dyn Fn(&str, Option<&String>) -> String,
+        made: &mut Vec<u64>,
+    ) {
+        {
+            let Some(curve) = placed(&line.curve, shift, place) else {
+                return;
+            };
+            let name = match (line.visible, line.kind) {
+                (true, LineKind::Curve) => "Make2D::Visible::Curves",
+                (true, LineKind::Silhouette) => "Make2D::Visible::Silhouettes",
+                (true, LineKind::Tangent) => "Make2D::Visible::Tangents",
+                (false, LineKind::Curve) => "Make2D::Hidden::Curves",
+                (false, LineKind::Silhouette) => "Make2D::Hidden::Silhouettes",
+                (false, LineKind::Tangent) => "Make2D::Hidden::Tangents",
+            };
+            let path = on_layer(name, source_layers.get(line.source));
+            let layer = layer_named(doc, &path, !line.visible);
+            let id = doc.add(curve);
+            doc.move_to_layer(&[id], layer);
+            made.push(id);
+        }
+    }
+}
+
+/// The affine map taking a point of the model to where a flat view's drawing puts it: onto the
+/// view plane, moved by `shift`, then where `place` puts the plane's points.
+fn drawing_map(view: &View, shift: [f64; 2], place: &Placer) -> [[f64; 4]; 4] {
+    let to = |p: Point| {
+        let d: Point = std::array::from_fn(|i| p[i] - view.eye[i]);
+        let along = |v: Point| (0..3).map(|i| d[i] * v[i]).sum::<f64>();
+        place([along(view.right) + shift[0], along(view.up) + shift[1]])
+    };
+    let o = to([0.0; 3]);
+    let axis = |k: usize| -> Point {
+        let mut e = [0.0; 3];
+        e[k] = 1.0;
+        std::array::from_fn(|i| to(e)[i] - o[i])
+    };
+    let [x, y, z] = [axis(0), axis(1), axis(2)];
+    [
+        [x[0], x[1], x[2], 0.0],
+        [y[0], y[1], y[2], 0.0],
+        [z[0], z[1], z[2], 0.0],
+        [o[0], o[1], o[2], 1.0],
+    ]
+}
+
+/// Whether an annotation lies flat to a view (a dot, at a point, always does), so its copy in
+/// the drawing reads as it does there.
+fn faces(annotation: &Annotation, view: &View) -> bool {
+    let plane = match annotation {
+        Annotation::Text(t) => (t.x, t.y),
+        Annotation::Dimension(d) => (d.x, d.y),
+        Annotation::Radial(r) => (r.x, r.y),
+        Annotation::Angle(a) => (a.x, a.y),
+        Annotation::Ordinate(o) => (o.x, o.y),
+        Annotation::ArcLength(a) => (a.x, a.y),
+        Annotation::Leader(l) => (l.x, l.y),
+        Annotation::Hatch(h) => (h.x, h.y),
+        Annotation::ScaleBar(b) => (b.at.x, b.at.y),
+        Annotation::Table(t) => (t.at.x, t.at.y),
+        Annotation::Dot(_) => return true,
+    };
+    let n = cross(plane.0, plane.1);
+    let along: f64 = (0..3).map(|i| n[i] * view.forward[i]).sum();
+    let size = (0..3).map(|i| n[i] * n[i]).sum::<f64>().sqrt();
+    along.abs() > (1.0 - 1e-9) * size
 }
 
 impl Command for Make2D {
@@ -684,6 +785,79 @@ mod tests {
                 .iter()
                 .filter(|o| o.curve().is_none())
                 .all(|o| o.group.is_none())
+        );
+    }
+
+    #[test]
+    fn annotation_lying_flat_to_a_view_is_copied_into_its_drawing() {
+        use curva_document::Shape;
+        use curva_document::annotation::{Annotation, Text, TextAlign};
+        let note = |content: &str, origin, y| Text {
+            content: content.to_owned(),
+            origin,
+            x: [1.0, 0.0, 0.0],
+            y,
+            height: 2.5,
+            font: None,
+            align: TextAlign::Left,
+            style: 0,
+        };
+        let copies = |projection: &[&str]| {
+            let mut doc = Document::default();
+            let block = doc.add_body(Body::cuboid([0.0; 3], [10.0, 10.0, 10.0]).unwrap());
+            // One note lying on the ground, one standing up facing the front.
+            let lying = doc.add_annotation(Annotation::Text(note(
+                "Plan",
+                [20.0, 5.0, 0.0],
+                [0.0, 1.0, 0.0],
+            )));
+            let standing = doc.add_annotation(Annotation::Text(note(
+                "Front",
+                [0.0, 0.0, 15.0],
+                [0.0, 0.0, 1.0],
+            )));
+            doc.select(&[block, lying, standing]);
+            let mut lines = vec!["Make2D"];
+            lines.extend(projection);
+            lines.push("");
+            let _ = run(&mut doc, &lines);
+            let layer = doc.state().layer_named("Make2D::Visible::Annotations");
+            let copied: Vec<Text> = doc
+                .state()
+                .objects
+                .iter()
+                .filter(|o| Some(o.layer) == layer)
+                .filter_map(|o| match &o.shape {
+                    Shape::Annotation(Annotation::Text(t)) => Some(t.clone()),
+                    _ => None,
+                })
+                .collect();
+            copied
+        };
+        // From above on the construction plane: only the lying note, where it lies.
+        let plan = copies(&["Projection"]);
+        assert_eq!(plan.len(), 1);
+        assert_eq!(plan[0].content, "Plan");
+        assert!((0..3).all(|i| (plan[0].origin[i] - [20.0, 5.0, 0.0][i]).abs() < 1e-9));
+        // A four-view drawing: the lying note in the top view, the standing one in the front,
+        // both flat on the drawing and reading along it.
+        let four = copies(&["Projection", "Projection"]);
+        let mut words: Vec<&str> = four.iter().map(|t| t.content.as_str()).collect();
+        words.sort_unstable();
+        assert_eq!(words, ["Front", "Plan"]);
+        for t in &four {
+            assert!(t.origin[2].abs() < 1e-9);
+            assert!(
+                (t.x[0] - 1.0).abs() < 1e-9 && (t.y[1] - 1.0).abs() < 1e-9,
+                "{t:?}"
+            );
+        }
+        // The front view's note sits above the front's outline (the box is 10 high).
+        let front = four.iter().find(|t| t.content == "Front").unwrap();
+        let plan = four.iter().find(|t| t.content == "Plan").unwrap();
+        assert!(
+            front.origin[1] < plan.origin[1],
+            "third angle: the top view is above"
         );
     }
 }

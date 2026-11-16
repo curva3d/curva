@@ -28,7 +28,10 @@ point 3).
   `Curves`, `Tangents`, `Silhouettes`, `Clipping plane intersections` and `Annotations`; with
   "maintain source layers", the source layer tree is repeated under each.
 - **Annotation:** text and dimensions in the selection are copied into the drawing, flattened, as in
-  Rhino.
+  Rhino. As built (16 November 2026): annotation lying flat to a flat view (and dots) is copied
+  into that view's drawing as it lies there, on `Make2D::Visible::Annotations`; annotation standing
+  across the view, and annotation in a perspective view, is left out for now. A four-view drawing's
+  spacing does not make room for annotation.
 - **What it draws:** edges of solids and surfaces, curves, silhouettes of curved faces, block
   instances (their contents), and clipping-plane cuts. Points, dots and hatches as Rhino draws
   them.
