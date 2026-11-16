@@ -103,7 +103,7 @@ Each layer draws one kind of thing with its own look. Every layer has an on/off 
 | Background | Behind the model | One colour, a gradient of two colours (direction), or paper (a texture and its colour) |
 | Surfaces | The faces | Colour from the object, its layer, or one colour for all; opacity 0–100%; lighting: soft studio light, sun-lit, or flat |
 | Ambient occlusion | Soft darkening where surfaces meet and where objects stand on others | Strength, spread (how far it reaches), colour |
-| Shadows | Shadows cast by this view's sun | Strength, colour, softness |
+| Shadows | Shadows cast by this view's sun | **Kind: crisp or soft** (see `live-plans.md` §11); strength, colour; softness (soft only) |
 | Outlines | Where an object ends against what is behind it | Width, colour |
 | Cut lines | Where a plan or section cuts through an object | Width, colour; cut fill: a colour or a hatch |
 | Edges | The edges of faces and folds in surfaces | Width, colour |
@@ -197,7 +197,7 @@ On the graphics card, with the shared drawing programs of `display-pipeline.md`:
 Printed sheets and PDF or SVG exports need real lines, not pixels. There, the exact edges, outlines
 and cut lines come from the geometry engine, with the hidden-line method `Make2D` already uses, and
 each line gets its width, colour and dashes from the same style rules, so the export matches what
-was on screen. Surfaces, ambient occlusion, shadows, gradients and paper have no line form; they
+was on screen. Crisp shadows are shapes on the vector page (`live-plans.md` §11). Surfaces, ambient occlusion, soft shadows, gradients and paper have no line form; they
 go into the PDF or SVG as a picture underneath the lines, at print resolution (owner's decision).
 
 ### 4.3 Checked by

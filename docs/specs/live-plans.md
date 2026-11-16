@@ -102,3 +102,13 @@ Steps 1 to 4 can start now. Steps 5 to 7 follow the Vello adoption work. None of
 ## 10. Not covered
 
 Symbolic plan elements that a pure cut doesn't produce (door swings, stair break lines, plan-only symbols): these are the "smart representations" moved to Milestone 4 by decision 0020, and they will draw onto the same vector page. Also levels from the architecture specialisation, and dimensions and text placed in plan views (already in `annotation.md`).
+
+## 11. Shadows in drawings (amendment, owner, 16 November 2026)
+
+Plans, sections and elevations can show sun shadows, in two kinds. Both match the PDF.
+
+- **Crisp shadows (vector), the default for plans, sections and elevations.** The kernel projects each object along the view's sun direction onto the faces behind or below it (floors, ground, walls), and the shadow shapes go onto the vector page as fills, under the lines. They're sharp at any scale, come out in PDF, SVG and DWG as real shapes, and update live like the rest of the plan: an object's shadow is kept with its other results (§4.1), and an edit recomputes shadows only where the moved object's old or new shadow falls.
+- **Soft shadows (picture), an option for presentation styles.** The 3D engine draws a shadow picture from the same sun, made once at print resolution. The screen shows that same picture under the plan's lines, and the PDF embeds it, so screen and PDF still match. They update a little less quickly than crisp shadows, and their speed isn't part of the targets in §6.
+- **Settings:** the style's Shadows layer (`views-and-styles.md` §2.1) chooses crisp or soft, with strength and colour (and softness for soft). The sun is the view's own (`views-and-styles.md` §1.5). A view's shadows can be switched off.
+- **Checked by:** crisp shadows of the test house against a reference (shapes compared within 0.01 mm at 1:100); the screen-against-PDF test of §6 with shadows on, in both kinds; the incremental-against-from-scratch test of §5 with shadows on.
+- **When:** after steps 1 to 7. Crisp shadows are a kernel task for the features stream; soft shadows and the style setting go to the display stream.
