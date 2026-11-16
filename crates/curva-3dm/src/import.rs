@@ -367,13 +367,19 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
                 continue;
             }
         };
-        let shape = match scaled(shape, scale) {
+        let mut shape = match scaled(shape, scale) {
             Ok(shape) => shape,
             Err(why) => {
                 Report::count(&mut report.skipped, &format!("unreadable ({why})"));
                 continue;
             }
         };
+        // Rhino 5's leaders (all a Rhino 5 file has) end at their words, with no landing.
+        if model.version < 60
+            && let Shape::Annotation(curva_document::annotation::Annotation::Leader(l)) = &mut shape
+        {
+            l.landing = false;
+        }
         let shape = with_layout_numbers(shape, &page_ids);
         let shape = match style_named(&object.geometry).and_then(|s| style_ids.get(&s)) {
             Some(style) => with_style(shape, *style),
@@ -2019,14 +2025,14 @@ fn linetype_in(state: &mut State, linetype: &model::Linetype) -> Linetype {
     state.add_linetype(name, &curva_document::alternating(&linetype.segments))
 }
 
-/// A leader from a file, its words made plain, with a landing when the file has one (Rhino 6 on).
+/// A leader from a file, its words made plain and a landing drawn, as Rhino's usual style does.
 fn leader_in(l: &model::Leader) -> curva_document::annotation::Leader {
     curva_document::annotation::Leader {
         points: l.points.iter().map(|q| in_plane(&l.plane, *q)).collect(),
         content: crate::notes::plain_text(&l.rich),
         x: l.plane.x,
         y: l.plane.y,
-        landing: l.landing,
+        landing: true,
         style: 0,
     }
 }

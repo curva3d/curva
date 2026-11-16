@@ -678,9 +678,6 @@ pub struct Leader {
     pub rich: String,
     /// The arrow's tip, then the points the line passes through, in the plane.
     pub points: Vec<[f64; 2]>,
-    /// Whether a landing runs from the last point to the words: always from Rhino 6 on; Rhino 5
-    /// ended the line at its words.
-    pub landing: bool,
 }
 
 /// A layout: one of Rhino's page views.

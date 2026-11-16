@@ -1645,7 +1645,6 @@ fn leader(r: &mut Reader<'_>) -> Result<Leader> {
         own: core.own,
         rich: core.rich,
         points,
-        landing: true,
     })
 }
 
@@ -1784,7 +1783,6 @@ fn v5_annotation(r: &mut Reader<'_>) -> Result<std::result::Result<Geometry, Str
             own: None,
             rich: words,
             points,
-            landing: false,
         }),
         other => return Ok(Err(format!("Rhino 5 annotation of kind {other}"))),
     }))
