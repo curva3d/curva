@@ -197,6 +197,7 @@ fn picture_drawing(picture: Picture, scene: &Scene) -> Drawing {
         frame: 0,
         background: epaint::Color32::BLACK,
         background_low: epaint::Color32::BLACK,
+        engine: crate::Engine::Curva,
     }
 }
 
@@ -271,6 +272,42 @@ fn draw_picture_passes(
         multiview_mask: None,
     });
     renderer.draw_over(&mut pass, 0);
+}
+
+/// Reads a four-byte-per-pixel texture of `size` back from the card, for tests.
+#[cfg(test)]
+pub(crate) fn read_texture(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    texture: &wgpu::Texture,
+    size: [u32; 2],
+) -> Vec<u8> {
+    let row = (size[0] * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
+    let readback = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("curva texture readback"),
+        size: u64::from(row) * u64::from(size[1]),
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    encoder.copy_texture_to_buffer(
+        texture.as_image_copy(),
+        wgpu::TexelCopyBufferInfo {
+            buffer: &readback,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(row),
+                rows_per_image: None,
+            },
+        },
+        wgpu::Extent3d {
+            width: size[0],
+            height: size[1],
+            depth_or_array_layers: 1,
+        },
+    );
+    queue.submit([encoder.finish()]);
+    read_pixels(device, &readback, row, size).expect("pixels")
 }
 
 /// Waits for the picture and reads its pixels back, row by row, leaving out each row's padding.

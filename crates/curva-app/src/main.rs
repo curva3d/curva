@@ -216,7 +216,15 @@ impl Curva {
             renderer.set_blur(
                 state.adapter.get_info().device_type != eframe::egui_wgpu::wgpu::DeviceType::Cpu,
             );
-            state.renderer.write().callback_resources.insert(renderer);
+            let mut egui_renderer = state.renderer.write();
+            egui_renderer.callback_resources.insert(renderer);
+            // For the Bevy pilot (decision 0028), started the first time a view is set to it.
+            egui_renderer
+                .callback_resources
+                .insert(curva_viewport::PilotSeed {
+                    instance: state.instance.clone(),
+                    adapter: state.adapter.clone(),
+                });
         }
         let mut doc = Document::default();
         // Benchmarks neither autosave nor offer recovery.

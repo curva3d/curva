@@ -6,18 +6,27 @@
 ## 16 November 2026
 
 **Done**
+- **Pilot step 1 in review** (#222, #228): each view's menu has "3D engine: Curva / Bevy (pilot)",
+  Curva by default. A view set to Bevy has Bevy, running on Curva's own device, draw its picture
+  (background only until step 2), copied into the scene texture where the view sits. Bevy starts
+  the first time a view is set to it. The full-features device moves to step 5, where Bevy's
+  effects first need it, so nothing changes with the setting on Curva. A clean build takes about twice as long (306 →
+  601 s, debug). The owner allowed the MIT-0 licence, which Bevy needs through `encase`.
+- **Disk full on V:**, builds failed. Cleaned the display stream's old build folders and the main
+  folder's stale debug cache (about 60 GB). From now on worktrees and spike build folders are
+  removed when done.
 - **The owner chose Bevy for the 3D views** ("go ahead with your recommendation"): decision 0028
-  (#217, checks passed; my merge was blocked by the app's permission check, so it waits for the
-  owner or a permission rule). Bevy draws faces, meshes and SubD; Curva keeps its CAD layer. 0027
-  marked partly replaced (its 3D sentence).
-- **Pilot spec drafted, waiting for the owner's approval** (`docs/specs/bevy-pilot.md`, draft #218):
-  Bevy draws one view's faces behind a setting, Curva's lines and outlines on top; pass targets on
-  *Medium*, *Large*, *Far* and a meshes scene; six small steps.
-- **#180 tidy-up in review** (#220): `lib.rs` and `gpu.rs` split into modules named by what they
+  (#217, merged). Bevy draws faces, meshes and SubD; Curva keeps its CAD layer. 0027 marked
+  partly replaced (its 3D sentence).
+- **Pilot spec approved by the owner** (`docs/specs/bevy-pilot.md`, #218): one view behind a
+  setting, the pass targets as written; Bevy's own lines considered and not used (no
+  paper-millimetre weights, exact arcs, outlines, cuts, snapping or precision far away). Its six
+  steps are issues #222 to #227.
+- **#180 tidy-up merged** (#220): `lib.rs` and `gpu.rs` split into modules named by what they
   do, the nine functions over 80 lines broken into named steps, tests unchanged (119 pass). Speed
   unchanged: *Medium* 2.6–3.0 → 2.7 ms between frames, *Large* 23.1–23.2 → 23.3–23.4 ms, card time
   the same, two runs each on a quiet machine.
-- **#199 viewport-lib and #198 Bevy tried inside Curva, reported, waiting for the owner.** Both on
+- **#199 viewport-lib and #198 Bevy tried inside Curva, reported, decided (0028), issues closed.** Both on
   Curva's device, from Curva's camera, on the same scenes (`spikes/common/scenes.rs`, shared by all
   renderer spikes), each measured twice on the RTX 3060. Branches `199-viewport-lib-spike` and
   `198-bevy-spike`, sources only, not merged. *Large* at 1920×1080: viewport-lib 38 ms per frame
@@ -104,14 +113,11 @@
 - **2D direction** (decision 0027): Vello draws 2D views and sheets, vello_cpu the fallback. Its
   production follow-up is not started.
 - Order of work (owner, 16 November 2026):
-  1. **Bevy pilot spec (#218): waiting for the owner's approval.** Then its six steps
-     (`docs/specs/bevy-pilot.md` §6), each a small pull request, ending in a measured report.
-  2. **#180 tidy-up (#220): in review**, merge once checks pass.
-  3. **#186, #198, #199:** reported and decided (0028); spike branches stay unmerged for reference.
-     To close with a pointer to 0028 once #217 is merged.
-  4. **#197 (shaded look from Bevy's shaders): superseded** by 0028, as Bevy itself draws the
-     shading; to close once #217 is merged, its Diagram-look comparison folded into pilot step 5.
-  5. **After the pilot:** if it holds, every 3D view moves to Bevy and step 11 (instancing, #153)
+  1. **Bevy pilot** (`docs/specs/bevy-pilot.md`, approved): six steps, issues #222 to #227, each a
+     small pull request, ending in a measured report. Step 1 (#222) in review.
+  2. **Closed:** #180 (merged), #186, #198, #199 (decided by 0028; spike branches kept unmerged for
+     reference), #197 (superseded; its Diagram-look comparison is in pilot step 5).
+  3. **After the pilot:** if it holds, every 3D view moves to Bevy and step 11 (instancing, #153)
      is dropped; if not, step 11, 4c, 12 and 13 as before. Any change to the remaining steps or
      the 3D part of `docs/specs/views-and-styles.md` proposed as choices first.
 - **Shelved** (decision 0024): steps 14 (occlusion culling) and 15 (clusters, mesh shaders), back
@@ -126,6 +132,11 @@
   solid black cut walls and lines that thin and lighten with distance).
 
 **Heads-up for the features stream** (changes outside the viewport, decision B)
+- **Bevy pilot step 1 (#228):** `Pane` in `crates/curva-app/src/viewports.rs` has a new field
+  `engine`, and the view's menu a "3D engine" choice; `curva_viewport::Drawing` has a new field
+  `engine` (`Engine::Curva` keeps today's drawing, as `sheets.rs` does); `main.rs` stores a
+  `curva_viewport::PilotSeed`; three new entries in `crates/curva-commands/locales/en.txt`. The
+  viewport crate now depends on Bevy 0.20.1, which lengthens clean builds.
 - **`curva_kernel::BodyMesh` has a new field `seams`** (one flag per edge): edges where one face
   meets itself, which the engine does not mark (`seam_edges` in `crates/curva-kernel/src/body.rs`).
   Shaded views leave them out; wireframe, previews and prints keep them until outlines of curved

@@ -20,3 +20,6 @@ pollster = "0.4"
 # Meshes many solids at once on all cores, as the architecture asks (section 7). Already in the
 # build through the engine.
 rayon = "1.12"
+# The Bevy pilot (decision 0028, docs/specs/bevy-pilot.md): pinned, upgraded only with egui's wgpu.
+# Rendering parts only: no windows, audio, user interface, logging, scenes or picking.
+bevy = { version = "=0.20.1", default-features = false, features = ["std", "multi_threaded", "async_executor", "bevy_asset", "bevy_window", "bevy_render", "bevy_core_pipeline", "bevy_pbr", "bevy_light", "bevy_camera", "bevy_mesh", "bevy_anti_alias", "bevy_post_process", "tonemapping_luts", "smaa_luts", "ktx2", "zstd_rust", "bluenoise_texture"] }

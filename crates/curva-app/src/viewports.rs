@@ -36,6 +36,8 @@ pub(crate) struct Pane {
     pub(crate) zebra: bool,
     /// Whether shaded faces show draft angles (`DraftAnalysis`).
     pub(crate) draft: bool,
+    /// Which engine draws it: Curva, or Bevy for the pilot (decision 0028).
+    pub(crate) engine: curva_viewport::Engine,
     /// Views to step back to with `UndoView`, newest last, and the view they were left from.
     pub(crate) views_back: Vec<Camera>,
     /// Views stepped back from, for `RedoView`, newest last.
@@ -97,6 +99,7 @@ impl Pane {
             },
             zebra: false,
             draft: false,
+            engine: curva_viewport::Engine::Curva,
         }
     }
 }
@@ -446,8 +449,10 @@ impl Curva {
             }
             ViewRequest::Show(name) => {
                 let display = self.panes[self.active].display;
+                let engine = self.panes[self.active].engine;
                 self.panes[self.active] = Pane::new(standard_view(name));
                 self.panes[self.active].display = display;
+                self.panes[self.active].engine = engine;
             }
             ViewRequest::ShowBlocks => self.open_piece(layout::Piece::Blocks),
             ViewRequest::ShowLayouts => self.open_piece(layout::Piece::Layouts),
@@ -591,6 +596,7 @@ impl Curva {
             egui::Sense::click(),
         );
         let mut chosen = None;
+        let mut chosen_engine = None;
         egui::Popup::menu(&response).show(|ui| {
             for (mode, key) in [
                 (DisplayMode::Wireframe, "ui.display.wireframe"),
@@ -605,9 +611,28 @@ impl Curva {
                     chosen = Some(mode);
                 }
             }
+            // The Bevy pilot (decision 0028): which engine draws this view.
+            ui.separator();
+            ui.label(self.text.render(&Message::new("ui.display.engine")));
+            for (engine, key) in [
+                (curva_viewport::Engine::Curva, "ui.display.engine-curva"),
+                (curva_viewport::Engine::BevyPilot, "ui.display.engine-bevy"),
+            ] {
+                let current = self.panes[pane].engine == engine;
+                if ui
+                    .selectable_label(current, self.text.render(&Message::new(key)))
+                    .clicked()
+                {
+                    chosen_engine = Some(engine);
+                }
+            }
         });
         if let Some(mode) = chosen {
             self.panes[pane].display = mode;
+            self.active = pane;
+        }
+        if let Some(engine) = chosen_engine {
+            self.panes[pane].engine = engine;
             self.active = pane;
         }
     }
@@ -772,6 +797,7 @@ impl Curva {
                 frame: ui.ctx().cumulative_frame_nr(),
                 background: self.pane_background(*pane).0,
                 background_low: self.pane_background(*pane).1,
+                engine: self.panes[*pane].engine,
             };
             ui.painter().add(egui_wgpu_callback(*rect, drawing));
             self.paint_details(ui, *pane, *rect, size);
