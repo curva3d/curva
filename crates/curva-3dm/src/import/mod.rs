@@ -206,21 +206,20 @@ fn shape_of(
     state: &mut State,
     file_mm: f64,
 ) -> Result<(Shape, &'static str), String> {
+    use curva_document::annotation::Annotation;
     let text = |e: KernelError| e.0;
     Ok(match geometry {
         Geometry::Point(p) => (Shape::Curve(Curve::Point { at: *p }), "points"),
         Geometry::Radial(d) => (
-            Shape::Annotation(curva_document::annotation::Annotation::Radial(radial_in(d))),
+            Shape::Annotation(Annotation::Radial(radial_in(d))),
             "dimensions",
         ),
         Geometry::Ordinate(d) => (
-            Shape::Annotation(curva_document::annotation::Annotation::Ordinate(
-                ordinate_in(d),
-            )),
+            Shape::Annotation(Annotation::Ordinate(ordinate_in(d))),
             "dimensions",
         ),
         Geometry::Angular(d) => (
-            Shape::Annotation(curva_document::annotation::Annotation::Angle(angular_in(d))),
+            Shape::Annotation(Annotation::Angle(angular_in(d))),
             "dimensions",
         ),
         Geometry::Detail(_) => return Err("details come in with their layout".to_owned()),
@@ -229,25 +228,19 @@ fn shape_of(
             "clipping planes",
         ),
         Geometry::Leader(l) => (
-            Shape::Annotation(curva_document::annotation::Annotation::Leader(leader_in(l))),
+            Shape::Annotation(Annotation::Leader(leader_in(l))),
             "leaders",
         ),
         Geometry::Dimension(d) => (
-            Shape::Annotation(curva_document::annotation::Annotation::Dimension(
-                dimension_in(d),
-            )),
+            Shape::Annotation(Annotation::Dimension(dimension_in(d))),
             "dimensions",
         ),
         Geometry::Text(t) => (
-            Shape::Annotation(curva_document::annotation::Annotation::Text(note_in(
-                t, styles,
-            ))),
+            Shape::Annotation(Annotation::Text(note_in(t, styles))),
             "texts",
         ),
         Geometry::Hatch(h) => (
-            Shape::Annotation(curva_document::annotation::Annotation::Hatch(hatch_in(
-                h, patterns, state, file_mm,
-            )?)),
+            Shape::Annotation(Annotation::Hatch(hatch_in(h, patterns, state, file_mm)?)),
             "hatches",
         ),
         Geometry::Dot {
@@ -256,18 +249,7 @@ fn shape_of(
             secondary,
             height,
             font,
-        } => (
-            Shape::Annotation(curva_document::annotation::Annotation::Dot(
-                curva_document::annotation::Dot {
-                    at: *at,
-                    content: text.clone(),
-                    secondary: secondary.clone(),
-                    height: f64::from(*height),
-                    font: (!font.trim().is_empty()).then(|| font.clone()),
-                },
-            )),
-            "dots",
-        ),
+        } => (dot_in(*at, text, secondary, *height, font), "dots"),
         Geometry::Curve(c) => (Shape::Curve(curve(c).map_err(text)?), "curves"),
         Geometry::Surface(s) => (Shape::Body(surface_body(s).map_err(text)?), "surfaces"),
         Geometry::Brep(b) => (Shape::Body(brep_body(b).map_err(text)?), "polysurfaces"),
@@ -285,6 +267,20 @@ fn shape_of(
             )
         }
     })
+}
+
+/// A Rhino dot as Curva's: its words, its second words, its height, and its font where it
+/// names one.
+fn dot_in(at: P3, text: &str, secondary: &str, height: i32, font: &str) -> Shape {
+    Shape::Annotation(curva_document::annotation::Annotation::Dot(
+        curva_document::annotation::Dot {
+            at,
+            content: text.to_owned(),
+            secondary: secondary.to_owned(),
+            height: f64::from(height),
+            font: (!font.trim().is_empty()).then(|| font.to_owned()),
+        },
+    ))
 }
 
 fn sub(a: P3, b: P3) -> P3 {
