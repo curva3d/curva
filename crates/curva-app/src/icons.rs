@@ -426,6 +426,12 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
             pen.line((3.0, 19.0), (15.0, 4.0));
             pen.arc((-9.0, 7.0, 24.0, 24.0), 0.0, 51.0);
         }
+        // An arc, and a wider dimension arc about the same centre with the arc symbol over it.
+        "dimarclength" => {
+            pen.arc((3.0, 9.0, 16.0, 16.0), 20.0, 140.0);
+            pen.arc((0.0, 5.0, 22.0, 22.0), 20.0, 140.0);
+            pen.arc((8.0, 1.0, 6.0, 4.0), 0.0, 180.0);
+        }
         // A label box with a word in it, at a point.
         "dot" => {
             pen.path(&[(4.0, 6.0), (18.0, 6.0), (18.0, 15.0), (4.0, 15.0)], true);
