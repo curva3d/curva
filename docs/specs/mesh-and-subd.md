@@ -75,7 +75,7 @@ mesh analysis colours (curvature, draft angle), meshes in DXF and DWG (the featu
 for mesh objects, `status/features.md`), textures shown on meshes.
 
 **Held back:** nothing on purpose. Decision 0032 held QuadRemesh back; the owner moved it into
-Stage B on 16 November 2026 (§9, decision 3).
+Stage B (decision 0033).
 
 ## 2. The objects
 
@@ -187,8 +187,11 @@ of directions over the surface and grows quads along it.
   quads, which is how Instant Meshes was designed to be steered.
 - **Honest risk:** quadrs is young and experimental: one author, about 3,000 lines, unchanged
   since March 2026. Curva pins it and does not depend on its author: if it stops fitting, Curva
-  writes its own QuadRemesh from the same published method behind the same interface, and no
-  command changes. Your decision 3, §9.
+  writes its own QuadRemesh behind the same interface (QuadriFlow's published method, the better
+  successor of Instant Meshes, is the candidate), and no command changes.
+- **Alternatives looked at** (17 November 2026): none is well maintained. A Rust port of QuadriFlow
+  inside another project (basic run only, not a library) and Mantis (quad remesher not built yet).
+  The maintained remeshers are C++. The owner chose quadrs (decision 0033).
 - **NURBS and SubD inputs** are first turned into a fine mesh (by solidcore, or by subdivision),
   as Rhino does.
 
@@ -327,13 +330,8 @@ graphics-card parts are switched off, so no second Bevy is built.
 - (c) Mesh tools first (Mesh from NURBS, booleans, repair). Useful for 3D printing and scans
   sooner; SubD later.
 
-**3. QuadRemesh: how to build it.** You asked for it in Stage B (decision 0032 held it back; this
-updates that decision).
-- **(a) On quadrs, with Curva adding Rhino's options on top (recommended).** Quickest to a working
-  QuadRemesh. Its quality is checked against Rhino on the test models in its first pull request,
-  before anything is built on it; if it falls short, switch to (b) behind the same interface.
-- (b) Curva's own, from the published Instant Meshes method, from the start. Full control and no
-  dependence on a young library, but several more weeks of work before the first quads.
+**3. QuadRemesh: decided** (owner, 17 November 2026, decision 0033): in Stage B, on quadrs, with
+Curva adding Rhino's options on top. No well-maintained pure-Rust alternative exists (§3.5).
 
 **4. Approve the plan** (stages, objects, libraries, tests, steps), or tell me what to change.
 
