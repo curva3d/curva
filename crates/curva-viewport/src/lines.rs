@@ -208,36 +208,100 @@ pub struct SceneParts {
     pub lines: Vec<Vertex>,
     /// The objects' lines for shaded views, with dark edges on faces.
     pub shaded_lines: Vec<Vertex>,
-    /// The faces of surfaces and solids.
+    /// The faces of surfaces and solids, as triangles; with [`SceneParts::shared`], only those
+    /// not in `shapes`.
     pub faces: Vec<MeshVertex>,
+    /// Surfaces and solids drawn from the mesh they share with their copies, each at its
+    /// placement; empty with [`SceneParts::of`].
+    pub shapes: Vec<PlacedShape>,
     /// Which object each number stands for: number `n` is `objects[n]`.
     pub objects: Vec<u64>,
 }
 
+/// A surface or solid drawn from the mesh it shares with its copies (`display-on-bevy.md`
+/// step 4, #153): copies of a body and the parts of block instances hand the same `mesh`, so
+/// a view holds it once and draws every copy at its `placement`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PlacedShape {
+    /// The object's number in [`SceneParts::objects`].
+    pub object: u32,
+    /// The colour its faces are drawn in when not selected.
+    pub colour: [f32; 3],
+    /// The faces as made, unplaced ([`curva_kernel::Body::shared_mesh`]).
+    pub mesh: std::sync::Arc<curva_kernel::BodyMesh>,
+    /// Where this copy sits, for points written as rows ([`curva_kernel::Body::placement`]).
+    pub placement: [[f64; 4]; 4],
+}
+
 impl SceneParts {
-    /// The scene of `outlines`, numbered.
+    /// The scene of `outlines`, numbered, every face as triangles.
     #[must_use]
     pub fn of(outlines: &Outlines) -> Self {
-        let mut objects = Vec::new();
-        let mut numbers = std::collections::HashMap::new();
-        let ids = outlines.objects.iter().map(|(id, _)| *id);
-        for id in ids.chain(outlines.faces.iter().map(|faces| faces.id)) {
-            numbers.entry(id).or_insert_with(|| {
-                objects.push(id);
-                (objects.len() - 1) as u32
-            });
-        }
+        let (objects, numbers) = numbered(outlines);
         Self {
             lines: lines_of(outlines, &[], false, Some(&numbers)),
             shaded_lines: lines_of(outlines, &[], true, Some(&numbers)),
-            faces: faces_of(outlines, &[], &[], Some(&numbers)),
+            faces: faces_of(outlines, &[], &[], Some(&numbers), true),
+            shapes: Vec::new(),
+            objects,
+        }
+    }
+
+    /// As [`SceneParts::of`], but surfaces and solids come as [`PlacedShape`]s, each shape
+    /// held once however many copies there are; `faces` keeps the rest (annotation's fills).
+    #[must_use]
+    pub fn shared(outlines: &Outlines) -> Self {
+        let (objects, numbers) = numbered(outlines);
+        Self {
+            lines: lines_of(outlines, &[], false, Some(&numbers)),
+            shaded_lines: lines_of(outlines, &[], true, Some(&numbers)),
+            faces: faces_of(outlines, &[], &[], Some(&numbers), false),
+            shapes: shapes_of(outlines, &numbers),
             objects,
         }
     }
 }
 
-/// The faces of a [`SceneParts`] numbered by its `objects`, leaving out the objects `hidden`, as
-/// while a preview stands in for them.
+/// Every object's number, in the order first met: the list, and each id's number.
+fn numbered(outlines: &Outlines) -> (Vec<u64>, std::collections::HashMap<u64, u32>) {
+    let mut objects = Vec::new();
+    let mut numbers = std::collections::HashMap::new();
+    let ids = outlines.objects.iter().map(|(id, _)| *id);
+    for id in ids.chain(outlines.faces.iter().map(|faces| faces.id)) {
+        numbers.entry(id).or_insert_with(|| {
+            objects.push(id);
+            (objects.len() - 1) as u32
+        });
+    }
+    (objects, numbers)
+}
+
+/// The surfaces and solids that share their mesh, numbered by `numbers`.
+fn shapes_of(
+    outlines: &Outlines,
+    numbers: &std::collections::HashMap<u64, u32>,
+) -> Vec<PlacedShape> {
+    outlines
+        .faces
+        .iter()
+        .filter_map(|faces| {
+            let (mesh, placement) = faces.shared.as_ref()?;
+            Some(PlacedShape {
+                object: numbers.get(&faces.id).copied().unwrap_or(NO_OBJECT),
+                colour: if faces.locked {
+                    LOCKED_COLOUR
+                } else {
+                    faces.colour
+                },
+                mesh: std::sync::Arc::clone(mesh),
+                placement: *placement,
+            })
+        })
+        .collect()
+}
+
+/// The faces of a [`SceneParts::shared`] numbered by its `objects`, leaving out the objects
+/// `hidden`, as while a preview stands in for them: the triangles not in its shapes.
 #[must_use]
 pub fn scene_faces_without(
     outlines: &Outlines,
@@ -249,7 +313,26 @@ pub fn scene_faces_without(
         .enumerate()
         .map(|(number, id)| (*id, number as u32))
         .collect();
-    faces_of(outlines, &[], hidden, Some(&numbers))
+    faces_of(outlines, &[], hidden, Some(&numbers), false)
+}
+
+/// The `shapes` of a [`SceneParts::shared`] numbered by its `objects`, leaving out the objects
+/// `hidden`, as while a preview stands in for them.
+#[must_use]
+pub fn scene_shapes_without(
+    shapes: &[PlacedShape],
+    objects: &[u64],
+    hidden: &[u64],
+) -> Vec<PlacedShape> {
+    shapes
+        .iter()
+        .filter(|shape| {
+            objects
+                .get(shape.object as usize)
+                .is_none_or(|id| !hidden.contains(id))
+        })
+        .cloned()
+        .collect()
 }
 
 /// Lines of every object. With `numbers`, each vertex carries its object's number and the
@@ -311,21 +394,23 @@ pub fn face_vertices_without(
     selected: &[u64],
     hidden: &[u64],
 ) -> Vec<MeshVertex> {
-    faces_of(outlines, selected, hidden, None)
+    faces_of(outlines, selected, hidden, None, true)
 }
 
-/// Faces of every object not `hidden`, numbered as [`lines_of`] numbers lines.
+/// Faces of every object not `hidden`, numbered as [`lines_of`] numbers lines; those with a
+/// shared mesh only when `with_shared`.
 pub(crate) fn faces_of(
     outlines: &Outlines,
     selected: &[u64],
     hidden: &[u64],
     numbers: Option<&std::collections::HashMap<u64, u32>>,
+    with_shared: bool,
 ) -> Vec<MeshVertex> {
     let mut out = Vec::new();
     for faces in outlines
         .faces
         .iter()
-        .filter(|faces| !hidden.contains(&faces.id))
+        .filter(|faces| !hidden.contains(&faces.id) && (with_shared || faces.shared.is_none()))
     {
         let colour = if selected.contains(&faces.id) {
             SELECTED_COLOUR

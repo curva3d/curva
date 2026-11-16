@@ -17,6 +17,9 @@ pub struct Drawing {
     pub scene: Arc<Vec<Vertex>>,
     /// The faces of surfaces and solids, drawn when the view is shaded.
     pub faces: Arc<Vec<MeshVertex>>,
+    /// Surfaces and solids drawn from the mesh they share with their copies, each at its
+    /// placement ([`crate::SceneParts::shared`]); views drawn by Bevy hold each mesh once.
+    pub shapes: Arc<Vec<crate::PlacedShape>>,
     /// Which object each number in `scene` and `faces` stands for ([`crate::SceneParts`]);
     /// empty when their vertices carry no numbers.
     pub objects: Arc<Vec<u64>>,
