@@ -393,6 +393,11 @@ fn main() {
             };
             orbit(name, mode, &out);
         }
+        "subd" => {
+            let cage = args.get(3).and_then(|c| c.parse().ok()).unwrap_or(32);
+            let mode = if args.get(4).is_some_and(|m| m == "full") { Mode::Full } else { Mode::Plain };
+            subd_edit(cage, mode);
+        }
         other => panic!("unknown {other}"),
     }
 }
@@ -573,4 +578,66 @@ fn orbit(name: &str, mode: Mode, out: &std::path::Path) {
         }
     }
     v.picture(&out.join(format!("bevy-orbit-{name}-{mode:?}.png").to_lowercase()));
+}
+
+/// SubD while editing: every frame the limit surface and the cage change (worked out beforehand,
+/// as Curva's subdivision would), are handed to Bevy and drawn. Only handing over and drawing is
+/// timed.
+fn subd_edit(cage: usize, mode: Mode) {
+    let frames: Vec<_> = (0..FRAMES)
+        .map(|k| scenes::subd(cage, k as f64 * 0.05))
+        .collect();
+    let f32s = |v: &[Point]| v.iter().map(|p| p.map(|x| x as f32)).collect::<Vec<_>>();
+    let (first, lines) = &frames[0];
+    let scene = Scene {
+        shapes: vec![first.clone()],
+        placed: vec![(0, [0.0; 3])],
+        tree_parts: 0,
+        curves: lines.clone(),
+    };
+    let mut v = Viewer::new(&scene, mode, size(), Origin(None));
+    let mut cam = curva_viewport::Camera::default();
+    cam.frame([0.0, 0.0, -800.0], [10_000.0, 10_000.0, 1_100.0]);
+    v.look(&cam);
+    v.update();
+    let world = v.apps.main.world_mut();
+    let mesh = world.resource::<Assets<Mesh>>().ids().next().unwrap();
+    let gizmo = world.resource::<Assets<GizmoAsset>>().ids().next().unwrap();
+    let (mut still, mut edit) = (Vec::new(), Vec::new());
+    for (k, (surface, lines)) in frames.iter().enumerate() {
+        let editing = k >= FRAMES / 2;
+        let t = Instant::now();
+        if editing {
+            let world = v.apps.main.world_mut();
+            {
+                let mut meshes = world.resource_mut::<Assets<Mesh>>();
+                let mut m = meshes.get_mut(mesh).unwrap();
+                m.insert_attribute(Mesh::ATTRIBUTE_POSITION, f32s(&surface.positions));
+                m.insert_attribute(Mesh::ATTRIBUTE_NORMAL, f32s(&surface.normals));
+            }
+            let mut asset = GizmoAsset::new();
+            for s in lines.iter().chain(surface.edges.iter()) {
+                asset.linestrip(s.iter().map(|p| Origin(None).rel(*p)), Color::srgb(0.1, 0.1, 0.1));
+            }
+            let mut gizmos = world.resource_mut::<Assets<GizmoAsset>>();
+            *gizmos.get_mut(gizmo).unwrap() = asset;
+        }
+        v.update();
+        let ms = t.elapsed().as_secs_f64() * 1000.0;
+        if k >= 20 && !editing {
+            still.push(ms);
+        } else if k >= FRAMES / 2 + 5 {
+            edit.push(ms);
+        }
+    }
+    let median = |v: &mut Vec<f64>| {
+        v.sort_by(f64::total_cmp);
+        v[v.len() / 2]
+    };
+    println!(
+        "subd cage {cage} ({mode:?}): {} triangles; still {:.2} ms per frame, editing {:.2} ms per frame",
+        first.triangles.len(),
+        median(&mut still),
+        median(&mut edit)
+    );
 }
