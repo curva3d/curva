@@ -1,7 +1,8 @@
 # Spec: views and visualisation styles
 
 **Status:** Approved by the owner in chat · 15 November 2026 (display stream, #160), with the
-decisions in §8.
+decisions in §8. Decision 0029 (16 November 2026): Bevy draws every view, 3D and 2D; see
+`docs/reviews/bevy-drawing-review-2026-11-16.md` for how these specs map onto it.
 **Covers:** the owner's direction of 15 November 2026. Replaces "Display modes as editable files"
 (`display-pipeline.md` §3) and its steps 8 to 10. The rest of `display-pipeline.md` (detail that
 follows the zoom, smooth edges, speed on large scenes, the machines Curva runs on) is unchanged.
