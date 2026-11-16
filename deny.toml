@@ -17,6 +17,9 @@ allow = [
     "Zlib",
     "Unicode-3.0",
     "Unicode-DFS-2016",
+    # Owner approved 16 November 2026 (Bevy pilot, #228): MIT without its credit condition; Bevy
+    # needs it through encase.
+    "MIT-0",
 ]
 
 # Owner approved 9 November 2026 (PR #33): font licences, for egui's bundled fonts only.

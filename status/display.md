@@ -10,7 +10,8 @@
   Curva by default. A view set to Bevy has Bevy, running on Curva's own device, draw its picture
   (background only until step 2), copied into the scene texture where the view sits. Bevy starts
   the first time a view is set to it. The full-features device moves to step 5, where Bevy's
-  effects first need it, so nothing changes with the setting on Curva. BUILDTIME
+  effects first need it, so nothing changes with the setting on Curva. A clean build takes about twice as long (306 →
+  601 s, debug). The owner allowed the MIT-0 licence, which Bevy needs through `encase`.
 - **Disk full on V:**, builds failed. Cleaned the display stream's old build folders and the main
   folder's stale debug cache (about 60 GB). From now on worktrees and spike build folders are
   removed when done.
