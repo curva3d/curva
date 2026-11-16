@@ -825,6 +825,51 @@ fn layouts_come_back_with_their_details_and_sheet_drawing() {
 }
 
 #[test]
+fn arc_length_dimensions_go_out_as_their_plain_drawing() {
+    use curva_document::annotation::{Annotation, ArcLengthDimension};
+    let mut state = State::default();
+    let dimension = ArcLengthDimension {
+        centre: [0.0; 3],
+        start: [10.0, 0.0, 0.0],
+        end: [0.0, 10.0, 0.0],
+        arc_at: [10.0, 10.0, 0.0],
+        x: [1.0, 0.0, 0.0],
+        y: [0.0, 1.0, 0.0],
+        style: 0,
+        text: None,
+    };
+    state
+        .objects
+        .push(object(0, Shape::Annotation(Annotation::ArcLength(dimension)), 0).into());
+    state.next_id = 1;
+    let back = round_trip(&state);
+    // Rhino has no arc length dimension: its lines, two arrowheads and its value, grouped.
+    let lines = back
+        .objects
+        .iter()
+        .filter(|o| matches!(o.shape, Shape::Curve(_)))
+        .count();
+    let heads = back
+        .objects
+        .iter()
+        .filter(|o| matches!(o.shape, Shape::Annotation(Annotation::Hatch(_))))
+        .count();
+    let words: Vec<String> = back
+        .objects
+        .iter()
+        .filter_map(|o| match &o.shape {
+            Shape::Annotation(Annotation::Text(t)) => Some(t.content.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(lines > 32, "{lines}");
+    assert_eq!(heads, 2);
+    assert_eq!(words, vec!["15.71".to_owned()]);
+    let group = back.objects[0].group;
+    assert!(group.is_some() && back.objects.iter().all(|o| o.group == group));
+}
+
+#[test]
 fn scale_bars_and_tables_go_out_as_their_plain_drawing() {
     use curva_document::annotation::{Annotation, Text, TextAlign};
     use curva_document::layouts::{Detail, Layout, PaperUnit};

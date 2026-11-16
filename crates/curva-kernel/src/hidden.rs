@@ -51,6 +51,10 @@ pub enum LineKind {
 pub struct Options {
     /// Edges between faces that join smoothly (Rhino's Tangent edges).
     pub tangent_edges: bool,
+    /// Inputs from this one on (bodies first, then curves) win where their lines lie on
+    /// others': a line drawn twice keeps theirs, as clipping-plane cuts keep their own over the
+    /// cut edges they lie on. `None` keeps the first drawn.
+    pub first_from: Option<usize>,
 }
 
 /// A line of the drawing, in the view plane: a curve lying at z = 0, its x right and its y up
@@ -817,7 +821,12 @@ pub fn hidden_lines(
     // Lines drawn twice, and hidden lines lying under visible ones, are left out: visible lines
     // first, then each line keeps only what no line already kept covers.
     let mut kept: Vec<DrawnLine> = Vec::new();
-    drawn.sort_by_key(|line| !line.visible);
+    drawn.sort_by_key(|line| {
+        (
+            !line.visible,
+            options.first_from.is_none_or(|from| line.source < from),
+        )
+    });
     for line in drawn {
         let over: Vec<&Curve> = kept
             .iter()

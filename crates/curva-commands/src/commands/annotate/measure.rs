@@ -327,6 +327,40 @@ mod tests {
     }
 
     #[test]
+    fn an_area_dimension_measures_what_a_hatch_fills() {
+        use curva_document::annotation::Hatch;
+        let square = |low: f64, high: f64| {
+            Curve::polyline(
+                vec![
+                    [low, low, 0.0],
+                    [high, low, 0.0],
+                    [high, high, 0.0],
+                    [low, high, 0.0],
+                ],
+                true,
+            )
+            .unwrap()
+        };
+        let mut doc = Document::default();
+        // A 10 × 10 square with a 2 × 2 hole.
+        let hatch = doc.add_annotation(Annotation::Hatch(Hatch {
+            loops: vec![square(0.0, 10.0), square(4.0, 6.0)],
+            pattern: "Solid".to_owned(),
+            scale: 1.0,
+            rotation: 0.0,
+            base: [0.0; 3],
+            x: [1.0, 0.0, 0.0],
+            y: [0.0, 1.0, 0.0],
+        }));
+        doc.select(&[hatch]);
+        run(&mut doc, &["DimArea", "20,5"]);
+        let Annotation::Text(note) = last(&doc) else {
+            panic!("not a note");
+        };
+        assert_eq!(shown(&doc, &note.content), "96");
+    }
+
+    #[test]
     fn a_volume_wants_a_closed_solid() {
         let mut doc = Document::default();
         let line = doc.add(Curve::line([0.0; 3], [1.0, 0.0, 0.0]).unwrap());

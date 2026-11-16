@@ -51,6 +51,9 @@ impl Recipe for What {
                         cx.doc.length_text(o.value())
                     )
                 }
+                Shape::Annotation(curva_document::annotation::Annotation::ArcLength(a)) => {
+                    format!("arc length dimension of {}", cx.doc.length_text(a.value()))
+                }
                 Shape::Annotation(curva_document::annotation::Annotation::Leader(l)) => {
                     format!("leader \"{}\"", l.content.replace('\n', " "))
                 }

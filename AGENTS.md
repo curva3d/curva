@@ -32,21 +32,40 @@ does not read code.
 - **Larger features need an approved spec** in `docs/specs/` before code is written.
 - **Small pull requests:** one concern each, ideally a few hundred lines.
 
-## Streams (owner's rule, 15 November 2026)
+## Streams (owner's rules, 15 and 16 November 2026)
 
-Work runs in two streams, each in its own sessions: **display** (the viewport: drawing, display
-modes, speed on large scenes) and **features** (everything else). A session says which stream it
-is in.
+Work runs in three streams, each in its own sessions. A session says which stream it is in.
 
-- **Each stream writes only its own status file:** `status/display.md` or `status/features.md`.
-  `STATUS.md` only points to them; do not write progress there.
+| Stream | Does | Picks up issues labelled | Owns |
+|---|---|---|---|
+| **display** | The viewport: drawing, display modes, speed on large scenes | `display` | The inside of `crates/curva-viewport` |
+| **mesh** (from 16 November 2026, decision 0032) | Mesh and SubD objects: their geometry, commands, files and tests | `mesh` | The inside of `crates/curva-mesh`, and its own new files elsewhere (below) |
+| **features** | Everything else: commands, NURBS geometry, documents, files, the interface | `agent-ready` issues with neither `display` nor `mesh` | Everything not owned by the other two |
+
+- **Each stream writes only its own status file:** `status/display.md`, `status/mesh.md` or
+  `status/features.md`. `STATUS.md` only points to them; do not write progress there.
 - **The display stream owns the inside of `crates/curva-viewport`.** Other streams use only its
   public functions and types. If they need a viewport change (a new function, a fix, a different
   look), they open an issue labelled `display` describing what they need and why, instead of
   editing the crate. The display stream folds those issues into its plan.
-- **Only the display stream runs speed benchmarks** (`--orbit-benchmark` and any other timing).
-  Another session may be building on the same machine, so the display stream reruns any result
-  that looks off before reporting it, and says in the report when it did.
+- **The mesh stream owns the inside of `crates/curva-mesh`** (Curva's own mesh and SubD cage
+  structure, and the only place that calls manifold-rust and subdiv-kernels). In the crates the
+  features stream owns, it **adds its own new files only**: mesh and SubD commands in their own
+  folders under `crates/curva-commands/src/commands/mesh/` and `.../subd/`, a mesh and SubD module
+  in `curva-document`, mesh and SubD reading and writing in the file crates (`curva-3dm` and
+  others). Registering them takes one-line additions to existing lists (a new shape kind, a command
+  in the registry, a menu entry); those are allowed. **Any other change to existing shared code**
+  (the command framework, document core types, the interface layout, an existing file reader) goes
+  through an issue labelled `agent-ready` for the features stream, describing what is needed and
+  why. Viewport needs go through `display` issues as above.
+- **SubD to NURBS** uses solidcore only through `curva-kernel`'s public interface. If the mesh
+  stream needs something new from the kernel, it asks the features stream with an issue.
+- **Only the display stream runs viewport speed benchmarks** (`--orbit-benchmark` and any other
+  timing of drawing). Other streams may time their own geometry (a boolean, a subdivision), but
+  another session may be building on the same machine, so they rerun any result that looks off
+  before reporting it, and say in the report when they did.
+- **Disk space is shared:** remove a worktree and its build folder as soon as its pull request is
+  merged or closed.
 
 ## Code rules (architecture section 17)
 
@@ -149,5 +168,5 @@ test or reference, new dependencies with licence implications, releases. Everyth
 
 ## Ending a session
 
-Update your stream's status file (`status/display.md` or `status/features.md`): what changed,
+Update your stream's status file (`status/display.md`, `status/mesh.md` or `status/features.md`): what changed,
 what is in progress, known problems, handoff notes.
