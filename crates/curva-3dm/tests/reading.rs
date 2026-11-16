@@ -430,3 +430,76 @@ fn rhinos_clipping_plane_comes_in_cutting_its_views() {
     assert!((low[0] - 500.0).abs() < 1e-6 && (high[0] - 500.0).abs() < 1e-6);
     assert!((high[1] - low[1] - 2000.0).abs() < 1e-6 || (high[2] - low[2] - 2000.0).abs() < 1e-6);
 }
+
+#[test]
+fn rhino_5_annotation_comes_in_as_rhino_reads_it() {
+    use curva_document::annotation::{Annotation, DimensionKind, TextAlign};
+    // Rhino 8 saved the same notes, dimensions and leader as a Rhino 5 file and a Rhino 8 one.
+    // What Rhino 8 reads back from the Rhino 5 file is what Curva should: the aligned dimension
+    // then measures along its plane (20, not 25), and the leader ends at its words, no landing.
+    let annotations = |name: &str| {
+        let (doc, report) = open(name);
+        assert!(report.skipped.is_empty(), "{name}: {}", report.summary());
+        doc.state()
+            .objects
+            .iter()
+            .filter_map(|o| match &o.shape {
+                Shape::Annotation(a) => Some(a.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    let old = annotations("v5_annotation.3dm");
+    let new = annotations("v8_annotation_for_v5.3dm");
+    assert_eq!(old.len(), 8);
+    let near = |a: [f64; 3], b: [f64; 3]| (0..3).all(|k| (a[k] - b[k]).abs() < 1e-9);
+    // Notes: the same words, place, height and alignment as from the Rhino 8 file.
+    for i in 0..2 {
+        let (Annotation::Text(a), Annotation::Text(b)) = (&old[i], &new[i]) else {
+            panic!("{:?}", old[i]);
+        };
+        assert_eq!(a.content, b.content);
+        assert!(near(a.origin, b.origin), "{a:?}");
+        assert!((a.height - b.height).abs() < 1e-9);
+        assert_eq!(a.align, b.align);
+    }
+    let Annotation::Text(centred) = &old[1] else {
+        unreachable!()
+    };
+    assert_eq!(centred.align, TextAlign::Centre);
+    let Annotation::Dimension(linear) = &old[2] else {
+        panic!("{:?}", old[2]);
+    };
+    assert_eq!(linear.kind, DimensionKind::Horizontal);
+    assert!(near(linear.second, [30.0, 10.0, 0.0]) && near(linear.line, [15.0, -8.0, 0.0]));
+    assert!((linear.value() - 30.0).abs() < 1e-9);
+    let Annotation::Dimension(aligned) = &old[3] else {
+        panic!("{:?}", old[3]);
+    };
+    assert!((aligned.value() - 20.0).abs() < 1e-9, "{aligned:?}");
+    let Annotation::Radial(radius) = &old[4] else {
+        panic!("{:?}", old[4]);
+    };
+    assert!(!radius.diameter && near(radius.on_curve, [105.0, 0.0, 0.0]));
+    assert!(
+        near(radius.text_at, [116.0, 8.0, 0.0]),
+        "Rhino's dimension line point"
+    );
+    let Annotation::Radial(diameter) = &old[5] else {
+        panic!("{:?}", old[5]);
+    };
+    assert!(diameter.diameter);
+    assert_eq!(old[6], {
+        let Annotation::Angle(mut b) = new[6].clone() else {
+            panic!("{:?}", new[6]);
+        };
+        b.style = 0;
+        Annotation::Angle(b)
+    });
+    let Annotation::Leader(leader) = &old[7] else {
+        panic!("{:?}", old[7]);
+    };
+    assert_eq!(leader.content, "Oak floor");
+    assert!(!leader.landing);
+    assert_eq!(leader.points.len(), 4);
+}

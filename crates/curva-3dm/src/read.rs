@@ -46,6 +46,12 @@ pub mod class {
     pub const CLIPPING_PLANE_SURFACE: Uuid = Uuid::parse("DBC5A584-CE3F-4170-98A8-497069CA5C36");
     pub const DIM_STYLE: Uuid = Uuid::parse("67AA51A5-791D-4BEC-8AED-D23B462B6F87");
     pub const LINETYPE: Uuid = Uuid::parse("26F10A24-7D13-4F05-8FDA-8E364DAF8EA6");
+    // Rhino 5's annotation (openNURBS' `ON_OBSOLETE_V5_*`, Rhino 5's `ON_TextEntity2` and kin).
+    pub const V5_DIM_LINEAR: Uuid = Uuid::parse("BD57F33B-A1B2-46e9-9C6E-AF09D30FFDDE");
+    pub const V5_DIM_RADIAL: Uuid = Uuid::parse("B2B683FC-7964-4e96-B1F9-9B356A76B08B");
+    pub const V5_DIM_ANGULAR: Uuid = Uuid::parse("841BC40B-A971-4a8e-94E5-BBA26D67348E");
+    pub const V5_TEXT: Uuid = Uuid::parse("46F75541-F46B-48be-AA7E-B353BBE068A7");
+    pub const V5_LEADER: Uuid = Uuid::parse("14922B7A-5B65-4f11-8345-D415A9637129");
     /// The class an older id stands for, as openNURBS reads Rhino's older classes as today's.
     #[must_use]
     pub fn current(id: Uuid) -> Uuid {
@@ -831,6 +837,14 @@ fn geometry_of(id: Uuid, r: &mut Reader<'_>) -> Result<std::result::Result<Geome
         class::DIM_RADIAL => Geometry::Radial(radial_dimension(r)?),
         class::DIM_ANGULAR => Geometry::Angular(angular_dimension(r)?),
         class::LEADER => Geometry::Leader(leader(r)?),
+        class::V5_TEXT
+        | class::V5_DIM_LINEAR
+        | class::V5_DIM_RADIAL
+        | class::V5_DIM_ANGULAR
+        | class::V5_LEADER => match v5_annotation(r)? {
+            Ok(geometry) => geometry,
+            Err(kind) => return Ok(Err(kind)),
+        },
         class::DETAIL => Geometry::Detail(detail(r)?),
         class::CLIPPING_PLANE_SURFACE => Geometry::ClippingPlane(clipping_plane(r)?),
         class::TEXT_DOT => {
@@ -1632,6 +1646,146 @@ fn leader(r: &mut Reader<'_>) -> Result<Leader> {
         rich: core.rich,
         points,
     })
+}
+
+/// Rhino 5's annotation (`ON_OBSOLETE_V5_Annotation::Read` and its kinds' `Read`): its kind, plane,
+/// points in that plane, typed words and text height; an angle dimension adds its angle and
+/// radius. Files from openNURBS of October 2007 on wrap each part in a chunk; older ones start
+/// with a bare chunk version. The style is named by its index in Rhino 5's style table, which
+/// Curva does not read, so the annotation takes the default style (a note keeps its height and
+/// alignment as its own).
+fn v5_annotation(r: &mut Reader<'_>) -> Result<std::result::Result<Geometry, String>> {
+    let chunked = r.peek_tcode() == Some(tcode::ANONYMOUS_CHUNK);
+    // A kind's own chunk, then the shared part's; older files have only a bare chunk version.
+    let mut a = if chunked {
+        r.anonymous()?.1.anonymous()?.1
+    } else {
+        r.chunk_version()?;
+        r.clone()
+    };
+    let kind = a.u32()?;
+    let _display = a.u32()?;
+    let plane = plane(&mut a)?;
+    let count = a.count(16)?;
+    let points = (0..count)
+        .map(|_| a.f64s::<2>())
+        .collect::<Result<Vec<_>>>()?;
+    let words = a.wstring()?;
+    let _user_positioned = a.u32()?;
+    let _style_index = a.i32()?;
+    let height = a.f64()?;
+    let justification = if chunked { a.u32()? } else { 0 };
+    let point = |i: usize| points.get(i).copied().unwrap_or([0.0, 0.0]);
+    let less = |p: [f64; 2], q: [f64; 2]| [p[0] - q[0], p[1] - q[1]];
+    Ok(Ok(match kind {
+        // A note: Rhino 5 put an unjustified note's top left at its plane's origin.
+        7 => {
+            let (h_align, v_align) = if justification == 0 {
+                (0, 3)
+            } else {
+                let h = if justification & 2 != 0 {
+                    1
+                } else if justification & 4 != 0 {
+                    2
+                } else {
+                    0
+                };
+                let v = if justification & (1 << 18) != 0 {
+                    3
+                } else if justification & (1 << 17) != 0 {
+                    5
+                } else {
+                    7
+                };
+                (h, v)
+            };
+            Geometry::Text(Text {
+                rich: words,
+                plane,
+                style: Uuid::NIL,
+                own: Some(DimStyle {
+                    id: Uuid::NIL,
+                    name: String::new(),
+                    text_height: height,
+                    h_align,
+                    v_align,
+                    arrow_size: 1.0,
+                    extension_extension: 1.0,
+                    extension_offset: 0.5,
+                    text_gap: 0.25,
+                    length_resolution: 2,
+                    font: None,
+                }),
+                rotation: 0.0,
+            })
+        }
+        // Linear (1) and aligned (2): the first point at [0] (the plane's origin), the second at
+        // [2], the dimension line from [1] to [3], always along the plane's X. An aligned one's
+        // plane runs from its first point to its second; when it does not, Rhino measures it
+        // along X as well.
+        1 | 2 => {
+            let first = point(0);
+            let (from, to) = (point(1), point(3));
+            let middle = [(from[0] + to[0]) / 2.0, (from[1] + to[1]) / 2.0];
+            let along_x = kind == 1 || (point(2)[1] - first[1]).abs() > 1e-9;
+            Geometry::Dimension(LinearDimension {
+                plane: Plane {
+                    origin: std::array::from_fn(|k| {
+                        plane.origin[k] + plane.x[k] * first[0] + plane.y[k] * first[1]
+                    }),
+                    ..plane
+                },
+                style: Uuid::NIL,
+                own: None,
+                rotated: along_x,
+                text: words,
+                second: less(point(2), first),
+                line: less(middle, first),
+            })
+        }
+        // Diameter (4) and radius (5): the centre at [0], the arrow at [1], the text at [2].
+        4 | 5 => {
+            let centre = point(0);
+            Geometry::Radial(RadialDimension {
+                plane: Plane {
+                    origin: std::array::from_fn(|k| {
+                        plane.origin[k] + plane.x[k] * centre[0] + plane.y[k] * centre[1]
+                    }),
+                    ..plane
+                },
+                style: Uuid::NIL,
+                own: None,
+                diameter: kind == 4,
+                text: words,
+                radius_point: less(point(1), centre),
+                text_point: less(point(2), centre),
+            })
+        }
+        // An angle (3): the corner at the plane's origin, a point on each side at [1] and [2], a
+        // point on the arc at [3].
+        3 => {
+            let length = |p: [f64; 2]| (p[0] * p[0] + p[1] * p[1]).sqrt();
+            let (start, end) = (point(1), point(2));
+            Geometry::Angular(AngularDimension {
+                plane,
+                style: Uuid::NIL,
+                own: None,
+                text: words,
+                sides: [start, end],
+                offsets: [length(start), length(end)],
+                arc_point: point(3),
+            })
+        }
+        // A leader (6): the arrow's tip first, the words at the last point.
+        6 => Geometry::Leader(Leader {
+            plane,
+            style: Uuid::NIL,
+            own: None,
+            rich: words,
+            points,
+        }),
+        other => return Ok(Err(format!("Rhino 5 annotation of kind {other}"))),
+    }))
 }
 
 /// The model's views in the settings' view list (those not pages or nested in one): their

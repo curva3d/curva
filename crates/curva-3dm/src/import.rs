@@ -367,13 +367,19 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
                 continue;
             }
         };
-        let shape = match scaled(shape, scale) {
+        let mut shape = match scaled(shape, scale) {
             Ok(shape) => shape,
             Err(why) => {
                 Report::count(&mut report.skipped, &format!("unreadable ({why})"));
                 continue;
             }
         };
+        // Rhino 5's leaders (all a Rhino 5 file has) end at their words, with no landing.
+        if model.version < 60
+            && let Shape::Annotation(curva_document::annotation::Annotation::Leader(l)) = &mut shape
+        {
+            l.landing = false;
+        }
         let shape = with_layout_numbers(shape, &page_ids);
         let shape = match style_named(&object.geometry).and_then(|s| style_ids.get(&s)) {
             Some(style) => with_style(shape, *style),

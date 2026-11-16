@@ -89,7 +89,8 @@ What does not yet, as of 15 November 2026, to close before 0.4.3:
   Rhino note's own overrides are read but not written back.
 - Text formatting (bold, italic, fonts per run, rich text) comes in as plain words; text masks and
   frames are not carried.
-- Rhino 5 annotation (its older text and dimension objects) is not read.
+- Rhino 5 annotation comes in as Rhino 8 reads it, but its annotation styles are not read: dimensions
+  and leaders take the default style, and notes keep their own height and alignment.
 - Details carry their display mode (Rhino's standard modes by id), lock and the layers turned off in
   them (each layer's per-viewport settings, naming the detail by its object id as Rhino does); a
   perspective's lens (Curva has none) is not carried.
