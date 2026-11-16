@@ -1030,6 +1030,25 @@ fn write_length_value(w: &mut Writer, value: f64) {
 /// 1.1: everything up to the notes' alignment and the style's scale, with Rhino's usual values
 /// for what Curva does not set; Rhino fills in the fields of later versions with its defaults.
 fn write_dim_style(w: &mut Writer, style: &DimStyle, index: usize) {
+    write_style_fields(w, style, Some(index), None);
+}
+
+/// The fields a note overrides in its style, by openNURBS' `ON_DimStyle::field` numbers: its
+/// text height and its horizontal alignment.
+const NOTE_OVERRIDES: [usize; 2] = [9, 94];
+
+/// How many fields an annotation style has (`ON_DimStyle::field::Count`).
+const STYLE_FIELDS: usize = 115;
+
+/// An annotation style, or (with its parent's id) the style a note sets for itself over the one
+/// it names: then with no id, name or index, as Rhino requires, and the note's fields marked as
+/// overridden.
+fn write_style_fields(
+    w: &mut Writer,
+    style: &DimStyle,
+    index: Option<usize>,
+    parent: Option<Uuid>,
+) {
     // Version 1.2 adds the font; without one, 1.1 leaves Rhino its default.
     w.begin_versioned(
         tcode::ANONYMOUS_CHUNK,
@@ -1038,13 +1057,20 @@ fn write_dim_style(w: &mut Writer, style: &DimStyle, index: usize) {
     );
     w.begin_versioned(tcode::MODEL_ATTRIBUTES_CHUNK, 1, 0);
     w.u8(0); // model serial number
-    w.u8(1);
-    w.uuid(style.id);
-    w.u8(0); // component type
-    w.u8(1);
-    w.count(index);
-    w.u8(1);
-    w.wstring(&style.name);
+    if let Some(index) = index {
+        w.u8(1);
+        w.uuid(style.id);
+        w.u8(0); // component type
+        w.u8(1);
+        w.count(index);
+        w.u8(1);
+        w.wstring(&style.name);
+    } else {
+        w.u8(2); // no id
+        w.u8(0); // component type
+        w.u8(2); // no index
+        w.u8(2); // no name
+    }
     w.end();
     let h = style.text_height;
     // Extension line extension and offset, arrow and leader arrow sizes, centre mark, text gap,
@@ -1075,9 +1101,19 @@ fn write_dim_style(w: &mut Writer, style: &DimStyle, index: usize) {
     w.f64(0.0); // dimension line extension
     w.bool(false);
     w.bool(false);
-    w.uuid(Uuid::NIL); // no parent style
-    w.i32(0);
-    w.bool(false); // no overridden fields
+    if let Some(parent) = parent {
+        w.uuid(parent);
+        w.count(NOTE_OVERRIDES.len());
+        w.bool(true);
+        w.count(STYLE_FIELDS);
+        for field in 0..STYLE_FIELDS {
+            w.bool(NOTE_OVERRIDES.contains(&field));
+        }
+    } else {
+        w.uuid(Uuid::NIL); // no parent style
+        w.i32(0);
+        w.bool(false); // no overridden fields
+    }
     w.i32(0); // tolerance format
     w.i32(4);
     w.f64s(&[0.0, 0.0, 1.0, 3.0 * h]);
@@ -1180,6 +1216,19 @@ fn write_annotation_core(
     plane: &Plane,
     kind: u32,
 ) {
+    write_annotation_core_over(w, rich, rotation, style, plane, kind, None);
+}
+
+/// [`write_annotation_core`] with the style an annotation sets for itself over the one it names.
+fn write_annotation_core_over(
+    w: &mut Writer,
+    rich: &str,
+    rotation: f64,
+    style: Uuid,
+    plane: &Plane,
+    kind: u32,
+    own: Option<&DimStyle>,
+) {
     w.begin_anonymous(4);
     w.begin_anonymous(0);
     w.wstring(&rich.replace('\n', "\r\n"));
@@ -1203,7 +1252,15 @@ fn write_annotation_core(
     write_plane(w, plane);
     w.u32(kind);
     w.begin_anonymous(1);
-    w.bool(false); // no overrides
+    match own {
+        Some(own) => {
+            w.bool(true);
+            class_object(w, class::DIM_STYLE, |w| {
+                write_style_fields(w, own, None, Some(style));
+            });
+        }
+        None => w.bool(false), // no overrides
+    }
     w.end();
     w.f64s(&[1.0, 0.0]); // horizontal direction
     w.bool(true); // text scales with the model
@@ -1213,7 +1270,7 @@ fn write_annotation_core(
 /// A note (`ON_Text::Write`).
 fn write_text(w: &mut Writer, t: &Text) {
     w.begin_anonymous(0);
-    write_annotation_core(w, &t.rich, t.rotation, t.style, &t.plane, 9);
+    write_annotation_core_over(w, &t.rich, t.rotation, t.style, &t.plane, 9, t.own.as_ref());
     w.end();
 }
 

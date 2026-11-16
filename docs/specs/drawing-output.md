@@ -85,8 +85,8 @@ What does not yet, as of 15 November 2026, to close before 0.4.3:
 
 **`.3dm` (Rhino)**
 - Annotation styles cross by name with their font, text height, arrow size, text gap, extension lines
-  and decimals; arrowhead types, units, tolerances, text masks and colours take Rhino's defaults. A
-  Rhino note's own overrides are read but not written back.
+  and decimals; arrowhead types, units, tolerances, text masks and colours take Rhino's defaults.
+  A note's own height and alignment cross both ways as overrides of its style, as Rhino keeps them.
 - Text formatting (bold, italic, fonts per run, rich text) comes in as plain words; text masks and
   frames are not carried.
 - Details carry their display mode (Rhino's standard modes by id), lock and the layers turned off in
