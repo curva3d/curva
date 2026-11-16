@@ -4,25 +4,23 @@
 mesh and SubD files elsewhere (see `AGENTS.md`). Updated at the end of every work session. Newest
 first.*
 
-## 16 November 2026 (second session, after the move to E:)
+## 16 and 17 November 2026 (second session, after the move to E:)
 
-**Spec approved by the owner** (17 November 2026, `docs/specs/mesh-and-subd.md`, #246). The Boost
-licence is allowed for all of Curva (decision 0034, in `deny.toml` and `about.toml`).
-First draft, as sent for approval:
-Three stages: A, Rhino's meshes and SubDs come in (objects, display, `.3dm`, OBJ, STL, PLY);
-B, SubD modelling; C, mesh tools. Owner's decisions asked: the Boost licence (BSL-1.0) for
-clipper2-rust, which manifold-rust needs (`cargo-deny` rejects it today; everything else passes);
-the order of the stages; the plan as a whole.
+**Spec approved by the owner** (17 November 2026, `docs/specs/mesh-and-subd.md`, #246), with
+these decisions:
+- Stage order: A meshes and mesh tools (with STL, OBJ, PLY and `.3dm` meshes), B SubDs come in,
+  C SubD modelling with QuadRemesh.
+- QuadRemesh now, on quadrs (decision 0033). No well-maintained pure-Rust quad remesher exists;
+  the maintained ones are C++.
+- Flat or smooth SubD display is a command like any other, `SubDDisplayToggle`, with Tab as its
+  shortcut.
+- The Boost licence (BSL-1.0) is allowed for all of Curva (decision 0034, in `deny.toml` and
+  `about.toml`); manifold-rust needs it through clipper2-rust.
 
-**Owner's changes (16 November 2026):** QuadRemesh is important and comes in Stage B, on quadrs
-(decision 0033, 17 November; no well-maintained pure-Rust alternative was found). Stage order
-(owner, 17 November): A meshes and mesh tools, B SubDs come in, C SubD modelling with QuadRemesh.
+**In review:** Stage A step 1, the mesh structure in `crates/curva-mesh` (#268, PR #276).
 
-
-**Next:** Stage A (spec §10), issues filed 17 November: step 1, the mesh structure in
-`crates/curva-mesh` (#268), then #269 to #275. Asked of the other streams: the two shape kinds
-(#266, features) and drawing meshes (#267, display). Flat or smooth SubD display is a command like any other,
-`SubDDisplayToggle`, with Tab as its shortcut.
+**Next:** the rest of Stage A, #269 to #275 (spec §10). Asked of the other streams: the two shape
+kinds in the document (#266, features; needed before #269) and drawing meshes (#267, display).
 
 **Found on the way**
 - subdiv-kernels' weights are single precision; step 2 measures whether that is enough for
