@@ -192,3 +192,23 @@ What is left on *Large* is crowding, not searching: timed once, the benchmark's 
 whole scene, each circle under a pixel, so about 115,000 segments lie within the cursor's 12
 pixels, and working out where they cross takes about 15 ms. Thinning out objects too small to see
 on screen would remove that, but changes which snap points are offered; it stays open in #130.
+
+## Rhino on the same scenes (16 November 2026, the owner's reference)
+
+The owner asked for Rhino's speed on the benchmark scenes, as the reference Curva is held to.
+*Medium* and *Large* were saved from Curva as `.3dm` files (`curva --picture … --scene medium
+--run "SaveAs;medium.3dm"`) and opened in Rhino 8 (8.36) through its connection, in millimetres,
+on the same machine (RTX 3060). Views as Curva's: Perspective Shaded, Top, Front and Right
+Wireframe, each zoomed to the whole scene. Rhino's own `TestMaxSpeed` redraws the active view 100
+times; each view was measured on its own (a script cannot time Rhino's redraws, which return before
+they finish), so "all four" is the sum. Rhino's views were 431 × 410 pixels; Curva's window is
+1280 × 800 with four views of about 640 × 400, so Curva draws about 1.4 times the pixels.
+
+| Scene | Rhino Perspective, Shaded | Rhino Top | Rhino Front | Rhino Right | Rhino, all four | Curva, all four (frame gap) |
+|---|---|---|---|---|---|---|
+| *Medium* | 1.6–1.9 ms | 5.0 ms | 1.4 ms | 1.6 ms | about 10 ms | 2.9–3.4 ms (Bevy views: 6.5–6.8 ms) |
+| *Large* | 33–35 ms | 101 ms | 18 ms | 15 ms | about 167 ms | 24.9–26.2 ms (Bevy views: 25.6–26.4 ms) |
+
+Rhino's *Large* figures are from the second run, after Rhino had made its display meshes. Rhino's
+Top view is its slowest: it draws all the circles face-on. Curva's *Large* frame gap is mostly
+snapping (about 23 ms, #130); its graphics card's own time is 22 ms.

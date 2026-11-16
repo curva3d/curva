@@ -120,6 +120,9 @@ pub(super) struct ViewScene {
     /// Curva's background behind the scene, and the two colours it was made with.
     backdrop: Entity,
     backdrop_colours: Option<(epaint::Color32, epaint::Color32)>,
+    /// What was last handed to Bevy: whether faces show, and the view (its lens and shape).
+    shaded: Option<bool>,
+    view: Option<(crate::camera::Lens, u32)>,
     look: Option<Look>,
     faces: Option<Arc<Vec<MeshVertex>>>,
     selection: Option<Arc<Vec<u64>>>,
@@ -168,6 +171,8 @@ impl ViewScene {
             sun,
             backdrop,
             backdrop_colours: None,
+            shaded: None,
+            view: None,
             look: None,
             faces: None,
             selection: None,
@@ -190,24 +195,35 @@ impl ViewScene {
         drawing: &Drawing,
         look: Look,
     ) {
-        // Wireframe views show no faces.
-        let shown = if drawing.shaded {
-            Visibility::Visible
-        } else {
-            Visibility::Hidden
-        };
-        world.entity_mut(self.root).insert(shown);
-        self.place_backdrop(world, drawing);
-        // The light from the viewer comes from a little above and to the left, as in Rhino's
-        // Shaded, so highlights sit off-centre and flat faces shade across.
+        // Only what changed is handed to Bevy: each change makes Bevy redo work for it.
+        if self.shaded != Some(drawing.shaded) {
+            self.shaded = Some(drawing.shaded);
+            // Wireframe views show no faces.
+            let shown = if drawing.shaded {
+                Visibility::Visible
+            } else {
+                Visibility::Hidden
+            };
+            world.entity_mut(self.root).insert(shown);
+        }
         let lens = drawing.camera.lens();
-        let v = |p: [f64; 3]| Vec3::new(p[0] as f32, p[1] as f32, p[2] as f32);
-        let (forward, up) = (v(lens.forward), v(lens.up));
-        let right = forward.cross(up);
-        let towards = (forward - HEADLIGHT_RAISE * up + HEADLIGHT_SHIFT * right).normalize();
-        world
-            .entity_mut(self.headlight)
-            .insert(Transform::IDENTITY.looking_to(towards, up));
+        let aspect = drawing.area.width() / drawing.area.height().max(1.0);
+        let new_view = self.view != Some((lens, aspect.to_bits()));
+        if new_view || self.backdrop_colours != Some((drawing.background, drawing.background_low)) {
+            self.place_backdrop(world, drawing);
+        }
+        if new_view {
+            self.view = Some((lens, aspect.to_bits()));
+            // The light from the viewer comes from a little above and to the left, as in
+            // Rhino's Shaded, so highlights sit off-centre and flat faces shade across.
+            let v = |p: [f64; 3]| Vec3::new(p[0] as f32, p[1] as f32, p[2] as f32);
+            let (forward, up) = (v(lens.forward), v(lens.up));
+            let right = forward.cross(up);
+            let towards = (forward - HEADLIGHT_RAISE * up + HEADLIGHT_SHIFT * right).normalize();
+            world
+                .entity_mut(self.headlight)
+                .insert(Transform::IDENTITY.looking_to(towards, up));
+        }
         if self.look != Some(look) {
             self.look = Some(look);
             self.light(world, look);
@@ -219,7 +235,7 @@ impl ViewScene {
                 }
             }
         }
-        if look.lighting == Lighting::Sunlit {
+        if look.lighting == Lighting::Sunlit && new_view {
             // Shadows reach from just in front of the viewer to well past what it looks at, in
             // millimetres (Bevy's defaults are for metres).
             let distance = drawing.camera.distance as f32;

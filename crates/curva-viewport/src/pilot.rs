@@ -61,6 +61,10 @@ struct PilotView {
     target: Handle<Image>,
     size: [u32; 2],
     scene: ViewScene,
+    /// What its camera was last given: the view and size, and the look's lighting; Bevy redoes
+    /// work for each change, so only changes are given.
+    placed: Option<(Lens, [u32; 2])>,
+    lit: Option<Look>,
 }
 
 /// Bevy, running on Curva's device, with a camera and a copy of the scene for each view drawn by
@@ -73,6 +77,8 @@ pub(crate) struct Pilot {
     pub(crate) look: Look,
     /// What surfaces reflect all around them, for each lighting, made the first time a view draws.
     skies: Option<[EnvironmentMapLight; 2]>,
+    /// This frame's views so far, with their sizes and places, until the last of them comes.
+    pending: Vec<(u64, Drawing, [u32; 2], [u32; 2])>,
     /// The format of the pictures Bevy draws: the scene texture's, in its sRGB form, so a copy
     /// moves the stored bytes unchanged.
     format: TextureFormat,
@@ -127,6 +133,7 @@ impl Pilot {
             meshes: SharedMeshes::default(),
             look: Look::default(),
             skies: None,
+            pending: Vec::new(),
             format: format.add_srgb_suffix(),
         }
     }
@@ -134,56 +141,111 @@ impl Pilot {
     /// Has Bevy draw `drawing`'s view, `size` pixels, and returns the picture; `None` while
     /// Bevy has not made it yet.
     pub(crate) fn draw(&mut self, drawing: &Drawing, size: [u32; 2]) -> Option<wgpu::Texture> {
-        let size = size.map(|side| side.max(1));
-        let slot = drawing.slot;
-        let mut apps = self.apps.lock().ok()?;
-        let world = apps.main.world_mut();
-        let created = !self.views.contains_key(&slot);
-        let view = self.views.entry(slot).or_insert_with(|| {
-            // Render layer 0 is Bevy's default; each view gets its own above it.
-            let scene = ViewScene::new(world, slot + 1);
-            let (camera, target) = make_camera(world, size, self.format, scene.layer());
-            PilotView {
-                camera,
-                target,
-                size,
-                scene,
-            }
-        });
-        let fresh = created || view.size != size;
-        if view.size != size {
-            world.resource_mut::<Assets<Image>>().remove(&view.target);
-            world.despawn(view.camera);
-            (view.camera, view.target) = make_camera(world, size, self.format, view.scene.layer());
-            view.size = size;
+        self.draw_all(&[(drawing, size)]).pop().flatten()
+    }
+
+    /// Takes one view of this frame. Bevy draws all of a frame's views together, in one update,
+    /// when the last of them comes ([`Drawing::bevy_last`]): then it returns every view's
+    /// picture with where it goes, `low` being its top left corner on the scene texture; before
+    /// that, nothing.
+    pub(crate) fn turn(
+        &mut self,
+        drawing: &Drawing,
+        size: [u32; 2],
+        low: [u32; 2],
+    ) -> Vec<([u32; 2], wgpu::Texture)> {
+        self.pending.retain(|(frame, ..)| *frame == drawing.frame);
+        self.pending
+            .push((drawing.frame, drawing.clone(), size, low));
+        if !drawing.bevy_last {
+            return Vec::new();
         }
-        view.scene
-            .update(world, &mut self.meshes, drawing, self.look);
-        let (transform, projection) = look(&drawing.camera.lens(), size);
-        let background = drawing.background;
+        let pending = std::mem::take(&mut self.pending);
+        let views: Vec<(&Drawing, [u32; 2])> = pending
+            .iter()
+            .map(|(_, drawing, size, _)| (drawing, *size))
+            .collect();
+        let pictures = self.draw_all(&views);
+        pending
+            .iter()
+            .zip(pictures)
+            .filter_map(|((.., low), picture)| picture.map(|picture| (*low, picture)))
+            .collect()
+    }
+
+    /// Has Bevy draw each of `views`, at its size, in one update, and returns their pictures in
+    /// order; `None` for one Bevy has not made yet.
+    fn draw_all(&mut self, views: &[(&Drawing, [u32; 2])]) -> Vec<Option<wgpu::Texture>> {
+        let Ok(mut apps) = self.apps.lock() else {
+            return vec![None; views.len()];
+        };
+        let world = apps.main.world_mut();
         let skies = self
             .skies
             .get_or_insert_with(|| scene::skies(&mut world.resource_mut::<Assets<Image>>()));
         let sky = skies[usize::from(self.look.lighting == Lighting::Sunlit)].clone();
-        world.entity_mut(view.camera).insert((
-            transform,
-            projection,
-            AmbientLight {
-                brightness: scene::ambient(self.look),
-                ..default()
-            },
-            sky,
-        ));
-        for (other, view) in &self.views {
-            if let Some(mut camera) = world.get_mut::<Camera>(view.camera) {
-                camera.is_active = *other == slot;
-                if *other == slot {
-                    camera.clear_color = ClearColorConfig::Custom(Color::srgb_u8(
-                        background.r(),
-                        background.g(),
-                        background.b(),
-                    ));
+        let mut fresh = false;
+        for (drawing, size) in views {
+            let size = size.map(|side| side.max(1));
+            let slot = drawing.slot;
+            fresh |= !self.views.contains_key(&slot);
+            let view = self.views.entry(slot).or_insert_with(|| {
+                // Render layer 0 is Bevy's default; each view gets its own above it.
+                let scene = ViewScene::new(world, slot + 1);
+                let (camera, target) = make_camera(world, size, self.format, scene.layer());
+                PilotView {
+                    camera,
+                    target,
+                    size,
+                    scene,
+                    placed: None,
+                    lit: None,
                 }
+            });
+            if view.size != size {
+                fresh = true;
+                world.resource_mut::<Assets<Image>>().remove(&view.target);
+                world.despawn(view.camera);
+                (view.camera, view.target) =
+                    make_camera(world, size, self.format, view.scene.layer());
+                view.size = size;
+                view.placed = None;
+                view.lit = None;
+            }
+            view.scene
+                .update(world, &mut self.meshes, drawing, self.look);
+            let lens = drawing.camera.lens();
+            if view.placed != Some((lens, size)) {
+                view.placed = Some((lens, size));
+                world.entity_mut(view.camera).insert(look(&lens, size));
+            }
+            if view.lit != Some(self.look) {
+                view.lit = Some(self.look);
+                world.entity_mut(view.camera).insert((
+                    AmbientLight {
+                        brightness: scene::ambient(self.look),
+                        ..default()
+                    },
+                    sky.clone(),
+                ));
+            }
+            let background = drawing.background;
+            let colour = Color::srgb_u8(background.r(), background.g(), background.b());
+            if let Some(mut camera) = world.get_mut::<Camera>(view.camera)
+                && (!matches!(camera.clear_color, ClearColorConfig::Custom(c) if c == colour)
+                    || !camera.is_active)
+            {
+                camera.clear_color = ClearColorConfig::Custom(colour);
+                camera.is_active = true;
+            }
+        }
+        // Only this frame's views are drawn.
+        for (slot, view) in &self.views {
+            let drawn = views.iter().any(|(drawing, _)| drawing.slot == *slot);
+            if let Some(mut camera) = world.get_mut::<Camera>(view.camera)
+                && camera.is_active != drawn
+            {
+                camera.is_active = drawn;
             }
         }
         apps.update();
@@ -191,10 +253,17 @@ impl Pilot {
         if fresh {
             apps.update();
         }
-        let target = &self.views.get(&slot)?.target;
-        let render = apps.sub_apps.get(&RenderApp.intern())?;
-        let images = render.world().get_resource::<RenderAssets<GpuImage>>()?;
-        images.get(target).map(|image| (*image.texture).clone())
+        let images = apps
+            .sub_apps
+            .get(&RenderApp.intern())
+            .and_then(|render| render.world().get_resource::<RenderAssets<GpuImage>>());
+        views
+            .iter()
+            .map(|(drawing, _)| {
+                let target = &self.views.get(&drawing.slot)?.target;
+                images?.get(target).map(|image| (*image.texture).clone())
+            })
+            .collect()
     }
 }
 
@@ -304,6 +373,7 @@ pub fn save_bevy_picture(
         background_low: background,
         engine: Engine::BevyPilot,
         camera,
+        bevy_last: true,
     };
     let texture = pilot.draw(&drawing, size).ok_or("Bevy made no picture")?;
     let pixels = crate::gpu::read_texture(&device, &queue, &texture, size);
@@ -397,6 +467,7 @@ mod tests {
             background_low: BACKGROUND,
             engine: Engine::BevyPilot,
             camera,
+            bevy_last: true,
         }
     }
 
