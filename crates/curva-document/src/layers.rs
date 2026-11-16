@@ -32,6 +32,10 @@ pub struct Layer {
     /// Whether its sublayers are folded away in the Layers panel.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub collapsed: bool,
+    /// The section style of its objects that have none of their own; `None` leaves them to the
+    /// clipping plane's (spec `layouts.md` §3).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub section: Option<crate::section::SectionStyle>,
 }
 
 /// The layer every model starts with.
@@ -46,6 +50,7 @@ pub(crate) fn standard_layers() -> Vec<Layer> {
         linetype: Linetype::Continuous,
         parent: None,
         collapsed: false,
+        section: None,
     }]
 }
 
@@ -94,6 +99,7 @@ impl Document {
             linetype: crate::Linetype::Continuous,
             parent: None,
             collapsed: false,
+            section: None,
         });
         id
     }

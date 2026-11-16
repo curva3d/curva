@@ -238,6 +238,7 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
                     linetype: linetype_of(layer.linetype),
                     parent,
                     collapsed: false,
+                    section: None,
                 });
                 id
             });
@@ -339,6 +340,7 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
                         colour: None,
                         linetype: Linetype::ByLayer,
                         user_text: BTreeMap::new(),
+                        section: None,
                     }));
                     if let Some(sheet) = state.layouts.iter_mut().find(|l| l.id == layout) {
                         detail_by_viewport.insert(a.id, (layout, id));
@@ -415,6 +417,7 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
                 Linetype::ByLayer
             },
             user_text: a.user_text.iter().cloned().collect(),
+            section: None,
         };
         if let Some(block) = in_blocks.get(&a.id) {
             definitions.entry(*block).or_default().push(made);
@@ -483,6 +486,7 @@ fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
             flipped: false,
             views,
             section: SectionFill::default(),
+            hatch: None,
         });
     }
     // Layers turned off in particular details.

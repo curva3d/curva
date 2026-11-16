@@ -24,6 +24,7 @@ pub mod fields;
 pub mod hatch;
 pub mod layouts;
 mod organise;
+pub mod section;
 pub mod shape;
 pub mod sheet;
 pub mod units;
@@ -268,6 +269,7 @@ impl Document {
             linetype: Linetype::ByLayer,
             user_text: std::collections::BTreeMap::new(),
             space: self.space,
+            section: None,
         }));
         id
     }

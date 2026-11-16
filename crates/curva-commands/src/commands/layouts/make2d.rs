@@ -1079,6 +1079,7 @@ mod tests {
             flipped: false,
             views: vec![ClipView::Viewport(0)],
             section: SectionFill::default(),
+            hatch: None,
         });
         let keep = doc.plane_cut_of(frame).unwrap().keep;
         if keep[0] < 0.0 {
