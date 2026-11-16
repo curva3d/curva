@@ -8,6 +8,7 @@ use std::sync::Arc;
 use super::{LineRenderer, PIXELS_PER_MM};
 
 /// One frame of the viewport, handed to the window's drawing.
+#[derive(Clone)]
 pub struct Drawing {
     /// Which view this is, below [`VIEW_SLOTS`].
     pub slot: usize,
@@ -52,6 +53,11 @@ pub struct Drawing {
     pub background_low: epaint::Color32,
     /// Which engine draws the view: Curva, or Bevy for the pilot (decision 0028).
     pub engine: Engine,
+    /// The camera `matrix` was made from, for views Bevy draws.
+    pub camera: crate::Camera,
+    /// Whether this is the last view Bevy draws this frame: Bevy draws all of a frame's views
+    /// together when it comes. Views Curva draws ignore it.
+    pub bevy_last: bool,
 }
 
 impl Drawing {
@@ -68,15 +74,17 @@ impl Drawing {
         (high.x - low.x >= 1.0 && high.y - low.y >= 1.0).then_some((low, high))
     }
 
-    /// For a pilot view, Bevy's picture of it, starting Bevy the first time; `None` for a
-    /// Curva view, or while Bevy's picture is not ready, when Curva draws the view instead.
-    fn pilot_picture(
+    /// For a view Bevy draws, hands it to Bevy, starting Bevy the first time. Bevy draws all of a
+    /// frame's views together at the last of them, which gets every picture with its top left
+    /// corner; the others get none. `None` for a Curva view, or if Bevy cannot start, when Curva
+    /// draws the view instead.
+    fn bevy_turn(
         &self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         screen: &egui_wgpu::ScreenDescriptor,
         resources: &mut egui_wgpu::CallbackResources,
-    ) -> Option<wgpu::Texture> {
+    ) -> Option<Vec<([u32; 2], wgpu::Texture)>> {
         if self.engine != Engine::BevyPilot {
             return None;
         }
@@ -87,9 +95,8 @@ impl Drawing {
             resources.insert(Pilot::new(&seed, device, queue, format));
         }
         let size = [(high.x - low.x) as u32, (high.y - low.y) as u32];
-        resources
-            .get_mut::<Pilot>()?
-            .draw(self.slot, size, self.background)
+        let corner = [low.x as u32, low.y as u32];
+        Some(resources.get_mut::<Pilot>()?.turn(self, size, corner))
     }
 }
 
@@ -104,7 +111,7 @@ impl egui_wgpu::CallbackTrait for Drawing {
     ) -> Vec<wgpu::CommandBuffer> {
         // Bevy draws and sends its own work to the card first, so its picture is ready for
         // the copy below.
-        let pilot = self.pilot_picture(device, queue, screen, resources);
+        let bevy = self.bevy_turn(device, queue, screen, resources);
         let Some(renderer) = resources.get_mut::<LineRenderer>() else {
             return Vec::new();
         };
@@ -115,7 +122,11 @@ impl egui_wgpu::CallbackTrait for Drawing {
             2.0 / pixels.y.max(1.0),
             PIXELS_PER_MM * screen.pixels_per_point,
         ];
-        renderer.update(device, queue, self, pixel);
+        // A view Bevy draws needs none of Curva's own uploads (until Curva's lines are drawn on
+        // Bevy's pictures, step 3).
+        if bevy.is_none() {
+            renderer.update(device, queue, self, pixel);
+        }
         renderer
             .background
             .set(queue, self.background, self.background_low);
@@ -128,7 +139,7 @@ impl egui_wgpu::CallbackTrait for Drawing {
         let Some((low, high)) = self.pixel_area(size, screen.pixels_per_point) else {
             return Vec::new();
         };
-        if let Some(picture) = pilot {
+        if let Some(pictures) = bevy {
             // The first viewport of a frame clears the whole texture, gaps included.
             if first {
                 drop(surfaces_pass(
@@ -139,24 +150,23 @@ impl egui_wgpu::CallbackTrait for Drawing {
                     None,
                 ));
             }
-            encoder.copy_texture_to_texture(
-                picture.as_image_copy(),
-                wgpu::TexelCopyTextureInfo {
-                    texture: colour.texture(),
-                    mip_level: 0,
-                    origin: wgpu::Origin3d {
-                        x: low.x as u32,
-                        y: low.y as u32,
-                        z: 0,
+            // At the frame's last Bevy view, every Bevy view's picture goes to its place.
+            for ([x, y], picture) in pictures {
+                encoder.copy_texture_to_texture(
+                    picture.as_image_copy(),
+                    wgpu::TexelCopyTextureInfo {
+                        texture: colour.texture(),
+                        mip_level: 0,
+                        origin: wgpu::Origin3d { x, y, z: 0 },
+                        aspect: wgpu::TextureAspect::All,
                     },
-                    aspect: wgpu::TextureAspect::All,
-                },
-                wgpu::Extent3d {
-                    width: picture.width().min(size[0] - low.x as u32),
-                    height: picture.height().min(size[1] - low.y as u32),
-                    depth_or_array_layers: 1,
-                },
-            );
+                    wgpu::Extent3d {
+                        width: picture.width().min(size[0].saturating_sub(x)),
+                        height: picture.height().min(size[1].saturating_sub(y)),
+                        depth_or_array_layers: 1,
+                    },
+                );
+            }
             return Vec::new();
         }
         // A view is drawn in up to three passes: surfaces, outlines found from their depth, then

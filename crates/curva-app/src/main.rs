@@ -7,7 +7,8 @@
 //! `curva --orbit-benchmark --curves 5000` opens the window on a scene of that many circles, spins
 //! the view and prints how fast it drew and snapped. `--solids 500` adds that many cylinders.
 //! `--scene medium`, `large` or `far` uses a standard scene (spec `display-pipeline.md` §6);
-//! `--splines` and `--trees` change its counts of spline curves and tree instances.
+//! `--splines` and `--trees` change its counts of spline curves and tree instances; `--bevy` has
+//! Bevy draw every view.
 //!
 //! On Windows Curva is a GUI program, so no console opens beside it. Output from the command-line
 //! modes reaches a terminal when it is piped (`curva --picture out.png --run line | more`), and the
@@ -242,6 +243,9 @@ impl Curva {
         {
             for pane in &mut panes {
                 pane.camera.frame(low, high);
+                if scene.bevy {
+                    pane.engine = curva_viewport::Engine::BevyPilot;
+                }
             }
         }
         Self {
@@ -498,6 +502,7 @@ fn run() -> Result<(), String> {
                 splines: count("--splines").unwrap_or(scene.splines),
                 trees: count("--trees").unwrap_or(scene.trees),
                 select: arguments.iter().any(|argument| argument == "--select"),
+                bevy: arguments.iter().any(|argument| argument == "--bevy"),
                 ..scene
             }
         });

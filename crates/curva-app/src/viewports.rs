@@ -758,6 +758,11 @@ impl Curva {
             }
             Arc::clone(&self.drawing.faces_without.1)
         };
+        // Bevy draws all its views of a frame together, when the last of them comes.
+        let last_bevy = shown
+            .iter()
+            .map(|(pane, ..)| *pane)
+            .rfind(|pane| self.panes[*pane].engine == curva_viewport::Engine::BevyPilot);
         for (pane, rect, _) in &shown {
             let size = pane_size(*rect);
             // Clipping planes cut the model's viewports, never a sheet.
@@ -798,6 +803,8 @@ impl Curva {
                 background: self.pane_background(*pane).0,
                 background_low: self.pane_background(*pane).1,
                 engine: self.panes[*pane].engine,
+                camera: *camera,
+                bevy_last: Some(*pane) == last_bevy,
             };
             ui.painter().add(egui_wgpu_callback(*rect, drawing));
             self.paint_details(ui, *pane, *rect, size);

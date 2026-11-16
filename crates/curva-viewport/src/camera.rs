@@ -237,6 +237,29 @@ impl Camera {
         1.0 / (FIELD_OF_VIEW / 2.0).tan()
     }
 
+    /// The same view as [`Camera::matrix`], as the parts another engine's camera is made of
+    /// (the Bevy views, decision 0029).
+    pub(crate) fn lens(&self) -> Lens {
+        let (forward, _, up) = self.axes();
+        let (near, far) = if self.parallel {
+            // As `matrix`: depth runs over a long range either side of the target.
+            let half = FLAT_DEPTH_RANGE * self.distance;
+            (self.distance - half, self.distance + half)
+        } else {
+            (self.distance * 0.01, self.distance * 100.0)
+        };
+        Lens {
+            eye: self.eye(),
+            forward,
+            up,
+            parallel: self.parallel,
+            fov: FIELD_OF_VIEW,
+            half_height: self.distance / self.focal(),
+            near,
+            far,
+        }
+    }
+
     /// The combined view and projection matrix, by columns, for the graphics card.
     #[must_use]
     pub fn matrix(&self, aspect: f64) -> [[f32; 4]; 4] {
@@ -475,6 +498,25 @@ impl Camera {
             parallel: view.parallel,
         }
     }
+}
+
+/// A view as an engine's camera takes it: where the eye is, where it looks, and its lens.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Lens {
+    pub(crate) eye: Point,
+    /// The direction looked along, of length 1.
+    pub(crate) forward: Point,
+    /// Up on the screen, of length 1.
+    pub(crate) up: Point,
+    /// Whether the view is flat, with no perspective.
+    pub(crate) parallel: bool,
+    /// The angle from the bottom to the top of the view, in radians, for a perspective view.
+    pub(crate) fov: f64,
+    /// Half the height shown, in millimetres, for a flat view.
+    pub(crate) half_height: f64,
+    /// The nearest and farthest distances drawn, along `forward` from the eye.
+    pub(crate) near: f64,
+    pub(crate) far: f64,
 }
 
 #[cfg(test)]
