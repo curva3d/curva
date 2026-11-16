@@ -243,32 +243,7 @@ impl LineRenderer {
     /// [`DEPTH_FORMAT`].
     #[must_use]
     pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("curva camera"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                // The selection table (`table_wgsl`).
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Uint,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-            ],
-        });
+        let layout = Self::camera_layout(device);
         let picks = Picks::new(device, 1);
         let slots = (0..VIEW_SLOTS + DETAIL_SLOTS)
             .map(|_| {
@@ -296,105 +271,14 @@ impl LineRenderer {
             bind_group_layouts: &[Some(&layout)],
             immediate_size: 0,
         });
-        let grid = pipeline(
-            device,
-            format,
-            &pipeline_layout,
-            &PipelineParts {
-                label: "curva grid",
-                shader: GRID_SHADER,
-                stride: LINE_VERTEX_SIZE,
-                attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3],
-                topology: wgpu::PrimitiveTopology::LineList,
-                bias: wgpu::DepthBiasState::default(),
-                // Writes no depth, so model lines lying on it always draw over it. Blending at full
-                // strength changes nothing else.
-                see_through: true,
-                per_instance: false,
-            },
-        );
-        let lines = pipeline(
-            device,
-            format,
-            &pipeline_layout,
-            &PipelineParts {
-                label: "curva lines",
-                shader: &format!("{}{LINE_SHADER}", table_wgsl()),
-                stride: SEGMENT_SIZE,
-                attributes: &wgpu::vertex_attr_array![
-                    0 => Float32x3, 1 => Float32x3, 2 => Float32, 6 => Uint32,
-                    3 => Float32x3, 4 => Float32x3, 5 => Float32, 7 => Uint32
-                ],
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                // Pulled a little toward the camera, so a line wins over a face or grid at its own depth.
-                bias: LINE_DEPTH_BIAS,
-                see_through: false,
-                per_instance: true,
-            },
-        );
-        let face_attributes = wgpu::vertex_attr_array![
-            0 => Float32x3, 1 => Float32x3, 2 => Float32x3, 3 => Uint32
-        ];
-        let faces = pipeline(
-            device,
-            format,
-            &pipeline_layout,
-            &PipelineParts {
-                label: "curva faces",
-                shader: &format!("{}{FACE_SHADER}", table_wgsl()),
-                stride: FACE_VERTEX_SIZE,
-                attributes: &face_attributes,
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                bias: FACE_DEPTH_BIAS,
-                see_through: false,
-                per_instance: false,
-            },
-        );
-        let ghost_faces = pipeline(
-            device,
-            format,
-            &pipeline_layout,
-            &PipelineParts {
-                label: "curva ghosted faces",
-                shader: &format!("{}{GHOST_FACE_SHADER}", table_wgsl()),
-                stride: FACE_VERTEX_SIZE,
-                attributes: &face_attributes,
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                bias: FACE_DEPTH_BIAS,
-                see_through: true,
-                per_instance: false,
-            },
-        );
-        let zebra_faces = pipeline(
-            device,
-            format,
-            &pipeline_layout,
-            &PipelineParts {
-                label: "curva zebra faces",
-                shader: &format!("{}{ZEBRA_FACE_SHADER}", table_wgsl()),
-                stride: FACE_VERTEX_SIZE,
-                attributes: &face_attributes,
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                bias: FACE_DEPTH_BIAS,
-                see_through: false,
-                per_instance: false,
-            },
-        );
-        let draft_faces = pipeline(
-            device,
-            format,
-            &pipeline_layout,
-            &PipelineParts {
-                label: "curva draft faces",
-                shader: &format!("{}{DRAFT_FACE_SHADER}", table_wgsl()),
-                stride: FACE_VERTEX_SIZE,
-                attributes: &face_attributes,
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                bias: FACE_DEPTH_BIAS,
-                see_through: false,
-                per_instance: false,
-            },
-        );
+        let (grid, lines) = Self::line_pipelines(device, format, &pipeline_layout);
+        let face = |label, shader, see_through| {
+            Self::face_pipeline(device, format, &pipeline_layout, label, shader, see_through)
+        };
+        let faces = face("curva faces", FACE_SHADER, false);
+        let ghost_faces = face("curva ghosted faces", GHOST_FACE_SHADER, true);
+        let zebra_faces = face("curva zebra faces", ZEBRA_FACE_SHADER, false);
+        let draft_faces = face("curva draft faces", DRAFT_FACE_SHADER, false);
         let background = Background::new(device, format);
         Self {
             grid,
@@ -415,6 +299,110 @@ impl LineRenderer {
             preview_faces: None,
             compositor: crate::glass::Compositor::new(device, format),
         }
+    }
+
+    /// What every drawing reads: the camera and the selection table.
+    fn camera_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("curva camera"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // The selection table (`table_wgsl`).
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Uint,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+            ],
+        })
+    }
+
+    /// The grid's pipeline and the model lines' pipeline.
+    fn line_pipelines(
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        pipeline_layout: &wgpu::PipelineLayout,
+    ) -> (wgpu::RenderPipeline, wgpu::RenderPipeline) {
+        let grid = pipeline(
+            device,
+            format,
+            pipeline_layout,
+            &PipelineParts {
+                label: "curva grid",
+                shader: GRID_SHADER,
+                stride: LINE_VERTEX_SIZE,
+                attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3],
+                topology: wgpu::PrimitiveTopology::LineList,
+                bias: wgpu::DepthBiasState::default(),
+                // Writes no depth, so model lines lying on it always draw over it. Blending at full
+                // strength changes nothing else.
+                see_through: true,
+                per_instance: false,
+            },
+        );
+        let lines = pipeline(
+            device,
+            format,
+            pipeline_layout,
+            &PipelineParts {
+                label: "curva lines",
+                shader: &format!("{}{LINE_SHADER}", table_wgsl()),
+                stride: SEGMENT_SIZE,
+                attributes: &wgpu::vertex_attr_array![
+                    0 => Float32x3, 1 => Float32x3, 2 => Float32, 6 => Uint32,
+                    3 => Float32x3, 4 => Float32x3, 5 => Float32, 7 => Uint32
+                ],
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                // Pulled a little toward the camera, so a line wins over a face or grid at its own depth.
+                bias: LINE_DEPTH_BIAS,
+                see_through: false,
+                per_instance: true,
+            },
+        );
+        (grid, lines)
+    }
+
+    /// A pipeline shading faces with `shader`, which reads the selection table.
+    fn face_pipeline(
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        pipeline_layout: &wgpu::PipelineLayout,
+        label: &'static str,
+        shader: &str,
+        see_through: bool,
+    ) -> wgpu::RenderPipeline {
+        let face_attributes = wgpu::vertex_attr_array![
+            0 => Float32x3, 1 => Float32x3, 2 => Float32x3, 3 => Uint32
+        ];
+        pipeline(
+            device,
+            format,
+            pipeline_layout,
+            &PipelineParts {
+                label,
+                shader: &format!("{}{shader}", table_wgsl()),
+                stride: FACE_VERTEX_SIZE,
+                attributes: &face_attributes,
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                bias: FACE_DEPTH_BIAS,
+                see_through,
+                per_instance: false,
+            },
+        )
     }
 
     /// Turns the glass blur on or off; off where the graphics card is a software one, so glass
@@ -509,29 +497,41 @@ impl LineRenderer {
             ));
         }
         if stale(slot.scene.as_deref(), &drawing.scene) {
-            // Another view showing the same lines has already sent them: share its copy.
-            let shared = self
-                .slots
-                .iter()
-                .filter_map(|other| other.scene.as_ref())
-                .find(|held| Arc::ptr_eq(&held.source, &drawing.scene))
-                .map(Arc::clone);
-            let scene = shared.unwrap_or_else(|| {
-                Arc::new(upload(
-                    device,
-                    queue,
-                    &drawing.scene,
-                    line_bytes,
-                    LINE_VERTEX_SIZE,
-                    2,
-                    chunk,
-                ))
-            });
-            if let Some(slot) = self.slots.get_mut(drawing.slot) {
-                slot.scene = Some(scene);
-            }
+            self.update_scene(device, queue, drawing);
         }
-        // The views of one frame share these, so only the first of them uploads.
+        self.update_shared(device, queue, drawing);
+    }
+
+    /// Sends the view's model lines, or shares the copy another view showing the same lines has
+    /// already sent.
+    fn update_scene(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, drawing: &Drawing) {
+        let chunk = self.chunk_bytes;
+        let shared = self
+            .slots
+            .iter()
+            .filter_map(|other| other.scene.as_ref())
+            .find(|held| Arc::ptr_eq(&held.source, &drawing.scene))
+            .map(Arc::clone);
+        let scene = shared.unwrap_or_else(|| {
+            Arc::new(upload(
+                device,
+                queue,
+                &drawing.scene,
+                line_bytes,
+                LINE_VERTEX_SIZE,
+                2,
+                chunk,
+            ))
+        });
+        if let Some(slot) = self.slots.get_mut(drawing.slot) {
+            slot.scene = Some(scene);
+        }
+    }
+
+    /// Sends the faces, overlay and preview faces, if they changed. The views of one frame share
+    /// these, so only the first of them uploads.
+    fn update_shared(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, drawing: &Drawing) {
+        let chunk = self.chunk_bytes;
         if stale(self.surfaces.as_ref(), &drawing.faces) {
             self.surfaces = Some(upload(
                 device,

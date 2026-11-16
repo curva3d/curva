@@ -95,6 +95,56 @@ pub(crate) fn draw_picture_in_chunks(
         height,
         depth_or_array_layers: 1,
     };
+    let (texture, depth) = picture_targets(&device, extent, format);
+    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let depth_view = depth.create_view(&wgpu::TextureViewDescriptor::default());
+    let mut renderer = LineRenderer::new(&device, format);
+    renderer.chunk_bytes = chunk_bytes;
+    let drawing = picture_drawing(picture, scene);
+    renderer.update(
+        &device,
+        &queue,
+        &drawing,
+        [2.0 / width as f32, 2.0 / height as f32, PIXELS_PER_MM],
+    );
+    let row = (width * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
+    let readback = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("curva picture"),
+        size: u64::from(row) * u64::from(height),
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    draw_picture_passes(
+        &mut renderer,
+        &device,
+        &queue,
+        &mut encoder,
+        [&view, &depth_view],
+        size,
+    );
+    encoder.copy_texture_to_buffer(
+        texture.as_image_copy(),
+        wgpu::TexelCopyBufferInfo {
+            buffer: &readback,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(row),
+                rows_per_image: Some(height),
+            },
+        },
+        extent,
+    );
+    queue.submit([encoder.finish()]);
+    read_pixels(&device, &readback, row, size)
+}
+
+/// The picture's colour texture and its depth, both `extent` in size.
+fn picture_targets(
+    device: &wgpu::Device,
+    extent: wgpu::Extent3d,
+    format: wgpu::TextureFormat,
+) -> (wgpu::Texture, wgpu::Texture) {
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("curva picture"),
         size: extent,
@@ -105,7 +155,6 @@ pub(crate) fn draw_picture_in_chunks(
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
         view_formats: &[],
     });
-    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
     let depth = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("curva picture depth"),
         size: extent,
@@ -116,9 +165,11 @@ pub(crate) fn draw_picture_in_chunks(
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
         view_formats: &[],
     });
-    let depth_view = depth.create_view(&wgpu::TextureViewDescriptor::default());
-    let mut renderer = LineRenderer::new(&device, format);
-    renderer.chunk_bytes = chunk_bytes;
+    (texture, depth)
+}
+
+/// The picture as one frame of a view.
+fn picture_drawing(picture: Picture, scene: &Scene) -> Drawing {
     let empty = Arc::new(Vec::new());
     let shaded = !picture.faces.is_empty();
     // The grid is drawn as in a window: thin and under the model's lines.
@@ -126,7 +177,7 @@ pub(crate) fn draw_picture_in_chunks(
         .lines
         .into_iter()
         .partition(|vertex| vertex.width == crate::GRID_WIDTH);
-    let drawing = Drawing {
+    Drawing {
         clips: scene.clips.clone(),
         slot: 0,
         grid: Arc::new(grid),
@@ -146,26 +197,24 @@ pub(crate) fn draw_picture_in_chunks(
         frame: 0,
         background: epaint::Color32::BLACK,
         background_low: epaint::Color32::BLACK,
-    };
-    renderer.update(
-        &device,
-        &queue,
-        &drawing,
-        [2.0 / width as f32, 2.0 / height as f32, PIXELS_PER_MM],
-    );
-    let row = (width * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
-    let readback = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("curva picture"),
-        size: u64::from(row) * u64::from(height),
-        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-        mapped_at_creation: false,
-    });
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    }
+}
+
+/// As in a window: surfaces, outlines from the surfaces' depth, then lines over them, into the
+/// picture's colour and depth `targets`.
+fn draw_picture_passes(
+    renderer: &mut LineRenderer,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    encoder: &mut wgpu::CommandEncoder,
+    [view, depth_view]: [&wgpu::TextureView; 2],
+    [width, height]: [u32; 2],
+) {
     {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("curva picture"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
+                view,
                 depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
@@ -174,7 +223,7 @@ pub(crate) fn draw_picture_in_chunks(
                 },
             })],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &depth_view,
+                view: depth_view,
                 depth_ops: Some(wgpu::Operations {
                     load: wgpu::LoadOp::Clear(1.0),
                     store: wgpu::StoreOp::Store,
@@ -187,57 +236,50 @@ pub(crate) fn draw_picture_in_chunks(
         });
         renderer.draw_under(&mut pass, 0);
     }
-    // As in a window: outlines from the surfaces' depth, then lines over them.
     if renderer.outlines_wanted(0) {
         renderer.outliner.draw(
-            &device,
-            &queue,
-            &mut encoder,
-            &view,
-            &depth_view,
+            device,
+            queue,
+            encoder,
+            view,
+            depth_view,
             [0.0, 0.0, width as f32, height as f32],
             crate::EDGE_ON_FACES_COLOUR,
         );
     }
-    {
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("curva picture lines"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
-                depth_slice: None,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Load,
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &depth_view,
-                depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Load,
-                    store: wgpu::StoreOp::Discard,
-                }),
-                stencil_ops: None,
-            }),
-            timestamp_writes: None,
-            occlusion_query_set: None,
-            multiview_mask: None,
-        });
-        renderer.draw_over(&mut pass, 0);
-    }
-    encoder.copy_texture_to_buffer(
-        texture.as_image_copy(),
-        wgpu::TexelCopyBufferInfo {
-            buffer: &readback,
-            layout: wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(row),
-                rows_per_image: Some(height),
+    let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        label: Some("curva picture lines"),
+        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+            view,
+            depth_slice: None,
+            resolve_target: None,
+            ops: wgpu::Operations {
+                load: wgpu::LoadOp::Load,
+                store: wgpu::StoreOp::Store,
             },
-        },
-        extent,
-    );
-    queue.submit([encoder.finish()]);
+        })],
+        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+            view: depth_view,
+            depth_ops: Some(wgpu::Operations {
+                load: wgpu::LoadOp::Load,
+                store: wgpu::StoreOp::Discard,
+            }),
+            stencil_ops: None,
+        }),
+        timestamp_writes: None,
+        occlusion_query_set: None,
+        multiview_mask: None,
+    });
+    renderer.draw_over(&mut pass, 0);
+}
+
+/// Waits for the picture and reads its pixels back, row by row, leaving out each row's padding.
+fn read_pixels(
+    device: &wgpu::Device,
+    readback: &wgpu::Buffer,
+    row: u32,
+    [width, height]: [u32; 2],
+) -> Result<Vec<u8>, String> {
     let slice = readback.slice(..);
     slice.map_async(wgpu::MapMode::Read, |_| {});
     device

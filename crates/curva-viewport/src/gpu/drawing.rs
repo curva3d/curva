@@ -86,9 +86,6 @@ impl egui_wgpu::CallbackTrait for Drawing {
         if high.x - low.x < 1.0 || high.y - low.y < 1.0 {
             return Vec::new();
         }
-        // Written as stored, like every colour Curva draws: egui gives the window a texture that
-        // is not converted to linear light.
-        let channel = |value: u8| f64::from(value) / 255.0;
         // A view is drawn in up to three passes: surfaces, outlines found from their depth, then
         // lines and previews. The card's clock times them as one.
         let timing = renderer
@@ -104,51 +101,11 @@ impl egui_wgpu::CallbackTrait for Drawing {
                     end_of_pass_write_index: end.then_some(*first + 1),
                 })
         };
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("curva viewport"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &colour,
-                depth_slice: None,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    // The first viewport of a frame clears the whole texture, gaps included.
-                    load: if first {
-                        wgpu::LoadOp::Clear(wgpu::Color {
-                            r: channel(self.background.r()),
-                            g: channel(self.background.g()),
-                            b: channel(self.background.b()),
-                            a: 1.0,
-                        })
-                    } else {
-                        wgpu::LoadOp::Load
-                    },
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &depth,
-                depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(1.0),
-                    // Kept for the outline pass and for the lines drawn after it.
-                    store: wgpu::StoreOp::Store,
-                }),
-                stencil_ops: None,
-            }),
-            timestamp_writes: clock(false),
-            occlusion_query_set: None,
-            multiview_mask: None,
-        });
+        // The first viewport of a frame clears the whole texture, gaps included.
+        let clear = first.then_some(self.background);
+        let mut pass = surfaces_pass(encoder, &colour, &depth, clear, clock(false));
         let area = [low.x, low.y, high.x - low.x, high.y - low.y];
-        let fit = |pass: &mut wgpu::RenderPass<'_>| {
-            pass.set_viewport(area[0], area[1], area[2], area[3], 0.0, 1.0);
-            pass.set_scissor_rect(
-                area[0] as u32,
-                area[1] as u32,
-                area[2] as u32,
-                area[3] as u32,
-            );
-        };
-        fit(&mut pass);
+        fit(&mut pass, area);
         renderer.background.draw(&mut pass);
         renderer.draw_under(&mut pass, self.slot);
         drop(pass);
@@ -163,30 +120,8 @@ impl egui_wgpu::CallbackTrait for Drawing {
                 crate::EDGE_ON_FACES_COLOUR,
             );
         }
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("curva viewport lines"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &colour,
-                depth_slice: None,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Load,
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &depth,
-                depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Load,
-                    store: wgpu::StoreOp::Discard,
-                }),
-                stencil_ops: None,
-            }),
-            timestamp_writes: clock(true),
-            occlusion_query_set: None,
-            multiview_mask: None,
-        });
-        fit(&mut pass);
+        let mut pass = lines_pass(encoder, &colour, &depth, clock(true));
+        fit(&mut pass, area);
         renderer.draw_over(&mut pass, self.slot);
         drop(pass);
         if let Some(timer) = &mut renderer.timer {
@@ -205,4 +140,92 @@ impl egui_wgpu::CallbackTrait for Drawing {
             renderer.compositor.copy_to_screen(pass);
         }
     }
+}
+
+/// The pass drawing a view's background and surfaces, clearing the texture to `clear` first if
+/// given, and keeping its depth for the outline pass and the lines drawn after it.
+fn surfaces_pass<'encoder>(
+    encoder: &'encoder mut wgpu::CommandEncoder,
+    colour: &wgpu::TextureView,
+    depth: &wgpu::TextureView,
+    clear: Option<epaint::Color32>,
+    timestamp_writes: Option<wgpu::RenderPassTimestampWrites<'_>>,
+) -> wgpu::RenderPass<'encoder> {
+    // Written as stored, like every colour Curva draws: egui gives the window a texture that
+    // is not converted to linear light.
+    let channel = |value: u8| f64::from(value) / 255.0;
+    encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        label: Some("curva viewport"),
+        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+            view: colour,
+            depth_slice: None,
+            resolve_target: None,
+            ops: wgpu::Operations {
+                load: clear.map_or(wgpu::LoadOp::Load, |background| {
+                    wgpu::LoadOp::Clear(wgpu::Color {
+                        r: channel(background.r()),
+                        g: channel(background.g()),
+                        b: channel(background.b()),
+                        a: 1.0,
+                    })
+                }),
+                store: wgpu::StoreOp::Store,
+            },
+        })],
+        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+            view: depth,
+            depth_ops: Some(wgpu::Operations {
+                load: wgpu::LoadOp::Clear(1.0),
+                // Kept for the outline pass and for the lines drawn after it.
+                store: wgpu::StoreOp::Store,
+            }),
+            stencil_ops: None,
+        }),
+        timestamp_writes,
+        occlusion_query_set: None,
+        multiview_mask: None,
+    })
+}
+
+/// The pass drawing a view's lines and previews over its surfaces and outlines.
+fn lines_pass<'encoder>(
+    encoder: &'encoder mut wgpu::CommandEncoder,
+    colour: &wgpu::TextureView,
+    depth: &wgpu::TextureView,
+    timestamp_writes: Option<wgpu::RenderPassTimestampWrites<'_>>,
+) -> wgpu::RenderPass<'encoder> {
+    encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        label: Some("curva viewport lines"),
+        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+            view: colour,
+            depth_slice: None,
+            resolve_target: None,
+            ops: wgpu::Operations {
+                load: wgpu::LoadOp::Load,
+                store: wgpu::StoreOp::Store,
+            },
+        })],
+        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+            view: depth,
+            depth_ops: Some(wgpu::Operations {
+                load: wgpu::LoadOp::Load,
+                store: wgpu::StoreOp::Discard,
+            }),
+            stencil_ops: None,
+        }),
+        timestamp_writes,
+        occlusion_query_set: None,
+        multiview_mask: None,
+    })
+}
+
+/// Keeps a pass to the view's `area` on the texture: left, top, width and height in pixels.
+fn fit(pass: &mut wgpu::RenderPass<'_>, area: [f32; 4]) {
+    pass.set_viewport(area[0], area[1], area[2], area[3], 0.0, 1.0);
+    pass.set_scissor_rect(
+        area[0] as u32,
+        area[1] as u32,
+        area[2] as u32,
+        area[3] as u32,
+    );
 }
