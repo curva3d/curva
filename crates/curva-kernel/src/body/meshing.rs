@@ -4,8 +4,29 @@
 use super::{Body, BodyMesh, failed, is_in_place};
 use crate::{KernelError, Point};
 use solidcore_tess::{MeshTolerance, plan};
+use std::sync::Arc;
 
 impl Body {
+    /// The faces as made, meshed, without the placement: one mesh shared by every copy of the
+    /// body (moved, turned, scaled or mirrored), so a drawing engine can hold it once and draw
+    /// each copy at its [`Body::placement`]. [`Body::mesh`] is this mesh, placed.
+    pub fn shared_mesh(&self) -> Result<Arc<BodyMesh>, KernelError> {
+        self.unplaced_mesh()?;
+        self.shared
+            .mesh
+            .get()
+            .cloned()
+            .ok_or_else(|| KernelError("meshing a body failed".to_owned()))
+    }
+
+    /// Where this copy sits: the change from the faces as made (and [`Body::shared_mesh`]) to
+    /// the body, as a 4 × 4 matrix for points written as rows, `p' = p·A + t`: rows 0 to 2 are
+    /// where the X, Y and Z axes go, row 3 the move, and the last column `[0, 0, 0, 1]`.
+    #[must_use]
+    pub fn placement(&self) -> [[f64; 4]; 4] {
+        self.placement
+    }
+
     /// Triangles and edges for drawing, fine enough to look smooth at the body's size. The
     /// faces as made are meshed, then the mesh is placed.
     pub fn mesh(&self) -> Result<BodyMesh, KernelError> {
@@ -48,7 +69,7 @@ impl Body {
                 .filter(|index| !mesh.seams.get(*index).copied().unwrap_or(false))
                 .collect();
             let point = |v: &solidcore_record::Vec3| [v.x, v.y, v.z];
-            let _ = self.shared.mesh.set(BodyMesh {
+            let _ = self.shared.mesh.set(Arc::new(BodyMesh {
                 positions: mesh.positions.iter().map(point).collect(),
                 normals: mesh.normals.iter().map(point).collect(),
                 triangles: mesh.triangles.clone(),
@@ -62,11 +83,12 @@ impl Body {
                     .collect(),
                 edge_ids: kept,
                 triangle_faces: mesh.tri_face.iter().map(|&face| face as usize).collect(),
-            });
+            }));
         }
         self.shared
             .mesh
             .get()
+            .map(Arc::as_ref)
             .ok_or_else(|| KernelError("meshing a body failed".to_owned()))
     }
 }
@@ -113,4 +135,52 @@ fn seam_edges(mesh: &solidcore_tess::Mesh, size: f64) -> Vec<bool> {
             run.len() > 1 && both * 2 > run.len() - 1
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Body;
+    use crate::Similarity;
+    use std::sync::Arc;
+
+    /// Copies of a body, moved and turned, hand out the very same mesh, meshed once.
+    #[test]
+    fn copies_share_one_mesh() {
+        let cube = Body::cuboid([0.0; 3], [2.0, 3.0, 4.0]).unwrap();
+        let moved = cube.translated([10.0, 0.0, 0.0]);
+        let turned = moved.mapped(&Similarity::rotation([1.0, 2.0, 0.0], [0.0, 0.0, 1.0], 0.7));
+        let shared = cube.shared_mesh().unwrap();
+        assert!(Arc::ptr_eq(&shared, &moved.shared_mesh().unwrap()));
+        assert!(Arc::ptr_eq(&shared, &turned.shared_mesh().unwrap()));
+    }
+
+    /// The shared mesh, each point placed by `placement` as its rows say, is the body's own mesh.
+    #[test]
+    fn the_shared_mesh_placed_is_the_mesh() {
+        let cube = Body::cuboid([1.0, 2.0, 3.0], [2.0, 3.0, 4.0]).unwrap();
+        let turn = Similarity::rotation([0.0; 3], [0.0, 0.0, 1.0], 1.1);
+        let copy = cube.translated([5.0, -7.0, 2.0]).mapped(&turn);
+        let (shared, m) = (copy.shared_mesh().unwrap(), copy.placement());
+        assert_eq!(m.map(|row| row[3]), [0.0, 0.0, 0.0, 1.0]);
+        let placed = copy.mesh().unwrap();
+        assert_eq!(shared.positions.len(), placed.positions.len());
+        for (p, q) in shared.positions.iter().zip(&placed.positions) {
+            let moved: [f64; 3] =
+                std::array::from_fn(|j| p[0] * m[0][j] + p[1] * m[1][j] + p[2] * m[2][j] + m[3][j]);
+            for axis in 0..3 {
+                assert!(
+                    (moved[axis] - q[axis]).abs() < 1e-9,
+                    "{moved:?} against {q:?}"
+                );
+            }
+        }
+    }
+
+    /// A body in place has the identity as its placement, and its mesh is the shared one.
+    #[test]
+    fn a_body_as_made_is_in_place() {
+        let cube = Body::cuboid([0.0; 3], [1.0, 1.0, 1.0]).unwrap();
+        assert_eq!(cube.placement(), super::super::IN_PLACE);
+        assert_eq!(*cube.shared_mesh().unwrap(), cube.mesh().unwrap());
+    }
 }

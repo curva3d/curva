@@ -70,7 +70,7 @@ struct Shared {
     /// The faces as the engine's portable record, without the placement, read when first needed.
     record: std::sync::OnceLock<Record>,
     /// The faces as made, without the placement, meshed for drawing, when first needed.
-    mesh: std::sync::OnceLock<BodyMesh>,
+    mesh: std::sync::OnceLock<std::sync::Arc<BodyMesh>>,
     /// The box around the faces as made, without the placement, when first needed.
     bounds: std::sync::OnceLock<(Point, Point)>,
     /// The volume and the area of the faces as made, when first needed.
