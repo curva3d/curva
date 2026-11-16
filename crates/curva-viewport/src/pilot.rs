@@ -11,8 +11,8 @@ mod scene;
 pub use scene::{Lighting, Look};
 use scene::{SharedMeshes, ViewScene};
 
+use crate::Drawing;
 use crate::camera::Lens;
-use crate::{Drawing, MeshVertex};
 use std::sync::Arc;
 
 use egui_wgpu::wgpu;
@@ -143,6 +143,7 @@ impl Pilot {
 
     /// Has Bevy draw `drawing`'s view, `size` pixels, and returns the picture; `None` while
     /// Bevy has not made it yet.
+    #[cfg(test)]
     pub(crate) fn draw(&mut self, drawing: &Drawing, size: [u32; 2]) -> Option<wgpu::Texture> {
         self.draw_all(&[(drawing, size)])
             .pop()
@@ -364,12 +365,13 @@ fn look(lens: &Lens, size: [u32; 2]) -> (Transform, Projection) {
 /// How many redraws [`save_bevy_picture`] times.
 pub const TIMED_FRAMES: usize = 120;
 
-/// Has Bevy draw `faces` (numbered by `objects`, as [`crate::SceneParts`] numbers them) seen by
-/// `camera` in `look` on `background`, `size` pixels, and saves the picture as a PNG file at
-/// `path`. Returns the median time to draw one frame, in milliseconds, over [`TIMED_FRAMES`]
-/// redraws: what the look costs.
+/// Draws `picture` as a view Bevy draws, through the window's own path: Bevy's surfaces in
+/// `look` on `background`, with Curva's lines, outlines and previews on them, seen by `camera`
+/// (`picture.matrix` must be made from it), its faces numbered by `objects` as
+/// [`crate::SceneParts`] numbers them. Saves it as a PNG file at `path`, `size` pixels, and
+/// returns the median time to draw one frame, in milliseconds, over [`TIMED_FRAMES`] redraws.
 pub fn save_bevy_picture(
-    faces: Vec<MeshVertex>,
+    picture: crate::Picture,
     objects: Vec<u64>,
     camera: crate::Camera,
     look: Look,
@@ -377,6 +379,7 @@ pub fn save_bevy_picture(
     size: [u32; 2],
     path: &std::path::Path,
 ) -> Result<f64, String> {
+    use egui_wgpu::CallbackTrait;
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let adapter =
         pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
@@ -384,24 +387,27 @@ pub fn save_bevy_picture(
     let (device, queue) =
         pollster::block_on(adapter.request_device(&crate::device_descriptor(&adapter, true)))
             .map_err(|error| error.to_string())?;
+    let format = wgpu::TextureFormat::Rgba8Unorm;
     let seed = PilotSeed { instance, adapter };
-    let mut pilot = Pilot::new(&seed, &device, &queue, wgpu::TextureFormat::Rgba8Unorm);
+    let mut pilot = Pilot::new(&seed, &device, &queue, format);
     pilot.look = look;
-    let aspect = f64::from(size[0]) / f64::from(size[1]);
-    let drawing = Drawing {
+    let mut resources = egui_wgpu::CallbackResources::default();
+    resources.insert(crate::LineRenderer::new(&device, format));
+    resources.insert(pilot);
+    let mut drawing = Drawing {
         slot: 0,
         grid: Arc::default(),
-        scene: Arc::default(),
-        faces: Arc::new(faces),
+        scene: Arc::new(picture.lines),
+        faces: Arc::new(picture.faces),
         objects: Arc::new(objects),
         selection: Arc::default(),
         overlay: Arc::default(),
         preview_faces: Arc::default(),
-        matrix: camera.matrix(aspect),
-        light: camera.forward().map(|value| value as f32),
+        matrix: picture.matrix,
+        light: picture.light,
         clips: Vec::new(),
         shaded: true,
-        ghosted: false,
+        ghosted: picture.ghosted,
         zebra: false,
         draft: false,
         area: epaint::Rect::from_min_size(
@@ -415,12 +421,30 @@ pub fn save_bevy_picture(
         camera,
         bevy_last: true,
     };
-    let texture = pilot.draw(&drawing, size).ok_or("Bevy made no picture")?;
-    let pixels = crate::gpu::read_texture(&device, &queue, &texture, size);
+    let screen = egui_wgpu::ScreenDescriptor {
+        size_in_pixels: size,
+        pixels_per_point: 1.0,
+    };
+    let frame = |drawing: &Drawing, resources: &mut egui_wgpu::CallbackResources| {
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let extra = drawing.prepare(&device, &queue, &screen, &mut encoder, resources);
+        queue.submit(extra.into_iter().chain([encoder.finish()]));
+    };
+    // Bevy's first picture of a new view comes ready on its second update.
+    for _ in 0..2 {
+        frame(&drawing, &mut resources);
+        drawing.frame += 1;
+    }
+    let renderer = resources
+        .get_mut::<crate::LineRenderer>()
+        .ok_or("no line renderer")?;
+    let target = renderer.compositor.target(&device, size);
+    let pixels = crate::gpu::read_texture(&device, &queue, target.colour.texture(), size);
     let mut times = Vec::with_capacity(TIMED_FRAMES);
     for _ in 0..TIMED_FRAMES {
         let started = std::time::Instant::now();
-        pilot.draw(&drawing, size).ok_or("Bevy made no picture")?;
+        frame(&drawing, &mut resources);
+        drawing.frame += 1;
         device
             .poll(wgpu::PollType::wait_indefinitely())
             .map_err(|error| error.to_string())?;
@@ -442,7 +466,7 @@ pub fn save_bevy_picture(
 mod tests {
     use super::*;
 
-    use crate::{NO_OBJECT, StandardView};
+    use crate::{MeshVertex, NO_OBJECT, StandardView};
 
     const BACKGROUND: epaint::Color32 = epaint::Color32::from_rgb(200, 120, 40);
     const SIZE: [u32; 2] = [64, 48];

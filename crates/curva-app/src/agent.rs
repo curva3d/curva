@@ -323,65 +323,35 @@ mod tests {
             camera.frame(low, high);
             camera.zoom(zoom);
             let aspect = f64::from(PICTURE_SIZE[0]) / f64::from(PICTURE_SIZE[1]);
-            // Curva's own Shaded, and its lines alone: its picture with and without lines
-            // differs exactly where a line shows, laid over Bevy's picture until step 3 draws
-            // them into Bevy's picture itself.
-            let with_lines = picture_of(doc, &outlines, &camera, aspect, false);
-            let without = Picture {
-                lines: Vec::new(),
-                faces: with_lines.faces.clone(),
-                matrix: with_lines.matrix,
-                light: with_lines.light,
-                ghosted: false,
-            };
-            let curva = out.join(format!("{scene}-0-curva.png"));
-            let bare = out.join(format!("{scene}-curva-bare.png"));
-            save_picture(with_lines, PICTURE_SIZE, &curva).unwrap();
-            save_picture(without, PICTURE_SIZE, &bare).unwrap();
-            let (lined, bare) = (read_png(&curva), read_png(&bare));
+            let curva = picture_of(doc, &outlines, &camera, aspect, false);
+            save_picture(
+                curva,
+                PICTURE_SIZE,
+                &out.join(format!("{scene}-0-curva.png")),
+            )
+            .unwrap();
+            // Bevy's surfaces with Curva's lines, numbered as the window numbers them.
             let parts = curva_viewport::SceneParts::of(&outlines);
             for (index, (name, look)) in looks.iter().enumerate() {
-                let path = out.join(format!("{scene}-{}-{name}.png", index + 1));
+                let picture = Picture {
+                    lines: parts.shaded_lines.clone(),
+                    faces: parts.faces.clone(),
+                    matrix: camera.matrix(aspect),
+                    light: camera.forward().map(|value| value as f32),
+                    ghosted: false,
+                };
                 let ms = curva_viewport::save_bevy_picture(
-                    parts.faces.clone(),
+                    picture,
                     parts.objects.clone(),
                     camera,
                     *look,
                     RHINO_GREY,
                     PICTURE_SIZE,
-                    &path,
+                    &out.join(format!("{scene}-{}-{name}.png", index + 1)),
                 )
                 .unwrap();
                 println!("{scene} {name}: {ms:.2} ms per frame");
-                let mut pixels = read_png(&path);
-                for (at, pixel) in pixels.chunks_mut(4).enumerate() {
-                    let i = at * 4;
-                    if lined[i..i + 3] != bare[i..i + 3] {
-                        pixel.copy_from_slice(&lined[i..i + 4]);
-                    }
-                }
-                write_png(&path, &pixels);
             }
         }
-    }
-
-    fn read_png(path: &std::path::Path) -> Vec<u8> {
-        let file = std::io::BufReader::new(std::fs::File::open(path).unwrap());
-        let mut reader = png::Decoder::new(file).read_info().unwrap();
-        let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
-        reader.next_frame(&mut pixels).unwrap();
-        pixels
-    }
-
-    fn write_png(path: &std::path::Path, pixels: &[u8]) {
-        let file = std::io::BufWriter::new(std::fs::File::create(path).unwrap());
-        let mut encoder = png::Encoder::new(file, PICTURE_SIZE[0], PICTURE_SIZE[1]);
-        encoder.set_color(png::ColorType::Rgba);
-        encoder.set_depth(png::BitDepth::Eight);
-        encoder
-            .write_header()
-            .unwrap()
-            .write_image_data(pixels)
-            .unwrap();
     }
 }
