@@ -85,6 +85,7 @@ pub fn named(name: &str) -> Scene {
         "far" => grid_scene(40_000, 10_000, 10_000, 100, 2_000, [5.0e8, 5.0e8, 0.0]),
         "building" => building(),
         "house" => house(),
+        "meshes" => meshes(),
         _ => panic!("unknown scene {name}"),
     }
 }
@@ -311,4 +312,82 @@ fn house() -> Scene {
             [14000.0, 10500.0, -300.0],
         ],
     )
+}
+
+/// A wavy grid mesh of `n` by `n` quads, `size` wide, starting at `at`: positions, normals and
+/// triangles. `phase` makes each one different (and moves it over time for the SubD test).
+pub fn wavy_grid(n: usize, size: f64, at: Point, height: f64, phase: f64) -> BodyMesh {
+    let step = size / n as f64;
+    let k = std::f64::consts::TAU * 3.0 / size;
+    let mut m = BodyMesh::default();
+    for j in 0..=n {
+        for i in 0..=n {
+            let (x, y) = (i as f64 * step, j as f64 * step);
+            let (sx, cx) = (k * x + phase).sin_cos();
+            let (sy, cy) = (k * y + 0.7 * phase).sin_cos();
+            m.positions.push([at[0] + x, at[1] + y, at[2] + height * sx * sy]);
+            // The surface's slopes give its normal.
+            let (dx, dy) = (height * k * cx * sy, height * k * sx * cy);
+            let l = (dx * dx + dy * dy + 1.0).sqrt();
+            m.normals.push([-dx / l, -dy / l, 1.0 / l]);
+        }
+    }
+    let row = (n + 1) as u32;
+    for j in 0..n as u32 {
+        for i in 0..n as u32 {
+            let a = j * row + i;
+            m.triangles.push([a, a + 1, a + row + 1]);
+            m.triangles.push([a, a + row + 1, a + row]);
+        }
+    }
+    m.triangle_faces = vec![0; m.triangles.len()];
+    let edge = |p: &[Point]| p.to_vec();
+    let last = n;
+    let at_ij = |i: usize, j: usize| m.positions[j * (n + 1) + i];
+    let outline: Vec<Point> = (0..=last)
+        .map(|i| at_ij(i, 0))
+        .chain((0..=last).map(|j| at_ij(last, j)))
+        .chain((0..=last).rev().map(|i| at_ij(i, last)))
+        .chain((0..=last).rev().map(|j| at_ij(0, j)))
+        .collect();
+    m.edges = vec![edge(&outline)];
+    m.edge_ids = vec![0];
+    m.seams = vec![false];
+    m
+}
+
+/// Big meshes that are all different, as imported terrain or scans: 16 tiles of 100 m, each a
+/// grid of 700 by 700 quads (about 980,000 triangles), 15.7 million triangles in all. Nothing is
+/// repeated, so instancing cannot help.
+pub fn meshes() -> Scene {
+    let mut scene = Scene {
+        shapes: Vec::new(),
+        placed: Vec::new(),
+        tree_parts: 0,
+        curves: Vec::new(),
+    };
+    for t in 0..16 {
+        let at = [(t % 4) as f64 * 100_000.0, (t / 4) as f64 * 100_000.0, 0.0];
+        scene.placed.push((t, [0.0; 3]));
+        scene.shapes.push(wavy_grid(700, 100_000.0, at, 5_000.0, t as f64));
+    }
+    scene
+}
+
+/// A SubD while it is edited, at time `t`: the limit surface (the cage of `cage` by `cage` faces
+/// subdivided three times, so 8 by 8 quads per cage face) and the cage's lines, 300 mm above it.
+/// Dragging a control point changes both every frame.
+pub fn subd(cage: usize, t: f64) -> (BodyMesh, Vec<Vec<Point>>) {
+    let size = 10_000.0;
+    let surface = wavy_grid(cage * 8, size, [0.0; 3], 800.0, t);
+    let coarse = wavy_grid(cage, size, [0.0, 0.0, 300.0], 800.0, t);
+    let p = |i: usize, j: usize| coarse.positions[j * (cage + 1) + i];
+    let mut lines = Vec::new();
+    for j in 0..=cage {
+        lines.push((0..=cage).map(|i| p(i, j)).collect());
+    }
+    for i in 0..=cage {
+        lines.push((0..=cage).map(|j| p(i, j)).collect());
+    }
+    (surface, lines)
 }

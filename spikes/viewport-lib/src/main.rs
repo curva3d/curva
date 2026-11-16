@@ -58,6 +58,10 @@ fn main() {
             let name = args.get(3).map_or("medium", String::as_str);
             orbit(&device, &queue, name, &out);
         }
+        "subd" => {
+            let cage = args.get(3).and_then(|c| c.parse().ok()).unwrap_or(32);
+            subd_edit(&device, &queue, cage);
+        }
         other => panic!("unknown {other}"),
     }
 }
@@ -491,4 +495,68 @@ fn orbit(device: &wgpu::Device, queue: &wgpu::Queue, name: &str, out: &std::path
     );
     let px = r.render_offscreen(device, queue, &frame, size()[0], size()[1]);
     save(&out.join(format!("vl-orbit-{name}.png")), &px, size());
+}
+
+/// SubD while editing: every frame the limit surface and the cage change (worked out beforehand,
+/// as Curva's subdivision would), are handed to viewport-lib and drawn. Only handing over and
+/// drawing is timed.
+fn subd_edit(device: &wgpu::Device, queue: &wgpu::Queue, cage: usize) {
+    let frames: Vec<_> = (0..FRAMES).map(|k| scenes::subd(cage, k as f64 * 0.05)).collect();
+    let f32s = |v: &[Point]| v.iter().map(|p| p.map(|x| x as f32)).collect::<Vec<_>>();
+    let (first, lines) = &frames[0];
+    let mut r = renderer(device);
+    let mut data = viewport_lib::MeshData::default();
+    data.positions = f32s(&first.positions);
+    data.normals = f32s(&first.normals);
+    data.indices = first.triangles.iter().flatten().copied().collect();
+    let id = r.resources_mut().upload_mesh_data(device, &data).unwrap();
+    let mut item = MeshItem::default();
+    item.mesh_id = id;
+    let up = Uploaded {
+        items: vec![item],
+        lines: vec![polyline(lines, [0.0; 3], 2.0)],
+    };
+    let mut cam = curva_viewport::Camera::default();
+    cam.frame([0.0, 0.0, -800.0], [10_000.0, 10_000.0, 1_100.0]);
+    let target = device.create_texture(&wgpu::TextureDescriptor {
+        label: None,
+        size: wgpu::Extent3d { width: size()[0], height: size()[1], depth_or_array_layers: 1 },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    });
+    let view = target.create_view(&wgpu::TextureViewDescriptor::default());
+    let mut frame = frame_for(&up, camera(&cam, size()), size(), true);
+    let (mut still, mut edit) = (Vec::new(), Vec::new());
+    for (k, (surface, lines)) in frames.iter().enumerate() {
+        let editing = k >= FRAMES / 2;
+        let t = Instant::now();
+        if editing {
+            r.resources_mut()
+                .write_mesh_positions_normals(queue, id, &f32s(&surface.positions), &f32s(&surface.normals))
+                .unwrap();
+            *frame.scene.items_mut::<PolylineItem>() = vec![polyline(lines, [0.0; 3], 2.0)];
+        }
+        r.render_to_texture(device, queue, &view, &frame);
+        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+        let ms = t.elapsed().as_secs_f64() * 1000.0;
+        if k >= 20 && !editing {
+            still.push(ms);
+        } else if k >= FRAMES / 2 + 5 {
+            edit.push(ms);
+        }
+    }
+    let median = |v: &mut Vec<f64>| {
+        v.sort_by(f64::total_cmp);
+        v[v.len() / 2]
+    };
+    println!(
+        "subd cage {cage}: {} triangles; still {:.2} ms per frame, editing {:.2} ms per frame",
+        first.triangles.len(),
+        median(&mut still),
+        median(&mut edit)
+    );
 }
