@@ -150,6 +150,50 @@ pub fn parse_pat(text: &str) -> Result<Vec<Pattern>, String> {
     Ok(patterns)
 }
 
+/// The unit a `.pat` file's sizes are in, by AutoCAD's `;%UNITS=INCH` or `;%UNITS=MM` line;
+/// `None` when it does not say.
+#[must_use]
+pub fn pat_units(text: &str) -> Option<crate::Unit> {
+    text.lines().find_map(|line| {
+        let value = line
+            .trim()
+            .strip_prefix(";%")?
+            .trim()
+            .strip_prefix("UNITS")?
+            .trim()
+            .strip_prefix('=')?
+            .trim();
+        match value.to_ascii_uppercase().as_str() {
+            "INCH" | "INCHES" => Some(crate::Unit::Inches),
+            "MM" | "MILLIMETERS" | "MILLIMETRES" => Some(crate::Unit::Millimetres),
+            _ => None,
+        }
+    })
+}
+
+/// The patterns of a `.pat` file in millimetres, as Curva keeps them: sizes in inches when the
+/// file says so (`;%UNITS=INCH`, as AutoCAD's `acad.pat`), otherwise taken as millimetres.
+///
+/// # Errors
+///
+/// As [`parse_pat`].
+pub fn pat_file_patterns(text: &str) -> Result<Vec<Pattern>, String> {
+    let factor = match pat_units(text) {
+        Some(crate::Unit::Inches) => 25.4,
+        _ => 1.0,
+    };
+    let mut patterns = parse_pat(text)?;
+    for line in patterns.iter_mut().flat_map(|p| p.lines.iter_mut()) {
+        line.origin = line.origin.map(|v| v * factor);
+        line.shift *= factor;
+        line.spacing *= factor;
+        for dash in &mut line.dashes {
+            *dash *= factor;
+        }
+    }
+    Ok(patterns)
+}
+
 /// The most line pieces one hatch draws; a pattern far too fine for its region stops here
 /// rather than freezing the program.
 pub const MOST_PIECES: usize = 20_000;
@@ -255,6 +299,26 @@ pub fn pattern_pieces(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_pat_file_in_inches_comes_in_millimetres() {
+        let file = ";%UNITS=INCH\n*ANSI31, ANSI Iron, Brick, Stone masonry\n45, 0,0, 0,.125\n\
+                    *DASH, Dashed lines\n0, 0,0, 0,.125, .125,-.125\n";
+        assert_eq!(pat_units(file), Some(crate::Unit::Inches));
+        let patterns = pat_file_patterns(file).unwrap();
+        assert_eq!(patterns.len(), 2);
+        assert!((patterns[0].lines[0].spacing - 3.175).abs() < 1e-12);
+        assert_eq!(patterns[0].lines[0].angle, 45.0);
+        assert!((patterns[1].lines[0].dashes[1] + 3.175).abs() < 1e-12);
+    }
+
+    #[test]
+    fn a_pat_file_without_units_is_taken_as_millimetres() {
+        let file = "*LINES, Lines\n0, 0,0, 0,3\n";
+        assert_eq!(pat_units(file), None);
+        assert!((pat_file_patterns(file).unwrap()[0].lines[0].spacing - 3.0).abs() < 1e-12);
+        assert_eq!(pat_units(";%UNITS=MM\n"), Some(crate::Unit::Millimetres));
+    }
 
     fn square(size: f64) -> Vec<[f64; 2]> {
         vec![[0.0, 0.0], [size, 0.0], [size, size], [0.0, size]]
