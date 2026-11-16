@@ -27,16 +27,23 @@ views, shaded details, and PNG output from the viewport. Work on files, commands
   file reads with the same layer hidden. Rhino reading Curva's layouts could not be checked: Rhino only brings in
   layouts when it opens a DXF, which closes a scripted Rhino slot.
 - Merged (#212): `.3dm` Rhino 5 annotation (notes, linear, aligned, radius, diameter and angle dimensions,
-  leaders), matched to what Rhino 8 reads back from a Rhino 5 file. Rhino 5's style table is still not read.
-- In review (#214): DXF and DWG objects' user text both ways (Rhino's XDATA), and block attributes read as Rhino
+  leaders), matched to what Rhino 8 reads back from a Rhino 5 file. Its style table follows in #229.
+- Merged (#214): DXF and DWG objects' user text both ways (Rhino's XDATA), and block attributes read as Rhino
   reads them (user text on the instance, notes where shown). Rhino 8 reads Curva's user text.
+- Merged (#216): ordinate dimensions (`DimOrdinate`, X or Y from a base point, with Rhino's kinks) in `.3dm`,
+  DXF and DWG; Rhino 8's own files read with the same values. AutoCAD draws its own jog, so DXF does not carry
+  the kinks.
+- In review (#229): `.3dm` Rhino 5 annotation styles (the style and font tables): dimensions and leaders on their
+  styles, notes on the first style, as Rhino 8 reads them.
 
 **Milestone 3, point 9:** merged (#213): `HatchPatterns` loads a `.pat` file's patterns into the model
-(`;%UNITS=INCH` files turned into millimetres).
+(`;%UNITS=INCH` files turned into millimetres). Merged (#219): `SetHatchBasePoint` moves where hatches' patterns
+start.
 
 **Next (features):** the remaining non-display gaps (a Rhino note's own style written back as its override,
-MLEADER block content, fit-point splines); ordinate, arc length and curve length dimensions, and dimensions that
-follow their geometry; hatch base point; Make2D pieces that need no viewport.
+MLEADER block content, fit-point splines); arc length and curve length dimensions, and dimensions that
+follow their geometry; Make2D pieces that need no viewport. Meshes in DXF and DWG need the owner's decision first:
+Curva has no mesh objects.
 
 ## Features stream — 15 November 2026
 
@@ -100,7 +107,7 @@ Properties yet; built-in title blocks are one design per standard, not one per s
 interoperability gap for `.3dm`, DXF and DWG (`drawing-output.md` §7). Technical and Hidden views are asked of the
 display stream (#164).
 
-**Next (features):** the interoperability gaps; ordinate, arc length and curve length dimensions and dimensions
+**Next (features):** the interoperability gaps; arc length and curve length dimensions and dimensions
 that follow their geometry; `.pat` hatch patterns, gradients, base point; printing the model or a view and to PNG;
 Make2D four-view drawings, clipping cuts, annotations and source layers. Earlier list: Properties for scale bars and
 tables. Known: Rhino's own DXF export writes a detail's view height as paper height ÷ scale, against AutoCAD's
