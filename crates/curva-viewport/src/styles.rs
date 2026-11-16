@@ -355,132 +355,16 @@ fn draw_object_numbers(
     cut: [f32; 4],
 ) -> Result<Vec<u32>, String> {
     let [width, height] = size;
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-    let adapter =
-        pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-            .map_err(|error| error.to_string())?;
-    let (device, queue) =
-        pollster::block_on(adapter.request_device(&crate::device_descriptor(&adapter, false)))
-            .map_err(|error| error.to_string())?;
+    let (device, queue) = numbers_device()?;
     let extent = wgpu::Extent3d {
         width,
         height,
         depth_or_array_layers: 1,
     };
-    let target = |format, usage, label| {
-        device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(label),
-            size: extent,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage,
-            view_formats: &[],
-        })
-    };
-    let numbers = target(
-        wgpu::TextureFormat::R32Uint,
-        wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-        "curva object numbers",
-    );
-    let depth = target(
-        DEPTH_FORMAT,
-        wgpu::TextureUsages::RENDER_ATTACHMENT,
-        "curva object numbers depth",
-    );
-    let uniforms: Vec<u8> = matrix
-        .iter()
-        .flatten()
-        .chain(&cut)
-        .flat_map(|value| value.to_le_bytes())
-        .collect();
-    let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("curva object numbers camera"),
-        size: uniforms.len() as u64,
-        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    });
-    queue.write_buffer(&uniform_buffer, 0, &uniforms);
-    let mut vertices = Vec::with_capacity(faces.len() * 16);
-    for vertex in faces {
-        for value in vertex.position {
-            vertices.extend(value.to_le_bytes());
-        }
-        vertices.extend(vertex.object.wrapping_add(1).to_le_bytes());
-    }
-    let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("curva object numbers faces"),
-        size: (vertices.len() as u64).max(16),
-        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    });
-    queue.write_buffer(&vertex_buffer, 0, &vertices);
-    let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some("curva object numbers"),
-        entries: &[wgpu::BindGroupLayoutEntry {
-            binding: 0,
-            visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-            ty: wgpu::BindingType::Buffer {
-                ty: wgpu::BufferBindingType::Uniform,
-                has_dynamic_offset: false,
-                min_binding_size: None,
-            },
-            count: None,
-        }],
-    });
-    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("curva object numbers"),
-        layout: &layout,
-        entries: &[wgpu::BindGroupEntry {
-            binding: 0,
-            resource: uniform_buffer.as_entire_binding(),
-        }],
-    });
-    let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("curva object numbers"),
-        source: wgpu::ShaderSource::Wgsl(format!("{HIDDEN_COMMON}{shader}").into()),
-    });
-    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("curva object numbers"),
-        bind_group_layouts: &[Some(&layout)],
-        immediate_size: 0,
-    });
-    let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("curva object numbers"),
-        layout: Some(&pipeline_layout),
-        vertex: wgpu::VertexState {
-            module: &module,
-            entry_point: Some("vertex_main"),
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            buffers: &[Some(wgpu::VertexBufferLayout {
-                array_stride: 16,
-                step_mode: wgpu::VertexStepMode::Vertex,
-                attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Uint32],
-            })],
-        },
-        fragment: Some(wgpu::FragmentState {
-            module: &module,
-            entry_point: Some("fragment_main"),
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            targets: &[Some(wgpu::ColorTargetState {
-                format: wgpu::TextureFormat::R32Uint,
-                blend: None,
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
-        }),
-        primitive: wgpu::PrimitiveState::default(),
-        depth_stencil: Some(wgpu::DepthStencilState {
-            format: DEPTH_FORMAT,
-            depth_write_enabled: Some(true),
-            depth_compare: Some(wgpu::CompareFunction::Less),
-            stencil: wgpu::StencilState::default(),
-            bias: wgpu::DepthBiasState::default(),
-        }),
-        multisample: wgpu::MultisampleState::default(),
-        multiview_mask: None,
-        cache: None,
-    });
+    let (numbers, depth) = numbers_targets(&device, extent);
+    let (uniform_buffer, vertex_buffer) = numbers_buffers(&device, &queue, faces, matrix, cut);
+    let (layout, bind_group) = numbers_bind_group(&device, &uniform_buffer);
+    let pipeline = numbers_pipeline(&device, &layout, shader);
     let row = (width * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
     let readback = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("curva object numbers readback"),
@@ -535,6 +419,177 @@ fn draw_object_numbers(
         extent,
     );
     queue.submit([encoder.finish()]);
+    read_numbers(&device, &readback, row, size)
+}
+
+/// A device of its own for the hidden picture, asked for as the window asks for its device.
+fn numbers_device() -> Result<(wgpu::Device, wgpu::Queue), String> {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    let adapter =
+        pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+            .map_err(|error| error.to_string())?;
+    pollster::block_on(adapter.request_device(&crate::device_descriptor(&adapter, false)))
+        .map_err(|error| error.to_string())
+}
+
+/// The hidden picture's object numbers and its depth, both `extent` in size.
+fn numbers_targets(
+    device: &wgpu::Device,
+    extent: wgpu::Extent3d,
+) -> (wgpu::Texture, wgpu::Texture) {
+    let target = |format, usage, label| {
+        device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size: extent,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage,
+            view_formats: &[],
+        })
+    };
+    let numbers = target(
+        wgpu::TextureFormat::R32Uint,
+        wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        "curva object numbers",
+    );
+    let depth = target(
+        DEPTH_FORMAT,
+        wgpu::TextureUsages::RENDER_ATTACHMENT,
+        "curva object numbers depth",
+    );
+    (numbers, depth)
+}
+
+/// The camera and cutting plane, and each face corner's position with its object number plus
+/// one, sent to the graphics card.
+fn numbers_buffers(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    faces: &[MeshVertex],
+    matrix: [[f32; 4]; 4],
+    cut: [f32; 4],
+) -> (wgpu::Buffer, wgpu::Buffer) {
+    let uniforms: Vec<u8> = matrix
+        .iter()
+        .flatten()
+        .chain(&cut)
+        .flat_map(|value| value.to_le_bytes())
+        .collect();
+    let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("curva object numbers camera"),
+        size: uniforms.len() as u64,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    queue.write_buffer(&uniform_buffer, 0, &uniforms);
+    let mut vertices = Vec::with_capacity(faces.len() * 16);
+    for vertex in faces {
+        for value in vertex.position {
+            vertices.extend(value.to_le_bytes());
+        }
+        vertices.extend(vertex.object.wrapping_add(1).to_le_bytes());
+    }
+    let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("curva object numbers faces"),
+        size: (vertices.len() as u64).max(16),
+        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    queue.write_buffer(&vertex_buffer, 0, &vertices);
+    (uniform_buffer, vertex_buffer)
+}
+
+/// The shaders' view of the camera and cutting plane.
+fn numbers_bind_group(
+    device: &wgpu::Device,
+    uniform_buffer: &wgpu::Buffer,
+) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
+    let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("curva object numbers"),
+        entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        }],
+    });
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("curva object numbers"),
+        layout: &layout,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: uniform_buffer.as_entire_binding(),
+        }],
+    });
+    (layout, bind_group)
+}
+
+/// The pipeline that writes object numbers, nearest face winning.
+fn numbers_pipeline(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    shader: &str,
+) -> wgpu::RenderPipeline {
+    let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("curva object numbers"),
+        source: wgpu::ShaderSource::Wgsl(format!("{HIDDEN_COMMON}{shader}").into()),
+    });
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("curva object numbers"),
+        bind_group_layouts: &[Some(layout)],
+        immediate_size: 0,
+    });
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("curva object numbers"),
+        layout: Some(&pipeline_layout),
+        vertex: wgpu::VertexState {
+            module: &module,
+            entry_point: Some("vertex_main"),
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            buffers: &[Some(wgpu::VertexBufferLayout {
+                array_stride: 16,
+                step_mode: wgpu::VertexStepMode::Vertex,
+                attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Uint32],
+            })],
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &module,
+            entry_point: Some("fragment_main"),
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: wgpu::TextureFormat::R32Uint,
+                blend: None,
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        primitive: wgpu::PrimitiveState::default(),
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: DEPTH_FORMAT,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::Less),
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState::default(),
+        }),
+        multisample: wgpu::MultisampleState::default(),
+        multiview_mask: None,
+        cache: None,
+    })
+}
+
+/// Waits for the hidden picture and reads its numbers back, row by row, leaving out each row's
+/// padding.
+fn read_numbers(
+    device: &wgpu::Device,
+    readback: &wgpu::Buffer,
+    row: u32,
+    [width, height]: [u32; 2],
+) -> Result<Vec<u32>, String> {
     let slice = readback.slice(..);
     slice.map_async(wgpu::MapMode::Read, |_| {});
     device

@@ -372,49 +372,8 @@ impl Gumball {
                 axis: AXES[index],
                 distance: along_axis(index)?,
             }),
-            Handle::Turn(index) => {
-                let angle_at = |p: [f64; 2]| (p[1] - at[1]).atan2(p[0] - at[0]);
-                // Screen Y points down, so an increasing screen angle looks clockwise.
-                let looks_counterclockwise = angle_at(from) - angle_at(to);
-                let axis = AXES[index];
-                let facing_viewer = dot(axis, camera.forward()) < 0.0;
-                let angle = if facing_viewer {
-                    looks_counterclockwise
-                } else {
-                    -looks_counterclockwise
-                };
-                Some(GumballChange::Turn(Similarity::rotation(
-                    self.centre,
-                    axis,
-                    angle,
-                )))
-            }
-            Handle::Scale(index) => {
-                // The factor is how much further from the centre, along the axis, the pointer
-                // is than where the drag began.
-                let axis = AXES[index];
-                let tip = camera.project(plus(self.centre, axis, 1.0), size)?;
-                let per_unit = [tip[0] - at[0], tip[1] - at[1]];
-                let reach =
-                    |p: [f64; 2]| (p[0] - at[0]) * per_unit[0] + (p[1] - at[1]) * per_unit[1];
-                let start = reach(from);
-                if start.abs() < SHORTEST_ON_SCREEN {
-                    return None;
-                }
-                let factor = reach(to) / start;
-                if !factor.is_finite() || factor <= 1e-9 {
-                    return None;
-                }
-                Some(if even {
-                    GumballChange::Turn(Similarity::scaling(self.centre, factor))
-                } else {
-                    GumballChange::Stretch {
-                        origin: self.centre,
-                        axis,
-                        factor,
-                    }
-                })
-            }
+            Handle::Turn(index) => Some(self.turn_change(camera, at, index, [from, to])),
+            Handle::Scale(index) => self.scale_change(camera, size, at, index, [from, to], even),
             Handle::Plane(_) | Handle::Centre => {
                 let index = match handle {
                     Handle::Plane(index) => index,
@@ -431,6 +390,62 @@ impl Gumball {
                 Some(GumballChange::Move(sub(end, start)))
             }
         }
+    }
+
+    /// Dragging a turn circle from `from` to `to` on screen, the gumball's centre being `at`.
+    fn turn_change(
+        &self,
+        camera: &Camera,
+        at: [f64; 2],
+        index: usize,
+        [from, to]: [[f64; 2]; 2],
+    ) -> GumballChange {
+        let angle_at = |p: [f64; 2]| (p[1] - at[1]).atan2(p[0] - at[0]);
+        // Screen Y points down, so an increasing screen angle looks clockwise.
+        let looks_counterclockwise = angle_at(from) - angle_at(to);
+        let axis = AXES[index];
+        let facing_viewer = dot(axis, camera.forward()) < 0.0;
+        let angle = if facing_viewer {
+            looks_counterclockwise
+        } else {
+            -looks_counterclockwise
+        };
+        GumballChange::Turn(Similarity::rotation(self.centre, axis, angle))
+    }
+
+    /// Dragging a scale square from `from` to `to` on screen, the gumball's centre being `at`:
+    /// the factor is how much further from the centre, along the axis, the pointer is than where
+    /// the drag began. With `even`, it scales evenly.
+    fn scale_change(
+        &self,
+        camera: &Camera,
+        size: [f64; 2],
+        at: [f64; 2],
+        index: usize,
+        [from, to]: [[f64; 2]; 2],
+        even: bool,
+    ) -> Option<GumballChange> {
+        let axis = AXES[index];
+        let tip = camera.project(plus(self.centre, axis, 1.0), size)?;
+        let per_unit = [tip[0] - at[0], tip[1] - at[1]];
+        let reach = |p: [f64; 2]| (p[0] - at[0]) * per_unit[0] + (p[1] - at[1]) * per_unit[1];
+        let start = reach(from);
+        if start.abs() < SHORTEST_ON_SCREEN {
+            return None;
+        }
+        let factor = reach(to) / start;
+        if !factor.is_finite() || factor <= 1e-9 {
+            return None;
+        }
+        Some(if even {
+            GumballChange::Turn(Similarity::scaling(self.centre, factor))
+        } else {
+            GumballChange::Stretch {
+                origin: self.centre,
+                axis,
+                factor,
+            }
+        })
     }
 
     /// Where an axis handle sits in the model: the tip of an arrow, the middle of a circle.
