@@ -537,7 +537,7 @@ pub static COMMANDS: [CommandDef; 276] = [
     listed!("DimCurveLength", [], true, true, measure::DimCurveLength),
     listed!("DimArea", [], true, true, measure::DimArea),
     listed!("DimVolume", [], true, true, measure::DimVolume),
-    listed!("DimArcLength", [], true, true, arc_length::DimArcLength),
+    recipe!("DimArcLength", [], true, arc_length::DimArcLength),
     listed!("Leader", [], true, true, leader::Leader),
     listed!("Dot", [], true, true, dot::Dot),
     listed!("Hatch", [], true, true, hatch::Hatch),
