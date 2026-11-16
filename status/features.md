@@ -69,11 +69,14 @@ start.
 - Merged (#257): `GroupOutput` and `MaintainSourceLayers` (`Make2D::Visible::Curves::Walls`).
 - Merged (#258): annotation lying flat to a view is copied into that view's drawing on
   `Make2D::Visible::Annotations`; annotation standing across a view is left out for now.
+- Merged (#261): clipping planes chosen with the objects cut the drawing (solids by the engine's split, curves
+  where they cross); `ClippingPlaneIntersections` draws the cuts on their own layer. No section fill yet.
+- Merged (#260): DimArea and the `Area` field measure hatches (what they fill).
 
 **Next (features):** dimensions that follow their geometry (needs a decision: Rhino links a dimension to what it
 snapped to, but the viewport's snaps carry no object, and changing them is display work; the alternative is to
-link points that coincide with an object's snap points); DimArcLength's `Partial` and `Leader`; DimArea on
-hatches; Make2D's clipping-plane intersections. Meshes in DXF and DWG need the owner's decision first: Curva has
+link points that coincide with an object's snap points); DimArcLength's `Partial` and `Leader`; Make2D's section
+fills. Meshes in DXF and DWG need the owner's decision first: Curva has
 no mesh objects.
 
 ## Features stream — 15 November 2026
