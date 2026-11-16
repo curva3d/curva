@@ -45,8 +45,8 @@ pub enum Engine {
     /// Curva's own drawing, as before the pilot.
     #[default]
     Curva,
-    /// Bevy draws the view's picture (the pilot, decision 0028).
-    BevyPilot,
+    /// Bevy draws the view (decisions 0028 and 0029).
+    Bevy,
 }
 
 /// What Bevy needs from the window's graphics set-up besides the device and queue, kept at
@@ -81,8 +81,6 @@ pub(crate) struct Pilot {
     pub(crate) look: Look,
     /// What surfaces reflect all around them, for each lighting, made the first time a view draws.
     skies: Option<[EnvironmentMapLight; 2]>,
-    /// This frame's views so far, with their sizes and places, until the last of them comes.
-    pending: Vec<(u64, Drawing, [u32; 2], [u32; 2])>,
     /// The format of the pictures Bevy draws: the scene texture's, in its sRGB form, so a copy
     /// moves the stored bytes unchanged.
     format: TextureFormat,
@@ -138,7 +136,6 @@ impl Pilot {
             meshes: SharedMeshes::default(),
             look: Look::default(),
             skies: None,
-            pending: Vec::new(),
             format: format.add_srgb_suffix(),
         }
     }
@@ -153,39 +150,13 @@ impl Pilot {
             .map(|(colour, _)| colour)
     }
 
-    /// Takes one view of this frame. Bevy draws all of a frame's views together, in one update,
-    /// when the last of them comes ([`Drawing::bevy_last`]): then it returns every view's
-    /// picture, with its drawing, its place and its depth; before that, nothing.
-    pub(crate) fn turn(
-        &mut self,
-        drawing: &Drawing,
-        size: [u32; 2],
-        low: [u32; 2],
-    ) -> Vec<BevyPicture> {
-        self.pending.retain(|(frame, ..)| *frame == drawing.frame);
-        self.pending
-            .push((drawing.frame, drawing.clone(), size, low));
-        if !drawing.bevy_last {
-            return Vec::new();
-        }
-        let pending = std::mem::take(&mut self.pending);
-        let views: Vec<(&Drawing, [u32; 2])> = pending
-            .iter()
-            .map(|(_, drawing, size, _)| (drawing, *size))
-            .collect();
-        let pictures = self.draw_all(&views);
-        pending
-            .into_iter()
-            .zip(pictures)
-            .filter_map(|((_, drawing, _, low), picture)| {
-                picture.map(|(colour, depth)| BevyPicture {
-                    drawing,
-                    low,
-                    colour,
-                    depth,
-                })
-            })
-            .collect()
+    /// Has Bevy draw `drawing`'s view, `size` pixels, and returns its picture and depth; `None`
+    /// while Bevy has not made it yet.
+    pub(crate) fn picture(&mut self, drawing: &Drawing, size: [u32; 2]) -> Option<BevyPicture> {
+        self.draw_all(&[(drawing, size)])
+            .pop()
+            .flatten()
+            .map(|(colour, depth)| BevyPicture { colour, depth })
     }
 
     /// Has Bevy draw each of `views`, at its size, in one update, and returns their pictures and
@@ -293,11 +264,9 @@ impl Pilot {
     }
 }
 
-/// A view Bevy drew this frame: its drawing, its top left corner on the scene texture, its
-/// picture, and its depth (four samples per pixel, reversed: near is 1).
+/// A view Bevy drew this frame: its picture, and its depth (four samples per pixel, reversed:
+/// near is 1).
 pub(crate) struct BevyPicture {
-    pub(crate) drawing: Drawing,
-    pub(crate) low: [u32; 2],
     pub(crate) colour: wgpu::Texture,
     pub(crate) depth: Option<wgpu::Texture>,
 }
@@ -419,9 +388,8 @@ pub fn save_bevy_picture(
         frame: 0,
         background,
         background_low: background,
-        engine: Engine::BevyPilot,
+        engine: Engine::Bevy,
         camera,
-        bevy_last: true,
     };
     let screen = egui_wgpu::ScreenDescriptor {
         size_in_pixels: size,
@@ -531,9 +499,8 @@ mod tests {
             frame: 0,
             background: BACKGROUND,
             background_low: BACKGROUND,
-            engine: Engine::BevyPilot,
+            engine: Engine::Bevy,
             camera,
-            bevy_last: true,
         }
     }
 
@@ -732,6 +699,23 @@ mod tests {
         let (kept, cut) = (at(SIZE[0] / 4), at(SIZE[0] * 3 / 4));
         assert_eq!(kept[0], kept[2], "the kept half is the grey face: {kept:?}");
         assert_eq!(cut, [200, 120, 40], "the cut half shows the background");
+    }
+
+    /// A command's live preview of the surfaces it makes shows on a view Bevy draws, in the
+    /// preview colour and half see-through, and goes when the command has none.
+    #[test]
+    fn previews_show_half_see_through() {
+        let Some((mut pilot, device, queue)) = pilot() else {
+            return;
+        };
+        let mut view = drawing(StandardView::Top, Vec::new());
+        view.preview_faces = Arc::new(square([0.0, 0.0, 1.0], crate::PREVIEW_COLOUR));
+        let shown = middle(&mut pilot, &device, &queue, &view);
+        // Orange over the orange-brown background, but not opaque preview orange.
+        assert_ne!(&shown[..3], &[200, 120, 40], "the preview shows");
+        view.preview_faces = Arc::default();
+        let gone = middle(&mut pilot, &device, &queue, &view);
+        assert_eq!(&gone[..3], &[200, 120, 40], "the preview goes");
     }
 
     /// In the Studio look a white face is light grey, as in Rhino's Shaded, but not burnt out:

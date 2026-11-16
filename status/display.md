@@ -127,8 +127,9 @@
 - **2D direction** (decision 0029, replacing 0027): Bevy draws plans, sections and sheets too,
   from the drawing description; Vello not adopted.
 - Order of work (owner, 16 November 2026):
-  1. **The display on Bevy** (`docs/specs/display-on-bevy.md`, approved): step 1 faces in review
-     (#223); next step 2, Curva's lines on Bevy's pictures (#224), then Bevy only (step 3).
+  1. **The display on Bevy** (`docs/specs/display-on-bevy.md`, approved): step 1 faces (#244),
+     step 2 lines and clipping planes (#248, #249) in review; step 3a, Bevy draws every view, in
+     review; then 3b pictures for agents through Bevy, 3c Curva's own surface drawing deleted.
   2. **Closed:** #180 (merged), #186, #198, #199 (decided by 0028; spike branches kept unmerged for
      reference), #197 (superseded; its Diagram-look comparison is in pilot step 5).
   3. **Retired:** steps 5 to 15 of `display-pipeline.md` (Bevy has instancing and culling; exact
@@ -145,9 +146,11 @@
   solid black cut walls and lines that thin and lighten with distance).
 
 **Heads-up for the features stream** (changes outside the viewport, decision B)
-- **Bevy step 1 (#223):** `curva_viewport::Drawing` has new fields `camera` (the view's camera)
-  and `bevy_last` (the last Bevy view of a frame), set in `viewports.rs` and `sheets.rs`; the
-  benchmark takes `--bevy`. `save_bevy_picture` makes a Bevy picture of a scene for agents.
+- **Bevy steps 1 to 3a (#244, #248, #249, and 3a):** `curva_viewport::Drawing` has a new field
+  `camera` (the view's camera); `Engine::Bevy` draws every model view and every detail on a sheet
+  (`viewports.rs`, `sheets.rs`). The "3D engine" choice, `Pane::engine`, its three words in
+  `en.txt` and the benchmark's `--bevy` are gone again. `curva --look-pictures <folder>` makes
+  pictures of Bevy's looks; `save_bevy_picture` draws a picture through the window's own path.
 - **Bevy pilot step 1 (#228):** `Pane` in `crates/curva-app/src/viewports.rs` has a new field
   `engine`, and the view's menu a "3D engine" choice; `curva_viewport::Drawing` has a new field
   `engine` (`Engine::Curva` keeps today's drawing, as `sheets.rs` does); `main.rs` stores a

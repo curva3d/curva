@@ -8,7 +8,6 @@ use std::sync::Arc;
 use super::{LineRenderer, PIXELS_PER_MM};
 
 /// One frame of the viewport, handed to the window's drawing.
-#[derive(Clone)]
 pub struct Drawing {
     /// Which view this is, below [`VIEW_SLOTS`].
     pub slot: usize,
@@ -51,13 +50,11 @@ pub struct Drawing {
     /// The 3D background's colour at the bottom, which it shades to from `background` at the
     /// top.
     pub background_low: epaint::Color32,
-    /// Which engine draws the view: Curva, or Bevy for the pilot (decision 0028).
+    /// Which engine draws the view: Bevy (decisions 0028 and 0029), or Curva's own drawing for
+    /// pictures until they move to Bevy.
     pub engine: Engine,
     /// The camera `matrix` was made from, for views Bevy draws.
     pub camera: crate::Camera,
-    /// Whether this is the last view Bevy draws this frame: Bevy draws all of a frame's views
-    /// together when it comes. Views Curva draws ignore it.
-    pub bevy_last: bool,
 }
 
 impl Drawing {
@@ -74,18 +71,17 @@ impl Drawing {
         (high.x - low.x >= 1.0 && high.y - low.y >= 1.0).then_some((low, high))
     }
 
-    /// For a view Bevy draws, hands it to Bevy, starting Bevy the first time. Bevy draws all of a
-    /// frame's views together at the last of them, which gets every picture with its top left
-    /// corner; the others get none. `None` for a Curva view, or if Bevy cannot start, when Curva
-    /// draws the view instead.
-    fn bevy_turn(
+    /// For a view Bevy draws, Bevy's picture of it, starting Bevy the first time: `Some(None)`
+    /// while Bevy has not made it yet. `None` for a view Curva draws itself, or if Bevy cannot
+    /// start.
+    fn bevy_picture(
         &self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         screen: &egui_wgpu::ScreenDescriptor,
         resources: &mut egui_wgpu::CallbackResources,
-    ) -> Option<Vec<BevyPicture>> {
-        if self.engine != Engine::BevyPilot {
+    ) -> Option<Option<BevyPicture>> {
+        if self.engine != Engine::Bevy {
             return None;
         }
         let (low, high) = self.pixel_area(screen.size_in_pixels, screen.pixels_per_point)?;
@@ -95,8 +91,7 @@ impl Drawing {
             resources.insert(Pilot::new(&seed, device, queue, format));
         }
         let size = [(high.x - low.x) as u32, (high.y - low.y) as u32];
-        let corner = [low.x as u32, low.y as u32];
-        Some(resources.get_mut::<Pilot>()?.turn(self, size, corner))
+        Some(resources.get_mut::<Pilot>()?.picture(self, size))
     }
 }
 
@@ -111,7 +106,7 @@ impl egui_wgpu::CallbackTrait for Drawing {
     ) -> Vec<wgpu::CommandBuffer> {
         // Bevy draws and sends its own work to the card first, so its picture is ready for
         // the copy below.
-        let bevy = self.bevy_turn(device, queue, screen, resources);
+        let bevy = self.bevy_picture(device, queue, screen, resources);
         let Some(renderer) = resources.get_mut::<LineRenderer>() else {
             return Vec::new();
         };
@@ -139,7 +134,7 @@ impl egui_wgpu::CallbackTrait for Drawing {
         let Some((low, high)) = self.pixel_area(size, screen.pixels_per_point) else {
             return Vec::new();
         };
-        if let Some(pictures) = bevy {
+        if let Some(picture) = bevy {
             // The first viewport of a frame clears the whole texture, gaps included.
             if first {
                 drop(surfaces_pass(
@@ -150,10 +145,10 @@ impl egui_wgpu::CallbackTrait for Drawing {
                     None,
                 ));
             }
-            // At the frame's last Bevy view, every Bevy view's picture goes to its place, then
-            // Curva's outlines and lines are drawn on it, hidden by Bevy's depth.
-            for picture in pictures {
-                let [x, y] = picture.low;
+            // Bevy's picture goes to the view's place, then Curva's outlines and lines are drawn
+            // on it, hidden by Bevy's depth.
+            if let Some(picture) = picture {
+                let (x, y) = (low.x as u32, low.y as u32);
                 encoder.copy_texture_to_texture(
                     picture.colour.as_image_copy(),
                     wgpu::TexelCopyTextureInfo {
@@ -168,14 +163,15 @@ impl egui_wgpu::CallbackTrait for Drawing {
                         depth_or_array_layers: 1,
                     },
                 );
+                let area = [low.x, low.y, high.x - low.x, high.y - low.y];
                 lines_on_bevy(
                     renderer,
-                    device,
-                    queue,
+                    (device, queue),
                     encoder,
-                    screen,
-                    &picture,
+                    self,
+                    picture.depth.as_ref(),
                     [&colour, &depth],
+                    (area, pixel),
                 );
             }
             return Vec::new();
@@ -325,31 +321,20 @@ fn fit(pass: &mut wgpu::RenderPass<'_>, area: [f32; 4]) {
 }
 
 /// Curva's outlines, lines and previews on a view Bevy drew, already on the scene texture
-/// (`targets`: its colour and depth): Bevy's depth is handed over first, so they are hidden
-/// behind Bevy's surfaces as behind Curva's own.
+/// (`targets`: its colour and depth), over `area` (left, top, width, height in pixels) with
+/// `pixel` sizes as [`LineRenderer::update`] takes them: Bevy's depth is handed over first, so
+/// they are hidden behind Bevy's surfaces as behind Curva's own.
 fn lines_on_bevy(
     renderer: &mut LineRenderer,
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
+    (device, queue): (&wgpu::Device, &wgpu::Queue),
     encoder: &mut wgpu::CommandEncoder,
-    screen: &egui_wgpu::ScreenDescriptor,
-    picture: &BevyPicture,
+    drawing: &Drawing,
+    bevy_depth: Option<&wgpu::Texture>,
     [colour, depth]: [&wgpu::TextureView; 2],
+    (area, pixel): ([f32; 4], [f32; 3]),
 ) {
-    let drawing = &picture.drawing;
-    let scale = screen.pixels_per_point;
-    let Some((low, high)) = drawing.pixel_area(screen.size_in_pixels, scale) else {
-        return;
-    };
-    let area = [low.x, low.y, high.x - low.x, high.y - low.y];
-    let pixels = drawing.area.size() * scale;
-    let pixel = [
-        2.0 / pixels.x.max(1.0),
-        2.0 / pixels.y.max(1.0),
-        PIXELS_PER_MM * scale,
-    ];
     renderer.update(device, queue, drawing, pixel);
-    if let Some(bevy_depth) = &picture.depth {
+    if let Some(bevy_depth) = bevy_depth {
         let handover = renderer
             .handover
             .get_or_insert_with(|| super::depth::Handover::new(device));
