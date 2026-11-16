@@ -969,7 +969,15 @@ impl<R: Recipe> Command for RecipeCommand<R> {
         };
         let mut shown = made.guides.clone();
         for shape in made.shapes() {
-            shown.extend(shape.outlines());
+            match shape {
+                // Annotation previews as it will be drawn, with its style's arrows and text,
+                // rather than as the bare lines between its points.
+                Shape::Annotation(annotation) => shown.extend(
+                    curva_document::shape::annotation_drawing(annotation, doc.state(), doc.space())
+                        .lines,
+                ),
+                _ => shown.extend(shape.outlines()),
+            }
         }
         shown
     }

@@ -837,6 +837,8 @@ fn arc_length_dimensions_go_out_as_their_plain_drawing() {
         y: [0.0, 1.0, 0.0],
         style: 0,
         text: None,
+        partial: false,
+        leader: false,
     };
     state
         .objects
