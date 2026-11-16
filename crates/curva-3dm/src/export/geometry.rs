@@ -286,10 +286,26 @@ fn plane_patch(origin: P3, a: P3, b: P3, domain: [[f64; 2]; 2]) -> (NurbsSurface
 
 /// The engine's B-rep record as openNURBS' B-rep.
 pub(super) fn brep(r: &Record) -> Result<Brep, String> {
-    let index = |i: usize| i32::try_from(i).map_err(|_| "too large".to_owned());
     let mut out = Brep::default();
+    let forward = face_directions(r);
+    let users = edge_users(r);
+    vertices_and_edges_out(&mut out, r)?;
+    for (fi, f) in r.faces.iter().enumerate() {
+        face_out(&mut out, r, fi, f, &users, forward[fi])?;
+    }
+    Ok(out)
+}
 
-    // Which way each face's normal goes, from the shells that use it.
+/// An index in Rhino's lists, which are numbered by `i32`.
+fn brep_index(i: usize) -> Result<i32, String> {
+    i32::try_from(i).map_err(|_| "too large".to_owned())
+}
+
+/// A trim with its curve's knots and control points in (u, v).
+type TrimOut = (BrepTrim, Vec<f64>, Vec<[f64; 4]>);
+
+/// Which way each face's normal goes, from the shells that use it.
+fn face_directions(r: &Record) -> Vec<bool> {
     let mut forward = vec![true; r.faces.len()];
     for shell in &r.shells {
         if let Shell::Faces { faces, .. } = shell {
@@ -300,7 +316,11 @@ pub(super) fn brep(r: &Record) -> Result<Brep, String> {
             }
         }
     }
-    // The faces that use each edge, once per use.
+    forward
+}
+
+/// The faces that use each edge, once per use.
+fn edge_users(r: &Record) -> Vec<Vec<usize>> {
     let mut users: Vec<Vec<usize>> = vec![Vec::new(); r.edges.len()];
     for (fi, f) in r.faces.iter().enumerate() {
         for l in &f.loops {
@@ -313,7 +333,11 @@ pub(super) fn brep(r: &Record) -> Result<Brep, String> {
             }
         }
     }
+    users
+}
 
+/// The vertices and edges into the B-rep, each edge with its 3D curve.
+fn vertices_and_edges_out(out: &mut Brep, r: &Record) -> Result<(), String> {
     for v in &r.vertices {
         out.vertices.push(BrepVertex {
             point: v.point,
@@ -326,7 +350,7 @@ pub(super) fn brep(r: &Record) -> Result<Brep, String> {
             .push(Some(edge_curve(e.parameters(), e.interval)?));
         let [a, b] = e.vertices;
         out.edges.push(BrepEdge {
-            curve: index(ei)?,
+            curve: brep_index(ei)?,
             reversed: false,
             proxy_domain: e.interval,
             domain: e.interval,
@@ -336,122 +360,155 @@ pub(super) fn brep(r: &Record) -> Result<Brep, String> {
         });
         for v in [a, b] {
             if let Some(vertex) = out.vertices.get_mut(v as usize) {
-                vertex.edges.push(index(ei)?);
+                vertex.edges.push(brep_index(ei)?);
             }
         }
     }
+    Ok(())
+}
 
-    for (fi, f) in r.faces.iter().enumerate() {
-        let (surface, domain) = face_surface(f.parameters(), f.domain)?;
-        out.surfaces.push(Some(model::Surface::Nurbs(surface)));
-        let face_index = index(fi)?;
-        let mut loops = Vec::new();
-        for (li, l) in f.loops.iter().enumerate() {
-            let Loop::Edges { edges } = l else {
-                // A loop of one point (a pole or a collapsed boundary): Rhino has none.
-                continue;
-            };
-            let loop_index = index(out.loops.len())?;
-            // Each use as a trim running the loop's way, with its ends in (u, v).
-            let mut made: Vec<(BrepTrim, Vec<f64>, Vec<[f64; 4]>)> = Vec::new();
-            for e in edges {
-                let edge = &r.edges[e.edge as usize];
-                let (mut knots, mut points) = trim_points(&e.pcurve);
-                if !e.forward {
-                    (knots, points) = reversed(&knots, &points);
-                }
-                let span = [knots[0], knots[knots.len() - 1]];
-                let [a, b] = edge.vertices;
-                let uses = &users[e.edge as usize];
-                let kind = if uses.len() == 1 {
-                    trim_kind::BOUNDARY
-                } else if uses.iter().filter(|u| **u == fi).count() > 1 {
-                    trim_kind::SEAM
-                } else {
-                    trim_kind::MATED
-                };
-                made.push((
-                    BrepTrim {
-                        curve: 0,
-                        proxy_domain: span,
-                        domain: span,
-                        proxy_reversed: false,
-                        edge: e.edge as i32,
-                        vertices: if e.forward {
-                            [a as i32, b as i32]
-                        } else {
-                            [b as i32, a as i32]
-                        },
-                        reversed3d: !e.forward,
-                        kind,
-                        iso: iso(&points, domain),
-                        loop_index,
-                        tolerance: [0.0, 0.0],
-                    },
-                    knots,
-                    points,
-                ));
-            }
-            // Where one trim ends away from where the next starts, the loop passes through a
-            // pole: a singular trim, with no edge, joins them.
-            let size = (domain[0][1] - domain[0][0])
-                .abs()
-                .max((domain[1][1] - domain[1][0]).abs());
-            let mut trims = Vec::new();
-            let n = made.len();
-            for i in 0..n {
-                trims.push(made[i].clone());
-                let end = uv(made[i].2[made[i].2.len() - 1]);
-                let next = uv(made[(i + 1) % n].2[0]);
-                if (end[0] - next[0]).hypot(end[1] - next[1]) > 1e-8 * size.max(1.0) {
-                    let points = vec![[end[0], end[1], 0.0, 1.0], [next[0], next[1], 0.0, 1.0]];
-                    let vertex = made[i].0.vertices[1];
-                    trims.push((
-                        BrepTrim {
-                            curve: 0,
-                            proxy_domain: [0.0, 1.0],
-                            domain: [0.0, 1.0],
-                            proxy_reversed: false,
-                            edge: -1,
-                            vertices: [vertex, vertex],
-                            reversed3d: false,
-                            kind: trim_kind::SINGULAR,
-                            iso: iso(&points, domain),
-                            loop_index,
-                            tolerance: [0.0, 0.0],
-                        },
-                        vec![0.0, 0.0, 1.0, 1.0],
-                        points,
-                    ));
-                }
-            }
-            let mut trim_ids = Vec::new();
-            for (mut t, knots, points) in trims {
-                t.curve = index(out.curves2.len())?;
-                out.curves2
-                    .push(Some(model::Curve::Nurbs(nurbs_of(&knots, points, 2))));
-                let ti = index(out.trims.len())?;
-                if let Some(edge) = usize::try_from(t.edge)
-                    .ok()
-                    .and_then(|e| out.edges.get_mut(e))
-                {
-                    edge.trims.push(ti);
-                }
-                out.trims.push(t);
-                trim_ids.push(ti);
-            }
-            loops.push(loop_index);
-            out.loops.push(BrepLoop {
-                trims: trim_ids,
-                kind: if li == 0 { 1 } else { 2 },
-                face: face_index,
-            });
-        }
-        out.faces.push(BrepFace {
-            loops,
-            surface: face_index,
-            reversed: !forward[fi],
+/// A face into the B-rep: its surface, then each loop of edges as trims.
+fn face_out(
+    out: &mut Brep,
+    r: &Record,
+    fi: usize,
+    f: &curva_kernel::record::Face,
+    users: &[Vec<usize>],
+    forward: bool,
+) -> Result<(), String> {
+    let (surface, domain) = face_surface(f.parameters(), f.domain)?;
+    out.surfaces.push(Some(model::Surface::Nurbs(surface)));
+    let face_index = brep_index(fi)?;
+    let mut loops = Vec::new();
+    for (li, l) in f.loops.iter().enumerate() {
+        let Loop::Edges { edges } = l else {
+            // A loop of one point (a pole or a collapsed boundary): Rhino has none.
+            continue;
+        };
+        let loop_index = brep_index(out.loops.len())?;
+        let made = loop_trims(r, fi, edges, users, domain, loop_index);
+        let trims = with_pole_trims(made, domain, loop_index);
+        let trim_ids = trims_out(out, trims)?;
+        loops.push(loop_index);
+        out.loops.push(BrepLoop {
+            trims: trim_ids,
+            kind: if li == 0 { 1 } else { 2 },
+            face: face_index,
         });
     }
-    Ok(out)
+    out.faces.push(BrepFace {
+        loops,
+        surface: face_index,
+        reversed: !forward,
+    });
+    Ok(())
+}
+
+/// Each use of an edge in a loop of face `fi` as a trim running the loop's way, with its ends
+/// in (u, v): a boundary when only this face uses the edge, a seam when it uses it twice.
+fn loop_trims(
+    r: &Record,
+    fi: usize,
+    edges: &[curva_kernel::record::OrientedEdge],
+    users: &[Vec<usize>],
+    domain: [[f64; 2]; 2],
+    loop_index: i32,
+) -> Vec<TrimOut> {
+    let mut made: Vec<TrimOut> = Vec::new();
+    for e in edges {
+        let edge = &r.edges[e.edge as usize];
+        let (mut knots, mut points) = trim_points(&e.pcurve);
+        if !e.forward {
+            (knots, points) = reversed(&knots, &points);
+        }
+        let span = [knots[0], knots[knots.len() - 1]];
+        let [a, b] = edge.vertices;
+        let uses = &users[e.edge as usize];
+        let kind = if uses.len() == 1 {
+            trim_kind::BOUNDARY
+        } else if uses.iter().filter(|u| **u == fi).count() > 1 {
+            trim_kind::SEAM
+        } else {
+            trim_kind::MATED
+        };
+        made.push((
+            BrepTrim {
+                curve: 0,
+                proxy_domain: span,
+                domain: span,
+                proxy_reversed: false,
+                edge: e.edge as i32,
+                vertices: if e.forward {
+                    [a as i32, b as i32]
+                } else {
+                    [b as i32, a as i32]
+                },
+                reversed3d: !e.forward,
+                kind,
+                iso: iso(&points, domain),
+                loop_index,
+                tolerance: [0.0, 0.0],
+            },
+            knots,
+            points,
+        ));
+    }
+    made
+}
+
+/// The loop's trims with, where one trim ends away from where the next starts (the loop passes
+/// through a pole), a singular trim with no edge joining them.
+fn with_pole_trims(made: Vec<TrimOut>, domain: [[f64; 2]; 2], loop_index: i32) -> Vec<TrimOut> {
+    let size = (domain[0][1] - domain[0][0])
+        .abs()
+        .max((domain[1][1] - domain[1][0]).abs());
+    let mut trims = Vec::new();
+    let n = made.len();
+    for i in 0..n {
+        trims.push(made[i].clone());
+        let end = uv(made[i].2[made[i].2.len() - 1]);
+        let next = uv(made[(i + 1) % n].2[0]);
+        if (end[0] - next[0]).hypot(end[1] - next[1]) > 1e-8 * size.max(1.0) {
+            let points = vec![[end[0], end[1], 0.0, 1.0], [next[0], next[1], 0.0, 1.0]];
+            let vertex = made[i].0.vertices[1];
+            trims.push((
+                BrepTrim {
+                    curve: 0,
+                    proxy_domain: [0.0, 1.0],
+                    domain: [0.0, 1.0],
+                    proxy_reversed: false,
+                    edge: -1,
+                    vertices: [vertex, vertex],
+                    reversed3d: false,
+                    kind: trim_kind::SINGULAR,
+                    iso: iso(&points, domain),
+                    loop_index,
+                    tolerance: [0.0, 0.0],
+                },
+                vec![0.0, 0.0, 1.0, 1.0],
+                points,
+            ));
+        }
+    }
+    trims
+}
+
+/// The trims into the B-rep, each with its 2D curve and named by its edge; their indices.
+fn trims_out(out: &mut Brep, trims: Vec<TrimOut>) -> Result<Vec<i32>, String> {
+    let mut trim_ids = Vec::new();
+    for (mut t, knots, points) in trims {
+        t.curve = brep_index(out.curves2.len())?;
+        out.curves2
+            .push(Some(model::Curve::Nurbs(nurbs_of(&knots, points, 2))));
+        let ti = brep_index(out.trims.len())?;
+        if let Some(edge) = usize::try_from(t.edge)
+            .ok()
+            .and_then(|e| out.edges.get_mut(e))
+        {
+            edge.trims.push(ti);
+        }
+        out.trims.push(t);
+        trim_ids.push(ti);
+    }
+    Ok(trim_ids)
 }
