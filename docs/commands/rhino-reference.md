@@ -371,9 +371,9 @@ measured value.
 | DimDiameter | A curve; the dimension location | `AnnotationStyle` | the current annotation style; circles and arcs only | partly |
 | DimOrdinate | A dimension point; a leader end (X or Y implied by direction); Enter ends | `AnnotationStyle` `XDatum` `YDatum` `Basepoint` `KinkOffset` | `XDatum` `YDatum` (chosen again, back to implied) `Basepoint` (the world origin until set) `KinkOffset` (both kinks; unset is twice the text height); the current annotation style | partly |
 | DimArcLength | Not a Rhino 8 command: Rhino 8 lists none (checked in Rhino 8 on 16 November 2026); its closest is DimCurveLength. Curva's arc length dimension follows AutoCAD's (spec `annotation.md` §3) | none | none | missing |
-| DimCurveLength | A curve; a start point for the text or leader | `Type` | `Type` (Text or Leader; Text first); the words are the `CurveLength` field, as in Rhino | done |
+| DimCurveLength | A curve; a start point for the text or leader | `Type` | `Type` (Text or Leader; Text first); the words are the `CurveLength` field, as in Rhino; not on the command framework yet | partly |
 | DimArea | A closed planar curve, surface or hatch; a start point for the text or leader | `Type` | `Type` (Text or Leader); the words are the `Area` field; closed planar curves, surfaces and solids (not hatches or meshes yet) | partly |
-| DimVolume | A closed solid; a start point for the text or leader | `Type` | `Type` (Text or Leader); the words are the `Volume` field | done |
+| DimVolume | A closed solid; a start point for the text or leader | `Type` | `Type` (Text or Leader); the words are the `Volume` field; not on the command framework yet | partly |
 | DimCreaseAngle | First surface; second surface; the dimension location | none | none | missing |
 | DimRecenterText | Picked dimensions' text goes back to its default place | none | none | missing |
 | Centermark | A cross, or cross and centre lines, at a curve's centre | `Style` | none | missing |
