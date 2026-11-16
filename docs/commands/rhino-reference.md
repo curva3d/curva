@@ -328,14 +328,14 @@ its options here.
 Written on 14 November 2026 from `commands/clippingplane.htm`, which also covers EnableClippingPlane and
 DisableClippingPlane (`commands/enableclippingplane.htm` is only a redirect). The SectionStyle pages
 (`commands/sectionstyle.htm`, `properties/section_style.htm`) refused to load (HTTP 403); their rows are to be
-completed from Rhino itself.
+completed from Rhino itself; SectionStyle was checked in Rhino 8 (it has no such command).
 
 | Command | Rhino's steps | Rhino's options | In Curva | Status |
 |---|---|---|---|---|
 | ClippingPlane | Two opposite corners of a rectangle, or another way to draw it; the plane clips away what is on its back side in the viewports it is enabled in (its Views Clipped list) | `3Point` `EdgeMidpoint` `Vertical` `Center` `AroundCurve` `CustomDepth` `Depth` `Name` `Label` `SectionStyle` `FlipDirection` `ObjectsClipped` `ViewsClipped` `ResetViews` `Match` | `FlipDirection`; two corners on the construction plane; cuts the four model viewports; section fill in Properties | partly |
 | EnableClippingPlane | Turns on selected clipping planes in the active viewport | none | none (in the active viewport, or the detail being worked in) | partly |
 | DisableClippingPlane | Turns off selected clipping planes in the active viewport | none | none (in the active viewport, or the detail being worked in) | partly |
-| SectionStyle | Not read: the help page refused to load | not read | none | missing |
+| SectionStyle | Not a Rhino 8 command: Rhino 8 lists none (checked in Rhino 8 on 17 November 2026) and sets section styles in Properties > Section Style, as a background fill (none, viewport or a colour), a hatch pattern with scale, rotation and colour, and the boundary. Curva's command follows its spec (`layouts.md` §3) | none | Solids or clipping planes, then Enter: sets the solids' own style or the planes'. `Fill` (Curva's standard grey, or none), `Hatch`, `Pattern` (a hatch pattern's name), `Scale`, `Rotation` (degrees), `Layers` (on the objects' layers instead), `ByLayer` (clears the objects' own style, or with `Layers` the layers'); alias SectionHatch (Serpentine's name). Not yet: fill colour other than the standard grey, hatch colour, boundary | partly |
 
 ### Text and annotation styles
 

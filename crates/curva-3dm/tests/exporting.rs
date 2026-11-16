@@ -21,6 +21,7 @@ fn object(id: u64, shape: Shape, layer: u64) -> Object {
         colour: None,
         linetype: Linetype::ByLayer,
         user_text: Default::default(),
+        section: None,
     }
 }
 
@@ -35,6 +36,7 @@ fn layer(id: u64, name: &str, colour: [f32; 3]) -> Layer {
         linetype: Linetype::Continuous,
         parent: None,
         collapsed: false,
+        section: None,
     }
 }
 
@@ -1606,6 +1608,7 @@ fn clipping_planes_come_back_cutting_the_same_side_in_the_same_views() {
             ClipView::Detail(1),
         ],
         section: SectionFill::default(),
+        hatch: None,
     }];
     let back = round_trip(&state);
     assert_eq!(back.clipping_planes.len(), 1);

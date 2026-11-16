@@ -43,6 +43,9 @@ pub struct Object {
     pub user_text: std::collections::BTreeMap<String, String>,
     /// The layout whose sheet it is drawn on; `None` for the model (spec `layouts.md` §1).
     pub space: Option<u64>,
+    /// Its own section style, for where clipping planes cut it; `None` takes its layer's
+    /// (spec `layouts.md` §3).
+    pub section: Option<crate::section::SectionStyle>,
 }
 
 impl Object {
@@ -92,6 +95,8 @@ struct StoredObject {
     user_text: std::collections::BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     space: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    section: Option<crate::section::SectionStyle>,
 }
 
 impl TryFrom<StoredObject> for Object {
@@ -126,6 +131,7 @@ impl TryFrom<StoredObject> for Object {
             linetype: stored.linetype,
             user_text: stored.user_text,
             space: stored.space,
+            section: stored.section,
         })
     }
 }
@@ -157,6 +163,7 @@ impl From<Object> for StoredObject {
             linetype: object.linetype,
             user_text: object.user_text,
             space: object.space,
+            section: object.section,
         }
     }
 }
