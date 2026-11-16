@@ -9,14 +9,14 @@
 
 use crate::{P, cross, dot, p3, unit, v3};
 use acadrust::entities::dimension::{
-    Dimension, DimensionAligned, DimensionAngular2Ln, DimensionDiameter, DimensionLinear,
-    DimensionOrdinate, DimensionRadius,
+    Dimension, DimensionAligned, DimensionAngular2Ln, DimensionArc, DimensionDiameter,
+    DimensionLinear, DimensionOrdinate, DimensionRadius,
 };
 use acadrust::entities::{EntityType, Leader as CadLeader, Line, MultiLeader, Solid};
 use curva_document::State;
 use curva_document::annotation::{
-    AngleDimension, Annotation, Dimension as Linear, DimensionKind, Leader, OrdinateAxis,
-    OrdinateDimension, RadialDimension,
+    AngleDimension, Annotation, ArcLengthDimension, Dimension as Linear, DimensionKind, Leader,
+    OrdinateAxis, OrdinateDimension, RadialDimension,
 };
 
 /// A dimension's drawing as block contents: its lines, its arrowheads as filled triangles and
@@ -88,6 +88,24 @@ pub(crate) fn dimension_out(
             d.base.actual_measurement = o.value();
             d.base.user_text = typed(&o.text);
             Dimension::Ordinate(d)
+        }
+        // Its angles are on the world's plane, so only one on that plane goes out as DIMARC.
+        Annotation::ArcLength(a) if flat(a.x, a.y) => {
+            let angle = |p: P| (p[1] - a.centre[1]).atan2(p[0] - a.centre[0]);
+            let start = angle(a.start);
+            let mut d = DimensionArc {
+                definition_point: v3(a.arc_at),
+                first_extension_point: v3(a.start),
+                second_extension_point: v3(a.end),
+                center_point: v3(a.centre),
+                arc_start_parameter: start,
+                arc_end_parameter: start + a.turn(),
+                ..DimensionArc::default()
+            };
+            d.base.definition_point = v3(a.arc_at);
+            d.base.actual_measurement = a.value();
+            d.base.user_text = typed(&a.text);
+            Dimension::Arc(d)
         }
         _ => return None,
     };
@@ -166,11 +184,10 @@ fn typed_in(base: &acadrust::entities::dimension::DimensionBase) -> Option<Strin
     (!trimmed.is_empty() && trimmed != "<>").then_some(text)
 }
 
-/// A DIMENSION entity as Curva's dimension, on the world's XY plane, or the kind it is when
-/// Curva has no such dimension.
-pub(crate) fn dimension_in(d: &Dimension) -> Result<Annotation, &'static str> {
+/// A DIMENSION entity as Curva's dimension, on the world's XY plane: every kind DXF has.
+pub(crate) fn dimension_in(d: &Dimension) -> Annotation {
     let (x, y) = ([1.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
-    Ok(match d {
+    match d {
         Dimension::Aligned(a) => Annotation::Dimension(Linear {
             kind: DimensionKind::Aligned,
             first: p3(&a.first_point),
@@ -247,6 +264,19 @@ pub(crate) fn dimension_in(d: &Dimension) -> Result<Annotation, &'static str> {
             style: 0,
             text: typed_in(&r.base),
         }),
+        // An arc length (DIMARC): the arc's centre and ends, counter-clockwise from the first,
+        // and a point on the dimension arc. A partial one measures between its ends as given;
+        // its leader is left out.
+        Dimension::Arc(a) => Annotation::ArcLength(ArcLengthDimension {
+            centre: p3(&a.center_point),
+            start: p3(&a.first_extension_point),
+            end: p3(&a.second_extension_point),
+            arc_at: p3(&a.definition_point),
+            x,
+            y,
+            style: 0,
+            text: typed_in(&a.base),
+        }),
         Dimension::Ordinate(o) => Annotation::Ordinate(OrdinateDimension {
             base: p3(&o.definition_point),
             point: p3(&o.feature_location),
@@ -262,8 +292,7 @@ pub(crate) fn dimension_in(d: &Dimension) -> Result<Annotation, &'static str> {
             style: 0,
             text: typed_in(&o.base),
         }),
-        _ => return Err("dimensions of other kinds"),
-    })
+    }
 }
 
 /// A LEADER entity as Curva's leader, its note coming in as text of its own.
@@ -353,6 +382,58 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    #[test]
+    fn arc_length_dimensions_go_out_and_come_back() {
+        use curva_document::annotation::ArcLengthDimension;
+        let mut doc = Document::default();
+        // Radius 10 about (5, 5), from 300° on to 60°, past the X axis; the arc at radius 14.
+        let on = |r: f64, degrees: f64| {
+            let (s, c) = degrees.to_radians().sin_cos();
+            [5.0 + r * c, 5.0 + r * s, 0.0]
+        };
+        let wanted = ArcLengthDimension {
+            centre: [5.0, 5.0, 0.0],
+            start: on(10.0, 300.0),
+            end: on(10.0, 60.0),
+            arc_at: on(14.0, 0.0),
+            x: [1.0, 0.0, 0.0],
+            y: [0.0, 1.0, 0.0],
+            style: 0,
+            text: None,
+        };
+        doc.add_annotation(Annotation::ArcLength(wanted.clone()));
+        for format in [Format::Dxf, Format::Dwg] {
+            let (bytes, report) = export(&doc, None, format).unwrap();
+            if let (Format::Dxf, Ok(path)) = (format, std::env::var("CURVA_DXF_ARC_SAMPLE")) {
+                std::fs::write(path, &bytes).unwrap();
+            }
+            assert!(report.skipped.is_empty(), "{report:?}");
+            let cad = read(&bytes, format).unwrap();
+            let arc = cad
+                .entities()
+                .find_map(|e| match e {
+                    acadrust::entities::EntityType::Dimension(d) => match d.as_ref() {
+                        acadrust::entities::dimension::Dimension::Arc(a) => Some(a.clone()),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("{format:?}: no ARC_DIMENSION"));
+            // AutoCAD's own measure of it agrees.
+            assert!(
+                (arc.measurement() - wanted.value()).abs() < 1e-9,
+                "{format:?}"
+            );
+            let mut back = Document::default();
+            import(&cad, &mut back);
+            assert_eq!(
+                annotations(&back),
+                vec![Annotation::ArcLength(wanted.clone())],
+                "{format:?}"
+            );
+        }
     }
 
     #[test]

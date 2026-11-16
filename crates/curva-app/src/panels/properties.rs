@@ -261,6 +261,7 @@ impl Curva {
             }
             Annotation::Angle(a) => format!("{:.2}°", a.value()),
             Annotation::Ordinate(o) => self.doc.length_text(o.value()),
+            Annotation::ArcLength(a) => self.doc.length_text(a.value()),
         };
         ui.label(
             self.text
