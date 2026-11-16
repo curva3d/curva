@@ -1027,6 +1027,100 @@ fn layout_user_text_and_its_fields_come_back() {
 }
 
 #[test]
+fn fields_measuring_an_object_go_out_naming_it_as_rhino_does_and_come_back() {
+    use curva_document::annotation::{Annotation, Leader, Text, TextAlign};
+    let mut state = State::default();
+    let mut square = object(
+        3,
+        Shape::Curve(
+            Curve::polyline(
+                vec![
+                    [0.0; 3],
+                    [20.0, 0.0, 0.0],
+                    [20.0, 20.0, 0.0],
+                    [0.0, 20.0, 0.0],
+                ],
+                true,
+            )
+            .unwrap(),
+        ),
+        0,
+    );
+    square.name = "Room".to_owned();
+    let note = Text {
+        content: "Edge %<CurveLength(\"3\")>% m, twice %<CurveLength(\"3\")*2>%".to_owned(),
+        origin: [30.0, 0.0, 0.0],
+        x: [1.0, 0.0, 0.0],
+        y: [0.0, 1.0, 0.0],
+        height: 2.5,
+        font: None,
+        align: TextAlign::Left,
+        style: 0,
+    };
+    let leader = Leader {
+        points: vec![[10.0, 10.0, 0.0], [30.0, 30.0, 0.0]],
+        content: "%<Area(\"3\")>%".to_owned(),
+        x: [1.0, 0.0, 0.0],
+        y: [0.0, 1.0, 0.0],
+        landing: false,
+        style: 0,
+    };
+    // The notes come before the curve they measure, as a file may hold them.
+    state
+        .objects
+        .push(object(1, Shape::Annotation(Annotation::Text(note)), 0).into());
+    state
+        .objects
+        .push(object(2, Shape::Annotation(Annotation::Leader(leader)), 0).into());
+    state.objects.push(square.into());
+    state.next_id = 4;
+
+    // Going out, the fields name the curve by its Rhino id.
+    let (model, _) = curva_3dm::export::export(&state, None);
+    let room = model
+        .objects
+        .iter()
+        .find(|o| o.attributes.name == "Room")
+        .unwrap()
+        .attributes
+        .id
+        .text();
+    let words: Vec<String> = model
+        .objects
+        .iter()
+        .filter_map(|o| match &o.geometry {
+            curva_3dm::model::Geometry::Text(t) => Some(t.rich.clone()),
+            curva_3dm::model::Geometry::Leader(l) => Some(l.rich.clone()),
+            _ => None,
+        })
+        .collect();
+    let edge = format!("%<CurveLength(\"{room}\")>% m, twice %<CurveLength(\"{room}\")*2>%");
+    assert!(words.iter().any(|w| w.contains(&edge)), "{words:?}");
+    let area = format!("%<Area(\"{room}\")>%");
+    assert!(words.iter().any(|w| w.contains(&area)), "{words:?}");
+
+    // Coming back, they name it by Curva's number again, whatever it is now.
+    let back = round_trip(&state);
+    let room = back.objects.iter().find(|o| o.name == "Room").unwrap().id;
+    let contents: Vec<String> = back
+        .objects
+        .iter()
+        .filter_map(|o| match &o.shape {
+            Shape::Annotation(Annotation::Text(t)) => Some(t.content.clone()),
+            Shape::Annotation(Annotation::Leader(l)) => Some(l.content.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        contents,
+        vec![
+            format!("Edge %<CurveLength(\"{room}\")>% m, twice %<CurveLength(\"{room}\")*2>%"),
+            format!("%<Area(\"{room}\")>%"),
+        ]
+    );
+}
+
+#[test]
 fn fields_only_curva_can_work_out_go_out_worked_out() {
     use curva_document::annotation::{Annotation, Text, TextAlign};
     let mut state = State::default();

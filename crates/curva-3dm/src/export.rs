@@ -129,6 +129,13 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
     // Scale bars and tables, which Rhino has not, go out as the plain drawing they make: lines,
     // solid hatches for their filled blocks, and notes, grouped.
     let fields = curva_document::fields::FieldContext::now(None);
+    // Each object's id, settled first so that fields measuring an object can name it.
+    let mut object_ids: BTreeMap<u64, Uuid> = state
+        .objects
+        .iter()
+        .filter(|o| only.is_none_or(|ids| ids.contains(&o.id)))
+        .map(|o| (o.id, ids.next()))
+        .collect();
     let mut expanded: Vec<Object> = Vec::new();
     let mut next_group = state.next_group;
     for o in state
@@ -141,7 +148,7 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
                 next_group += 1;
                 expanded.extend(parts);
             }
-            None => expanded.push(with_rhino_fields(o, state, &fields, &page_ids)),
+            None => expanded.push(with_rhino_fields(o, state, &fields, &page_ids, &object_ids)),
         }
     }
     let chosen: Vec<&Object> = expanded.iter().collect();
@@ -307,9 +314,12 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
         });
         // A detail is written under its viewport's id, as Rhino names details: layers turned off
         // in one name it by that.
+        // Other objects keep the id settled for them, taken once (a scale bar's or table's
+        // parts share its number).
         let id = match &geometry {
             Geometry::Detail(d) if d.id != Uuid::NIL => d.id,
-            _ => ids.next(),
+            _ if in_block => ids.next(),
+            _ => object_ids.remove(&o.id).unwrap_or_else(|| ids.next()),
         };
         let (print_width, print_width_source) = match o.print_width {
             PrintWidth::ByLayer => (0.0, Source::Layer),
@@ -1517,13 +1527,30 @@ const RHINO_FIELDS: [&str; 12] = [
     "ModelUnits",
 ];
 
-/// Words with their fields as Rhino will show them: its own fields kept, the rest worked out.
+/// Fields that measure an object, named by its id: Curva's object number, Rhino's object id.
+pub(crate) const OBJECT_FIELDS: [&str; 3] = ["CurveLength", "Area", "Volume"];
+
+/// A field with its first quoted part swapped by `swap`, the rest (further parts, arithmetic)
+/// kept; `None` when it has no quoted part or `swap` gives nothing.
+pub(crate) fn with_first_part(
+    field: &str,
+    swap: impl Fn(&str) -> Option<String>,
+) -> Option<String> {
+    let open = field.find("(\"")? + 2;
+    let close = open + field[open..].find('"')?;
+    let swapped = swap(&field[open..close])?;
+    Some(format!("{}{swapped}{}", &field[..open], &field[close..]))
+}
+
+/// Words with their fields as Rhino will show them: its own fields kept, fields measuring an
+/// object written to name it by its id going out, the rest worked out.
 fn rhino_words(
     words: &str,
     state: &State,
     space: Option<u64>,
     fields: &curva_document::fields::FieldContext,
     page_ids: &BTreeMap<u64, Uuid>,
+    object_ids: &BTreeMap<u64, Uuid>,
 ) -> String {
     let mut out = String::new();
     let mut rest = words;
@@ -1547,6 +1574,16 @@ fn rhino_words(
             }
         } else if RHINO_FIELDS.contains(&name.as_str()) {
             out.push_str(field);
+        } else if let Some(rhinos) = OBJECT_FIELDS
+            .contains(&name.as_str())
+            .then(|| {
+                with_first_part(field, |n| {
+                    object_ids.get(&n.trim().parse().ok()?).map(Uuid::text)
+                })
+            })
+            .flatten()
+        {
+            out.push_str(&rhinos);
         } else {
             out.push_str(&curva_document::fields::resolve(
                 field, state, space, fields,
@@ -1588,16 +1625,14 @@ fn with_rhino_fields(
     state: &State,
     fields: &curva_document::fields::FieldContext,
     page_ids: &BTreeMap<u64, Uuid>,
+    object_ids: &BTreeMap<u64, Uuid>,
 ) -> Object {
     use curva_document::annotation::Annotation;
     let mut out = o.clone();
+    let words = |w: &str| rhino_words(w, state, o.space, fields, page_ids, object_ids);
     match &mut out.shape {
-        Shape::Annotation(Annotation::Text(t)) => {
-            t.content = rhino_words(&t.content, state, o.space, fields, page_ids);
-        }
-        Shape::Annotation(Annotation::Leader(l)) => {
-            l.content = rhino_words(&l.content, state, o.space, fields, page_ids);
-        }
+        Shape::Annotation(Annotation::Text(t)) => t.content = words(&t.content),
+        Shape::Annotation(Annotation::Leader(l)) => l.content = words(&l.content),
         _ => {}
     }
     out
