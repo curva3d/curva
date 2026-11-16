@@ -101,58 +101,58 @@ fn surface(r: &mut Reader<'_>) -> Result<Surface> {
     surface_of(id, &mut data)?.ok_or_else(|| bad("a surface of an unknown kind"))
 }
 
+/// A NURBS surface: its orders, knots and control points, checked to fit together.
+fn nurbs_surface_in(r: &mut Reader<'_>) -> Result<Surface> {
+    r.chunk_version()?;
+    let _dimension = r.i32()?;
+    let rational = r.i32()? != 0;
+    let order = [r.i32()?, r.i32()?].map(|o| usize::try_from(o).unwrap_or(0));
+    let count = [r.i32()?, r.i32()?].map(|c| usize::try_from(c).unwrap_or(0));
+    if order.iter().any(|o| !(2..=20).contains(o)) || count[0] < order[0] || count[1] < order[1] {
+        return Err(bad("a NURBS surface that cannot be"));
+    }
+    r.skip(8)?;
+    bounding_box(r)?;
+    let mut knots = [Vec::new(), Vec::new()];
+    for k in &mut knots {
+        let n = r.count(8)?;
+        *k = (0..n).map(|_| r.f64()).collect::<Result<Vec<_>>>()?;
+    }
+    let n = r.count(8)?;
+    if n != count[0] * count[1] {
+        return Err(bad("a NURBS surface with the wrong number of points"));
+    }
+    let mut points = Vec::with_capacity(count[0]);
+    for _ in 0..count[0] {
+        let mut row = Vec::with_capacity(count[1]);
+        for _ in 0..count[1] {
+            let mut p = [0.0, 0.0, 0.0, 1.0];
+            for v in p.iter_mut().take(3) {
+                *v = r.f64()?;
+            }
+            if rational {
+                p[3] = r.f64()?;
+            }
+            row.push(p);
+        }
+        points.push(row);
+    }
+    for d in 0..2 {
+        if knots[d].len() != count[d] + order[d] - 2 {
+            return Err(bad("a NURBS surface with the wrong number of knots"));
+        }
+    }
+    Ok(Surface::Nurbs(NurbsSurface {
+        order,
+        knots,
+        points,
+        rational,
+    }))
+}
+
 pub(super) fn surface_of(id: Uuid, r: &mut Reader<'_>) -> Result<Option<Surface>> {
     Ok(Some(match id {
-        class::NURBS_SURFACE => {
-            r.chunk_version()?;
-            let _dimension = r.i32()?;
-            let rational = r.i32()? != 0;
-            let order = [r.i32()?, r.i32()?].map(|o| usize::try_from(o).unwrap_or(0));
-            let count = [r.i32()?, r.i32()?].map(|c| usize::try_from(c).unwrap_or(0));
-            if order.iter().any(|o| !(2..=20).contains(o))
-                || count[0] < order[0]
-                || count[1] < order[1]
-            {
-                return Err(bad("a NURBS surface that cannot be"));
-            }
-            r.skip(8)?;
-            bounding_box(r)?;
-            let mut knots = [Vec::new(), Vec::new()];
-            for k in &mut knots {
-                let n = r.count(8)?;
-                *k = (0..n).map(|_| r.f64()).collect::<Result<Vec<_>>>()?;
-            }
-            let n = r.count(8)?;
-            if n != count[0] * count[1] {
-                return Err(bad("a NURBS surface with the wrong number of points"));
-            }
-            let mut points = Vec::with_capacity(count[0]);
-            for _ in 0..count[0] {
-                let mut row = Vec::with_capacity(count[1]);
-                for _ in 0..count[1] {
-                    let mut p = [0.0, 0.0, 0.0, 1.0];
-                    for v in p.iter_mut().take(3) {
-                        *v = r.f64()?;
-                    }
-                    if rational {
-                        p[3] = r.f64()?;
-                    }
-                    row.push(p);
-                }
-                points.push(row);
-            }
-            for d in 0..2 {
-                if knots[d].len() != count[d] + order[d] - 2 {
-                    return Err(bad("a NURBS surface with the wrong number of knots"));
-                }
-            }
-            Surface::Nurbs(NurbsSurface {
-                order,
-                knots,
-                points,
-                rational,
-            })
-        }
+        class::NURBS_SURFACE => nurbs_surface_in(r)?,
         class::PLANE_SURFACE => {
             let (_, minor) = r.chunk_version()?;
             let plane = plane(r)?;
@@ -252,90 +252,11 @@ pub(super) fn brep(r: &mut Reader<'_>) -> Result<Brep> {
     let curves3 = optional_array(r, curve)?;
     let surfaces = optional_array(r, surface)?;
     let after_3 = r.version >= 3;
-    let vertices = topology(r, |r| {
-        let _index = r.i32()?;
-        let point = point(r)?;
-        let edges = ints(r)?;
-        let tolerance = r.f64()?;
-        Ok(BrepVertex {
-            point,
-            edges,
-            tolerance,
-        })
-    })?;
-    let edges = topology(r, |r| {
-        let _index = r.i32()?;
-        let curve = r.i32()?;
-        let reversed = r.i32()? != 0;
-        let proxy_domain = interval(r)?;
-        let vertices = [r.i32()?, r.i32()?];
-        let trims = ints(r)?;
-        let tolerance = r.f64()?;
-        let domain = if after_3 { interval(r)? } else { proxy_domain };
-        Ok(BrepEdge {
-            curve,
-            reversed,
-            proxy_domain,
-            domain,
-            vertices,
-            trims,
-            tolerance,
-        })
-    })?;
-    let trims = topology(r, |r| {
-        let _index = r.i32()?;
-        let curve = r.i32()?;
-        let proxy_domain = interval(r)?;
-        let edge = r.i32()?;
-        let vertices = [r.i32()?, r.i32()?];
-        let reversed3d = r.i32()? != 0;
-        let kind = r.i32()?;
-        let iso = r.i32()?;
-        let loop_index = r.i32()?;
-        let tolerance = r.f64s::<2>()?;
-        let (domain, proxy_reversed) = if after_3 {
-            let domain = interval(r)?;
-            let flags = r.bytes(8)?;
-            r.skip(24)?;
-            (domain, flags[0] == 1)
-        } else {
-            r.skip(48)?;
-            (proxy_domain, false)
-        };
-        r.skip(16)?;
-        Ok(BrepTrim {
-            curve,
-            proxy_domain,
-            domain,
-            proxy_reversed,
-            edge,
-            vertices,
-            reversed3d,
-            kind,
-            iso,
-            loop_index,
-            tolerance,
-        })
-    })?;
-    let loops = topology(r, |r| {
-        let _index = r.i32()?;
-        let trims = ints(r)?;
-        let kind = r.i32()?;
-        let face = r.i32()?;
-        Ok(BrepLoop { trims, kind, face })
-    })?;
-    let faces = topology(r, |r| {
-        let _index = r.i32()?;
-        let loops = ints(r)?;
-        let surface = r.i32()?;
-        let reversed = r.i32()? != 0;
-        let _material = r.i32()?;
-        Ok(BrepFace {
-            loops,
-            surface,
-            reversed,
-        })
-    })?;
+    let vertices = topology(r, |r| brep_vertex(r))?;
+    let edges = topology(r, |r| brep_edge(r, after_3))?;
+    let trims = topology(r, |r| brep_trim(r, after_3))?;
+    let loops = topology(r, |r| brep_loop(r))?;
+    let faces = topology(r, |r| brep_face(r))?;
     Ok(Brep {
         curves2,
         curves3,
@@ -345,6 +266,100 @@ pub(super) fn brep(r: &mut Reader<'_>) -> Result<Brep> {
         trims,
         loops,
         faces,
+    })
+}
+
+/// A B-rep vertex: its point, its edges and its tolerance.
+fn brep_vertex(r: &mut Reader<'_>) -> Result<BrepVertex> {
+    let _index = r.i32()?;
+    let point = point(r)?;
+    let edges = ints(r)?;
+    let tolerance = r.f64()?;
+    Ok(BrepVertex {
+        point,
+        edges,
+        tolerance,
+    })
+}
+
+/// A B-rep edge: its curve, which way it runs, its ends, its trims; its domain from Rhino 3 on.
+fn brep_edge(r: &mut Reader<'_>, after_3: bool) -> Result<BrepEdge> {
+    let _index = r.i32()?;
+    let curve = r.i32()?;
+    let reversed = r.i32()? != 0;
+    let proxy_domain = interval(r)?;
+    let vertices = [r.i32()?, r.i32()?];
+    let trims = ints(r)?;
+    let tolerance = r.f64()?;
+    let domain = if after_3 { interval(r)? } else { proxy_domain };
+    Ok(BrepEdge {
+        curve,
+        reversed,
+        proxy_domain,
+        domain,
+        vertices,
+        trims,
+        tolerance,
+    })
+}
+
+/// A B-rep trim: its curve, its edge, its ends, its kind and loop; its domain and whether it runs back from Rhino 3 on.
+fn brep_trim(r: &mut Reader<'_>, after_3: bool) -> Result<BrepTrim> {
+    let _index = r.i32()?;
+    let curve = r.i32()?;
+    let proxy_domain = interval(r)?;
+    let edge = r.i32()?;
+    let vertices = [r.i32()?, r.i32()?];
+    let reversed3d = r.i32()? != 0;
+    let kind = r.i32()?;
+    let iso = r.i32()?;
+    let loop_index = r.i32()?;
+    let tolerance = r.f64s::<2>()?;
+    let (domain, proxy_reversed) = if after_3 {
+        let domain = interval(r)?;
+        let flags = r.bytes(8)?;
+        r.skip(24)?;
+        (domain, flags[0] == 1)
+    } else {
+        r.skip(48)?;
+        (proxy_domain, false)
+    };
+    r.skip(16)?;
+    Ok(BrepTrim {
+        curve,
+        proxy_domain,
+        domain,
+        proxy_reversed,
+        edge,
+        vertices,
+        reversed3d,
+        kind,
+        iso,
+        loop_index,
+        tolerance,
+    })
+}
+
+/// A B-rep loop: its trims, its kind and its face.
+fn brep_loop(r: &mut Reader<'_>) -> Result<BrepLoop> {
+    let _index = r.i32()?;
+    let trims = ints(r)?;
+    let kind = r.i32()?;
+    let face = r.i32()?;
+    Ok(BrepLoop { trims, kind, face })
+}
+
+/// A B-rep face: its loops, its surface and whether it is turned over.
+fn brep_face(r: &mut Reader<'_>) -> Result<BrepFace> {
+    let _index = r.i32()?;
+    let loops = ints(r)?;
+    let surface = r.i32()?;
+    let reversed = r.i32()? != 0;
+    let _material = r.i32()?;
+    Ok(BrepFace {
+        loops,
+        surface,
+        reversed,
     })
 }
 
