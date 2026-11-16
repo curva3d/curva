@@ -6,8 +6,6 @@ use super::*;
 /// A B-rep as a Curva body: the file's own topology turned into the engine's record, which the
 /// engine checks and heals.
 pub(super) fn brep_body(b: &Brep) -> Result<Body, KernelError> {
-    let bad = |why: &str| KernelError(format!("a B-rep Curva cannot read: {why}"));
-    let index = |i: i32| usize::try_from(i).ok();
     let mut surfaces = Vec::with_capacity(b.surfaces.len());
     for s in &b.surfaces {
         surfaces.push(match s {
@@ -15,25 +13,69 @@ pub(super) fn brep_body(b: &Brep) -> Result<Body, KernelError> {
             None => None,
         });
     }
-    let tolerance = 1e-5;
-    let vertices: Vec<Vertex> = b
-        .vertices
+    let vertices = vertices_in(b);
+    let edges = edges_in(b)?;
+    let faces = faces_in(b, &surfaces, &edges)?;
+    let (shells, regions) = shells_in(b, &faces, edges.len())?;
+    let record = Record {
+        version: curva_kernel::record::VERSION,
+        tolerance: BREP_TOLERANCE,
+        regions,
+        shells: shells
+            .into_iter()
+            .map(|faces| Shell::Faces {
+                faces,
+                wires: Vec::new(),
+            })
+            .collect(),
+        faces,
+        edges,
+        vertices,
+    };
+    Body::from_foreign_record(&record)
+}
+
+/// The least tolerance a B-rep's vertices and edges are taken at.
+const BREP_TOLERANCE: f64 = 1e-5;
+
+/// The error for a B-rep that cannot be read, saying why.
+fn bad_brep(why: &str) -> KernelError {
+    KernelError(format!("a B-rep Curva cannot read: {why}"))
+}
+
+/// An index in the file's lists, if it is one.
+fn index(i: i32) -> Option<usize> {
+    usize::try_from(i).ok()
+}
+
+/// A tolerance from the file, at least [`BREP_TOLERANCE`]; that where it gives none.
+fn at_least(tolerance: f64) -> f64 {
+    if tolerance.is_finite() && tolerance > 0.0 {
+        tolerance.max(BREP_TOLERANCE)
+    } else {
+        BREP_TOLERANCE
+    }
+}
+
+/// The B-rep's vertices for the engine.
+fn vertices_in(b: &Brep) -> Vec<Vertex> {
+    b.vertices
         .iter()
         .map(|v| Vertex {
             point: v.point,
-            tolerance: if v.tolerance.is_finite() && v.tolerance > 0.0 {
-                v.tolerance.max(tolerance)
-            } else {
-                tolerance
-            },
+            tolerance: at_least(v.tolerance),
         })
-        .collect();
+        .collect()
+}
+
+/// The B-rep's edges for the engine: each its part of its 3D curve, its way round.
+fn edges_in(b: &Brep) -> Result<Vec<Edge>, KernelError> {
     let mut edges = Vec::with_capacity(b.edges.len());
     for e in &b.edges {
         let c3 = index(e.curve)
             .and_then(|i| b.curves3.get(i))
             .and_then(Option::as_ref)
-            .ok_or_else(|| bad("an edge without its curve"))?;
+            .ok_or_else(|| bad_brep("an edge without its curve"))?;
         let mut spline = portion(c3, e.proxy_domain[0], e.proxy_domain[1])?;
         if e.reversed {
             spline = spline.reversed();
@@ -47,23 +89,28 @@ pub(super) fn brep_body(b: &Brep) -> Result<Body, KernelError> {
             nurbs: None,
             interval,
             vertices: [
-                u32::try_from(e.vertices[0]).map_err(|_| bad("an edge without its start"))?,
-                u32::try_from(e.vertices[1]).map_err(|_| bad("an edge without its end"))?,
+                u32::try_from(e.vertices[0]).map_err(|_| bad_brep("an edge without its start"))?,
+                u32::try_from(e.vertices[1]).map_err(|_| bad_brep("an edge without its end"))?,
             ],
-            tolerance: if e.tolerance.is_finite() && e.tolerance > 0.0 {
-                e.tolerance.max(tolerance)
-            } else {
-                tolerance
-            },
+            tolerance: at_least(e.tolerance),
             uses: Vec::new(),
         });
     }
+    Ok(edges)
+}
+
+/// The B-rep's faces for the engine: each on its surface, with its loops of trims.
+fn faces_in(
+    b: &Brep,
+    surfaces: &[Option<Placed>],
+    edges: &[Edge],
+) -> Result<Vec<Face>, KernelError> {
     let mut faces = Vec::with_capacity(b.faces.len());
     for f in &b.faces {
         let (surface, maps, domain) = index(f.surface)
             .and_then(|i| surfaces.get(i))
             .and_then(Option::as_ref)
-            .ok_or_else(|| bad("a face without its surface"))?
+            .ok_or_else(|| bad_brep("a face without its surface"))?
             .clone();
         let mut loops = Vec::new();
         for l in f
@@ -79,33 +126,9 @@ pub(super) fn brep_body(b: &Brep) -> Result<Body, KernelError> {
                 .filter_map(|t| index(*t))
                 .filter_map(|t| b.trims.get(t))
             {
-                // A trim at a pole has no edge: the engine closes the loop there itself.
-                let Some(edge_index) = index(t.edge) else {
-                    continue;
-                };
-                let edge = edges
-                    .get(edge_index)
-                    .ok_or_else(|| bad("a trim without its edge"))?;
-                let c2 = index(t.curve)
-                    .and_then(|i| b.curves2.get(i))
-                    .and_then(Option::as_ref)
-                    .ok_or_else(|| bad("a trim without its curve"))?;
-                let mut pcurve = portion(c2, t.proxy_domain[0], t.proxy_domain[1])?;
-                if t.proxy_reversed {
-                    pcurve = pcurve.reversed();
+                if let Some(used) = trim_in(b, t, &maps, edges)? {
+                    uses.push(used);
                 }
-                // Onto the record surface's parameters.
-                pcurve = warped(pcurve, &maps);
-                let forward = !t.reversed3d;
-                if !forward {
-                    pcurve = pcurve.reversed();
-                }
-                let pcurve = pcurve.reparameterized(edge.interval[0], edge.interval[1]);
-                uses.push(OrientedEdge {
-                    edge: u32::try_from(edge_index).map_err(|_| bad("too many edges"))?,
-                    forward,
-                    pcurve: record_curve2(&pcurve),
-                });
             }
             if !uses.is_empty() {
                 loops.push(Loop::Edges { edges: uses });
@@ -120,10 +143,53 @@ pub(super) fn brep_body(b: &Brep) -> Result<Body, KernelError> {
             loops,
         });
     }
-    // Shells: faces joined through shared edges; a shell whose every edge has two uses is
-    // closed and bounds a solid.
-    let face_count = faces.len();
-    let mut parent: Vec<usize> = (0..face_count).collect();
+    Ok(faces)
+}
+
+/// A trim as its edge's use by the face, with its curve on the record surface's parameters;
+/// `None` for a trim at a pole, which has no edge: the engine closes the loop there itself.
+fn trim_in(
+    b: &Brep,
+    t: &model::BrepTrim,
+    maps: &[Warp; 2],
+    edges: &[Edge],
+) -> Result<Option<OrientedEdge>, KernelError> {
+    let Some(edge_index) = index(t.edge) else {
+        return Ok(None);
+    };
+    let edge = edges
+        .get(edge_index)
+        .ok_or_else(|| bad_brep("a trim without its edge"))?;
+    let c2 = index(t.curve)
+        .and_then(|i| b.curves2.get(i))
+        .and_then(Option::as_ref)
+        .ok_or_else(|| bad_brep("a trim without its curve"))?;
+    let mut pcurve = portion(c2, t.proxy_domain[0], t.proxy_domain[1])?;
+    if t.proxy_reversed {
+        pcurve = pcurve.reversed();
+    }
+    // Onto the record surface's parameters.
+    pcurve = warped(pcurve, maps);
+    let forward = !t.reversed3d;
+    if !forward {
+        pcurve = pcurve.reversed();
+    }
+    let pcurve = pcurve.reparameterized(edge.interval[0], edge.interval[1]);
+    Ok(Some(OrientedEdge {
+        edge: u32::try_from(edge_index).map_err(|_| bad_brep("too many edges"))?,
+        forward,
+        pcurve: record_curve2(&pcurve),
+    }))
+}
+
+/// Shells: faces joined through shared edges; a shell whose every edge has two uses is closed
+/// and bounds a solid. The shells, and the regions: one of every shell, one for each closed.
+fn shells_in(
+    b: &Brep,
+    faces: &[Face],
+    edge_count: usize,
+) -> Result<(Vec<Vec<OrientedFace>>, Vec<Region>), KernelError> {
+    let mut parent: Vec<usize> = (0..faces.len()).collect();
     fn root(parent: &mut [usize], mut i: usize) -> usize {
         while parent[i] != i {
             parent[i] = parent[parent[i]];
@@ -131,7 +197,7 @@ pub(super) fn brep_body(b: &Brep) -> Result<Body, KernelError> {
         }
         i
     }
-    let mut users: Vec<Vec<usize>> = vec![Vec::new(); edges.len()];
+    let mut users: Vec<Vec<usize>> = vec![Vec::new(); edge_count];
     for (fi, face) in faces.iter().enumerate() {
         for l in &face.loops {
             if let Loop::Edges { edges: uses } = l {
@@ -156,7 +222,7 @@ pub(super) fn brep_body(b: &Brep) -> Result<Body, KernelError> {
             shells.len() - 1
         });
         shells[s].push(OrientedFace {
-            face: u32::try_from(fi).map_err(|_| bad("too many faces"))?,
+            face: u32::try_from(fi).map_err(|_| bad_brep("too many faces"))?,
             forward: !f.reversed,
         });
     }
@@ -172,7 +238,7 @@ pub(super) fn brep_body(b: &Brep) -> Result<Body, KernelError> {
         .collect();
     let shell_ids: Vec<u32> = (0..shells.len()).map(|s| s as u32).collect();
     let mut regions = vec![Region {
-        shells: shell_ids.clone(),
+        shells: shell_ids,
         void: false,
     }];
     for (s, is_closed) in closed.iter().enumerate() {
@@ -183,22 +249,7 @@ pub(super) fn brep_body(b: &Brep) -> Result<Body, KernelError> {
             });
         }
     }
-    let record = Record {
-        version: curva_kernel::record::VERSION,
-        tolerance,
-        regions,
-        shells: shells
-            .into_iter()
-            .map(|faces| Shell::Faces {
-                faces,
-                wires: Vec::new(),
-            })
-            .collect(),
-        faces,
-        edges,
-        vertices,
-    };
-    Body::from_foreign_record(&record)
+    Ok((shells, regions))
 }
 
 fn sorted(d: [f64; 2]) -> [f64; 2] {
