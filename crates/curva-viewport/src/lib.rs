@@ -35,7 +35,7 @@ pub use lines::*;
 pub use outlines::*;
 pub use palette::*;
 pub use pick::*;
-pub use pilot::{Engine, Lighting, Look, PilotSeed, save_bevy_picture};
+pub use pilot::{Engine, Lighting, Look, PilotSeed, bevy_picture, save_bevy_picture, save_png};
 
 const GRID_HALF_SIZE: i32 = 100;
 const GRID_STEP: i32 = 10;
