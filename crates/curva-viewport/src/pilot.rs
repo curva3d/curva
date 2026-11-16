@@ -441,6 +441,14 @@ mod tests {
     const BACKGROUND: epaint::Color32 = epaint::Color32::from_rgb(200, 120, 40);
     const SIZE: [u32; 2] = [64, 48];
 
+    /// Curva runs one Bevy at a time; tests that start Bevy take turns too, as two at once crash
+    /// some graphics (Windows' software graphics, on which the checks run).
+    fn one_at_a_time() -> std::sync::MutexGuard<'static, ()> {
+        static TURN: Mutex<()> = Mutex::new(());
+        TURN.lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
     /// Bevy on a device made as Curva makes its own; `None` on a machine with no graphics.
     fn pilot() -> Option<(Pilot, wgpu::Device, wgpu::Queue)> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
@@ -523,6 +531,7 @@ mod tests {
     /// Curva made; a new size makes a new picture.
     #[test]
     fn pilot_draws_the_background_on_curvas_device() {
+        let _turn = one_at_a_time();
         let Some((mut pilot, device, queue)) = pilot() else {
             return;
         };
@@ -540,6 +549,7 @@ mod tests {
     /// at the bottom, blended between as Curva blends it.
     #[test]
     fn views_keep_curvas_background() {
+        let _turn = one_at_a_time();
         let Some((mut pilot, device, queue)) = pilot() else {
             return;
         };
@@ -571,6 +581,7 @@ mod tests {
     /// front, and grey, not tinted.
     #[test]
     fn faces_are_lit_brightly_but_not_burnt_out() {
+        let _turn = one_at_a_time();
         let Some((mut pilot, device, queue)) = pilot() else {
             return;
         };
@@ -604,6 +615,7 @@ mod tests {
     /// background show through.
     #[test]
     fn faces_follow_selection_and_display_mode() {
+        let _turn = one_at_a_time();
         let Some((mut pilot, device, queue)) = pilot() else {
             return;
         };
