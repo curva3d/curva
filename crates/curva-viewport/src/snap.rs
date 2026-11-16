@@ -448,15 +448,8 @@ impl Outlines {
         if set.perpendicular
             && let Some(from) = from
         {
-            for segment in &segments {
-                let direction = sub(segment.b, segment.a);
-                let square = dot(direction, direction);
-                let t = dot(sub(from, segment.a), direction) / square.max(1e-12);
-                let foot = along(segment.a, segment.b, t);
-                // At the last point itself there is no right angle to draw.
-                if t > 0.0 && t < 1.0 && length(sub(foot, from)) > 1e-9 {
-                    offer(SnapKind::Perpendicular, foot);
-                }
+            for foot in perpendicular_feet(&segments, from) {
+                offer(SnapKind::Perpendicular, foot);
             }
         }
         offered.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -476,6 +469,23 @@ impl Outlines {
             })
             .filter(|hit| seen(hit.point))
     }
+}
+
+/// Where a line from `from` meets each segment at a right angle, in the segments' order, where
+/// that is inside the segment and not `from` itself.
+fn perpendicular_feet(segments: &[NearbySegment], from: Point) -> Vec<Point> {
+    let mut feet = Vec::new();
+    for segment in segments {
+        let direction = sub(segment.b, segment.a);
+        let square = dot(direction, direction);
+        let t = dot(sub(from, segment.a), direction) / square.max(1e-12);
+        let foot = along(segment.a, segment.b, t);
+        // At the last point itself there is no right angle to draw.
+        if t > 0.0 && t < 1.0 && length(sub(foot, from)) > 1e-9 {
+            feet.push(foot);
+        }
+    }
+    feet
 }
 
 /// Where along a segment is closest to the cursor on screen. A search in 3D, as perspective

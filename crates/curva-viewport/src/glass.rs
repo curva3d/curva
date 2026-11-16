@@ -472,44 +472,15 @@ impl Compositor {
         rect: [f32; 4],
         radius: f32,
     ) -> Vec<(bool, wgpu::BindGroup, wgpu::TextureView)> {
+        if self.target.is_none() {
+            return Vec::new();
+        }
+        let size = [rect[2].max(1.0) as u32, rect[3].max(1.0) as u32];
+        self.make_chain(device, size);
         let Some(target) = &self.target else {
             return Vec::new();
         };
         let [tw, th] = target.size.map(|v| v as f32);
-        let size = [rect[2].max(1.0) as u32, rect[3].max(1.0) as u32];
-        if self.chain.as_ref().is_none_or(|chain| chain.size != size) {
-            let usage =
-                wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
-            let mut levels = Vec::new();
-            let mut level = size;
-            for index in 0..BLUR_LEVELS {
-                level = level.map(|v| (v / 2).max(1));
-                levels.push((
-                    texture(
-                        device,
-                        &format!("curva blur {index}"),
-                        level,
-                        self.format,
-                        usage,
-                    ),
-                    level,
-                ));
-            }
-            let half = size.map(|v| (v / 2).max(1));
-            // Readable too, for the test that checks the blur.
-            let result = texture(
-                device,
-                "curva blur result",
-                half,
-                self.format,
-                usage | wgpu::TextureUsages::COPY_SRC,
-            );
-            self.chain = Some(BlurChain {
-                size,
-                levels,
-                result,
-            });
-        }
         let chain = self.chain.as_ref().expect("made just above");
         let mut steps = Vec::new();
         let region = [rect[0] / tw, rect[1] / th, rect[2] / tw, rect[3] / th];
@@ -559,6 +530,44 @@ impl Compositor {
             [rect[0], rect[1], rect[2], rect[3], radius, 0.0, 0.0, 0.0],
         ));
         steps
+    }
+
+    /// The textures the blur goes down into and back up through, for a panel `size` pixels big;
+    /// made again only when the size changes.
+    fn make_chain(&mut self, device: &wgpu::Device, size: [u32; 2]) {
+        if self.chain.as_ref().is_none_or(|chain| chain.size != size) {
+            let usage =
+                wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
+            let mut levels = Vec::new();
+            let mut level = size;
+            for index in 0..BLUR_LEVELS {
+                level = level.map(|v| (v / 2).max(1));
+                levels.push((
+                    texture(
+                        device,
+                        &format!("curva blur {index}"),
+                        level,
+                        self.format,
+                        usage,
+                    ),
+                    level,
+                ));
+            }
+            let half = size.map(|v| (v / 2).max(1));
+            // Readable too, for the test that checks the blur.
+            let result = texture(
+                device,
+                "curva blur result",
+                half,
+                self.format,
+                usage | wgpu::TextureUsages::COPY_SRC,
+            );
+            self.chain = Some(BlurChain {
+                size,
+                levels,
+                result,
+            });
+        }
     }
 
     /// Draws the blur made by [`Self::blur_behind`] into the glass panel, inside egui's pass.
