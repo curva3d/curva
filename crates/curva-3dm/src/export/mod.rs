@@ -16,6 +16,7 @@ use std::collections::BTreeMap;
 
 mod annotation;
 mod geometry;
+mod objects;
 mod sheets;
 mod views;
 use annotation::*;
@@ -36,9 +37,77 @@ mod trim_kind {
 /// report of what could not be written.
 #[must_use]
 pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
-    let mut report = Report::default();
     let mut ids = Ids::default();
-    let mut model = Model {
+    let mut model = new_model(state);
+    // The model's standard views' ids, which clipping planes name the views they cut by.
+    model.model_views = ["Top", "Front", "Right", "Perspective"]
+        .iter()
+        .map(|name| ((*name).to_owned(), ids.next()))
+        .collect();
+    // Each detail's viewport id, by its frame: layers name the details they are off in by it.
+    let detail_ids: BTreeMap<u64, Uuid> = state
+        .layouts
+        .iter()
+        .flat_map(|l| l.details.iter())
+        .map(|d| (d.frame, ids.next()))
+        .collect();
+    let layer_index = layers_out(&mut model, &mut ids, state, &detail_ids);
+    // Each layout's page id, which objects on it and fields naming it carry.
+    let page_ids: BTreeMap<u64, Uuid> = state.layouts.iter().map(|l| (l.id, ids.next())).collect();
+    let (expanded, object_ids) = chosen_objects(state, only, &mut ids, &page_ids);
+    let chosen: Vec<&Object> = expanded.iter().collect();
+    let block_ids = blocks_needed(state, &chosen, &mut ids);
+    let style_ids = styles_out(&mut model, &mut ids, state, &chosen);
+    let pattern_index = patterns_out(&mut model, &mut ids, state, &chosen);
+    // Section styles on layers, now that the patterns they name have their places.
+    for layer in &state.layers {
+        if let (Some(style), Some(&index)) = (&layer.section, layer_index.get(&layer.id)) {
+            model.layers[index].section = Some(crate::sections::to_rhino(style, &pattern_index));
+        }
+    }
+    pages_out(&mut model, state, &page_ids);
+    let tables = objects::Tables {
+        state,
+        detail_ids,
+        page_ids,
+        block_ids,
+        style_ids,
+        pattern_index,
+        layer_index,
+    };
+    let mut out = objects::Out {
+        model,
+        report: Report::default(),
+        ids,
+        object_ids,
+        groups: BTreeMap::new(),
+    };
+    for b in &state.blocks {
+        let Some(id) = tables.block_ids.get(&b.id).copied() else {
+            continue;
+        };
+        let objects = b
+            .objects
+            .iter()
+            .filter_map(|o| out.add(&tables, o, true))
+            .collect();
+        out.model.blocks.push(model::Block {
+            name: b.name.clone(),
+            id,
+            description: String::new(),
+            objects,
+            linked: None,
+        });
+    }
+    for o in chosen {
+        out.add(&tables, o, false);
+    }
+    out.finish(state)
+}
+
+/// An empty file's model with the document's unit, tolerances, text and notes.
+fn new_model(state: &State) -> Model {
+    Model {
         version: 70,
         // Rhino's unit codes; its feet and inches are Curva's.
         unit: match state.unit {
@@ -56,23 +125,34 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
             .collect(),
         notes: state.notes.clone(),
         ..Model::default()
-    };
+    }
+}
 
-    // The model's standard views' ids, which clipping planes name the views they cut by.
-    model.model_views = ["Top", "Front", "Right", "Perspective"]
-        .iter()
-        .map(|name| ((*name).to_owned(), ids.next()))
-        .collect();
-    // Each detail's viewport id, by its frame: layers name the details they are off in by it.
-    let detail_ids: BTreeMap<u64, Uuid> = state
-        .layouts
-        .iter()
-        .flat_map(|l| l.details.iter())
-        .map(|d| (d.frame, ids.next()))
-        .collect();
+/// A layer as Rhino's with its defaults: black, shown, unlocked, continuous.
+fn plain_layer(name: &str, id: Uuid, parent: Uuid) -> model::Layer {
+    model::Layer {
+        name: name.to_owned(),
+        id,
+        parent,
+        color: [0, 0, 0],
+        visible: true,
+        locked: false,
+        print_width: 0.0,
+        linetype: -1,
+        hidden_in: Vec::new(),
+        section: None,
+    }
+}
 
-    // Layers: each layer's full name (its sublayer tree, spec `sublayers.md` §3, or an older
-    // "Parent::Child" name) becomes Rhino's nested layers, parents made as needed.
+/// The layers into the model, each Curva layer's index in it by its id. Each layer's full name
+/// (its sublayer tree, spec `sublayers.md` §3, or an older "Parent::Child" name) becomes Rhino's
+/// nested layers, parents made as needed; a model with none gets Rhino's "Default".
+fn layers_out(
+    model: &mut Model,
+    ids: &mut Ids,
+    state: &State,
+    detail_ids: &BTreeMap<u64, Uuid>,
+) -> BTreeMap<u64, usize> {
     let mut layer_index: BTreeMap<u64, usize> = BTreeMap::new();
     let mut by_path: BTreeMap<String, usize> = BTreeMap::new();
     for layer in &state.layers {
@@ -81,28 +161,16 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
         let parts: Vec<&str> = full.split("::").collect();
         for (depth, part) in parts.iter().enumerate() {
             let path = parts[..=depth].join("::");
-            let last = depth + 1 == parts.len();
             let index = match by_path.get(&path) {
                 Some(i) => *i,
                 None => {
-                    model.layers.push(model::Layer {
-                        name: (*part).to_owned(),
-                        id: ids.next(),
-                        parent,
-                        color: [0, 0, 0],
-                        visible: true,
-                        locked: false,
-                        print_width: 0.0,
-                        linetype: -1,
-                        hidden_in: Vec::new(),
-                        section: None,
-                    });
+                    model.layers.push(plain_layer(part, ids.next(), parent));
                     by_path.insert(path, model.layers.len() - 1);
                     model.layers.len() - 1
                 }
             };
-            if last {
-                let linetype = linetype_in(&mut model, &mut ids, state, layer.linetype);
+            if depth + 1 == parts.len() {
+                let linetype = linetype_in(model, ids, state, layer.linetype);
                 let l = &mut model.layers[index];
                 l.linetype = linetype;
                 l.color = colour_of(layer.colour);
@@ -122,27 +190,24 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
         }
     }
     if model.layers.is_empty() {
-        model.layers.push(model::Layer {
-            name: "Default".to_owned(),
-            id: ids.next(),
-            parent: Uuid::NIL,
-            color: [0, 0, 0],
-            visible: true,
-            locked: false,
-            print_width: 0.0,
-            linetype: -1,
-            hidden_in: Vec::new(),
-            section: None,
-        });
+        model
+            .layers
+            .push(plain_layer("Default", ids.next(), Uuid::NIL));
     }
+    layer_index
+}
 
-    // Each layout's page id, which objects on it and fields naming it carry.
-    let page_ids: BTreeMap<u64, Uuid> = state.layouts.iter().map(|l| (l.id, ids.next())).collect();
-    // Scale bars and tables, which Rhino has not, go out as the plain drawing they make: lines,
-    // solid hatches for their filled blocks, and notes, grouped.
+/// The objects to write, with each one's id settled first so that fields measuring an object
+/// can name it. Scale bars and tables, which Rhino has not, go out as the plain drawing they
+/// make: lines, solid hatches for their filled blocks, and notes, grouped.
+fn chosen_objects(
+    state: &State,
+    only: Option<&[u64]>,
+    ids: &mut Ids,
+    page_ids: &BTreeMap<u64, Uuid>,
+) -> (Vec<Object>, BTreeMap<u64, Uuid>) {
     let fields = curva_document::fields::FieldContext::now(None);
-    // Each object's id, settled first so that fields measuring an object can name it.
-    let mut object_ids: BTreeMap<u64, Uuid> = state
+    let object_ids: BTreeMap<u64, Uuid> = state
         .objects
         .iter()
         .filter(|o| only.is_none_or(|ids| ids.contains(&o.id)))
@@ -160,14 +225,16 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
                 next_group += 1;
                 expanded.extend(parts);
             }
-            None => expanded.push(with_rhino_fields(o, state, &fields, &page_ids, &object_ids)),
+            None => expanded.push(with_rhino_fields(o, state, &fields, page_ids, &object_ids)),
         }
     }
-    let chosen: Vec<&Object> = expanded.iter().collect();
+    (expanded, object_ids)
+}
 
-    // Blocks: the definitions the chosen objects use, nested ones included.
+/// The block definitions the chosen objects use, nested ones included, each with its id.
+fn blocks_needed(state: &State, chosen: &[&Object], ids: &mut Ids) -> BTreeMap<u64, Uuid> {
     let mut needed: Vec<u64> = Vec::new();
-    let mut queue: Vec<&Object> = chosen.clone();
+    let mut queue: Vec<&Object> = chosen.to_vec();
     while let Some(o) = queue.pop() {
         if let Shape::Instance(i) = &o.shape
             && !needed.contains(&i.definition)
@@ -178,34 +245,39 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
             }
         }
     }
-    let block_ids: BTreeMap<u64, Uuid> = state
+    state
         .blocks
         .iter()
         .filter(|b| needed.contains(&b.id))
         .map(|b| (b.id, ids.next()))
-        .collect();
+        .collect()
+}
 
-    // Annotation styles: each Curva style the annotation uses, under its own name with its font,
-    // sizes (in the model's unit) and decimals. A note of another height or alignment than its
-    // style's overrides those in its style, as Rhino's notes do.
+/// The shapes of the chosen objects and of every block definition's objects.
+fn every_shape<'a>(state: &'a State, chosen: &'a [&Object]) -> impl Iterator<Item = &'a Shape> {
+    chosen.iter().map(|o| &o.shape).chain(
+        state
+            .blocks
+            .iter()
+            .flat_map(|b| b.objects.iter().map(|o| &o.shape)),
+    )
+}
+
+/// The annotation styles into the model: each Curva style the annotation uses, under its own
+/// name with its font, sizes (in the model's unit) and decimals. A note of another height or
+/// alignment than its style's overrides those in its style, as Rhino's notes do.
+fn styles_out(model: &mut Model, ids: &mut Ids, state: &State, chosen: &[&Object]) -> StyleIds {
+    use curva_document::annotation::Annotation;
     let mut style_ids: StyleIds = BTreeMap::new();
-    let wanted: Vec<StyleKey> = chosen
-        .iter()
-        .map(|o| &o.shape)
-        .chain(
-            state
-                .blocks
-                .iter()
-                .flat_map(|b| b.objects.iter().map(|o| &o.shape)),
-        )
+    let wanted: Vec<StyleKey> = every_shape(state, chosen)
         .filter_map(|s| match s {
             Shape::Annotation(
-                a @ (curva_document::annotation::Annotation::Text(_)
-                | curva_document::annotation::Annotation::Dimension(_)
-                | curva_document::annotation::Annotation::Radial(_)
-                | curva_document::annotation::Annotation::Angle(_)
-                | curva_document::annotation::Annotation::Ordinate(_)
-                | curva_document::annotation::Annotation::Leader(_)),
+                a @ (Annotation::Text(_)
+                | Annotation::Dimension(_)
+                | Annotation::Radial(_)
+                | Annotation::Angle(_)
+                | Annotation::Ordinate(_)
+                | Annotation::Leader(_)),
             ) => Some(dimension_key(state, a.style())),
             _ => None,
         })
@@ -223,20 +295,21 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
             ..rhino_style(state, key.0, f64::from_bits(key.1), 0)
         });
     }
+    style_ids
+}
 
-    // Hatch patterns: those the hatches use, in Rhino's model units at scale one.
+/// The hatch patterns into the model: those the hatches and section styles use, in Rhino's
+/// model units at scale one; each one's index by its name in small letters.
+fn patterns_out(
+    model: &mut Model,
+    ids: &mut Ids,
+    state: &State,
+    chosen: &[&Object],
+) -> BTreeMap<String, i32> {
     let mut pattern_index: BTreeMap<String, i32> = BTreeMap::new();
     let per_mm = 1.0 / state.unit.millimetres();
     let all_patterns = state.patterns();
-    let hatch_patterns = chosen
-        .iter()
-        .map(|o| &o.shape)
-        .chain(
-            state
-                .blocks
-                .iter()
-                .flat_map(|b| b.objects.iter().map(|o| &o.shape)),
-        )
+    let used = every_shape(state, chosen)
         .filter_map(|s| match s {
             Shape::Annotation(curva_document::annotation::Annotation::Hatch(h)) => {
                 Some(h.pattern.to_lowercase())
@@ -247,7 +320,7 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
             state,
             chosen.iter().copied(),
         ));
-    for name in hatch_patterns {
+    for name in used {
         if pattern_index.contains_key(&name) {
             continue;
         }
@@ -273,15 +346,11 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
                 .collect(),
         });
     }
+    pattern_index
+}
 
-    // Section styles on layers, now that the patterns they name have their places.
-    for layer in &state.layers {
-        if let (Some(style), Some(&index)) = (&layer.section, layer_index.get(&layer.id)) {
-            model.layers[index].section = Some(crate::sections::to_rhino(style, &pattern_index));
-        }
-    }
-
-    // Layouts: Rhino's pages, in millimetres.
+/// The layouts into the model as Rhino's pages, in millimetres.
+fn pages_out(model: &mut Model, state: &State, page_ids: &BTreeMap<u64, Uuid>) {
     for (index, layout) in state.layouts.iter().enumerate() {
         let mm = layout.unit.millimetres();
         model.pages.push(model::Page {
@@ -302,158 +371,6 @@ pub fn export(state: &State, only: Option<&[u64]>) -> (Model, Report) {
     if !state.layouts.is_empty() {
         model.page_unit = Some(2);
     }
-
-    let mut groups: BTreeMap<u64, usize> = BTreeMap::new();
-    let mut add = |o: &Object, in_block: bool, model: &mut Model, report: &mut Report| {
-        let sheet = o
-            .space
-            .and_then(|id| state.layouts.iter().find(|l| l.id == id));
-        let made = match sheet {
-            // On a layout: drawn in millimetres on its page, a detail's frame as the detail.
-            Some(layout) => sheet_geometry(
-                o,
-                layout,
-                &block_ids,
-                &pattern_index,
-                &style_ids,
-                state,
-                &detail_ids,
-            ),
-            None => match state.clipping_planes.iter().find(|c| c.frame == o.id) {
-                Some(clip) => clipping_plane(o, clip, &model.model_views, &detail_ids),
-                None => geometry_of(&o.shape, &block_ids, &pattern_index, &style_ids, state),
-            },
-        };
-        let geometry = match made {
-            Ok(g) => g,
-            Err(why) => {
-                count(&mut report.skipped, &format!("not written ({why})"));
-                return None;
-            }
-        };
-        let group = o.group.map(|g| {
-            let n = groups.len();
-            *groups.entry(g).or_insert(n)
-        });
-        // A detail is written under its viewport's id, as Rhino names details: layers turned off
-        // in one name it by that.
-        // Other objects keep the id settled for them, taken once (a scale bar's or table's
-        // parts share its number).
-        let id = match &geometry {
-            Geometry::Detail(d) if d.id != Uuid::NIL => d.id,
-            _ if in_block => ids.next(),
-            _ => object_ids.remove(&o.id).unwrap_or_else(|| ids.next()),
-        };
-        let (print_width, print_width_source) = match o.print_width {
-            PrintWidth::ByLayer => (0.0, Source::Layer),
-            PrintWidth::Default => (0.0, Source::Object),
-            PrintWidth::Millimetres(w) => (w, Source::Object),
-        };
-        let (linetype, linetype_source) = if o.linetype.is_by_layer() {
-            (-1, Source::Layer)
-        } else {
-            (
-                linetype_in(model, &mut ids, state, o.linetype),
-                Source::Object,
-            )
-        };
-        // A clipping plane's style is its object's own, with the source left at its layer, as
-        // Rhino 8 writes it; another object's own style says it comes from the object.
-        let plane = state.clipping_planes.iter().find(|c| c.frame == o.id);
-        let (section_source, section) = match (plane, &o.section) {
-            (Some(c), _) => (
-                crate::sections::FROM_LAYER,
-                Some(curva_document::section::SectionStyle {
-                    fill: c.section,
-                    hatch: c.hatch.clone(),
-                }),
-            ),
-            (None, Some(own)) => (crate::sections::FROM_OBJECT, Some(own.clone())),
-            (None, None) => (crate::sections::FROM_LAYER, None),
-        };
-        let section = section.map(|s| crate::sections::to_rhino(&s, &pattern_index));
-        model.objects.push(model::Object {
-            geometry,
-            attributes: Attributes {
-                section_source,
-                section,
-                id,
-                layer: layer_index.get(&o.layer).copied().unwrap_or(0),
-                name: o.name.clone(),
-                print_width,
-                print_width_source,
-                visible: !o.hidden,
-                mode: if in_block {
-                    3
-                } else if o.hidden {
-                    1
-                } else if o.locked {
-                    2
-                } else {
-                    0
-                },
-                groups: group.into_iter().collect(),
-                page_space: sheet.is_some(),
-                viewport: sheet.map_or(Uuid::NIL, |l| page_ids[&l.id]),
-                user_text: o
-                    .user_text
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect(),
-                linetype,
-                linetype_source,
-                color: o.colour.map_or([0, 0, 0], |c| {
-                    c.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8)
-                }),
-                color_source: if o.colour.is_some() {
-                    Source::Object
-                } else {
-                    Source::Layer
-                },
-            },
-        });
-        if !in_block {
-            count(&mut report.brought, kind_of(&o.shape));
-        }
-        Some(id)
-    };
-
-    for b in &state.blocks {
-        let Some(id) = block_ids.get(&b.id).copied() else {
-            continue;
-        };
-        let objects = b
-            .objects
-            .iter()
-            .filter_map(|o| add(o, true, &mut model, &mut report))
-            .collect();
-        model.blocks.push(model::Block {
-            name: b.name.clone(),
-            id,
-            description: String::new(),
-            objects,
-            linked: None,
-        });
-    }
-    for o in chosen {
-        add(o, false, &mut model, &mut report);
-    }
-    model.groups = (0..groups.len())
-        .map(|_| model::Group {
-            name: String::new(),
-            id: ids.next(),
-        })
-        .collect();
-    if state
-        .objects
-        .iter()
-        .any(|o| o.live.is_some() || o.recipe.is_some())
-    {
-        report
-            .notes
-            .push("live booleans and History are saved as plain geometry".to_owned());
-    }
-    (model, report)
 }
 
 /// The linetype table's index for a linetype (Curva's own or the document's), adding it to the
@@ -489,10 +406,10 @@ fn linetype_in(
 
 /// Fresh ids for one file.
 #[derive(Default)]
-struct Ids(u64);
+pub(super) struct Ids(u64);
 
 impl Ids {
-    fn next(&mut self) -> Uuid {
+    pub(super) fn next(&mut self) -> Uuid {
         self.0 += 1;
         Uuid::fresh(self.0)
     }
@@ -543,117 +460,7 @@ fn geometry_of(
             let xform = std::array::from_fn(|i2| std::array::from_fn(|j| i.placement[j][i2]));
             Geometry::Instance { block, xform }
         }
-        Shape::Annotation(curva_document::annotation::Annotation::Dot(dot)) => Geometry::Dot {
-            at: dot.at,
-            text: dot.content.clone(),
-            secondary: dot.secondary.clone(),
-            #[allow(clippy::cast_possible_truncation)]
-            height: dot.height.round() as i32,
-            font: dot.font.clone().unwrap_or_default(),
-        },
-        Shape::Annotation(curva_document::annotation::Annotation::Hatch(h)) => {
-            Geometry::Hatch(hatch(h, patterns)?)
-        }
-        Shape::Annotation(curva_document::annotation::Annotation::Text(t)) => {
-            let key = dimension_key(state, t.style);
-            let style = *styles.get(&key).ok_or("a note without its style")?;
-            // A note of another height or alignment than its style's overrides them in it.
-            let align = align_code(t.align);
-            let own = ((t.height - f64::from_bits(key.1)).abs() > 1e-9 || align != 0)
-                .then(|| rhino_style(state, key.0, t.height, align));
-            // Rhino aligns these notes by the top of their first line, one text height above
-            // the baseline Curva places them by.
-            let origin: P3 = std::array::from_fn(|k| t.origin[k] + t.y[k] * t.height);
-            Geometry::Text(model::Text {
-                rich: t.content.clone(),
-                plane: Plane {
-                    origin,
-                    x: t.x,
-                    y: t.y,
-                    z: cross(t.x, t.y),
-                },
-                style,
-                own,
-                rotation: 0.0,
-            })
-        }
-        Shape::Annotation(curva_document::annotation::Annotation::Dimension(d)) => {
-            Geometry::Dimension(linear_dimension(d, styles, state)?)
-        }
-        Shape::Annotation(curva_document::annotation::Annotation::Radial(d)) => {
-            let style = *styles
-                .get(&dimension_key(state, d.style))
-                .ok_or("a dimension without its style")?;
-            let plane = plane_at(d.centre, d.x, d.y);
-            Geometry::Radial(model::RadialDimension {
-                radius_point: local(&plane, d.on_curve),
-                text_point: local(&plane, d.text_at),
-                plane,
-                style,
-                own: None,
-                diameter: d.diameter,
-                text: d.text.clone().unwrap_or_else(|| "<>".to_owned()),
-            })
-        }
-        Shape::Annotation(curva_document::annotation::Annotation::Ordinate(d)) => {
-            let style = *styles
-                .get(&dimension_key(state, d.style))
-                .ok_or("a dimension without its style")?;
-            let plane = plane_at(d.base, d.x, d.y);
-            Geometry::Ordinate(model::OrdinateDimension {
-                point: local(&plane, d.point),
-                leader: local(&plane, d.leader),
-                plane,
-                style,
-                own: None,
-                text: d.text.clone().unwrap_or_else(|| "<>".to_owned()),
-                direction: match d.axis {
-                    curva_document::annotation::OrdinateAxis::X => 1,
-                    curva_document::annotation::OrdinateAxis::Y => 2,
-                },
-                kinks: d.kinks.unwrap_or([model::UNSET_VALUE; 2]),
-            })
-        }
-        Shape::Annotation(curva_document::annotation::Annotation::Angle(d)) => {
-            let style = *styles
-                .get(&dimension_key(state, d.style))
-                .ok_or("a dimension without its style")?;
-            let plane = plane_at(d.apex, d.x, d.y);
-            let side = |p: P3| {
-                let q = local(&plane, p);
-                let length = (q[0] * q[0] + q[1] * q[1]).sqrt();
-                ([q[0] / length.max(1e-12), q[1] / length.max(1e-12)], length)
-            };
-            let (first, near) = side(d.first);
-            let (second, far) = side(d.second);
-            Geometry::Angular(model::AngularDimension {
-                arc_point: local(&plane, d.arc_at),
-                plane,
-                style,
-                own: None,
-                text: d.text.clone().unwrap_or_else(|| "<>".to_owned()),
-                sides: [first, second],
-                offsets: [near, far],
-            })
-        }
-        Shape::Annotation(curva_document::annotation::Annotation::Leader(l)) => {
-            let style = *styles
-                .get(&dimension_key(state, l.style))
-                .ok_or("a leader without its style")?;
-            let start = *l.points.first().ok_or("a leader without points")?;
-            let plane = plane_at(start, l.x, l.y);
-            Geometry::Leader(model::Leader {
-                points: l.points.iter().map(|p| local(&plane, *p)).collect(),
-                plane,
-                style,
-                own: None,
-                rich: l.content.clone(),
-            })
-        }
-        // Annotation goes into .3dm files with the round trip at the end of Milestone 3.
-        Shape::Annotation(_) => {
-            return Err("annotation is not written to .3dm files yet".to_owned());
-        }
+        Shape::Annotation(a) => return annotation_geometry(a, patterns, styles, state),
     })
 }
 

@@ -328,6 +328,101 @@ fn arc_spline(plane: &model::Plane, radius: f64, angles: [f64; 2]) -> (Spline, V
 /// A record surface, how a file surface's (u, v) become its own, and its domain.
 pub(super) type Placed = (RecordSurface, [Warp; 2], [[f64; 2]; 2]);
 
+/// A surface of revolution as a rational spline: its profile turned about the axis, the angle
+/// along u, or along v when `transposed`.
+fn revolution_record(
+    profile: &model::Curve,
+    axis: &[P3; 2],
+    angles: &[f64; 2],
+    domain: &[f64; 2],
+    transposed: bool,
+) -> Result<Placed, KernelError> {
+    let (profile_spline, profile_warp) = profile_of(profile)?;
+    let direction = curva_kernel::unit(sub(axis[1], axis[0]))
+        .ok_or_else(|| KernelError("a revolution axis of no length".to_owned()))?;
+    let spans = arc_spans(angles[0], angles[1]);
+    let (angle_knots, controls) = arc_controls(&spans);
+    // net[i][j]: i along the angle, j along the profile.
+    let net: Vec<Vec<[f64; 4]>> = controls
+        .iter()
+        .map(|(angle, arc_weight)| {
+            profile_spline
+                .points
+                .iter()
+                .map(|h| {
+                    let w = h[3];
+                    let p = [h[0] / w, h[1] / w, h[2] / w];
+                    let q = turned(p, axis[0], direction, *angle, *arc_weight);
+                    let ww = w * arc_weight;
+                    [q[0] * ww, q[1] * ww, q[2] * ww, ww]
+                })
+                .collect()
+        })
+        .collect();
+    let angle_warp = Warp::Arcs {
+        angle: Linear::between(*domain, *angles),
+        spans,
+    };
+    let (a0, a1) = (angles[0], angles[1]);
+    let (p0, p1) = profile_spline.domain();
+    let (u_knots, v_knots, points, warps, record_domain) = if transposed {
+        // u along the profile: the net turned over.
+        let turned_net = (0..profile_spline.points.len())
+            .map(|j| net.iter().map(|row| row[j]).collect())
+            .collect();
+        (
+            profile_spline.knots.clone(),
+            angle_knots,
+            turned_net,
+            [profile_warp, angle_warp],
+            [[p0, p1], [a0, a1]],
+        )
+    } else {
+        (
+            angle_knots,
+            profile_spline.knots.clone(),
+            net,
+            [angle_warp, profile_warp],
+            [[a0, a1], [p0, p1]],
+        )
+    };
+    Ok((
+        RecordSurface::RationalSpline {
+            u_knots,
+            v_knots,
+            homogeneous: points,
+        },
+        warps,
+        record_domain,
+    ))
+}
+
+/// A revolution's profile as a spline, arcs on angle knots so its parameter is known, with how
+/// its parameter maps to the file's.
+fn profile_of(profile: &model::Curve) -> Result<(Spline, Warp), KernelError> {
+    Ok(match profile {
+        model::Curve::Arc {
+            plane,
+            radius,
+            angles: arc_angles,
+            domain: arc_domain,
+        } => {
+            let (spline, spans) = arc_spline(plane, *radius, *arc_angles);
+            (
+                spline,
+                Warp::Arcs {
+                    angle: Linear::between(*arc_domain, *arc_angles),
+                    spans,
+                },
+            )
+        }
+        other => {
+            let d = domain_of(other);
+            (portion(other, d[0], d[1])?, Warp::SAME)
+        }
+    })
+}
+
 /// A file surface as the engine's record surface, with how the file's (u, v) become the
 /// record's, and the record's domain.
 pub(super) fn record_surface(s: &model::Surface) -> Result<Placed, KernelError> {
@@ -354,87 +449,7 @@ pub(super) fn record_surface(s: &model::Surface) -> Result<Placed, KernelError> 
             angles,
             domain,
             transposed,
-        } => {
-            // The profile as a spline, arcs on angle knots so its parameter is known.
-            let (profile_spline, profile_warp) = match profile.as_ref() {
-                model::Curve::Arc {
-                    plane,
-                    radius,
-                    angles: arc_angles,
-                    domain: arc_domain,
-                } => {
-                    let (spline, spans) = arc_spline(plane, *radius, *arc_angles);
-                    (
-                        spline,
-                        Warp::Arcs {
-                            angle: Linear::between(*arc_domain, *arc_angles),
-                            spans,
-                        },
-                    )
-                }
-                other => {
-                    let d = domain_of(other);
-                    (portion(other, d[0], d[1])?, Warp::SAME)
-                }
-            };
-            let direction = curva_kernel::unit(sub(axis[1], axis[0]))
-                .ok_or_else(|| KernelError("a revolution axis of no length".to_owned()))?;
-            let spans = arc_spans(angles[0], angles[1]);
-            let (angle_knots, controls) = arc_controls(&spans);
-            // net[i][j]: i along the angle, j along the profile.
-            let net: Vec<Vec<[f64; 4]>> = controls
-                .iter()
-                .map(|(angle, arc_weight)| {
-                    profile_spline
-                        .points
-                        .iter()
-                        .map(|h| {
-                            let w = h[3];
-                            let p = [h[0] / w, h[1] / w, h[2] / w];
-                            let q = turned(p, axis[0], direction, *angle, *arc_weight);
-                            let ww = w * arc_weight;
-                            [q[0] * ww, q[1] * ww, q[2] * ww, ww]
-                        })
-                        .collect()
-                })
-                .collect();
-            let angle_warp = Warp::Arcs {
-                angle: Linear::between(*domain, *angles),
-                spans,
-            };
-            let (a0, a1) = (angles[0], angles[1]);
-            let (p0, p1) = profile_spline.domain();
-            let (u_knots, v_knots, points, warps, record_domain) = if *transposed {
-                // u along the profile: the net turned over.
-                let turned_net = (0..profile_spline.points.len())
-                    .map(|j| net.iter().map(|row| row[j]).collect())
-                    .collect();
-                (
-                    profile_spline.knots.clone(),
-                    angle_knots,
-                    turned_net,
-                    [profile_warp, angle_warp],
-                    [[p0, p1], [a0, a1]],
-                )
-            } else {
-                (
-                    angle_knots,
-                    profile_spline.knots.clone(),
-                    net,
-                    [angle_warp, profile_warp],
-                    [[a0, a1], [p0, p1]],
-                )
-            };
-            Ok((
-                RecordSurface::RationalSpline {
-                    u_knots,
-                    v_knots,
-                    homogeneous: points,
-                },
-                warps,
-                record_domain,
-            ))
-        }
+        } => revolution_record(profile, axis, angles, domain, *transposed),
         _ => {
             let n = nurbs_surface(s)?;
             let domain = n.domain();

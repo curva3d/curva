@@ -529,6 +529,77 @@ pub(super) fn leader(r: &mut Reader<'_>) -> Result<Leader> {
     })
 }
 
+/// A Rhino 5 note: Rhino 5 put an unjustified note's top left at its plane's origin; its
+/// justification bits as Rhino 6's alignments.
+fn v5_note(words: String, plane: Plane, height: f64, justification: u32) -> Geometry {
+    let (h_align, v_align) = if justification == 0 {
+        (0, 3)
+    } else {
+        let h = if justification & 2 != 0 {
+            1
+        } else if justification & 4 != 0 {
+            2
+        } else {
+            0
+        };
+        let v = if justification & (1 << 18) != 0 {
+            3
+        } else if justification & (1 << 17) != 0 {
+            5
+        } else {
+            7
+        };
+        (h, v)
+    };
+    Geometry::Text(Text {
+        rich: words,
+        plane,
+        style: v5_style_ref(0),
+        own: Some(DimStyle {
+            id: Uuid::NIL,
+            name: String::new(),
+            text_height: height,
+            h_align,
+            v_align,
+            arrow_size: 1.0,
+            extension_extension: 1.0,
+            extension_offset: 0.5,
+            text_gap: 0.25,
+            length_resolution: 2,
+            font: None,
+        }),
+        rotation: 0.0,
+    })
+}
+
+/// A Rhino 5 linear (`kind` 1) or aligned (2) dimension: the first point at [0] (the plane's
+/// origin), the second at [2], the dimension line from [1] to [3], always along the plane's X.
+/// An aligned one's plane runs from its first point to its second; when it does not, Rhino
+/// measures it along X as well.
+fn v5_linear(kind: u32, points: &[[f64; 2]], plane: Plane, style: Uuid, words: String) -> Geometry {
+    let point = |i: usize| points.get(i).copied().unwrap_or([0.0, 0.0]);
+    let less = |p: [f64; 2], q: [f64; 2]| [p[0] - q[0], p[1] - q[1]];
+
+    let first = point(0);
+    let (from, to) = (point(1), point(3));
+    let middle = [(from[0] + to[0]) / 2.0, (from[1] + to[1]) / 2.0];
+    let along_x = kind == 1 || (point(2)[1] - first[1]).abs() > 1e-9;
+    Geometry::Dimension(LinearDimension {
+        plane: Plane {
+            origin: std::array::from_fn(|k| {
+                plane.origin[k] + plane.x[k] * first[0] + plane.y[k] * first[1]
+            }),
+            ..plane
+        },
+        style,
+        own: None,
+        rotated: along_x,
+        text: words,
+        second: less(point(2), first),
+        line: less(middle, first),
+    })
+}
+
 /// Rhino 5's annotation (`ON_OBSOLETE_V5_Annotation::Read` and its kinds' `Read`): its kind, plane,
 /// points in that plane, typed words and text height; an angle dimension adds its angle and
 /// radius. Files from openNURBS of October 2007 on wrap each part in a chunk; older ones start
@@ -559,71 +630,10 @@ pub(super) fn v5_annotation(r: &mut Reader<'_>) -> Result<std::result::Result<Ge
     let point = |i: usize| points.get(i).copied().unwrap_or([0.0, 0.0]);
     let less = |p: [f64; 2], q: [f64; 2]| [p[0] - q[0], p[1] - q[1]];
     Ok(Ok(match kind {
-        // A note: Rhino 5 put an unjustified note's top left at its plane's origin.
-        7 => {
-            let (h_align, v_align) = if justification == 0 {
-                (0, 3)
-            } else {
-                let h = if justification & 2 != 0 {
-                    1
-                } else if justification & 4 != 0 {
-                    2
-                } else {
-                    0
-                };
-                let v = if justification & (1 << 18) != 0 {
-                    3
-                } else if justification & (1 << 17) != 0 {
-                    5
-                } else {
-                    7
-                };
-                (h, v)
-            };
-            Geometry::Text(Text {
-                rich: words,
-                plane,
-                style: v5_style_ref(0),
-                own: Some(DimStyle {
-                    id: Uuid::NIL,
-                    name: String::new(),
-                    text_height: height,
-                    h_align,
-                    v_align,
-                    arrow_size: 1.0,
-                    extension_extension: 1.0,
-                    extension_offset: 0.5,
-                    text_gap: 0.25,
-                    length_resolution: 2,
-                    font: None,
-                }),
-                rotation: 0.0,
-            })
-        }
-        // Linear (1) and aligned (2): the first point at [0] (the plane's origin), the second at
-        // [2], the dimension line from [1] to [3], always along the plane's X. An aligned one's
-        // plane runs from its first point to its second; when it does not, Rhino measures it
-        // along X as well.
-        1 | 2 => {
-            let first = point(0);
-            let (from, to) = (point(1), point(3));
-            let middle = [(from[0] + to[0]) / 2.0, (from[1] + to[1]) / 2.0];
-            let along_x = kind == 1 || (point(2)[1] - first[1]).abs() > 1e-9;
-            Geometry::Dimension(LinearDimension {
-                plane: Plane {
-                    origin: std::array::from_fn(|k| {
-                        plane.origin[k] + plane.x[k] * first[0] + plane.y[k] * first[1]
-                    }),
-                    ..plane
-                },
-                style,
-                own: None,
-                rotated: along_x,
-                text: words,
-                second: less(point(2), first),
-                line: less(middle, first),
-            })
-        }
+        // A note.
+        7 => v5_note(words, plane, height, justification),
+        // Linear (1) and aligned (2).
+        1 | 2 => v5_linear(kind, &points, plane, style, words),
         // Diameter (4) and radius (5): the centre at [0], the arrow at [1], the text at [2].
         4 | 5 => {
             let centre = point(0);

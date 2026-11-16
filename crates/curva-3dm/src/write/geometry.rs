@@ -163,7 +163,16 @@ pub(super) fn write_brep(w: &mut Writer, b: &Brep) {
     optional_array(w, &b.curves2, write_curve2);
     optional_array(w, &b.curves3, write_curve);
     optional_array(w, &b.surfaces, write_surface);
+    write_brep_vertices(w, b);
+    write_brep_edges(w, b);
+    write_brep_trims(w, b);
+    write_brep_loops(w, b);
+    write_brep_faces(w, b);
+    write_brep_tail(w, b);
+}
 
+/// The B-rep's vertices: each its point, its edges and its tolerance.
+fn write_brep_vertices(w: &mut Writer, b: &Brep) {
     w.begin(tcode::ANONYMOUS_CHUNK);
     w.chunk_version(1, 0);
     w.count(b.vertices.len());
@@ -174,7 +183,10 @@ pub(super) fn write_brep(w: &mut Writer, b: &Brep) {
         w.f64(v.tolerance);
     }
     w.end();
+}
 
+/// The B-rep's edges: each its curve, way round, ends, trims, tolerance and domain.
+fn write_brep_edges(w: &mut Writer, b: &Brep) {
     w.begin(tcode::ANONYMOUS_CHUNK);
     w.chunk_version(1, 0);
     w.count(b.edges.len());
@@ -190,7 +202,10 @@ pub(super) fn write_brep(w: &mut Writer, b: &Brep) {
         w.f64s(&e.domain);
     }
     w.end();
+}
 
+/// The B-rep's trims: each its curve, edge, ends, kind, loop, tolerance and domain.
+fn write_brep_trims(w: &mut Writer, b: &Brep) {
     w.begin(tcode::ANONYMOUS_CHUNK);
     w.chunk_version(1, 0);
     w.count(b.trims.len());
@@ -215,7 +230,10 @@ pub(super) fn write_brep(w: &mut Writer, b: &Brep) {
         w.f64(0.0);
     }
     w.end();
+}
 
+/// The B-rep's loops: each its trims, kind and face.
+fn write_brep_loops(w: &mut Writer, b: &Brep) {
     w.begin(tcode::ANONYMOUS_CHUNK);
     w.chunk_version(1, 0);
     w.count(b.loops.len());
@@ -226,7 +244,10 @@ pub(super) fn write_brep(w: &mut Writer, b: &Brep) {
         w.i32(l.face);
     }
     w.end();
+}
 
+/// The B-rep's faces: each its loops, surface and side, then their ids.
+fn write_brep_faces(w: &mut Writer, b: &Brep) {
     w.begin(tcode::ANONYMOUS_CHUNK);
     w.chunk_version(1, 2);
     w.count(b.faces.len());
@@ -242,7 +263,11 @@ pub(super) fn write_brep(w: &mut Writer, b: &Brep) {
     }
     w.bool(false); // no per-face colours
     w.end();
+}
 
+/// The B-rep's bounding box from its vertices, empty meshes, and no solidity or regions,
+/// which Rhino works out itself.
+fn write_brep_tail(w: &mut Writer, b: &Brep) {
     // The bounding box, from the vertices; Rhino works out its own.
     let mut lo = [f64::INFINITY; 3];
     let mut hi = [f64::NEG_INFINITY; 3];

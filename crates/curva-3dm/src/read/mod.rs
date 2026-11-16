@@ -134,18 +134,11 @@ pub fn read(data: &[u8]) -> Result<Model> {
                     model.document_text.extend(pairs);
                 }
             }
-            tcode::LAYER_TABLE => records(&mut chunk.body, tcode::LAYER_RECORD, |body| {
-                if let Some(layer) = layer(body)? {
-                    model.layers.push(layer);
-                }
-                Ok(())
-            })?,
-            tcode::GROUP_TABLE => records(&mut chunk.body, tcode::GROUP_RECORD, |body| {
-                if let Some(group) = group(body)? {
-                    model.groups.push(group);
-                }
-                Ok(())
-            })?,
+            tcode::LAYER_TABLE
+            | tcode::GROUP_TABLE
+            | tcode::HATCHPATTERN_TABLE
+            | tcode::LINETYPE_TABLE
+            | tcode::INSTANCE_DEFINITION_TABLE => component_table(&mut chunk, &mut model)?,
             // Rhino 5's fonts, which its styles name by index; later files keep a style's font
             // in the style.
             tcode::FONT_TABLE if version < 60 => {
@@ -157,73 +150,110 @@ pub fn read(data: &[u8]) -> Result<Model> {
                 })?;
             }
             tcode::DIMSTYLE_TABLE => {
-                records(&mut chunk.body, tcode::DIMSTYLE_RECORD, |body| {
-                    match dim_style(body)? {
-                        Some((mut style, Some((index, font)))) => {
-                            style.font = v5_fonts
-                                .iter()
-                                .find(|(i, _)| *i == font)
-                                .map(|(_, name)| name.clone());
-                            v5_styles.push((index, style.id));
-                            model.dim_styles.push(style);
-                        }
-                        Some((style, None)) => model.dim_styles.push(style),
-                        None => {}
-                    }
-                    Ok(())
-                })?;
+                dim_styles_in(&mut chunk.body, &mut model, &v5_fonts, &mut v5_styles)?;
             }
-            tcode::HATCHPATTERN_TABLE => {
-                records(&mut chunk.body, tcode::HATCHPATTERN_RECORD, |body| {
-                    if let Some(pattern) = hatch_pattern(body)? {
-                        model.hatch_patterns.push(pattern);
-                    }
-                    Ok(())
-                })?;
-            }
-            tcode::LINETYPE_TABLE => {
-                records(&mut chunk.body, tcode::LINETYPE_RECORD, |body| {
-                    if let Some(linetype) = linetype(body)? {
-                        model.linetypes.push(linetype);
-                    }
-                    Ok(())
-                })?;
-            }
-            tcode::INSTANCE_DEFINITION_TABLE => {
-                records(&mut chunk.body, tcode::INSTANCE_DEFINITION_RECORD, |body| {
-                    if let Some(block) = block(body)? {
-                        model.blocks.push(block);
-                    }
-                    Ok(())
-                })?;
-            }
-            tcode::OBJECT_TABLE => {
-                let mut objects = Vec::new();
-                let mut skipped = Vec::new();
-                records(&mut chunk.body, tcode::OBJECT_RECORD, |body| {
-                    match object(body) {
-                        Ok(Ok(found)) => objects.push(found),
-                        Ok(Err(kind)) => skipped.push(kind),
-                        // A damaged object is skipped, not the file.
-                        Err(e) => skipped.push(format!("damaged object: {e}")),
-                    }
-                    Ok(())
-                })?;
-                model.objects = objects;
-                if version < 60 {
-                    for object in &mut model.objects {
-                        name_v5_style(&mut object.geometry, &v5_styles);
-                    }
-                }
-                for kind in skipped {
-                    model.skip(&kind);
-                }
-            }
+            tcode::OBJECT_TABLE => objects_in(&mut chunk.body, &mut model, &v5_styles)?,
             tcode::ENDOFFILE => break,
             _ => {}
         }
     }
     Ok(model)
+}
+
+/// One of the tables of components (layers, groups, hatch patterns, linetypes, block
+/// definitions) into the model.
+fn component_table(chunk: &mut crate::archive::Chunk<'_>, model: &mut Model) -> Result<()> {
+    match chunk.tcode {
+        tcode::LAYER_TABLE => records(&mut chunk.body, tcode::LAYER_RECORD, |body| {
+            if let Some(layer) = layer(body)? {
+                model.layers.push(layer);
+            }
+            Ok(())
+        })?,
+        tcode::GROUP_TABLE => records(&mut chunk.body, tcode::GROUP_RECORD, |body| {
+            if let Some(group) = group(body)? {
+                model.groups.push(group);
+            }
+            Ok(())
+        })?,
+        tcode::HATCHPATTERN_TABLE => {
+            records(&mut chunk.body, tcode::HATCHPATTERN_RECORD, |body| {
+                if let Some(pattern) = hatch_pattern(body)? {
+                    model.hatch_patterns.push(pattern);
+                }
+                Ok(())
+            })?;
+        }
+        tcode::LINETYPE_TABLE => {
+            records(&mut chunk.body, tcode::LINETYPE_RECORD, |body| {
+                if let Some(linetype) = linetype(body)? {
+                    model.linetypes.push(linetype);
+                }
+                Ok(())
+            })?;
+        }
+        tcode::INSTANCE_DEFINITION_TABLE => {
+            records(&mut chunk.body, tcode::INSTANCE_DEFINITION_RECORD, |body| {
+                if let Some(block) = block(body)? {
+                    model.blocks.push(block);
+                }
+                Ok(())
+            })?;
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+/// The annotation style table into the model; a Rhino 5 style's font by its index in
+/// `v5_fonts`, and its index kept in `v5_styles` for the annotation naming it.
+fn dim_styles_in(
+    body: &mut Reader<'_>,
+    model: &mut Model,
+    v5_fonts: &[(i32, String)],
+    v5_styles: &mut Vec<(i32, Uuid)>,
+) -> Result<()> {
+    records(body, tcode::DIMSTYLE_RECORD, |body| {
+        match dim_style(body)? {
+            Some((mut style, Some((index, font)))) => {
+                style.font = v5_fonts
+                    .iter()
+                    .find(|(i, _)| *i == font)
+                    .map(|(_, name)| name.clone());
+                v5_styles.push((index, style.id));
+                model.dim_styles.push(style);
+            }
+            Some((style, None)) => model.dim_styles.push(style),
+            None => {}
+        }
+        Ok(())
+    })
+}
+
+/// The object table into the model: a damaged object is skipped, not the file; Rhino 5's
+/// annotation names its style by index in `v5_styles`.
+fn objects_in(body: &mut Reader<'_>, model: &mut Model, v5_styles: &[(i32, Uuid)]) -> Result<()> {
+    let mut objects = Vec::new();
+    let mut skipped = Vec::new();
+    records(body, tcode::OBJECT_RECORD, |body| {
+        match object(body) {
+            Ok(Ok(found)) => objects.push(found),
+            Ok(Err(kind)) => skipped.push(kind),
+            // A damaged object is skipped, not the file.
+            Err(e) => skipped.push(format!("damaged object: {e}")),
+        }
+        Ok(())
+    })?;
+    model.objects = objects;
+    if model.version < 60 {
+        for object in &mut model.objects {
+            name_v5_style(&mut object.geometry, v5_styles);
+        }
+    }
+    for kind in skipped {
+        model.skip(&kind);
+    }
+    Ok(())
 }
 
 /// Each record of a table, by `what`, up to the table's end.
