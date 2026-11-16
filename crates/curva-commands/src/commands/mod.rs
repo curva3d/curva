@@ -21,7 +21,7 @@ use analyze::{
     distance, draft_analysis, evaluate_pt, intersect, length, plan, radius, section, show_edges,
     silhouette, volume_centroid, what, zebra,
 };
-use annotate::{dimension, dot, hatch, hatch_patterns, leader, radial, styles, text};
+use annotate::{dimension, dot, hatch, hatch_base, hatch_patterns, leader, radial, styles, text};
 use curva_kernel::{KernelError, Point};
 use curves::{
     arc, blend_crv, chamfer, circle, close_crv, conic, curve, curve_boolean, divide, ellipse,
@@ -119,7 +119,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 269] = [
+pub static COMMANDS: [CommandDef; 270] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -534,6 +534,13 @@ pub static COMMANDS: [CommandDef; 269] = [
     listed!("Dot", [], true, true, dot::Dot),
     listed!("Hatch", [], true, true, hatch::Hatch),
     listed!(
+        "SetHatchBasePoint",
+        [],
+        true,
+        true,
+        hatch_base::SetHatchBasePoint
+    ),
+    listed!(
         "HatchPatterns",
         [],
         false,
@@ -916,12 +923,13 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 77] = [
+    const NOTHING_TO_PREVIEW: [&str; 78] = [
         "Make2D",
         "Print",
         "ExportPDF",
         "Hatch",
         "HatchPatterns",
+        "SetHatchBasePoint",
         "SetCurrentAnnotationStyle",
         "Dot",
         "DupAnnotationStyle",
