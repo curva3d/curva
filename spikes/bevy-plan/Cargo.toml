@@ -1,0 +1,24 @@
+# Spike for #235: can Bevy draw a plan page as accurately as the print? The same page as the
+# Vello spike (#185). Not part of Curva's workspace or build; not merged.
+[package]
+name = "bevy-plan-spike"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+curva-kernel = { path = "../../crates/curva-kernel" }
+curva-document = { path = "../../crates/curva-document" }
+curva-pdf = { path = "../../crates/curva-pdf" }
+curva-viewport = { path = "../../crates/curva-viewport" }
+bevy = { version = "=0.20.1", default-features = false, features = ["std", "multi_threaded", "async_executor", "bevy_asset", "bevy_window", "bevy_render", "bevy_core_pipeline", "bevy_pbr", "bevy_light", "bevy_camera", "bevy_mesh", "tonemapping_luts", "ktx2", "zstd_rust"] }
+lyon_tessellation = "1.0"
+hayro = "0.9"
+pollster = "0.4"
+png = "0.18"
+wgpu = "30"
+
+[profile.release]
+debug = false
