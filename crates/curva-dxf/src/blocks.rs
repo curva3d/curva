@@ -68,12 +68,23 @@ pub(crate) fn insert_out(instance: &Instance, name: &str) -> Option<Insert> {
 /// The placement an INSERT puts its block at.
 pub(crate) fn placement_in(insert: &Insert) -> Placement {
     let normal = unit(p3(&insert.normal)).unwrap_or([0.0, 0.0, 1.0]);
+    placement(
+        normal,
+        insert.rotation,
+        [insert.x_scale(), insert.y_scale(), insert.z_scale()],
+        from_object(p3(&insert.insert_point), normal),
+    )
+}
+
+/// A block placed at `at` (in world coordinates) on the plane of `normal`, turned by `rotation`
+/// from that plane's AutoCAD X axis and scaled along its axes.
+pub(crate) fn placement(normal: P, rotation: f64, scale: P, at: P) -> Placement {
+    let normal = unit(normal).unwrap_or([0.0, 0.0, 1.0]);
     let (ox, oy) = object_axes(normal);
-    let (s, c) = insert.rotation.sin_cos();
+    let (s, c) = rotation.sin_cos();
     let along: P = std::array::from_fn(|i| ox[i] * c + oy[i] * s);
     let up = cross(normal, along);
-    let (sx, sy, sz) = (insert.x_scale(), insert.y_scale(), insert.z_scale());
-    let at = from_object(p3(&insert.insert_point), normal);
+    let [sx, sy, sz] = scale;
     [
         [along[0] * sx, along[1] * sx, along[2] * sx, 0.0],
         [up[0] * sy, up[1] * sy, up[2] * sy, 0.0],

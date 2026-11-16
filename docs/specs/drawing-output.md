@@ -114,7 +114,8 @@ What does not yet, as of 15 November 2026, to close before 0.4.3:
 - Ellipses go out as ELLIPSE entities and come back exact, whole or in part; Rhino's own DXF writes
   them as rational splines, which Curva also reads as exact ellipses.
 - MLEADERs come in as leaders: each leader line to its landing, the note (formatting dropped) with
-  the first; block content and the MLEADER style are not read. Curva writes leaders as LEADER
+  the first; a block as content comes in as an instance of it where the MLEADER puts it. The
+  MLEADER style is not read. Curva writes leaders as LEADER
   and MTEXT, which Rhino reads (Rhino 8 skips MLEADERs).
 - Ordinate dimensions cross both ways on the world's plane; AutoCAD draws its own jog, so the kinks
   are not carried (Curva draws them at their default).
