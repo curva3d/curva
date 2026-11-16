@@ -199,7 +199,7 @@ mod tests {
     }
 
     #[test]
-    fn a_line_is_not_an_arc_and_is_asked_again() {
+    fn a_line_is_not_an_arc_and_the_dimension_previews() {
         let mut doc = Document::default();
         doc.add(Curve::line([0.0, -5.0, 0.0], [0.0, -20.0, 0.0]).unwrap());
         arc(&mut doc, 10.0, 90.0);
@@ -211,7 +211,9 @@ mod tests {
                 .prompt()
                 .is_some_and(|p| p.contains("Select an arc"))
         );
+        assert_eq!(doc.state().objects.len(), 2, "a line is refused");
         processor.click(&mut doc, [0.0, 10.0, 0.0]);
+        assert!(processor.preview(&doc, Some([12.0, 12.0, 0.0]), "").len() > 32);
         processor.click(&mut doc, [11.0, 11.0, 0.0]);
         assert_eq!(doc.state().objects.len(), 3);
     }
