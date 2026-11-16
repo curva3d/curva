@@ -22,19 +22,24 @@ pub(crate) struct SectionFills {
     combined: Vec<(usize, Planes, Faces)>,
 }
 
-/// The faces filling where `cuts` cut the model's closed solids, each in its plane's colour.
+/// The faces filling where `cuts` cut the model's closed solids, each in the colour of the
+/// solid's section style: its own, else its layer's, else the plane's (spec `layouts.md` §3).
+/// A style with no fill leaves the cut open.
 fn fills_for(state: &State, cuts: &[PlaneCut]) -> Vec<curva_viewport::MeshVertex> {
     let mut out = Vec::new();
     for cut in cuts {
-        let SectionFill::Solid(colour) = cut.section else {
-            continue;
-        };
         for object in state
             .objects
             .iter()
             .filter(|o| o.space.is_none() && !o.hidden)
         {
             let Some(body) = object.shape.body().filter(|b| b.is_solid()) else {
+                continue;
+            };
+            let fill = state
+                .section_style(object.id, cut.frame)
+                .map_or(cut.section, |style| style.fill);
+            let SectionFill::Solid(colour) = fill else {
                 continue;
             };
             let Ok(curves) = body.section(cut.origin, cut.keep) else {
@@ -144,5 +149,92 @@ impl Curva {
         }
         combined.push((key, planes.clone(), Arc::clone(&all)));
         (planes, all)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fills_for;
+    use curva_document::Document;
+    use curva_document::clipping::{ClipView, ClippingPlane, SectionFill};
+    use curva_document::section::SectionStyle;
+    use curva_kernel::{Body, Curve};
+
+    const PLANE: [f32; 3] = [0.1, 0.2, 0.3];
+
+    /// A 10-unit cube cut level through its middle by a plane filling in `PLANE`; the cube.
+    fn cut_cube(doc: &mut Document) -> u64 {
+        let cube = doc.add_body(Body::cuboid([0.0; 3], [10.0, 10.0, 10.0]).unwrap());
+        let frame = doc.add(
+            Curve::polyline(
+                vec![
+                    [-5.0, -5.0, 5.0],
+                    [15.0, -5.0, 5.0],
+                    [15.0, 15.0, 5.0],
+                    [-5.0, 15.0, 5.0],
+                ],
+                true,
+            )
+            .unwrap(),
+        );
+        doc.add_clipping_plane(ClippingPlane {
+            frame,
+            flipped: false,
+            views: vec![ClipView::Viewport(0)],
+            section: SectionFill::Solid(PLANE),
+            hatch: None,
+        });
+        cube
+    }
+
+    /// The colours the fills are drawn in.
+    fn colours(doc: &Document) -> Vec<[f32; 3]> {
+        let cuts = doc.planes_cutting(ClipView::Viewport(0));
+        let mut found: Vec<[f32; 3]> = Vec::new();
+        for vertex in fills_for(doc.state(), &cuts) {
+            if !found.contains(&vertex.colour) {
+                found.push(vertex.colour);
+            }
+        }
+        found
+    }
+
+    fn solid(colour: [f32; 3]) -> Option<SectionStyle> {
+        Some(SectionStyle {
+            fill: SectionFill::Solid(colour),
+            hatch: None,
+        })
+    }
+
+    #[test]
+    fn a_cut_takes_the_planes_colour_with_no_style_of_its_own() {
+        let mut doc = Document::default();
+        cut_cube(&mut doc);
+        assert_eq!(colours(&doc), vec![PLANE]);
+    }
+
+    #[test]
+    fn a_solids_own_style_and_then_its_layers_come_first() {
+        let mut doc = Document::default();
+        let cube = cut_cube(&mut doc);
+        let layer = doc.layer_of(cube).unwrap();
+        doc.set_layer_section_style(layer, solid([0.0, 1.0, 0.0]));
+        assert_eq!(colours(&doc), vec![[0.0, 1.0, 0.0]]);
+        doc.set_section_style(&[cube], solid([1.0, 0.0, 0.0]));
+        assert_eq!(colours(&doc), vec![[1.0, 0.0, 0.0]]);
+    }
+
+    #[test]
+    fn a_style_with_no_fill_leaves_the_cut_open() {
+        let mut doc = Document::default();
+        let cube = cut_cube(&mut doc);
+        doc.set_section_style(
+            &[cube],
+            Some(SectionStyle {
+                fill: SectionFill::None,
+                hatch: None,
+            }),
+        );
+        assert!(colours(&doc).is_empty());
     }
 }

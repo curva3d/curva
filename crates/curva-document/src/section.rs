@@ -2,8 +2,8 @@
 //! solid is filled. As in Rhino 8, the style comes from the object, else its layer, else the
 //! clipping plane that cuts it.
 
-use crate::Document;
 use crate::clipping::SectionFill;
+use crate::{Document, State};
 use serde::{Deserialize, Serialize};
 
 /// A hatch pattern drawn over a section's fill.
@@ -47,25 +47,34 @@ impl SectionStyle {
     }
 }
 
+impl State {
+    /// The section style an object's cut by the clipping plane `frame` takes, as
+    /// [`Document::section_style`] says.
+    #[must_use]
+    pub fn section_style(&self, object: u64, frame: u64) -> Option<SectionStyle> {
+        let object = self.objects.iter().find(|o| o.id == object)?;
+        if let Some(own) = &object.section {
+            return Some(own.clone());
+        }
+        let layer = self.layers.iter().find(|l| l.id == object.layer);
+        if let Some(style) = layer.and_then(|l| l.section.as_ref()) {
+            return Some(style.clone());
+        }
+        let plane = self.clipping_planes.iter().find(|c| c.frame == frame)?;
+        Some(SectionStyle {
+            fill: plane.section,
+            hatch: plane.hatch.clone(),
+        })
+    }
+}
+
 impl Document {
     /// The section style an object's cut by the clipping plane `frame` takes: the object's own,
     /// else its layer's, else the plane's. `None` when none of them has one, as for an object
     /// that is gone and a frame that is not a clipping plane.
     #[must_use]
     pub fn section_style(&self, object: u64, frame: u64) -> Option<SectionStyle> {
-        let object = self.state.objects.iter().find(|o| o.id == object)?;
-        if let Some(own) = &object.section {
-            return Some(own.clone());
-        }
-        let layer = self.state.layers.iter().find(|l| l.id == object.layer);
-        if let Some(style) = layer.and_then(|l| l.section.as_ref()) {
-            return Some(style.clone());
-        }
-        let plane = self.clipping_plane_of(frame)?;
-        Some(SectionStyle {
-            fill: plane.section,
-            hatch: plane.hatch.clone(),
-        })
+        self.state.section_style(object, frame)
     }
 
     /// Sets objects' own section style, or `None` to take their layer's again. For a clipping
