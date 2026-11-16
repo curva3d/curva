@@ -119,3 +119,22 @@ fn ellipses_rhino_wrote_as_splines_stay_exact_ellipses() {
     assert!(near(length(part.minor), 1.5));
     assert!(near(part.sweep, 2.0), "{part:?}");
 }
+
+#[test]
+fn a_layer_rhino_hid_in_a_detail_stays_hidden_there_only() {
+    // Rhino 8's DXF of `v8_detail_layers.3dm`: a layout whose detail hides the Furniture layer,
+    // which stays on everywhere else. Rhino writes it as the viewport's frozen layer.
+    let doc = open("rhino8_detail_layers.dxf");
+    let state = doc.state();
+    let name = |id: &u64| state.layer(*id).map(|l| l.name.clone()).unwrap();
+    let hidden: Vec<Vec<String>> = doc
+        .layouts()
+        .iter()
+        .flat_map(|l| l.details.iter())
+        .map(|d| d.hidden_layers.iter().map(name).collect())
+        .filter(|names: &Vec<String>| !names.is_empty())
+        .collect();
+    assert_eq!(hidden, [["Furniture"]]);
+    let furniture = state.layers.iter().find(|l| l.name == "Furniture").unwrap();
+    assert!(furniture.visible, "on everywhere else");
+}

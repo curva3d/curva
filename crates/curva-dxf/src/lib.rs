@@ -402,6 +402,8 @@ impl Writer<'_> {
         let name = dxf_layer_name(self.doc, id);
         if self.cad.layers.get(&name).is_none() {
             let mut entry = Layer::new(name.clone());
+            // A handle now, so a viewport can name it among its frozen layers.
+            entry.handle = self.cad.allocate_handle();
             if let Some(held) = self.doc.state().layer(id) {
                 let [r, g, b] = held.colour.map(byte);
                 entry.color = Color::Rgb { r, g, b };
@@ -632,6 +634,13 @@ pub fn export(
                             layouts::viewport_out(detail, low, high, model_mm, next_viewport);
                         next_viewport += 1;
                         viewport.common.layer = writer.layer(object.layer);
+                        // The layers hidden in this detail only, frozen in its viewport.
+                        for hidden in &detail.hidden_layers {
+                            let name = writer.layer(*hidden);
+                            if let Some(entry) = writer.cad.layers.get(&name) {
+                                viewport.freeze_layer(entry.handle);
+                            }
+                        }
                         (vec![EntityType::Viewport(Box::new(viewport))], "details")
                     } else {
                         writer.entities(&sheet)
@@ -1160,6 +1169,18 @@ pub fn import(cad: &CadDocument, doc: &mut Document) -> Report {
                     continue;
                 }
                 if let Some((frame, mut detail)) = layouts::viewport_in(viewport, model_mm) {
+                    // The layers frozen in this viewport only are hidden in the detail.
+                    for handle in &viewport.frozen_layers {
+                        let name = reader
+                            .cad
+                            .layers
+                            .iter()
+                            .find(|l| l.handle == *handle)
+                            .map(|l| l.name.clone());
+                        if let Some(name) = name {
+                            detail.hidden_layers.push(reader.layer(doc, &name));
+                        }
+                    }
                     detail.frame = doc.add_shape_on(shifted(Shape::Curve(frame)), Some(layer));
                     doc.add_detail(id, detail);
                     Report::count(&mut report.brought, "details");

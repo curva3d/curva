@@ -269,6 +269,7 @@ mod tests {
     fn layouts_go_out_with_their_viewports_and_come_back() {
         let mut doc = Document::default();
         doc.add(Curve::line([0.0; 3], [10_000.0, 0.0, 0.0]).unwrap());
+        let furniture = doc.layer_at_path("Furniture");
         let sheet = doc.add_layout_sized("Plan".to_owned(), [420.0, 297.0], PaperUnit::Millimetres);
         doc.set_space(Some(sheet));
         let frame = doc.add(
@@ -294,7 +295,7 @@ mod tests {
                 scale: Some(0.02),
                 display: "Wireframe".to_owned(),
                 locked: true,
-                hidden_layers: Vec::new(),
+                hidden_layers: vec![furniture],
             },
         );
         doc.set_space(None);
@@ -324,6 +325,16 @@ mod tests {
             );
             assert!((d.target[0] - 5000.0).abs() < 1e-9);
             assert!(d.locked);
+            let hidden: Vec<String> = d
+                .hidden_layers
+                .iter()
+                .filter_map(|id| back.state().layer(*id).map(|l| l.name.clone()))
+                .collect();
+            assert_eq!(
+                hidden,
+                ["Furniture"],
+                "{format:?}: hidden in the detail only"
+            );
             let state = back.state();
             let frame = state.objects.iter().find(|o| o.id == d.frame).unwrap();
             let (low, high) = frame.shape.bounds().unwrap();
