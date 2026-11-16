@@ -120,6 +120,9 @@ What does not yet, as of 15 November 2026, to close before 0.4.3:
   and MTEXT, which Rhino reads (Rhino 8 skips MLEADERs).
 - Ordinate dimensions cross both ways on the world's plane; AutoCAD draws its own jog, so the kinks
   are not carried (Curva draws them at their default).
+- AutoCAD's angles by three points come in as angle dimensions, as Rhino 8 reads them. A jogged
+  radius comes in as a plain radius dimension, without its jog (Rhino 8 skips it). Arc length
+  dimensions are left out: Curva has none yet.
 - Viewports: the layers hidden in a detail only cross as the viewport's frozen layers; plot settings
   are not carried. Rhino's own DXF writes a viewport's view height against AutoCAD's reference,
   so its details read at an inverted scale.
