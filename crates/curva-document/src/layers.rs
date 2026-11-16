@@ -1,6 +1,57 @@
 //! Layers: named groups of objects with a colour, shown or hidden and locked or not.
 
-use crate::{Document, Layer};
+#[allow(clippy::wildcard_imports)]
+use crate::*;
+use serde::{Deserialize, Serialize};
+
+/// A named group of objects.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Layer {
+    /// Identifies the layer.
+    pub id: u64,
+    /// Its name.
+    pub name: String,
+    /// The colour of its objects, red, green and blue from 0 to 1.
+    pub colour: [f32; 3],
+    /// Whether its objects are shown.
+    pub visible: bool,
+    /// Whether its objects can be selected.
+    pub locked: bool,
+    /// How thick its objects are drawn and printed, in millimetres; `None` is the default thin line.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub print_width: Option<f64>,
+    /// How its objects' lines are drawn.
+    #[serde(
+        default = "continuous",
+        skip_serializing_if = "Linetype::is_continuous"
+    )]
+    pub linetype: Linetype,
+    /// The layer it is a sublayer of; `None` for a top-level layer (spec `sublayers.md`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<u64>,
+    /// Whether its sublayers are folded away in the Layers panel.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub collapsed: bool,
+}
+
+/// The layer every model starts with.
+pub(crate) fn standard_layers() -> Vec<Layer> {
+    vec![Layer {
+        id: 0,
+        name: "Default".to_owned(),
+        colour: STANDARD_COLOUR,
+        visible: true,
+        locked: false,
+        print_width: None,
+        linetype: Linetype::Continuous,
+        parent: None,
+        collapsed: false,
+    }]
+}
+
+pub(crate) fn first_new_layer() -> u64 {
+    1
+}
 
 impl Document {
     /// The layers, oldest first. There is always at least one.
