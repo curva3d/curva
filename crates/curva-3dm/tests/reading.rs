@@ -503,3 +503,31 @@ fn rhino_5_annotation_comes_in_as_rhino_reads_it() {
     assert!(!leader.landing);
     assert_eq!(leader.points.len(), 4);
 }
+
+#[test]
+fn ordinate_dimensions_rhino_wrote_come_in_where_rhino_draws_them() {
+    use curva_document::annotation::{Annotation, OrdinateAxis};
+    // Rhino 8: from base (10, 10), the point (40, 25) with its leader up to (45, 60) and kink
+    // offsets 2 and 3, measuring X; and with its leader left to (0, 20), direction left unset.
+    // Rhino gives X 30 with kinks at (40, 55) and (45, 58), and Y 15.
+    let (doc, report) = open("v8_ordinate.3dm");
+    assert!(report.skipped.is_empty(), "{}", report.summary());
+    let got: Vec<_> = doc
+        .state()
+        .objects
+        .iter()
+        .filter_map(|o| match &o.shape {
+            Shape::Annotation(Annotation::Ordinate(d)) => Some(d.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(got.len(), 2);
+    assert_eq!(got[0].axis, OrdinateAxis::X);
+    assert!((got[0].value() - 30.0).abs() < 1e-9);
+    assert_eq!(
+        got[0].kink_points(0.0),
+        [[40.0, 55.0, 0.0], [45.0, 58.0, 0.0]]
+    );
+    assert_eq!(got[1].axis, OrdinateAxis::Y);
+    assert!((got[1].value() - 15.0).abs() < 1e-9);
+}

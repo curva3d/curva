@@ -5,7 +5,8 @@ use crate::archive::{Uuid, Writer, tcode};
 use crate::model::{
     AngularDimension, Attributes, Block, Brep, ClippingPlane, Curve, Detail, DimStyle, Geometry,
     Group, HatchLine, HatchPattern, Layer, Leader, LinearDimension, Linetype, Model, NurbsCurve,
-    NurbsSurface, Object, P3, Plane, RadialDimension, Source, Surface, Text, View,
+    NurbsSurface, Object, OrdinateDimension, P3, Plane, RadialDimension, Source, Surface, Text,
+    View,
 };
 use crate::read::class;
 
@@ -371,6 +372,7 @@ fn object_type(g: &Geometry) -> i64 {
         | Geometry::Dimension(_)
         | Geometry::Radial(_)
         | Geometry::Angular(_)
+        | Geometry::Ordinate(_)
         | Geometry::Leader(_) => 0x200,
         Geometry::Detail(_) => 0x8000,
         Geometry::ClippingPlane(_) => 0x2000_0000,
@@ -399,6 +401,9 @@ fn write_object(w: &mut Writer, object: &Object) {
         }
         Geometry::Angular(d) => {
             class_object(w, class::DIM_ANGULAR, |w| write_angular_dimension(w, d));
+        }
+        Geometry::Ordinate(d) => {
+            class_object(w, class::DIM_ORDINATE, |w| write_ordinate_dimension(w, d));
         }
         Geometry::Leader(l) => class_object(w, class::LEADER, |w| write_leader(w, l)),
         Geometry::Detail(d) => class_object(w, class::DETAIL, |w| write_detail(w, d)),
@@ -1280,6 +1285,21 @@ fn write_angular_dimension(w: &mut Writer, d: &AngularDimension) {
     w.f64s(&d.sides[1]);
     w.f64s(&d.offsets);
     w.f64s(&d.arc_point);
+    w.end();
+}
+
+/// An ordinate dimension (`ON_DimOrdinate::Write`, content version 0; openNURBS' annotation
+/// type 6).
+fn write_ordinate_dimension(w: &mut Writer, d: &OrdinateDimension) {
+    w.begin_anonymous(0);
+    w.begin_anonymous(1);
+    write_annotation_core(w, "", 0.0, d.style, &d.plane, 6);
+    write_dimension_core(w, &d.text);
+    w.end();
+    w.u32(d.direction);
+    w.f64s(&d.point);
+    w.f64s(&d.leader);
+    w.f64s(&d.kinks);
     w.end();
 }
 

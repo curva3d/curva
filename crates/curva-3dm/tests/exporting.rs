@@ -1470,3 +1470,51 @@ fn clipping_planes_come_back_cutting_the_same_side_in_the_same_views() {
     wanted.sort_by_key(|v| format!("{v:?}"));
     assert_eq!(views, wanted);
 }
+
+#[test]
+fn ordinate_dimensions_come_back_measuring_the_same() {
+    use curva_document::annotation::{Annotation, OrdinateAxis, OrdinateDimension};
+    let mut state = State::default();
+    let ordinate = |leader, axis, kinks| OrdinateDimension {
+        base: [10.0, 10.0, 0.0],
+        point: [40.0, 25.0, 0.0],
+        leader,
+        axis,
+        kinks,
+        x: [1.0, 0.0, 0.0],
+        y: [0.0, 1.0, 0.0],
+        style: 0,
+        text: None,
+    };
+    let shapes = [
+        ordinate([45.0, 60.0, 0.0], OrdinateAxis::X, Some([2.0, 3.0])),
+        ordinate([0.0, 20.0, 0.0], OrdinateAxis::Y, None),
+    ];
+    for (i, d) in shapes.iter().enumerate() {
+        state.objects.push(
+            object(
+                i as u64,
+                Shape::Annotation(Annotation::Ordinate(d.clone())),
+                0,
+            )
+            .into(),
+        );
+    }
+    state.next_id = 2;
+    let back = round_trip(&state);
+    let got: Vec<OrdinateDimension> = back
+        .objects
+        .iter()
+        .filter_map(|o| match &o.shape {
+            Shape::Annotation(Annotation::Ordinate(d)) => Some(d.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(got.len(), 2);
+    for (a, w) in got.iter().zip(&shapes) {
+        assert_eq!(a.axis, w.axis);
+        assert_eq!(a.kinks, w.kinks, "unset kinks stay unset");
+        assert!((a.value() - w.value()).abs() < 1e-9);
+        assert_eq!(a.kink_points(1.0), w.kink_points(1.0));
+    }
+}

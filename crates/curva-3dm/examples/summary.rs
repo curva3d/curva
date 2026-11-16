@@ -40,6 +40,7 @@ fn main() {
                         curva_3dm::model::Geometry::Dimension(_) => "linear dimension".to_owned(),
                         curva_3dm::model::Geometry::Radial(_) => "radial dimension".to_owned(),
                         curva_3dm::model::Geometry::Angular(_) => "angle dimension".to_owned(),
+                        curva_3dm::model::Geometry::Ordinate(_) => "ordinate dimension".to_owned(),
                         curva_3dm::model::Geometry::Leader(_) => "leader".to_owned(),
                         curva_3dm::model::Geometry::Detail(d) => format!(
                             "detail ratio {} dir {:?} target {:?}",

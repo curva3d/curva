@@ -461,6 +461,8 @@ pub enum Geometry {
     Radial(RadialDimension),
     /// An angle dimension (`ON_DimAngular`).
     Angular(AngularDimension),
+    /// An ordinate dimension (`ON_DimOrdinate`).
+    Ordinate(OrdinateDimension),
     /// A leader (`ON_Leader`).
     Leader(Leader),
     /// A detail view on a layout (`ON_DetailView`).
@@ -663,6 +665,30 @@ pub struct AngularDimension {
     pub offsets: [f64; 2],
     /// A point its arc passes through, in the plane.
     pub arc_point: [f64; 2],
+}
+
+/// openNURBS' `ON_UNSET_VALUE`: a kink offset left at its default.
+pub const UNSET_VALUE: f64 = -1.234_321_012_343_21e308;
+
+/// An ordinate dimension (`ON_DimOrdinate`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct OrdinateDimension {
+    /// Its plane, at the base point the distance is measured from.
+    pub plane: Plane,
+    /// Its style, by id.
+    pub style: Uuid,
+    /// The style it sets for itself, if it has one.
+    pub own: Option<DimStyle>,
+    /// Its text, `<>` standing for the measured value.
+    pub text: String,
+    /// Which coordinate it gives: 0 implied by its leader, 1 X, 2 Y.
+    pub direction: u32,
+    /// The point measured, in the plane.
+    pub point: [f64; 2],
+    /// Where its leader ends, in the plane.
+    pub leader: [f64; 2],
+    /// Its two kink offsets; [`UNSET_VALUE`] for the default.
+    pub kinks: [f64; 2],
 }
 
 /// A leader (`ON_Leader`).

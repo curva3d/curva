@@ -563,6 +563,12 @@ fn shape_of(
             Shape::Annotation(curva_document::annotation::Annotation::Radial(radial_in(d))),
             "dimensions",
         ),
+        Geometry::Ordinate(d) => (
+            Shape::Annotation(curva_document::annotation::Annotation::Ordinate(
+                ordinate_in(d),
+            )),
+            "dimensions",
+        ),
         Geometry::Angular(d) => (
             Shape::Annotation(curva_document::annotation::Annotation::Angle(angular_in(d))),
             "dimensions",
@@ -1947,6 +1953,30 @@ fn radial_in(d: &model::RadialDimension) -> curva_document::annotation::RadialDi
     }
 }
 
+/// An ordinate dimension from a file: the coordinate it gives as Rhino implies it when the file
+/// leaves it unset, and kinks at the default when unset.
+fn ordinate_in(d: &model::OrdinateDimension) -> curva_document::annotation::OrdinateDimension {
+    use curva_document::annotation::OrdinateAxis;
+    let axis = match d.direction {
+        1 => OrdinateAxis::X,
+        2 => OrdinateAxis::Y,
+        _ => OrdinateAxis::implied(d.point, d.leader),
+    };
+    // openNURBS counts anything below its unset value's neighbourhood as unset.
+    let set = |k: f64| k.is_finite() && k > -1.0e300;
+    curva_document::annotation::OrdinateDimension {
+        base: d.plane.origin,
+        point: in_plane(&d.plane, d.point),
+        leader: in_plane(&d.plane, d.leader),
+        axis,
+        kinks: (set(d.kinks[0]) && set(d.kinks[1])).then_some(d.kinks),
+        x: d.plane.x,
+        y: d.plane.y,
+        style: 0,
+        text: typed(&d.text),
+    }
+}
+
 /// An angle dimension from a file: a point on each side where its extension line starts (or,
 /// with none, as far out as its arc).
 fn angular_in(d: &model::AngularDimension) -> curva_document::annotation::AngleDimension {
@@ -2167,6 +2197,7 @@ fn style_named(geometry: &Geometry) -> Option<crate::archive::Uuid> {
         Geometry::Dimension(d) => Some(d.style),
         Geometry::Radial(d) => Some(d.style),
         Geometry::Angular(d) => Some(d.style),
+        Geometry::Ordinate(d) => Some(d.style),
         Geometry::Leader(l) => Some(l.style),
         _ => None,
     }

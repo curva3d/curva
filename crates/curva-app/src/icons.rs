@@ -377,6 +377,18 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
             pen.line((3.0, 19.0), (15.0, 7.0));
             pen.path(&[(9.0, 19.0), (8.5, 16.5), (7.2, 14.8)], false);
         }
+        // A base corner, and two points with leaders jogging up to their values.
+        "dimordinate" => {
+            pen.line((3.0, 20.0), (20.0, 20.0));
+            pen.line((3.0, 20.0), (3.0, 3.0));
+            pen.dot(8.0, 16.0);
+            pen.path(&[(8.0, 14.0), (8.0, 9.0), (10.0, 7.0), (10.0, 3.0)], false);
+            pen.dot(16.0, 16.0);
+            pen.path(
+                &[(16.0, 14.0), (16.0, 9.0), (18.0, 7.0), (18.0, 3.0)],
+                false,
+            );
+        }
         // A circle with a leader from its centre out past the edge, ending in a landing.
         "dimradius" => {
             pen.ellipse((2.0, 6.0, 14.0, 14.0));

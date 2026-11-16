@@ -486,7 +486,10 @@ impl Writer<'_> {
                 "hatches",
             ),
             Shape::Annotation(
-                a @ (Annotation::Dimension(_) | Annotation::Radial(_) | Annotation::Angle(_)),
+                a @ (Annotation::Dimension(_)
+                | Annotation::Radial(_)
+                | Annotation::Angle(_)
+                | Annotation::Ordinate(_)),
             ) => {
                 let name = format!("*D{}", self.dimensions + 1);
                 let written = dims::dimension_out(a, state, object.space, &name)

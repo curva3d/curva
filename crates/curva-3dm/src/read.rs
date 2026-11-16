@@ -5,7 +5,8 @@ use crate::model::{
     AngularDimension, Attributes, Block, Brep, BrepEdge, BrepFace, BrepLoop, BrepTrim, BrepVertex,
     ClippingPlane, Curve, Detail, DimStyle, Extrusion, Geometry, Group, Hatch, HatchLine,
     HatchPattern, Layer, Leader, LinearDimension, Linetype, Model, NamedCPlane, NurbsCurve,
-    NurbsSurface, Object, P3, Page, Plane, RadialDimension, Source, Surface, Text, View,
+    NurbsSurface, Object, OrdinateDimension, P3, Page, Plane, RadialDimension, Source, Surface,
+    Text, View,
 };
 
 /// Class ids of the objects Curva reads and writes (openNURBS `ON_OBJECT_IMPLEMENT`).
@@ -41,6 +42,7 @@ pub mod class {
     pub const DIM_LINEAR: Uuid = Uuid::parse("E550882B-F44D-4154-A1EF-6E50CBBBF543");
     pub const DIM_RADIAL: Uuid = Uuid::parse("FC749C2F-4C00-41FD-9840-26D94F047AD3");
     pub const DIM_ANGULAR: Uuid = Uuid::parse("D417786B-F6CD-4F12-9E1F-063F414DBEB6");
+    pub const DIM_ORDINATE: Uuid = Uuid::parse("03124828-4C9B-4D28-9A82-664DDDE7A14F");
     pub const LEADER: Uuid = Uuid::parse("945BF594-6FF9-4F5C-BFC0-B3AF528F29D2");
     pub const DETAIL: Uuid = Uuid::parse("C8C66EFA-B3CB-4e00-9440-2AD66203379E");
     pub const CLIPPING_PLANE_SURFACE: Uuid = Uuid::parse("DBC5A584-CE3F-4170-98A8-497069CA5C36");
@@ -836,6 +838,7 @@ fn geometry_of(id: Uuid, r: &mut Reader<'_>) -> Result<std::result::Result<Geome
         class::DIM_LINEAR => Geometry::Dimension(linear_dimension(r)?),
         class::DIM_RADIAL => Geometry::Radial(radial_dimension(r)?),
         class::DIM_ANGULAR => Geometry::Angular(angular_dimension(r)?),
+        class::DIM_ORDINATE => Geometry::Ordinate(ordinate_dimension(r)?),
         class::LEADER => Geometry::Leader(leader(r)?),
         class::V5_TEXT
         | class::V5_DIM_LINEAR
@@ -1628,6 +1631,28 @@ fn angular_dimension(r: &mut Reader<'_>) -> Result<AngularDimension> {
         sides,
         offsets,
         arc_point,
+    })
+}
+
+/// An ordinate dimension (`ON_DimOrdinate::Read`): the dimension, which coordinate it gives, the
+/// point measured and the leader's end in its plane (at the base point), and its kink offsets.
+fn ordinate_dimension(r: &mut Reader<'_>) -> Result<OrdinateDimension> {
+    let (_, mut outer) = r.anonymous()?;
+    let (_, mut d) = outer.anonymous()?;
+    let (core, text) = dimension_core(&mut d)?;
+    let direction = outer.u32()?;
+    let point = outer.f64s::<2>()?;
+    let leader = outer.f64s::<2>()?;
+    let kinks = [outer.f64()?, outer.f64()?];
+    Ok(OrdinateDimension {
+        plane: core.plane,
+        style: core.style,
+        own: core.own,
+        text,
+        direction,
+        point,
+        leader,
+        kinks,
     })
 }
 
