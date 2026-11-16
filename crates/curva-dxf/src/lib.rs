@@ -17,6 +17,7 @@ use acadrust::entities::{
 };
 use acadrust::tables::{DimStyle, LineType, LineTypeElement, TextStyle};
 use acadrust::types::{Color, DxfVersion, LineWeight, Vector2, Vector3};
+use acadrust::xdata::XDataValue;
 use acadrust::{CadDocument, DwgReader, DwgWriter, DxfReader, DxfWriter, Layer};
 use curva_document::annotation::Annotation;
 use curva_document::fields::{FieldContext, resolve};
@@ -26,6 +27,36 @@ use std::collections::BTreeMap;
 use std::io::Cursor;
 
 pub(crate) type P = curva_kernel::Point;
+
+/// The application name Rhino keeps objects' user text under in DXF and DWG.
+const RHINO_APP: &str = "Rhino";
+
+/// User text from Rhino's XDATA: each key and value is a pair of strings in braces.
+fn user_text_in(values: &[XDataValue]) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let mut open: Option<Vec<String>> = None;
+    for value in values {
+        match value {
+            XDataValue::ControlString(c) if c == "{" => open = Some(Vec::new()),
+            XDataValue::ControlString(c) if c == "}" => {
+                if let Some(mut pair) = open.take().filter(|p| p.len() == 2) {
+                    let value = pair.pop().unwrap_or_default();
+                    let key = pair.pop().unwrap_or_default();
+                    if !key.trim().is_empty() {
+                        out.push((key, value));
+                    }
+                }
+            }
+            XDataValue::String(s) => {
+                if let Some(pair) = &mut open {
+                    pair.push(s.clone());
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
 
 /// Which of the two files.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -394,6 +425,27 @@ impl Writer<'_> {
         name
     }
 
+    /// An object's user text as Rhino's DXF writes it, registering Rhino's application name the
+    /// first time.
+    fn user_text_out(
+        &mut self,
+        user_text: &BTreeMap<String, String>,
+    ) -> acadrust::xdata::ExtendedDataRecord {
+        if self.cad.app_ids.get(RHINO_APP).is_none() {
+            let mut app = acadrust::tables::AppId::new(RHINO_APP);
+            acadrust::tables::TableEntry::set_handle(&mut app, self.cad.allocate_handle());
+            let _ = self.cad.app_ids.add(app);
+        }
+        let mut record = acadrust::xdata::ExtendedDataRecord::new(RHINO_APP);
+        for (key, value) in user_text {
+            record.add_value(XDataValue::ControlString("{".to_owned()));
+            record.add_value(XDataValue::String(key.clone()));
+            record.add_value(XDataValue::String(value.clone()));
+            record.add_value(XDataValue::ControlString("}".to_owned()));
+        }
+        record
+    }
+
     /// The DXF layer for a Curva layer, made the first time it is needed.
     fn layer(&mut self, id: u64) -> String {
         if let Some(name) = self.layers.get(&id) {
@@ -509,8 +561,14 @@ impl Writer<'_> {
         } else {
             Some(self.linetype(object.linetype))
         };
+        // User text as Rhino's DXF writes it: XDATA under "Rhino", each key and value in braces.
+        let user_text =
+            (!object.user_text.is_empty()).then(|| self.user_text_out(&object.user_text));
         for entity in &mut made {
             let common = entity.common_mut();
+            if let Some(record) = &user_text {
+                common.extended_data.upsert_record(record.clone());
+            }
             common.layer.clone_from(&layer);
             if let Some(name) = &linetype {
                 common.linetype.clone_from(name);
@@ -938,7 +996,40 @@ impl Reader<'_> {
 
     /// An object's own colour, linetype, line weight and annotation style, as its entity gives
     /// them.
+    /// A block instance's attributes as notes where they show, each on its own layer, as Rhino
+    /// brings them in beside the instance.
+    fn attribute_notes(&mut self, doc: &mut Document, entity: &EntityType) -> Vec<(Shape, u64)> {
+        let EntityType::Insert(insert) = entity else {
+            return Vec::new();
+        };
+        insert
+            .attributes
+            .iter()
+            .filter_map(|a| {
+                let note = annotation::attribute_text(a)?;
+                Some((
+                    Shape::Annotation(Annotation::Text(note)),
+                    self.layer(doc, &a.common.layer),
+                ))
+            })
+            .collect()
+    }
+
     fn properties(&mut self, doc: &mut Document, id: u64, entity: &EntityType) {
+        // User text: Rhino's, kept as XDATA; and a block instance's attributes, by tag, as Rhino
+        // reads them.
+        if let Some(record) = entity.common().extended_data.get_record(RHINO_APP) {
+            for (key, value) in user_text_in(&record.values) {
+                doc.set_user_text(&[id], &key, &value);
+            }
+        }
+        if let EntityType::Insert(insert) = entity {
+            for attribute in &insert.attributes {
+                if !attribute.tag.trim().is_empty() {
+                    doc.set_user_text(&[id], attribute.tag.trim(), &attribute.value);
+                }
+            }
+        }
         let style_name = match entity {
             EntityType::Text(t) => Some(t.style.as_str()),
             EntityType::MText(t) => Some(t.style.as_str()),
@@ -1131,6 +1222,10 @@ pub fn import(cad: &CadDocument, doc: &mut Document) -> Report {
             reader.properties(doc, id, entity);
             Report::count(&mut report.brought, kind);
         }
+        for (note, on) in reader.attribute_notes(doc, entity) {
+            doc.add_shape_on(note, Some(on));
+            Report::count(&mut report.brought, "texts");
+        }
     }
     // Layouts: each with its paper space's drawing on its sheet, and its viewports as details.
     let model_mm = doc.state().unit.millimetres();
@@ -1196,6 +1291,10 @@ pub fn import(cad: &CadDocument, doc: &mut Document) -> Report {
                 let id = doc.add_shape_on(shifted(shape), Some(layer));
                 reader.properties(doc, id, entity);
                 Report::count(&mut report.brought, kind);
+            }
+            for (note, on) in reader.attribute_notes(doc, entity) {
+                doc.add_shape_on(shifted(note), Some(on));
+                Report::count(&mut report.brought, "texts");
             }
         }
     }
@@ -1515,6 +1614,103 @@ mod tests {
                 "{format:?}: {:?}",
                 report.skipped
             );
+        }
+    }
+
+    #[test]
+    fn user_text_goes_out_as_rhinos_and_comes_back_as_dxf_and_dwg() {
+        let mut doc = Document::default();
+        let line = doc.add(Curve::line([0.0; 3], [10.0, 0.0, 0.0]).unwrap());
+        doc.set_user_text(&[line], "Room", "Kitchen");
+        doc.set_user_text(&[line], "Fire rating", "{60} min");
+        for format in [Format::Dxf, Format::Dwg] {
+            let (bytes, _) = export(&doc, None, format).unwrap();
+            let cad = read(&bytes, format).unwrap();
+            assert!(cad.app_ids.get(RHINO_APP).is_some(), "{format:?}");
+            let mut back = Document::default();
+            import(&cad, &mut back);
+            let state = back.state();
+            let text = &state.objects[0].user_text;
+            assert_eq!(
+                text.get("Room").map(String::as_str),
+                Some("Kitchen"),
+                "{format:?}"
+            );
+            assert_eq!(
+                text.get("Fire rating").map(String::as_str),
+                Some("{60} min"),
+                "{format:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn block_attributes_come_in_as_user_text_and_notes() {
+        use acadrust::entities::AttributeEntity;
+        let mut doc = Document::default();
+        let line = doc.add(Curve::line([0.0; 3], [10.0, 0.0, 0.0]).unwrap());
+        doc.define_block("Door".to_owned(), [0.0; 3], &[line]);
+        let (bytes, _) = export(&doc, None, Format::Dxf).unwrap();
+        let mut cad = read(&bytes, Format::Dxf).unwrap();
+        let mut tags = Layer::new("Tags");
+        tags.handle = cad.allocate_handle();
+        let _ = cad.layers.add(tags);
+        let handles: Vec<_> = cad
+            .entities()
+            .filter_map(|e| match e {
+                EntityType::Insert(i) => Some(i.common.handle),
+                _ => None,
+            })
+            .collect();
+        for h in handles {
+            if let Some(EntityType::Insert(i)) = cad.get_entity_mut(h) {
+                let mut width = AttributeEntity::new("WIDTH".to_owned(), "900".to_owned())
+                    .with_height(2.5)
+                    .with_position(Vector3::new(1.0, 2.0, 0.0));
+                width.common.layer = "Tags".to_owned();
+                let mut hidden = AttributeEntity::new("CODE".to_owned(), "D-01".to_owned());
+                hidden.flags.invisible = true;
+                i.attributes.push(width);
+                i.attributes.push(hidden);
+            }
+        }
+        for format in [Format::Dxf, Format::Dwg] {
+            let bytes = match format {
+                Format::Dxf => DxfWriter::new(&cad).write_to_vec(),
+                Format::Dwg => DwgWriter::write_to_vec(&cad),
+            }
+            .unwrap();
+            let mut back = Document::default();
+            let report = import(&read(&bytes, format).unwrap(), &mut back);
+            assert!(
+                report.brought.contains(&("texts".to_owned(), 1)),
+                "{format:?}: {report:?}"
+            );
+            let state = back.state();
+            let instance = state
+                .objects
+                .iter()
+                .find(|o| matches!(o.shape, Shape::Instance(_)))
+                .unwrap();
+            assert_eq!(
+                instance.user_text.get("WIDTH").map(String::as_str),
+                Some("900")
+            );
+            assert_eq!(
+                instance.user_text.get("CODE").map(String::as_str),
+                Some("D-01")
+            );
+            let note = state
+                .objects
+                .iter()
+                .find_map(|o| match &o.shape {
+                    Shape::Annotation(Annotation::Text(t)) => Some((t.clone(), o.layer)),
+                    _ => None,
+                })
+                .expect("the shown attribute as a note");
+            assert_eq!(note.0.content, "900");
+            assert!((note.0.origin[0] - 1.0).abs() < 1e-9 && (note.0.height - 2.5).abs() < 1e-9);
+            assert_eq!(state.layer(note.1).unwrap().name, "Tags", "{format:?}");
         }
     }
 

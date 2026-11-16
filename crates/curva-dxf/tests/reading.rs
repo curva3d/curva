@@ -138,3 +138,20 @@ fn a_layer_rhino_hid_in_a_detail_stays_hidden_there_only() {
     let furniture = state.layers.iter().find(|l| l.name == "Furniture").unwrap();
     assert!(furniture.visible, "on everywhere else");
 }
+
+#[test]
+fn user_text_rhino_wrote_comes_in_on_its_object() {
+    // Rhino 8's DXF of a block instance with the user text WIDTH = 900, which Rhino keeps as
+    // XDATA under its own name.
+    let doc = open("rhino8_block_user_text.dxf");
+    let state = doc.state();
+    let instance = state
+        .objects
+        .iter()
+        .find(|o| matches!(o.shape, curva_document::Shape::Instance(_)))
+        .expect("the instance");
+    assert_eq!(
+        instance.user_text.get("WIDTH").map(String::as_str),
+        Some("900")
+    );
+}

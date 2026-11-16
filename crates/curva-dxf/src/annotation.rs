@@ -14,7 +14,7 @@ use acadrust::entities::hatch::{
     BoundaryEdge, BoundaryPath, Hatch as CadHatch, HatchPattern, HatchPatternLine, PolylineEdge,
 };
 use acadrust::entities::text::{TextHorizontalAlignment, TextVerticalAlignment};
-use acadrust::entities::{EntityType, MText, Text as CadText};
+use acadrust::entities::{AttributeEntity, EntityType, MText, Text as CadText};
 use acadrust::types::Vector2;
 use curva_document::annotation::{Hatch, LINE_SPACING, Text, TextAlign};
 use curva_document::hatch::{Pattern, PatternLine};
@@ -86,6 +86,35 @@ pub(crate) fn text_in(entity: &CadText) -> Option<Text> {
         align,
         style: 0,
     })
+}
+
+/// A block attribute's words as a note where it shows them, as Rhino brings them in; hidden
+/// attributes show nothing.
+pub(crate) fn attribute_text(a: &AttributeEntity) -> Option<Text> {
+    use acadrust::entities::attribute_definition::{HorizontalAlignment, VerticalAlignment};
+    if a.flags.invisible {
+        return None;
+    }
+    let mut text = CadText::new();
+    text.value.clone_from(&a.value);
+    text.insertion_point = a.insertion_point;
+    text.alignment_point = Some(a.alignment_point);
+    text.height = a.height;
+    text.rotation = a.rotation;
+    text.normal = a.normal;
+    text.horizontal_alignment = match a.horizontal_alignment {
+        HorizontalAlignment::Center => TextHorizontalAlignment::Center,
+        HorizontalAlignment::Right => TextHorizontalAlignment::Right,
+        HorizontalAlignment::Middle => TextHorizontalAlignment::Middle,
+        _ => TextHorizontalAlignment::Left,
+    };
+    text.vertical_alignment = match a.vertical_alignment {
+        VerticalAlignment::Middle => TextVerticalAlignment::Middle,
+        VerticalAlignment::Top => TextVerticalAlignment::Top,
+        VerticalAlignment::Bottom => TextVerticalAlignment::Bottom,
+        VerticalAlignment::Baseline => TextVerticalAlignment::Baseline,
+    };
+    text_in(&text)
 }
 
 /// MTEXT's words without its formatting: `\P` is a new line, `\~` a space, `\\` a backslash, and
