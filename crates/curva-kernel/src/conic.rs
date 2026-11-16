@@ -48,6 +48,68 @@ impl Curve {
         conic(centre, a, b, TAU)
     }
 
+    /// An exact part of an ellipse from its centre and two axis vectors at a right angle, starting
+    /// at parameter `start` (the angle in the ellipse's own frame, as DXF counts it) and turning
+    /// `sweep` from `major` towards `minor`.
+    pub fn elliptical_arc(
+        centre: Point,
+        major: Point,
+        minor: Point,
+        start: f64,
+        sweep: f64,
+    ) -> Result<Self, KernelError> {
+        if !(sweep > 1e-12 && sweep <= TAU + 1e-12) {
+            return Err(KernelError(
+                "an elliptical arc needs a turn of more than nothing and at most a whole turn"
+                    .to_owned(),
+            ));
+        }
+        Self::ellipse(centre, major, minor)?;
+        let (s, c) = start.sin_cos();
+        let a: Point = std::array::from_fn(|i| major[i] * c + minor[i] * s);
+        let b: Point = std::array::from_fn(|i| minor[i] * c - major[i] * s);
+        conic(centre, a, b, sweep.min(TAU))
+    }
+
+    /// The ellipse or elliptical arc this curve exactly is, if it is one: a circle, an arc, or a
+    /// rational quadratic NURBS curve made of conic pieces (as Curva and Rhino write ellipses).
+    pub fn as_ellipse(&self) -> Option<Elliptical> {
+        match self {
+            Self::Circle {
+                centre,
+                radius,
+                x,
+                y,
+            } => Some(Elliptical {
+                centre: *centre,
+                major: scaled_by(*x, *radius),
+                minor: scaled_by(*y, *radius),
+                start: 0.0,
+                sweep: TAU,
+            }),
+            Self::Arc {
+                centre,
+                radius,
+                x,
+                y,
+                sweep,
+            } => Some(Elliptical {
+                centre: *centre,
+                major: scaled_by(*x, *radius),
+                minor: scaled_by(*y, *radius),
+                start: 0.0,
+                sweep: *sweep,
+            }),
+            Self::Nurbs {
+                degree,
+                knots,
+                points,
+                weights,
+            } => conic_parts(*degree, knots, points, weights),
+            _ => None,
+        }
+    }
+
     /// The same curve stretched by `factor` along the unit vector `axis`, about `origin`.
     pub fn stretched(&self, origin: Point, axis: Point, factor: f64) -> Result<Self, KernelError> {
         let map = |p: Point| {
@@ -96,6 +158,125 @@ impl Curve {
             ),
         }
     }
+}
+
+/// An ellipse or elliptical arc by its axes, the way DXF describes one.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Elliptical {
+    /// The centre.
+    pub centre: Point,
+    /// The major axis, from the centre to the curve: never shorter than `minor` for a curve
+    /// that was recognised (a circle or arc gives its own axes).
+    pub major: Point,
+    /// The minor axis, at a right angle to `major`.
+    pub minor: Point,
+    /// Where the curve starts, as an angle in the ellipse's own frame from `major` towards
+    /// `minor`.
+    pub start: f64,
+    /// How far it turns from `start`, a whole turn for a closed ellipse.
+    pub sweep: f64,
+}
+
+/// The ellipse a rational quadratic curve of conic pieces lies on, worked out from its first piece
+/// and checked against the whole curve.
+fn conic_parts(
+    degree: usize,
+    knots: &[f64],
+    points: &[Point],
+    weights: &[f64],
+) -> Option<Elliptical> {
+    let count = points.len();
+    if degree != 2 || weights.len() != count || count < 3 || count.is_multiple_of(2) {
+        return None;
+    }
+    // Each piece is a rational quadratic Bézier: end knots three times, inner ones twice.
+    let pieces = (count - 1) / 2;
+    let same = |a: f64, b: f64| (a - b).abs() <= 1e-12 * (1.0 + a.abs().max(b.abs()));
+    let mut expected = Vec::with_capacity(count + 3);
+    for piece in 0..=pieces {
+        let copies = if piece == 0 || piece == pieces { 3 } else { 2 };
+        let knot = knots.get(expected.len()).copied()?;
+        for _ in 0..copies {
+            expected.push(knot);
+        }
+    }
+    if expected.len() != knots.len() || !expected.iter().zip(knots).all(|(a, b)| same(*a, *b)) {
+        return None;
+    }
+    // A conic piece's shoulder weight, with its ends' weights brought to one, is the cosine of
+    // half the angle it turns.
+    let mut sweep = 0.0;
+    for piece in 0..pieces {
+        let (w0, w1, w2) = (
+            weights[2 * piece],
+            weights[2 * piece + 1],
+            weights[2 * piece + 2],
+        );
+        if !(w0 > 0.0 && w2 > 0.0) {
+            return None;
+        }
+        let shoulder = w1 / (w0 * w2).sqrt();
+        if !(shoulder > 1e-9 && shoulder < 1.0 - 1e-12) {
+            return None;
+        }
+        sweep += 2.0 * shoulder.acos();
+    }
+    if sweep > TAU + 1e-6 {
+        return None;
+    }
+    // From the first piece: its ends E0, E1 and shoulder Q with weight w give the centre
+    // c = ((E0 + E1) / 2 - w² Q) / (1 - w²), then conjugate axes along E0 and the way it turns.
+    let (e0, q, e1) = (points[0], points[1], points[2]);
+    let w = weights[1] / (weights[0] * weights[2]).sqrt();
+    let step = 2.0 * w.acos();
+    let w2 = w * w;
+    let centre: Point = std::array::from_fn(|i| ((e0[i] + e1[i]) / 2.0 - w2 * q[i]) / (1.0 - w2));
+    let a = sub(e0, centre);
+    let to_end = sub(e1, centre);
+    let b: Point = std::array::from_fn(|i| (to_end[i] - a[i] * step.cos()) / step.sin());
+    // The principal axes of the conjugate pair: the curve c + a cos t + b sin t is longest
+    // across at t0 with tan 2t0 = 2 a·b / (a·a − b·b).
+    let t0 = 0.5 * (2.0 * dot(a, b)).atan2(dot(a, a) - dot(b, b));
+    let along = |t: f64| -> Point { std::array::from_fn(|i| a[i] * t.cos() + b[i] * t.sin()) };
+    let (mut major, mut minor, mut start) = (along(t0), along(t0 + QUARTER), -t0);
+    if dot(minor, minor) > dot(major, major) {
+        (major, minor) = (minor, scaled_by(major, -1.0));
+        start -= QUARTER;
+    }
+    let size = gap(major, [0.0; 3]);
+    let across = gap(minor, [0.0; 3]);
+    if across.is_nan() || across <= 1e-9 * size.max(1.0) {
+        return None;
+    }
+    // Every point of the curve must lie on that ellipse, in its plane.
+    let normal = unit(cross(major, minor))?;
+    let (mu, nu) = (unit(major)?, unit(minor)?);
+    let curve = Curve::nurbs(2, knots.to_vec(), points.to_vec(), weights.to_vec()).ok()?;
+    let tolerance = 1e-7 * size.max(1.0);
+    for point in curve.sample().ok()? {
+        let d = sub(point, centre);
+        let (x, y) = (dot(d, mu) / size, dot(d, nu) / across);
+        let off = ((x * x + y * y).sqrt() - 1.0).abs() * size;
+        if dot(d, normal).abs() > tolerance || off > tolerance {
+            return None;
+        }
+    }
+    let sweep = if gap(points[0], points[count - 1]) <= tolerance {
+        TAU
+    } else {
+        sweep
+    };
+    Some(Elliptical {
+        centre,
+        major,
+        minor,
+        start: start.rem_euclid(TAU),
+        sweep,
+    })
+}
+
+fn scaled_by(v: Point, factor: f64) -> Point {
+    [v[0] * factor, v[1] * factor, v[2] * factor]
 }
 
 /// Two lines with the corner between them cut off by a straight line.
@@ -188,6 +369,58 @@ mod tests {
     fn an_ellipse_with_equal_axes_has_the_length_of_a_circle() {
         let curve = Curve::ellipse([0.0; 3], [4.0, 0.0, 0.0], [0.0, 4.0, 0.0]).unwrap();
         assert!((curve.length().unwrap() - TAU * 4.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn an_ellipse_is_recognised_by_its_axes() {
+        let curve = Curve::ellipse([1.0, 2.0, 3.0], [0.0, 3.0, 0.0], [-5.0, 0.0, 0.0]).unwrap();
+        let found = curve.as_ellipse().unwrap();
+        assert!(close(found.centre, [1.0, 2.0, 3.0]), "{found:?}");
+        assert!(near(gap(found.major, [0.0; 3]), 5.0), "{found:?}");
+        assert!(near(gap(found.minor, [0.0; 3]), 3.0), "{found:?}");
+        assert!(near(found.sweep, TAU));
+        assert!(near(dot(found.major, found.minor), 0.0));
+    }
+
+    #[test]
+    fn an_elliptical_arc_comes_back_with_its_start_and_turn() {
+        let (major, minor) = ([4.0, 0.0, 0.0], [0.0, 0.0, 2.0]);
+        let arc = Curve::elliptical_arc([0.0; 3], major, minor, 0.5, 2.5).unwrap();
+        let path = arc.sample().unwrap();
+        let at =
+            |t: f64| -> Point { std::array::from_fn(|i| major[i] * t.cos() + minor[i] * t.sin()) };
+        assert!(close(path[0], at(0.5)));
+        assert!(close(path[path.len() - 1], at(3.0)));
+        let found = arc.as_ellipse().unwrap();
+        let again = Curve::elliptical_arc(
+            found.centre,
+            found.major,
+            found.minor,
+            found.start,
+            found.sweep,
+        )
+        .unwrap()
+        .sample()
+        .unwrap();
+        assert!(close(again[0], path[0]), "{found:?}");
+        assert!(
+            close(again[again.len() - 1], path[path.len() - 1]),
+            "{found:?}"
+        );
+    }
+
+    #[test]
+    fn a_curve_that_is_not_an_ellipse_is_not_recognised() {
+        let wavy = Curve::nurbs(
+            2,
+            vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+            vec![[0.0; 3], [1.0, 2.0, 0.0], [3.0, 0.0, 0.0]],
+            vec![],
+        )
+        .unwrap();
+        assert!(wavy.as_ellipse().is_none());
+        let line = Curve::line([0.0; 3], X).unwrap();
+        assert!(line.as_ellipse().is_none());
     }
 
     #[test]

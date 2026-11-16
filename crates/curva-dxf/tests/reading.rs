@@ -97,3 +97,25 @@ fn rhinos_linetypes_come_in_on_layers_and_lines() {
         report.skipped
     );
 }
+
+#[test]
+fn ellipses_rhino_wrote_as_splines_stay_exact_ellipses() {
+    // Rhino 8 writes its ellipses as rational splines: a whole one centred at (1, 2, 0) with radii
+    // 6 along Y and 2, and part of one on the XZ plane with radii 4 and 1.5 from 0.7 to 2.7.
+    let doc = open("rhino8_ellipses.dxf");
+    let state = doc.state();
+    let found: Vec<_> = state
+        .objects
+        .iter()
+        .filter_map(|o| o.curve()?.as_ellipse())
+        .collect();
+    assert_eq!(found.len(), 2, "both read as ellipses");
+    let length = |v: [f64; 3]| (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+    let near = |a: f64, b: f64| (a - b).abs() < 1e-6;
+    let whole = found.iter().find(|e| near(length(e.major), 6.0)).unwrap();
+    assert!(near(length(whole.minor), 2.0) && near(whole.sweep, std::f64::consts::TAU));
+    assert!(near(whole.centre[0], 1.0) && near(whole.centre[1], 2.0));
+    let part = found.iter().find(|e| near(length(e.major), 4.0)).unwrap();
+    assert!(near(length(part.minor), 1.5));
+    assert!(near(part.sweep, 2.0), "{part:?}");
+}

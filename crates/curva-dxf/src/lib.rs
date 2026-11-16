@@ -12,7 +12,9 @@ mod blocks;
 mod dims;
 mod layouts;
 
-use acadrust::entities::{Arc, Circle, EntityType, Line, LwPolyline, Point, Polyline3D, Spline};
+use acadrust::entities::{
+    Arc, Circle, Ellipse, EntityType, Line, LwPolyline, Point, Polyline3D, Spline,
+};
 use acadrust::tables::{DimStyle, LineType, LineTypeElement, TextStyle};
 use acadrust::types::{Color, DxfVersion, LineWeight, Vector2, Vector3};
 use acadrust::{CadDocument, DwgReader, DwgWriter, DxfReader, DxfWriter, Layer};
@@ -264,6 +266,20 @@ fn entities_for(curve: &Curve) -> Vec<EntityType> {
             points,
             weights,
         } => {
+            // Exact ellipses go out as ellipses, as AutoCAD and Rhino draw them.
+            if let Some(found) = curve.as_ellipse() {
+                let length = |v: P| dot(v, v).sqrt();
+                if let Some(normal) = unit(cross(found.major, found.minor)) {
+                    let mut ellipse = Ellipse::new();
+                    ellipse.center = v3(found.centre);
+                    ellipse.major_axis = v3(found.major);
+                    ellipse.minor_axis_ratio = length(found.minor) / length(found.major);
+                    ellipse.normal = v3(normal);
+                    ellipse.start_parameter = found.start;
+                    ellipse.end_parameter = found.start + found.sweep;
+                    return vec![EntityType::Ellipse(ellipse)];
+                }
+            }
             let mut spline = Spline::new();
             spline.degree = i32::try_from(*degree).unwrap_or(3);
             spline.knots.clone_from(knots);
@@ -755,7 +771,18 @@ fn curve_of(entity: &EntityType) -> Result<Vec<Curve>, &'static str> {
         EntityType::Dimension(_) => return Err("dimensions of other kinds"),
         EntityType::Hatch(_) => return Err("hatches"),
         EntityType::Insert(_) => return Err("block instances"),
-        EntityType::Ellipse(_) => return Err("ellipses"),
+        // An ellipse's centre and major axis are world points; it turns from its start parameter
+        // to its end one, anticlockwise about its normal.
+        EntityType::Ellipse(e) => {
+            let normal = normal_of(&e.normal);
+            let major = p3(&e.major_axis);
+            let minor: P = cross(normal, major).map(|v| v * e.minor_axis_ratio);
+            let turn = std::f64::consts::TAU;
+            let sweep = (e.end_parameter - e.start_parameter).rem_euclid(turn);
+            let sweep = if sweep < 1e-12 { turn } else { sweep };
+            Curve::elliptical_arc(p3(&e.center), major, minor, e.start_parameter, sweep)
+                .map_err(|_| "ellipses")?
+        }
         EntityType::Leader(_) | EntityType::MultiLeader(_) => return Err("leaders"),
         _ => return Err("other objects"),
     };
@@ -1312,6 +1339,50 @@ mod tests {
             "{arc:?}"
         );
         assert!((arc.3 - std::f64::consts::FRAC_PI_2).abs() < 1e-9);
+    }
+
+    #[test]
+    fn ellipses_go_out_as_ellipses_and_come_back_exact() {
+        let whole = Curve::ellipse([1.0, 2.0, 0.0], [0.0, 6.0, 0.0], [-2.0, 0.0, 0.0]).unwrap();
+        let part =
+            Curve::elliptical_arc([0.0; 3], [4.0, 0.0, 0.0], [0.0, 0.0, 1.5], 0.7, 2.0).unwrap();
+        let mut doc = Document::default();
+        doc.add_shape(Shape::Curve(whole.clone()));
+        doc.add_shape(Shape::Curve(part.clone()));
+        for format in [Format::Dxf, Format::Dwg] {
+            let (bytes, _) = export(&doc, None, format).unwrap();
+            let cad = read(&bytes, format).unwrap();
+            let ellipses: Vec<&Ellipse> = cad
+                .entities()
+                .filter_map(|e| match e {
+                    EntityType::Ellipse(e) => Some(e),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(ellipses.len(), 2, "{format:?}");
+            assert!((ellipses[0].minor_axis_ratio - 2.0 / 6.0).abs() < 1e-9);
+            let mut back = Document::default();
+            let report = import(&cad, &mut back);
+            assert_eq!(report.brought, vec![("curves".to_owned(), 2)], "{format:?}");
+            for (sent, came) in [&whole, &part].into_iter().zip(&back.state().objects) {
+                let (a, b) = (
+                    sent.sample().unwrap(),
+                    came.curve().unwrap().sample().unwrap(),
+                );
+                let near = |p: P, q: P| (0..3).all(|i| (p[i] - q[i]).abs() < 1e-7);
+                assert!(near(a[0], b[0]) && near(a[a.len() - 1], b[b.len() - 1]));
+                let found = came
+                    .curve()
+                    .unwrap()
+                    .as_ellipse()
+                    .expect("still an ellipse");
+                let length = |v: P| dot(v, v).sqrt();
+                let sent = sent.as_ellipse().unwrap();
+                assert!((length(found.major) - length(sent.major)).abs() < 1e-7);
+                assert!((length(found.minor) - length(sent.minor)).abs() < 1e-7);
+                assert!((found.sweep - sent.sweep).abs() < 1e-7, "{format:?}");
+            }
+        }
     }
 
     #[test]

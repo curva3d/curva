@@ -46,7 +46,7 @@ mod text;
 pub use text::{font_bytes, text_outlines};
 mod tween;
 pub use body::{Body, BodyMesh};
-pub use conic::{Chamfered, chamfer_lines};
+pub use conic::{Chamfered, Elliptical, chamfer_lines};
 pub use cut::{closest_between, crossings};
 pub use fillet::fillet_curves;
 pub use offset::{Filleted, fillet_lines};
