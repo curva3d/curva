@@ -299,6 +299,14 @@ impl Evaluator<'_> {
                             .ok()
                             .map(Value::Number)
                     }
+                    // A hatch's area is what it fills: its outlines with their holes.
+                    crate::Shape::Annotation(crate::annotation::Annotation::Hatch(hatch)) => {
+                        curva_kernel::Body::planar(&hatch.loops)
+                            .ok()?
+                            .area()
+                            .ok()
+                            .map(Value::Number)
+                    }
                     _ => None,
                 }
             }
