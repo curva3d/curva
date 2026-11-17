@@ -673,62 +673,7 @@ impl Curva {
                     ui.set_min_size(inner);
                     ui.set_max_size(inner);
                     ui.add_space(TITLE_ROW);
-                    match place.showing() {
-                        // Inside a scroll area, so nothing a piece holds grows the panel past its place.
-                        layout::Piece::CommandTabs => {
-                            egui::ScrollArea::vertical()
-                                .auto_shrink([false, false])
-                                .show(ui, |ui| self.command_tabs(ui));
-                        }
-                        layout::Piece::Layers => {
-                            egui::ScrollArea::both()
-                                .auto_shrink([false, false])
-                                .show(ui, |ui| self.layers_panel(ui));
-                        }
-                        layout::Piece::Properties => {
-                            egui::ScrollArea::both()
-                                .auto_shrink([false, false])
-                                .show(ui, |ui| self.properties_panel(ui));
-                        }
-                        layout::Piece::Command => {
-                            egui::ScrollArea::vertical()
-                                .auto_shrink([false, false])
-                                .stick_to_bottom(true)
-                                .show(ui, |ui| self.command_line(ui));
-                        }
-                        layout::Piece::Agent => {
-                            egui::ScrollArea::vertical()
-                                .auto_shrink([false, false])
-                                .show(ui, |ui| self.assistant_panel(ui));
-                        }
-                        layout::Piece::Display => self.display_piece(ui),
-                        layout::Piece::Settings => self.settings_piece(ui),
-                        layout::Piece::Blocks => {
-                            egui::ScrollArea::both()
-                                .auto_shrink([false, false])
-                                .show(ui, |ui| self.blocks_panel(ui));
-                        }
-                        layout::Piece::Layouts => {
-                            egui::ScrollArea::both()
-                                .auto_shrink([false, false])
-                                .show(ui, |ui| self.layouts_panel(ui));
-                        }
-                        layout::Piece::AnnotationStyles => {
-                            egui::ScrollArea::vertical()
-                                .auto_shrink([false, false])
-                                .show(ui, |ui| self.annotation_styles_panel(ui));
-                        }
-                        layout::Piece::Notes => {
-                            egui::ScrollArea::vertical()
-                                .auto_shrink([false, false])
-                                .show(ui, |ui| self.notes_panel(ui));
-                        }
-                        layout::Piece::Print => {
-                            egui::ScrollArea::vertical()
-                                .auto_shrink([false, false])
-                                .show(ui, |ui| self.print_panel(ui));
-                        }
-                    }
+                    self.piece_contents(ui, place.showing());
                 });
                 // Added after the contents, so these sit above the panel's own controls.
                 event = self.panel_title(ui, place, rect);
@@ -737,6 +682,66 @@ impl Curva {
                 }
             });
         event
+    }
+
+    /// What a piece shows inside its panel. Each is inside a scroll area, so nothing a piece
+    /// holds grows the panel past its place.
+    fn piece_contents(&mut self, ui: &mut egui::Ui, piece: layout::Piece) {
+        match piece {
+            layout::Piece::CommandTabs => {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| self.command_tabs(ui));
+            }
+            layout::Piece::Layers => {
+                egui::ScrollArea::both()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| self.layers_panel(ui));
+            }
+            layout::Piece::Properties => {
+                egui::ScrollArea::both()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| self.properties_panel(ui));
+            }
+            layout::Piece::Command => {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .stick_to_bottom(true)
+                    .show(ui, |ui| self.command_line(ui));
+            }
+            layout::Piece::Agent => {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| self.assistant_panel(ui));
+            }
+            layout::Piece::Display => self.display_piece(ui),
+            layout::Piece::Settings => self.settings_piece(ui),
+            layout::Piece::Blocks => {
+                egui::ScrollArea::both()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| self.blocks_panel(ui));
+            }
+            layout::Piece::Layouts => {
+                egui::ScrollArea::both()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| self.layouts_panel(ui));
+            }
+            layout::Piece::AnnotationStyles => {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| self.annotation_styles_panel(ui));
+            }
+            layout::Piece::Notes => {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| self.notes_panel(ui));
+            }
+            layout::Piece::Print => {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| self.print_panel(ui));
+            }
+        }
     }
 
     /// A panel's title row: its name centred, or one tab per piece with the showing one in the
