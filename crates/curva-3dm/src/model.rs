@@ -83,6 +83,8 @@ pub struct Layer {
     pub linetype: i32,
     /// The details (by viewport id) it is turned off in, beside its own visibility.
     pub hidden_in: Vec<Uuid>,
+    /// Its section style, for its objects that have none of their own.
+    pub section: Option<crate::sections::SectionStyle>,
 }
 
 /// A group.
@@ -155,6 +157,10 @@ pub struct Attributes {
     pub linetype: i32,
     /// Where its linetype comes from.
     pub linetype_source: Source,
+    /// Where its section style comes from: 0 its layer, 1 itself (Rhino's numbers).
+    pub section_source: u8,
+    /// Its own section style, if it has one; a clipping plane's is the plane's style.
+    pub section: Option<crate::sections::SectionStyle>,
 }
 
 /// A linetype (`ON_Linetype`): its name and pattern.
@@ -187,6 +193,8 @@ impl Default for Attributes {
             viewport: Uuid::NIL,
             linetype: -1,
             linetype_source: Source::Layer,
+            section_source: crate::sections::FROM_LAYER,
+            section: None,
         }
     }
 }

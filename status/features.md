@@ -11,6 +11,42 @@ to then (display modes, glass, line widths, speed measurements).*
 `CLA.md`, `CONTRIBUTING.md` and the `CLA` check (`.github/workflows/cla.yml`). Outside contributors sign
 once by commenting on their first pull request; signatures go to the `cla-signatures` branch.
 
+## Features stream — 17 November 2026
+
+**The repository moved** from `V:` to `E:` (an external SSD, a ReFS Dev Drive) on 16 November: it is at
+`E:\curva`, worktrees at `E:\curva-<issue>`.
+
+**Milestone 3, point 7 (dimensions):** merged (#264): DimArcLength's `Partial` (two points on the arc) and
+`Leader` (a radial arrow from the dimension to the arc, offered for a turn over a quarter, as AutoCAD), both
+ways in DXF and DWG; the command is on the framework. Annotation made by any framework command now previews as
+drawn.
+
+**Section styles (`layouts.md` §3):**
+- Merged (#280): section styles on objects, layers and clipping planes (a fill, none or a colour, and an
+  optional hatch pattern with scale and rotation), worked out in Rhino 8's order (object, layer, plane) and
+  saved in `.curva`. `SectionStyle` (alias SectionHatch) sets them: `Fill`, `Hatch`, `Pattern`, `Scale`,
+  `Rotation`, `Layers`, `ByLayer`. Rhino 8 has no such command (it sets them in Properties); checked in Rhino 8.
+  The framework gained *name* options (typed, checked against the command's list, remembered).
+- In review (#283): Make2D fills cut faces seen face-on with the section style, as hatches under the lines.
+  Not yet: a fill partly behind other objects is drawn whole; a cut another chosen plane crosses is not filled.
+- In review (#286): the views' solid fills follow each solid's style (its own, its layer's, the plane's).
+- Asked of the display stream (#284): hatch patterns on cut faces in the views.
+
+**Tidy-ups:** merged #277 (#177: the document's main file split into object, linetype, layer and state files)
+and, inside #264 and #280, the annotation file split by kind and the command framework's file split. Make2D is
+now a folder with `make()` in named steps (in #283).
+
+**Waiting for the owner's decision:** dimensions that follow their geometry. Options put to him on 17 November:
+A, attach to the object snapped to (needs the display stream to change snaps); B, attach by matching points
+(recommended now, could pick the wrong object where two share a point); C, not now.
+
+**Next (features):** `.3dm` section styles both ways (Rhino 8 keeps them on objects and layers); Make2D fills
+behind other objects; DimArcLength done, so the remaining dimension work is the decision above. Tidy-up #178
+(icons and long panels): the icon file is 2,100 lines.
+
+**Machine note:** builds share one folder, `E:\curva-target-features`, outside the worktrees, so removing a
+worktree never deletes it; link steps run `-j 4` (more ran out of memory with other streams building).
+
 ## Features stream — 16 November 2026
 
 **Owner's instruction (15 November 2026):** work that relies on the display is paused while a new display
@@ -163,7 +199,7 @@ required check, and pull requests that touch no website files merge without it.
 - The kernel test list grew from 25 to 31 operations, chosen by the owner after comparing it with
   Serpentine3D's commands (#19).
 - The owner confirmed the 31-operation list is final and approved; #8 is released.
-- Dev Drive and Rust toolchain set up (#2). The repository is at `V:\curva`.
+- Dev Drive and Rust toolchain set up (#2). The repository was at `V:\curva` (at `E:\curva` since 16 November 2026).
 - Rust workspace skeleton (#3).
 - Automated checks on Linux, Windows and macOS, required on `main` (#4).
 - Claude Code hooks: format and lint after edits, tests before finishing, risky commands blocked (#5).

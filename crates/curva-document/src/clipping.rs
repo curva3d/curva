@@ -42,6 +42,9 @@ pub struct ClippingPlane {
     pub views: Vec<ClipView>,
     /// How it fills the cut faces of closed solids.
     pub section: SectionFill,
+    /// A hatch pattern drawn over its fill, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hatch: Option<crate::section::SectionHatch>,
 }
 
 /// A clipping plane where it lies now: a point on it, and the direction of the side it keeps.
@@ -195,6 +198,7 @@ mod tests {
             flipped: false,
             views: vec![ClipView::Viewport(1)],
             section: SectionFill::default(),
+            hatch: None,
         });
         assert!(doc.planes_cutting(ClipView::Viewport(0)).is_empty());
         let [cut] = doc.planes_cutting(ClipView::Viewport(1))[..] else {
@@ -220,6 +224,7 @@ mod tests {
             flipped: false,
             views: vec![ClipView::Detail(7)],
             section: SectionFill::None,
+            hatch: None,
         });
         assert_eq!(doc.planes_cutting(ClipView::Detail(7)).len(), 1);
         doc.hide(&[frame]);
