@@ -16,10 +16,7 @@ impl Command for BlockEdit {
             doc.finish_block_edit();
             return Step::Done(Some(Message::new("done.blockedit_saved")));
         }
-        let chosen = match answer {
-            Some(Answer::Objects(list)) => list,
-            _ => doc.selection(),
-        };
+        let chosen = crate::commands::support::chosen(doc, &answer);
         let Some(&instance) = instances_among(doc, &chosen).first() else {
             if chosen.is_empty() {
                 return ask_objects("prompt.blockedit.instance");

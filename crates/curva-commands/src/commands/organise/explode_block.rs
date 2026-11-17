@@ -11,10 +11,7 @@ pub struct ExplodeBlock;
 
 impl Command for ExplodeBlock {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let chosen = match answer {
-            Some(Answer::Objects(list)) => list,
-            _ => doc.selection(),
-        };
+        let chosen = crate::commands::support::chosen(doc, &answer);
         let instances = instances_among(doc, &chosen);
         if instances.is_empty() {
             return ask_objects("prompt.explodeblock.objects");

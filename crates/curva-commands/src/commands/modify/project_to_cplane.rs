@@ -1,6 +1,6 @@
 //! `ProjectToCPlane`: flattens objects onto the plane being drawn on.
 
-use crate::commands::{ask_objects, curves_of, geometry_failed};
+use crate::commands::{ask_objects, curves_of, geometry_failed, objects_or_selection};
 use crate::{Answer, Command, Message, Step};
 use curva_document::Document;
 use curva_kernel::{Curve, KernelError, Point, cross, dot, sub, unit};
@@ -35,13 +35,9 @@ pub struct ProjectToCPlane;
 
 impl Command for ProjectToCPlane {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let chosen = match answer {
-            Some(Answer::Objects(list)) => list,
-            _ => doc.selection(),
-        };
-        if chosen.is_empty() {
+        let Some(chosen) = objects_or_selection(doc, answer) else {
             return ask_objects("prompt.projecttocplane.objects");
-        }
+        };
         let (origin, [x, y]) = doc.work_frame();
         let Some(normal) = unit(cross(x, y)) else {
             return Step::Failed(Message::new("error.bad_plane"));

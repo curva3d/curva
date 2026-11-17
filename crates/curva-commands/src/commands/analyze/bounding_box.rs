@@ -1,6 +1,6 @@
 //! `BoundingBox`: reports the size of the box around objects.
 
-use crate::commands::{ask_objects, curves_of, geometry_failed};
+use crate::commands::{ask_objects, curves_of, geometry_failed, objects_or_selection};
 use crate::{Answer, Command, Message, Step};
 use curva_document::Document;
 
@@ -10,13 +10,9 @@ pub struct BoundingBox;
 
 impl Command for BoundingBox {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let chosen = match answer {
-            Some(Answer::Objects(list)) => list,
-            _ => doc.selection(),
-        };
-        if chosen.is_empty() {
+        let Some(chosen) = objects_or_selection(doc, answer) else {
             return ask_objects("prompt.boundingbox.objects");
-        }
+        };
         let (mut low, mut high) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
         for (_, curve) in curves_of(doc, &chosen) {
             let points = match curve.sample() {

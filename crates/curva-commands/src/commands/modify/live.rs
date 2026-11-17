@@ -1,6 +1,6 @@
 //! `EditBoolean` and `BreakBoolean`: working with live booleans (spec `docs/specs/live-booleans.md`).
 
-use crate::commands::ask_objects;
+use crate::commands::{ask_objects, objects_or_selection};
 use crate::{Answer, Command, Message, Step};
 use curva_document::Document;
 
@@ -20,13 +20,9 @@ pub struct EditBoolean;
 
 impl Command for EditBoolean {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let chosen = match answer {
-            Some(Answer::Objects(list)) => list,
-            _ => doc.selection(),
-        };
-        if chosen.is_empty() {
+        let Some(chosen) = objects_or_selection(doc, answer) else {
             return ask_objects("prompt.editboolean.object");
-        }
+        };
         let results = live_results(doc, &chosen);
         let Some(&result) = results.first() else {
             return Step::Failed(Message::new("error.not_live"));
@@ -51,13 +47,9 @@ pub struct BreakBoolean;
 
 impl Command for BreakBoolean {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let chosen = match answer {
-            Some(Answer::Objects(list)) => list,
-            _ => doc.selection(),
-        };
-        if chosen.is_empty() {
+        let Some(chosen) = objects_or_selection(doc, answer) else {
             return ask_objects("prompt.breakboolean.objects");
-        }
+        };
         let results = live_results(doc, &chosen);
         if results.is_empty() {
             return Step::Failed(Message::new("error.not_live"));
