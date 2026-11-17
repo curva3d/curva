@@ -333,75 +333,102 @@ impl Curva {
         if let [only] = selection.as_slice() {
             self.detail_properties(ui, *only);
             self.clipping_properties(ui, *only);
+            self.shape_properties(ui, *only);
         }
-        if let [only] = selection.as_slice()
-            && let Some(object) = self.doc.state().objects.iter().find(|o| o.id == *only)
-        {
-            match &object.shape {
-                Shape::Annotation(curva_document::annotation::Annotation::Text(text)) => {
-                    let (id, text) = (object.id, text.clone());
-                    self.text_properties(ui, id, &text);
-                }
-                Shape::Annotation(dimension) => {
-                    let (id, dimension) = (object.id, dimension.clone());
-                    self.dimension_properties(ui, id, &dimension);
-                }
-                Shape::Instance(instance) => {
-                    let name = self
-                        .doc
-                        .definitions()
-                        .iter()
-                        .find(|d| d.id == instance.definition)
-                        .map_or_else(String::new, |d| d.name.clone());
-                    ui.label(
-                        self.text
-                            .render(&Message::with("ui.properties.instance", vec![name])),
-                    );
-                }
-                Shape::Curve(curve) => {
-                    ui.label(self.text.render(&Message::new(curve_kind(curve))));
-                    if let Ok(length) = curve.length() {
-                        ui.label(self.text.render(&Message::with(
-                            "ui.properties.length",
-                            vec![format!("{length:.3}")],
-                        )));
-                    }
-                }
-                Shape::Body(body) => {
-                    // Measuring a curved solid takes a moment, so it is done once per change.
-                    let fresh = self
-                        .measured
-                        .as_ref()
-                        .is_some_and(|(id, held, _)| *id == object.id && held == body);
-                    if !fresh {
-                        let volume = body.volume().ok().filter(|v| *v > 0.0);
-                        let reading = match volume {
-                            Some(volume) => ("ui.kind.solid", "ui.properties.volume", volume),
-                            None => (
-                                "ui.kind.surface",
-                                "ui.properties.area",
-                                body.area().unwrap_or(0.0),
-                            ),
-                        };
-                        self.measured = Some((object.id, body.clone(), reading));
-                    }
-                    if let Some((_, _, (kind, key, value))) = &self.measured {
-                        ui.label(self.text.render(&Message::new(kind)));
-                        if object.live.is_some() {
-                            let inputs = self.doc.inputs_of(object.id).len();
-                            ui.label(self.text.render(&Message::with(
-                                "ui.properties.live",
-                                vec![inputs.to_string()],
-                            )));
-                        }
-                        ui.label(
-                            self.text
-                                .render(&Message::with(key, vec![format!("{value:.3}")])),
-                        );
-                    }
+        self.layer_property(ui, &selection);
+        self.colour_property(ui, &selection);
+        self.width_property(ui, &selection);
+        self.linetype_property(ui, &selection);
+    }
+
+    /// What the one selected object `only` is, with its own properties: a text's or a
+    /// dimension's, a block instance's definition, a curve's length, a solid's volume or a
+    /// surface's area.
+    fn shape_properties(&mut self, ui: &mut egui::Ui, only: u64) {
+        let Some(object) = self.doc.state().objects.iter().find(|o| o.id == only) else {
+            return;
+        };
+        match &object.shape {
+            Shape::Annotation(curva_document::annotation::Annotation::Text(text)) => {
+                let (id, text) = (object.id, text.clone());
+                self.text_properties(ui, id, &text);
+            }
+            Shape::Annotation(dimension) => {
+                let (id, dimension) = (object.id, dimension.clone());
+                self.dimension_properties(ui, id, &dimension);
+            }
+            Shape::Instance(instance) => {
+                let name = self
+                    .doc
+                    .definitions()
+                    .iter()
+                    .find(|d| d.id == instance.definition)
+                    .map_or_else(String::new, |d| d.name.clone());
+                ui.label(
+                    self.text
+                        .render(&Message::with("ui.properties.instance", vec![name])),
+                );
+            }
+            Shape::Curve(curve) => {
+                ui.label(self.text.render(&Message::new(curve_kind(curve))));
+                if let Ok(length) = curve.length() {
+                    ui.label(self.text.render(&Message::with(
+                        "ui.properties.length",
+                        vec![format!("{length:.3}")],
+                    )));
                 }
             }
+            Shape::Body(_) => {
+                let id = object.id;
+                self.body_properties(ui, id);
+            }
         }
+    }
+
+    /// Whether the body of object `id` is a solid or a surface, its volume or area, and, when
+    /// it is live, how many objects it is made from.
+    fn body_properties(&mut self, ui: &mut egui::Ui, id: u64) {
+        let Some(object) = self.doc.state().objects.iter().find(|o| o.id == id) else {
+            return;
+        };
+        let Shape::Body(body) = &object.shape else {
+            return;
+        };
+        // Measuring a curved solid takes a moment, so it is done once per change.
+        let fresh = self
+            .measured
+            .as_ref()
+            .is_some_and(|(id, held, _)| *id == object.id && held == body);
+        if !fresh {
+            let volume = body.volume().ok().filter(|v| *v > 0.0);
+            let reading = match volume {
+                Some(volume) => ("ui.kind.solid", "ui.properties.volume", volume),
+                None => (
+                    "ui.kind.surface",
+                    "ui.properties.area",
+                    body.area().unwrap_or(0.0),
+                ),
+            };
+            self.measured = Some((object.id, body.clone(), reading));
+        }
+        if let Some((_, _, (kind, key, value))) = &self.measured {
+            ui.label(self.text.render(&Message::new(kind)));
+            if object.live.is_some() {
+                let inputs = self.doc.inputs_of(object.id).len();
+                ui.label(self.text.render(&Message::with(
+                    "ui.properties.live",
+                    vec![inputs.to_string()],
+                )));
+            }
+            ui.label(
+                self.text
+                    .render(&Message::with(key, vec![format!("{value:.3}")])),
+            );
+        }
+    }
+
+    /// The selected objects' layer, or "mixed", to move them to another.
+    fn layer_property(&mut self, ui: &mut egui::Ui, selection: &[u64]) {
         let layers = self.doc.layers().to_vec();
         let shared = self.doc.layer_of(selection[0]).filter(|first| {
             selection
@@ -428,9 +455,12 @@ impl Curva {
                 }
             });
         if let Some(layer) = chosen {
-            self.undoable(|doc| doc.move_to_layer(&selection, layer));
+            self.undoable(|doc| doc.move_to_layer(selection, layer));
         }
-        // Colour: the layer's, or one of the objects' own (Rhino's display colour).
+    }
+
+    /// Colour: the layer's, or one of the objects' own (Rhino's display colour).
+    fn colour_property(&mut self, ui: &mut egui::Ui, selection: &[u64]) {
         let (own, shown_colour) = {
             let state = self.doc.state();
             let chosen: Vec<&curva_document::Object> = state
@@ -460,13 +490,17 @@ impl Curva {
                 .clicked()
                 && !by_layer
             {
-                self.undoable(|doc| doc.set_colour(&selection, None));
+                self.undoable(|doc| doc.set_colour(selection, None));
             }
             let mut colour = shown_colour;
             if ui.color_edit_button_rgb(&mut colour).changed() {
-                self.undoable(|doc| doc.set_colour(&selection, Some(colour)));
+                self.undoable(|doc| doc.set_colour(selection, Some(colour)));
             }
         });
+    }
+
+    /// The selected objects' print width, if they share one, to change it.
+    fn width_property(&mut self, ui: &mut egui::Ui, selection: &[u64]) {
         let widths: Vec<curva_document::PrintWidth> = self
             .doc
             .state()
@@ -483,9 +517,13 @@ impl Curva {
             ui.label(self.text.render(&Message::new("ui.properties.width")));
             let id = ui.scope_id().with("object width");
             if let Some(width) = self.width_choice(ui, id, shown, true, 84.0) {
-                self.undoable(|doc| doc.set_print_width(&selection, width));
+                self.undoable(|doc| doc.set_print_width(selection, width));
             }
         });
+    }
+
+    /// The selected objects' linetype, if they share one, to change it.
+    fn linetype_property(&mut self, ui: &mut egui::Ui, selection: &[u64]) {
         let linetypes: Vec<curva_document::Linetype> = self
             .doc
             .state()
@@ -502,7 +540,7 @@ impl Curva {
             ui.label(self.text.render(&Message::new("ui.properties.linetype")));
             let id = ui.scope_id().with("object linetype");
             if let Some(linetype) = self.linetype_choice(ui, id, shown, true, 96.0) {
-                self.undoable(|doc| doc.set_linetype(&selection, linetype));
+                self.undoable(|doc| doc.set_linetype(selection, linetype));
             }
         });
     }
