@@ -282,6 +282,7 @@ fn the_selection_table_draws_what_coloured_vertices_drew() {
             objects: Arc::new(parts.objects.clone()),
             selection: Arc::new(selected.clone()),
             clips: Vec::new(),
+            circles: Arc::default(),
         };
         let size = [96, 96];
         let (Ok(before), Ok(after)) = (
@@ -298,6 +299,70 @@ fn the_selection_table_draws_what_coloured_vertices_drew() {
             .count();
         assert!(orange > 20, "only {orange} selected pixels");
         assert_eq!(before, after, "shaded: {shaded}");
+    }
+}
+
+/// #153: circles drawn by the graphics card from their centre and axes look as their segments
+/// did, selected one included, in a shaded and in a wireframe view; at most a few edge pixels
+/// differ, where the card's sines round otherwise than the kernel's.
+#[test]
+fn circles_drawn_from_their_axes_look_as_their_segments() {
+    let (outlines, matrix, light, ids) = small_model();
+    let selected = vec![ids[0]];
+    let (whole, apart) = (
+        crate::SceneParts::of(&outlines),
+        crate::SceneParts::shared(&outlines),
+    );
+    assert_eq!(apart.circles.len(), 2);
+    assert_eq!(whole.objects, apart.objects);
+    for shaded in [true, false] {
+        let picture = |parts: &crate::SceneParts| Picture {
+            lines: if shaded {
+                parts.shaded_lines.clone()
+            } else {
+                parts.lines.clone()
+            },
+            faces: if shaded {
+                whole.faces.clone()
+            } else {
+                Vec::new()
+            },
+            matrix,
+            light,
+            ghosted: false,
+        };
+        let scene = |circles: &[crate::PlacedCircle]| Scene {
+            objects: Arc::new(whole.objects.clone()),
+            selection: Arc::new(selected.clone()),
+            clips: Vec::new(),
+            circles: Arc::new(circles.to_vec()),
+        };
+        let size = [96, 96];
+        let chunk = super::CHUNK_BYTES;
+        let (Ok(before), Ok(after)) = (
+            draw_picture_in_chunks(picture(&whole), size, true, chunk, &scene(&[])),
+            draw_picture_in_chunks(picture(&apart), size, true, chunk, &scene(&apart.circles)),
+        ) else {
+            eprintln!("no graphics adapter to draw with, so not checked");
+            return;
+        };
+        let orange = |pixels: &[u8]| {
+            pixels
+                .chunks(4)
+                .filter(|p| p[0] > 180 && p[2] < 120)
+                .count()
+        };
+        assert!(orange(&before) > 20, "the selected circle shows");
+        assert!(orange(&after).abs_diff(orange(&before)) <= 4);
+        let differing = before
+            .chunks(4)
+            .zip(after.chunks(4))
+            .filter(|(a, b)| a != b)
+            .count();
+        assert!(
+            differing <= 8,
+            "shaded: {shaded}, {differing} pixels differ"
+        );
     }
 }
 

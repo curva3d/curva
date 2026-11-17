@@ -20,6 +20,9 @@ pub struct Drawing {
     /// Surfaces and solids drawn from the mesh they share with their copies, each at its
     /// placement ([`crate::SceneParts::shared`]); views drawn by Bevy hold each mesh once.
     pub shapes: Arc<Vec<crate::PlacedShape>>,
+    /// Whole circles drawn from their centre and axes ([`crate::SceneParts::shared`]), out of
+    /// `scene`.
+    pub circles: Arc<Vec<crate::PlacedCircle>>,
     /// Which object each number in `scene` and `faces` stands for ([`crate::SceneParts`]);
     /// empty when their vertices carry no numbers.
     pub objects: Arc<Vec<u64>>,

@@ -4,6 +4,7 @@ use crate::{MeshVertex, Vertex};
 use egui_wgpu::wgpu;
 use std::sync::Arc;
 
+mod circles;
 mod depth;
 mod drawing;
 mod picture;
@@ -33,10 +34,14 @@ pub struct LineRenderer {
     pub(crate) handover: Option<depth::Handover>,
     grid: wgpu::RenderPipeline,
     lines: wgpu::RenderPipeline,
+    /// Draws whole circles from their centre and axes (#153).
+    circle_lines: wgpu::RenderPipeline,
     faces: wgpu::RenderPipeline,
     ghost_faces: wgpu::RenderPipeline,
     slots: Vec<ViewSlot>,
     surfaces: Option<Uploaded<MeshVertex>>,
+    /// The whole circles, shared by every view drawing the model's lines.
+    circles: Option<Uploaded<crate::PlacedCircle>>,
     overlay: Option<Uploaded<Vertex>>,
     /// The ghosted faces of a command's preview.
     preview_faces: Option<Uploaded<MeshVertex>>,
@@ -163,6 +168,7 @@ impl LineRenderer {
         Self {
             grid,
             lines,
+            circle_lines: circles::circle_pipeline(device, format, &pipeline_layout),
             faces,
             ghost_faces,
             timer: None,
@@ -173,6 +179,7 @@ impl LineRenderer {
             picks,
             slots,
             surfaces: None,
+            circles: None,
             overlay: None,
             preview_faces: None,
             compositor: crate::glass::Compositor::new(device, format),
@@ -419,6 +426,17 @@ impl LineRenderer {
                 chunk,
             ));
         }
+        if stale(self.circles.as_ref(), &drawing.circles) {
+            self.circles = Some(upload(
+                device,
+                queue,
+                &drawing.circles,
+                circles::circle_bytes,
+                circles::CIRCLE_SIZE,
+                1,
+                chunk,
+            ));
+        }
         if stale(self.overlay.as_ref(), &drawing.overlay) {
             self.overlay = Some(upload(
                 device,
@@ -502,6 +520,9 @@ impl LineRenderer {
         let faces = self.surfaces.as_ref().filter(|faces| faces.count > 0);
         if let Some(scene) = slot.scene.as_deref() {
             self.draw_segments(pass, scene);
+        }
+        if let Some(circles) = self.circles.as_ref() {
+            circles::draw_circles(pass, &self.circle_lines, circles);
         }
         // Ghosted faces go over the lines, so lines behind a face show through it, dimmed,
         // while lines on its near side stay in front.
