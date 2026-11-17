@@ -1945,6 +1945,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "curva-meshfiles"
+version = "0.4.2"
+dependencies = [
+ "curva-mesh",
+]
+
+[[package]]
 name = "curva-pdf"
 version = "0.4.2"
 dependencies = [

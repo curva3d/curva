@@ -28,7 +28,7 @@ unpolished; a Windows installer, a Linux AppImage and a macOS disk image are on 
 - **The Curva application** (`curva-app`, `curva-commands`, `curva-viewport`, `curva-mcp`):
   GPL-3.0-or-later (`LICENSE`), with a plugin exception (`PLUGIN-EXCEPTION.md`): plugins that use
   the official Plugin API may use any licence, including closed ones.
-- **The libraries** (`curva-kernel`, `curva-mesh`, `curva-document`, `curva-3dm`, `curva-dxf`, `curva-pdf`):
+- **The libraries** (`curva-kernel`, `curva-mesh`, `curva-meshfiles`, `curva-document`, `curva-3dm`, `curva-dxf`, `curva-pdf`):
   MIT OR Apache-2.0, at your option (`LICENSE-MIT`, `LICENSE-APACHE`).
 
 Why: `docs/decisions/0025-gpl-for-the-application.md`.
