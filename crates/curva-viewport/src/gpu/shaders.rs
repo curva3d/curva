@@ -45,11 +45,14 @@ struct Out { @builtin(position) position: vec4<f32>, @location(0) colour: vec3<f
     return vec4<f32>(input.colour, 1.0);
 }";
 
-/// The model's lines (spec `line-weights.md` §2): each segment is one instance, drawn as a quad of
-/// two triangles facing the screen, as wide as its own width, and lengthened by half that width at
-/// each end so the segments of a curve overlap at their joins. `pixel.xy` is a pixel's size in
-/// clip space, `pixel.z` the screen's pixels per millimetre.
-pub(crate) const LINE_SHADER: &str = "
+/// What the line and circle shaders share (spec `line-weights.md` §2): `segment` draws one
+/// corner of a segment as a quad of two triangles facing the screen, as wide as its own width,
+/// and lengthened by half that width at each end so the segments of a curve overlap at their
+/// joins. `pixel.xy` is a pixel's size in clip space, `pixel.z` the screen's pixels per
+/// millimetre.
+macro_rules! segment_wgsl {
+    () => {
+        "
 struct Uniforms { matrix: mat4x4<f32>, light: vec4<f32>, pixel: vec4<f32>, clips: array<vec4<f32>, 4> };
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 // Clipping planes (spec `layouts.md` §3): `pixel.w` of them, each keeping the side where
@@ -71,12 +74,11 @@ struct Out {
 fn pixels(width: f32) -> f32 {
     return max(select(-width, width * uniforms.pixel.z, width > 0.0), 1.0);
 }
-@vertex fn vertex_main(
-    @builtin(vertex_index) corner: u32,
-    @location(0) a: vec3<f32>, @location(1) given_ca: vec3<f32>, @location(2) given_wa: f32,
-    @location(6) object: u32,
-    @location(3) b: vec3<f32>, @location(4) given_cb: vec3<f32>, @location(5) given_wb: f32,
-    @location(7) object_b: u32,
+fn segment(
+    corner: u32,
+    a: vec3<f32>, given_ca: vec3<f32>, given_wa: f32,
+    b: vec3<f32>, given_cb: vec3<f32>, given_wb: f32,
+    object: u32,
 ) -> Out {
     // A selected object draws in the selection colour and a pixel wider (`line_width`).
     let chosen = picked(object);
@@ -119,7 +121,46 @@ fn pixels(width: f32) -> f32 {
 @fragment fn fragment_main(input: Out) -> @location(0) vec4<f32> {
     if (clipped(input.world)) { discard; }
     return vec4<f32>(input.colour, 1.0);
-}";
+}
+"
+    };
+}
+
+/// The model's lines: each segment is one instance, both its ends.
+pub(crate) const LINE_SHADER: &str = concat!(
+    segment_wgsl!(),
+    "
+@vertex fn vertex_main(
+    @builtin(vertex_index) corner: u32,
+    @location(0) a: vec3<f32>, @location(1) ca: vec3<f32>, @location(2) wa: f32,
+    @location(6) object: u32,
+    @location(3) b: vec3<f32>, @location(4) cb: vec3<f32>, @location(5) wb: f32,
+    @location(7) object_b: u32,
+) -> Out {
+    return segment(corner, a, ca, wa, b, cb, wb, object);
+}"
+);
+
+/// Whole circles (#153): each circle is one instance, its centre and its two axes as long as
+/// its radius, drawn as [`crate::CIRCLE_SEGMENTS`] segments worked out here, six corners each.
+/// `CIRCLE_SEGMENTS` is put in front with the selection table ([`table_wgsl`]).
+pub(crate) const CIRCLE_SHADER: &str = concat!(
+    segment_wgsl!(),
+    "
+@vertex fn vertex_main(
+    @builtin(vertex_index) index: u32,
+    @location(0) centre: vec3<f32>, @location(1) x: vec3<f32>, @location(2) y: vec3<f32>,
+    @location(3) colour: vec3<f32>, @location(4) width: f32, @location(5) object: u32,
+) -> Out {
+    let step = 6.283185307179586 / f32(CIRCLE_SEGMENTS);
+    let piece = index / 6u;
+    let ta = f32(piece) * step;
+    let tb = f32(piece + 1u) * step;
+    let a = centre + x * cos(ta) + y * sin(ta);
+    let b = centre + x * cos(tb) + y * sin(tb);
+    return segment(index % 6u, a, colour, width, b, colour, width, object);
+}"
+);
 
 /// Lit mostly from the camera, like a headlight, so whatever faces the viewer is brightest.
 /// Both sides of a face are lit alike, as an open surface can be seen from either.

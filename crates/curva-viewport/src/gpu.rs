@@ -4,6 +4,7 @@ use crate::{MeshVertex, Vertex};
 use egui_wgpu::wgpu;
 use std::sync::Arc;
 
+mod circles;
 mod depth;
 mod drawing;
 mod picture;
@@ -33,10 +34,14 @@ pub struct LineRenderer {
     pub(crate) handover: Option<depth::Handover>,
     grid: wgpu::RenderPipeline,
     lines: wgpu::RenderPipeline,
+    /// Draws whole circles from their centre and axes (#153).
+    circle_lines: wgpu::RenderPipeline,
     faces: wgpu::RenderPipeline,
     ghost_faces: wgpu::RenderPipeline,
     slots: Vec<ViewSlot>,
     surfaces: Option<Uploaded<MeshVertex>>,
+    /// The whole circles, shared by every view drawing the model's lines.
+    circles: Option<Uploaded<crate::PlacedCircle>>,
     overlay: Option<Uploaded<Vertex>>,
     /// The ghosted faces of a command's preview.
     preview_faces: Option<Uploaded<MeshVertex>>,
@@ -163,6 +168,7 @@ impl LineRenderer {
         Self {
             grid,
             lines,
+            circle_lines: circles::circle_pipeline(device, format, &pipeline_layout),
             faces,
             ghost_faces,
             timer: None,
@@ -173,6 +179,7 @@ impl LineRenderer {
             picks,
             slots,
             surfaces: None,
+            circles: None,
             overlay: None,
             preview_faces: None,
             compositor: crate::glass::Compositor::new(device, format),
@@ -419,6 +426,17 @@ impl LineRenderer {
                 chunk,
             ));
         }
+        if stale(self.circles.as_ref(), &drawing.circles) {
+            self.circles = Some(upload(
+                device,
+                queue,
+                &drawing.circles,
+                circles::circle_bytes,
+                circles::CIRCLE_SIZE,
+                1,
+                chunk,
+            ));
+        }
         if stale(self.overlay.as_ref(), &drawing.overlay) {
             self.overlay = Some(upload(
                 device,
@@ -503,6 +521,9 @@ impl LineRenderer {
         if let Some(scene) = slot.scene.as_deref() {
             self.draw_segments(pass, scene);
         }
+        if let Some(circles) = self.circles.as_ref() {
+            circles::draw_circles(pass, &self.circle_lines, circles);
+        }
         // Ghosted faces go over the lines, so lines behind a face show through it, dimmed,
         // while lines on its near side stay in front.
         if slot.shaded
@@ -534,373 +555,4 @@ impl LineRenderer {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{
-        PICK_ROW, Picture, Scene, chunk_ranges, draw_picture, draw_picture_in_chunks, save_picture,
-        table_bytes,
-    };
-    use crate::{MeshVertex, NO_OBJECT, Vertex};
-    use std::sync::Arc;
-
-    const SIZE: [u32; 2] = [64, 64];
-
-    /// The brightest red value along the middle few rows at the centre column, or `None` when
-    /// this machine has no graphics adapter to draw with.
-    fn centre_brightness(ghosted: bool) -> Option<u8> {
-        // Drawn straight in clip space: a grey face across the middle at depth 0.5, and a
-        // white line behind it at depth 0.8.
-        let corner = |x: f32, y: f32| MeshVertex {
-            position: [x, y, 0.5],
-            normal: [0.0, 0.0, 1.0],
-            colour: [0.3, 0.3, 0.3],
-            object: NO_OBJECT,
-        };
-        let faces = vec![corner(-0.9, -0.9), corner(0.9, -0.9), corner(0.0, 0.9)];
-        let lines = (-2..=2)
-            .flat_map(|step| {
-                let y = step as f32 * 0.01;
-                [
-                    Vertex {
-                        position: [-0.5, y, 0.8],
-                        colour: [1.0; 3],
-                        width: -1.0,
-                        object: NO_OBJECT,
-                    },
-                    Vertex {
-                        position: [0.5, y, 0.8],
-                        colour: [1.0; 3],
-                        width: -1.0,
-                        object: NO_OBJECT,
-                    },
-                ]
-            })
-            .collect();
-        let identity = [
-            [1.0, 0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0, 0.0],
-            [0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0, 1.0],
-        ];
-        let picture = Picture {
-            lines,
-            faces,
-            matrix: identity,
-            light: [0.0, 0.0, 1.0],
-            ghosted,
-        };
-        let path = std::env::temp_dir().join(format!(
-            "curva-ghost-test-{ghosted}-{}.png",
-            std::process::id()
-        ));
-        if let Err(error) = save_picture(picture, SIZE, &path) {
-            eprintln!("no graphics adapter to draw with, so not checked: {error}");
-            return None;
-        }
-        let decoder = png::Decoder::new(std::io::BufReader::new(std::fs::File::open(&path).ok()?));
-        let mut reader = decoder.read_info().ok()?;
-        let mut pixels = vec![0; reader.output_buffer_size()?];
-        reader.next_frame(&mut pixels).ok()?;
-        let _ = std::fs::remove_file(&path);
-        let (width, middle) = (SIZE[0] as usize, SIZE[1] as usize / 2);
-        (middle - 3..=middle + 3)
-            .map(|row| pixels[(row * width + width / 2) * 4])
-            .max()
-    }
-
-    #[test]
-    fn a_line_behind_a_face_shows_through_only_when_ghosted() {
-        let (Some(shaded), Some(ghosted)) = (centre_brightness(false), centre_brightness(true))
-        else {
-            return;
-        };
-        assert!(ghosted > shaded + 40, "shaded {shaded}, ghosted {ghosted}");
-    }
-
-    /// How many rows of the centre column a horizontal line of `width` lights up, or `None`
-    /// without a graphics adapter.
-    fn rows_lit(width: f32) -> Option<usize> {
-        let end = |x: f32| Vertex {
-            position: [x, 0.0, 0.5],
-            colour: [1.0; 3],
-            width,
-            object: NO_OBJECT,
-        };
-        let identity = [
-            [1.0, 0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0, 0.0],
-            [0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0, 1.0],
-        ];
-        let picture = Picture {
-            lines: vec![end(-0.8), end(0.8)],
-            faces: Vec::new(),
-            matrix: identity,
-            light: [0.0, 0.0, 1.0],
-            ghosted: false,
-        };
-        let path = std::env::temp_dir().join(format!(
-            "curva-width-test-{}-{}.png",
-            width.to_bits(),
-            std::process::id()
-        ));
-        if save_picture(picture, SIZE, &path).is_err() {
-            return None;
-        }
-        let decoder = png::Decoder::new(std::io::BufReader::new(std::fs::File::open(&path).ok()?));
-        let mut reader = decoder.read_info().ok()?;
-        let mut pixels = vec![0; reader.output_buffer_size()?];
-        reader.next_frame(&mut pixels).ok()?;
-        let _ = std::fs::remove_file(&path);
-        let w = SIZE[0] as usize;
-        Some(
-            (0..SIZE[1] as usize)
-                .filter(|row| pixels[(row * w + w / 2) * 4] > 200)
-                .count(),
-        )
-    }
-
-    #[test]
-    fn lines_draw_at_their_own_width() {
-        // The default line is 2 pixels; 1 mm is about 3.8 pixels at 96 dpi; 2 mm about 7.6.
-        let (Some(default), Some(one), Some(two)) = (rows_lit(-2.0), rows_lit(1.0), rows_lit(2.0))
-        else {
-            return;
-        };
-        assert_eq!(default, 2);
-        assert!((3..=5).contains(&one), "1 mm lit {one} rows");
-        assert!((7..=9).contains(&two), "2 mm lit {two} rows");
-    }
-
-    /// A grey face crossed by lines of three widths, drawn straight in clip space.
-    fn mixed_picture() -> Picture {
-        let corner = |x: f32, y: f32| MeshVertex {
-            position: [x, y, 0.5],
-            normal: [0.0, 0.0, 1.0],
-            colour: [0.4, 0.4, 0.4],
-            object: NO_OBJECT,
-        };
-        let line = |y: f32, width: f32| {
-            [-0.8, 0.8].map(|x| Vertex {
-                position: [x, y, 0.3],
-                colour: [0.9, 0.5, 0.2],
-                width,
-                object: NO_OBJECT,
-            })
-        };
-        Picture {
-            lines: [line(-0.4, -1.0), line(0.0, -3.0), line(0.4, 0.5)]
-                .into_iter()
-                .flatten()
-                .collect(),
-            // Two triangles, so faces too cross a block boundary when blocks are small.
-            faces: vec![
-                corner(-0.9, -0.9),
-                corner(0.9, -0.9),
-                corner(0.0, 0.9),
-                corner(0.5, 0.2),
-                corner(0.95, 0.95),
-                corner(0.2, 0.95),
-            ],
-            matrix: [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [0.0, 0.0, 0.0, 1.0],
-            ],
-            light: [0.0, 0.0, 1.0],
-            ghosted: false,
-        }
-    }
-
-    /// Spec `display-pipeline.md` §5: optional extras never change the picture, so a card
-    /// without them shows the same.
-    #[test]
-    fn every_optional_extra_off_draws_the_same_picture() {
-        let (Ok(bare), Ok(full)) = (
-            draw_picture(mixed_picture(), SIZE, false),
-            draw_picture(mixed_picture(), SIZE, true),
-        ) else {
-            eprintln!("no graphics adapter to draw with, so not checked");
-            return;
-        };
-        // Something was drawn: not every pixel is the background.
-        assert!(bare.chunks(4).any(|pixel| pixel != &bare[0..4]));
-        assert_eq!(bare, full);
-    }
-
-    #[test]
-    fn blocks_never_split_a_segment_or_a_triangle() {
-        assert!(chunk_ranges(0, 2, 10).is_empty());
-        assert_eq!(chunk_ranges(7, 3, 100), vec![0..7]);
-        // 10 vertices to a block holds 3 triangles (9 vertices), never a part of a fourth.
-        assert_eq!(chunk_ranges(20, 3, 10), vec![0..9, 9..18, 18..20]);
-        assert_eq!(chunk_ranges(10, 2, 5), vec![0..4, 4..8, 8..10]);
-        // A block smaller than one group still holds a whole group.
-        assert_eq!(chunk_ranges(4, 2, 1), vec![0..2, 2..4]);
-        for (len, group, most) in [(1000, 2, 7), (999, 3, 64), (12, 3, 3)] {
-            let ranges = chunk_ranges(len, group, most);
-            assert_eq!(ranges.first().map(|r| r.start), Some(0));
-            assert_eq!(ranges.last().map(|r| r.end), Some(len));
-            for pair in ranges.windows(2) {
-                assert_eq!(pair[0].end, pair[1].start);
-                assert_eq!(pair[0].end % group, 0);
-            }
-        }
-    }
-
-    /// Spec `display-pipeline.md` step 4: a scene too big for one block of graphics memory is
-    /// drawn in several, and looks exactly the same.
-    #[test]
-    fn a_scene_drawn_in_many_blocks_looks_the_same() {
-        // Blocks of 100 bytes: one segment or one triangle each.
-        let (Ok(whole), Ok(split)) = (
-            draw_picture(mixed_picture(), SIZE, true),
-            draw_picture_in_chunks(mixed_picture(), SIZE, true, 100, &Scene::default()),
-        ) else {
-            eprintln!("no graphics adapter to draw with, so not checked");
-            return;
-        };
-        assert!(whole.chunks(4).any(|pixel| pixel != &whole[0..4]));
-        assert_eq!(whole, split);
-    }
-
-    /// A small model, seen whole: two circles and a box, so lines, edges on faces and faces all
-    /// show. Returns its outlines, the camera's matrix, the light and the ids made.
-    fn small_model() -> (crate::Outlines, [[f32; 4]; 4], [f32; 3], Vec<u64>) {
-        let mut doc = curva_document::Document::default();
-        let ids = vec![
-            doc.add(curva_kernel::Curve::circle([0.0, 0.0, 0.0], 5.0).unwrap()),
-            doc.add(curva_kernel::Curve::circle([12.0, 0.0, 0.0], 5.0).unwrap()),
-            doc.add_body(curva_kernel::Body::cuboid([-4.0, 8.0, 0.0], [8.0, 8.0, 8.0]).unwrap()),
-        ];
-        let outlines = crate::Outlines::of(doc.state());
-        let (low, high) = outlines.bounds().unwrap();
-        let mut camera = crate::Camera::default();
-        camera.frame(low, high);
-        let light = camera.forward().map(|value| value as f32);
-        (outlines, camera.matrix(1.0), light, ids)
-    }
-
-    /// Spec `display-pipeline.md` step 4: the selection drawn through the graphics card's table
-    /// looks exactly as when it was drawn into the vertices' colours, lines a pixel wider
-    /// included, in a shaded and in a wireframe view.
-    #[test]
-    fn the_selection_table_draws_what_coloured_vertices_drew() {
-        let (outlines, matrix, light, ids) = small_model();
-        // One circle and the box selected; the other circle not.
-        let selected = vec![ids[0], ids[2]];
-        let parts = crate::SceneParts::of(&outlines);
-        for shaded in [true, false] {
-            let picture = |lines: Vec<Vertex>, faces: Vec<MeshVertex>| Picture {
-                lines,
-                faces: if shaded { faces } else { Vec::new() },
-                matrix,
-                light,
-                ghosted: false,
-            };
-            let coloured = picture(
-                if shaded {
-                    crate::shaded_object_lines(&outlines, &selected)
-                } else {
-                    crate::object_lines(&outlines, &selected)
-                },
-                crate::face_vertices(&outlines, &selected),
-            );
-            let numbered = picture(
-                if shaded {
-                    parts.shaded_lines.clone()
-                } else {
-                    parts.lines.clone()
-                },
-                parts.faces.clone(),
-            );
-            let scene = Scene {
-                objects: Arc::new(parts.objects.clone()),
-                selection: Arc::new(selected.clone()),
-                clips: Vec::new(),
-            };
-            let size = [96, 96];
-            let (Ok(before), Ok(after)) = (
-                draw_picture(coloured, size, true),
-                draw_picture_in_chunks(numbered, size, true, super::CHUNK_BYTES, &scene),
-            ) else {
-                eprintln!("no graphics adapter to draw with, so not checked");
-                return;
-            };
-            // The selection colour shows, so the comparison is about something.
-            let orange = before
-                .chunks(4)
-                .filter(|p| p[0] > 180 && p[2] < 120)
-                .count();
-            assert!(orange > 20, "only {orange} selected pixels");
-            assert_eq!(before, after, "shaded: {shaded}");
-        }
-    }
-
-    #[test]
-    fn the_selection_table_marks_only_the_selected_objects() {
-        let objects = [10, 20, 30, 40];
-        let table = table_bytes(1, &objects, &[20, 40, 99]);
-        assert_eq!(table.len(), PICK_ROW as usize);
-        assert_eq!(&table[..5], &[0, 1, 0, 1, 0]);
-        assert_eq!(table.iter().map(|&b| usize::from(b)).sum::<usize>(), 2);
-        // Nothing selected: all zeros; more rows: still one byte per object, in order.
-        assert!(table_bytes(1, &objects, &[]).iter().all(|&b| b == 0));
-        let big: Vec<u64> = (0..5000).collect();
-        let two_rows = table_bytes(2, &big, &[4999]);
-        assert_eq!(two_rows.len(), 2 * PICK_ROW as usize);
-        assert_eq!(two_rows[4999], 1);
-    }
-
-    /// #182: a sphere, which has no edges to draw, gets an outline at its rim from the depth
-    /// picture, and nothing inside it: the outline test never mistakes the curved surface itself
-    /// for a step back.
-    #[test]
-    fn a_sphere_is_outlined_at_its_rim_and_clean_inside() {
-        let mut doc = curva_document::Document::default();
-        doc.add_body(curva_kernel::Body::sphere([0.0; 3], 10.0).unwrap());
-        let outlines = crate::Outlines::of(doc.state());
-        // Seen straight down, so the rim on screen is exactly the sphere's radius.
-        let mut camera = crate::StandardView::Top.camera();
-        camera.frame([-12.0, -12.0, -10.0], [12.0, 12.0, 10.0]);
-        let size = [128u32, 128];
-        let picture = Picture {
-            lines: crate::shaded_object_lines(&outlines, &[]),
-            faces: crate::face_vertices(&outlines, &[]),
-            matrix: camera.matrix(1.0),
-            light: camera.forward().map(|v| v as f32),
-            ghosted: false,
-        };
-        let Ok(pixels) = draw_picture(picture, size, true) else {
-            eprintln!("no graphics adapter to draw with, so not checked");
-            return;
-        };
-        let red = |x: usize, y: usize| pixels[(y * 128 + x) * 4];
-        let screen = |p: [f64; 3]| camera.project(p, [128.0, 128.0]).unwrap();
-        let [cx, cy] = screen([0.0; 3]);
-        let rim = screen([10.0, 0.0, 0.0])[0] - cx;
-        // Within the last few pixels inside the rim, on every side: the outline's ink. (The
-        // meshed sphere lies a fraction of a pixel inside the true one. Pictures store colours
-        // converted for display, so the near-black ink reads about 80, the lit surface 180 up.)
-        for (dx, dy) in [(1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)] {
-            let darkest = (1..=4)
-                .map(|inside| {
-                    let at = rim - f64::from(inside);
-                    red((cx + dx * at) as usize, (cy + dy * at) as usize)
-                })
-                .min()
-                .unwrap_or(255);
-            assert!(darkest <= 90, "rim towards {dx},{dy}: {darkest}");
-        }
-        // Inside, well clear of the rim, no ink at all: the curved surface is never taken for a
-        // step back.
-        for y in 0..128 {
-            for x in 0..128 {
-                let from = (x as f64 + 0.5 - cx).hypot(y as f64 + 0.5 - cy);
-                if from < rim - 5.0 {
-                    assert!(red(x, y) > 120, "ink inside at {x},{y}: {}", red(x, y));
-                }
-            }
-        }
-    }
-}
+mod tests;

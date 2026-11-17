@@ -44,6 +44,9 @@ pub struct Outlines {
     pub(crate) seams: Vec<bool>,
     /// For an edge of a surface or solid, its number among the body's edges, in the same order.
     pub(crate) edge_of: Vec<Option<usize>>,
+    /// For a whole circle, its centre and its two axes as long as its radius, in the same order
+    /// (`crate::circles`).
+    pub(crate) circles: Vec<Option<[Point; 3]>>,
     /// The box around each object, in the same order, so snapping can skip far-off ones.
     pub(crate) boxes: Vec<(Point, Point)>,
     /// The sort of object each entry belongs to, in the same order, for the selection filter.
@@ -278,6 +281,7 @@ impl Outlines {
         self.on_faces.extend_from_slice(&other.on_faces);
         self.seams.extend_from_slice(&other.seams);
         self.edge_of.extend_from_slice(&other.edge_of);
+        self.circles.extend_from_slice(&other.circles);
         self.boxes.extend_from_slice(&other.boxes);
         self.kinds.extend_from_slice(&other.kinds);
     }
@@ -425,6 +429,7 @@ impl Outlines {
             self.seams
                 .push(edge.is_some_and(|e| seam_edges.contains(&e)));
             self.edge_of.push(edge);
+            self.circles.push(crate::circles::axes_of(&outline));
             self.kinds.push(kind);
             self.objects.push((id, points));
         }

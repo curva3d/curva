@@ -1,6 +1,7 @@
 //! Curva's 3D viewport: what to draw, how to pick it, and drawing it on the graphics card.
 
 mod camera;
+mod circles;
 mod glass;
 mod gpu;
 mod gumball;
@@ -22,6 +23,7 @@ use curva_document::Object;
 use curva_kernel::{Curve, Point};
 
 pub use camera::{CPlane, Camera, StandardView};
+pub use circles::{CIRCLE_SEGMENTS, PlacedCircle};
 pub use glass::Glass;
 pub use gpu::{
     DEPTH_BITS, DETAIL_SLOTS, Drawing, LineRenderer, MOST_CLIPS, Picture, VIEW_SLOTS, save_picture,
