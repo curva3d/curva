@@ -16,6 +16,7 @@ mod reduce;
 mod repair;
 mod smooth;
 mod subd;
+mod subd_edit;
 mod transform;
 mod triangulate;
 
@@ -26,6 +27,7 @@ pub use mesh::{Attribute, Mesh, MeshError};
 pub use primitives::{Frame, SphereStyle};
 pub use smooth::{MAX_LEVELS, SmoothError};
 pub use subd::{Sharpness, SubD, SubDDisplay, VertexTag};
+pub use subd_edit::{FillStyle, StitchAt};
 pub use triangulate::Triangles;
 
 #[cfg(test)]
