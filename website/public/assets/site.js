@@ -1,6 +1,6 @@
 // Fills in the newest release from GitHub: the version number and a direct link per system.
-// Curva's releases are pre-releases for now, which GitHub's "latest" ignores, so read the list
-// and take the newest one that isn't a draft, as the app's updater does.
+// Read the list and take the newest one that isn't a draft, as the app's updater does: releases
+// up to 0.4.2 are pre-releases, which GitHub's "latest" ignores.
 // Without JavaScript, or if GitHub doesn't answer, every link still goes to the Releases page.
 (function () {
   var API = "https://api.github.com/repos/curva3d/curva/releases?per_page=10";

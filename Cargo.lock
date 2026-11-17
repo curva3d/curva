@@ -1853,7 +1853,7 @@ checksum = "f27ae1dd37df86211c42e150270f82743308803d90a6f6e6651cd730d5e1732f"
 
 [[package]]
 name = "curva-3dm"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "crc32fast",
  "curva-document",
@@ -1864,7 +1864,7 @@ dependencies = [
 
 [[package]]
 name = "curva-app"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "curva-commands",
  "curva-document",
@@ -1884,7 +1884,7 @@ dependencies = [
 
 [[package]]
 name = "curva-commands"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "curva-3dm",
  "curva-document",
@@ -1894,7 +1894,7 @@ dependencies = [
 
 [[package]]
 name = "curva-document"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "curva-kernel",
  "jiff",
@@ -1905,7 +1905,7 @@ dependencies = [
 
 [[package]]
 name = "curva-dxf"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "acadrust",
  "curva-document",
@@ -1914,7 +1914,7 @@ dependencies = [
 
 [[package]]
 name = "curva-kernel"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -1927,7 +1927,7 @@ dependencies = [
 
 [[package]]
 name = "curva-mcp"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "curva-commands",
  "curva-document",
@@ -1937,7 +1937,7 @@ dependencies = [
 
 [[package]]
 name = "curva-mesh"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "curva-kernel",
  "manifold-rust",
@@ -1948,14 +1948,14 @@ dependencies = [
 
 [[package]]
 name = "curva-meshfiles"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "curva-mesh",
 ]
 
 [[package]]
 name = "curva-pdf"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "curva-document",
  "krilla",
@@ -1963,7 +1963,7 @@ dependencies = [
 
 [[package]]
 name = "curva-viewport"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "bevy",
  "curva-document",
@@ -3058,7 +3058,7 @@ dependencies = [
 
 [[package]]
 name = "kernel-eval"
-version = "0.4.2"
+version = "0.5.0"
 
 [[package]]
 name = "khronos-egl"
