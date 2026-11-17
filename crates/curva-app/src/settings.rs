@@ -36,6 +36,93 @@ pub(crate) fn centred_dialog(ctx: &egui::Context, id: &str, contents: impl FnOnc
         });
 }
 
+/// The words for a key, in the user's language.
+type Say<'a> = dyn Fn(&'static str) -> String + 'a;
+
+/// The theme, and glass or solid panels.
+fn look_settings(ui: &mut egui::Ui, settings: &mut theme::Settings, say: &Say<'_>) {
+    ui.label(egui::RichText::new(say("ui.settings.theme")).strong());
+    ui.horizontal(|ui| {
+        for (choice, key) in [
+            (theme::ThemeChoice::System, "ui.settings.system"),
+            (theme::ThemeChoice::Light, "ui.settings.light"),
+            (theme::ThemeChoice::Dark, "ui.settings.dark"),
+        ] {
+            ui.radio_value(&mut settings.theme, choice, say(key));
+        }
+    });
+    ui.label(egui::RichText::new(say("ui.settings.panels")).strong());
+    ui.horizontal(|ui| {
+        ui.radio_value(&mut settings.glass, true, say("ui.settings.glass"));
+        ui.radio_value(&mut settings.glass, false, say("ui.settings.solid"));
+    });
+}
+
+/// The model's unit.
+fn unit_choice(ui: &mut egui::Ui, unit: &mut curva_document::Unit, say: &Say<'_>) {
+    ui.label(egui::RichText::new(say("ui.settings.units")).strong());
+    ui.horizontal_wrapped(|ui| {
+        for (choice, key) in curva_document::Unit::ALL.into_iter().zip([
+            "ui.settings.mm",
+            "ui.settings.m",
+            "ui.settings.ft",
+            "ui.settings.in",
+        ]) {
+            ui.radio_value(unit, choice, say(key));
+        }
+    });
+}
+
+/// Feet and inches as fractions to a chosen precision, or as decimals.
+fn length_display_choice(
+    ui: &mut egui::Ui,
+    display: &mut curva_document::units::LengthDisplay,
+    say: &Say<'_>,
+) {
+    ui.horizontal(|ui| {
+        ui.radio_value(&mut display.decimals, false, say("ui.settings.fractions"));
+        ui.add_enabled_ui(!display.decimals, |ui| {
+            egui::ComboBox::from_id_salt("fraction precision")
+                .selected_text(format!("1/{}\"", display.denominator))
+                .width(64.0)
+                .show_ui(ui, |ui| {
+                    for d in curva_document::units::LengthDisplay::DENOMINATORS {
+                        ui.selectable_value(&mut display.denominator, d, format!("1/{d}\""));
+                    }
+                });
+        });
+        ui.radio_value(&mut display.decimals, true, say("ui.settings.decimals"));
+    });
+}
+
+/// How many undo steps are kept at least and how much memory they may take at most, and how
+/// many steps and megabytes are `held` now.
+fn undo_settings(
+    ui: &mut egui::Ui,
+    settings: &mut theme::Settings,
+    held: (usize, usize),
+    text: &Translations,
+    say: &Say<'_>,
+) {
+    ui.label(egui::RichText::new(say("ui.settings.undo")).strong());
+    ui.horizontal(|ui| {
+        ui.label(say("ui.settings.undo_steps"));
+        ui.add(egui::DragValue::new(&mut settings.undo_min_steps).range(0..=1000));
+    });
+    ui.horizontal(|ui| {
+        ui.label(say("ui.settings.undo_memory"));
+        ui.add(egui::DragValue::new(&mut settings.undo_max_megabytes).range(1..=65536));
+    });
+    let (steps, bytes) = held;
+    ui.label(text.render(&Message::with(
+        "ui.settings.undo_held",
+        vec![
+            steps.to_string(),
+            format!("{:.1}", bytes as f64 / theme::MEGABYTE as f64),
+        ],
+    )));
+}
+
 impl Curva {
     /// Puts the chosen theme in use (or the system's), when it changes: the interface's look,
     /// the viewports' grids and the colours objects are drawn in.
@@ -130,59 +217,19 @@ impl Curva {
     pub(crate) fn general_settings(&mut self, ui: &mut egui::Ui) {
         let before = self.settings.clone();
         let mut unit = self.doc.state().unit;
+        let held = self.doc.undo_held();
         let text = &self.text;
         let settings = &mut self.settings;
         let say = |key: &'static str| text.render(&Message::new(key));
-        ui.label(egui::RichText::new(say("ui.settings.theme")).strong());
-        ui.horizontal(|ui| {
-            for (choice, key) in [
-                (theme::ThemeChoice::System, "ui.settings.system"),
-                (theme::ThemeChoice::Light, "ui.settings.light"),
-                (theme::ThemeChoice::Dark, "ui.settings.dark"),
-            ] {
-                ui.radio_value(&mut settings.theme, choice, say(key));
-            }
-        });
-        ui.label(egui::RichText::new(say("ui.settings.panels")).strong());
-        ui.horizontal(|ui| {
-            ui.radio_value(&mut settings.glass, true, say("ui.settings.glass"));
-            ui.radio_value(&mut settings.glass, false, say("ui.settings.solid"));
-        });
-        ui.label(egui::RichText::new(say("ui.settings.units")).strong());
-        ui.horizontal_wrapped(|ui| {
-            for (choice, key) in curva_document::Unit::ALL.into_iter().zip([
-                "ui.settings.mm",
-                "ui.settings.m",
-                "ui.settings.ft",
-                "ui.settings.in",
-            ]) {
-                ui.radio_value(&mut unit, choice, say(key));
-            }
-        });
+        look_settings(ui, settings, &say);
+        unit_choice(ui, &mut unit, &say);
         // Feet and inches show as fractions to a chosen precision, or as decimals.
         let mut display = self.doc.state().length_display;
         if matches!(
             self.doc.state().unit,
             curva_document::Unit::Feet | curva_document::Unit::Inches
         ) {
-            ui.horizontal(|ui| {
-                ui.radio_value(&mut display.decimals, false, say("ui.settings.fractions"));
-                ui.add_enabled_ui(!display.decimals, |ui| {
-                    egui::ComboBox::from_id_salt("fraction precision")
-                        .selected_text(format!("1/{}\"", display.denominator))
-                        .width(64.0)
-                        .show_ui(ui, |ui| {
-                            for d in curva_document::units::LengthDisplay::DENOMINATORS {
-                                ui.selectable_value(
-                                    &mut display.denominator,
-                                    d,
-                                    format!("1/{d}\""),
-                                );
-                            }
-                        });
-                });
-                ui.radio_value(&mut display.decimals, true, say("ui.settings.decimals"));
-            });
+            length_display_choice(ui, &mut display, &say);
         }
         let display_changed = display != self.doc.state().length_display;
         ui.checkbox(&mut settings.grid, say("ui.settings.grid"));
@@ -200,23 +247,7 @@ impl Curva {
                 desktop_change = Some(listed);
             }
         }
-        ui.label(egui::RichText::new(say("ui.settings.undo")).strong());
-        ui.horizontal(|ui| {
-            ui.label(say("ui.settings.undo_steps"));
-            ui.add(egui::DragValue::new(&mut settings.undo_min_steps).range(0..=1000));
-        });
-        ui.horizontal(|ui| {
-            ui.label(say("ui.settings.undo_memory"));
-            ui.add(egui::DragValue::new(&mut settings.undo_max_megabytes).range(1..=65536));
-        });
-        let (steps, bytes) = self.doc.undo_held();
-        ui.label(text.render(&Message::with(
-            "ui.settings.undo_held",
-            vec![
-                steps.to_string(),
-                format!("{:.1}", bytes as f64 / theme::MEGABYTE as f64),
-            ],
-        )));
+        undo_settings(ui, settings, held, text, &say);
         if display_changed {
             self.doc.set_length_display(display);
         }
@@ -227,12 +258,18 @@ impl Curva {
             self.settings_ui.unit_asked = Some(unit);
         }
         if self.settings != before {
-            self.settings_ui.applied_light = None;
-            if self.benchmark.is_none()
-                && let Some(file) = theme::file()
-            {
-                let _ = self.settings.save(&file);
-            }
+            self.settings_saved();
+        }
+    }
+
+    /// Keeps changed settings: the theme is applied afresh and the settings are saved (not while
+    /// measuring speed).
+    fn settings_saved(&mut self) {
+        self.settings_ui.applied_light = None;
+        if self.benchmark.is_none()
+            && let Some(file) = theme::file()
+        {
+            let _ = self.settings.save(&file);
         }
     }
 

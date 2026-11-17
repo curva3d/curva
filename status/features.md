@@ -13,6 +13,36 @@ once by commenting on their first pull request; signatures go to the `cla-signat
 
 ## Features stream — 17 November 2026
 
+**Later on 17 November:**
+
+- **Dimensions that follow their geometry: the owner chose option A** (decision 0035, #294). A dimension
+  remembers the object, and the place on it, that each of its points snapped to.
+  - Merged #295 (the tie) and #300 (dimensions keep their ties and follow). If the object moves or changes,
+    the dimension follows, and moves whole when both points moved the same way. If the dimension is moved
+    by itself, it lets go, as in Rhino. If the object is deleted, the dimension stays. Ties are saved in
+    `.curva`.
+  - **Waiting on the display stream (#296):** snaps must report which object and place they landed on.
+    Until then, no dimension drawn in the app gets a tie. When #296 lands, I add the small hand-over in the
+    app.
+  - Later (in #294): radius, diameter, arc length and angle dimensions; copies keeping ties; dimensions
+    through details.
+- **Rhino files never crash Curva:** #179 is closed. Merged #291 (long functions in named steps, checked
+  identical) and #292 (a test that opens damaged copies of every example file). A longer run, every file at
+  40 places, found no crash.
+- **Interface tidy-up (#178):**
+  - Merged #298 (part 1). The toolbar icons are drawn in 31 short functions in ten files by subject, and
+    every icon was checked to draw the same shapes as before. The Layers table and Properties panel are in
+    named parts, and `layout.rs` is split.
+  - Part 2 in review: panel frames, title row, resize handles, Annotation Styles, Layouts, General
+    settings, assistant panel, Print panel, viewport mouse handling, gumball.
+  - Left until the display stream's open pull requests land: `viewports.rs`, `main.rs`, `sheets.rs`,
+    `top_bar.rs`, `benchmark.rs`.
+  - No before-and-after screenshots: the owner declined screen control. The icon comparison and the tests
+    stand in.
+- **Next (features):** the tie hand-over once #296 lands; Make2D fills behind other objects; the rest of
+  #178 after the display pull requests.
+
+
 **The repository moved** from `V:` to `E:` (an external SSD, a ReFS Dev Drive) on 16 November: it is at
 `E:\curva`, worktrees at `E:\curva-<issue>`.
 
@@ -36,9 +66,8 @@ drawn.
 and, inside #264 and #280, the annotation file split by kind and the command framework's file split. Make2D is
 now a folder with `make()` in named steps (in #283).
 
-**Waiting for the owner's decision:** dimensions that follow their geometry. Options put to him on 17 November:
-A, attach to the object snapped to (needs the display stream to change snaps); B, attach by matching points
-(recommended now, could pick the wrong object where two share a point); C, not now.
+**Owner's decision (17 November):** dimensions follow their geometry by option A, attach to the object
+snapped to (see above).
 
 **Next (features):** `.3dm` section styles both ways (Rhino 8 keeps them on objects and layers); Make2D fills
 behind other objects; DimArcLength done, so the remaining dimension work is the decision above. Tidy-up #178

@@ -24,10 +24,7 @@ fn figures(value: f64) -> String {
 
 impl Command for Volume {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let chosen = match answer {
-            Some(Answer::Objects(list)) => list,
-            _ => doc.selection(),
-        };
+        let chosen = crate::commands::support::chosen(doc, &answer);
         let bodies = bodies_of(doc, &chosen);
         if bodies.is_empty() {
             return ask_objects("prompt.volume.objects");

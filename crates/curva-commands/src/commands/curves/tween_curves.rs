@@ -1,6 +1,6 @@
 //! `TweenCurves`: adds curves evenly spaced between two curves.
 
-use crate::commands::{ask_objects, curves_of, geometry_failed, unexpected};
+use crate::commands::{ask_objects, curves_of, geometry_failed, objects_or_selection, unexpected};
 use crate::{Answer, Command, Kind, Live, Message, Request, Step};
 use curva_document::Document;
 use curva_kernel::{Curve, KernelError, tween_curves};
@@ -33,13 +33,9 @@ pub struct TweenCurves {
 impl Command for TweenCurves {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
         let Some(ids) = self.ids.clone() else {
-            let chosen = match answer {
-                Some(Answer::Objects(list)) => list,
-                _ => doc.selection(),
-            };
-            if chosen.is_empty() {
+            let Some(chosen) = objects_or_selection(doc, answer) else {
                 return ask_objects("prompt.tweencurves.objects");
-            }
+            };
             if curves_of(doc, &chosen).len() != 2 {
                 return Step::Failed(Message::new("error.tween_two"));
             }

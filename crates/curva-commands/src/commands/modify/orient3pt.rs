@@ -1,6 +1,6 @@
 //! `Orient3Pt`: moves and turns objects so three reference points line up with three targets.
 
-use crate::commands::{ask_objects, ask_point, ghosts, guide, unexpected};
+use crate::commands::{ask_objects, ask_point, ghosts, guide, objects_or_selection, unexpected};
 use crate::{Answer, Command, Live, Message, Step};
 use curva_document::Document;
 use curva_kernel::{Curve, Point, Similarity, sub};
@@ -32,13 +32,9 @@ fn change(points: &[Point], last: Point) -> Option<(Similarity, Point)> {
 impl Command for Orient3Pt {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
         let Some(ids) = self.ids.clone() else {
-            let chosen = match answer {
-                Some(Answer::Objects(list)) => list,
-                _ => doc.selection(),
-            };
-            if chosen.is_empty() {
+            let Some(chosen) = objects_or_selection(doc, answer) else {
                 return ask_objects("prompt.orient.objects");
-            }
+            };
             self.ids = Some(chosen);
             return ask_point(KEYS[0], Vec::new());
         };

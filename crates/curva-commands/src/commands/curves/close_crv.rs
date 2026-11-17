@@ -1,6 +1,6 @@
 //! `CloseCrv`: joins the ends of open polylines and smooth curves.
 
-use crate::commands::{ask_objects, curves_of};
+use crate::commands::{ask_objects, curves_of, objects_or_selection};
 use crate::{Answer, Command, Message, Step};
 use curva_document::Document;
 use curva_kernel::Curve;
@@ -25,13 +25,9 @@ fn closed(curve: &Curve) -> Option<Curve> {
 
 impl Command for CloseCrv {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let chosen = match answer {
-            Some(Answer::Objects(list)) => list,
-            _ => doc.selection(),
-        };
-        if chosen.is_empty() {
+        let Some(chosen) = objects_or_selection(doc, answer) else {
             return ask_objects("prompt.closecrv.objects");
-        }
+        };
         let mut done = 0;
         for (id, curve) in curves_of(doc, &chosen) {
             if let Some(whole) = closed(&curve) {

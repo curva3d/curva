@@ -28,97 +28,148 @@ impl Curva {
             ui.label(self.text.render(&Message::new("ui.layouts.none")));
             return;
         }
-        let open = self.doc.space();
         let mut action = None;
-        let count = layouts.len();
-        for (index, layout) in layouts.iter().enumerate() {
-            let row = ui
-                .group(|ui| {
-                    ui.horizontal(|ui| {
-                        // A handle to drag the layout to another place in the order.
-                        let handle = ui
-                            .dnd_drag_source(
-                                ui.scope_id().with(("layout handle", layout.id)),
-                                index,
-                                |ui| {
-                                    ui.label("≡");
-                                },
-                            )
-                            .response;
-                        handle.on_hover_cursor(egui::CursorIcon::Grab);
-                        sheet_picture(ui, layout.size, open == Some(layout.id));
-                        ui.vertical(|ui| {
-                            let mut name = layout.name.clone();
-                            let hint = sheets::layout_title(&self.text, layout, index);
-                            let edit = ui.add(
-                                egui::TextEdit::singleline(&mut name)
-                                    .hint_text(hint)
-                                    .desired_width(130.0),
-                            );
-                            if edit.changed() {
-                                self.doc.rename_layout(layout.id, name);
-                            }
-                            if let Some(resize) = self.paper_choice(ui, layout) {
-                                action = Some(resize);
-                            }
-                        });
-                    });
-                    ui.horizontal(|ui| {
-                        let say = |key: &'static str| self.text.render(&Message::new(key));
-                        if ui
-                            .add_enabled(
-                                open != Some(layout.id),
-                                egui::Button::new(say("ui.layouts.open")),
-                            )
-                            .clicked()
-                        {
-                            action = Some(RowAction::Open(layout.id));
-                        }
-                        if ui.button(say("ui.layouts.copy")).clicked() {
-                            action = Some(RowAction::Copy(layout.id));
-                        }
-                        if ui.add_enabled(index > 0, egui::Button::new("▲")).clicked() {
-                            action = Some(RowAction::Move(layout.id, index - 1));
-                        }
-                        if ui
-                            .add_enabled(index + 1 < count, egui::Button::new("▼"))
-                            .clicked()
-                        {
-                            action = Some(RowAction::Move(layout.id, index + 1));
-                        }
-                        if ui.button(say("ui.layer.delete")).clicked() {
-                            action = Some(RowAction::Delete(layout.id));
-                        }
-                    });
-                })
-                .response;
-            // Another layout dropped on this row takes its place in the order.
-            if let Some(from) = row.dnd_release_payload::<usize>()
-                && let Some(moved) = layouts.get(*from)
-            {
-                action = Some(RowAction::Move(moved.id, index));
-            }
-            if row.double_clicked() {
-                action = Some(RowAction::Open(layout.id));
+        for index in 0..layouts.len() {
+            if let Some(asked) = self.layout_row(ui, &layouts, index) {
+                action = Some(asked);
             }
         }
+        if let Some(action) = action {
+            self.layout_action(action);
+        }
+    }
+
+    /// The row of layout `index`: its heading and buttons. Another layout dropped on it takes
+    /// its place in the order; double-clicked, it opens. Returns what was asked for.
+    fn layout_row(
+        &mut self,
+        ui: &mut egui::Ui,
+        layouts: &[curva_document::layouts::Layout],
+        index: usize,
+    ) -> Option<RowAction> {
+        let layout = &layouts[index];
+        let mut action = None;
+        let row = ui
+            .group(|ui| {
+                if let Some(resize) = self.layout_heading(ui, layout, index) {
+                    action = Some(resize);
+                }
+                if let Some(button) = self.layout_buttons(ui, layout, index, layouts.len()) {
+                    action = Some(button);
+                }
+            })
+            .response;
+        if let Some(from) = row.dnd_release_payload::<usize>()
+            && let Some(moved) = layouts.get(*from)
+        {
+            action = Some(RowAction::Move(moved.id, index));
+        }
+        if row.double_clicked() {
+            action = Some(RowAction::Open(layout.id));
+        }
+        action
+    }
+
+    /// A layout's heading: a handle to drag it to another place in the order, a picture of its
+    /// sheet, its name to rename it, and its paper size and orientation.
+    fn layout_heading(
+        &mut self,
+        ui: &mut egui::Ui,
+        layout: &curva_document::layouts::Layout,
+        index: usize,
+    ) -> Option<RowAction> {
+        let open = self.doc.space();
+        let mut action = None;
+        ui.horizontal(|ui| {
+            let handle = ui
+                .dnd_drag_source(
+                    ui.scope_id().with(("layout handle", layout.id)),
+                    index,
+                    |ui| {
+                        ui.label("≡");
+                    },
+                )
+                .response;
+            handle.on_hover_cursor(egui::CursorIcon::Grab);
+            sheet_picture(ui, layout.size, open == Some(layout.id));
+            ui.vertical(|ui| {
+                let mut name = layout.name.clone();
+                let hint = sheets::layout_title(&self.text, layout, index);
+                let edit = ui.add(
+                    egui::TextEdit::singleline(&mut name)
+                        .hint_text(hint)
+                        .desired_width(130.0),
+                );
+                if edit.changed() {
+                    self.doc.rename_layout(layout.id, name);
+                }
+                if let Some(resize) = self.paper_choice(ui, layout) {
+                    action = Some(resize);
+                }
+            });
+        });
+        action
+    }
+
+    /// A layout's buttons: open, copy, move up, move down, delete.
+    fn layout_buttons(
+        &self,
+        ui: &mut egui::Ui,
+        layout: &curva_document::layouts::Layout,
+        index: usize,
+        count: usize,
+    ) -> Option<RowAction> {
+        let open = self.doc.space();
+        let mut action = None;
+        ui.horizontal(|ui| {
+            let say = |key: &'static str| self.text.render(&Message::new(key));
+            if ui
+                .add_enabled(
+                    open != Some(layout.id),
+                    egui::Button::new(say("ui.layouts.open")),
+                )
+                .clicked()
+            {
+                action = Some(RowAction::Open(layout.id));
+            }
+            if ui.button(say("ui.layouts.copy")).clicked() {
+                action = Some(RowAction::Copy(layout.id));
+            }
+            if ui.add_enabled(index > 0, egui::Button::new("▲")).clicked() {
+                action = Some(RowAction::Move(layout.id, index - 1));
+            }
+            if ui
+                .add_enabled(index + 1 < count, egui::Button::new("▼"))
+                .clicked()
+            {
+                action = Some(RowAction::Move(layout.id, index + 1));
+            }
+            if ui.button(say("ui.layer.delete")).clicked() {
+                action = Some(RowAction::Delete(layout.id));
+            }
+        });
+        action
+    }
+
+    /// Carries out what a layout's row asked for.
+    fn layout_action(&mut self, action: RowAction) {
         match action {
-            Some(RowAction::Open(id)) => {
+            RowAction::Open(id) => {
                 if self.processor.is_running() {
                     self.processor.cancel(&mut self.doc);
                 }
                 self.doc.set_space(Some(id));
             }
-            Some(RowAction::Copy(id)) => {
+            RowAction::Copy(id) => {
                 if self.processor.is_running() {
                     self.processor.cancel(&mut self.doc);
                 }
                 self.doc.set_space(Some(id));
                 self.processor.submit(&mut self.doc, "CopyLayout");
             }
-            Some(RowAction::Delete(id)) => self.undoable(|doc| doc.delete_layout(id)),
-            Some(RowAction::Move(id, to)) => self.undoable(|doc| doc.move_layout(id, to)),
-            Some(RowAction::Resize(id, size, unit)) => {
+            RowAction::Delete(id) => self.undoable(|doc| doc.delete_layout(id)),
+            RowAction::Move(id, to) => self.undoable(|doc| doc.move_layout(id, to)),
+            RowAction::Resize(id, size, unit) => {
                 self.undoable(|doc| doc.resize_layout(id, size, unit));
                 // The open sheet is framed again at its new size.
                 if self.doc.space() == Some(id) {
@@ -127,7 +178,6 @@ impl Curva {
                     self.doc.set_space(Some(id));
                 }
             }
-            None => {}
         }
     }
 

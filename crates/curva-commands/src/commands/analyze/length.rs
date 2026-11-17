@@ -1,6 +1,6 @@
 //! `Length`: measures curves.
 
-use crate::commands::{ask_objects, curves_of, geometry_failed};
+use crate::commands::{ask_objects, curves_of, geometry_failed, objects_or_selection};
 use crate::{Answer, Command, Message, Step};
 use curva_document::Document;
 
@@ -10,13 +10,9 @@ pub struct Length;
 
 impl Command for Length {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let chosen = match answer {
-            Some(Answer::Objects(list)) => list,
-            _ => doc.selection(),
-        };
-        if chosen.is_empty() {
+        let Some(chosen) = objects_or_selection(doc, answer) else {
             return ask_objects("prompt.length.objects");
-        }
+        };
         let mut total = 0.0;
         for (_, curve) in curves_of(doc, &chosen) {
             match curve.length() {

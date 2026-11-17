@@ -1,7 +1,9 @@
 //! `Smooth`: evens out picked control points, or all the points of chosen curves, by moving
 //! each part of the way towards the middle of its neighbours.
 
-use crate::commands::{ask_objects, geometry_failed, ghost_results, unexpected};
+use crate::commands::{
+    ask_objects, geometry_failed, ghost_results, objects_or_selection, unexpected,
+};
 use crate::{Answer, Command, Kind, Live, Message, Request, Step};
 use curva_document::{Document, Grip};
 use curva_kernel::{Curve, KernelError};
@@ -37,13 +39,9 @@ impl Command for Smooth {
                 self.grips = Some(picked);
                 return ask_factor();
             }
-            let chosen = match answer {
-                Some(Answer::Objects(list)) => list,
-                _ => doc.selection(),
-            };
-            if chosen.is_empty() {
+            let Some(chosen) = objects_or_selection(doc, answer) else {
                 return ask_objects("prompt.smooth.objects");
-            }
+            };
             // Every control point of the chosen curves; those without points are left out.
             let all: Vec<Grip> = doc
                 .state()

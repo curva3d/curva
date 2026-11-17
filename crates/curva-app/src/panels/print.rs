@@ -78,6 +78,64 @@ fn paint_page(ui: &egui::Ui, page: &Page, rect: egui::Rect) {
     }
 }
 
+/// A box to tick for each layout; the ticked ones keep the Layouts panel's order.
+fn layout_ticks(ui: &mut egui::Ui, chosen: &mut Vec<u64>, layouts: &[(u64, String)]) {
+    for (id, name) in layouts {
+        let mut ticked = chosen.contains(id);
+        if ui.checkbox(&mut ticked, name).changed() {
+            if ticked {
+                chosen.push(*id);
+                let order: Vec<u64> = layouts.iter().map(|(l, _)| *l).collect();
+                chosen.sort_by_key(|c| order.iter().position(|o| o == c));
+            } else {
+                chosen.retain(|c| c != id);
+            }
+        }
+    }
+}
+
+/// Colour as displayed or everything black, and a PDF or the printer.
+fn print_choices(ui: &mut egui::Ui, panel: &mut PrintPanel, say: &dyn Fn(&'static str) -> String) {
+    ui.horizontal(|ui| {
+        ui.radio_value(&mut panel.black, false, say("ui.print.display"));
+        ui.radio_value(&mut panel.black, true, say("ui.print.black"));
+    });
+    ui.horizontal(|ui| {
+        ui.radio_value(&mut panel.printer, false, say("ui.print.pdf"));
+        ui.radio_value(&mut panel.printer, true, say("ui.print.printer"));
+    });
+}
+
+/// The preview, one ticked layout at a time, with buttons to step through them; drawn in the
+/// paper's own shape, no taller than the preview may be.
+fn page_preview(ui: &mut egui::Ui, doc: &Document, panel: &mut PrintPanel, chosen: &[u64]) {
+    let count = chosen.len();
+    let page_index = panel.page.min(count - 1);
+    ui.horizontal(|ui| {
+        if ui.small_button("◀").clicked() {
+            panel.page = page_index.saturating_sub(1);
+        }
+        ui.label(format!("{} / {count}", page_index + 1));
+        if ui.small_button("▶").clicked() {
+            panel.page = (page_index + 1).min(count - 1);
+        }
+    });
+    let colour = if panel.black {
+        curva_viewport::print::PrintColour::Black
+    } else {
+        curva_viewport::print::PrintColour::Display
+    };
+    let fields = curva_document::fields::FieldContext::now(doc.path());
+    if let Some(page) = curva_viewport::print::layout_page(doc, chosen[page_index], &fields, colour)
+    {
+        let width = ui.available_width().max(120.0);
+        let aspect = (page.size[1] / page.size[0].max(1e-9)) as f32;
+        let height = (width * aspect).min(MOST_PREVIEW_HEIGHT);
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::hover());
+        paint_page(ui, &page, rect);
+    }
+}
+
 impl Curva {
     /// The Print panel's contents.
     pub(crate) fn print_panel(&mut self, ui: &mut egui::Ui) {
@@ -103,29 +161,10 @@ impl Curva {
         });
         chosen.retain(|id| layouts.iter().any(|(l, _)| l == id));
         ui.label(egui::RichText::new(say("ui.print.layouts")).strong());
-        for (id, name) in &layouts {
-            let mut ticked = chosen.contains(id);
-            if ui.checkbox(&mut ticked, name).changed() {
-                if ticked {
-                    chosen.push(*id);
-                    // Pages keep the Layouts panel's order.
-                    let order: Vec<u64> = layouts.iter().map(|(l, _)| *l).collect();
-                    chosen.sort_by_key(|c| order.iter().position(|o| o == c));
-                } else {
-                    chosen.retain(|c| c != id);
-                }
-            }
-        }
+        layout_ticks(ui, chosen, &layouts);
         ui.separator();
-        ui.horizontal(|ui| {
-            ui.radio_value(&mut panel.black, false, say("ui.print.display"));
-            ui.radio_value(&mut panel.black, true, say("ui.print.black"));
-        });
-        ui.horizontal(|ui| {
-            ui.radio_value(&mut panel.printer, false, say("ui.print.pdf"));
-            ui.radio_value(&mut panel.printer, true, say("ui.print.printer"));
-        });
-        let chosen = chosen.clone();
+        print_choices(ui, panel, &say);
+        let chosen = panel.chosen.clone().unwrap_or_default();
         let job = PrintJob {
             layouts: chosen.clone(),
             black: panel.black,
@@ -142,36 +181,8 @@ impl Curva {
                 egui::Button::new(say("ui.print.go")),
             )
             .clicked();
-        // The preview, one ticked layout at a time.
         if !chosen.is_empty() {
-            let count = chosen.len();
-            let page_index = panel.page.min(count - 1);
-            ui.horizontal(|ui| {
-                if ui.small_button("◀").clicked() {
-                    panel.page = page_index.saturating_sub(1);
-                }
-                ui.label(format!("{} / {count}", page_index + 1));
-                if ui.small_button("▶").clicked() {
-                    panel.page = (page_index + 1).min(count - 1);
-                }
-            });
-            let colour = if panel.black {
-                curva_viewport::print::PrintColour::Black
-            } else {
-                curva_viewport::print::PrintColour::Display
-            };
-            let fields = curva_document::fields::FieldContext::now(self.doc.path());
-            if let Some(page) =
-                curva_viewport::print::layout_page(&self.doc, chosen[page_index], &fields, colour)
-            {
-                // The paper's own shape, no taller than the preview may be.
-                let width = ui.available_width().max(120.0);
-                let aspect = (page.size[1] / page.size[0].max(1e-9)) as f32;
-                let height = (width * aspect).min(MOST_PREVIEW_HEIGHT);
-                let (rect, _) =
-                    ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::hover());
-                paint_page(ui, &page, rect);
-            }
+            page_preview(ui, &self.doc, panel, &chosen);
         }
         if go {
             if job.to == PrintTo::Printer {

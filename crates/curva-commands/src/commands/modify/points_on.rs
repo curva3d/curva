@@ -1,6 +1,6 @@
 //! `PointsOn`: shows the control points of curves so they can be picked and moved.
 
-use crate::commands::ask_objects;
+use crate::commands::{ask_objects, objects_or_selection};
 use crate::{Answer, Command, Message, Step};
 use curva_document::Document;
 
@@ -10,13 +10,9 @@ pub struct PointsOn;
 
 impl Command for PointsOn {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let chosen = match answer {
-            Some(Answer::Objects(list)) => list,
-            _ => doc.selection(),
-        };
-        if chosen.is_empty() {
+        let Some(chosen) = objects_or_selection(doc, answer) else {
             return ask_objects("prompt.pointson.objects");
-        }
+        };
         let shown = doc.points_on(&chosen);
         if shown == 0 {
             return Step::Failed(Message::new("error.no_points"));

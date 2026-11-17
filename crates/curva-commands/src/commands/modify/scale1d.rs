@@ -1,7 +1,8 @@
 //! `Scale1D`: stretches objects in one direction.
 
 use crate::commands::{
-    ask_objects, ask_point, ask_point_or_number, curves_of, ghost_results, guide, unexpected,
+    ask_objects, ask_point, ask_point_or_number, curves_of, ghost_results, guide,
+    objects_or_selection, unexpected,
 };
 use crate::{Answer, Command, Live, Message, Step};
 use curva_document::Document;
@@ -53,13 +54,9 @@ impl Scale1D {
 impl Command for Scale1D {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
         let Some(ids) = self.ids.clone() else {
-            let chosen = match answer {
-                Some(Answer::Objects(list)) => list,
-                _ => doc.selection(),
-            };
-            if chosen.is_empty() {
+            let Some(chosen) = objects_or_selection(doc, answer) else {
                 return ask_objects("prompt.scale.objects");
-            }
+            };
             self.ids = Some(chosen);
             return ask_point("prompt.scale.origin", Vec::new());
         };
