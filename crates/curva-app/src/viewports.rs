@@ -14,6 +14,8 @@ pub(crate) struct ViewportCache {
     pub(crate) shapes: Arc<Vec<curva_viewport::PlacedShape>>,
     /// Whole circles, drawn by the graphics card from their centre and axes, out of the lines.
     pub(crate) circles: Arc<Vec<curva_viewport::PlacedCircle>>,
+    /// What the scene's positions are measured from ([`curva_viewport::SceneParts::origin`]).
+    pub(crate) origin: Point,
     /// Meshes of solids, kept until they change.
     pub(crate) meshes: MeshCache,
     /// The faces and shapes with those a preview replaces left out, and which those are.
@@ -36,6 +38,8 @@ pub(crate) struct Pane {
     pub(crate) plane: CPlane,
     pub(crate) camera: Camera,
     pub(crate) grid: Arc<Vec<curva_viewport::Vertex>>,
+    /// What the grid's positions are measured from: the scene's origin when it was made (#225).
+    pub(crate) grid_origin: Point,
     pub(crate) gestures: LeftGestures,
     /// The saved view it shows, whose name becomes its title.
     pub(crate) named: Option<String>,
@@ -52,7 +56,11 @@ pub(crate) struct Pane {
 impl Pane {
     pub(crate) fn set_plane(&mut self, plane: CPlane) {
         self.plane = plane;
-        self.grid = Arc::new(grid_lines_in(&plane, &theme::current().viewport));
+        self.grid = Arc::new(grid_lines_in(
+            &plane,
+            &theme::current().viewport,
+            self.grid_origin,
+        ));
     }
 
     /// Keeps the view history: once the camera has moved and stands still again, the view it
@@ -91,7 +99,12 @@ impl Pane {
             settled: view.camera(),
             camera: view.camera(),
             plane: view.plane(),
-            grid: Arc::new(grid_lines_in(&view.plane(), &theme::current().viewport)),
+            grid: Arc::new(grid_lines_in(
+                &view.plane(),
+                &theme::current().viewport,
+                [0.0; 3],
+            )),
+            grid_origin: [0.0; 3],
             gestures: LeftGestures::default(),
             named: None,
             // As in Rhino, the perspective view starts shaded and the flat views in wireframe.
@@ -225,6 +238,11 @@ impl Curva {
             self.drawing.faces = Arc::new(parts.faces);
             self.drawing.shapes = Arc::new(parts.shapes);
             self.drawing.circles = Arc::new(parts.circles);
+            if parts.origin != self.drawing.origin {
+                // Previews measured from the old origin are made again.
+                self.ghosted.0.clear();
+            }
+            self.drawing.origin = parts.origin;
             self.drawing.objects = Arc::new(parts.objects);
             self.drawing.faces_without.0.clear();
         }
@@ -349,7 +367,7 @@ impl Curva {
         if bodies != self.ghosted.0 {
             let meshes: Vec<curva_kernel::BodyMesh> =
                 bodies.iter().filter_map(|body| body.mesh().ok()).collect();
-            self.ghosted = (bodies, Arc::new(ghost_faces(&meshes)));
+            self.ghosted = (bodies, Arc::new(ghost_faces(&meshes, self.drawing.origin)));
         }
         Arc::clone(&self.ghosted.1)
     }
@@ -709,7 +727,8 @@ impl Curva {
         }
         let mut previewed = self.processor.preview(&self.doc, cursor, &self.typed);
         previewed.extend(self.gumball_preview());
-        let preview = ghost_lines(&previewed);
+        let origin = self.drawing.origin;
+        let preview = ghost_lines(&previewed, origin);
         let overlay = Arc::new(preview);
         let preview_faces = self.ghosted_preview(cursor);
         // A solid the preview changes in place is hidden, so the changed one shows in its place.
@@ -724,7 +743,8 @@ impl Curva {
         } else {
             if self.drawing.faces_without.0 != replaced {
                 let objects = &self.drawing.objects;
-                let made = curva_viewport::scene_faces_without(&self.outlines, objects, &replaced);
+                let made =
+                    curva_viewport::scene_faces_without(&self.outlines, objects, &replaced, origin);
                 let shapes =
                     curva_viewport::scene_shapes_without(&self.drawing.shapes, objects, &replaced);
                 self.drawing.faces_without = (replaced, Arc::new(made), Arc::new(shapes));
@@ -740,9 +760,19 @@ impl Curva {
             let (clips, pane_faces) = if self.shows_sheet(*pane) {
                 (Vec::new(), Arc::clone(&faces))
             } else {
-                self.clipped_view(curva_document::clipping::ClipView::Viewport(*pane), &faces)
+                self.clipped_view(
+                    curva_document::clipping::ClipView::Viewport(*pane),
+                    &faces,
+                    origin,
+                )
             };
-            let camera = &self.panes[*pane].camera;
+            if self.panes[*pane].grid_origin != origin {
+                let pane = &mut self.panes[*pane];
+                pane.grid_origin = origin;
+                pane.set_plane(pane.plane);
+            }
+            // The camera as the scene is measured, from its origin (#225).
+            let camera = self.panes[*pane].camera.measured_from(origin);
             let display = self.panes[*pane].display;
             let drawing = Drawing {
                 clips,
@@ -773,7 +803,7 @@ impl Curva {
                 frame: ui.ctx().cumulative_frame_nr(),
                 background: self.pane_background(*pane).0,
                 background_low: self.pane_background(*pane).1,
-                camera: *camera,
+                camera,
             };
             ui.painter().add(egui_wgpu_callback(*rect, drawing));
             self.paint_details(ui, *pane, *rect, size);
@@ -867,7 +897,7 @@ mod tests {
         assert_eq!(pane.plane, raised);
         assert_eq!(
             pane.grid.len(),
-            grid_lines_in(&raised, &theme::current().viewport).len()
+            grid_lines_in(&raised, &theme::current().viewport, [0.0; 3]).len()
         );
         assert!(pane.grid.iter().all(|v| v.position[2] == 5.0));
         pane.set_plane(pane.view.plane());

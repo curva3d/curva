@@ -4,7 +4,7 @@
 
 use curva_kernel::{Curve, Point};
 
-use crate::{Outlines, line_width, narrow, piece_colour};
+use crate::{Outlines, line_width, narrow, narrow_from, piece_colour};
 
 /// How many segments a circle is drawn with: as many as the kernel samples it with, so it
 /// shows where it is picked and snapped to.
@@ -57,10 +57,12 @@ pub(crate) fn drawn_apart(outlines: &Outlines, index: usize) -> Option<[Point; 3
     outlines.circles.get(index).copied().flatten()
 }
 
-/// The circles of `outlines` drawn apart, numbered by `numbers`, unselected.
+/// The circles of `outlines` drawn apart, numbered by `numbers`, unselected, their centres
+/// measured from `origin`.
 pub(crate) fn circles_of(
     outlines: &Outlines,
     numbers: &std::collections::HashMap<u64, u32>,
+    origin: Point,
 ) -> Vec<PlacedCircle> {
     outlines
         .objects
@@ -69,7 +71,7 @@ pub(crate) fn circles_of(
         .filter_map(|(index, (id, _))| {
             let [centre, x, y] = drawn_apart(outlines, index)?;
             Some(PlacedCircle {
-                centre: narrow(centre),
+                centre: narrow_from(centre, origin),
                 x: narrow(x),
                 y: narrow(y),
                 colour: piece_colour(outlines, index, false, false),

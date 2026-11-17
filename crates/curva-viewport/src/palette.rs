@@ -1,6 +1,7 @@
 //! The viewport's colours for the light and dark themes, and the grid drawn in them.
 
-use crate::{CPlane, Outlines, Vertex, grid_segment, narrow};
+use crate::{CPlane, Outlines, Vertex, grid_segment};
+use curva_kernel::Point;
 
 /// The viewport's colours for a theme: its background, the grid and axes, and the colour that
 /// objects on a layer still in the standard colour take, so they read on either background.
@@ -66,12 +67,13 @@ pub(crate) const GRID_REACH: i32 = 100;
 pub(crate) const MAJOR_EVERY: i32 = 10;
 
 /// The grid and axes of a plane as line segments, as Serpentine3D draws them: a minor line every
-/// unit and a major one every 10, out to 100 each way, with softened axes.
+/// unit and a major one every 10, out to 100 each way, with softened axes; measured from
+/// `origin`, as the scene they are drawn with ([`crate::SceneParts::origin`]).
 #[must_use]
-pub fn grid_lines_in(plane: &CPlane, palette: &Palette) -> Vec<Vertex> {
+pub fn grid_lines_in(plane: &CPlane, palette: &Palette, origin: Point) -> Vec<Vertex> {
     let on_plane = |u: f64, v: f64| {
         let along = |axis: usize| plane.origin[axis] + plane.x[axis] * u + plane.y[axis] * v;
-        narrow([along(0), along(1), along(2)])
+        crate::narrow_from([along(0), along(1), along(2)], origin)
     };
     let mut out = Vec::new();
     let reach = f64::from(GRID_REACH);

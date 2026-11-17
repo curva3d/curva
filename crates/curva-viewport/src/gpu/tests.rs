@@ -432,3 +432,47 @@ fn a_sphere_is_outlined_at_its_rim_and_clean_inside() {
         }
     }
 }
+
+/// Spec `display-on-bevy.md` §2, the *Far* check (#225): a small model drawn 500 km from the
+/// origin, seen the same way, gives the same picture as at the origin. Single precision steps by
+/// 32 mm out there, so positions measured from the origin would come out jagged; a window scene
+/// measures them from a point near the model instead ([`crate::SceneParts::origin`]).
+#[test]
+fn far_from_the_origin_draws_as_at_the_origin() {
+    let picture_at = |offset: [f64; 3]| {
+        let at = |p: [f64; 3]| [p[0] + offset[0], p[1] + offset[1], p[2] + offset[2]];
+        let mut doc = curva_document::Document::default();
+        doc.add(curva_kernel::Curve::circle(at([0.0, 0.0, 0.0]), 5.0).unwrap());
+        doc.add(curva_kernel::Curve::line(at([-6.0, -6.0, 0.0]), at([6.0, 4.5, 0.0])).unwrap());
+        let outlines = crate::Outlines::of(doc.state());
+        let parts = crate::SceneParts::shared(&outlines);
+        let mut camera = crate::Camera::default();
+        camera.frame(at([-6.0, -6.0, -1.0]), at([6.0, 6.0, 1.0]));
+        let camera = camera.measured_from(parts.origin);
+        let picture = Picture {
+            lines: parts.lines.clone(),
+            faces: Vec::new(),
+            matrix: camera.matrix(1.0),
+            light: camera.forward().map(|v| v as f32),
+            ghosted: false,
+        };
+        let scene = Scene {
+            objects: Arc::new(parts.objects.clone()),
+            circles: Arc::new(parts.circles.clone()),
+            ..Scene::default()
+        };
+        draw_picture_in_chunks(picture, [96, 96], true, super::CHUNK_BYTES, &scene)
+    };
+    let (Ok(near), Ok(far)) = (picture_at([0.0; 3]), picture_at([5.0e8, 5.0e8, 0.0])) else {
+        eprintln!("no graphics adapter to draw with, so not checked");
+        return;
+    };
+    let lit = near.chunks(4).filter(|p| p[0] > 100).count();
+    assert!(lit > 100, "the model shows: {lit} pixels");
+    let differing = near
+        .chunks(4)
+        .zip(far.chunks(4))
+        .filter(|(a, b)| a != b)
+        .count();
+    assert!(differing <= 8, "{differing} pixels differ");
+}
