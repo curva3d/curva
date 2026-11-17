@@ -74,6 +74,7 @@ impl Command for ClippingPlane {
                     flipped: self.flipped,
                     views: (0..4).map(ClipView::Viewport).collect(),
                     section: SectionFill::default(),
+                    hatch: None,
                 });
                 Step::Done(Some(Message::new("done.clippingplane")))
             }

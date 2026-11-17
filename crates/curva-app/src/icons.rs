@@ -346,6 +346,17 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
             pen.line((11.0, 3.0), (9.0, 5.5));
             pen.line((11.0, 3.0), (13.0, 5.5));
         }
+        // A block cut level through its middle, the cut face on top hatched.
+        "sectionstyle" => {
+            pen.path(
+                &[(3.0, 11.0), (15.0, 11.0), (15.0, 19.0), (3.0, 19.0)],
+                true,
+            );
+            pen.path(&[(3.0, 11.0), (8.0, 5.0), (20.0, 5.0), (15.0, 11.0)], true);
+            pen.path(&[(15.0, 19.0), (20.0, 13.0), (20.0, 5.0)], false);
+            pen.line((7.0, 11.0), (12.0, 5.0));
+            pen.line((11.0, 11.0), (16.0, 5.0));
+        }
         // The plane with a tick: it cuts this view.
         "enableclippingplane" => {
             pen.path(&[(2.0, 13.0), (7.0, 6.0), (15.0, 6.0), (10.0, 13.0)], true);
