@@ -1,6 +1,6 @@
 //! Working on bodies already made: pipes along curves and offset faces.
 
-use crate::making::sweep_pieces;
+use crate::extrude::sweep_pieces;
 use crate::{Body, Curve, KernelError, Point, cross, sub, unit};
 use solidcore_ops::sweep::{SweepFrame, sweep_placed};
 use solidcore_ops::{offset_sheet, thicken};

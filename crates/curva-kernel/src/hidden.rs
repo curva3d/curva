@@ -20,6 +20,9 @@
 use crate::rays::RayScene;
 use crate::{Body, Curve, KernelError, Point};
 
+mod silhouettes;
+use silhouettes::{analytic_silhouettes, mesh_silhouettes, trimmed};
+
 /// Where a view looks from (spec `make2d.md` §1).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct View {
@@ -295,256 +298,6 @@ fn middle(curve: &Curve) -> Option<Point> {
     points.get(points.len() / 2).copied()
 }
 
-/// The exact silhouettes of a cylinder or sphere face from `view`, before trimming to the face:
-/// lines along the cylinder `reach` either way from its frame, or the sphere's outline circle.
-/// `None` for other surfaces.
-fn analytic_silhouettes(
-    surface: &crate::record::Surface,
-    view: &View,
-    reach: f64,
-) -> Option<Vec<Curve>> {
-    use crate::record::Surface;
-    match surface {
-        Surface::Cylinder { frame, radius } => {
-            let (o, x, y) = (frame.origin, frame.x_axis, frame.y_axis);
-            let z = cross(x, y);
-            // The angles round the axis where the surface turns edge-on.
-            let angles: Vec<f64> = if view.parallel {
-                let Some(across) = unit(cross(z, view.forward)) else {
-                    // Seen along its axis: its outline is its end circles, which are edges.
-                    return Some(Vec::new());
-                };
-                let u = dot(across, y).atan2(dot(across, x));
-                vec![u, u + std::f64::consts::PI]
-            } else {
-                let rel = sub(o, view.eye);
-                let (a, b) = (dot(x, rel), dot(y, rel));
-                let r = a.hypot(b);
-                if r <= *radius {
-                    return Some(Vec::new());
-                }
-                let phi = b.atan2(a);
-                let spread = (-radius / r).acos();
-                vec![phi + spread, phi - spread]
-            };
-            Some(
-                angles
-                    .into_iter()
-                    .filter_map(|u| {
-                        let foot = plus(plus(o, x, radius * u.cos()), y, radius * u.sin());
-                        Curve::line(plus(foot, z, -reach), plus(foot, z, reach)).ok()
-                    })
-                    .collect(),
-            )
-        }
-        Surface::Sphere { frame, radius } => {
-            let o = frame.origin;
-            let (centre, size, normal) = if view.parallel {
-                (o, *radius, view.forward)
-            } else {
-                let to_eye = sub(view.eye, o);
-                let d = length(to_eye);
-                if d <= *radius {
-                    return Some(Vec::new());
-                }
-                let n = to_eye.map(|c| c / d);
-                let share = radius * radius / d;
-                (
-                    plus(o, n, share),
-                    radius * (1.0 - (radius / d).powi(2)).sqrt(),
-                    n,
-                )
-            };
-            let x = unit(cross(normal, view.up)).or_else(|| unit(cross(normal, view.right)))?;
-            let y = cross(normal, x);
-            Some(vec![Curve::Circle {
-                centre,
-                radius: size,
-                x,
-                y,
-            }])
-        }
-        _ => None,
-    }
-}
-
-/// How many points along a silhouette candidate the engine classifies to trim it to its face.
-const TRIM_SAMPLES: usize = 96;
-
-/// The parts of `candidate` lying on `body`'s surface, by the engine's point classification,
-/// their ends moved onto the nearest edge of the body so they meet its outline exactly.
-fn trimmed(candidate: &Curve, body: &Body, edges: &[Curve]) -> Result<Vec<Curve>, KernelError> {
-    let points: Vec<Point> = if let Some((a, b)) = ends(candidate) {
-        (0..=TRIM_SAMPLES)
-            .map(|k| plus(a, sub(b, a), k as f64 / TRIM_SAMPLES as f64))
-            .collect()
-    } else {
-        candidate.divided(TRIM_SAMPLES)?
-    };
-    let on = body.on_surface(&points)?;
-    if on.iter().all(|v| *v) {
-        return Ok(vec![candidate.clone()]);
-    }
-    let spacing = points
-        .windows(2)
-        .map(|w| length(sub(w[1], w[0])))
-        .fold(0.0, f64::max);
-    // The nearest point on an edge within a step and a half, so the silhouette meets the
-    // outline exactly.
-    // Edges running along the candidate (a seam it happens to lie on) are not where it ends.
-    let tolerance = spacing * 1e-6;
-    let across: Vec<&Curve> = edges
-        .iter()
-        .filter(|e| !lies_on(e, candidate, tolerance))
-        .collect();
-    let snap = |p: Point| {
-        across
-            .iter()
-            .filter_map(|e| e.closest_point(p).ok())
-            .map(|q| (length(sub(q, p)), q))
-            .filter(|(d, _)| *d <= spacing * 1.5)
-            .min_by(|a, b| a.0.total_cmp(&b.0))
-            .map_or(p, |(_, q)| q)
-    };
-    let mut out = Vec::new();
-    let mut run: Option<usize> = None;
-    for k in 0..=points.len() {
-        let inside = k < points.len() && on[k];
-        match (inside, run) {
-            (true, None) => run = Some(k),
-            (false, Some(start)) => {
-                run = None;
-                if k - start < 2 {
-                    continue;
-                }
-                let (a, b) = (snap(points[start]), snap(points[k - 1]));
-                if ends(candidate).is_some() {
-                    if let Ok(line) = Curve::line(a, b) {
-                        out.push(line);
-                    }
-                } else {
-                    // The piece between the two cuts: the one whose middle is on the surface.
-                    for piece in candidate.cut_at(&[a, b])? {
-                        if let Some(m) = middle(&piece)
-                            && body.on_surface(&[m])?.first().copied().unwrap_or(false)
-                        {
-                            out.push(piece);
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    Ok(out)
-}
-
-/// A mesh edge by its corners' rounded positions, lowest first.
-type MeshEdge = ([i64; 3], [i64; 3]);
-
-/// Silhouette segments of a mesh's faces `faces`: edges between a triangle that faces the eye
-/// and one that faces away, chained into polylines and straightened where they run straight.
-fn mesh_silhouettes(
-    mesh: &crate::BodyMesh,
-    faces: &[usize],
-    view: &View,
-    tolerance: f64,
-) -> Vec<Curve> {
-    let key = |p: Point| p.map(|c| (c / tolerance).round() as i64);
-    let facing = |t: [Point; 3]| -> Option<bool> {
-        let normal = cross(sub(t[1], t[0]), sub(t[2], t[0]));
-        let towards = view.sight(t[0]).map(|c| -c);
-        let scale = length(normal) * length(towards);
-        let along = dot(normal, towards);
-        (along.abs() > 1e-9 * scale).then_some(along > 0.0)
-    };
-    // Ordered, so the same model always chains the same way.
-    let mut sides: std::collections::BTreeMap<MeshEdge, (Point, Point, Vec<Option<bool>>)> =
-        std::collections::BTreeMap::new();
-    for (index, t) in mesh.triangles.iter().enumerate() {
-        if !faces.contains(
-            &mesh
-                .triangle_faces
-                .get(index)
-                .copied()
-                .unwrap_or(usize::MAX),
-        ) {
-            continue;
-        }
-        let corners = t.map(|i| mesh.positions[i as usize]);
-        let side = facing(corners);
-        for (i, j) in [(0, 1), (1, 2), (2, 0)] {
-            let (ka, kb) = (key(corners[i]), key(corners[j]));
-            let edge = if ka < kb { (ka, kb) } else { (kb, ka) };
-            sides
-                .entry(edge)
-                .or_insert((corners[i], corners[j], Vec::new()))
-                .2
-                .push(side);
-        }
-    }
-    let segments: Vec<(Point, Point)> = sides
-        .values()
-        .filter(|(_, _, f)| matches!(f[..], [Some(a), Some(b)] if a != b))
-        .map(|(a, b, _)| (*a, *b))
-        .collect();
-    chain(&segments, tolerance)
-}
-
-/// Segments joined end to end into polylines, straightened where they run straight.
-fn chain(segments: &[(Point, Point)], tolerance: f64) -> Vec<Curve> {
-    let mut left: Vec<(Point, Point)> = segments.to_vec();
-    let near = |a: Point, b: Point| length(sub(a, b)) <= tolerance * 10.0;
-    let mut out = Vec::new();
-    while let Some((a, b)) = left.pop() {
-        let mut run = vec![a, b];
-        loop {
-            let tail = run[run.len() - 1];
-            let head = run[0];
-            if let Some(k) = left
-                .iter()
-                .position(|(p, q)| near(*p, tail) || near(*q, tail))
-            {
-                let (p, q) = left.swap_remove(k);
-                run.push(if near(p, tail) { q } else { p });
-            } else if let Some(k) = left
-                .iter()
-                .position(|(p, q)| near(*p, head) || near(*q, head))
-            {
-                let (p, q) = left.swap_remove(k);
-                run.insert(0, if near(p, head) { q } else { p });
-            } else {
-                break;
-            }
-        }
-        out.extend(straightened(&run, tolerance));
-    }
-    out
-}
-
-/// A run of points with the corners that turn by nothing taken out; a line when that leaves
-/// two.
-fn straightened(run: &[Point], tolerance: f64) -> Option<Curve> {
-    let mut kept: Vec<Point> = Vec::new();
-    for p in run {
-        if let [.., a, b] = kept[..] {
-            // Drop `b` when it lies on the way from `a` to `p`.
-            let ab = sub(b, a);
-            let ap = sub(*p, a);
-            let off = length(cross(ab, ap)) / length(ap).max(1e-12);
-            if off <= tolerance * 10.0 && dot(ab, ap) > 0.0 {
-                kept.pop();
-            }
-        }
-        kept.push(*p);
-    }
-    match kept[..] {
-        [a, b] => Curve::line(a, b).ok(),
-        _ if kept.len() > 2 => Curve::polyline(kept, false).ok(),
-        _ => None,
-    }
-}
-
 /// Whether five points along `piece` all lie within `tolerance` of `other`.
 fn lies_on(piece: &Curve, other: &Curve, tolerance: f64) -> bool {
     let picks: Vec<Point> = if let Some((a, b)) = ends(piece) {
@@ -568,6 +321,29 @@ fn lies_on(piece: &Curve, other: &Curve, tolerance: f64) -> bool {
     })
 }
 
+/// How big a scene is, with the tolerances and the perspective scale that follow from that.
+struct Scale {
+    size: f64,
+    tolerance: f64,
+    /// Lines shorter than this once projected count as points.
+    flat: f64,
+    /// The distance at which a perspective view keeps model size.
+    focus: f64,
+}
+
+impl Scale {
+    /// How far a silhouette's ray goes before it may be blocked. Its ray runs tangent to its
+    /// surface, which falls away only as the square of the distance: it stops where the gap is
+    /// well past the engine's zone, so grazing its own surface is never taken for a hit.
+    fn grazing(&self) -> f64 {
+        (2.0 * self.size * self.tolerance * 10.0).sqrt() * 4.0
+    }
+}
+
+/// A line to draw, exact in the model: the curve, its kind, the input it comes from, and for a
+/// silhouette taken from the tessellation the faces it outlines.
+type ModelLine = (Curve, LineKind, usize, Vec<usize>);
+
 /// The lines of `bodies` and `curves` seen from `view`, visible and hidden, as clean curves in
 /// the view plane.
 ///
@@ -581,7 +357,47 @@ pub fn hidden_lines(
     view: &View,
     options: Options,
 ) -> Result<Vec<DrawnLine>, KernelError> {
-    // The scene's size and middle, for tolerances and a perspective view's scale.
+    let Some(scale) = scene_scale(bodies, curves, view)? else {
+        return Ok(Vec::new());
+    };
+
+    // 1. The lines to draw, exact in the model.
+    let mut models: Vec<ModelLine> = Vec::new();
+    for (index, body) in bodies.iter().enumerate() {
+        let edges = body.exact_edges()?;
+        edge_lines(body, index, &edges, options, &mut models);
+        silhouette_lines(body, index, &edges, view, &scale, &mut models)?;
+    }
+    for (index, curve) in curves.iter().enumerate() {
+        for piece in pieces_of(curve) {
+            models.push((piece, LineKind::Curve, bodies.len() + index, Vec::new()));
+        }
+    }
+
+    // 2. Projected; lines seen end-on are dropped.
+    let sources = projected(models, view, &scale);
+
+    // 3. Where they cross.
+    let cuts = crossing_points(&sources, scale.flat)?;
+
+    // 4. Each piece's visibility; 5. runs of the same visibility joined.
+    let mut scene = RayScene::new(bodies)?;
+    scene.set_tolerance(scale.tolerance * 10.0);
+    let mut drawn: Vec<DrawnLine> = Vec::new();
+    for (index, source) in sources.iter().enumerate() {
+        let runs = visibility_runs(source, &cuts[index], bodies, &mut scene, view, &scale)?;
+        drawn_lines(source, runs, &mut drawn);
+    }
+    Ok(without_overlaps(drawn, options, scale.flat))
+}
+
+/// The scene's size and middle, for tolerances and a perspective view's scale; `None` when it
+/// is empty.
+fn scene_scale(
+    bodies: &[Body],
+    curves: &[Curve],
+    view: &View,
+) -> Result<Option<Scale>, KernelError> {
     let mut low = [f64::INFINITY; 3];
     let mut high = [f64::NEG_INFINITY; 3];
     let mut grow = |p: Point| {
@@ -601,89 +417,106 @@ pub fn hidden_lines(
         }
     }
     if !low[0].is_finite() {
-        return Ok(Vec::new());
+        return Ok(None);
     }
     let size = length(sub(high, low)).max(1e-9);
     let tolerance = (size * 1e-7).max(1e-9);
     let centre = plus(low, sub(high, low), 0.5);
     let focus = dot(sub(centre, view.eye), view.forward).max(1e-9);
+    Ok(Some(Scale {
+        size,
+        tolerance,
+        flat: tolerance * 10.0,
+        focus,
+    }))
+}
 
-    // 1. The lines to draw, exact in the model.
-    let mut models: Vec<(Curve, LineKind, usize, Vec<usize>)> = Vec::new();
-    for (index, body) in bodies.iter().enumerate() {
-        let edges = body.exact_edges()?;
-        // The edges silhouettes end on: seams (the same face on both sides) left out.
-        let edge_curves: Vec<Curve> = edges
-            .iter()
-            .filter(|(_, faces)| !matches!(faces[..], [a, b] if a == b))
-            .map(|(c, _)| c.clone())
-            .collect();
-        for (curve, faces) in &edges {
-            let kind = match faces[..] {
-                // A seam: the same face on both sides.
-                [a, b] if a == b => continue,
-                [a, b] => {
-                    let at = middle(curve).unwrap_or_default();
-                    let smooth = match (body.face_normal_near(a, at), body.face_normal_near(b, at))
-                    {
-                        (Ok(na), Ok(nb)) => length(cross(na, nb)) < 1e-6,
-                        _ => false,
-                    };
-                    if smooth {
-                        if !options.tangent_edges {
-                            continue;
-                        }
-                        LineKind::Tangent
-                    } else {
-                        LineKind::Curve
+/// The edges of body `index` as lines to draw: seams (the same face on both sides) left out,
+/// and edges between faces that join smoothly only when `options` asks for them.
+fn edge_lines(
+    body: &Body,
+    index: usize,
+    edges: &[(Curve, Vec<usize>)],
+    options: Options,
+    models: &mut Vec<ModelLine>,
+) {
+    for (curve, faces) in edges {
+        let kind = match faces[..] {
+            // A seam: the same face on both sides.
+            [a, b] if a == b => continue,
+            [a, b] => {
+                let at = middle(curve).unwrap_or_default();
+                let smooth = match (body.face_normal_near(a, at), body.face_normal_near(b, at)) {
+                    (Ok(na), Ok(nb)) => length(cross(na, nb)) < 1e-6,
+                    _ => false,
+                };
+                if smooth {
+                    if !options.tangent_edges {
+                        continue;
+                    }
+                    LineKind::Tangent
+                } else {
+                    LineKind::Curve
+                }
+            }
+            _ => LineKind::Curve,
+        };
+        models.push((curve.clone(), kind, index, Vec::new()));
+    }
+}
+
+/// The silhouettes of body `index` as lines to draw: exact for cylinders and spheres, from the
+/// tessellation for other curved faces; planes have none.
+fn silhouette_lines(
+    body: &Body,
+    index: usize,
+    edges: &[(Curve, Vec<usize>)],
+    view: &View,
+    scale: &Scale,
+    models: &mut Vec<ModelLine>,
+) -> Result<(), KernelError> {
+    // The edges silhouettes end on: seams (the same face on both sides) left out.
+    let edge_curves: Vec<Curve> = edges
+        .iter()
+        .filter(|(_, faces)| !matches!(faces[..], [a, b] if a == b))
+        .map(|(c, _)| c.clone())
+        .collect();
+    let mut meshed_faces = Vec::new();
+    for (face, surface) in body.face_surfaces()?.iter().enumerate() {
+        use crate::record::Surface;
+        if matches!(
+            surface,
+            Surface::Plane { .. } | Surface::PlaneThrough { .. }
+        ) {
+            continue;
+        }
+        match analytic_silhouettes(surface, view, scale.size * 2.0) {
+            Some(candidates) => {
+                for candidate in candidates {
+                    for piece in trimmed(&candidate, body, &edge_curves)? {
+                        models.push((piece, LineKind::Silhouette, index, Vec::new()));
                     }
                 }
-                _ => LineKind::Curve,
-            };
-            models.push((curve.clone(), kind, index, Vec::new()));
-        }
-        // Silhouettes: exact for cylinders and spheres, from the tessellation for other curved
-        // faces; planes have none.
-        let mut meshed_faces = Vec::new();
-        for (face, surface) in body.face_surfaces()?.iter().enumerate() {
-            use crate::record::Surface;
-            if matches!(
-                surface,
-                Surface::Plane { .. } | Surface::PlaneThrough { .. }
-            ) {
-                continue;
             }
-            match analytic_silhouettes(surface, view, size * 2.0) {
-                Some(candidates) => {
-                    for candidate in candidates {
-                        for piece in trimmed(&candidate, body, &edge_curves)? {
-                            models.push((piece, LineKind::Silhouette, index, Vec::new()));
-                        }
-                    }
-                }
-                None => meshed_faces.push(face),
-            }
-        }
-        if !meshed_faces.is_empty() {
-            let mesh = body.mesh()?;
-            for curve in mesh_silhouettes(&mesh, &meshed_faces, view, tolerance) {
-                models.push((curve, LineKind::Silhouette, index, meshed_faces.clone()));
-            }
+            None => meshed_faces.push(face),
         }
     }
-    for (index, curve) in curves.iter().enumerate() {
-        for piece in pieces_of(curve) {
-            models.push((piece, LineKind::Curve, bodies.len() + index, Vec::new()));
+    if !meshed_faces.is_empty() {
+        let mesh = body.mesh()?;
+        for curve in mesh_silhouettes(&mesh, &meshed_faces, view, scale.tolerance) {
+            models.push((curve, LineKind::Silhouette, index, meshed_faces.clone()));
         }
     }
+    Ok(())
+}
 
-    // 2. Projected; lines seen end-on are dropped.
-    let flat_tolerance = tolerance * 10.0;
-    let sources: Vec<Source> = models
+/// The lines projected into the view plane; lines seen end-on are dropped.
+fn projected(models: Vec<ModelLine>, view: &View, scale: &Scale) -> Vec<Source> {
+    models
         .into_iter()
         .filter_map(|(model, kind, source, near_faces)| {
-            let flat = flatten(&model, view, focus)?;
-            (extent(&flat) > flat_tolerance).then(|| Source {
+            let flat = flatten(&model, view, scale.focus)?;
+            (extent(&flat) > scale.flat).then(|| Source {
                 straight: ends(&model).is_some(),
                 model,
                 flat,
@@ -692,14 +525,16 @@ pub fn hidden_lines(
                 near_faces,
             })
         })
-        .collect();
+        .collect()
+}
+
+/// Where each projected line crosses the others, as points on it.
+fn crossing_points(sources: &[Source], flat: f64) -> Result<Vec<Vec<Point>>, KernelError> {
     let boxes: Vec<([f64; 2], [f64; 2])> = sources.iter().map(|s| bounds2(&s.flat)).collect();
     let overlap = |i: usize, j: usize| {
         let (a, b) = (boxes[i], boxes[j]);
-        (0..2).all(|k| a.0[k] <= b.1[k] + flat_tolerance && b.0[k] <= a.1[k] + flat_tolerance)
+        (0..2).all(|k| a.0[k] <= b.1[k] + flat && b.0[k] <= a.1[k] + flat)
     };
-
-    // 3. Where they cross.
     let mut cuts: Vec<Vec<Point>> = vec![Vec::new(); sources.len()];
     for i in 0..sources.len() {
         for j in 0..sources.len() {
@@ -723,103 +558,124 @@ pub fn hidden_lines(
             }
         }
     }
+    Ok(cuts)
+}
 
-    // 4. Each piece's visibility; 5. runs of the same visibility joined.
-    let mut scene = RayScene::new(bodies)?;
-    scene.set_tolerance(tolerance * 10.0);
-    // A silhouette's ray runs tangent to its surface, which falls away only as the square of
-    // the distance: it stops where the gap is well past the engine's zone, so grazing its own
-    // surface is never taken for a hit.
-    let grazing = (2.0 * size * tolerance * 10.0).sqrt() * 4.0;
-    let mut drawn: Vec<DrawnLine> = Vec::new();
-    for (index, source) in sources.iter().enumerate() {
-        let pieces = if cuts[index].is_empty() {
-            vec![source.flat.clone()]
-        } else {
-            source.flat.cut_at(&cuts[index])?
-        };
-        let mut runs: Vec<(bool, Vec<Curve>)> = Vec::new();
-        for piece in pieces {
-            if extent(&piece) <= flat_tolerance {
-                continue;
-            }
-            let visible = match middle(&piece)
-                .and_then(|m| model_point(&source.model, m, view, focus))
-            {
-                Some(at) => {
-                    // A tessellation's silhouette lies a little off the true one, inside the
-                    // surface: its point is moved onto the exact surface, then off it along
-                    // the surface's normal by a few times that error, so the surface it
-                    // outlines is not taken for what hides it.
-                    let at = if source.near_faces.is_empty() {
-                        at
-                    } else {
-                        let body = &bodies[source.source];
-                        let nearest = source
-                            .near_faces
-                            .iter()
-                            .filter_map(|face| {
-                                body.face_closest_point(*face, at).ok().map(|p| (*face, p))
-                            })
-                            .min_by(|a, b| length(sub(a.1, at)).total_cmp(&length(sub(b.1, at))));
-                        match nearest {
-                            Some((face, on)) => {
-                                let error = length(sub(on, at)).max(tolerance * 10.0);
-                                match body.face_normal_near(face, on) {
-                                    Ok(normal) => plus(on, normal, error * 4.0),
-                                    Err(_) => on,
-                                }
-                            }
-                            None => at,
-                        }
-                    };
-                    let (way, far) = view.way_to_eye(at);
-                    let short = if source.kind == LineKind::Silhouette {
-                        grazing
-                    } else {
-                        0.0
-                    };
-                    let b = scene.blocked_short(at, way, far, short);
-                    !b
-                }
-                None => true,
-            };
-            match runs.last_mut() {
-                Some((v, run)) if *v == visible => run.push(piece),
-                _ => runs.push((visible, vec![piece])),
-            }
+/// The line `source` cut where others cross it, its pieces in runs of the same visibility. A
+/// closed curve's last run carries on into its first.
+fn visibility_runs(
+    source: &Source,
+    cuts: &[Point],
+    bodies: &[Body],
+    scene: &mut RayScene,
+    view: &View,
+    scale: &Scale,
+) -> Result<Vec<(bool, Vec<Curve>)>, KernelError> {
+    let pieces = if cuts.is_empty() {
+        vec![source.flat.clone()]
+    } else {
+        source.flat.cut_at(cuts)?
+    };
+    let mut runs: Vec<(bool, Vec<Curve>)> = Vec::new();
+    for piece in pieces {
+        if extent(&piece) <= scale.flat {
+            continue;
         }
-        // A closed curve's last run carries on into its first.
-        let closed = source.flat.is_closed().unwrap_or(false);
-        if closed && runs.len() > 1 && runs[0].0 == runs[runs.len() - 1].0 {
-            let (_, last) = runs.pop().unwrap_or_default();
-            runs[0].1.splice(0..0, last);
-        }
-        let whole = runs.len() == 1;
-        for (visible, run) in runs {
-            let curves: Vec<Curve> = if whole {
-                vec![source.flat.clone()]
-            } else if source.straight {
-                match (run.first().and_then(ends), run.last().and_then(ends)) {
-                    (Some((a, _)), Some((_, b))) => Curve::line(a, b).into_iter().collect(),
-                    _ => run,
-                }
-            } else {
-                crate::join_all(&run).unwrap_or(run)
-            };
-            for curve in curves {
-                drawn.push(DrawnLine {
-                    curve,
-                    visible,
-                    kind: source.kind,
-                    source: source.source,
-                });
-            }
+        let visible = piece_visible(source, &piece, bodies, scene, view, scale);
+        match runs.last_mut() {
+            Some((v, run)) if *v == visible => run.push(piece),
+            _ => runs.push((visible, vec![piece])),
         }
     }
+    let closed = source.flat.is_closed().unwrap_or(false);
+    if closed && runs.len() > 1 && runs[0].0 == runs[runs.len() - 1].0 {
+        let (_, last) = runs.pop().unwrap_or_default();
+        runs[0].1.splice(0..0, last);
+    }
+    Ok(runs)
+}
 
-    // Lines drawn twice, and hidden lines lying under visible ones, are left out: visible lines
-    // first, then each line keeps only what no line already kept covers.
+/// Whether a piece of the line `source` is seen: nothing blocks the way from the model point
+/// under its middle to the eye.
+fn piece_visible(
+    source: &Source,
+    piece: &Curve,
+    bodies: &[Body],
+    scene: &mut RayScene,
+    view: &View,
+    scale: &Scale,
+) -> bool {
+    match middle(piece).and_then(|m| model_point(&source.model, m, view, scale.focus)) {
+        Some(at) => {
+            let at = off_tessellation(source, at, bodies, scale.tolerance);
+            let (way, far) = view.way_to_eye(at);
+            let short = if source.kind == LineKind::Silhouette {
+                scale.grazing()
+            } else {
+                0.0
+            };
+            let b = scene.blocked_short(at, way, far, short);
+            !b
+        }
+        None => true,
+    }
+}
+
+/// A point of the line `source` ready for its visibility test. A tessellation's silhouette lies
+/// a little off the true one, inside the surface: its point is moved onto the exact surface,
+/// then off it along the surface's normal by a few times that error, so the surface it outlines
+/// is not taken for what hides it.
+fn off_tessellation(source: &Source, at: Point, bodies: &[Body], tolerance: f64) -> Point {
+    if source.near_faces.is_empty() {
+        return at;
+    }
+    let body = &bodies[source.source];
+    let nearest = source
+        .near_faces
+        .iter()
+        .filter_map(|face| body.face_closest_point(*face, at).ok().map(|p| (*face, p)))
+        .min_by(|a, b| length(sub(a.1, at)).total_cmp(&length(sub(b.1, at))));
+    match nearest {
+        Some((face, on)) => {
+            let error = length(sub(on, at)).max(tolerance * 10.0);
+            match body.face_normal_near(face, on) {
+                Ok(normal) => plus(on, normal, error * 4.0),
+                Err(_) => on,
+            }
+        }
+        None => at,
+    }
+}
+
+/// The runs of the line `source` as drawn lines: the whole line when it is all one run, a
+/// straight line from end to end of each run, or each run's pieces joined.
+fn drawn_lines(source: &Source, runs: Vec<(bool, Vec<Curve>)>, drawn: &mut Vec<DrawnLine>) {
+    let whole = runs.len() == 1;
+    for (visible, run) in runs {
+        let curves: Vec<Curve> = if whole {
+            vec![source.flat.clone()]
+        } else if source.straight {
+            match (run.first().and_then(ends), run.last().and_then(ends)) {
+                (Some((a, _)), Some((_, b))) => Curve::line(a, b).into_iter().collect(),
+                _ => run,
+            }
+        } else {
+            crate::join_all(&run).unwrap_or(run)
+        };
+        for curve in curves {
+            drawn.push(DrawnLine {
+                curve,
+                visible,
+                kind: source.kind,
+                source: source.source,
+            });
+        }
+    }
+}
+
+/// The drawn lines without those drawn twice, or hidden ones lying under visible ones: visible
+/// lines first, then each line keeps only what no line already kept covers.
+fn without_overlaps(mut drawn: Vec<DrawnLine>, options: Options, flat: f64) -> Vec<DrawnLine> {
     let mut kept: Vec<DrawnLine> = Vec::new();
     drawn.sort_by_key(|line| {
         (
@@ -834,7 +690,7 @@ pub fn hidden_lines(
             .map(|k| &k.curve)
             .collect();
         if let Some((a, b)) = ends(&line.curve) {
-            for (p, q) in uncovered((a, b), &over, flat_tolerance) {
+            for (p, q) in uncovered((a, b), &over, flat) {
                 if let Ok(curve) = Curve::line(p, q) {
                     kept.push(DrawnLine {
                         curve,
@@ -842,11 +698,11 @@ pub fn hidden_lines(
                     });
                 }
             }
-        } else if !over.iter().any(|k| lies_on(&line.curve, k, flat_tolerance)) {
+        } else if !over.iter().any(|k| lies_on(&line.curve, k, flat)) {
             kept.push(line);
         }
     }
-    Ok(kept)
+    kept
 }
 
 /// The parts of the line `a`–`b` that no line among `over` lying along it covers, each
