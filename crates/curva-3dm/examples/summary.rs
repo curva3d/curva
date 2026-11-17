@@ -35,6 +35,9 @@ fn main() {
                 for o in &m.objects {
                     let k = match &o.geometry {
                         curva_3dm::model::Geometry::Point(_) => "point".to_owned(),
+                        curva_3dm::model::Geometry::SubD(s) => {
+                            format!("SubD of {} faces", s.cage().face_count())
+                        }
                         curva_3dm::model::Geometry::Mesh(m) => {
                             format!("mesh of {} faces", m.face_count())
                         }
