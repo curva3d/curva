@@ -36,36 +36,44 @@ tags, per-face colours, flat or smooth display) and subdiv-kernels 0.1.0 in `smo
 file that calls it: refined cages, the limit surface with normals, and crease and border curves
 for the viewport; Rhino 8's limit surfaces of the same cages agree to 0.025%.
 
-**In review:**
-- `.3dm` SubDs read and written (#323): the cage with its tags, sharpness, face colours and
-  texture points, in new files `read/subd.rs` and `write/subd.rs` with one-line registrations.
-  Rhino 8's own SubDs read with their tags and colours and smooth to Rhino's limit sizes; Rhino 8
-  reads Curva's as valid SubDs with the same volumes and areas. Partly sharp edges come back
-  smooth in Rhino, as Curva writes Rhino 7 files, which have none.
-- The SubD primitives' cages (#326, Stage C): box, plane, sphere, cylinder, cone and torus placed
-  as Rhino 8 places its own, matching Rhino's volumes, areas and cage sizes.
+`.3dm` SubDs read and written (#323, PR #330): the cage with its tags, sharpness, face colours
+and texture points; Rhino 8's SubDs read and smooth to Rhino's limit sizes, and Rhino 8 reads
+Curva's as valid SubDs with the same volumes and areas (partly sharp edges come back smooth in
+Rhino, as Curva writes Rhino 7 files). The SubD primitives' cages (#326, PR #331): box, plane,
+sphere, cylinder, cone and torus placed as Rhino 8 places its own, matching Rhino's volumes, areas
+and cage sizes.
 
-**Being written:** ToNURBS (#327): exact patches on regular quads and fitted ones around star
-points, sewn into a polysurface or solid (flat patches wait on #328 from the features stream);
-QuadRemesh on quadrs, part 1 (#329).
+**In review:** ToNURBS (#327): exact patches on regular quads and fitted ones around star points
+and creases, sewn into a polysurface or solid. A torus cage gives Rhino's limit volume; a cube's
+patches close up within 0.2% of its limit volume. Flat patches wait on #328 (features).
+
+**Being written (library, ready next):**
+- SubD cage edits (#332): RemoveCrease, DeleteSubDFaces, Fill, Stitch, InsertEdge across a ring,
+  Bridge; and `LiveSurface`, the smooth surface worked out again for moved cage points (#334).
+- ToSubD from meshes (#336): control points or through the points, mesh creases and corners.
+
+**Waiting on the owner:** QuadRemesh (#329). quadrs, chosen in decision 0033 because it was said
+to give the same quads every time, does not: it uses Rust's randomly seeded hash maps, so the
+same mesh and seed give slightly different quads from one run to the next (504 to 524 faces for
+one request). It also makes about four times the quads asked for, which Curva can allow for.
+The library interface is written and parked on its branch until the owner decides.
 
 **Precision measured (spec §3.2):** subdiv-kernels' single-precision weights, applied level by
 level to Curva's double-precision points measured from the centre, move a 10 m cube a million
 millimetres from the origin by 0.00033 mm after three levels (the spec allows 0.01 mm). On a
 regular grid the limit surface equals the bicubic B-spline to 3 × 10⁻⁸ (spec §7's exactness test).
 
-**Waiting for #266:** the hook-ups that need meshes in the document: STL, OBJ, PLY and `.3dm`
-meshes in Open, Import and Export (#269 part 2, #275), the four MeshBoolean commands (#272 part 2),
-the `Check`, MeshRepair, UnifyMeshNormals, FillMeshHoles, Weld, RebuildMeshNormals and
-CullDegenerateMeshFaces commands (#273 part 2), the five commands of #274 (part 2), and the six
-primitive commands with `What`, `Properties`, `Join` and `Explode` for meshes (#270 part 2), the
-`Mesh` command (#271 part 2), and SubDs in the document, `SubDDisplayToggle`, ToSubD and SubD
-export.
+**Waiting for #266:** every command and file hook-up: STL, OBJ, PLY and `.3dm` in Open, Import
+and Export (#269 part 2, #275), MeshBoolean (#272 part 2), Check and MeshRepair's commands (#273
+part 2), the commands of #274 (part 2), the mesh primitive commands with `What`, `Properties`,
+`Join` and `Explode` (#270 part 2), `Mesh` (#271 part 2), and SubDs in the document with
+`SubDDisplayToggle`, ToSubD, SubD export and the SubD commands.
 
-**Next:** Stage B's remaining library work after #323, then Stage C's: the six SubD primitives'
-cages, and QuadRemesh on quadrs (spec §10). Asked of the other streams: the two shape kinds in the
-document (#266, features; needed before any command or file hook-up), drawing meshes (#267,
-display), drawing SubDs (#324, display), and meshing at a chosen density (#319, features).
+**Asked of the other streams:** the two shape kinds in the document (#266, features; needed before
+any command or file hook-up); picking parts of meshes and SubDs (#333, features); history
+recipes from bodies to meshes (#335, features); meshing at a chosen density (#319, features); a
+flat bicubic patch as a body (#328, features); drawing meshes (#267, display); drawing SubDs
+(#324, display); SubD editing in the viewport (#334, display).
 
 **Found on the way**
 - subdiv-kernels' weights are single precision; measured as plenty (above), so no change is
