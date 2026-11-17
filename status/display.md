@@ -43,7 +43,7 @@
   perpendicular feet. *Large*: snapping 20.6 ms to about 4 ms a frame, 24 ms to 16.2 ms between
   frames (the screen's own rate). A test compares with searching everything at 4,900 cursor
   positions. #130 stays open: its aim is under 1 ms.
-- **Step 5, selecting, in review:** under 1 ms more than an ordinary frame, as the spec asks
+- **Step 5, selecting, merged** (#340): under 1 ms more than an ordinary frame, as the spec asks
   (*Large* about 0.2 ms with a solid selected, *Medium* 0.4–0.7 ms). Two causes: Bevy was handed a
   material for every part in every view at each change (12,000 on *Large*), now only for the
   parts of objects whose selection changed; and the benchmark itself listed every selectable
@@ -53,6 +53,12 @@
 **Next**
 - Step 4, still to do: picking and snapping on the shared shapes instead of placed copies
   (Curva's own memory: *Large* peaks at about 2.3 GB).
+- Tried and set aside: running Bevy's schedules on one thread cut the processor's work per frame
+  from 3.4 ms to 2.6 ms on an empty scene (4.4 to 3.8 ms on *Medium*), but agent pictures then
+  come out wrong (`a_far_model_pictures_as_at_the_origin`: 61,166 pixels differ), so it is not
+  merged. Probably the order Bevy's systems run in for the first picture of a scene; worth a look
+  as part of the fixed cost. Leaving out the unused anti-aliasing and post-processing features
+  saves only about 0.1 ms.
 - Step 5, still to do: Bevy's fixed cost per frame; the *Meshes* scene, which waits for mesh
   objects in the document (#266, features) and drawing them (#267, display); snapping under 1 ms
   (#130); Rhino's figures beside every target.
