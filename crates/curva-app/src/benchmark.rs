@@ -637,4 +637,65 @@ mod tests {
         idle.select_step(&mut doc);
         assert!(idle.toggles.is_empty());
     }
+
+    /// The test house drawn as a plan: Make2D from the top with a clipping plane at 1.2 m keeping
+    /// what is below (spec `live-plans.md` §6). Prints how long it took and what it made. Run it
+    /// in an optimised build: `cargo test --release -p curva-app plan_build -- --ignored
+    /// --nocapture`.
+    #[test]
+    #[ignore = "a timing, run by hand in an optimised build"]
+    fn plan_build_of_the_test_house() {
+        use curva_document::clipping::{ClippingPlane, SectionFill};
+        let mut doc = Document::default();
+        benchmark_scene(&mut doc, BenchmarkScene::named("house").unwrap()).unwrap();
+        let cut = f64::from(crate::agent::PLAN_CUT_HEIGHT);
+        let frame = doc.add(
+            Curve::polyline(
+                vec![
+                    [-20_000.0, -20_000.0, cut],
+                    [40_000.0, -20_000.0, cut],
+                    [40_000.0, 40_000.0, cut],
+                    [-20_000.0, 40_000.0, cut],
+                ],
+                true,
+            )
+            .unwrap(),
+        );
+        doc.add_clipping_plane(ClippingPlane {
+            frame,
+            flipped: false,
+            views: Vec::new(),
+            section: SectionFill::default(),
+            hatch: None,
+        });
+        if doc.plane_cut_of(frame).is_some_and(|c| c.keep[2] > 0.0) {
+            doc.change_clipping_plane(frame, |c| c.flipped = true);
+        }
+        doc.set_view(curva_kernel::hidden::View {
+            eye: [6000.0, 4000.0, 1.0e6],
+            forward: [0.0, 0.0, -1.0],
+            right: [1.0, 0.0, 0.0],
+            up: [0.0, 1.0, 0.0],
+            parallel: true,
+        });
+        let all: Vec<u64> = doc.state().objects.iter().map(|o| o.id).collect();
+        doc.select(&all);
+        let before = doc.state().objects.len();
+        let started = std::time::Instant::now();
+        let mut processor = curva_commands::Processor::default();
+        processor.submit(&mut doc, "Make2D");
+        processor.submit(&mut doc, "");
+        let took = started.elapsed();
+        let made = doc.state().objects.len() - before;
+        println!("plan of the test house: {made} objects in {took:.3?}");
+        if let Ok(path) = std::env::var("DUMP") {
+            let drawn: Vec<String> = doc.state().objects[before..]
+                .iter()
+                .map(|o| format!("{} {:?}", doc.state().layer_path(o.layer), o.shape))
+                .collect();
+            std::fs::write(path, drawn.join("
+")).unwrap();
+        }
+        assert!(made > 0);
+    }
 }

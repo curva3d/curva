@@ -357,6 +357,7 @@ pub fn hidden_lines(
     view: &View,
     options: Options,
 ) -> Result<Vec<DrawnLine>, KernelError> {
+    let t = std::time::Instant::now();
     let Some(scale) = scene_scale(bodies, curves, view)? else {
         return Ok(Vec::new());
     };
@@ -364,9 +365,12 @@ pub fn hidden_lines(
     // 1. The lines to draw, exact in the model.
     let mut models: Vec<ModelLine> = Vec::new();
     for (index, body) in bodies.iter().enumerate() {
+        let te = std::time::Instant::now();
         let edges = body.exact_edges()?;
         edge_lines(body, index, &edges, options, &mut models);
+        let ts = std::time::Instant::now();
         silhouette_lines(body, index, &edges, view, &scale, &mut models)?;
+        eprintln!("TIME hl body {index}: edges {:?} silhouettes {:?}", ts - te, ts.elapsed());
     }
     for (index, curve) in curves.iter().enumerate() {
         for piece in pieces_of(curve) {
@@ -374,12 +378,18 @@ pub fn hidden_lines(
         }
     }
 
+    eprintln!("TIME hl models {:?} ({} lines)", t.elapsed(), models.len());
+    let t = std::time::Instant::now();
     // 2. Projected; lines seen end-on are dropped.
     let sources = projected(models, view, &scale);
 
+    eprintln!("TIME hl projected {:?} ({} sources)", t.elapsed(), sources.len());
+    let t = std::time::Instant::now();
     // 3. Where they cross.
     let cuts = crossing_points(&sources, scale.flat)?;
 
+    eprintln!("TIME hl crossings {:?}", t.elapsed());
+    let t = std::time::Instant::now();
     // 4. Each piece's visibility; 5. runs of the same visibility joined.
     let mut scene = RayScene::new(bodies)?;
     scene.set_tolerance(scale.tolerance * 10.0);
@@ -388,7 +398,11 @@ pub fn hidden_lines(
         let runs = visibility_runs(source, &cuts[index], bodies, &mut scene, view, &scale)?;
         drawn_lines(source, runs, &mut drawn);
     }
-    Ok(without_overlaps(drawn, options, scale.flat))
+    eprintln!("TIME hl visibility {:?} ({} drawn)", t.elapsed(), drawn.len());
+    let t = std::time::Instant::now();
+    let kept = without_overlaps(drawn, options, scale.flat);
+    eprintln!("TIME hl overlaps {:?} ({} kept)", t.elapsed(), kept.len());
+    Ok(kept)
 }
 
 /// The scene's size and middle, for tolerances and a perspective view's scale; `None` when it

@@ -13,7 +13,7 @@ use curva_document::annotation::{Annotation, Hatch};
 use curva_document::clipping::{PlaneCut, SectionFill};
 use curva_document::section::SectionStyle;
 use curva_kernel::hidden::View;
-use curva_kernel::{Body, Curve, Point};
+use curva_kernel::{Curve, Point};
 
 /// The name of the built-in pattern that fills solid.
 const SOLID: &str = "Solid";
@@ -27,21 +27,22 @@ pub(super) struct Fill {
     pub(super) source: String,
 }
 
-/// The fills for the cuts `cuts` make through the solid `id`: one for each cut whose style
-/// shows something, whose outline closes, and which no other chosen plane crosses.
+/// The fills for the cuts `cuts` make through the solid `id`, whose outlines where each cut
+/// goes through it are `outlines` (`None` where it could not be cut): one for each cut whose
+/// style shows something, whose outline closes, and which no other chosen plane crosses.
 pub(super) fn fills_of(
     doc: &Document,
     id: u64,
-    body: &Body,
+    outlines: &[Option<Vec<Curve>>],
     cuts: &[PlaneCut],
     source: &str,
 ) -> Vec<Fill> {
     let mut fills = Vec::new();
-    for cut in cuts {
+    for (cut, outline) in cuts.iter().zip(outlines) {
         let Some(style) = doc.section_style(id, cut.frame).filter(SectionStyle::shows) else {
             continue;
         };
-        let Ok(loops) = body.section(cut.origin, cut.keep) else {
+        let Some(loops) = outline.clone() else {
             continue;
         };
         let closed = |c: &Curve| c.is_closed().unwrap_or(false);
