@@ -10,6 +10,7 @@ mod convert;
 mod measure;
 mod mesh;
 mod nurbs;
+mod primitives;
 mod reduce;
 mod repair;
 mod subd;
@@ -19,6 +20,7 @@ mod triangulate;
 pub use check::MeshCheck;
 pub use curva_kernel::Point;
 pub use mesh::{Attribute, Mesh, MeshError};
+pub use primitives::{Frame, SphereStyle};
 pub use subd::SubD;
 pub use triangulate::Triangles;
 
