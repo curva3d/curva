@@ -277,3 +277,19 @@ every second, its peak and its steady level over the run's second half.
   show). Other builds were running during the first pair of runs, so its frame times are slower.
 - Pictures for agents and sheets still draw circles as segments; only the window's views draw
   them from their axes.
+
+## Far from the origin (17 November 2026, display-on-Bevy step 4, #225)
+
+A window scene is now measured from a point near the model. *Far* is *Large* moved 500 km from the
+origin; on the RTX 3060, release build, two runs each:
+
+| | *Large* | *Far* |
+|---|---|---|
+| First frame | 4.5–4.9 s | 4.5 s |
+| Between frames | 24.3–27.3 ms | 23.4–23.6 ms |
+| Card time for Curva's lines | 11.50–11.56 ms | 11.50–11.54 ms |
+| Graphics memory, steady | 799 MiB | 799 MiB |
+
+*Far* costs the same as *Large*. Whether it shimmers is now a test, not a look by eye: a small model
+500 km out draws the same picture as at the origin, through Curva's lines and through Bevy
+(`far_from_the_origin_draws_as_at_the_origin`, `far_from_the_origin_bevy_draws_as_at_the_origin`).

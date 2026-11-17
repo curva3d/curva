@@ -139,6 +139,7 @@ mod tests {
                 colour: [0.0; 3],
                 width: 0.25,
                 dashes: Vec::new(),
+                source: None,
             }],
         }
     }
