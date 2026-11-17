@@ -9,5 +9,6 @@ pub(crate) mod make2d;
 pub(crate) mod print;
 pub(crate) mod revision;
 pub(crate) mod scale_bar;
+pub(crate) mod section_style;
 pub(crate) mod sheet_index;
 pub(crate) mod title_block;
