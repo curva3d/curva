@@ -151,9 +151,14 @@ pub(crate) fn polyline_with(out: &mut Vec<Vertex>, points: &[Point], colour: [f3
 /// The grid and axes of a plane as line segments.
 #[must_use]
 pub fn grid_lines(plane: &CPlane) -> Vec<Vertex> {
+    grid_lines_from(plane, [0.0; 3])
+}
+
+/// As [`grid_lines`], measured from `origin` (#225).
+fn grid_lines_from(plane: &CPlane, origin: Point) -> Vec<Vertex> {
     let on_plane = |u: f64, v: f64| {
         let along = |axis: usize| plane.origin[axis] + plane.x[axis] * u + plane.y[axis] * v;
-        narrow([along(0), along(1), along(2)])
+        narrow_from([along(0), along(1), along(2)], origin)
     };
     let mut out = Vec::new();
     let reach = f64::from(GRID_HALF_SIZE);
@@ -192,30 +197,62 @@ pub fn grid_lines(plane: &CPlane) -> Vec<Vertex> {
 /// The grid, axes and objects as line segments, for a single view.
 #[must_use]
 pub fn scene_lines(outlines: &Outlines, selected: &[u64]) -> Vec<Vertex> {
-    let mut out = grid_lines(&CPlane::WORLD_XY);
-    out.extend(object_lines(outlines, selected));
+    scene_lines_from(outlines, selected, [0.0; 3])
+}
+
+/// As [`scene_lines`], measured from `origin` (#225).
+#[must_use]
+pub fn scene_lines_from(outlines: &Outlines, selected: &[u64], origin: Point) -> Vec<Vertex> {
+    let mut out = grid_lines_from(&CPlane::WORLD_XY, origin);
+    out.extend(object_lines_from(outlines, selected, origin));
     out
 }
 
 /// The grid, axes and objects as line segments for a shaded view.
 #[must_use]
 pub fn shaded_scene_lines(outlines: &Outlines, selected: &[u64]) -> Vec<Vertex> {
-    let mut out = grid_lines(&CPlane::WORLD_XY);
-    out.extend(shaded_object_lines(outlines, selected));
+    shaded_scene_lines_from(outlines, selected, [0.0; 3])
+}
+
+/// As [`shaded_scene_lines`], measured from `origin` (#225).
+#[must_use]
+pub fn shaded_scene_lines_from(
+    outlines: &Outlines,
+    selected: &[u64],
+    origin: Point,
+) -> Vec<Vertex> {
+    let mut out = grid_lines_from(&CPlane::WORLD_XY, origin);
+    out.extend(shaded_object_lines_from(outlines, selected, origin));
     out
 }
 
 /// The objects as line segments.
 #[must_use]
 pub fn object_lines(outlines: &Outlines, selected: &[u64]) -> Vec<Vertex> {
-    lines_of(outlines, selected, false, None, None)
+    object_lines_from(outlines, selected, [0.0; 3])
+}
+
+/// As [`object_lines`], measured from `origin` (#225).
+#[must_use]
+pub fn object_lines_from(outlines: &Outlines, selected: &[u64], origin: Point) -> Vec<Vertex> {
+    lines_of(outlines, selected, false, None, (false, origin))
 }
 
 /// The objects as line segments for a shaded view, where the edges of surfaces and solids
 /// are dark so they show against the faces, as in Rhino. Curves keep their layer's colour.
 #[must_use]
 pub fn shaded_object_lines(outlines: &Outlines, selected: &[u64]) -> Vec<Vertex> {
-    lines_of(outlines, selected, true, None, None)
+    shaded_object_lines_from(outlines, selected, [0.0; 3])
+}
+
+/// As [`shaded_object_lines`], measured from `origin` (#225).
+#[must_use]
+pub fn shaded_object_lines_from(
+    outlines: &Outlines,
+    selected: &[u64],
+    origin: Point,
+) -> Vec<Vertex> {
+    lines_of(outlines, selected, true, None, (false, origin))
 }
 
 /// The window's scene (spec `display-pipeline.md` step 4): the lines and faces of every object,
@@ -239,8 +276,8 @@ pub struct SceneParts {
     pub circles: Vec<crate::PlacedCircle>,
     /// Which object each number stands for: number `n` is `objects[n]`.
     pub objects: Vec<u64>,
-    /// What every position is measured from (#225): the origin with [`SceneParts::of`], a point
-    /// near the model with [`SceneParts::shared`] ([`Outlines::drawing_origin`]).
+    /// What every position is measured from (#225): a point near the model
+    /// ([`Outlines::drawing_origin`]).
     pub origin: Point,
 }
 
@@ -260,18 +297,20 @@ pub struct PlacedShape {
 }
 
 impl SceneParts {
-    /// The scene of `outlines`, numbered, every face as triangles.
+    /// The scene of `outlines`, numbered, every face as triangles, measured from the middle of
+    /// the model ([`Outlines::drawing_origin`]) as a window scene is.
     #[must_use]
     pub fn of(outlines: &Outlines) -> Self {
         let (objects, numbers) = numbered(outlines);
+        let origin = outlines.drawing_origin();
         Self {
-            lines: lines_of(outlines, &[], false, Some(&numbers), None),
-            shaded_lines: lines_of(outlines, &[], true, Some(&numbers), None),
-            faces: faces_of(outlines, &[], &[], Some(&numbers), None),
+            lines: lines_of(outlines, &[], false, Some(&numbers), (false, origin)),
+            shaded_lines: lines_of(outlines, &[], true, Some(&numbers), (false, origin)),
+            faces: faces_of(outlines, &[], &[], Some(&numbers), (false, origin)),
             shapes: Vec::new(),
             circles: Vec::new(),
             objects,
-            origin: [0.0; 3],
+            origin,
         }
     }
 
@@ -283,9 +322,9 @@ impl SceneParts {
         let (objects, numbers) = numbered(outlines);
         let origin = outlines.drawing_origin();
         Self {
-            lines: lines_of(outlines, &[], false, Some(&numbers), Some(origin)),
-            shaded_lines: lines_of(outlines, &[], true, Some(&numbers), Some(origin)),
-            faces: faces_of(outlines, &[], &[], Some(&numbers), Some(origin)),
+            lines: lines_of(outlines, &[], false, Some(&numbers), (true, origin)),
+            shaded_lines: lines_of(outlines, &[], true, Some(&numbers), (true, origin)),
+            faces: faces_of(outlines, &[], &[], Some(&numbers), (true, origin)),
             shapes: shapes_of(outlines, &numbers, origin),
             circles: crate::circles::circles_of(outlines, &numbers, origin),
             objects,
@@ -358,7 +397,7 @@ pub fn scene_faces_without(
         .enumerate()
         .map(|(number, id)| (*id, number as u32))
         .collect();
-    faces_of(outlines, &[], hidden, Some(&numbers), Some(origin))
+    faces_of(outlines, &[], hidden, Some(&numbers), (true, origin))
 }
 
 /// The `shapes` of a [`SceneParts::shared`] numbered by its `objects`, leaving out the objects
@@ -382,17 +421,16 @@ pub fn scene_shapes_without(
 
 /// Lines of every object. With `numbers`, each vertex carries its object's number and the
 /// selection is left to the graphics card; without, selected objects are drawn so here. With
-/// `shared`, a window scene ([`SceneParts::shared`]): the circles
-/// [`crate::circles::drawn_apart`] are left out, and positions are measured from its origin.
+/// `apart`, as in a window scene ([`SceneParts::shared`]), the circles
+/// [`crate::circles::drawn_apart`] are left out. Positions are measured from `origin`.
 pub(crate) fn lines_of(
     outlines: &Outlines,
     selected: &[u64],
     shaded: bool,
     numbers: Option<&std::collections::HashMap<u64, u32>>,
-    shared: Option<Point>,
+    (apart, origin): (bool, Point),
 ) -> Vec<Vertex> {
     let mut out = Vec::new();
-    let origin = shared.unwrap_or([0.0; 3]);
     for (index, (id, points)) in outlines.objects.iter().enumerate() {
         let start = out.len();
         let width = line_width(
@@ -405,7 +443,7 @@ pub(crate) fn lines_of(
         if shaded && outlines.seams.get(index).copied().unwrap_or(false) {
             continue;
         }
-        if shared.is_some() && crate::circles::drawn_apart(outlines, index).is_some() {
+        if apart && crate::circles::drawn_apart(outlines, index).is_some() {
             continue;
         }
         let colour = piece_colour(outlines, index, selected.contains(id), shaded);
@@ -451,6 +489,12 @@ pub fn face_vertices(outlines: &Outlines, selected: &[u64]) -> Vec<MeshVertex> {
     face_vertices_without(outlines, selected, &[])
 }
 
+/// As [`face_vertices`], measured from `origin` (#225).
+#[must_use]
+pub fn face_vertices_from(outlines: &Outlines, selected: &[u64], origin: Point) -> Vec<MeshVertex> {
+    faces_of(outlines, selected, &[], None, (false, origin))
+}
+
 /// As [`face_vertices`], leaving out the objects `hidden`, as while a preview stands in for them.
 #[must_use]
 pub fn face_vertices_without(
@@ -458,25 +502,23 @@ pub fn face_vertices_without(
     selected: &[u64],
     hidden: &[u64],
 ) -> Vec<MeshVertex> {
-    faces_of(outlines, selected, hidden, None, None)
+    faces_of(outlines, selected, hidden, None, (false, [0.0; 3]))
 }
 
 /// Faces of every object not `hidden`, numbered as [`lines_of`] numbers lines; those with a
-/// shared mesh left out with `shared`, a window scene's origin, which positions are then
-/// measured from.
+/// shared mesh left out when `apart`, as in a window scene. Positions are measured from `origin`.
 pub(crate) fn faces_of(
     outlines: &Outlines,
     selected: &[u64],
     hidden: &[u64],
     numbers: Option<&std::collections::HashMap<u64, u32>>,
-    shared: Option<Point>,
+    (apart, origin): (bool, Point),
 ) -> Vec<MeshVertex> {
     let mut out = Vec::new();
-    let (with_shared, origin) = (shared.is_none(), shared.unwrap_or([0.0; 3]));
     for faces in outlines
         .faces
         .iter()
-        .filter(|faces| !hidden.contains(&faces.id) && (with_shared || faces.shared.is_none()))
+        .filter(|faces| !hidden.contains(&faces.id) && (!apart || faces.shared.is_none()))
     {
         let colour = if selected.contains(&faces.id) {
             SELECTED_COLOUR
