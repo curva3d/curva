@@ -474,40 +474,7 @@ impl Curva {
                 .iter()
                 .map(|p| rect.min + egui::vec2(p[0] as f32, p[1] as f32))
                 .collect();
-            let stroke = egui::Stroke::new(2.0, colour);
-            match handle {
-                Handle::Move(_) => {
-                    // An arrowhead at the tip.
-                    if let (Some(start), Some(tip)) = (points.first(), points.last()) {
-                        let along = (*tip - *start).normalized();
-                        let side = egui::vec2(-along.y, along.x);
-                        let base = *tip - along * GUMBALL_TIP * 2.2;
-                        painter.add(egui::Shape::convex_polygon(
-                            vec![*tip, base + side * GUMBALL_TIP, base - side * GUMBALL_TIP],
-                            colour,
-                            egui::Stroke::NONE,
-                        ));
-                    }
-                    painter.add(egui::Shape::line(points, stroke));
-                }
-                Handle::Turn(_) => {
-                    painter.add(egui::Shape::line(points, stroke));
-                }
-                Handle::Extrude(_) => {
-                    painter.add(egui::Shape::closed_line(points, stroke));
-                }
-                Handle::Plane(_) => {
-                    let fill = colour.gamma_multiply(if lit { 0.8 } else { 0.45 });
-                    painter.add(egui::Shape::convex_polygon(points, fill, stroke));
-                }
-                Handle::Scale(_) | Handle::Centre => {
-                    painter.add(egui::Shape::convex_polygon(
-                        points,
-                        colour,
-                        egui::Stroke::NONE,
-                    ));
-                }
-            }
+            paint_handle(&painter, handle, points, colour, lit);
         }
         // While dragging, what the drag amounts to beside the pointer.
         if let Some(drag) = self
@@ -524,6 +491,51 @@ impl Curva {
                 curva_viewport::Amount::Factor => format!("× {value:.4}"),
             };
             paint_cursor_tag(ui, pointer, &text);
+        }
+    }
+}
+
+/// One gumball handle drawn through `points` in `colour`: an arrow to move, an arc to turn, a
+/// ring to extrude, a square to move on a plane (fuller while `lit`), a box to scale.
+fn paint_handle(
+    painter: &egui::Painter,
+    handle: Handle,
+    points: Vec<egui::Pos2>,
+    colour: egui::Color32,
+    lit: bool,
+) {
+    let stroke = egui::Stroke::new(2.0, colour);
+    match handle {
+        Handle::Move(_) => {
+            // An arrowhead at the tip.
+            if let (Some(start), Some(tip)) = (points.first(), points.last()) {
+                let along = (*tip - *start).normalized();
+                let side = egui::vec2(-along.y, along.x);
+                let base = *tip - along * GUMBALL_TIP * 2.2;
+                painter.add(egui::Shape::convex_polygon(
+                    vec![*tip, base + side * GUMBALL_TIP, base - side * GUMBALL_TIP],
+                    colour,
+                    egui::Stroke::NONE,
+                ));
+            }
+            painter.add(egui::Shape::line(points, stroke));
+        }
+        Handle::Turn(_) => {
+            painter.add(egui::Shape::line(points, stroke));
+        }
+        Handle::Extrude(_) => {
+            painter.add(egui::Shape::closed_line(points, stroke));
+        }
+        Handle::Plane(_) => {
+            let fill = colour.gamma_multiply(if lit { 0.8 } else { 0.45 });
+            painter.add(egui::Shape::convex_polygon(points, fill, stroke));
+        }
+        Handle::Scale(_) | Handle::Centre => {
+            painter.add(egui::Shape::convex_polygon(
+                points,
+                colour,
+                egui::Stroke::NONE,
+            ));
         }
     }
 }
