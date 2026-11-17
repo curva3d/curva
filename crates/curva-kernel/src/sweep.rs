@@ -1,7 +1,8 @@
 //! Sweeping curves into surfaces and solids: revolving, along a rail, lofting, and moving a
 //! profile along a path.
 
-use crate::extrude::{failed, pieces, pieces_of, sweep_pieces};
+use crate::body::failed;
+use crate::extrude::{pieces_of, sweep_pieces};
 use crate::{Body, Curve, KernelError, Point, cross, dot, sub, unit};
 use solidcore_ops::sweep::{Affine, Ends, SweepFrame, loft, revolve, sweep_placed, sweep_stations};
 use std::f64::consts::TAU;
@@ -58,7 +59,7 @@ impl Body {
         cap: bool,
     ) -> Result<Self, KernelError> {
         let (made, ..) = sweep_placed(
-            &pieces(curves)?,
+            &pieces_of(curves)?,
             &sweep_pieces(path)?,
             SweepFrame::Translate,
             cap,
@@ -129,8 +130,12 @@ impl Body {
         }
         // Round to the start again, then the seam sewn.
         maps.push(maps[0]);
-        let made = sweep_stations(&pieces(std::slice::from_ref(profile))?, &maps, Ends::Open)
-            .map_err(|e| failed("revolving along a rail", e))?;
+        let made = sweep_stations(
+            &pieces_of(std::slice::from_ref(profile))?,
+            &maps,
+            Ends::Open,
+        )
+        .map_err(|e| failed("revolving along a rail", e))?;
         Body::assembled(&[Self::made(&made)?])
     }
 }

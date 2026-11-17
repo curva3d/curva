@@ -1,16 +1,13 @@
 //! Extruding curves into surfaces and solids: straight, drafted, to a point, and filling flat
 //! outlines, with curves inside others making holes.
 
+use crate::body::failed;
 use crate::{Body, Curve, KernelError, Point, cross};
 use solidcore_ops::sweep::{
     Affine, Curve as SweepCurve, DraftCorner, Ends, extrude, loft_to_point, planar_faces,
     sweep_stations,
 };
 use std::f64::consts::TAU;
-
-pub(crate) fn failed(what: &str, error: impl std::fmt::Debug) -> KernelError {
-    KernelError(format!("{what} failed: {error:?}"))
-}
 
 /// A curve in the engine's terms: lines and arcs stay exact, smooth curves become NURBS.
 /// A polyline or joined curve becomes several pieces.
@@ -176,14 +173,6 @@ pub enum TaperCorners {
     Smooth,
 }
 
-pub(crate) fn pieces(curves: &[Curve]) -> Result<Vec<solidcore_ops::sweep::Curve>, KernelError> {
-    let mut out = Vec::new();
-    for curve in curves {
-        out.extend(sweep_pieces(curve)?);
-    }
-    Ok(out)
-}
-
 const SAME: Affine = Affine {
     m: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
     t: [0.0; 3],
@@ -243,7 +232,7 @@ impl Body {
             (direction, distance)
         };
         let made = extrude(
-            &pieces(std::slice::from_ref(curve))?,
+            &pieces_of(std::slice::from_ref(curve))?,
             direction,
             distance,
             draft,
@@ -270,7 +259,7 @@ impl Body {
         }
         // CUSTOM KERNEL OPERATION: cone-to-point
         let ends = if cap { Ends::Capped } else { Ends::Open };
-        let profile = pieces(std::slice::from_ref(curve))?;
+        let profile = pieces_of(std::slice::from_ref(curve))?;
         // The smallest tip the engine closes reliably, then a larger one if it will not.
         let mut last = None;
         for tiny in [1e-4, 1e-3] {
