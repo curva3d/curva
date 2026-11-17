@@ -19,6 +19,7 @@ mod subd;
 mod subd_edit;
 mod subd_primitives;
 mod to_nurbs;
+mod to_subd;
 mod transform;
 mod triangulate;
 
@@ -31,6 +32,7 @@ pub use smooth::{LiveSurface, MAX_LEVELS, Patch, SmoothError};
 pub use subd::{Sharpness, SubD, SubDDisplay, VertexTag};
 pub use subd_edit::{FillStyle, StitchAt};
 pub use to_nurbs::ToNurbsError;
+pub use to_subd::ToSubdOptions;
 pub use triangulate::Triangles;
 
 #[cfg(test)]
