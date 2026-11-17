@@ -29,6 +29,8 @@ pub struct DimOrdinate {
     axis: Option<OrdinateAxis>,
     kinks: Option<[f64; 2]>,
     point: Option<Point>,
+    /// Where the measured point is tied, if it snapped to an object.
+    tie: Option<curva_document::tie::Tie>,
     asking: Asking,
     placed: usize,
 }
@@ -40,6 +42,7 @@ impl Default for DimOrdinate {
             axis: None,
             kinks: None,
             point: None,
+            tie: None,
             asking: Asking::Point,
             placed: 0,
         }
@@ -154,6 +157,7 @@ impl Command for DimOrdinate {
             }
             Some(Answer::Point(at)) if self.asking == Asking::Point => {
                 self.point = Some(at);
+                self.tie = doc.pick_tie_at(at);
                 self.asking = Asking::Leader;
                 self.ask()
             }
@@ -161,7 +165,8 @@ impl Command for DimOrdinate {
                 let Some(dimension) = self.dimension(doc, leader) else {
                     return unexpected();
                 };
-                doc.add_annotation(Annotation::Ordinate(dimension));
+                let id = doc.add_annotation(Annotation::Ordinate(dimension));
+                doc.set_ties(id, vec![self.tie.take()]);
                 self.placed += 1;
                 self.point = None;
                 self.asking = Asking::Point;

@@ -353,6 +353,7 @@ fn detail_object_in(
                 linetype: Linetype::ByLayer,
                 user_text: BTreeMap::new(),
                 section: None,
+                ties: Vec::new(),
             }));
             if let Some(sheet) = state.layouts.iter_mut().find(|l| l.id == layout) {
                 came.detail_by_viewport.insert(a.id, (layout, id));
@@ -451,6 +452,7 @@ fn object_from(
         .then_some(a.section.as_ref())
         .flatten()
         .map(|s| crate::sections::from_rhino(s, &look.pattern_names)),
+        ties: Vec::new(),
     }
 }
 

@@ -178,6 +178,9 @@ pub struct Document {
     edge_selection: Vec<EdgePick>,
     /// Faces of bodies picked for a command. Not saved, and not part of undo.
     face_selection: Vec<FacePick>,
+    /// The tie that came with the point being clicked, for a command to keep. Not saved, and not
+    /// part of undo.
+    pick_tie: Option<tie::Tie>,
     /// The layout being worked on, or `None` for the model. Not saved, and not part of undo.
     space: Option<u64>,
     /// Where the last-used viewport looks from, for Make2D. Not saved, and not part of undo.
@@ -285,6 +288,7 @@ impl Document {
             user_text: std::collections::BTreeMap::new(),
             space: self.space,
             section: None,
+            ties: Vec::new(),
         }));
         id
     }
