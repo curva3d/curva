@@ -7,12 +7,19 @@ use crate::*;
 pub(crate) struct ViewportCache {
     /// The objects' lines for shaded views, where edges on faces are dark.
     pub(crate) shaded_scene: Arc<Vec<curva_viewport::Vertex>>,
-    /// The faces of surfaces and solids, for shaded views.
+    /// The faces of surfaces and solids not drawn from shared shapes (annotation's fills), for
+    /// shaded views.
     pub(crate) faces: Arc<Vec<MeshVertex>>,
+    /// Surfaces and solids, each shape held once and drawn at every copy's placement.
+    pub(crate) shapes: Arc<Vec<curva_viewport::PlacedShape>>,
     /// Meshes of solids, kept until they change.
     pub(crate) meshes: MeshCache,
-    /// The faces with those a preview replaces left out, and which those are.
-    pub(crate) faces_without: (Vec<u64>, Arc<Vec<MeshVertex>>),
+    /// The faces and shapes with those a preview replaces left out, and which those are.
+    pub(crate) faces_without: (
+        Vec<u64>,
+        Arc<Vec<MeshVertex>>,
+        Arc<Vec<curva_viewport::PlacedShape>>,
+    ),
     /// Which object each number in the scene's lines and faces stands for
     /// ([`curva_viewport::SceneParts`]).
     pub(crate) objects: Arc<Vec<u64>>,
@@ -210,10 +217,11 @@ impl Curva {
                     });
         }
         if !model_same {
-            let parts = curva_viewport::SceneParts::of(&self.outlines);
+            let parts = curva_viewport::SceneParts::shared(&self.outlines);
             self.scene = Arc::new(parts.lines);
             self.drawing.shaded_scene = Arc::new(parts.shaded_lines);
             self.drawing.faces = Arc::new(parts.faces);
+            self.drawing.shapes = Arc::new(parts.shapes);
             self.drawing.objects = Arc::new(parts.objects);
             self.drawing.faces_without.0.clear();
         }
@@ -705,18 +713,23 @@ impl Curva {
         let replaced = self
             .processor
             .preview_replaces(&self.doc, cursor, &self.typed);
-        let faces = if replaced.is_empty() {
-            Arc::clone(&self.drawing.faces)
+        let (faces, shapes) = if replaced.is_empty() {
+            (
+                Arc::clone(&self.drawing.faces),
+                Arc::clone(&self.drawing.shapes),
+            )
         } else {
             if self.drawing.faces_without.0 != replaced {
-                let made = curva_viewport::scene_faces_without(
-                    &self.outlines,
-                    &self.drawing.objects,
-                    &replaced,
-                );
-                self.drawing.faces_without = (replaced, Arc::new(made));
+                let objects = &self.drawing.objects;
+                let made = curva_viewport::scene_faces_without(&self.outlines, objects, &replaced);
+                let shapes =
+                    curva_viewport::scene_shapes_without(&self.drawing.shapes, objects, &replaced);
+                self.drawing.faces_without = (replaced, Arc::new(made), Arc::new(shapes));
             }
-            Arc::clone(&self.drawing.faces_without.1)
+            (
+                Arc::clone(&self.drawing.faces_without.1),
+                Arc::clone(&self.drawing.faces_without.2),
+            )
         };
         for (pane, rect, _) in &shown {
             let size = pane_size(*rect);
@@ -743,6 +756,7 @@ impl Curva {
                     &self.scene
                 }),
                 faces: pane_faces,
+                shapes: Arc::clone(&shapes),
                 objects: Arc::clone(&self.drawing.objects),
                 selection: Arc::clone(&self.drawing.selection),
                 overlay: Arc::clone(&overlay),

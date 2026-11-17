@@ -183,6 +183,7 @@ fn picture_drawing(picture: Picture, scene: &Scene) -> Drawing {
         grid: Arc::new(grid),
         scene: Arc::new(lines),
         faces: Arc::new(picture.faces),
+        shapes: Arc::default(),
         overlay: Arc::clone(&empty),
         preview_faces: Arc::new(Vec::new()),
         objects: Arc::clone(&scene.objects),

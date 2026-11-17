@@ -15,6 +15,9 @@ pub(crate) struct Faces {
     pub(crate) mesh: std::sync::Arc<curva_kernel::BodyMesh>,
     /// The lowest and highest corners of the mesh, so a line of sight can skip it quickly.
     pub(crate) around: (Point, Point),
+    /// For a body, the mesh it shares with its copies, unplaced, and where this copy sits
+    /// ([`curva_kernel::Body::shared_mesh`]), so views can hold each shape once (#153).
+    pub(crate) shared: Option<(std::sync::Arc<curva_kernel::BodyMesh>, [[f64; 4]; 4])>,
 }
 
 /// The drawable outline of each object.
@@ -338,7 +341,8 @@ impl Outlines {
                         .filter_map(|(id, seam)| seam.then_some(*id))
                         .collect();
                     let edges = edge_curves(&mesh);
-                    outlines.push_faces(object.id, look, mesh);
+                    let shared = body.shared_mesh().ok().map(|m| (m, body.placement()));
+                    outlines.push_faces(object.id, look, mesh, shared);
                     edges
                 }
                 // Instances inside definitions are opened before this.
@@ -356,14 +360,22 @@ impl Outlines {
         outlines
     }
 
-    /// A body's or annotation's filled faces, for shading.
-    fn push_faces(&mut self, id: u64, look: Look, mesh: std::sync::Arc<curva_kernel::BodyMesh>) {
+    /// A body's or annotation's filled faces, for shading, with a body's `shared` mesh and
+    /// placement.
+    fn push_faces(
+        &mut self,
+        id: u64,
+        look: Look,
+        mesh: std::sync::Arc<curva_kernel::BodyMesh>,
+        shared: Option<(std::sync::Arc<curva_kernel::BodyMesh>, [[f64; 4]; 4])>,
+    ) {
         self.faces.push(Faces {
             id,
             colour: look.colour,
             locked: look.locked,
             around: mesh_box(&mesh),
             mesh,
+            shared,
         });
     }
 
@@ -382,7 +394,7 @@ impl Outlines {
         let annotation = &shown_annotation(annotation, state, object.space, &cache.fields);
         let drawing = curva_document::shape::annotation_drawing(annotation, state, object.space);
         if let Some(mesh) = cache.annotation_mesh(key, &drawing.fills) {
-            self.push_faces(object.id, look, mesh);
+            self.push_faces(object.id, look, mesh, None);
         }
         drawing.lines.into_iter().map(|c| (c, None)).collect()
     }

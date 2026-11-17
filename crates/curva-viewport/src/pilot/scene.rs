@@ -13,6 +13,8 @@ use bevy::{
     prelude::*,
 };
 
+mod shapes;
+
 use super::clip::{Clipping, Clips, CurvaMaterial};
 use crate::{Drawing, MeshVertex};
 
@@ -76,9 +78,13 @@ type PartKey = (u32, [u32; 3]);
 /// Corners and their normals, three per triangle.
 type Triangles = (Vec<[f32; 3]>, Vec<[f32; 3]>);
 
-/// Meshes shared by every view's copies, each with how many copies use it.
+/// Meshes shared by every view's copies, each with how many copies use it: loose triangles by
+/// their contents, then the kernel's shared shapes.
 #[derive(Default)]
-pub(super) struct SharedMeshes(HashMap<MeshKey, (Handle<Mesh>, usize)>);
+pub(super) struct SharedMeshes(
+    HashMap<MeshKey, (Handle<Mesh>, usize)>,
+    pub(super) shapes::ShapeMeshes,
+);
 
 impl SharedMeshes {
     fn take(
@@ -138,6 +144,10 @@ pub(super) struct ViewScene {
     materials: HashMap<[u32; 3], Handle<CurvaMaterial>>,
     /// The planes this view's surfaces were last cut by.
     clips: Option<Clips>,
+    /// The shared shapes last handed to Bevy, and each copy shown, by its object and its order
+    /// within it.
+    shapes: Option<Arc<Vec<crate::PlacedShape>>>,
+    shape_parts: HashMap<(u32, u32), shapes::ShapePart>,
 }
 
 impl ViewScene {
@@ -207,6 +217,8 @@ impl ViewScene {
             selection: None,
             ghosted: None,
             parts: HashMap::new(),
+            shapes: None,
+            shape_parts: HashMap::new(),
             materials: HashMap::new(),
             clips: None,
         }
@@ -288,6 +300,14 @@ impl ViewScene {
             self.mirror(world, meshes, &drawing.faces);
             self.faces = Some(Arc::clone(&drawing.faces));
         }
+        let new_shapes = !self
+            .shapes
+            .as_ref()
+            .is_some_and(|shapes| Arc::ptr_eq(shapes, &drawing.shapes));
+        if new_shapes {
+            self.mirror_shapes(world, &mut meshes.1, &drawing.shapes);
+            self.shapes = Some(Arc::clone(&drawing.shapes));
+        }
         if self.ghosted != Some(drawing.ghosted) {
             self.ghosted = Some(drawing.ghosted);
             let materials = self.materials.values().cloned().collect::<Vec<_>>();
@@ -313,7 +333,7 @@ impl ViewScene {
             .selection
             .as_ref()
             .is_some_and(|selection| Arc::ptr_eq(selection, &drawing.selection));
-        if new_faces || new_selection {
+        if new_faces || new_shapes || new_selection {
             self.colour(world, &drawing.objects, &drawing.selection);
             self.selection = Some(Arc::clone(&drawing.selection));
         }
@@ -462,10 +482,16 @@ impl ViewScene {
         let ghosted = self.ghosted.unwrap_or(false);
         let shine = self.look.unwrap_or_default().shine;
         let clips = self.clips.unwrap_or_default();
+        let copies = self
+            .shape_parts
+            .values()
+            .map(|part| (part.object, part.colour, part.entity));
         let picks: Vec<(Entity, [u32; 3])> = self
             .parts
             .iter()
-            .map(|(&(number, colour), part)| {
+            .map(|(&(number, colour), part)| (number, colour, part.entity))
+            .chain(copies)
+            .map(|(number, colour, entity)| {
                 let picked = objects
                     .get(number as usize)
                     .is_some_and(|id| selected.contains(id));
@@ -474,7 +500,7 @@ impl ViewScene {
                 } else {
                     colour
                 };
-                (part.entity, colour)
+                (entity, colour)
             })
             .collect();
         for (entity, colour) in picks {

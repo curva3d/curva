@@ -3,6 +3,34 @@
 *Written only by the display stream, which owns the inside of `crates/curva-viewport` (see
 `AGENTS.md`). Updated at the end of every work session. Newest first.*
 
+## 17 November 2026
+
+**Done**
+- **Moved from V: to E:** (repository `E:\curva`, worktrees `E:\curva-<issue>`). The stack of
+  steps 2 and 3 was brought up to date with main; the "weakened tests" failures on #253 and #255
+  were the branches being behind main, gone after merging it.
+- **Merged:** step 2 lines (#248) and clipping (#249), the Bevy guide (#256, `docs/bevy/guide.md`),
+  the kernel's shared mesh and placement (#278). Step 3 (#250, #253, #255) waiting for CI.
+- **Step 4, copies drawn once, in review** (#281): *Large* opens in 4.4–4.6 s instead of 74 s, and
+  uses about 1.3 GB of graphics memory instead of 3.2 GB (two runs each, `docs/performance.md`).
+  Placing a block instance used to remake its body in the engine, so every tree was meshed again;
+  now an instance that moves, turns, scales evenly or mirrors shares its body, and Bevy holds one
+  mesh per shape and draws every copy at its place.
+
+**Next**
+- Step 4, still to do: graphics memory under 1 GB (Curva's lines, written out for every copy:
+  edges once per shape next); picking and snapping on the shared shapes instead of placed copies;
+  the moving origin for *Far* (#225); Bevy's settings in millimetres.
+- Then step 5, speed (Bevy's fixed cost per frame, snapping #130).
+
+**Heads-up for the features stream**
+- `curva_kernel::Body::transformed` now gives a copy sharing the body when the map only moves,
+  turns, scales evenly or mirrors (as `Body::mapped` does), instead of remaking it in the engine.
+  Same shapes, same results; shears and uneven scales are unchanged. New: `Body::shared_mesh`,
+  `Body::placement`.
+- `curva_viewport::Drawing` has a new field `shapes`, and `SceneParts::shared` and
+  `scene_shapes_without` are new; `SceneParts::of` is unchanged.
+
 ## 16 November 2026
 
 **Done**
