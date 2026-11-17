@@ -48,12 +48,14 @@ once by commenting on their first pull request; signatures go to the `cla-signat
 - **Live plans (spec `live-plans.md`):**
   - Step 2 merged (#307, closes #202): every mark on a page names the object it came from.
   - Fixed on the way (#309, closes #308): plans drew solids lying wholly above the clipping plane.
-  - Step 3 in review (#315, #203): the test house's plan is down from 0.32 s to about 0.2 s, its drawing
+  - Step 3 (#315, #203): the test house's plan is down from 0.32 s to about 0.2 s, its drawing
     identical. *Large* does not finish (edges 60–78 s, crossings over 12 minutes).
-  - **Waiting for the owner:** whether to go on with step 4 (kept results, which meets the test house's
-    targets) while *Large*'s speed becomes its own piece of work.
-- **Next (features):** the tie hand-over once #296 lands; Live plans step 4 on the owner's word; Make2D fills
-  behind other objects.
+  - The owner's decision: *Large* first, then step 4 (#317). Part 1 (#317's first pull request): crossings
+    on *Large* down from 700 s to under 1 s (a cylinder's top and bottom circles no longer compared point
+    by point), and moved solids no longer described by the engine again at every question. *Large* still
+    runs past 40 minutes: the next slow step, most likely the hidden-piece tests, is next.
+- **Next (features):** *Large* (#317) part 2, then Live plans step 4 (#204); the tie hand-over once #296
+  lands; Make2D fills behind other objects.
 
 
 **The repository moved** from `V:` to `E:` (an external SSD, a ReFS Dev Drive) on 16 November: it is at

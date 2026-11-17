@@ -74,7 +74,13 @@ fn is_similarity(map: &Placement) -> bool {
 pub struct Body {
     shared: std::sync::Arc<Shared>,
     placement: Placement,
+    /// The faces in place as the engine's portable record, read when first needed: a moved copy
+    /// is otherwise placed and described by the engine again every time it is asked (#317).
+    placed: PlacedRecord,
 }
+
+/// The record of a body in its place, shared by copies placed alike.
+type PlacedRecord = std::sync::Arc<std::sync::OnceLock<Record>>;
 
 /// What every copy of a body shares: the engine's body as made, and what is worked out from it
 /// once.
@@ -126,6 +132,7 @@ impl<'de> Deserialize<'de> for Body {
         let stored = StoredBody::deserialize(deserializer)?;
         let mut body = Self::from_native(stored.native).map_err(serde::de::Error::custom)?;
         body.placement = stored.placement;
+        body.placed = PlacedRecord::default();
         Ok(body)
     }
 }
@@ -210,6 +217,7 @@ impl Body {
                 area: std::sync::OnceLock::new(),
             }),
             placement: IN_PLACE,
+            placed: PlacedRecord::default(),
         }
     }
 
@@ -241,10 +249,14 @@ impl Body {
         if is_in_place(&self.placement) {
             return self.unplaced_record().cloned();
         }
+        if let Some(record) = self.placed.get() {
+            return Ok(record.clone());
+        }
         let (record, _) = self
             .engine()?
             .to_record()
             .map_err(|e| failed("describing a body", e))?;
+        let _ = self.placed.set(record.clone());
         Ok(record)
     }
 
@@ -270,6 +282,7 @@ impl Body {
         Self {
             shared: std::sync::Arc::clone(&self.shared),
             placement: IN_PLACE,
+            placed: PlacedRecord::default(),
         }
     }
 
@@ -352,6 +365,7 @@ impl Body {
         for (axis, amount) in by.iter().enumerate() {
             moved.placement[3][axis] += amount;
         }
+        moved.placed = PlacedRecord::default();
         moved
     }
 
@@ -372,6 +386,7 @@ impl Body {
         Self {
             shared: std::sync::Arc::clone(&self.shared),
             placement: followed_by(&self.placement, &then),
+            placed: PlacedRecord::default(),
         }
     }
 
@@ -383,6 +398,7 @@ impl Body {
         is_similarity(map).then(|| Self {
             shared: std::sync::Arc::clone(&self.shared),
             placement: followed_by(&self.placement, map),
+            placed: PlacedRecord::default(),
         })
     }
 
@@ -765,6 +781,28 @@ mod tests {
 
     fn close(a: f64, b: f64) -> bool {
         (a - b).abs() <= 1e-6 * b.abs().max(1.0)
+    }
+
+    #[test]
+    fn a_moved_copy_moved_again_gives_its_edges_where_it_now_is() {
+        let lowest = |body: &Body| {
+            body.exact_edges()
+                .unwrap()
+                .iter()
+                .flat_map(|(curve, _)| curve.sample().unwrap())
+                .map(|p| p[0])
+                .fold(f64::INFINITY, f64::min)
+        };
+        let made = Body::cuboid([0.0; 3], [1.0, 1.0, 1.0]).unwrap();
+        let once = made.translated([10.0, 0.0, 0.0]);
+        assert!(close(lowest(&once), 10.0));
+        // Asked again, the copy answers from what it remembers; moved, it must not.
+        assert!(close(lowest(&once), 10.0));
+        let twice = once.translated([5.0, 0.0, 0.0]);
+        assert!(close(lowest(&twice), 15.0));
+        let half_turn = Similarity::rotation([0.0; 3], [0.0, 0.0, 1.0], std::f64::consts::PI);
+        assert!(close(lowest(&once.mapped(&half_turn)), -11.0));
+        assert!(close(lowest(&once), 10.0));
     }
 
     #[test]
