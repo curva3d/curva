@@ -1,6 +1,5 @@
-//! More surface operations: silhouettes, unrolling ruled surfaces, extruding faces, and fillet
-//! and chamfer surfaces between two surfaces. Flagged as custom
-//! (`docs/kernel/custom-operations.md`).
+//! Surfaces made from others: unrolling ruled surfaces, extruding faces, and fillet and chamfer
+//! surfaces between two surfaces. Flagged as custom (`docs/kernel/custom-operations.md`).
 
 use crate::body::Body;
 use crate::{Combine, Curve, KernelError, Point, cross, dot, gap, sub, unit};
@@ -10,53 +9,6 @@ fn plus(p: Point, d: Point, by: f64) -> Point {
 }
 
 impl Body {
-    /// The outline of the body seen along `view`: where its faces turn from facing the viewer
-    /// to facing away, and its open borders (Rhino's Silhouette), from its display mesh.
-    pub fn silhouette(&self, view: Point) -> Result<Vec<Curve>, KernelError> {
-        // CUSTOM KERNEL OPERATION: silhouettes
-        let mesh = self.mesh()?;
-        let normal = |t: &[u32; 3]| {
-            let [a, b, c] = t.map(|i| mesh.positions[i as usize]);
-            cross(sub(b, a), sub(c, a))
-        };
-        // Each mesh edge (by its two corners' positions, rounded) and the triangles on it.
-        let key = |p: Point| p.map(|v| (v * 1e6).round() as i64);
-        let mut by_edge: std::collections::HashMap<([i64; 3], [i64; 3]), Vec<usize>> =
-            std::collections::HashMap::new();
-        for (index, t) in mesh.triangles.iter().enumerate() {
-            for k in 0..3 {
-                let (a, b) = (
-                    key(mesh.positions[t[k] as usize]),
-                    key(mesh.positions[t[(k + 1) % 3] as usize]),
-                );
-                let edge = if a < b { (a, b) } else { (b, a) };
-                by_edge.entry(edge).or_default().push(index);
-            }
-        }
-        let mut lines = Vec::new();
-        let back = |k: [i64; 3]| k.map(|v| v as f64 / 1e6);
-        for ((a, b), triangles) in &by_edge {
-            let outline = match triangles.as_slice() {
-                [only] => {
-                    let _ = only;
-                    true
-                }
-                [first, second] => {
-                    let (n1, n2) = (
-                        normal(&mesh.triangles[*first]),
-                        normal(&mesh.triangles[*second]),
-                    );
-                    (dot(n1, view) > 0.0) != (dot(n2, view) > 0.0)
-                }
-                _ => false,
-            };
-            if outline && let Ok(line) = Curve::line(back(*a), back(*b)) {
-                lines.push(line);
-            }
-        }
-        crate::join_all(&lines)
-    }
-
     /// A ruled, developable surface laid flat on the world XY plane (Rhino's UnrollSrf): its
     /// rulings unfolded strip by strip, keeping their lengths. Surfaces that are not
     /// developable are refused.
@@ -236,15 +188,6 @@ impl Body {
 #[cfg(test)]
 mod tests {
     use crate::{Body, Curve};
-
-    #[test]
-    fn a_boxs_silhouette_from_above_is_its_outline() {
-        let cube = Body::cuboid([0.0; 3], [2.0, 3.0, 1.0]).unwrap();
-        let outline = cube.silhouette([0.0, 0.0, -1.0]).unwrap();
-        let length: f64 = outline.iter().map(|c| c.length().unwrap()).sum();
-        // The vertical faces are edge-on: their top and bottom edges both turn, 2 × 10.
-        assert!(length >= 10.0 - 1e-6, "{length}");
-    }
 
     #[test]
     fn a_cone_strip_unrolls_keeping_its_area() {

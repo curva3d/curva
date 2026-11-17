@@ -1,15 +1,14 @@
-//! Operations on surfaces built from the surface toolkit and the engine's face evaluation:
-//! isocurves, shrinking trimmed surfaces, blending and matching surfaces, two-rail sweeps,
-//! deforming surfaces and curves, and curves on surfaces (pulling, interpolating, offsetting).
-//! All flagged as custom (`docs/kernel/custom-operations.md`) unless the engine does the work.
+//! Changing surfaces, built from the surface toolkit and the engine's face evaluation: shrinking
+//! trimmed surfaces, blending and matching surfaces, two-rail sweeps, and deforming surfaces and
+//! curves. All flagged as custom (`docs/kernel/custom-operations.md`) unless the engine does the
+//! work.
 
 // The net is built by index, column by column, as the construction reads.
 #![allow(clippy::needless_range_loop)]
 
 use crate::body::{Body, failed};
 use crate::surface::NurbsSurface;
-use crate::{Curve, KernelError, Point, Spline, cross, dot, gap, sub, unit};
-use solidcore_ops::face_surface::FaceSurface;
+use crate::{Curve, KernelError, Point, Spline, gap, sub, unit};
 use solidcore_record::brep::{Curve2, Surface};
 
 /// The tolerance solidcore certifies a two-rail sweep within, in model units: Rhino's default
@@ -25,7 +24,7 @@ enum Side {
     V1,
 }
 
-fn plus(p: Point, d: Point, by: f64) -> Point {
+pub(crate) fn plus(p: Point, d: Point, by: f64) -> Point {
     std::array::from_fn(|i| p[i] + d[i] * by)
 }
 
@@ -59,65 +58,6 @@ fn curve2_spline(c: &Curve2) -> Spline {
 }
 
 impl Body {
-    /// The point of face `face` nearest `p`, with its (u, v): a coarse search for a start, then
-    /// the engine's exact nearest point.
-    fn nearest_on_face(&self, face: usize, p: Point) -> Result<([f64; 2], Point), KernelError> {
-        let record = self.record()?;
-        let surface = FaceSurface::of(&record, face).map_err(|e| failed("reading a face", e))?;
-        let [[u0, u1], [v0, v1]] = surface.domain();
-        let mut best = ([u0, v0], f64::INFINITY);
-        for i in 0..=12 {
-            for j in 0..=12 {
-                let uv = [
-                    u0 + (u1 - u0) * f64::from(i) / 12.0,
-                    v0 + (v1 - v0) * f64::from(j) / 12.0,
-                ];
-                if let Ok(q) = surface.point(uv)
-                    && gap(q, p) < best.1
-                {
-                    best = (uv, gap(q, p));
-                }
-            }
-        }
-        let found = surface
-            .closest_point(p, best.0)
-            .map_err(|e| failed("finding the nearest point", e))?;
-        Ok((found.uv, found.point))
-    }
-
-    /// The face nearest a point, with the (u, v) and the point on it.
-    pub fn nearest_face(&self, p: Point) -> Result<(usize, [f64; 2], Point), KernelError> {
-        let count = self.face_count()?;
-        let mut best: Option<(usize, [f64; 2], Point)> = None;
-        for face in 0..count {
-            if let Ok((uv, q)) = self.nearest_on_face(face, p)
-                && best.as_ref().is_none_or(|(_, _, b)| gap(q, p) < gap(*b, p))
-            {
-                best = Some((face, uv, q));
-            }
-        }
-        best.ok_or_else(|| KernelError("no face to measure from".to_owned()))
-    }
-
-    /// The isocurve of face `face` through its point nearest `p`: along u, or along v when
-    /// `along_v` (Rhino's ExtractIsocurve).
-    pub fn isocurve_through(
-        &self,
-        face: usize,
-        p: Point,
-        along_v: bool,
-    ) -> Result<Curve, KernelError> {
-        // CUSTOM KERNEL OPERATION: isocurves
-        let (uv, _) = self.nearest_on_face(face, p)?;
-        let surface = NurbsSurface::of_face(&self.record()?, face)?;
-        let iso = if along_v {
-            surface.iso_u(uv[0])
-        } else {
-            surface.iso_v(uv[1])
-        };
-        iso.to_curve()
-    }
-
     /// Every face's surface cut down to the box of its trims, the trims kept (Rhino's
     /// ShrinkTrimmedSrf).
     pub fn shrunk(&self) -> Result<Body, KernelError> {
@@ -593,95 +533,6 @@ impl Body {
         record.tolerance = record.tolerance.max(1e-4);
         Body::from_record(&record)
     }
-
-    /// A curve pulled onto the body: each of its points to the nearest point of the surfaces,
-    /// fitted through (Rhino's Pull).
-    pub fn pulled(&self, curve: &Curve) -> Result<Curve, KernelError> {
-        // CUSTOM KERNEL OPERATION: curves-on-surfaces
-        let points = curve.divided(48)?;
-        let on: Vec<Point> = points
-            .iter()
-            .map(|p| self.nearest_face(*p).map(|(_, _, q)| q))
-            .collect::<Result<_, _>>()?;
-        let closed = curve.is_closed()?;
-        Curve::interpolated(
-            if closed {
-                on[..on.len() - 1].to_vec()
-            } else {
-                on
-            },
-            closed,
-        )
-    }
-
-    /// A curve through points on face `face`, interpolated in the face's (u, v) so it lies on
-    /// it (Rhino's InterpCrvOnSrf).
-    pub fn curve_on_face(&self, face: usize, points: &[Point]) -> Result<Curve, KernelError> {
-        let uvs: Vec<Point> = points
-            .iter()
-            .map(|p| {
-                self.nearest_on_face(face, *p)
-                    .map(|(uv, _)| [uv[0], uv[1], 0.0])
-            })
-            .collect::<Result<_, _>>()?;
-        let in_uv = Spline::of(&Curve::interpolated(uvs, false)?)?;
-        let surface =
-            FaceSurface::of(&self.record()?, face).map_err(|e| failed("reading a face", e))?;
-        let (t0, t1) = in_uv.domain();
-        let lifted: Vec<Point> = (0..=64)
-            .map(|k| {
-                let uv = in_uv.point(t0 + (t1 - t0) * f64::from(k) / 64.0);
-                surface
-                    .point([uv[0], uv[1]])
-                    .map_err(|e| failed("evaluating a face", e))
-            })
-            .collect::<Result<_, _>>()?;
-        Curve::interpolated(lifted, false)
-    }
-
-    /// A curve lying on the body moved along the surfaces by `distance`, to the side of `toward`
-    /// (Rhino's OffsetCrvOnSrf).
-    pub fn offset_on_surface(
-        &self,
-        curve: &Curve,
-        distance: f64,
-        toward: Point,
-    ) -> Result<Curve, KernelError> {
-        let spline = Spline::of(curve)?;
-        let (a, b) = spline.domain();
-        let mut moved = Vec::new();
-        let mut side = 0.0;
-        for k in 0..=48 {
-            let t = a + (b - a) * f64::from(k) / 48.0;
-            let p = spline.point(t);
-            let (face, uv, _) = self.nearest_face(p)?;
-            let surface =
-                FaceSurface::of(&self.record()?, face).map_err(|e| failed("reading a face", e))?;
-            let n = surface
-                .normal(uv)
-                .map_err(|e| failed("evaluating a face", e))?;
-            let along = unit(spline.derivative(t)).unwrap_or([1.0, 0.0, 0.0]);
-            let mut out = unit(cross(n, along)).unwrap_or([0.0; 3]);
-            if k == 0 {
-                side = dot(sub(toward, p), out).signum();
-                if side == 0.0 {
-                    side = 1.0;
-                }
-            }
-            out = out.map(|v| v * side);
-            let (_, _, back) = self.nearest_face(plus(p, out, distance))?;
-            moved.push(back);
-        }
-        let closed = curve.is_closed()?;
-        Curve::interpolated(
-            if closed {
-                moved[..moved.len() - 1].to_vec()
-            } else {
-                moved
-            },
-            closed,
-        )
-    }
 }
 
 impl Curve {
@@ -712,15 +563,6 @@ mod tests {
         let a = Curve::line([0.0, 0.0, z], [size, 0.0, z]).unwrap();
         let b = Curve::line([0.0, size, z], [size, size, z]).unwrap();
         Body::ruled(&a, &b, false).unwrap()
-    }
-
-    #[test]
-    fn isocurves_lie_on_the_surface() {
-        let s = sheet(4.0, 0.0);
-        let iso = s.isocurve_through(0, [1.0, 2.0, 5.0], false).unwrap();
-        let points = iso.sample().unwrap();
-        assert!(points.iter().all(|p| p[2].abs() < 1e-9));
-        assert!((iso.length().unwrap() - 4.0).abs() < 1e-6);
     }
 
     #[test]
@@ -861,36 +703,5 @@ mod tests {
             .unwrap();
         let end = bent.sample().unwrap().last().copied().unwrap();
         assert!(gap(end, [10.0, 1.0, 0.0]) < 1e-9);
-    }
-
-    #[test]
-    fn curves_pulled_and_made_on_surfaces() {
-        let s = sheet(6.0, 2.0);
-        let pulled = s
-            .pulled(&Curve::line([1.0, 1.0, 5.0], [5.0, 1.0, 0.0]).unwrap())
-            .unwrap();
-        assert!(
-            pulled
-                .sample()
-                .unwrap()
-                .iter()
-                .all(|p| (p[2] - 2.0).abs() < 1e-6)
-        );
-        let on = s
-            .curve_on_face(0, &[[1.0, 1.0, 9.0], [3.0, 4.0, 9.0], [5.0, 2.0, 9.0]])
-            .unwrap();
-        assert!(
-            on.sample()
-                .unwrap()
-                .iter()
-                .all(|p| (p[2] - 2.0).abs() < 1e-6)
-        );
-        let base = Curve::line([1.0, 1.0, 2.0], [5.0, 1.0, 2.0]).unwrap();
-        let moved = s.offset_on_surface(&base, 1.0, [3.0, 5.0, 2.0]).unwrap();
-        let p = moved.sample().unwrap()[0];
-        assert!(
-            (p[1] - 2.0).abs() < 1e-3 && (p[2] - 2.0).abs() < 1e-6,
-            "{p:?}"
-        );
     }
 }
