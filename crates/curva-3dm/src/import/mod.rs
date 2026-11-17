@@ -223,6 +223,7 @@ fn shape_of(
             "dimensions",
         ),
         Geometry::Detail(_) => return Err("details come in with their layout".to_owned()),
+        Geometry::Mesh(_) => return Err("meshes come in once the document holds them".to_owned()),
         Geometry::ClippingPlane(c) => (
             Shape::Curve(clipping_rectangle(c).map_err(text)?),
             "clipping planes",

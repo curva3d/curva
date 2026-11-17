@@ -492,6 +492,8 @@ pub enum Geometry {
         /// Its font's name; empty for the usual one.
         font: String,
     },
+    /// A mesh (`ON_Mesh`).
+    Mesh(curva_mesh::Mesh),
     /// A block instance: its definition's id and placement (row-major 4 × 4).
     Instance {
         /// The definition.
