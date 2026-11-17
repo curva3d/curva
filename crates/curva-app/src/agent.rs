@@ -67,15 +67,32 @@ pub(crate) fn picture_from(
     let outlines = Outlines::of(doc.state());
     let aspect = f64::from(PICTURE_SIZE[0]) / f64::from(PICTURE_SIZE[1]);
     let path = std::env::temp_dir().join(format!("curva-mcp-{}.png", std::process::id()));
-    save_picture(
+    save_bevy_view(
         picture_of(doc, &outlines, camera, aspect, ghosted),
-        PICTURE_SIZE,
+        camera,
         &path,
     )?;
     let bytes = std::fs::read(&path).map_err(|error| error.to_string())?;
     // The picture has been read; a leftover temporary file would do no harm.
     let _ = std::fs::remove_file(&path);
     Ok(bytes)
+}
+
+/// Behind pictures for agents: the dark grey they had before Bevy drew them.
+const PICTURE_BACKGROUND: egui::Color32 = egui::Color32::from_rgb(28, 31, 36);
+
+/// Saves `picture`, seen by `camera`, as a PNG file at `path`, drawn as the window draws a view:
+/// Bevy's surfaces with Curva's lines on them. The selection is in the picture's colours.
+fn save_bevy_view(picture: Picture, camera: &Camera, path: &std::path::Path) -> Result<(), String> {
+    let pixels = curva_viewport::bevy_picture(
+        picture,
+        Vec::new(),
+        *camera,
+        curva_viewport::Look::default(),
+        PICTURE_BACKGROUND,
+        PICTURE_SIZE,
+    )?;
+    curva_viewport::save_png(path, PICTURE_SIZE, &pixels)
 }
 
 /// Runs semicolon-separated command lines and saves a picture of the result: in `style` if given
@@ -138,9 +155,9 @@ pub(crate) fn picture(
             std::path::Path::new(path),
         )?;
     } else {
-        save_picture(
+        save_bevy_view(
             picture_of(&doc, &outlines, &camera, aspect, ghosted),
-            PICTURE_SIZE,
+            &camera,
             std::path::Path::new(path),
         )?;
     }

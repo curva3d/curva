@@ -216,8 +216,6 @@ pub(crate) const COMMAND_TABS: [(&str, &[&str]); 6] = [
             "Contour",
             "Intersect",
             "Silhouette",
-            "Zebra",
-            "DraftAnalysis",
             "Count",
             "Audit",
             "Plan",
