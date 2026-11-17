@@ -162,15 +162,49 @@ pub(crate) fn tab_slot(tabs: &[egui::Rect], x: f32) -> usize {
         .unwrap_or(tabs.len().saturating_sub(1))
 }
 
-/// The edges and corners a panel can be resized from: near one, the pointer becomes a resize
-/// arrow and the edge pulses gently in the accent. The handles lie just inside the panel, so a drag
-/// from one never reaches the viewport behind. Returns the drag, if one is under way.
-pub(crate) fn resize_handles(
-    ui: &egui::Ui,
-    place: &layout::Place,
-    rect: egui::Rect,
-) -> Option<PanelEvent> {
-    let movable = layout::Sides::movable(place);
+/// What every panel drawn in one frame shares: the window below the top bar, whether a command
+/// is being typed, the pointer, whether the mouse button is up, the panel a dragged one would
+/// merge into, and the rectangles of the panels not being dragged.
+struct PanelPass<'a> {
+    window: egui::Rect,
+    typing: bool,
+    pointer: Option<egui::Pos2>,
+    released: bool,
+    merge_into: Option<layout::PanelId>,
+    floating: &'a [egui::Rect],
+}
+
+/// Where the dragged `piece` would dock in `landing`, outlined in the accent.
+fn dock_preview(
+    ctx: &egui::Context,
+    landing: &layout::Layout,
+    piece: layout::Piece,
+    window: egui::Rect,
+) {
+    if let Some(id) = landing.panel_of(piece)
+        && let Some((_, spot)) = landing
+            .arrange(window)
+            .0
+            .into_iter()
+            .find(|(p, _)| *p == id)
+    {
+        ctx.layer_painter(egui::LayerId::new(
+            egui::Order::Foreground,
+            egui::Id::NULL.with("dock preview"),
+        ))
+        .rect(
+            spot,
+            PANEL_RADIUS,
+            DOCK_PREVIEW_FILL,
+            egui::Stroke::new(1.5, theme::ACCENT.gamma_multiply(0.6)),
+            egui::StrokeKind::Inside,
+        );
+    }
+}
+
+/// The edges and corners a panel at `rect` can be resized from, with where each is held and the
+/// pointer it shows.
+fn resize_zones(rect: egui::Rect) -> [(layout::Sides, egui::Rect, egui::CursorIcon); 8] {
     let side = |left, right, top, bottom| layout::Sides {
         left,
         right,
@@ -182,7 +216,7 @@ pub(crate) fn resize_handles(
     let zone = |x0: f32, y0: f32, x1: f32, y1: f32| {
         egui::Rect::from_min_max(egui::pos2(x0, y0), egui::pos2(x1, y1))
     };
-    let handles = [
+    [
         (
             side(true, false, true, false),
             zone(l, t, l + 2.0 * reach, t + 2.0 * reach),
@@ -223,9 +257,41 @@ pub(crate) fn resize_handles(
             zone(l + 2.0 * reach, b - reach, r - 2.0 * reach, b),
             egui::CursorIcon::ResizeVertical,
         ),
-    ];
+    ]
+}
+
+/// A gentle pulse along the edges of `rect` being held.
+fn pulse_edges(ui: &egui::Ui, rect: egui::Rect, sides: layout::Sides) {
+    let time = ui.input(|input| input.time) as f32;
+    let strength = 0.55 + 0.45 * (time * 5.0).sin();
+    let stroke = egui::Stroke::new(2.0, theme::ACCENT.gamma_multiply(strength));
+    let painter = ui.painter();
+    if sides.left {
+        painter.line_segment([rect.left_top(), rect.left_bottom()], stroke);
+    }
+    if sides.right {
+        painter.line_segment([rect.right_top(), rect.right_bottom()], stroke);
+    }
+    if sides.top {
+        painter.line_segment([rect.left_top(), rect.right_top()], stroke);
+    }
+    if sides.bottom {
+        painter.line_segment([rect.left_bottom(), rect.right_bottom()], stroke);
+    }
+    ui.ctx().request_repaint();
+}
+
+/// The edges and corners a panel can be resized from: near one, the pointer becomes a resize
+/// arrow and the edge pulses gently in the accent. The handles lie just inside the panel, so a drag
+/// from one never reaches the viewport behind. Returns the drag, if one is under way.
+pub(crate) fn resize_handles(
+    ui: &egui::Ui,
+    place: &layout::Place,
+    rect: egui::Rect,
+) -> Option<PanelEvent> {
+    let movable = layout::Sides::movable(place);
     let mut event = None;
-    for (sides, area, cursor) in handles {
+    for (sides, area, cursor) in resize_zones(rect) {
         // A corner needs both its sides to be movable, an edge its one.
         if sides.within(movable) != sides {
             continue;
@@ -239,24 +305,7 @@ pub(crate) fn resize_handles(
             )
             .on_hover_cursor(cursor);
         if response.hovered() || response.dragged() {
-            // A gentle pulse along the edges being held.
-            let time = ui.input(|input| input.time) as f32;
-            let strength = 0.55 + 0.45 * (time * 5.0).sin();
-            let stroke = egui::Stroke::new(2.0, theme::ACCENT.gamma_multiply(strength));
-            let painter = ui.painter();
-            if sides.left {
-                painter.line_segment([rect.left_top(), rect.left_bottom()], stroke);
-            }
-            if sides.right {
-                painter.line_segment([rect.right_top(), rect.right_bottom()], stroke);
-            }
-            if sides.top {
-                painter.line_segment([rect.left_top(), rect.right_top()], stroke);
-            }
-            if sides.bottom {
-                painter.line_segment([rect.left_bottom(), rect.right_bottom()], stroke);
-            }
-            ui.ctx().request_repaint();
+            pulse_edges(ui, rect, sides);
         }
         if response.dragged() {
             event = Some(PanelEvent::Resized(sides, response.drag_delta()));
@@ -279,9 +328,54 @@ impl Curva {
         }
         self.history_keys(ctx);
         self.window_rect = window;
-        // The top bar sits fixed along the top, sliding up out of view in focus mode; the other
-        // panels are laid out in the window below it.
         let full_window = window;
+        let window = self.top_bar_slot(ctx, window);
+        let (placed, free) = self.layout.arrange(window);
+        // While a panel is dragged over another, that one lights up to show they would merge.
+        let merge_into = self.frames.panel_drag.and_then(|drag| {
+            let at = ctx.pointer_latest_pos()?;
+            self.frames
+                .drawn_panels
+                .iter()
+                .find(|(p, rect)| *p != drag.panel && rect.contains(at))
+                .map(|(p, _)| *p)
+        });
+        let floating: Vec<egui::Rect> = placed
+            .iter()
+            .filter(|(panel, _)| {
+                self.frames
+                    .panel_drag
+                    .is_none_or(|drag| drag.panel != *panel)
+            })
+            .map(|(_, rect)| *rect)
+            .collect();
+        let pass = PanelPass {
+            window,
+            // Typing brings the command line's panel out until the command ends.
+            typing: !self.typed.is_empty() || self.processor.is_running(),
+            pointer: ctx.pointer_hover_pos(),
+            released: !ctx.input(|input| input.pointer.primary_down()),
+            merge_into,
+            floating: &floating,
+        };
+        for (panel, rect) in placed {
+            self.one_panel(ctx, panel, rect, &pass);
+        }
+        self.focus_tab(ctx, full_window);
+        self.version_label(ctx, full_window);
+        // In focus mode the viewports take the window, short of the tabs left at its edges.
+        if self.frames.focus {
+            let shrunk = full_window.shrink(layout::STRIP);
+            return (shrunk, shrunk);
+        }
+        // The viewports reach under the glass panels, so there is something to see through
+        // them; their titles and frames stay in the free area.
+        (free, full_window)
+    }
+
+    /// The top bar, fixed along the top and sliding up out of view in focus mode; returns the
+    /// window below it, where the other panels are laid out.
+    fn top_bar_slot(&mut self, ctx: &egui::Context, window: egui::Rect) -> egui::Rect {
         let bar = egui::Rect::from_min_size(
             window.min + egui::Vec2::splat(layout::GAP),
             egui::vec2(window.width() - 2.0 * layout::GAP, TOP_BAR_HEIGHT),
@@ -296,120 +390,90 @@ impl Curva {
             SLIDE_TIME,
         );
         self.top_bar(ctx, bar.translate(egui::vec2(0.0, -lift)));
-        let window = egui::Rect::from_min_max(egui::pos2(window.min.x, bar.max.y), window.max);
-        let (placed, free) = self.layout.arrange(window);
-        // Typing brings the command line's panel out until the command ends.
-        let typing = !self.typed.is_empty() || self.processor.is_running();
-        let pointer = ctx.pointer_hover_pos();
-        let released = !ctx.input(|input| input.pointer.primary_down());
-        // While a panel is dragged over another, that one lights up to show they would merge.
-        let merge_into = self.frames.panel_drag.and_then(|drag| {
-            let at = ctx.pointer_latest_pos()?;
-            self.frames
-                .drawn_panels
-                .iter()
-                .find(|(p, rect)| *p != drag.panel && rect.contains(at))
-                .map(|(p, _)| *p)
+        egui::Rect::from_min_max(egui::pos2(window.min.x, bar.max.y), window.max)
+    }
+
+    /// One panel, laid out at `rect`: shown, or slid to its edge leaving a tab there (peeking
+    /// out while the pointer is over it), or following the pointer while dragged.
+    fn one_panel(
+        &mut self,
+        ctx: &egui::Context,
+        panel: layout::PanelId,
+        rect: egui::Rect,
+        pass: &PanelPass<'_>,
+    ) {
+        let window = pass.window;
+        let Some(place) = self.layout.place(panel).cloned() else {
+            return;
+        };
+        let shown = (!self.frames.focus && !place.hidden)
+            || self.frames.revealed == Some(panel)
+            || (place.pieces.contains(&layout::Piece::Command) && pass.typing && !place.hidden);
+        let edge = self.layout.edge_of(panel, rect, window);
+        let (tab, upright) = layout::edge_tab(rect, edge, window);
+        let hovered = pass.pointer.is_some_and(|at| {
+            tab.contains(at)
+                || self
+                    .frames
+                    .drawn_panels
+                    .iter()
+                    .any(|(p, drawn)| *p == panel && drawn.contains(at))
         });
-        let floating_rects: Vec<egui::Rect> = placed
-            .iter()
-            .filter(|(panel, _)| {
-                self.frames
-                    .panel_drag
-                    .is_none_or(|drag| drag.panel != *panel)
-            })
-            .map(|(_, rect)| *rect)
-            .collect();
-        for (panel, rect) in placed {
-            let Some(place) = self.layout.place(panel).cloned() else {
-                continue;
-            };
-            let shown = (!self.frames.focus && !place.hidden)
-                || self.frames.revealed == Some(panel)
-                || (place.pieces.contains(&layout::Piece::Command) && typing && !place.hidden);
-            let edge = self.layout.edge_of(panel, rect, window);
-            let (tab, upright) = layout::edge_tab(rect, edge, window);
-            let hovered = pointer.is_some_and(|at| {
-                tab.contains(at)
-                    || self
-                        .frames
-                        .drawn_panels
-                        .iter()
-                        .any(|(p, drawn)| *p == panel && drawn.contains(at))
-            });
-            let target = if shown {
-                rect
-            } else {
-                let visible = if hovered { layout::PEEK } else { 0.0 };
-                layout::slid(rect, edge, window, visible)
-            };
-            let id = egui::Id::NULL.with(("panel slide", panel));
-            let offset = egui::vec2(
-                ctx.animate_value_with_time(id.with(0), target.min.x - rect.min.x, SLIDE_TIME),
-                ctx.animate_value_with_time(id.with(1), target.min.y - rect.min.y, SLIDE_TIME),
-            );
-            let mut drawn = rect.translate(offset);
-            let mut size = rect.size();
-            // A panel being dragged follows the pointer, and shows where it would land.
-            if let (Some(drag), Some(at)) = (self.frames.panel_drag, ctx.pointer_latest_pos())
-                && drag.panel == panel
-            {
-                drawn = egui::Rect::from_min_size(at - drag.grab, drag.size);
-                size = drag.size;
-                let landing = self.landing(drag, at, drawn, window, merge_into, &floating_rects);
-                if merge_into.is_none() {
-                    let shown_piece = drag.piece.unwrap_or(panel);
-                    if let Some(id) = landing.panel_of(shown_piece)
-                        && let Some((_, spot)) = landing
-                            .arrange(window)
-                            .0
-                            .into_iter()
-                            .find(|(p, _)| *p == id)
-                    {
-                        ctx.layer_painter(egui::LayerId::new(
-                            egui::Order::Foreground,
-                            egui::Id::NULL.with("dock preview"),
-                        ))
-                        .rect(
-                            spot,
-                            PANEL_RADIUS,
-                            DOCK_PREVIEW_FILL,
-                            egui::Stroke::new(1.5, theme::ACCENT.gamma_multiply(0.6)),
-                            egui::StrokeKind::Inside,
-                        );
-                    }
-                }
-                if released {
-                    self.layout = landing;
-                    self.frames.panel_drag = None;
-                    self.save_layout();
-                }
-            }
-            self.frames.drawn_panels.retain(|(p, _)| *p != panel);
-            if shown || hovered || self.frames.panel_drag.is_some_and(|d| d.panel == panel) {
-                self.frames.drawn_panels.push((panel, drawn));
-            }
-            let mut events = Vec::new();
-            if !shown {
-                events.push(self.edge_tab(ctx, &place, tab, upright));
-            }
-            if shown || hovered || offset != target.min - rect.min || drawn != target {
-                events.push(self.panel_area(ctx, &place, size, drawn, merge_into == Some(panel)));
-            }
-            for event in events {
-                self.panel_event(event, panel, &place, drawn, window);
-            }
+        let target = if shown {
+            rect
+        } else {
+            let visible = if hovered { layout::PEEK } else { 0.0 };
+            layout::slid(rect, edge, window, visible)
+        };
+        let id = egui::Id::NULL.with(("panel slide", panel));
+        let offset = egui::vec2(
+            ctx.animate_value_with_time(id.with(0), target.min.x - rect.min.x, SLIDE_TIME),
+            ctx.animate_value_with_time(id.with(1), target.min.y - rect.min.y, SLIDE_TIME),
+        );
+        let (drawn, size) = self
+            .dragged_panel(ctx, panel, pass)
+            .unwrap_or((rect.translate(offset), rect.size()));
+        self.frames.drawn_panels.retain(|(p, _)| *p != panel);
+        if shown || hovered || self.frames.panel_drag.is_some_and(|d| d.panel == panel) {
+            self.frames.drawn_panels.push((panel, drawn));
         }
-        self.focus_tab(ctx, full_window);
-        self.version_label(ctx, full_window);
-        // In focus mode the viewports take the window, short of the tabs left at its edges.
-        if self.frames.focus {
-            let shrunk = full_window.shrink(layout::STRIP);
-            return (shrunk, shrunk);
+        let mut events = Vec::new();
+        if !shown {
+            events.push(self.edge_tab(ctx, &place, tab, upright));
         }
-        // The viewports reach under the glass panels, so there is something to see through
-        // them; their titles and frames stay in the free area.
-        (free, full_window)
+        if shown || hovered || offset != target.min - rect.min || drawn != target {
+            events.push(self.panel_area(ctx, &place, size, drawn, pass.merge_into == Some(panel)));
+        }
+        for event in events {
+            self.panel_event(event, panel, &place, drawn, window);
+        }
+    }
+
+    /// If `panel` is being dragged: where it is drawn, following the pointer, and its size. It
+    /// shows where it would land, and lands there when let go.
+    fn dragged_panel(
+        &mut self,
+        ctx: &egui::Context,
+        panel: layout::PanelId,
+        pass: &PanelPass<'_>,
+    ) -> Option<(egui::Rect, egui::Vec2)> {
+        let (Some(drag), Some(at)) = (self.frames.panel_drag, ctx.pointer_latest_pos()) else {
+            return None;
+        };
+        if drag.panel != panel {
+            return None;
+        }
+        let drawn = egui::Rect::from_min_size(at - drag.grab, drag.size);
+        let landing = self.landing(drag, at, drawn, pass.window, pass.merge_into, pass.floating);
+        if pass.merge_into.is_none() {
+            dock_preview(ctx, &landing, drag.piece.unwrap_or(panel), pass.window);
+        }
+        if pass.released {
+            self.layout = landing;
+            self.frames.panel_drag = None;
+            self.save_layout();
+        }
+        Some((drawn, drag.size))
     }
 
     /// Where a dragged panel would go if let go with the pointer at `at`: merged into the panel
