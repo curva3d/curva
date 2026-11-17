@@ -58,7 +58,7 @@ to give the same quads every time, does not: it uses Rust's randomly seeded hash
 same mesh and seed give slightly different quads from one run to the next (504 to 524 faces for
 one request). It also makes about four times the quads asked for, which Curva can allow for.
 The library interface is written and parked on the local branch `329-quad-remesh` (worktree
-`E:rva-329`, not pushed) until the owner decides: a patched copy of quadrs offered upstream, its
+`E:/curva-329`, not pushed) until the owner decides: a patched copy of quadrs offered upstream, its
 results accepted as they are, or Curva's own QuadRemesh.
 
 **Precision measured (spec §3.2):** subdiv-kernels' single-precision weights, applied level by
