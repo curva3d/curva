@@ -643,6 +643,51 @@ mod tests {
         assert_eq!(pilot.meshes.1.len(), 0, "no copies, no mesh");
     }
 
+    /// The *Far* check on Bevy's surfaces (#225): a box 500 km from the origin, in a window scene
+    /// measured from its own origin and seen by the camera measured the same way, gives the
+    /// picture the box gives at the origin. Measured from the origin, Bevy's single precision
+    /// would step by 32 mm out there.
+    #[test]
+    fn far_from_the_origin_bevy_draws_as_at_the_origin() {
+        let _turn = one_at_a_time();
+        let Some((mut pilot, device, queue)) = pilot() else {
+            return;
+        };
+        let mut picture_at = |offset: [f64; 3]| {
+            let mut doc = curva_document::Document::default();
+            let corner = [offset[0] - 3.0, offset[1] - 4.0, offset[2]];
+            doc.add_body(curva_kernel::Body::cuboid(corner, [6.0, 8.0, 5.0]).unwrap());
+            let outlines = crate::Outlines::of(doc.state());
+            let parts = crate::SceneParts::shared(&outlines);
+            let mut camera = StandardView::Perspective.camera();
+            let (low, high) = outlines.bounds().unwrap();
+            camera.frame(low, high);
+            let camera = camera.measured_from(parts.origin);
+            let mut view = drawing(StandardView::Perspective, parts.faces.clone());
+            view.shapes = Arc::new(parts.shapes.clone());
+            view.objects = Arc::new(parts.objects.clone());
+            view.matrix = camera.matrix(f64::from(SIZE[0]) / f64::from(SIZE[1]));
+            view.light = camera.forward().map(|value| value as f32);
+            view.camera = camera;
+            // Bevy's first picture of a new scene comes ready on a later update.
+            for _ in 0..3 {
+                pilot.draw(&view, SIZE);
+            }
+            let texture = pilot.draw(&view, SIZE).expect("Bevy's picture");
+            crate::gpu::read_texture(&device, &queue, &texture, SIZE)
+        };
+        let near = picture_at([0.0; 3]);
+        let far = picture_at([5.0e8, 5.0e8, 0.0]);
+        let shown = near.chunks(4).filter(|p| p[..3] != [200, 120, 40]).count();
+        assert!(shown > 200, "the box shows: {shown} pixels");
+        let differing = near
+            .chunks(4)
+            .zip(far.chunks(4))
+            .filter(|(a, b)| a.iter().zip(b.iter()).any(|(x, y)| x.abs_diff(*y) > 2))
+            .count();
+        assert!(differing <= 8, "{differing} pixels differ");
+    }
+
     /// Every `// CUSTOM BEVY PART:` mark has a row in `docs/bevy/custom-parts.md`, and every row a
     /// mark (decision 0030), as the kernel's custom operations are kept.
     #[test]

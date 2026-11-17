@@ -10,20 +10,28 @@
   steps 2 and 3 was brought up to date with main; the "weakened tests" failures on #253 and #255
   were the branches being behind main, gone after merging it.
 - **Merged:** step 2 lines (#248) and clipping (#249), the Bevy guide (#256, `docs/bevy/guide.md`),
-  the kernel's shared mesh and placement (#278). Step 3 (#250, #253, #255) waiting for CI.
-- **Step 4, copies drawn once, in review** (#281): *Large* opens in 4.4–4.6 s instead of 74 s, and
+  the kernel's shared mesh and placement (#278), step 3, Bevy as the only 3D engine (#250, #253,
+  #255).
+- **Step 4, copies drawn once, merged** (#281): *Large* opens in 4.4–4.6 s instead of 74 s, and
   uses about 1.3 GB of graphics memory instead of 3.2 GB (two runs each, `docs/performance.md`).
   Placing a block instance used to remake its body in the engine, so every tree was meshed again;
   now an instance that moves, turns, scales evenly or mirrors shares its body, and Bevy holds one
   mesh per shape and draws every copy at its place.
-- **Step 4, circles drawn from their axes, in review** (stacked on #281): *Large* now uses 800 MiB
+- **Step 4, circles drawn from their axes, merged** (#299): *Large* now uses 800 MiB
   of graphics memory steady instead of 1312 MiB, under the spec's 1 GB. Most of what was left was
   the 40,000 circles, 128 segments each (328 MB); the copies' edges were only 38 MB. A whole,
   undashed circle is now one entry, and the graphics card works out its segments.
+- **Step 4, far from the origin, in review** (#225): a window scene is measured from a point near
+  the model (its middle, to the nearest metre), worked out in double precision before narrowing,
+  and its camera, grid, previews and clipping planes are moved to match; shared meshes are
+  measured from their own middle. New *Far* checks: a model 500 km out draws the same picture as
+  at the origin, on Curva's lines (310 pixels differed before) and on Bevy's surfaces (576).
+  *Far* runs as fast as *Large*. Custom part `far-origin` listed; `big_space` checked and not used.
 
 **Next**
-- Step 4, still to do: picking and snapping on the shared shapes instead of placed copies;
-  the moving origin for *Far* (#225); Bevy's settings in millimetres.
+- Step 4, still to do: picking and snapping on the shared shapes instead of placed copies; Bevy's
+  settings in millimetres; pictures for agents and sheets measured from the model too (they still
+  measure from the origin, so a far model's pictures are jagged).
 - Then step 5, speed (Bevy's fixed cost per frame, snapping #130).
 
 **Heads-up for the features stream**
@@ -36,6 +44,10 @@
 - `Drawing` and `SceneParts` also have a new field `circles` (whole circles drawn from their
   axes); `SceneParts::shared` leaves those circles out of its lines. Pictures and sheets pass
   `circles: Arc::default()` and keep drawing circles as segments.
+- Far from the origin (#225): `SceneParts` has a new field `origin`; `ghost_lines`, `ghost_faces`,
+  `grid_lines_in` and `scene_faces_without` take the origin to measure from, and
+  `Camera::measured_from` and `narrow_from` are new. In the app, `clipping_for` and `clipped_view`
+  take it too (sheets pass the origin, `[0.0; 3]`).
 
 ## 16 November 2026
 

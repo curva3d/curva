@@ -260,6 +260,16 @@ impl Camera {
         }
     }
 
+    /// The same view of a scene measured from `origin` ([`crate::SceneParts::origin`], #225): its
+    /// target moved by `-origin`, worked out in double precision, so its matrix and lens place
+    /// positions measured from `origin` exactly.
+    #[must_use]
+    pub fn measured_from(&self, origin: Point) -> Self {
+        let mut moved = *self;
+        moved.target = std::array::from_fn(|k| self.target[k] - origin[k]);
+        moved
+    }
+
     /// The combined view and projection matrix, by columns, for the graphics card.
     #[must_use]
     pub fn matrix(&self, aspect: f64) -> [[f32; 4]; 4] {
