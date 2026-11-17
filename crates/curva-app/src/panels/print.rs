@@ -65,6 +65,7 @@ fn paint_page(ui: &egui::Ui, page: &Page, rect: egui::Rect) {
             Mark::Fill {
                 contours,
                 colour: c,
+                ..
             } => {
                 for contour in contours {
                     let mut shown: Vec<egui::Pos2> = contour.iter().map(|p| at(*p)).collect();

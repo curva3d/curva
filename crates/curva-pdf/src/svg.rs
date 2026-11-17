@@ -85,6 +85,7 @@ pub fn write_svg(page: &Page) -> String {
                 colour: c,
                 width,
                 dashes,
+                ..
             } => {
                 let data = path_data(&[(points, *closed)], height);
                 if data.is_empty() {
@@ -107,6 +108,7 @@ pub fn write_svg(page: &Page) -> String {
             Mark::Fill {
                 contours,
                 colour: c,
+                ..
             } => {
                 let outlines: Vec<(&[[f64; 2]], bool)> =
                     contours.iter().map(|c| (c.as_slice(), true)).collect();
@@ -142,6 +144,7 @@ mod tests {
                     colour: [0.0; 3],
                     width: 0.5,
                     dashes: vec![2.0, 1.0],
+                    source: None,
                 },
                 Mark::Line {
                     points: vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]],
@@ -149,6 +152,7 @@ mod tests {
                     colour: [1.0, 0.0, 0.0],
                     width: 0.0,
                     dashes: Vec::new(),
+                    source: None,
                 },
                 Mark::Fill {
                     contours: vec![
@@ -156,6 +160,7 @@ mod tests {
                         vec![[30.0, 30.0], [50.0, 30.0], [50.0, 50.0], [30.0, 50.0]],
                     ],
                     colour: [0.0, 0.5, 1.0],
+                    source: None,
                 },
             ],
         }
