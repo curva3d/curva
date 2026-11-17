@@ -7,6 +7,7 @@
 pub mod boolean;
 mod check;
 mod convert;
+mod from_body;
 mod measure;
 mod mesh;
 mod nurbs;
@@ -18,6 +19,7 @@ mod triangulate;
 
 pub use check::MeshCheck;
 pub use curva_kernel::Point;
+pub use from_body::density_tolerances;
 pub use mesh::{Attribute, Mesh, MeshError};
 pub use subd::SubD;
 pub use triangulate::Triangles;
