@@ -95,7 +95,13 @@ impl SubD {
     /// as a SubD's cage is one piece of surface.
     #[must_use]
     pub fn new(cage: Mesh) -> Self {
-        let (cage, _) = cage.welded(0.0);
+        Self::from_cage(cage.welded(0.0).0)
+    }
+
+    /// A SubD with this cage exactly as given, its open borders creased: points at the same place
+    /// stay apart, as after Rhino's UnweldEdge (Rhino's own files may hold such cuts).
+    #[must_use]
+    pub fn from_cage(cage: Mesh) -> Self {
         let mut subd = Self {
             cage,
             ..Self::default()
@@ -257,7 +263,7 @@ impl SubD {
         points: &[Option<u32>],
         faces: &[Option<usize>],
     ) -> Self {
-        let mut subd = Self::new(cage);
+        let mut subd = Self::from_cage(cage);
         subd.display = self.display;
         let uses = subd.edge_uses();
         let old_uses = self.edge_uses();
