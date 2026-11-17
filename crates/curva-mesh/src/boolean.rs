@@ -1,5 +1,6 @@
-//! Mesh booleans: union, difference, intersection and split, on manifold-rust (decision 0032,
-//! spec `docs/specs/mesh-and-subd.md` §3.1). This file is the only one that calls it.
+//! Mesh booleans (union, difference, intersection and split), and the two tests `Check` and
+//! MeshRepair borrow (faces crossing, and which way closed shells wind), on manifold-rust
+//! (decision 0032, spec `docs/specs/mesh-and-subd.md` §3.1). This file is the only one that calls it.
 //!
 //! Meshes go in with double-precision points, through manifold-rust's robust import, and its
 //! automatic engine choice: the exact engine for clean closed meshes, and its robust engine
@@ -11,7 +12,9 @@
 //! Results are triangles. Normals, texture coordinates and colours do not come through yet.
 
 use crate::{Mesh, Point};
+use manifold_rust::linalg::Vec3;
 use manifold_rust::manifold::Manifold;
+use manifold_rust::robust::repair::plan_repair;
 use manifold_rust::types::{BooleanEngine, Error, MeshGLP, OpType};
 use std::fmt;
 
@@ -171,6 +174,43 @@ fn solid(mesh: &Mesh, shift: Point) -> Manifold {
         ..MeshGLP::default()
     };
     Manifold::from_mesh_glp_robust(&gl)
+}
+
+/// Whether a mesh's faces cross through each other, by the library's exact test (faces lying on
+/// top of each other count); `None` when the library will not take the mesh.
+pub(crate) fn crosses_itself(mesh: &Mesh) -> Option<bool> {
+    if mesh.face_count() == 0 {
+        return Some(false);
+    }
+    let shift = centre(std::iter::once(mesh));
+    let solid = solid(mesh, shift);
+    (solid.status() == Error::NoError).then(|| solid.has_self_intersections())
+}
+
+/// Which of these triangles to turn round so closed shells point out, and hollows inside them
+/// point in, by the library's winding repair (exact winding numbers at points just off each
+/// shell). Shells are found by the library from shared corners.
+pub(crate) fn inside_out(triangles: &[[Point; 3]]) -> Vec<bool> {
+    let shift = centre_of(triangles.iter().flatten());
+    let tris: Vec<[Vec3; 3]> = triangles
+        .iter()
+        .map(|t| t.map(|p| Vec3::new(p[0] - shift[0], p[1] - shift[1], p[2] - shift[2])))
+        .collect();
+    plan_repair(&tris).flip
+}
+
+fn centre_of<'a>(points: impl Iterator<Item = &'a Point>) -> Point {
+    let bounds = points.fold(None, |b: Option<(Point, Point)>, p| {
+        Some(b.map_or((*p, *p), |(lo, hi)| {
+            (
+                std::array::from_fn(|i| lo[i].min(p[i])),
+                std::array::from_fn(|i| hi[i].max(p[i])),
+            )
+        }))
+    });
+    bounds.map_or([0.0; 3], |(lo, hi)| {
+        std::array::from_fn(|i| (lo[i] + hi[i]) / 2.0)
+    })
 }
 
 fn checked(result: Manifold) -> Result<Manifold, BooleanError> {
