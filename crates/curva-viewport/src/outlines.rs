@@ -268,6 +268,27 @@ impl Outlines {
     }
 
     /// Adds `other`'s objects after its own.
+    // CUSTOM BEVY PART: far-origin
+    /// What a window scene measures positions from (#225, custom part `far-origin`): the middle
+    /// of everything drawn, to the nearest 1000 units, so a model far from the origin draws as
+    /// exactly as one at it, and small edits leave the point where it is. The origin when
+    /// nothing is drawn.
+    #[must_use]
+    pub fn drawing_origin(&self) -> Point {
+        let mut boxes = self.boxes.iter();
+        let Some(&first) = boxes.next() else {
+            return [0.0; 3];
+        };
+        let (low, high) = boxes.fold(first, |(mut low, mut high), (l, h)| {
+            for axis in 0..3 {
+                low[axis] = low[axis].min(l[axis]);
+                high[axis] = high[axis].max(h[axis]);
+            }
+            (low, high)
+        });
+        std::array::from_fn(|k| ((low[k] + high[k]) / 2000.0).round() * 1000.0)
+    }
+
     pub(crate) fn append(&mut self, other: &Self) {
         // The objects change, so the index over them is made again when next asked for.
         self.snap_index = snap::SnapIndex::default();

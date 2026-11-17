@@ -637,4 +637,82 @@ mod tests {
         idle.select_step(&mut doc);
         assert!(idle.toggles.is_empty());
     }
+
+    #[test]
+    fn every_mark_on_the_house_plan_names_the_object_it_came_from() {
+        use curva_document::annotation::{Annotation, Dimension, DimensionKind};
+        use curva_document::drawing::Mark;
+        let mut doc = Document::default();
+        benchmark_scene(&mut doc, BenchmarkScene::named("house").unwrap()).unwrap();
+        // The plan: a detail at 1:100 looking down on the house, and a dimension on the sheet.
+        let paper = curva_document::layouts::paper_size("A3").unwrap();
+        let sheet = doc.add_layout("Plan".to_owned(), paper, true);
+        doc.set_space(Some(sheet));
+        let frame = doc.add(
+            Curve::polyline(
+                vec![
+                    [20.0, 20.0, 0.0],
+                    [400.0, 20.0, 0.0],
+                    [400.0, 277.0, 0.0],
+                    [20.0, 277.0, 0.0],
+                ],
+                true,
+            )
+            .unwrap(),
+        );
+        doc.add_detail(
+            sheet,
+            curva_document::layouts::Detail {
+                frame,
+                projection: "Top".to_owned(),
+                target: [6000.0, 4000.0, 0.0],
+                distance: 1.0,
+                scale: Some(0.01),
+                display: "Wireframe".to_owned(),
+                locked: false,
+                hidden_layers: Vec::new(),
+            },
+        );
+        doc.add_annotation(Annotation::Dimension(Dimension {
+            kind: DimensionKind::Horizontal,
+            first: [50.0, 10.0, 0.0],
+            second: [170.0, 10.0, 0.0],
+            line: [110.0, 15.0, 0.0],
+            x: [1.0, 0.0, 0.0],
+            y: [0.0, 1.0, 0.0],
+            style: doc.current_annotation_style(),
+            text: None,
+        }));
+        let page = curva_viewport::print::layout_page(
+            &doc,
+            sheet,
+            &curva_document::fields::FieldContext::default(),
+            curva_viewport::print::PrintColour::Display,
+        )
+        .unwrap();
+        let ids: std::collections::BTreeSet<u64> =
+            doc.state().objects.iter().map(|o| o.id).collect();
+        let sources: Vec<Option<u64>> = page
+            .marks
+            .iter()
+            .map(|mark| match mark {
+                Mark::Line { source, .. } | Mark::Fill { source, .. } => *source,
+            })
+            .collect();
+        assert!(
+            sources.len() > 100,
+            "the plan has only {} marks",
+            sources.len()
+        );
+        for source in &sources {
+            assert!(
+                source.is_some_and(|id| ids.contains(&id)),
+                "a mark names {source:?}, not an object"
+            );
+        }
+        // Lines and fills come from the house's walls and from the dimension on the sheet.
+        let named: std::collections::BTreeSet<u64> = sources.iter().flatten().copied().collect();
+        assert!(named.len() > 10);
+        assert!(page.marks.iter().any(|m| matches!(m, Mark::Fill { .. })));
+    }
 }

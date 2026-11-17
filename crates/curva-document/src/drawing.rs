@@ -20,6 +20,9 @@ pub enum Mark {
         width: f64,
         /// Dash and gap lengths in millimetres, alternating; solid when empty.
         dashes: Vec<f64>,
+        /// The object it was drawn from, for picking and snapping on the page; `None` for a mark
+        /// drawn from no object. Writers ignore it (spec `live-plans.md` §5).
+        source: Option<u64>,
     },
     /// A filled shape: closed outlines, inside even–odd so inner outlines are holes.
     Fill {
@@ -27,6 +30,8 @@ pub enum Mark {
         contours: Vec<Vec<[f64; 2]>>,
         /// Its colour.
         colour: Colour,
+        /// The object it was drawn from, as for a line.
+        source: Option<u64>,
     },
 }
 
