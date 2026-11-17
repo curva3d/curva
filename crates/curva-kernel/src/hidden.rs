@@ -536,6 +536,9 @@ fn crossing_points(sources: &[Source], flat: f64) -> Result<Vec<Vec<Point>>, Ker
         (0..2).all(|k| a.0[k] <= b.1[k] + flat && b.0[k] <= a.1[k] + flat)
     };
     let grid = Grid::of(&boxes, flat);
+    let paths: Vec<std::sync::OnceLock<Vec<Point>>> =
+        sources.iter().map(|_| std::sync::OnceLock::new()).collect();
+    let paths = Paths { sources, paths };
     let mut cuts: Vec<Vec<Point>> = vec![Vec::new(); sources.len()];
     for i in 0..sources.len() {
         // Only lines sharing a cell can overlap; taken in order, as if every line were tried.
@@ -550,7 +553,9 @@ fn crossing_points(sources: &[Source], flat: f64) -> Result<Vec<Vec<Point>>, Ker
                     }
                 }
                 _ => {
-                    if j > i {
+                    // Lines lying on each other do not cross, as for straight lines: a
+                    // cylinder's top and bottom circles seen from above (#317).
+                    if j > i && !same_path(&paths, i, j, flat) {
                         for p in crate::crossings(&sources[i].flat, &sources[j].flat)? {
                             cuts[i].push(p);
                             cuts[j].push(p);
@@ -561,6 +566,29 @@ fn crossing_points(sources: &[Source], flat: f64) -> Result<Vec<Vec<Point>>, Ker
         }
     }
     Ok(cuts)
+}
+
+/// The projected lines' sample points, each worked out when first needed.
+struct Paths<'a> {
+    sources: &'a [Source],
+    paths: Vec<std::sync::OnceLock<Vec<Point>>>,
+}
+
+impl Paths<'_> {
+    fn of(&self, i: usize) -> &[Point] {
+        self.paths[i].get_or_init(|| self.sources[i].flat.sample().unwrap_or_default())
+    }
+}
+
+/// Whether projected lines `i` and `j` lie on each other: each one's sample points are within
+/// `flat` of the other's, and they have as many.
+fn same_path(paths: &Paths, i: usize, j: usize, flat: f64) -> bool {
+    let (a, b) = (paths.of(i), paths.of(j));
+    let near = |p: &Point, along: &[Point]| along.iter().any(|q| length(sub(*p, *q)) <= flat);
+    !a.is_empty()
+        && a.len() == b.len()
+        && a.iter().all(|p| near(p, b))
+        && b.iter().all(|p| near(p, a))
 }
 
 /// The drawing divided into square-ish cells, about as many as there are lines, with the lines
@@ -887,6 +915,21 @@ mod tests {
                 .count();
             assert_eq!(meeting, 2);
         }
+    }
+
+    #[test]
+    fn circles_lying_on_each_other_do_not_cut_each_other() {
+        // A cylinder's top and bottom circles seen from above (#317); a third crosses both.
+        let circle = |x: f64, z: f64| Curve::circle([x, 0.0, z], 5.0).unwrap();
+        let curves = [circle(0.0, 0.0), circle(0.0, 12.0), circle(6.0, 0.0)];
+        let scale = scene_scale(&[], &curves, &top()).unwrap().unwrap();
+        let models = curves
+            .iter()
+            .map(|c| (c.clone(), LineKind::Curve, 0, Vec::new()))
+            .collect();
+        let sources = projected(models, &top(), &scale);
+        let cuts = crossing_points(&sources, scale.flat).unwrap();
+        assert_eq!(cuts.iter().map(Vec::len).collect::<Vec<_>>(), [2, 2, 4]);
     }
 
     #[test]
