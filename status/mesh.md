@@ -29,17 +29,25 @@ PLY read and written, text and binary (#275 PLY part, PR #311), checked both way
 and double-precision points; Rhino 7 and 8 files read, and Rhino 8 reads Curva's as valid.
 The mesh primitives' geometry (#270 part 1, PR #318): box, plane, sphere in Rhino's three styles,
 cylinder and cone with both cap styles, and torus; face counts, areas and volumes match Rhino 8's.
+Mesh from NURBS (#271 part 1, PR #322): the kernel's triangles as a mesh, and Rhino's density
+slider mapped to tolerances (0.5 is the viewport's; other densities need #319 from the features
+stream). Stage B's first step (#320, PR #325): the SubD structure (edge sharpness, Rhino's point
+tags, per-face colours, flat or smooth display) and subdiv-kernels 0.1.0 in `smooth.rs`, the one
+file that calls it: refined cages, the limit surface with normals, and crease and border curves
+for the viewport; Rhino 8's limit surfaces of the same cages agree to 0.025%.
 
 **In review:**
-- Mesh from NURBS (#271 part 1, PR #322): the kernel's triangles as a mesh, and Rhino's density
-  slider mapped to tolerances (0.5 is the viewport's). Other densities need a kernel function,
-  asked of the features stream in #319.
-- Stage B begins (#320): the SubD structure (edge sharpness, Rhino's point tags, per-face
-  colours, flat or smooth display) and subdiv-kernels 0.1.0 in `smooth.rs`, the one file that
-  calls it: refined cages, the limit surface with normals, and crease and border curves for the
-  viewport. Rhino 8's limit surfaces of the same cages agree to 0.025%.
-- `.3dm` SubDs read and written (#323), next, on top of #320: Rhino 8 reads Curva's as valid
-  SubDs with its own limit volumes and areas.
+- `.3dm` SubDs read and written (#323): the cage with its tags, sharpness, face colours and
+  texture points, in new files `read/subd.rs` and `write/subd.rs` with one-line registrations.
+  Rhino 8's own SubDs read with their tags and colours and smooth to Rhino's limit sizes; Rhino 8
+  reads Curva's as valid SubDs with the same volumes and areas. Partly sharp edges come back
+  smooth in Rhino, as Curva writes Rhino 7 files, which have none.
+- The SubD primitives' cages (#326, Stage C): box, plane, sphere, cylinder, cone and torus placed
+  as Rhino 8 places its own, matching Rhino's volumes, areas and cage sizes.
+
+**Being written:** ToNURBS (#327): exact patches on regular quads and fitted ones around star
+points, sewn into a polysurface or solid (flat patches wait on #328 from the features stream);
+QuadRemesh on quadrs, part 1 (#329).
 
 **Precision measured (spec §3.2):** subdiv-kernels' single-precision weights, applied level by
 level to Curva's double-precision points measured from the centre, move a 10 m cube a million

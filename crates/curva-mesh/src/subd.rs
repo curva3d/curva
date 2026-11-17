@@ -5,8 +5,8 @@
 //! are smooth or creased, each with a sharpness (0 smooth, infinite for Rhino 8's creases, so
 //! softer creases can come later without changing files), and its points are tagged as Rhino
 //! tags them: smooth, crease, corner or dart. Texture coordinates ride on the cage's corners;
-//! colours, when given, are one per face (a face may have none, as in Rhino). The smooth surface itself is never stored: it is
-//! worked out by subdiv-kernels (`smooth.rs`).
+//! colours, when given, are one per face (a face may have none, as in Rhino). The smooth surface
+//! itself is never stored: it is worked out by subdiv-kernels (`smooth.rs`).
 
 use crate::{Mesh, Point};
 use curva_kernel::Similarity;
