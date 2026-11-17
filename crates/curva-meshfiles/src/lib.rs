@@ -1,10 +1,12 @@
 //! Mesh files Curva reads and writes in its own Rust (spec `docs/specs/mesh-and-subd.md` §5):
-//! STL, text and binary, and OBJ. They are simple enough that no outside library is needed.
+//! STL, text and binary; OBJ; and PLY, text and binary. They are simple enough that no outside
+//! library is needed.
 //!
-//! Neither format records units: numbers are read and written as they are, and the command that
+//! None of them records units: numbers are read and written as they are, and the command that
 //! opens or saves the file says which unit they are in.
 
 pub mod obj;
+pub mod ply;
 pub mod stl;
 
 use curva_mesh::Mesh;

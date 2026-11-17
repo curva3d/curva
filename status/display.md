@@ -29,7 +29,7 @@
   *Far* runs as fast as *Large*. Custom part `far-origin` listed; `big_space` checked and not used.
   Drawing only: document coordinates, saved files, copy and paste, snapping and the coordinates
   shown stay exactly where they are (owner's rule, so pasted objects land alike across files).
-- **Step 4, Bevy's settings in millimetres, in review:** checked by a new test, a box casting its
+- **Step 4, Bevy's settings in millimetres, merged** (#312): checked by a new test, a box casting its
   shadow drawn 10 mm and 10 km across gives the same picture. Shadow distances already followed
   the view; one gap fixed: a view turned Sunlit without moving kept shadow distances set for an
   earlier view (a second new test, which failed before the fix).

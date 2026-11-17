@@ -11,6 +11,7 @@ use crate::model::{
 
 mod annotation;
 mod geometry;
+mod mesh;
 mod views;
 use annotation::*;
 use geometry::*;
@@ -806,7 +807,7 @@ fn geometry_of(id: Uuid, r: &mut Reader<'_>) -> Result<std::result::Result<Geome
                 font,
             }
         }
-        class::MESH => return Ok(Err("mesh".to_owned())),
+        class::MESH => Geometry::Mesh(mesh::mesh(r)?),
         class::POINT_CLOUD => return Ok(Err("point cloud".to_owned())),
         class::SUBD => return Ok(Err("SubD".to_owned())),
         _ => {

@@ -16,3 +16,4 @@ crc32fast = "1.5"
 flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }
 curva-document = { path = "../curva-document" }
 curva-kernel = { path = "../curva-kernel" }
+curva-mesh = { path = "../curva-mesh" }

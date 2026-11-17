@@ -1858,6 +1858,7 @@ dependencies = [
  "crc32fast",
  "curva-document",
  "curva-kernel",
+ "curva-mesh",
  "flate2",
 ]
 
