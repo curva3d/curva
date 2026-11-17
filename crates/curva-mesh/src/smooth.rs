@@ -176,6 +176,91 @@ impl SubD {
         Ok(self.with_cage_points(placed))
     }
 
+    /// The smooth surface as bicubic Bézier patches, one per quad of the cage subdivided `levels`
+    /// times (1 to [`MAX_LEVELS`]), each as its 4 × 4 control points (`net[i][j]`, `i` along the
+    /// quad's first edge), and for each whether it is exact.
+    ///
+    /// Where the quad is regular (its corners meet four faces, no crease or border near), the
+    /// library's bicubic B-spline patch is the smooth surface exactly, and is turned into Bézier
+    /// form by the usual change of basis (1/6 [1 4 1 0; 0 4 2 0; 0 2 4 0; 0 1 4 1] each way).
+    /// Elsewhere the patch passes through the true surface at the quad's 4 × 4 grid of thirds,
+    /// found exactly by the library's limit evaluator. A patch's edge depends only on the four
+    /// points along it, so neighbouring patches share their edges and meet without gaps.
+    ///
+    /// # Errors
+    /// When the library refuses the cage.
+    // CUSTOM MESH OPERATION: subd-feature-patches
+    pub fn bezier_patches(&self, levels: u8) -> Result<Vec<Patch>, SmoothError> {
+        let (result, centre, refined) = self.refine(levels)?;
+        let table = result
+            .patch_table()
+            .map_err(|e| SmoothError(e.to_string()))?;
+        #[allow(clippy::cast_possible_truncation)]
+        let single: Vec<[f32; 3]> = refined.iter().map(|p| p.map(|c| c as f32)).collect();
+        let evaluator = result
+            .limit_evaluator(&single)
+            .map_err(|e| SmoothError(e.to_string()))?;
+        let to_world = |p: Point| -> Point { std::array::from_fn(|i| p[i] + centre[i]) };
+        let faces = result.topology.face_vertex_counts.len();
+        let mut out = Vec::with_capacity(faces);
+        for f in 0..faces {
+            let f32_index = u32::try_from(f).unwrap_or(u32::MAX);
+            if let Some(patch) = table.face_patch(f32_index) {
+                // Library order: entry 4 j + i at (i along u, j along v).
+                let control = table.control_points[patch as usize];
+                let b: [[Point; 4]; 4] = std::array::from_fn(|i| {
+                    std::array::from_fn(|j| refined[control[4 * j + i] as usize])
+                });
+                out.push(Patch {
+                    net: map_net(&b, &B_SPLINE_TO_BEZIER).map(|row| row.map(to_world)),
+                    off: 0.0,
+                });
+            } else {
+                let mut samples = [[[0.0; 3]; 4]; 4];
+                for (i, row) in samples.iter_mut().enumerate() {
+                    for (j, s) in row.iter_mut().enumerate() {
+                        #[allow(clippy::cast_precision_loss)]
+                        let uv = [i as f32 / 3.0, j as f32 / 3.0];
+                        let weights = evaluator
+                            .weights_at(f32_index, uv)
+                            .map_err(|e| SmoothError(e.to_string()))?;
+                        *s = weights.iter().fold([0.0; 3], |acc, &(v, w)| {
+                            let p = refined[v as usize];
+                            std::array::from_fn(|k| acc[k] + f64::from(w) * p[k])
+                        });
+                    }
+                }
+                let net = map_net(&samples, &THIRDS_TO_BEZIER);
+                // How far it strays: checked midway between the points it passes through.
+                let mut off: f64 = 0.0;
+                for u in [1.0 / 6.0, 0.5, 5.0 / 6.0] {
+                    for v in [1.0 / 6.0, 0.5, 5.0 / 6.0] {
+                        #[allow(clippy::cast_possible_truncation)]
+                        let weights = evaluator
+                            .weights_at(f32_index, [u as f32, v as f32])
+                            .map_err(|e| SmoothError(e.to_string()))?;
+                        let truth = weights.iter().fold([0.0; 3], |acc, &(w_at, w)| {
+                            let p = refined[w_at as usize];
+                            std::array::from_fn(|k| acc[k] + f64::from(w) * p[k])
+                        });
+                        let ours = bezier_at(&net, u, v);
+                        off = off.max(
+                            (0..3)
+                                .map(|k| (ours[k] - truth[k]).powi(2))
+                                .sum::<f64>()
+                                .sqrt(),
+                        );
+                    }
+                }
+                out.push(Patch {
+                    net: net.map(|row| row.map(to_world)),
+                    off,
+                });
+            }
+        }
+        Ok(out)
+    }
+
     /// The cage subdivided `levels` times (1 to [`MAX_LEVELS`]): the control net one level
     /// finer, all quads, not yet on the limit surface.
     ///
@@ -349,6 +434,70 @@ fn facing(mesh: Mesh) -> Mesh {
     mesh.clone()
         .with_normals(Attribute::PerVertex(turned))
         .unwrap_or(mesh)
+}
+
+/// A uniform cubic B-spline span's four control points as its Bézier points (rows: Bézier
+/// points; columns: B-spline points).
+const B_SPLINE_TO_BEZIER: [[f64; 4]; 4] = [
+    [1.0 / 6.0, 4.0 / 6.0, 1.0 / 6.0, 0.0],
+    [0.0, 4.0 / 6.0, 2.0 / 6.0, 0.0],
+    [0.0, 2.0 / 6.0, 4.0 / 6.0, 0.0],
+    [0.0, 1.0 / 6.0, 4.0 / 6.0, 1.0 / 6.0],
+];
+
+/// The Bézier points of the cubic through four values at 0, 1/3, 2/3 and 1: the inverse of the
+/// Bernstein basis there, (1 − t)³, 3t(1 − t)², 3t²(1 − t), t³.
+const THIRDS_TO_BEZIER: [[f64; 4]; 4] = [
+    [1.0, 0.0, 0.0, 0.0],
+    [-5.0 / 6.0, 3.0, -3.0 / 2.0, 1.0 / 3.0],
+    [1.0 / 3.0, -3.0 / 2.0, 3.0, -5.0 / 6.0],
+    [0.0, 0.0, 0.0, 1.0],
+];
+
+/// `m` applied along both directions of a 4 × 4 net: `m · net · mᵀ`.
+fn map_net(net: &[[Point; 4]; 4], m: &[[f64; 4]; 4]) -> [[Point; 4]; 4] {
+    std::array::from_fn(|a| {
+        std::array::from_fn(|b| {
+            let mut p = [0.0; 3];
+            for (i, row) in net.iter().enumerate() {
+                for (j, q) in row.iter().enumerate() {
+                    let w = m[a][i] * m[b][j];
+                    for k in 0..3 {
+                        p[k] += w * q[k];
+                    }
+                }
+            }
+            p
+        })
+    })
+}
+
+/// A bicubic Bézier patch of a SubD's smooth surface ([`SubD::bezier_patches`]).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Patch {
+    /// Its 4 × 4 control points, `net[i][j]` with `i` along the quad's first edge.
+    pub net: [[Point; 4]; 4],
+    /// How far it strays from the true surface: 0 for an exact patch on a regular quad, else the
+    /// largest distance found midway between the points it passes through.
+    pub off: f64,
+}
+
+/// A bicubic Bézier patch at `(u, v)`.
+fn bezier_at(net: &[[Point; 4]; 4], u: f64, v: f64) -> Point {
+    let basis = |t: f64| {
+        let s = 1.0 - t;
+        [s * s * s, 3.0 * t * s * s, 3.0 * t * t * s, t * t * t]
+    };
+    let (bu, bv) = (basis(u), basis(v));
+    let mut p = [0.0; 3];
+    for (i, row) in net.iter().enumerate() {
+        for (j, q) in row.iter().enumerate() {
+            for k in 0..3 {
+                p[k] += bu[i] * bv[j] * q[k];
+            }
+        }
+    }
+    p
 }
 
 /// The lowest and highest of some points in each direction.
