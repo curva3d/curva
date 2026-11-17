@@ -33,15 +33,29 @@
   shadow drawn 10 mm and 10 km across gives the same picture. Shadow distances already followed
   the view; one gap fixed: a view turned Sunlit without moving kept shadow distances set for an
   earlier view (a second new test, which failed before the fix).
-- **Step 4, far from the origin in pictures and sheets, in review:** pictures for agents (and
+- **Step 4, far from the origin in pictures and sheets, merged** (#316): pictures for agents (and
   `--picture`, `--look-pictures`, styled pictures) and layout sheets' details are measured from
   the middle of the model too, so a far model's pictures are as sharp as the window. New test: a
   circle and a box 500 km out picture as they do near the origin. The picture device is no longer
   dropped when its thread ends (it panicked a test's thread on exit).
+- **Step 5, snapping searches only what could win, merged** (#321, part of #130): only segments
+  nearer the cursor than the nearest place found are searched for meeting points and
+  perpendicular feet. *Large*: snapping 20.6 ms to about 4 ms a frame, 24 ms to 16.2 ms between
+  frames (the screen's own rate). A test compares with searching everything at 4,900 cursor
+  positions. #130 stays open: its aim is under 1 ms.
+- **Step 5, selecting, in review:** under 1 ms more than an ordinary frame, as the spec asks
+  (*Large* about 0.2 ms with a solid selected, *Medium* 0.4–0.7 ms). Two causes: Bevy was handed a
+  material for every part in every view at each change (12,000 on *Large*), now only for the
+  parts of objects whose selection changed; and the benchmark itself listed every selectable
+  object at each change (10 ms on *Large*), now once. New test: a new selection recolours only
+  what changed, and rightly.
 
 **Next**
-- Step 4, still to do: picking and snapping on the shared shapes instead of placed copies.
-- Then step 5, speed (Bevy's fixed cost per frame, snapping #130).
+- Step 4, still to do: picking and snapping on the shared shapes instead of placed copies
+  (Curva's own memory: *Large* peaks at about 2.3 GB).
+- Step 5, still to do: Bevy's fixed cost per frame; the *Meshes* scene, which waits for mesh
+  objects in the document (#266, features) and drawing them (#267, display); snapping under 1 ms
+  (#130); Rhino's figures beside every target.
 
 **Heads-up for the features stream**
 - `curva_kernel::Body::transformed` now gives a copy sharing the body when the map only moves,

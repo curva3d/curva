@@ -14,20 +14,36 @@ pub(crate) struct Benchmark {
     pub(crate) select: bool,
     /// The frames at which the selection changed.
     pub(crate) toggles: Vec<usize>,
+    /// The object `--select` picks, found once: listing every selectable object takes 10 ms on
+    /// *Large*, which a click does not do, and doing it at each change was most of what selecting
+    /// seemed to cost.
+    pub(crate) first: Option<u64>,
 }
 
 /// How often `--select` changes the selection, in frames.
 pub(crate) const SELECT_EVERY: usize = 10;
 
 impl Benchmark {
-    /// With `--select`, once the window has settled: selects the first object that can be
-    /// selected, or clears the selection, every [`SELECT_EVERY`] frames, as clicking would.
+    /// With `--select`, once the window has settled: selects the first solid that can be selected
+    /// (or the first object, without solids), or clears the selection, every [`SELECT_EVERY`] frames, as clicking would.
     pub(crate) fn select_step(&mut self, doc: &mut Document) {
         let frame = self.times.len();
         if !self.select || frame < SETTLE_FRAMES || !frame.is_multiple_of(SELECT_EVERY) {
             return;
         }
-        let Some(first) = doc.selectable().first().copied() else {
+        if self.first.is_none() {
+            // A solid if there is one: selecting it recolours Bevy's surfaces, the slower case.
+            let selectable = doc.selectable();
+            let solid = selectable.iter().copied().find(|id| {
+                doc.state()
+                    .objects
+                    .iter()
+                    .find(|object| object.id == *id)
+                    .is_some_and(|object| object.shape.body().is_some())
+            });
+            self.first = solid.or_else(|| selectable.first().copied());
+        }
+        let Some(first) = self.first else {
             return;
         };
         if doc.selection().is_empty() {

@@ -142,6 +142,14 @@ pub(super) struct ViewScene {
     parts: HashMap<PartKey, Part>,
     /// This view's material for each colour, so a style change touches only this view.
     materials: HashMap<[u32; 3], Handle<CurvaMaterial>>,
+    /// The colour each part and copy is shown in now, so a new selection hands Bevy only the
+    /// parts whose colour changes: handing it every part made it redo them all (step 5).
+    shown: HashMap<Entity, [u32; 3]>,
+    /// Each object's parts and copies, by its id (`None` for parts of no object), each with its
+    /// own colour.
+    by_object: HashMap<Option<u64>, Vec<(Entity, [u32; 3])>>,
+    /// The objects shown selected.
+    picked: HashSet<u64>,
     /// The planes this view's surfaces were last cut by.
     clips: Option<Clips>,
     /// The shared shapes last handed to Bevy, and each copy shown, by its object and its order
@@ -220,6 +228,9 @@ impl ViewScene {
             shapes: None,
             shape_parts: HashMap::new(),
             materials: HashMap::new(),
+            shown: HashMap::new(),
+            by_object: HashMap::new(),
+            picked: HashSet::new(),
             clips: None,
         }
     }
@@ -335,8 +346,12 @@ impl ViewScene {
             .selection
             .as_ref()
             .is_some_and(|selection| Arc::ptr_eq(selection, &drawing.selection));
-        if new_faces || new_shapes || new_selection {
+        if new_faces || new_shapes {
             self.colour(world, &drawing.objects, &drawing.selection);
+        } else if new_selection {
+            self.reselect(world, &drawing.selection);
+        }
+        if new_selection {
             self.selection = Some(Arc::clone(&drawing.selection));
         }
     }
@@ -478,61 +493,105 @@ impl ViewScene {
         }
     }
 
-    /// Gives each part its colour's material, or the selection colour's when selected.
+    /// Gives each part its colour's material, or the selection colour's when selected, and keeps
+    /// which parts each object has, so a later change of selection recolours only those
+    /// ([`Self::reselect`]).
     fn colour(&mut self, world: &mut World, objects: &[u64], selection: &[u64]) {
-        let selected: HashSet<u64> = selection.iter().copied().collect();
-        let ghosted = self.ghosted.unwrap_or(false);
-        let shine = self.look.unwrap_or_default().shine;
-        let clips = self.clips.unwrap_or_default();
         let copies = self
             .shape_parts
             .values()
             .map(|part| (part.object, part.colour, part.entity));
-        let picks: Vec<(Entity, [u32; 3])> = self
+        self.by_object.clear();
+        for (number, colour, entity) in self
             .parts
             .iter()
             .map(|(&(number, colour), part)| (number, colour, part.entity))
             .chain(copies)
-            .map(|(number, colour, entity)| {
-                let picked = objects
-                    .get(number as usize)
-                    .is_some_and(|id| selected.contains(id));
-                let colour = if picked {
-                    crate::SELECTED_COLOUR.map(f32::to_bits)
-                } else {
-                    colour
-                };
-                (entity, colour)
+        {
+            // Parts of no object (numbered past the list) are drawn too, never selected.
+            let id = objects.get(number as usize).copied();
+            self.by_object.entry(id).or_default().push((entity, colour));
+        }
+        // Parts gone are forgotten, so the list does not grow.
+        let live: HashSet<Entity> = self
+            .by_object
+            .values()
+            .flatten()
+            .map(|(entity, _)| *entity)
+            .collect();
+        self.shown.retain(|entity, _| live.contains(entity));
+        self.picked = selection.iter().copied().collect();
+        let all: Vec<(Option<u64>, Entity, [u32; 3])> = self
+            .by_object
+            .iter()
+            .flat_map(|(&id, parts)| {
+                parts
+                    .iter()
+                    .map(move |&(entity, colour)| (id, entity, colour))
             })
             .collect();
-        for (entity, colour) in picks {
-            let material = self
-                .materials
-                .entry(colour)
-                .or_insert_with(|| {
-                    let mut material = StandardMaterial {
-                        base_color: Color::srgb(
-                            f32::from_bits(colour[0]),
-                            f32::from_bits(colour[1]),
-                            f32::from_bits(colour[2]),
-                        ),
-                        // Open surfaces are seen from both sides.
-                        double_sided: true,
-                        cull_mode: None,
-                        ..default()
-                    };
-                    set_ghosted(&mut material, ghosted);
-                    set_shine(&mut material, shine);
-                    world
-                        .resource_mut::<Assets<CurvaMaterial>>()
-                        .add(CurvaMaterial {
-                            base: material,
-                            extension: Clipping { clips },
-                        })
-                })
-                .clone();
-            world.entity_mut(entity).insert(MeshMaterial3d(material));
+        for (id, entity, colour) in all {
+            let picked = id.is_some_and(|id| self.picked.contains(&id));
+            self.show(world, entity, colour, picked);
         }
+    }
+
+    /// Recolours the parts of only the objects whose selection changed (step 5: a new selection
+    /// on *Large* went through all 12,000 parts in every view).
+    fn reselect(&mut self, world: &mut World, selection: &[u64]) {
+        let now: HashSet<u64> = selection.iter().copied().collect();
+        let changed: Vec<u64> = now.symmetric_difference(&self.picked).copied().collect();
+        for id in changed {
+            let parts = self.by_object.get(&Some(id)).cloned().unwrap_or_default();
+            for (entity, colour) in parts {
+                self.show(world, entity, colour, now.contains(&id));
+            }
+        }
+        self.picked = now;
+    }
+
+    /// Shows `entity` in `colour`, or the selection colour when `picked`, handing Bevy a material
+    /// only when that changes: each one handed makes Bevy redo the part.
+    fn show(&mut self, world: &mut World, entity: Entity, colour: [u32; 3], picked: bool) {
+        let colour = if picked {
+            crate::SELECTED_COLOUR.map(f32::to_bits)
+        } else {
+            colour
+        };
+        if self.shown.insert(entity, colour) == Some(colour) {
+            return;
+        }
+        let (ghosted, shine) = (
+            self.ghosted.unwrap_or(false),
+            self.look.unwrap_or_default().shine,
+        );
+        let clips = self.clips.unwrap_or_default();
+        let material = self
+            .materials
+            .entry(colour)
+            .or_insert_with(|| {
+                let mut material = StandardMaterial {
+                    base_color: Color::srgb(
+                        f32::from_bits(colour[0]),
+                        f32::from_bits(colour[1]),
+                        f32::from_bits(colour[2]),
+                    ),
+                    // Open surfaces are seen from both sides.
+                    double_sided: true,
+                    cull_mode: None,
+                    ..default()
+                };
+                set_ghosted(&mut material, ghosted);
+                set_shine(&mut material, shine);
+                world
+                    .resource_mut::<Assets<CurvaMaterial>>()
+                    .add(CurvaMaterial {
+                        base: material,
+                        extension: Clipping { clips },
+                    })
+            })
+            .clone();
+        world.entity_mut(entity).insert(MeshMaterial3d(material));
     }
 }
 

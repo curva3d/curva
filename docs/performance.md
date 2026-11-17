@@ -379,3 +379,23 @@ RTX 3060, release build, two runs each:
 On *Large* the whole scene is in view, so the cursor still has thousands of ends, middles and
 centres within reach; they are most of what remains. #130's aim of under 1 ms is not met yet.
 16.2 ms between frames is the screen's own rate (60 a second), so frames now wait for the screen.
+
+## Selecting under 1 ms (17 November 2026, display-on-Bevy step 5)
+
+The spec asks that a frame after a selection change take under 1 ms more than an ordinary one.
+`--select` selects and clears an object every 10 frames; the figure is the slowest gap between
+frames in the few frames after each change, against the usual gap. RTX 3060, release build, two
+runs each, with snapping already sped up (#321):
+
+| | Usual gap | After a selection change |
+|---|---|---|
+| *Large*, a solid selected | 16.1 ms | 16.3 ms |
+| *Medium*, a solid selected | 5.6–6.1 ms | 6.0–6.8 ms |
+
+Before, on main without the snapping change, *Large* went from about 27–30 ms to 52–59 ms after a
+change. Two causes: Bevy was handed a material for every part in every view at each change (12,000
+parts on *Large*, 1–2 ms a view in Curva and more in Bevy, which redid each part handed to it),
+now only for the parts of objects whose selection changed; and the benchmark itself listed every
+selectable object at each change, 10 ms on *Large*, which a click never does, now once. The
+benchmark now selects a solid when there is one, as that is the case that recolours Bevy's
+surfaces.
