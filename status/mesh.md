@@ -17,15 +17,17 @@ these decisions:
 - The Boost licence (BSL-1.0) is allowed for all of Curva (decision 0034, in `deny.toml` and
   `about.toml`); manifold-rust needs it through clipper2-rust.
 
-**Merged:** the spec (PR #265) and Stage A step 1, the mesh structure in `crates/curva-mesh`
-(#268, PR #276).
+**Merged:** the spec (PR #265); Stage A step 1, the mesh structure in `crates/curva-mesh`
+(#268, PR #276); STL and OBJ read and written, new crate `crates/curva-meshfiles` (#269 part 1,
+PR #293), checked both ways against Rhino 8.
 
-**In review:** STL and OBJ read and written, new crate `crates/curva-meshfiles` (#269 part 1,
-PR #293). Checked both ways against Rhino 8. Part 2, hooking them into Open, Import and Export,
-waits for #266.
+**In review:** mesh booleans on manifold-rust, `crates/curva-mesh/src/boolean.rs` (#272 part 1,
+PR #297).
 
-**Next:** mesh booleans on manifold-rust (#272), whose library part does not need #266, then the
-rest of Stage A, #270 to #275 (spec §10). Asked of the other streams: the two shape kinds in the
+**Waiting for #266:** the hook-ups that need meshes in the document: STL and OBJ in Open, Import
+and Export (#269 part 2) and the four MeshBoolean commands (#272 part 2).
+
+**Next:** the library parts of the rest of Stage A, #270 to #275 (spec §10). Asked of the other streams: the two shape kinds in the
 document (#266, features; needed before any command or file hook-up) and drawing meshes (#267,
 display).
 
@@ -40,6 +42,9 @@ display).
 - Rhino's OBJ export writes no object names, so several parts come back as one mesh, and its STL
   puts all parts in one solid. Rhino's own STL import splits parts that do not touch; Curva could
   offer the same once there is an import options dialog.
+- Rhino 8's mesh booleans leave open results with missing faces when the two meshes have faces
+  in the same plane (two overlapping cubes: union volume 1.333 and area 7, where 1.5 and 8 are
+  right, with or without a tolerance). Curva's, on manifold-rust, come out closed and right.
 
 ## 16 November 2026
 
