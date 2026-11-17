@@ -317,3 +317,47 @@ fn a_cube_creased_everywhere_matches_rhinos() {
     assert!((surface.volume().unwrap() - 8.0).abs() < 1e-5);
     assert!((surface.area() - 24.0).abs() < 1e-5);
 }
+
+fn length(run: &[Point]) -> f64 {
+    run.windows(2)
+        .map(|w| {
+            ((w[1][0] - w[0][0]).powi(2)
+                + (w[1][1] - w[0][1]).powi(2)
+                + (w[1][2] - w[0][2]).powi(2))
+            .sqrt()
+        })
+        .sum()
+}
+
+#[test]
+fn a_creased_cube_has_its_twelve_edges_as_crease_curves() {
+    let subd = SubD::new(cube2());
+    let edges: Vec<[u32; 2]> = subd.edge_uses().into_keys().map(|(a, b)| [a, b]).collect();
+    let curves = subd.with_creases(&edges).crease_curves(3).unwrap();
+    // Each crease runs corner to corner, as corners are where three creases meet.
+    assert_eq!(curves.len(), 12);
+    let total: f64 = curves.iter().map(|c| length(c)).sum();
+    assert!((total - 24.0).abs() < 1e-5, "{total}");
+}
+
+#[test]
+fn an_open_grid_has_its_border_as_one_closed_curve_and_a_smooth_cube_none() {
+    let points: Vec<Point> = (0..4u32)
+        .flat_map(|j| (0..4u32).map(move |i| [f64::from(i), f64::from(j), 0.0]))
+        .collect();
+    let at = |i: u32, j: u32| j * 4 + i;
+    let faces: Vec<[u32; 4]> = (0..3)
+        .flat_map(|j| (0..3).map(move |i| [at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1)]))
+        .collect();
+    let curves = SubD::new(Mesh::new(points, &faces).unwrap())
+        .crease_curves(3)
+        .unwrap();
+    assert_eq!(curves.len(), 1);
+    assert_eq!(curves[0].first(), curves[0].last(), "closed");
+    let border = length(&curves[0]);
+    assert!(
+        border > 10.0 && border < 12.0,
+        "a rounded square inside the 12 of the cage: {border}"
+    );
+    assert!(SubD::new(cube()).crease_curves(2).unwrap().is_empty());
+}
