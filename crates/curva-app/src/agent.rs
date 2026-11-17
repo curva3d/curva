@@ -25,27 +25,32 @@ pub(crate) const SCENE_PICTURE_ZOOM: f64 = 0.74;
 /// The height a plan is cut at, in millimetres, as is usual for floor plans.
 pub(crate) const PLAN_CUT_HEIGHT: f32 = 1200.0;
 
-/// What a picture of the model shows: everything, shaded or `ghosted`, seen by `camera`.
+/// What a picture of the model shows: everything, shaded or `ghosted`, seen by `camera`; with
+/// the camera measured as the picture is, from the middle of the model, so a model far from the
+/// origin pictures as exactly as one at it (#225).
 pub(crate) fn picture_of(
     doc: &Document,
     outlines: &Outlines,
     camera: &Camera,
     aspect: f64,
     ghosted: bool,
-) -> Picture {
+) -> (Picture, Camera) {
     let selection = doc.selection();
-    let faces = face_vertices(outlines, &selection);
-    Picture {
+    let origin = outlines.drawing_origin();
+    let camera = camera.measured_from(origin);
+    let faces = curva_viewport::face_vertices_from(outlines, &selection, origin);
+    let picture = Picture {
         lines: if faces.is_empty() || ghosted {
-            scene_lines(outlines, &selection)
+            curva_viewport::scene_lines_from(outlines, &selection, origin)
         } else {
-            shaded_scene_lines(outlines, &selection)
+            curva_viewport::shaded_scene_lines_from(outlines, &selection, origin)
         },
         faces,
         matrix: camera.matrix(aspect),
         light: camera.forward().map(|value| value as f32),
         ghosted,
-    }
+    };
+    (picture, camera)
 }
 
 /// A picture of the model for an MCP agent, as the bytes of a PNG file.
@@ -67,11 +72,8 @@ pub(crate) fn picture_from(
     let outlines = Outlines::of(doc.state());
     let aspect = f64::from(PICTURE_SIZE[0]) / f64::from(PICTURE_SIZE[1]);
     let path = std::env::temp_dir().join(format!("curva-mcp-{}.png", std::process::id()));
-    save_bevy_view(
-        picture_of(doc, &outlines, camera, aspect, ghosted),
-        camera,
-        &path,
-    )?;
+    let (picture, camera) = picture_of(doc, &outlines, camera, aspect, ghosted);
+    save_bevy_view(picture, &camera, &path)?;
     let bytes = std::fs::read(&path).map_err(|error| error.to_string())?;
     // The picture has been read; a leftover temporary file would do no harm.
     let _ = std::fs::remove_file(&path);
@@ -140,6 +142,9 @@ pub(crate) fn picture(
     if let Some(style) = style {
         // Styles find outlines from object numbers, so the faces are numbered.
         let parts = curva_viewport::SceneParts::of(&outlines);
+        let camera = camera.measured_from(parts.origin);
+        // The cut, measured from the same point: its height less the model's middle.
+        let cut = cut.map(|[x, y, z, d]| [x, y, z, d + (f64::from(z) * parts.origin[2]) as f32]);
         let numbered = Picture {
             lines: parts.shaded_lines,
             faces: parts.faces,
@@ -155,11 +160,8 @@ pub(crate) fn picture(
             std::path::Path::new(path),
         )?;
     } else {
-        save_bevy_view(
-            picture_of(&doc, &outlines, &camera, aspect, ghosted),
-            &camera,
-            std::path::Path::new(path),
-        )?;
+        let (picture, camera) = picture_of(&doc, &outlines, &camera, aspect, ghosted);
+        save_bevy_view(picture, &camera, std::path::Path::new(path))?;
     }
     for line in processor.log() {
         println!("{line}");
@@ -335,7 +337,7 @@ pub(crate) fn look_pictures(out: &std::path::Path) -> Result<(), String> {
         camera.frame(low, high);
         camera.zoom(zoom);
         let aspect = f64::from(PICTURE_SIZE[0]) / f64::from(PICTURE_SIZE[1]);
-        let curva = picture_of(doc, &outlines, &camera, aspect, false);
+        let (curva, _) = picture_of(doc, &outlines, &camera, aspect, false);
         save_picture(
             curva,
             PICTURE_SIZE,
@@ -343,6 +345,7 @@ pub(crate) fn look_pictures(out: &std::path::Path) -> Result<(), String> {
         )?;
         // Bevy's surfaces with Curva's lines, numbered as the window numbers them.
         let parts = curva_viewport::SceneParts::of(&outlines);
+        let camera = camera.measured_from(parts.origin);
         for (index, (name, look)) in looks.iter().enumerate() {
             let picture = Picture {
                 lines: parts.shaded_lines.clone(),
@@ -364,4 +367,44 @@ pub(crate) fn look_pictures(out: &std::path::Path) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The pixels of a PNG file's bytes, four a pixel; `None` if they are not one.
+    fn pixels_of(png_bytes: &[u8]) -> Option<Vec<u8>> {
+        let decoder = png::Decoder::new(std::io::Cursor::new(png_bytes));
+        let mut reader = decoder.read_info().ok()?;
+        let mut pixels = vec![0; reader.output_buffer_size()?];
+        reader.next_frame(&mut pixels).ok()?;
+        Some(pixels)
+    }
+
+    /// The *Far* check on pictures for agents (#225): a circle and a box 500 km from the origin
+    /// picture as they do near it, as the window draws them (2 m out, clear of the grid round the
+    /// origin, which a far model's picture does not show).
+    #[test]
+    fn a_far_model_pictures_as_at_the_origin() {
+        let picture = |offset: Point| {
+            let at = |p: Point| [p[0] + offset[0], p[1] + offset[1], p[2] + offset[2]];
+            let mut doc = Document::default();
+            doc.add(Curve::circle(at([0.0, 0.0, 0.0]), 5.0).unwrap());
+            doc.add_body(
+                curva_kernel::Body::cuboid(at([-3.0, -3.0, 0.0]), [6.0, 6.0, 4.0]).unwrap(),
+            );
+            mcp_picture(&doc).ok().and_then(|bytes| pixels_of(&bytes))
+        };
+        let (Some(near), Some(far)) = (picture([2000.0, 2000.0, 0.0]), picture([5.0e8, 5.0e8, 0.0])) else {
+            eprintln!("no graphics adapter to draw with, so not checked");
+            return;
+        };
+        let differing = near
+            .chunks(4)
+            .zip(far.chunks(4))
+            .filter(|(a, b)| a.iter().zip(b.iter()).any(|(x, y)| x.abs_diff(*y) > 6))
+            .count();
+        assert!(differing <= 50, "{differing} pixels differ");
+    }
 }

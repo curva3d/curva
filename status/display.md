@@ -33,11 +33,14 @@
   shadow drawn 10 mm and 10 km across gives the same picture. Shadow distances already followed
   the view; one gap fixed: a view turned Sunlit without moving kept shadow distances set for an
   earlier view (a second new test, which failed before the fix).
+- **Step 4, far from the origin in pictures and sheets, in review:** pictures for agents (and
+  `--picture`, `--look-pictures`, styled pictures) and layout sheets' details are measured from
+  the middle of the model too, so a far model's pictures are as sharp as the window. New test: a
+  circle and a box 500 km out picture as they do near the origin. The picture device is no longer
+  dropped when its thread ends (it panicked a test's thread on exit).
 
 **Next**
-- Step 4, still to do: picking and snapping on the shared shapes instead of placed copies;
-  pictures for agents and sheets measured from the model too (they still
-  measure from the origin, so a far model's pictures are jagged).
+- Step 4, still to do: picking and snapping on the shared shapes instead of placed copies.
 - Then step 5, speed (Bevy's fixed cost per frame, snapping #130).
 
 **Heads-up for the features stream**
