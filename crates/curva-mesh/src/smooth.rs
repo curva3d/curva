@@ -397,6 +397,88 @@ fn chains(lines: &[[u32; 2]]) -> Vec<Vec<u32>> {
     runs
 }
 
+/// A SubD's smooth surface ready to be worked out again for new cage positions, the cage's shape
+/// unchanged: what dragging cage points needs (spec §2.2). The subdivision's layout and weights
+/// are found once; each new set of positions only reapplies the weights, and the faces stay the
+/// same, so the viewport can update its triangles in place.
+pub struct LiveSurface {
+    result: subdiv_kernels::RefinementResult,
+    limit: subdiv_kernels::LimitStencils,
+    faces: Mesh,
+}
+
+impl LiveSurface {
+    /// The surface of `subd`, `levels` subdivisions fine (1 to [`MAX_LEVELS`]).
+    ///
+    /// # Errors
+    /// When the library refuses the cage.
+    pub fn new(subd: &SubD, levels: u8) -> Result<Self, SmoothError> {
+        let faces = subd.surface(levels)?;
+        let (result, _, _) = subd.refine(levels)?;
+        let limit = result
+            .limit_stencils()
+            .map_err(|e| SmoothError(e.to_string()))?;
+        Ok(Self {
+            result,
+            limit,
+            faces,
+        })
+    }
+
+    /// The surface's faces, the same for every set of positions.
+    #[must_use]
+    pub fn mesh(&self) -> &Mesh {
+        &self.faces
+    }
+
+    /// The surface's points and normals for the cage points `cage` (one per cage point, in the
+    /// cage's order), in the order of [`LiveSurface::mesh`]'s points.
+    #[must_use]
+    pub fn positions(&self, cage: &[Point]) -> (Vec<Point>, Vec<Point>) {
+        let (lo, hi) = cage.iter().fold(
+            ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]),
+            |(lo, hi), p| {
+                (
+                    std::array::from_fn(|i| lo[i].min(p[i])),
+                    std::array::from_fn(|i| hi[i].max(p[i])),
+                )
+            },
+        );
+        let centre: Point = std::array::from_fn(|i| f64::midpoint(lo[i], hi[i]));
+        let centred: Vec<Point> = cage
+            .iter()
+            .map(|p| std::array::from_fn(|i| p[i] - centre[i]))
+            .collect();
+        let refined = self.result.interpolate(&centred);
+        let points = self
+            .limit
+            .position
+            .interpolate(&refined)
+            .iter()
+            .map(|p| std::array::from_fn(|i| p[i] + centre[i]))
+            .collect();
+        let t1 = self.limit.tangent1.interpolate(&refined);
+        let t2 = self.limit.tangent2.interpolate(&refined);
+        let mut normals: Vec<Point> = t1
+            .iter()
+            .zip(&t2)
+            .map(|(a, b)| unit(cross(*a, *b)))
+            .collect();
+        // Turned the way the surface's own normals were, so faces keep facing out.
+        if let Attribute::PerVertex(first) = self.faces.normals() {
+            let agree: f64 = first
+                .iter()
+                .zip(&normals)
+                .map(|(a, b)| a[0] * b[0] + a[1] * b[1] + a[2] * b[2])
+                .sum();
+            if agree < 0.0 {
+                normals = normals.iter().map(|n| n.map(|c| -c)).collect();
+            }
+        }
+        (points, normals)
+    }
+}
+
 /// A refined level's quads as a mesh, its points moved back from `centre`.
 fn quads_mesh(topology: &Cage, centre: Point, points: &[Point]) -> Result<Mesh, SmoothError> {
     let vertices = points

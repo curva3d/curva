@@ -43,20 +43,23 @@ Rhino, as Curva writes Rhino 7 files). The SubD primitives' cages (#326, PR #331
 sphere, cylinder, cone and torus placed as Rhino 8 places its own, matching Rhino's volumes, areas
 and cage sizes.
 
-**In review:** ToNURBS (#327): exact patches on regular quads and fitted ones around star points
-and creases, sewn into a polysurface or solid. A torus cage gives Rhino's limit volume; a cube's
-patches close up within 0.2% of its limit volume. Flat patches wait on #328 (features).
+ToNURBS (#327, PR #337): exact patches on regular quads and fitted ones around star points and
+creases, sewn into a polysurface or solid; a torus cage gives Rhino's limit volume, a cube's
+patches close up within 0.2% of its limit volume (flat patches wait on #328, features). SubD cage
+edits (#332, PR #338): RemoveCrease, DeleteSubDFaces, Fill, Stitch, InsertEdge across a ring and
+Bridge, and `LiveSurface`, the smooth surface worked out again for moved cage points (#334).
+ToSubD from meshes (#336): control points or through the points, mesh creases and corners.
 
-**Being written (library, ready next):**
-- SubD cage edits (#332): RemoveCrease, DeleteSubDFaces, Fill, Stitch, InsertEdge across a ring,
-  Bridge; and `LiveSurface`, the smooth surface worked out again for moved cage points (#334).
-- ToSubD from meshes (#336): control points or through the points, mesh creases and corners.
+The library parts of Stages A, B and C are done, except QuadRemesh (below). What is left needs
+the other streams first (see "Asked of the other streams").
 
 **Waiting on the owner:** QuadRemesh (#329). quadrs, chosen in decision 0033 because it was said
 to give the same quads every time, does not: it uses Rust's randomly seeded hash maps, so the
 same mesh and seed give slightly different quads from one run to the next (504 to 524 faces for
 one request). It also makes about four times the quads asked for, which Curva can allow for.
-The library interface is written and parked on its branch until the owner decides.
+The library interface is written and parked on the local branch `329-quad-remesh` (worktree
+`E:rva-329`, not pushed) until the owner decides: a patched copy of quadrs offered upstream, its
+results accepted as they are, or Curva's own QuadRemesh.
 
 **Precision measured (spec §3.2):** subdiv-kernels' single-precision weights, applied level by
 level to Curva's double-precision points measured from the centre, move a 10 m cube a million
