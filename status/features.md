@@ -50,11 +50,10 @@ once by commenting on their first pull request; signatures go to the `cla-signat
   - Fixed on the way (#309, closes #308): plans drew solids lying wholly above the clipping plane.
   - Step 3 (#315, #203): the test house's plan is down from 0.32 s to about 0.2 s, its drawing
     identical. *Large* does not finish (edges 60–78 s, crossings over 12 minutes).
-  - The owner's decision: *Large* first, then step 4 (#317). Part 1 (#317's first pull request): crossings
-    on *Large* down from 700 s to under 1 s (a cylinder's top and bottom circles no longer compared point
-    by point), and moved solids no longer described by the engine again at every question. *Large* still
-    runs past 40 minutes: the next slow step, most likely the hidden-piece tests, is next.
-- **Next (features):** *Large* (#317) part 2, then Live plans step 4 (#204); the tie hand-over once #296
+  - The owner's decision: *Large* first, then step 4 (#317). Part 1 merged (#341): crossings 700 s → 2 s,
+    edges 78 s → 7 s. Part 2 (in review): leaving out lines drawn twice compared every pair (over 48
+    minutes); now only neighbours. *Large*'s plan finishes in 122 s, about 25 times the 5 s target.
+- **Next (features):** Live plans step 4 (#204), or more *Large* speed if the owner wants it first; the tie hand-over once #296
   lands; Make2D fills behind other objects.
 
 
