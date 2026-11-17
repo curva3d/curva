@@ -2,8 +2,8 @@
 
 use super::*;
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn solids_1(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn solids_1(pen: &Pen<'_>, key: &str) -> bool {
     let thin = |w: f32| pen.width(w);
     match key {
         "sphere" => {
@@ -16,7 +16,7 @@ pub(super) fn solids_1(pen: &Pen<'_>, name: &str, key: &str) -> bool {
             pen.line((5.0, 4.5), (5.0, 17.5));
             pen.line((17.0, 4.5), (17.0, 17.5));
             pen.arc((5.0, 15.0, 12.0, 5.0), 180.0, 180.0);
-            if name.eq_ignore_ascii_case("tube") {
+            if key == "tube" {
                 pen.path_in(
                     &pen.arc_points((8.0, 3.0, 6.0, 3.0), 0.0, 360.0),
                     true,
@@ -74,8 +74,8 @@ pub(super) fn solids_1(pen: &Pen<'_>, name: &str, key: &str) -> bool {
     true
 }
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn solids_2(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn solids_2(pen: &Pen<'_>, key: &str) -> bool {
     match key {
         "cap" => {
             pen.ellipse((4.0, 3.0, 14.0, 5.0));
@@ -99,7 +99,7 @@ pub(super) fn solids_2(pen: &Pen<'_>, name: &str, key: &str) -> bool {
         "filletsrf" | "chamfersrf" => {
             pen.line((3.0, 19.0), (19.0, 19.0));
             pen.line((3.0, 3.0), (3.0, 19.0));
-            if name.eq_ignore_ascii_case("filletsrf") {
+            if key == "filletsrf" {
                 pen.arc_in((3.0, 9.0, 20.0, 20.0), 180.0, 90.0, pen.accent());
             } else {
                 pen.line_in((3.0, 11.0), (11.0, 19.0), pen.accent());
@@ -108,7 +108,7 @@ pub(super) fn solids_2(pen: &Pen<'_>, name: &str, key: &str) -> bool {
         "editboolean" | "breakboolean" => {
             pen.ellipse((2.0, 5.0, 12.0, 12.0));
             pen.ellipse((8.0, 5.0, 12.0, 12.0));
-            if name.eq_ignore_ascii_case("editboolean") {
+            if key == "editboolean" {
                 pen.dashed_in(&[(8.0, 6.0), (8.0, 16.0)], pen.accent());
                 pen.dot(14.0, 11.0);
             } else {

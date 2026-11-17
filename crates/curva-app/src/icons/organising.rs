@@ -2,8 +2,8 @@
 
 use super::*;
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn organising_1(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn organising_1(pen: &Pen<'_>, key: &str) -> bool {
     let thin = |w: f32| pen.width(w);
     match key {
         "hideswap" => {
@@ -13,7 +13,7 @@ pub(super) fn organising_1(pen: &Pen<'_>, name: &str, key: &str) -> bool {
         }
         "lock" | "unlock" => {
             pen.rect(5.0, 10.0, 12.0, 9.0);
-            if name.eq_ignore_ascii_case("lock") {
+            if key == "lock" {
                 pen.arc((7.0, 4.0, 8.0, 12.0), 180.0, 180.0);
             } else {
                 pen.arc((11.0, 2.0, 8.0, 12.0), 180.0, 180.0);
@@ -24,7 +24,7 @@ pub(super) fn organising_1(pen: &Pen<'_>, name: &str, key: &str) -> bool {
             pen.rect(4.0, 4.0, 6.0, 6.0);
             pen.ellipse((12.0, 12.0, 7.0, 7.0));
             let frame = [(2.0, 2.0), (20.0, 2.0), (20.0, 20.0), (2.0, 20.0)];
-            if name.eq_ignore_ascii_case("group") {
+            if key == "group" {
                 pen.path_in(&frame, true, pen.accent());
             } else {
                 pen.dashed_in(
@@ -46,7 +46,7 @@ pub(super) fn organising_1(pen: &Pen<'_>, name: &str, key: &str) -> bool {
                 true,
                 pen.accent(),
             );
-            if name.eq_ignore_ascii_case("matchproperties") {
+            if key == "matchproperties" {
                 pen.dot(11.0, 8.0);
             }
         }
@@ -72,8 +72,8 @@ pub(super) fn organising_1(pen: &Pen<'_>, name: &str, key: &str) -> bool {
     true
 }
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn organising_2(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn organising_2(pen: &Pen<'_>, key: &str) -> bool {
     let fill = pen.ink.gamma_multiply(0.27);
     match key {
         "setusertext"
@@ -108,7 +108,7 @@ pub(super) fn organising_2(pen: &Pen<'_>, name: &str, key: &str) -> bool {
             pen.line_in((3.0, 3.0), (19.0, 19.0), pen.accent());
         }
         "bringtofront" | "sendtoback" | "bringforward" | "sendbackward" => {
-            let front = name.to_lowercase().starts_with("bring");
+            let front = key.starts_with("bring");
             let (back, top) = if front {
                 ((4.0, 4.0), (8.0, 8.0))
             } else {
@@ -134,8 +134,8 @@ pub(super) fn organising_2(pen: &Pen<'_>, name: &str, key: &str) -> bool {
     true
 }
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn organising_3(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn organising_3(pen: &Pen<'_>, key: &str) -> bool {
     match key {
         "block"
         | "insert"
@@ -144,10 +144,9 @@ pub(super) fn organising_3(pen: &Pen<'_>, name: &str, key: &str) -> bool {
         | "explodeblock"
         | "replaceblock"
         | "selblockinstancenamed" => {
-            let lower = name.to_lowercase();
             pen.rect(3.0, 6.0, 9.0, 9.0);
             pen.rect(10.0, 9.0, 9.0, 9.0);
-            match lower.as_str() {
+            match key {
                 "insert" => pen.arrow((16.0, 2.0), (16.0, 8.0)),
                 "blockedit" => pen.line_in((13.0, 13.0), (19.0, 7.0), pen.accent()),
                 "explodeblock" => {

@@ -2,13 +2,13 @@
 
 use super::*;
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn selection_1(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn selection_1(pen: &Pen<'_>, key: &str) -> bool {
     match key {
         "selall" | "selnone" | "selcrv" | "selsrf" | "selsolid" | "selpt" | "selname"
         | "sellayer" | "seldup" | "sellast" | "selprev" | "invert" => {
             pen.pointer();
-            match name.to_lowercase().as_str() {
+            match key {
                 "selall" => pen.filled(
                     &[(11.0, 11.0), (20.0, 11.0), (20.0, 20.0), (11.0, 20.0)],
                     theme::ACCENT,
@@ -86,8 +86,8 @@ pub(super) fn selection_1(pen: &Pen<'_>, name: &str, key: &str) -> bool {
     true
 }
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn selection_2(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn selection_2(pen: &Pen<'_>, key: &str) -> bool {
     match key {
         "selfilter" | "selfiltertoggle" => {
             let funnel = [
@@ -99,14 +99,14 @@ pub(super) fn selection_2(pen: &Pen<'_>, name: &str, key: &str) -> bool {
                 (9.0, 11.0),
             ];
             pen.path(&funnel, true);
-            if name.eq_ignore_ascii_case("selfiltertoggle") {
+            if key == "selfiltertoggle" {
                 pen.line_in((3.0, 19.0), (19.0, 3.0), pen.accent());
             }
         }
         "selline" | "selpolyline" | "selcircle" | "selarc" | "selclosedcrv" | "selopencrv" => {
             pen.pointer();
             let accent = pen.accent();
-            match name.to_lowercase().as_str() {
+            match key {
                 "selline" => pen.line_in((11.0, 20.0), (20.0, 11.0), accent),
                 "selpolyline" => pen.path_in(
                     &[(11.0, 20.0), (13.0, 13.0), (17.0, 18.0), (20.0, 11.0)],

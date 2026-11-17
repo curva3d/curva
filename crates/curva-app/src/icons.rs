@@ -308,7 +308,7 @@ pub fn paint(painter: &egui::Painter, rect: egui::Rect, name: &str) -> bool {
 /// Draws the icon for `name`, trying each group in turn; returns whether there was one.
 fn draw(pen: &Pen<'_>, name: &str) -> bool {
     let key = name.to_lowercase();
-    let groups: [fn(&Pen<'_>, &str, &str) -> bool; 31] = [
+    let groups: [fn(&Pen<'_>, &str) -> bool; 31] = [
         curves::curves_1,
         curves::curves_2,
         curves::curves_3,
@@ -341,7 +341,7 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
         views::views_1,
         views::views_2,
     ];
-    groups.iter().any(|draw| draw(pen, name, &key))
+    groups.iter().any(|draw| draw(pen, &key))
 }
 
 #[cfg(test)]

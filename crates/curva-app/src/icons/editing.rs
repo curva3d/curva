@@ -2,8 +2,8 @@
 
 use super::*;
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn editing(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn editing(pen: &Pen<'_>, key: &str) -> bool {
     match key {
         "hide" => pen.eye(false),
         "show" => pen.eye(true),
@@ -35,7 +35,7 @@ pub(super) fn editing(pen: &Pen<'_>, name: &str, key: &str) -> bool {
             pen.line_in((16.0, 6.0), (6.0, 16.0), red);
         }
         "undo" | "redo" => {
-            let back = name.eq_ignore_ascii_case("undo");
+            let back = key == "undo";
             let (start, tip) = if back { (0.0, 180.0) } else { (180.0, -180.0) };
             pen.arc((4.0, 6.0, 14.0, 12.0), start, tip);
             let end = if back { (4.0, 12.0) } else { (18.0, 12.0) };

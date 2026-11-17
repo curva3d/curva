@@ -2,8 +2,8 @@
 
 use super::*;
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn files(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn files(pen: &Pen<'_>, key: &str) -> bool {
     match key {
         "new" => {
             pen.path(

@@ -2,8 +2,8 @@
 
 use super::*;
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn curves_1(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn curves_1(pen: &Pen<'_>, key: &str) -> bool {
     match key {
         "line" => {
             pen.line((4.0, 18.0), (18.0, 4.0));
@@ -71,8 +71,8 @@ pub(super) fn curves_1(pen: &Pen<'_>, name: &str, key: &str) -> bool {
     true
 }
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn curves_2(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn curves_2(pen: &Pen<'_>, key: &str) -> bool {
     match key {
         // The plane crossed out: it no longer cuts this view.
         "disableclippingplane" => {
@@ -142,8 +142,8 @@ pub(super) fn curves_2(pen: &Pen<'_>, name: &str, key: &str) -> bool {
     true
 }
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn curves_3(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn curves_3(pen: &Pen<'_>, key: &str) -> bool {
     match key {
         // A circle with a line right across it, out to a landing.
         "dimdiameter" => {
@@ -212,8 +212,8 @@ pub(super) fn curves_3(pen: &Pen<'_>, name: &str, key: &str) -> bool {
     true
 }
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn curves_4(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn curves_4(pen: &Pen<'_>, key: &str) -> bool {
     match key {
         // A dimension with its text: the look a style sets.
         "annotationstyle" => {
@@ -285,8 +285,8 @@ pub(super) fn curves_4(pen: &Pen<'_>, name: &str, key: &str) -> bool {
     true
 }
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn curves_5(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn curves_5(pen: &Pen<'_>, key: &str) -> bool {
     match key {
         // A table with numbered rows.
         "sheetindex" => {
@@ -359,8 +359,8 @@ pub(super) fn curves_5(pen: &Pen<'_>, name: &str, key: &str) -> bool {
     true
 }
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn curves_6(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn curves_6(pen: &Pen<'_>, key: &str) -> bool {
     let red = Stroke::new(1.7 * pen.scale(), RED);
     match key {
         "divide" => {
@@ -379,13 +379,13 @@ pub(super) fn curves_6(pen: &Pen<'_>, name: &str, key: &str) -> bool {
         }
         "insertknot" | "removeknot" => {
             pen.cubic((3.0, 15.0), (8.0, 5.0), (14.0, 5.0), (19.0, 15.0));
-            let stroke = if name.eq_ignore_ascii_case("insertknot") {
+            let stroke = if key == "insertknot" {
                 pen.accent()
             } else {
                 red
             };
             pen.line_in((8.0, 18.5), (14.0, 18.5), stroke);
-            if name.eq_ignore_ascii_case("insertknot") {
+            if key == "insertknot" {
                 pen.line_in((11.0, 15.5), (11.0, 21.0), stroke);
             }
             pen.dot(11.0, 7.6);
@@ -402,7 +402,7 @@ pub(super) fn curves_6(pen: &Pen<'_>, name: &str, key: &str) -> bool {
             pen.cubic((3.0, 17.0), (8.0, 8.0), (14.0, 8.0), (19.0, 15.0));
             pen.dashed(&[(3.0, 17.0), (8.0, 6.0), (15.0, 6.0), (19.0, 15.0)], 1.0);
             for (x, y) in [(3.0, 17.0), (8.0, 6.0), (15.0, 6.0), (19.0, 15.0)] {
-                if name.eq_ignore_ascii_case("pointson") {
+                if key == "pointson" {
                     pen.dot(x, y);
                 } else {
                     pen.ring(x, y);
@@ -434,8 +434,8 @@ pub(super) fn curves_6(pen: &Pen<'_>, name: &str, key: &str) -> bool {
     true
 }
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn curves_7(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn curves_7(pen: &Pen<'_>, key: &str) -> bool {
     let thin = |w: f32| pen.width(w);
     match key {
         "flip" => {
@@ -509,8 +509,8 @@ pub(super) fn curves_7(pen: &Pen<'_>, name: &str, key: &str) -> bool {
     true
 }
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn curves_8(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn curves_8(pen: &Pen<'_>, key: &str) -> bool {
     let red = Stroke::new(1.7 * pen.scale(), RED);
     match key {
         "explode" => {
@@ -583,8 +583,8 @@ pub(super) fn curves_8(pen: &Pen<'_>, name: &str, key: &str) -> bool {
     true
 }
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn curves_9(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn curves_9(pen: &Pen<'_>, key: &str) -> bool {
     let thin = |w: f32| pen.width(w);
     match key {
         "slot" => {
@@ -648,8 +648,8 @@ pub(super) fn curves_9(pen: &Pen<'_>, name: &str, key: &str) -> bool {
     true
 }
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn curves_10(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn curves_10(pen: &Pen<'_>, key: &str) -> bool {
     let fill = pen.ink.gamma_multiply(0.27);
     let thin = |w: f32| pen.width(w);
     match key {
@@ -718,8 +718,8 @@ pub(super) fn curves_10(pen: &Pen<'_>, name: &str, key: &str) -> bool {
     true
 }
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn curves_11(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn curves_11(pen: &Pen<'_>, key: &str) -> bool {
     let thin = |w: f32| pen.width(w);
     match key {
         "reparameterize" => {
@@ -745,7 +745,7 @@ pub(super) fn curves_11(pen: &Pen<'_>, name: &str, key: &str) -> bool {
         }
         "section" | "contour" => {
             pen.cube(4.0, 6.0, 10.0);
-            if name.eq_ignore_ascii_case("section") {
+            if key == "section" {
                 pen.line_in((11.0, 2.0), (11.0, 20.0), pen.accent());
             } else {
                 for y in [8.0, 12.0, 16.0] {
@@ -769,7 +769,7 @@ pub(super) fn curves_11(pen: &Pen<'_>, name: &str, key: &str) -> bool {
                 true,
             );
             pen.quad_in((5.0, 17.5), (11.0, 14.0), (17.0, 18.5), pen.accent());
-            if name.eq_ignore_ascii_case("offsetcrvonsrf") {
+            if key == "offsetcrvonsrf" {
                 pen.quad_in((6.0, 19.0), (12.0, 15.5), (18.0, 19.5), thin(1.0));
             }
             pen.dot(11.0, 6.0);

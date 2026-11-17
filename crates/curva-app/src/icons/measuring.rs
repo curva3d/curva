@@ -2,8 +2,8 @@
 
 use super::*;
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn measuring_1(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn measuring_1(pen: &Pen<'_>, key: &str) -> bool {
     match key {
         "distance" => {
             pen.line((3.0, 6.0), (3.0, 16.0));
@@ -59,7 +59,7 @@ pub(super) fn measuring_1(pen: &Pen<'_>, name: &str, key: &str) -> bool {
             pen.dot(11.0, 6.8);
         }
         "areacentroid" | "volumecentroid" => {
-            if name.eq_ignore_ascii_case("volumecentroid") {
+            if key == "volumecentroid" {
                 pen.cube(4.0, 4.0, 10.0);
             } else {
                 pen.path(&[(3.0, 15.0), (8.0, 6.0), (19.0, 6.0), (14.0, 15.0)], true);
@@ -72,8 +72,8 @@ pub(super) fn measuring_1(pen: &Pen<'_>, name: &str, key: &str) -> bool {
     true
 }
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn measuring_2(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn measuring_2(pen: &Pen<'_>, key: &str) -> bool {
     match key {
         "showedges" => {
             pen.cube(4.0, 4.0, 10.0);

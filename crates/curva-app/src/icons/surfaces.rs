@@ -2,8 +2,8 @@
 
 use super::*;
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn surfaces_1(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn surfaces_1(pen: &Pen<'_>, key: &str) -> bool {
     let fill = pen.ink.gamma_multiply(0.27);
     match key {
         "extrudecrv" => {
@@ -52,7 +52,7 @@ pub(super) fn surfaces_1(pen: &Pen<'_>, name: &str, key: &str) -> bool {
         "box" => pen.cube(4.0, 4.0, 10.0),
         "filletedge" | "chamferedge" | "shell" => {
             pen.cube(4.0, 4.0, 10.0);
-            match name.to_lowercase().as_str() {
+            match key {
                 "filletedge" => pen.quad_in((14.0, 11.0), (14.0, 8.0), (17.0, 6.0), pen.accent()),
                 "chamferedge" => pen.line_in((12.0, 8.0), (16.0, 4.5), pen.accent()),
                 _ => pen.path_in(&[(6.5, 9.5), (8.5, 7.0), (15.5, 7.0)], false, pen.accent()),
@@ -76,8 +76,8 @@ pub(super) fn surfaces_1(pen: &Pen<'_>, name: &str, key: &str) -> bool {
     true
 }
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn surfaces_2(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn surfaces_2(pen: &Pen<'_>, key: &str) -> bool {
     let fill = pen.ink.gamma_multiply(0.27);
     let thin = |w: f32| pen.width(w);
     match key {
@@ -150,8 +150,8 @@ pub(super) fn surfaces_2(pen: &Pen<'_>, name: &str, key: &str) -> bool {
     true
 }
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn surfaces_3(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn surfaces_3(pen: &Pen<'_>, key: &str) -> bool {
     let fill = pen.ink.gamma_multiply(0.27);
     let thin = |w: f32| pen.width(w);
     match key {
@@ -224,8 +224,8 @@ pub(super) fn surfaces_3(pen: &Pen<'_>, name: &str, key: &str) -> bool {
     true
 }
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn surfaces_4(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn surfaces_4(pen: &Pen<'_>, key: &str) -> bool {
     let thin = |w: f32| pen.width(w);
     match key {
         "shrinktrimmedsrf" => {

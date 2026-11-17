@@ -2,8 +2,8 @@
 
 use super::*;
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn views_1(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn views_1(pen: &Pen<'_>, key: &str) -> bool {
     match key {
         "zoom" => pen.magnifier(),
         "zoomextents" => {
@@ -28,7 +28,7 @@ pub(super) fn views_1(pen: &Pen<'_>, name: &str, key: &str) -> bool {
         }
         "top" | "front" | "right" => {
             pen.rect(3.0, 3.0, 16.0, 16.0);
-            match name.to_lowercase().as_str() {
+            match key {
                 "top" => pen.dot(11.0, 11.0),
                 "front" => pen.line_in((3.0, 14.0), (19.0, 14.0), pen.accent()),
                 _ => pen.line_in((14.0, 3.0), (14.0, 19.0), pen.accent()),
@@ -65,8 +65,8 @@ pub(super) fn views_1(pen: &Pen<'_>, name: &str, key: &str) -> bool {
     true
 }
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn views_2(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn views_2(pen: &Pen<'_>, key: &str) -> bool {
     let thin = |w: f32| pen.width(w);
     match key {
         // NamedCPlane: the construction plane, with the saved mark NamedView has.
@@ -97,20 +97,20 @@ pub(super) fn views_2(pen: &Pen<'_>, name: &str, key: &str) -> bool {
                 ],
                 true,
             );
-            if name.eq_ignore_ascii_case("import") {
+            if key == "import" {
                 pen.line_in((14.0, 2.0), (14.0, 13.0), pen.accent());
                 pen.arrow_head((14.0, 14.0), (14.0, 9.0), pen.accent());
             } else {
                 pen.line_in((14.0, 14.0), (14.0, 3.0), pen.accent());
                 pen.arrow_head((14.0, 2.0), (14.0, 7.0), pen.accent());
             }
-            if name.eq_ignore_ascii_case("exportselected") {
+            if key == "exportselected" {
                 pen.dot(6.0, 15.0);
             }
         }
         "namedview" | "undoview" | "redoview" => {
             pen.camera();
-            match name.to_lowercase().as_str() {
+            match key {
                 "undoview" => pen.arrow_head((3.0, 4.0), (8.0, 4.0), pen.accent()),
                 "redoview" => pen.arrow_head((19.0, 4.0), (14.0, 4.0), pen.accent()),
                 _ => pen.dot(9.0, 12.5),

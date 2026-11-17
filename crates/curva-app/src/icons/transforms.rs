@@ -2,8 +2,8 @@
 
 use super::*;
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn transforms_1(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn transforms_1(pen: &Pen<'_>, key: &str) -> bool {
     let fill = pen.ink.gamma_multiply(0.27);
     match key {
         "move" => {
@@ -52,11 +52,11 @@ pub(super) fn transforms_1(pen: &Pen<'_>, name: &str, key: &str) -> bool {
             pen.rect(4.0, 7.0, 9.0, 9.0);
             pen.line_in((13.0, 11.5), (19.0, 11.5), pen.accent());
             pen.arrow_head((19.0, 11.5), (13.0, 11.5), pen.accent());
-            if !name.eq_ignore_ascii_case("scale1d") {
+            if key != "scale1d" {
                 pen.line_in((8.5, 7.0), (8.5, 2.0), pen.accent());
                 pen.arrow_head((8.5, 2.0), (8.5, 7.0), pen.accent());
             }
-            if name.eq_ignore_ascii_case("scalenu") {
+            if key == "scalenu" {
                 pen.line_in((4.0, 16.0), (1.5, 19.5), pen.accent());
                 pen.arrow_head((1.5, 19.5), (4.0, 16.0), pen.accent());
             }
@@ -73,8 +73,8 @@ pub(super) fn transforms_1(pen: &Pen<'_>, name: &str, key: &str) -> bool {
     true
 }
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn transforms_2(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn transforms_2(pen: &Pen<'_>, key: &str) -> bool {
     match key {
         "array" => {
             for row in 0..3 {
@@ -114,7 +114,7 @@ pub(super) fn transforms_2(pen: &Pen<'_>, name: &str, key: &str) -> bool {
             pen.rect(3.0, 13.0, 5.0, 5.0);
             pen.rect(12.0, 3.0, 8.0, 8.0);
             pen.dashed(&[(8.0, 13.0), (12.0, 11.0)], 1.0);
-            if name.eq_ignore_ascii_case("orient3pt") {
+            if key == "orient3pt" {
                 for (x, y) in [(12.0, 11.0), (20.0, 11.0), (12.0, 3.0)] {
                     pen.dot(x, y);
                 }
@@ -146,8 +146,8 @@ pub(super) fn transforms_2(pen: &Pen<'_>, name: &str, key: &str) -> bool {
     true
 }
 
-/// Draws the icon `key` (`name` in lower case) if it is one of these; returns whether it was.
-pub(super) fn transforms_3(pen: &Pen<'_>, name: &str, key: &str) -> bool {
+/// Draws the icon `key` (a command name in lower case) if it is one of these; returns whether it was.
+pub(super) fn transforms_3(pen: &Pen<'_>, key: &str) -> bool {
     let thin = |w: f32| pen.width(w);
     match key {
         "distribute" => {
