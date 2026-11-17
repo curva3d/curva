@@ -1,7 +1,7 @@
 //! `ScaleNU`: resizes objects by a different factor along each axis of the construction
 //! plane, about a base point, as in Rhino. Enter keeps a factor at 1. Option `Copy`.
 
-use crate::commands::{ask_objects, ask_point, geometry_failed, unexpected};
+use crate::commands::{ask_objects, ask_point, geometry_failed, objects_or_selection, unexpected};
 use crate::{Answer, Command, Kind, Live, Message, Request, Step};
 use curva_document::{Document, Shape};
 use curva_kernel::{Curve, KernelError, Point, cross};
@@ -138,13 +138,9 @@ impl ScaleNu {
 impl Command for ScaleNu {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
         if self.ids.is_none() {
-            let chosen = match answer {
-                Some(Answer::Objects(list)) => list,
-                _ => doc.selection(),
-            };
-            if chosen.is_empty() {
+            let Some(chosen) = objects_or_selection(doc, answer) else {
                 return ask_objects("prompt.scale.objects");
-            }
+            };
             self.ids = Some(chosen);
             return ask_point("prompt.scale.origin", Vec::new());
         }

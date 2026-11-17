@@ -1,6 +1,6 @@
 //! `Dir`: shows which way curves run with arrows, and flips the ones clicked, as in Rhino.
 
-use crate::commands::{ask_objects, curves_of, plane_normal, unexpected};
+use crate::commands::{ask_objects, curves_of, objects_or_selection, plane_normal, unexpected};
 use crate::{Answer, Command, Kind, Live, Message, Request, Step};
 use curva_document::Document;
 use curva_kernel::{Curve, Point, cross, gap, sub, unit};
@@ -80,13 +80,9 @@ fn ask_click(flipped: bool) -> Step {
 impl Command for Dir {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
         let Some(ids) = self.ids.clone() else {
-            let chosen = match answer {
-                Some(Answer::Objects(list)) => list,
-                _ => doc.selection(),
-            };
-            if chosen.is_empty() {
+            let Some(chosen) = objects_or_selection(doc, answer) else {
                 return ask_objects("prompt.dir.objects");
-            }
+            };
             self.ids = Some(chosen);
             return ask_click(false);
         };

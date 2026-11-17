@@ -1,6 +1,6 @@
 //! `Divide`: places points at equal distances along curves.
 
-use crate::commands::{ask_objects, curves_of, geometry_failed, unexpected};
+use crate::commands::{ask_objects, curves_of, geometry_failed, objects_or_selection, unexpected};
 use crate::{Answer, Command, Kind, Live, Message, Request, Step};
 use curva_document::Document;
 use curva_kernel::{Curve, KernelError, Point};
@@ -33,13 +33,9 @@ fn points_of(
 impl Command for Divide {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
         let Some(ids) = self.ids.clone() else {
-            let chosen = match answer {
-                Some(Answer::Objects(list)) => list,
-                _ => doc.selection(),
-            };
-            if chosen.is_empty() {
+            let Some(chosen) = objects_or_selection(doc, answer) else {
                 return ask_objects("prompt.divide.objects");
-            }
+            };
             self.ids = Some(chosen);
             return Step::Ask(Request::new("prompt.divide.segments", Kind::Number));
         };

@@ -820,6 +820,16 @@ fn ask_objects(key: &'static str) -> Step {
     Step::Ask(Request::new(key, Kind::Objects))
 }
 
+/// The objects a command works on: those given as the answer, or else the ones selected; `None`
+/// when there are none, so the command can ask for them.
+fn objects_or_selection(
+    doc: &curva_document::Document,
+    answer: Option<crate::Answer>,
+) -> Option<Vec<u64>> {
+    let chosen = support::chosen(doc, &answer);
+    (!chosen.is_empty()).then_some(chosen)
+}
+
 /// Runs typed lines through a fresh processor, for the commands' tests.
 #[cfg(test)]
 fn run(doc: &mut curva_document::Document, lines: &[&str]) -> crate::Processor {

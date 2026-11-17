@@ -1,7 +1,9 @@
 //! `SetPt`: lines objects up on one, two or all three coordinates of a point.
 
 use crate::commands::project_to_cplane::flattened_onto;
-use crate::commands::{ask_objects, curves_of, geometry_failed, ghost_results, unexpected};
+use crate::commands::{
+    ask_objects, curves_of, geometry_failed, ghost_results, objects_or_selection, unexpected,
+};
 use crate::{Answer, Command, Kind, Live, Message, Request, Step};
 use curva_document::{Document, Grip};
 use curva_kernel::{Curve, KernelError, Point, cross, dot, sub, unit};
@@ -90,13 +92,9 @@ impl Command for SetPt {
                 self.grips = grips;
                 return self.ask();
             }
-            let chosen = match answer {
-                Some(Answer::Objects(list)) => list,
-                _ => doc.selection(),
-            };
-            if chosen.is_empty() {
+            let Some(chosen) = objects_or_selection(doc, answer) else {
                 return ask_objects("prompt.setpt.objects");
-            }
+            };
             self.ids = Some(chosen);
             return self.ask();
         };

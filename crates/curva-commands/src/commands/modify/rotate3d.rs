@@ -1,6 +1,6 @@
 //! `Rotate3D`: turns objects about a line between two points.
 
-use crate::commands::{ask_objects, ask_point, ghosts, guide, unexpected};
+use crate::commands::{ask_objects, ask_point, ghosts, guide, objects_or_selection, unexpected};
 use crate::{Answer, Command, Kind, Live, Message, Request, Step};
 use curva_document::Document;
 use curva_kernel::{Curve, Point, Similarity, sub, unit};
@@ -16,13 +16,9 @@ pub struct Rotate3D {
 impl Command for Rotate3D {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
         let Some(ids) = self.ids.clone() else {
-            let chosen = match answer {
-                Some(Answer::Objects(list)) => list,
-                _ => doc.selection(),
-            };
-            if chosen.is_empty() {
+            let Some(chosen) = objects_or_selection(doc, answer) else {
                 return ask_objects("prompt.rotate.objects");
-            }
+            };
             self.ids = Some(chosen);
             return ask_point("prompt.rotate3d.start", Vec::new());
         };

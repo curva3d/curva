@@ -35,6 +35,11 @@ A command declares, in a few lines:
 Undo, the selection after the command, the repeat on Enter, Escape, and the layer the result goes on are
 the framework's, the same for every command.
 
+A command written by hand (not as steps) that works on objects starts with `objects_or_selection`: the
+objects picked for it, or else the ones already selected, or nothing, when the command asks for them with
+its own prompt. One that needs no prompt when none are chosen takes `support::chosen`, the same without the
+check. No command repeats this on its own.
+
 ## 2. Typed dimensions in every step (item 6)
 
 Every `point` step that is measured from an earlier point accepts, typed into the command line:

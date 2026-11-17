@@ -1,6 +1,6 @@
 //! `Rename`: gives objects a name.
 
-use crate::commands::{ask_objects, unexpected};
+use crate::commands::{ask_objects, objects_or_selection, unexpected};
 use crate::{Answer, Command, Kind, Message, Request, Step};
 use curva_document::Document;
 
@@ -13,13 +13,9 @@ pub struct Rename {
 impl Command for Rename {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
         let Some(ids) = self.ids.clone() else {
-            let chosen = match answer {
-                Some(Answer::Objects(list)) => list,
-                _ => doc.selection(),
-            };
-            if chosen.is_empty() {
+            let Some(chosen) = objects_or_selection(doc, answer) else {
                 return ask_objects("prompt.rename.objects");
-            }
+            };
             self.ids = Some(chosen);
             return Step::Ask(Request::new("prompt.rename.name", Kind::Path));
         };
