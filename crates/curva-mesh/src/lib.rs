@@ -17,11 +17,8 @@ mod repair;
 mod smooth;
 mod subd;
 mod subd_primitives;
-<<<<<<< HEAD
-mod to_subd;
-=======
 mod to_nurbs;
->>>>>>> origin/main
+mod to_subd;
 mod transform;
 mod triangulate;
 
@@ -32,11 +29,8 @@ pub use mesh::{Attribute, Mesh, MeshError};
 pub use primitives::{Frame, SphereStyle};
 pub use smooth::{MAX_LEVELS, Patch, SmoothError};
 pub use subd::{Sharpness, SubD, SubDDisplay, VertexTag};
-<<<<<<< HEAD
-pub use to_subd::ToSubdOptions;
-=======
 pub use to_nurbs::ToNurbsError;
->>>>>>> origin/main
+pub use to_subd::ToSubdOptions;
 pub use triangulate::Triangles;
 
 #[cfg(test)]
