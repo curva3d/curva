@@ -79,12 +79,14 @@ impl Document {
             .and_then(|o| o.recipe)
     }
 
-    /// Remakes every object whose source has changed. An object whose source has gone forgets its
-    /// recipe and stays as it is. A source that can no longer give a result leaves the object as
-    /// it was. Objects are in order of making, so a chain of recipes updates in one pass.
+    /// Remakes every object whose source has changed, then moves dimensions tied to objects that
+    /// changed (`tie`). An object whose source has gone forgets its recipe and stays as it is. A
+    /// source that can no longer give a result leaves the object as it was. Objects are in order
+    /// of making, so a chain of recipes updates in one pass.
     pub fn refresh_history(&mut self) {
         self.refresh_curve_history();
         self.refresh_live();
+        self.refresh_ties();
     }
 
     /// Remakes the curves made with History from the curves they follow.

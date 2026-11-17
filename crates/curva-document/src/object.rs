@@ -46,6 +46,9 @@ pub struct Object {
     /// Its own section style, for where clipping planes cut it; `None` takes its layer's
     /// (spec `layouts.md` §3).
     pub section: Option<crate::section::SectionStyle>,
+    /// For a dimension, where each of its points is tied, in the order `tie::tied_points` gives
+    /// them; empty when none is (spec `annotation.md` §3, decision 0035).
+    pub ties: Vec<Option<crate::tie::Tie>>,
 }
 
 impl Object {
@@ -97,6 +100,8 @@ struct StoredObject {
     space: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     section: Option<crate::section::SectionStyle>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    ties: Vec<Option<crate::tie::Tie>>,
 }
 
 impl TryFrom<StoredObject> for Object {
@@ -132,6 +137,7 @@ impl TryFrom<StoredObject> for Object {
             user_text: stored.user_text,
             space: stored.space,
             section: stored.section,
+            ties: stored.ties,
         })
     }
 }
@@ -164,6 +170,7 @@ impl From<Object> for StoredObject {
             user_text: object.user_text,
             space: object.space,
             section: object.section,
+            ties: object.ties,
         }
     }
 }
