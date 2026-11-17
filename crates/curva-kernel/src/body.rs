@@ -48,6 +48,22 @@ fn followed_by(first: &Placement, then: &Placement) -> Placement {
     std::array::from_fn(|i| std::array::from_fn(|j| (0..4).map(|k| first[i][k] * then[k][j]).sum()))
 }
 
+/// Whether `map` only moves, turns, scales evenly or mirrors: its three axis rows are at right
+/// angles and of one length (within a millionth of a millionth), and it has no projective part.
+fn is_similarity(map: &Placement) -> bool {
+    let dot = |a: usize, b: usize| (0..3).map(|k| map[a][k] * map[b][k]).sum::<f64>();
+    let length = dot(0, 0);
+    let close = |value: f64, to: f64| (value - to).abs() <= 1e-12 * length;
+    length > 0.0
+        && [map[0][3], map[1][3], map[2][3]] == [0.0; 3]
+        && map[3][3] == 1.0
+        && close(dot(1, 1), length)
+        && close(dot(2, 2), length)
+        && close(dot(0, 1), 0.0)
+        && close(dot(0, 2), 0.0)
+        && close(dot(1, 2), 0.0)
+}
+
 /// A surface or solid: one or more faces joined along their edges.
 ///
 /// The engine's body is read once (when made, or when a file opens) and shared between copies
@@ -357,6 +373,17 @@ impl Body {
             shared: std::sync::Arc::clone(&self.shared),
             placement: followed_by(&self.placement, &then),
         }
+    }
+
+    /// The body under `map` (rows the images of x, y and z, then the move) when that only moves,
+    /// turns, scales evenly or mirrors: a copy sharing the faces as made, as [`Body::mapped`]
+    /// makes, so block instances and copies are meshed once (#153). `None` for any other map,
+    /// which the engine must apply ([`Body::transformed`]).
+    pub(crate) fn placed_by(&self, map: &Placement) -> Option<Self> {
+        is_similarity(map).then(|| Self {
+            shared: std::sync::Arc::clone(&self.shared),
+            placement: followed_by(&self.placement, map),
+        })
     }
 
     /// The body stretched by `factor` along the direction `axis`, about `origin`, as Rhino's

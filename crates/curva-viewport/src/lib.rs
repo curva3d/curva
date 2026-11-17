@@ -589,4 +589,31 @@ mod tests {
         assert!(parts.shaded_lines.is_empty());
         assert!(!parts.lines.is_empty());
     }
+
+    /// For the window, two instances of a block and a moved copy of a solid come as copies of
+    /// one shape each at its own place, with no triangles written out (#153); pictures still
+    /// get every triangle.
+    #[test]
+    fn instances_and_copies_share_one_shape() {
+        let mut doc = curva_document::Document::default();
+        let seat = doc.add_body(curva_kernel::Body::cuboid([0.0; 3], [1.0, 1.0, 0.2]).unwrap());
+        let (definition, _) = doc.define_block("Seat".to_owned(), [0.0; 3], &[seat]);
+        doc.insert_block(
+            definition,
+            curva_document::blocks::moved_by([5.0, 0.0, 0.0]),
+        );
+        let outlines = Outlines::of(doc.state());
+        let parts = SceneParts::shared(&outlines);
+        assert!(parts.faces.is_empty());
+        let [a, b] = &parts.shapes[..] else {
+            panic!("two copies: {:?}", parts.shapes.len());
+        };
+        assert!(std::sync::Arc::ptr_eq(&a.mesh, &b.mesh), "one shape");
+        assert_ne!(a.object, b.object);
+        assert_eq!(b.placement[3][0] - a.placement[3][0], 5.0);
+        assert!(!SceneParts::of(&outlines).faces.is_empty());
+        assert!(SceneParts::of(&outlines).shapes.is_empty());
+        let without = scene_shapes_without(&parts.shapes, &parts.objects, &parts.objects[..1]);
+        assert_eq!(without.len(), 1, "a hidden instance leaves one copy");
+    }
 }

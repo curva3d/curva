@@ -428,6 +428,7 @@ fn picture_drawing(
         grid: Arc::default(),
         scene: Arc::new(picture.lines),
         faces: Arc::new(picture.faces),
+        shapes: Arc::default(),
         objects: Arc::new(objects),
         selection: Arc::default(),
         overlay: Arc::default(),
@@ -574,6 +575,7 @@ mod tests {
             grid: Arc::default(),
             scene: Arc::default(),
             faces: Arc::new(faces),
+            shapes: Arc::default(),
             objects: Arc::new(vec![7]),
             selection: Arc::default(),
             overlay: Arc::default(),
@@ -606,6 +608,37 @@ mod tests {
         let pixels = crate::gpu::read_texture(device, queue, &texture, SIZE);
         let at = ((SIZE[1] / 2 * SIZE[0] + SIZE[0] / 2) * 4) as usize;
         pixels[at..at + 4].try_into().unwrap()
+    }
+
+    /// Copies of one solid are drawn from one Bevy mesh, each at its placement (#153): the copy
+    /// over the middle shows there; moved away, the middle shows the background, the mesh still
+    /// held once; with no copies left, the mesh is let go.
+    #[test]
+    fn copies_of_a_solid_share_one_mesh() {
+        let _turn = one_at_a_time();
+        let Some((mut pilot, device, queue)) = pilot() else {
+            return;
+        };
+        let slab = curva_kernel::Body::cuboid([-5.0e4, -5.0e4, -1.0], [1.0e5, 1.0e5, 2.0]).unwrap();
+        let away = slab.translated([1.0e6, 0.0, 0.0]);
+        let copy = |body: &curva_kernel::Body| crate::PlacedShape {
+            object: 0,
+            colour: [0.6; 3],
+            mesh: body.shared_mesh().unwrap(),
+            placement: body.placement(),
+        };
+        let mut view = drawing(StandardView::Top, Vec::new());
+        view.shapes = Arc::new(vec![copy(&slab), copy(&away)]);
+        let shown = middle(&mut pilot, &device, &queue, &view);
+        assert_ne!(shown, [200, 120, 40, 255], "the copy over the middle shows");
+        assert_eq!(pilot.meshes.1.len(), 1, "two copies, one mesh");
+        view.shapes = Arc::new(vec![copy(&away), copy(&away)]);
+        let moved = middle(&mut pilot, &device, &queue, &view);
+        assert_eq!(moved, [200, 120, 40, 255], "both copies moved away");
+        assert_eq!(pilot.meshes.1.len(), 1);
+        view.shapes = Arc::default();
+        middle(&mut pilot, &device, &queue, &view);
+        assert_eq!(pilot.meshes.1.len(), 0, "no copies, no mesh");
     }
 
     /// Every `// CUSTOM BEVY PART:` mark has a row in `docs/bevy/custom-parts.md`, and every row a

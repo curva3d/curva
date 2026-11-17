@@ -209,6 +209,7 @@ impl Curva {
                 grid: Arc::default(),
                 scene,
                 faces,
+                shapes: Arc::default(),
                 overlay: Arc::default(),
                 preview_faces: Arc::default(),
                 objects: Arc::default(),

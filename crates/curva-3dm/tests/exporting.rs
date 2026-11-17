@@ -22,6 +22,7 @@ fn object(id: u64, shape: Shape, layer: u64) -> Object {
         linetype: Linetype::ByLayer,
         user_text: Default::default(),
         section: None,
+        ties: Vec::new(),
     }
 }
 

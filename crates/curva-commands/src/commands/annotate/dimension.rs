@@ -27,6 +27,8 @@ pub struct LinearDimension {
     making: Making,
     first: Option<Point>,
     second: Option<Point>,
+    /// Where the measured points are tied, if they snapped to objects.
+    ties: [Option<curva_document::tie::Tie>; 2],
 }
 
 impl LinearDimension {
@@ -35,6 +37,7 @@ impl LinearDimension {
             making,
             first: None,
             second: None,
+            ties: [None; 2],
         }
     }
 
@@ -108,10 +111,12 @@ impl Command for LinearDimension {
             }
             Some(Answer::Point(p)) if self.first.is_none() => {
                 self.first = Some(p);
+                self.ties[0] = doc.pick_tie_at(p);
                 self.ask()
             }
             Some(Answer::Point(p)) if self.second.is_none() => {
                 self.second = Some(p);
+                self.ties[1] = doc.pick_tie_at(p);
                 self.ask()
             }
             Some(Answer::Point(line)) => {
@@ -122,7 +127,8 @@ impl Command for LinearDimension {
                     return Step::Failed(Message::new("error.dim_zero"));
                 }
                 let shown = doc.length_text(dimension.value());
-                doc.add_annotation(Annotation::Dimension(dimension));
+                let id = doc.add_annotation(Annotation::Dimension(dimension));
+                doc.set_ties(id, self.ties.to_vec());
                 Step::Done(Some(Message::with("done.dim", vec![shown])))
             }
             Some(_) => unexpected(),
@@ -237,5 +243,35 @@ mod tests {
         // Two extension lines, the dimension line, two arrowheads, and the letters of "100.00".
         assert!(drawing.lines.len() > 5);
         assert!(drawing.fills.len() >= 2 + 5);
+    }
+
+    #[test]
+    fn a_dimension_keeps_the_ties_of_points_that_snapped_to_an_object_and_follows_it() {
+        use curva_document::tie::{Place, Tie};
+        let mut doc = Document::default();
+        let line = doc.add(curva_kernel::Curve::Line {
+            start: [0.0, 0.0, 0.0],
+            end: [100.0, 0.0, 0.0],
+        });
+        // The first point snapped to the line's start; the second is typed.
+        doc.set_pick_tie(Some(Tie {
+            object: line,
+            part: None,
+            place: Place::Corner(0),
+            at: [0.0, 0.0, 0.0],
+        }));
+        run(&mut doc, &["Dim", "0,0", "100,0", "50,20"]);
+        doc.set_pick_tie(None);
+        let dimension = doc.state().objects[1].id;
+        let ties = doc.ties_of(dimension);
+        assert_eq!(ties.len(), 2);
+        assert!(ties[0].is_some_and(|t| t.object == line));
+        assert!(ties[1].is_none());
+        doc.translate(&[line], [-20.0, 0.0, 0.0]);
+        doc.refresh_history();
+        let Shape::Annotation(Annotation::Dimension(d)) = &doc.state().objects[1].shape else {
+            panic!("not a dimension");
+        };
+        assert!((d.value() - 120.0).abs() < 1e-9);
     }
 }

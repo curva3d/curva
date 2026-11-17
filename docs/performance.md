@@ -231,3 +231,23 @@ against Curva's own drawing on the same runs, alternated, two each:
   what changed; the graphics card's full features (2.6 → 2.4 ms). **What did:** not preparing
   Curva's own copy of the scene for views Bevy draws (6.7 → 5.8 ms).
 - *Large*: Bevy draws a 1200 × 800 picture of it in 1.8 ms; the frame gap is snapping (#130).
+
+## Copies drawn once (17 November 2026, display-on-Bevy step 4, #153)
+
+*Large* on the RTX 3060, every view drawn by Bevy with Curva's lines, release build, two runs each
+on a quiet machine, before (step 3, #255) and after (#281). Graphics memory is the card's peak use
+during the run less its use before, read with `nvidia-smi` every 2 s.
+
+| | Before | After |
+|---|---|---|
+| First frame | 73.4–74.5 s | 4.4–4.6 s |
+| Graphics memory | about 3.2 GB | about 1.3 GB |
+| Between frames | 24.3–26.2 ms | 24.5–25.7 ms |
+
+- **Why it was slow:** placing a block instance remade its body in the engine, so each of the
+  2,000 trees was a new body, meshed again. Now an instance that only moves, turns, scales evenly
+  or mirrors shares its body's faces, and Bevy holds one mesh per shape and draws every copy at
+  its place.
+- **Spec targets (§2):** first frame under 5 s met. Graphics memory under 1 GB not yet: what is
+  left is mostly Curva's lines, written out for every copy (each solid's and tree's edges, the
+  40,000 circles). The time between frames is still snapping (#130).

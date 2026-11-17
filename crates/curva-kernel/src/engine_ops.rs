@@ -363,8 +363,12 @@ impl Body {
     }
 
     /// The body under any affine map: rows are the images of x, y and z, then the move
-    /// (Rhino's Shear and the like).
+    /// (Rhino's Shear and the like). A map that only moves, turns, scales evenly or mirrors, as
+    /// most block instances do, gives a copy sharing the faces as made, with nothing remade.
     pub fn transformed(&self, map: [[f64; 4]; 4]) -> Result<Self, KernelError> {
+        if let Some(copy) = self.placed_by(&map) {
+            return Ok(copy);
+        }
         let body = self.engine_body()?;
         body.transform(&map)
             .map_err(|e| failed("transforming", e))?;
