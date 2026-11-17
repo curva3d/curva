@@ -396,7 +396,9 @@ mod tests {
             );
             mcp_picture(&doc).ok().and_then(|bytes| pixels_of(&bytes))
         };
-        let (Some(near), Some(far)) = (picture([2000.0, 2000.0, 0.0]), picture([5.0e8, 5.0e8, 0.0])) else {
+        let (Some(near), Some(far)) =
+            (picture([2000.0, 2000.0, 0.0]), picture([5.0e8, 5.0e8, 0.0]))
+        else {
             eprintln!("no graphics adapter to draw with, so not checked");
             return;
         };
