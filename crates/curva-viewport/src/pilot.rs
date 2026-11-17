@@ -527,6 +527,8 @@ pub fn save_png(path: &std::path::Path, size: [u32; 2], pixels: &[u8]) -> Result
 mod tests {
     use super::*;
 
+    mod grid;
+
     use crate::{MeshVertex, NO_OBJECT, StandardView};
 
     const BACKGROUND: epaint::Color32 = epaint::Color32::from_rgb(200, 120, 40);

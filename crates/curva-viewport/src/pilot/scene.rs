@@ -402,7 +402,7 @@ impl ViewScene {
         let lens = drawing.camera.lens();
         let v = |p: [f64; 3]| Vec3::new(p[0] as f32, p[1] as f32, p[2] as f32);
         let (eye, forward, up) = (v(lens.eye), v(lens.forward), v(lens.up));
-        let distance = (lens.near + BACKDROP_DEPTH * (lens.far - lens.near)) as f32;
+        let distance = (lens.near + crate::camera::BACKDROP_DEPTH * (lens.far - lens.near)) as f32;
         let height = if lens.parallel {
             2.0 * lens.half_height as f32
         } else {
@@ -659,8 +659,6 @@ pub(super) fn skies(images: &mut Assets<Image>) -> [EnvironmentMapLight; 2] {
     ]
 }
 
-/// How far along the depth drawn the backdrop sits: just inside the farthest distance.
-const BACKDROP_DEPTH: f64 = 0.95;
 /// Bands the backdrop's gradient is made of; Curva's background blends the colours as stored,
 /// so each band's colour is worked out that way, and Bevy only blends within a thin band.
 const BACKDROP_BANDS: usize = 32;

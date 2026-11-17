@@ -13,6 +13,9 @@ const PARALLEL_DISTANCE: f64 = 330.0;
 /// How far, in multiples of the viewing distance, a flat view sees in front of and behind its
 /// target before depth runs out.
 const FLAT_DEPTH_RANGE: f64 = 1000.0;
+/// How far along the depth drawn Bevy's backdrop sits: just inside the farthest distance. Curva's
+/// lines take what lies at it or beyond, less a hundredth of the depth, as nothing drawn (#344).
+pub(crate) const BACKDROP_DEPTH: f64 = 0.95;
 
 fn sub(a: Point, b: Point) -> Point {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
