@@ -33,5 +33,6 @@ Set up once, in the Cloudflare dashboard:
 2. Project name `curva`. Build command `npm run build`. Deploy command `npx wrangler deploy`. Under Advanced settings, root directory `website`.
 3. Deploy. Then, in the Worker's Settings → Domains & Routes, add the custom domains `curva3d.com` and `www.curva3d.com`.
 4. Settings → Build → Build watch paths: include `website/*`, so commits to the app don't rebuild the site.
+5. Settings → Build → Branch control: untick builds for non-production branches. Pull-request builds failed on every pull request (issue #166) and nobody used their preview links.
 
-After that, every merge to `main` that touches `website/` publishes the site. Pull requests get a preview link while preview builds are on.
+After that, every merge to `main` that touches `website/` publishes the site. Pull requests are not built by Cloudflare, so they show no Cloudflare check.
