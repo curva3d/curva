@@ -787,6 +787,40 @@ mod tests {
         assert!(apart <= 8, "{apart} pixels differ");
     }
 
+    /// A new selection recolours only the objects whose selection changed (step 5), and does so
+    /// rightly: a copy over the middle turns the selection colour when its object is picked, and
+    /// back when another object is picked instead, then when nothing is.
+    #[test]
+    fn a_new_selection_recolours_what_changed() {
+        let _turn = one_at_a_time();
+        let Some((mut pilot, device, queue)) = pilot() else {
+            return;
+        };
+        let slab = curva_kernel::Body::cuboid([-5.0e4, -5.0e4, -1.0], [1.0e5, 1.0e5, 2.0]).unwrap();
+        let away = slab.translated([1.0e6, 0.0, 0.0]);
+        let copy = |body: &curva_kernel::Body, object: u32| crate::PlacedShape {
+            object,
+            colour: [0.6; 3],
+            mesh: body.shared_mesh().unwrap(),
+            placement: body.placement(),
+        };
+        let mut view = drawing(StandardView::Top, Vec::new());
+        view.objects = Arc::new(vec![7, 8]);
+        view.shapes = Arc::new(vec![copy(&slab, 0), copy(&away, 1)]);
+        let plain = middle(&mut pilot, &device, &queue, &view);
+        view.selection = Arc::new(vec![7]);
+        let picked = middle(&mut pilot, &device, &queue, &view);
+        let orange = |p: [u8; 4]| p[0] > p[2] + 60;
+        assert!(orange(picked), "picked: {picked:?}");
+        assert!(!orange(plain), "plain: {plain:?}");
+        view.selection = Arc::new(vec![8]);
+        assert_eq!(middle(&mut pilot, &device, &queue, &view), plain);
+        view.selection = Arc::new(vec![7, 8]);
+        assert_eq!(middle(&mut pilot, &device, &queue, &view), picked);
+        view.selection = Arc::default();
+        assert_eq!(middle(&mut pilot, &device, &queue, &view), plain);
+    }
+
     /// Every `// CUSTOM BEVY PART:` mark has a row in `docs/bevy/custom-parts.md`, and every row a
     /// mark (decision 0030), as the kernel's custom operations are kept.
     #[test]
