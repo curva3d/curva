@@ -1,9 +1,12 @@
 //! What Rhino 8's SubD editing commands do to the cage (spec `docs/specs/mesh-and-subd.md` §1,
-//! Stage C): RemoveCrease, DeleteSubDFaces, Fill, Stitch, InsertEdge across a ring, and Bridge.
+//! Stage C): RemoveCrease, DeleteSubDFaces, Fill, Stitch, InsertEdge across a ring, Bridge, and
+//! UnweldEdge and WeldEdge.
 //! (Crease is [`SubD::with_creases`] and [`SubD::with_corners`].) Each keeps the tags, sharpness
 //! and colours it can ([`SubD::carried_to`]); a new open border is creased, as always.
 
-use crate::{Mesh, MeshError, Point, Sharpness, SubD};
+use std::collections::{BTreeMap, BTreeSet};
+
+use crate::{Mesh, MeshError, Point, Sharpness, SubD, VertexTag};
 
 /// How Fill closes a hole, as Rhino's options.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -381,12 +384,149 @@ impl SubD {
         let number: Vec<Option<u32>> = (0..cage.vertex_count()).map(|v| Some(index(v))).collect();
         Ok(self.carried_to(Mesh::new(points, &rings)?, &number, &old_faces))
     }
+
+    /// The SubD cut open along these inner edges, as Rhino's UnweldEdge: each becomes two creased
+    /// border edges at the same place, one for each face. A point on the cut is copied once for
+    /// each piece of its ring of faces the cut makes, so a cut ending inside the surface keeps its
+    /// end points whole. Copies of a corner are corners too.
+    ///
+    /// # Errors
+    /// When an edge is not an inner edge of the cage (`UnusableEdge`), or the cut cage is not a
+    /// valid mesh.
+    pub fn unwelded(&self, edges: &[[u32; 2]]) -> Result<Self, MeshError> {
+        let cage = self.cage();
+        let uses = self.edge_uses();
+        let mut cut = BTreeSet::new();
+        for &[a, b] in edges {
+            let key = (a.min(b), a.max(b));
+            if !uses.get(&key).is_some_and(|f| f.len() == 2) {
+                return Err(MeshError::UnusableEdge { edge: [a, b] });
+            }
+            cut.insert(key);
+        }
+        let mut faces_at: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+        for (f, face) in cage.faces().enumerate() {
+            for &v in face {
+                faces_at.entry(v).or_default().push(f);
+            }
+        }
+        // The points either side of `v` in face `f`.
+        let beside = |f: usize, v: u32| {
+            let face = cage.face(f);
+            let k = face.iter().position(|&w| w == v).unwrap_or(0);
+            let n = face.len();
+            [face[(k + n - 1) % n], face[(k + 1) % n]]
+        };
+        let mut points = cage.vertices().to_vec();
+        let mut rings = faces_of(cage);
+        let mut copies: Vec<(u32, u32)> = Vec::new();
+        let touched: BTreeSet<u32> = cut.iter().flat_map(|&(a, b)| [a, b]).collect();
+        for v in touched {
+            let around = &faces_at[&v];
+            // Faces round `v` joined across edges that are not cut, as pieces.
+            let mut piece: Vec<usize> = (0..around.len()).collect();
+            let find = |piece: &[usize], mut i: usize| {
+                while piece[i] != i {
+                    i = piece[i];
+                }
+                i
+            };
+            for i in 0..around.len() {
+                for j in i + 1..around.len() {
+                    let shared = beside(around[i], v)
+                        .into_iter()
+                        .find(|w| beside(around[j], v).contains(w));
+                    if let Some(w) = shared
+                        && !cut.contains(&(v.min(w), v.max(w)))
+                    {
+                        let (ri, rj) = (find(&piece, i), find(&piece, j));
+                        piece[ri.max(rj)] = ri.min(rj);
+                    }
+                }
+            }
+            // The piece with the lowest face keeps `v`; each other gets a copy.
+            let mut copy_of_piece: BTreeMap<usize, u32> = BTreeMap::new();
+            for (i, &f) in around.iter().enumerate() {
+                let root = find(&piece, i);
+                if root == 0 {
+                    continue;
+                }
+                let new = *copy_of_piece.entry(root).or_insert_with(|| {
+                    points.push(points[v as usize]);
+                    copies.push((v, index(points.len() - 1)));
+                    index(points.len() - 1)
+                });
+                for corner in &mut rings[f] {
+                    if *corner == v {
+                        *corner = new;
+                    }
+                }
+            }
+        }
+        let number: Vec<Option<u32>> = (0..cage.vertex_count()).map(|v| Some(index(v))).collect();
+        let old_faces: Vec<Option<usize>> = (0..rings.len()).map(Some).collect();
+        let mut subd = self.carried_to(Mesh::new(points, &rings)?, &number, &old_faces);
+        // Sharp inner edges beside a copied point: found through a face that holds them.
+        for (&(a, b), fs) in &uses {
+            let sharpness = self.sharpness(a, b);
+            if fs.len() != 2 || cut.contains(&(a, b)) || sharpness == Sharpness::SMOOTH {
+                continue;
+            }
+            let old = cage.face(fs[0]);
+            let at = |v: u32| old.iter().position(|&w| w == v).map(|k| rings[fs[0]][k]);
+            if let (Some(na), Some(nb)) = (at(a), at(b)) {
+                subd = subd.with_sharpness([na, nb], sharpness);
+            }
+        }
+        let corners: Vec<u32> = copies
+            .iter()
+            .filter(|&&(v, _)| self.vertex_tag(v) == VertexTag::Corner)
+            .map(|&(_, new)| new)
+            .collect();
+        Ok(subd.with_corners(&corners))
+    }
+
+    /// Border edges joined to the border edges at exactly the same place, as Rhino's WeldEdge
+    /// (the way back from [`SubD::unwelded`]): the joined edges are smooth. Rhino welds nothing
+    /// that is not at exactly the same place, however close.
+    ///
+    /// # Errors
+    /// When an edge is not a border edge or has no other border edge at its place
+    /// (`UnusableEdge`), or the welded cage is not a valid mesh.
+    pub fn welded(&self, edges: &[[u32; 2]]) -> Result<Self, MeshError> {
+        let p = self.cage().vertices();
+        let uses = self.edge_uses();
+        let border: Vec<(u32, u32)> = uses
+            .iter()
+            .filter(|(_, f)| f.len() == 1)
+            .map(|(&k, _)| k)
+            .collect();
+        let same = |x: u32, y: u32| p[x as usize] == p[y as usize];
+        let mut pairs = Vec::new();
+        for &[a, b] in edges {
+            let key = (a.min(b), a.max(b));
+            let partner = border.iter().find(|&&(c, d)| {
+                (c, d) != key && ((same(c, a) && same(d, b)) || (same(c, b) && same(d, a)))
+            });
+            let (Some(&(c, d)), true) = (partner, border.contains(&key)) else {
+                return Err(MeshError::UnusableEdge { edge: [a, b] });
+            };
+            let (c, d) = if same(c, a) { (c, d) } else { (d, c) };
+            for (x, y) in [(a, c), (b, d)] {
+                if x != y {
+                    pairs.push([x.min(y), x.max(y)]);
+                }
+            }
+        }
+        pairs.sort_unstable();
+        pairs.dedup();
+        self.stitched(&pairs, StitchAt::First)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::VertexTag;
     use crate::mesh::tests::cube;
 
     fn open_box() -> SubD {
@@ -525,5 +665,105 @@ mod tests {
         // The new faces join the borders, so those edges are no longer creased.
         assert!(!bridged.sharpness(0, 1).is_crease());
         assert!(bridged.cage().check(1e-9).misdirected_faces == Some(0));
+    }
+
+    /// Rhino's test: a 2 × 2 × 2 box from a mesh, and the two edges at x = 1 on its y = 0 side.
+    fn box_and_cut() -> (SubD, Vec<[u32; 2]>) {
+        let mesh = Mesh::mesh_box(&crate::Frame::world(), [2.0; 3], [2; 3]);
+        let subd = SubD::new(mesh);
+        let p = subd.cage().vertices();
+        let on_cut = |v: u32| p[v as usize][0] == 1.0 && p[v as usize][1] == 0.0;
+        let edges = subd
+            .edge_uses()
+            .keys()
+            .filter(|&&(a, b)| on_cut(a) && on_cut(b))
+            .map(|&(a, b)| [a, b])
+            .collect();
+        (subd, edges)
+    }
+
+    #[test]
+    fn unweld_cuts_a_box_open_as_rhino_does() {
+        let (subd, edges) = box_and_cut();
+        assert_eq!(edges.len(), 2);
+        assert_eq!(subd.cage().vertex_count(), 26);
+        let cut = subd.unwelded(&edges).unwrap();
+        // Rhino 8's UnweldEdge on the same box: 27 points, 50 edges, 4 creased, not closed. Only
+        // the middle point is copied; the cut's ends stay whole inside the surface.
+        assert_eq!(cut.cage().vertex_count(), 27);
+        assert_eq!(cut.edge_uses().len(), 50);
+        assert_eq!(cut.creases().count(), 4);
+        let tags = (0..27).filter(|&v| cut.vertex_tag(v) == VertexTag::Crease);
+        assert_eq!(tags.count(), 4);
+        assert_eq!(cut.cage().vertices()[26], [1.0, 0.0, 1.0]);
+    }
+
+    #[test]
+    fn weld_joins_the_cut_back_as_rhino_does() {
+        let (subd, edges) = box_and_cut();
+        let cut = subd.unwelded(&edges).unwrap();
+        let border: Vec<[u32; 2]> = cut.creases().collect();
+        let welded = cut.welded(&border).unwrap();
+        // The same cage, smooth again.
+        assert_eq!(welded.cage().vertices(), subd.cage().vertices());
+        assert!(welded.cage().faces().eq(subd.cage().faces()));
+        assert_eq!(welded.creases().count(), 0);
+        // One side of the cut is enough: the edges that do not use the copy, point 26.
+        let one_side: Vec<[u32; 2]> = border
+            .iter()
+            .copied()
+            .filter(|e| !e.contains(&26))
+            .collect();
+        assert_eq!(one_side.len(), 2);
+        assert_eq!(cut.welded(&one_side).unwrap().creases().count(), 0);
+    }
+
+    #[test]
+    fn weld_and_unweld_refuse_edges_they_cannot_use() {
+        let (subd, edges) = box_and_cut();
+        assert_eq!(
+            subd.welded(&edges),
+            Err(MeshError::UnusableEdge { edge: edges[0] }),
+            "an inner edge is not a border"
+        );
+        let open = open_box();
+        let border: Vec<[u32; 2]> = open.creases().collect();
+        assert!(open.welded(&border).is_err(), "no other edge at its place");
+        assert!(open.unwelded(&border).is_err(), "a border is open already");
+        // Rhino welds nothing that is merely close.
+        let cut = subd.unwelded(&edges).unwrap();
+        let mut points = cut.cage().vertices().to_vec();
+        points[26][0] += 0.0006;
+        let moved = cut.clone().with_cage_points(points);
+        let border: Vec<[u32; 2]> = moved.creases().collect();
+        assert!(moved.welded(&border).is_err());
+    }
+
+    #[test]
+    fn a_cut_right_across_a_grid_splits_it_and_keeps_its_creases() {
+        // A 2 × 2 grid of squares, cut along its middle line from border to border.
+        let points: Vec<Point> = (0..9)
+            .map(|i| [f64::from(i % 3), f64::from(i / 3), 0.0])
+            .collect();
+        let faces = [[0, 1, 4, 3], [1, 2, 5, 4], [3, 4, 7, 6], [4, 5, 8, 7]];
+        let grid = SubD::new(Mesh::new(points, &faces).unwrap()).with_creases(&[[3, 4]]);
+        let cut = grid.unwelded(&[[1, 4], [4, 7]]).unwrap();
+        assert_eq!(cut.cage().vertex_count(), 12, "the whole line is copied");
+        assert_eq!(
+            cut.creases().count(),
+            8 + 4 + 1,
+            "border, both sides of the cut, 3-4"
+        );
+        // The crease from 3 to 4 stays on the left piece, which keeps point 4.
+        assert!(cut.sharpness(3, 4).is_crease());
+        let p = cut.cage().vertices();
+        let seam: Vec<[u32; 2]> = cut
+            .creases()
+            .filter(|e| e.iter().all(|&v| p[v as usize][0] == 1.0))
+            .collect();
+        assert_eq!(seam.len(), 4);
+        let welded = cut.welded(&seam).unwrap();
+        assert_eq!(welded.cage().vertex_count(), 9);
+        assert_eq!(welded.creases().count(), 8 + 1);
     }
 }

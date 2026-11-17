@@ -101,6 +101,12 @@ pub enum MeshError {
         /// Which data: "normals", "texture coordinates" or "colours".
         which: &'static str,
     },
+    /// An edge given to an edit is not one it can use (UnweldEdge needs an inner edge, WeldEdge a
+    /// border edge with another at exactly the same place).
+    UnusableEdge {
+        /// The edge, by its two points.
+        edge: [u32; 2],
+    },
 }
 
 // Messages for logs and reports to agents; the interface words its own from translation files.
@@ -115,6 +121,9 @@ impl fmt::Display for MeshError {
             Self::NotFinite { vertex } => write!(f, "vertex {vertex} is not a finite point"),
             Self::AttributeLength { which } => {
                 write!(f, "the mesh's {which} do not match its vertices or corners")
+            }
+            Self::UnusableEdge { edge: [a, b] } => {
+                write!(f, "edge {a}-{b} cannot be used by this edit")
             }
         }
     }

@@ -358,6 +358,30 @@ present methods; see the report on #203.
   each piece). Next for #317.
 - The test house's plan is unchanged, line for line (193 ms).
 
+### *Large* finishes (18 November 2026, #317 part 2)
+
+Timed step by step on *Large* with part 1's fixes in, the hidden lines took 43 s, but the next
+step, leaving out lines drawn twice, ran past 48 minutes: it compared each of 100,000 drawn lines
+with every line kept before it, curves point by point. It now compares only lines near each other
+(a grid of cells), which gives the same result.
+
+| Step on *Large* | Before #317 | Now |
+|---|---|---|
+| Each solid's edges and silhouettes | 60–78 s | 7 s |
+| Where lines cross | 700 s | 2 s |
+| Setting up the visibility tests | not reached | 10 s |
+| Which pieces are hidden | not reached | 23 s |
+| **Whole plan** (75,000 lines and fills) | **did not finish** | **122 s** |
+
+The test house's plan and the five hidden-line test scenes come out byte for byte the same (the
+house in 190 ms).
+
+**Against the targets:** *Large* should open in under 5 s; it takes about 2 minutes, so it is
+still some 25 times too slow, though it now finishes. What remains: cutting and clipping the
+10,000 solids (15–19 s, one at a time because of the engine's lock), the visibility tests (33 s),
+and about a minute not yet broken down (likely putting 75,000 objects into the model). Live plans
+step 4 keeps results between edits, which is what the edit target (0.1 s) depends on.
+
 ## Snapping searches only what could win (17 November 2026, #130)
 
 Snapping offers the nearest snap within reach of the cursor. A meeting point lies on both its

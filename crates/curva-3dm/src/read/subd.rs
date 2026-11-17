@@ -302,7 +302,7 @@ fn build(
             .with_texture(Attribute::PerCorner(texture))
             .map_err(|e| bad(e.to_string()))?;
     }
-    let mut subd = SubD::new(cage);
+    let mut subd = SubD::from_cage(cage);
     for e in edges {
         let ends = [vertex_at(e.ends[0])?, vertex_at(e.ends[1])?];
         // Rhino's edge tags: 2 crease; 1 and 4 smooth, possibly partly sharp.

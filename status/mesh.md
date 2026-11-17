@@ -4,6 +4,22 @@
 mesh and SubD files elsewhere (see `AGENTS.md`). Updated at the end of every work session. Newest
 first.*
 
+## 18 November 2026
+
+**SubD Weld and Unweld (#345):** UnweldEdge cuts a SubD open along inner edges into creased
+borders at the same place, and WeldEdge joins them back, smooth, as Rhino 8 does. Curva's cut
+box matches Rhino's own in its counts, its tags and its limit area (17.150913, to 11 decimal
+places), and Rhino 8 reads Curva's as valid. A SubD can now hold such a cut: `SubD::from_cage`
+keeps points at the same place apart, and the `.3dm` reader uses it. With this, every library
+part of Stages A, B and C is done except QuadRemesh, which still waits on the owner (below).
+
+**Found on the way**
+- Rhino's WeldEdge welds only edges at exactly the same place. It refuses a gap of 0.0006 at a
+  tolerance of 0.001, and it refuses inner creases; RemoveCrease is for those.
+- Until now, reading a `.3dm` SubD joined points at the same place, so a cut SubD saved by Rhino
+  came in sewn shut, and its edge sharpness could land on the wrong edges. Fixed with
+  `SubD::from_cage`.
+
 ## 16 and 17 November 2026 (second session, after the move to E:)
 
 **Spec approved by the owner** (17 November 2026, `docs/specs/mesh-and-subd.md`, #246), with
@@ -48,7 +64,9 @@ creases, sewn into a polysurface or solid; a torus cage gives Rhino's limit volu
 patches close up within 0.2% of its limit volume (flat patches wait on #328, features). SubD cage
 edits (#332, PR #338): RemoveCrease, DeleteSubDFaces, Fill, Stitch, InsertEdge across a ring and
 Bridge, and `LiveSurface`, the smooth surface worked out again for moved cage points (#334).
-ToSubD from meshes (#336): control points or through the points, mesh creases and corners.
+ToSubD from meshes (#336, PR #339): control points or through the points, mesh creases and
+corners. The six finished library issues (#320, #323, #326, #327, #332, #336) are closed; their
+commands are listed under "Waiting for #266".
 
 The library parts of Stages A, B and C are done, except QuadRemesh (below). What is left needs
 the other streams first (see "Asked of the other streams").
