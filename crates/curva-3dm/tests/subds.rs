@@ -146,3 +146,26 @@ fn rhinos_corners_come_in_and_keep_the_square_whole() {
     assert!(near(surface.area(), 9.0), "{}", surface.area());
     assert_eq!(round_trip(&all), all);
 }
+
+#[test]
+fn an_unwelded_cut_stays_cut_out_and_back() {
+    // A 2 x 2 x 2 box cut along the two edges at x = 1 on its y = 0 side, as Rhino's UnweldEdge:
+    // its middle point is there twice, and reading must not join the copies.
+    let mesh = curva_mesh::Mesh::mesh_box(&curva_mesh::Frame::world(), [2.0; 3], [2; 3]);
+    let subd = SubD::new(mesh);
+    let p = subd.cage().vertices();
+    let on_cut = |v: u32| p[v as usize][0] == 1.0 && p[v as usize][1] == 0.0;
+    let mut edges = Vec::new();
+    for face in subd.cage().faces() {
+        for k in 0..face.len() {
+            let (a, b) = (face[k], face[(k + 1) % face.len()]);
+            if a < b && on_cut(a) && on_cut(b) {
+                edges.push([a, b]);
+            }
+        }
+    }
+    let cut = subd.unwelded(&edges).unwrap();
+    let back = round_trip(std::slice::from_ref(&cut));
+    assert_eq!(back[0].cage().vertex_count(), 27);
+    assert_eq!(back[0].creases().count(), 4);
+}
