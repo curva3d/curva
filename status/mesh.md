@@ -22,18 +22,19 @@ these decisions:
 PR #293), checked both ways against Rhino 8; mesh booleans on manifold-rust (#272 part 1, PR #297);
 `Check` for meshes and MeshRepair's main fixes (#273 part 1, PR #306), with `Check`'s counts
 compared with Rhino 8's. Meshes now join faces by where their points are, as Rhino does.
+ReduceMesh, TriangulateMesh, QuadrangulateMesh, ExtractMeshFaces and MeshToNURB (#274 part 1,
+PR #310). ReduceMesh is quadric error edge collapse (Garland and Heckbert, 1997), Curva's own.
 
-**In review:** ReduceMesh, TriangulateMesh, QuadrangulateMesh, ExtractMeshFaces and MeshToNURB
-(#274 part 1). ReduceMesh is quadric error edge collapse (Garland and Heckbert, 1997), Curva's
-own; QuadrangulateMesh makes as many quads as Rhino's on the same mesh; MeshToNURB makes one
-surface per face through Curva's kernel and sews them, a closed mesh giving a solid.
+**In review:** PLY read and written, text and binary, with normals, colours and texture
+coordinates (#275, PLY part), in `crates/curva-meshfiles`; checked both ways against Rhino 8.
 
-**Waiting for #266:** the hook-ups that need meshes in the document: STL and OBJ in Open, Import
-and Export (#269 part 2), the four MeshBoolean commands (#272 part 2), the `Check`, MeshRepair,
-UnifyMeshNormals, FillMeshHoles, Weld, RebuildMeshNormals and CullDegenerateMeshFaces commands
-(#273 part 2), and the five commands of #274 (part 2).
+**Waiting for #266:** the hook-ups that need meshes in the document: STL, OBJ and PLY in Open,
+Import and Export (#269 part 2, #275), the four MeshBoolean commands (#272 part 2), the `Check`,
+MeshRepair, UnifyMeshNormals, FillMeshHoles, Weld, RebuildMeshNormals and CullDegenerateMeshFaces
+commands (#273 part 2), and the five commands of #274 (part 2).
 
-**Next:** the library parts of the rest of Stage A: #270, #271 and #275 (spec §10). Asked of the other streams: the two shape kinds in the
+**Next:** `.3dm` meshes read and written (the rest of #275), then the library parts of #270 and
+#271 (spec §10). Asked of the other streams: the two shape kinds in the
 document (#266, features; needed before any command or file hook-up) and drawing meshes (#267,
 display).
 
@@ -62,6 +63,8 @@ display).
 - Rhino 8's `Mesh.Reduce` left a 512-face UV sphere unreduced (960 triangles, asked for 200),
   though it reduces its own `CreateFromSphere` meshes; Curva's ReduceMesh reduces that sphere.
 - ReduceMesh does not carry texture coordinates or colours yet; normals are worked out again.
+- Rhino 8 reads text PLY at single precision (1000000.1 came in as 1000000.125) but binary PLY at
+  full precision, so PLY export should default to binary. Rhino treats PLY numbers as millimetres.
 
 ## 16 November 2026
 
