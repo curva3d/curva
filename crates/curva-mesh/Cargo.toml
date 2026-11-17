@@ -1,0 +1,18 @@
+[package]
+name = "curva-mesh"
+description = "Curva's mesh and SubD objects, and the one place that calls the mesh libraries."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+curva-kernel = { path = "../curva-kernel" }
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = { version = "1", features = ["float_roundtrip"] }

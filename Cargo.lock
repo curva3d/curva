@@ -1926,6 +1926,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "curva-mesh"
+version = "0.4.2"
+dependencies = [
+ "curva-kernel",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "curva-pdf"
 version = "0.4.2"
 dependencies = [
