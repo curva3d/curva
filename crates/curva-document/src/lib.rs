@@ -27,6 +27,7 @@ mod organise;
 pub mod section;
 pub mod shape;
 pub mod sheet;
+pub mod tie;
 pub mod units;
 pub use shape::Shape;
 mod views;
