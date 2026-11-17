@@ -267,7 +267,6 @@ impl Make2D {
         // Clipping planes chosen with the objects cut the drawing, as in Rhino; their
         // rectangles are not drawn.
         let cuts: Vec<PlaneCut> = ids.iter().filter_map(|id| doc.plane_cut_of(*id)).collect();
-        let t0 = std::time::Instant::now();
         let inputs = match self.gather(doc, ids, &cuts) {
             Ok(inputs) => inputs,
             Err(error) => return geometry_failed(&error),
@@ -286,16 +285,11 @@ impl Make2D {
                 .filter(|l| l.visible || !self.without_hidden)
                 .collect())
         };
-        eprintln!("TIME gather {:?} ({} bodies, {} curves)", t0.elapsed(), inputs.bodies.len(), inputs.curves.len());
-        let t1 = std::time::Instant::now();
         let (drawings, place) = match self.drawings(doc, &draw) {
             Ok(drawn) => drawn,
             Err(error) => return geometry_failed(&error),
         };
-        eprintln!("TIME drawings {:?}", t1.elapsed());
-        let t2 = std::time::Instant::now();
         let made = self.put_in_model(doc, &drawings, &place, &inputs, &notes);
-        eprintln!("TIME put {:?}", t2.elapsed());
         if self.group && !made.is_empty() {
             doc.group(&made);
         }
@@ -331,43 +325,16 @@ impl Make2D {
         let mut cut_layers = Vec::new();
         let mut fills = Vec::new();
         let mut sections = Vec::new();
-        let (mut t_fill, mut t_sec, mut t_clip) = (std::time::Duration::ZERO, std::time::Duration::ZERO, std::time::Duration::ZERO);
         for (id, body) in bodies_of(doc, ids) {
-            let ta = std::time::Instant::now();
-            if !self.without_clip_cuts {
-                // Each cut through the body once, for both its fill and its outline lines.
-                let outlines: Vec<Option<Vec<Curve>>> = cuts
-                    .iter()
-                    .map(|cut| body.section(cut.origin, cut.keep).ok())
-                    .collect();
-                fills.extend(fills::fills_of(doc, id, &outlines, cuts, &layer_of(id)));
-                t_fill += ta.elapsed();
-                let tb = std::time::Instant::now();
-                for (cut, outline) in cuts.iter().zip(&outlines) {
-                    if let Some(outline) = outline {
-                        // Only where the rest of the cuts keep it.
-                        for piece in outline.iter().flat_map(straight_pieces) {
-                            for kept in clipped_curve(&piece, cuts, Some(cut.frame)) {
-                                sections.push(kept);
-                                cut_layers.push(layer_of(id));
-                            }
-                        }
-                    }
-                }
+            let part = self.cut_body(doc, id, body, cuts, &layer_of(id))?;
+            fills.extend(part.fills);
+            for section in part.sections {
+                sections.push(section);
+                cut_layers.push(part.layer.clone());
             }
-            t_sec += ta.elapsed();
-            let tc = std::time::Instant::now();
-            let mut kept = Some(body);
-            for cut in cuts {
-                kept = match kept {
-                    Some(b) => clipped_body(&b, cut)?,
-                    None => None,
-                };
-            }
-            t_clip += tc.elapsed();
-            if let Some(body) = kept {
+            if let Some(body) = part.kept {
                 bodies.push(body);
-                body_layers.push(layer_of(id));
+                body_layers.push(part.layer);
             }
         }
         for (id, curve) in curves_of(doc, ids) {
@@ -379,7 +346,6 @@ impl Make2D {
                 curve_layers.push(layer_of(id));
             }
         }
-        eprintln!("TIME gather: fills {t_fill:?}, fills+sections {t_sec:?}, clipping bodies {t_clip:?}");
         let sections_from = bodies.len() + curves.len();
         curves.extend(sections);
         Ok(Inputs {
@@ -392,6 +358,47 @@ impl Make2D {
                 .collect(),
             sections_from,
             fills,
+        })
+    }
+
+    /// One body cut by the clipping planes `cuts`: unless left out, its fills and the outlines
+    /// where the planes cut it (only where the rest of the cuts keep them); and what the planes
+    /// leave of it, if anything.
+    fn cut_body(
+        &self,
+        doc: &Document,
+        id: u64,
+        body: Body,
+        cuts: &[PlaneCut],
+        layer: &str,
+    ) -> Result<CutBody, curva_kernel::KernelError> {
+        let mut fills = Vec::new();
+        let mut sections = Vec::new();
+        if !self.without_clip_cuts {
+            // Each cut through the body once, for both its fill and its outline lines.
+            let outlines: Vec<Option<Vec<Curve>>> = cuts
+                .iter()
+                .map(|cut| body.section(cut.origin, cut.keep).ok())
+                .collect();
+            fills = fills::fills_of(doc, id, &outlines, cuts, layer);
+            for (cut, outline) in cuts.iter().zip(&outlines) {
+                for piece in outline.iter().flatten().flat_map(straight_pieces) {
+                    sections.extend(clipped_curve(&piece, cuts, Some(cut.frame)));
+                }
+            }
+        }
+        let mut kept = Some(body);
+        for cut in cuts {
+            kept = match kept {
+                Some(b) => clipped_body(&b, cut)?,
+                None => None,
+            };
+        }
+        Ok(CutBody {
+            fills,
+            sections,
+            kept,
+            layer: layer.to_owned(),
         })
     }
 
@@ -533,6 +540,15 @@ impl Make2D {
 }
 
 /// Make2D's inputs, cut by the chosen clipping planes.
+/// One body after the clipping planes: its fills, the outlines where the planes cut it, what is
+/// left of it, and its layer's path.
+struct CutBody {
+    fills: Vec<fills::Fill>,
+    sections: Vec<Curve>,
+    kept: Option<Body>,
+    layer: String,
+}
+
 struct Inputs {
     bodies: Vec<Body>,
     /// The chosen curves, then the outlines where the planes cut the bodies.

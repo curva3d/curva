@@ -647,7 +647,9 @@ mod tests {
     fn plan_build_of_the_test_house() {
         use curva_document::clipping::{ClippingPlane, SectionFill};
         let mut doc = Document::default();
-        benchmark_scene(&mut doc, BenchmarkScene::named("house").unwrap()).unwrap();
+        // The test house, or another standard scene named in `PLAN_SCENE` (`large`).
+        let scene = std::env::var("PLAN_SCENE").unwrap_or_else(|_| "house".to_owned());
+        benchmark_scene(&mut doc, BenchmarkScene::named(&scene).unwrap()).unwrap();
         let cut = f64::from(crate::agent::PLAN_CUT_HEIGHT);
         let frame = doc.add(
             Curve::polyline(
@@ -687,14 +689,20 @@ mod tests {
         processor.submit(&mut doc, "");
         let took = started.elapsed();
         let made = doc.state().objects.len() - before;
-        println!("plan of the test house: {made} objects in {took:.3?}");
+        println!("plan of {scene}: {made} objects in {took:.3?}");
         if let Ok(path) = std::env::var("DUMP") {
             let drawn: Vec<String> = doc.state().objects[before..]
                 .iter()
                 .map(|o| format!("{} {:?}", doc.state().layer_path(o.layer), o.shape))
                 .collect();
-            std::fs::write(path, drawn.join("
-")).unwrap();
+            std::fs::write(
+                path,
+                drawn.join(
+                    "
+",
+                ),
+            )
+            .unwrap();
         }
         assert!(made > 0);
     }
