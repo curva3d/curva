@@ -70,7 +70,7 @@ fn from_sweep(
 fn sweep_records(curves: &[Curve]) -> Result<Vec<solidcore_ops::sweep::Curve>, KernelError> {
     let mut out = Vec::new();
     for curve in curves {
-        out.extend(crate::making::sweep_pieces(curve)?);
+        out.extend(crate::extrude::sweep_pieces(curve)?);
     }
     Ok(out)
 }

@@ -495,7 +495,7 @@ impl Body {
             as_sweep(&starting_at(first, ps)?)?,
             as_sweep(&starting_at(second, pe)?)?,
         ];
-        let pieces = crate::making::sweep_pieces(profile)?;
+        let pieces = crate::extrude::sweep_pieces(profile)?;
         let (made, _bound) = sweep_two_rails(
             &pieces,
             [&rails[0], &rails[1]],

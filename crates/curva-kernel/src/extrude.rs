@@ -1,14 +1,14 @@
-//! Making surfaces and solids from curves: extruding, filling flat outlines, and the rest of the
-//! engine's sweeps.
+//! Extruding curves into surfaces and solids: straight, drafted, to a point, and filling flat
+//! outlines, with curves inside others making holes.
 
 use crate::{Body, Curve, KernelError, Point, cross};
 use solidcore_ops::sweep::{
-    Curve as SweepCurve, DraftCorner, SweepFrame, extrude, loft, planar_faces, revolve,
-    sweep_placed,
+    Affine, Curve as SweepCurve, DraftCorner, Ends, extrude, loft_to_point, planar_faces,
+    sweep_stations,
 };
 use std::f64::consts::TAU;
 
-fn failed(what: &str, error: impl std::fmt::Debug) -> KernelError {
+pub(crate) fn failed(what: &str, error: impl std::fmt::Debug) -> KernelError {
     KernelError(format!("{what} failed: {error:?}"))
 }
 
@@ -93,7 +93,7 @@ fn arc(centre: Point, radius: f64, x: Point, y: Point, sweep: f64) -> SweepCurve
     }
 }
 
-fn pieces_of(curves: &[Curve]) -> Result<Vec<SweepCurve>, KernelError> {
+pub(crate) fn pieces_of(curves: &[Curve]) -> Result<Vec<SweepCurve>, KernelError> {
     let mut pieces = Vec::new();
     for curve in curves {
         pieces.extend(sweep_pieces(curve)?);
@@ -165,6 +165,30 @@ pub fn nested_groups(curves: &[Curve], normal: Point) -> Vec<Vec<usize>> {
     groups
 }
 
+/// How the corners of a drafted extrusion close, as Rhino's ExtrudeCrvTapered `Corners`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TaperCorners {
+    /// Each wall continues until it meets the next (Rhino's `Sharp`).
+    Sharp,
+    /// An arc about each corner (Rhino's `Round`).
+    Round,
+    /// Each wall continues straight along its end (Rhino's `Smooth`).
+    Smooth,
+}
+
+pub(crate) fn pieces(curves: &[Curve]) -> Result<Vec<solidcore_ops::sweep::Curve>, KernelError> {
+    let mut out = Vec::new();
+    for curve in curves {
+        out.extend(sweep_pieces(curve)?);
+    }
+    Ok(out)
+}
+
+const SAME: Affine = Affine {
+    m: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+    t: [0.0; 3],
+};
+
 impl Body {
     /// The curves pulled straight along `direction` (of length 1) by `distance`. With `cap`,
     /// closed flat curves are closed at both ends into a solid, and curves inside others make
@@ -192,60 +216,80 @@ impl Body {
         Self::made(&made)
     }
 
-    /// The curves spun about the line through `origin` along `axis`, by `angle` radians up to
-    /// a full turn, right-handed. With `cap`, a closed curve turned part of the way is closed
-    /// at both ends into a solid.
-    pub fn revolved(
-        curves: &[Curve],
-        origin: Point,
-        axis: Point,
-        angle: f64,
-        cap: bool,
-    ) -> Result<Self, KernelError> {
-        let axis =
-            crate::unit(axis).ok_or_else(|| KernelError("the axis has no length".to_owned()))?;
-        let made = revolve(&pieces_of(curves)?, origin, axis, angle.min(TAU), cap)
-            .map_err(|e| failed("revolving", e))?;
-        Self::made(&made)
-    }
-
-    /// A skin stretched through the curves in order, smooth across them (degree 3 where there
-    /// are enough curves). With `cap`, closed curves are closed at the first and last into a
-    /// solid.
-    pub fn lofted(curves: &[Curve], cap: bool) -> Result<Self, KernelError> {
-        let sections = curves
-            .iter()
-            .map(sweep_pieces)
-            .collect::<Result<Vec<_>, _>>()?;
-        let degree = u32::try_from(curves.len().saturating_sub(1).clamp(1, 3)).unwrap_or(3);
-        let made = loft(&sections, degree, cap).map_err(|e| failed("lofting", e))?;
-        Self::made(&made)
-    }
-
-    /// The cross-section curves swept along `rail`, turning with it. With `cap`, closed
-    /// sections are closed at both ends into a solid.
-    pub fn swept(sections: &[Curve], rail: &Curve, cap: bool) -> Result<Self, KernelError> {
-        let (made, ..) = sweep_placed(
-            &pieces_of(sections)?,
-            &sweep_pieces(rail)?,
-            SweepFrame::Follow,
-            cap,
-        )
-        .map_err(|e| failed("sweeping", e))?;
-        Self::made(&made)
-    }
-
     /// Flat surfaces filling closed flat curves; a curve inside another makes a hole.
     pub fn planar(curves: &[Curve]) -> Result<Self, KernelError> {
         let made = planar_faces(&pieces_of(curves)?).map_err(|e| failed("filling", e))?;
         Self::made(&made)
     }
+
+    /// A closed flat curve pulled along `direction` by `distance`, its walls leaning in by
+    /// `draft` radians (out when negative), closed at both ends when `cap`.
+    pub fn extruded_tapered(
+        curve: &Curve,
+        direction: Point,
+        distance: f64,
+        draft: f64,
+        corners: TaperCorners,
+        cap: bool,
+    ) -> Result<Self, KernelError> {
+        let corner = match corners {
+            TaperCorners::Sharp => DraftCorner::Curvature,
+            TaperCorners::Round => DraftCorner::Round,
+            TaperCorners::Smooth => DraftCorner::Tangent,
+        };
+        let (direction, distance) = if distance < 0.0 {
+            (direction.map(|v| -v), -distance)
+        } else {
+            (direction, distance)
+        };
+        let made = extrude(
+            &pieces(std::slice::from_ref(curve))?,
+            direction,
+            distance,
+            draft,
+            corner,
+            cap,
+        )
+        .map_err(|e| failed("extruding with a draft", e))?;
+        Self::made(&made)
+    }
+
+    /// A pyramid on a closed polygon of lines, to `apex`.
+    pub fn pyramid(base: &Curve, apex: Point) -> Result<Self, KernelError> {
+        let made =
+            loft_to_point(&sweep_pieces(base)?, apex).map_err(|e| failed("making a pyramid", e))?;
+        Self::made(&made)
+    }
+
+    /// Lines from every point of `curve` to `apex`, as Rhino's ExtrudeCrvToPoint: a pyramid for
+    /// a closed polygon when `cap`; otherwise a ruled surface whose tip closes to a ten-thousandth
+    /// of the curve's size, as the engine's sections cannot shrink to nothing.
+    pub fn extruded_to_point(curve: &Curve, apex: Point, cap: bool) -> Result<Self, KernelError> {
+        if cap && matches!(curve, Curve::Polyline { closed: true, .. }) {
+            return Self::pyramid(curve, apex);
+        }
+        // CUSTOM KERNEL OPERATION: cone-to-point
+        let ends = if cap { Ends::Capped } else { Ends::Open };
+        let profile = pieces(std::slice::from_ref(curve))?;
+        // The smallest tip the engine closes reliably, then a larger one if it will not.
+        let mut last = None;
+        for tiny in [1e-4, 1e-3] {
+            let toward = Affine {
+                m: [[tiny, 0.0, 0.0], [0.0, tiny, 0.0], [0.0, 0.0, tiny]],
+                t: apex.map(|v| v * (1.0 - tiny)),
+            };
+            match sweep_stations(&profile, &[SAME, toward], ends) {
+                Ok(made) => return Self::made(&made),
+                Err(e) => last = Some(e),
+            }
+        }
+        Err(failed("extruding to a point", last))
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{Body, Curve};
-    use std::f64::consts::{PI, TAU};
+    use crate::{Body, Curve, TaperCorners};
 
     fn close(a: f64, b: f64) -> bool {
         (a - b).abs() <= 1e-6 * b.abs().max(1.0)
@@ -308,70 +352,6 @@ mod tests {
     }
 
     #[test]
-    fn a_rectangle_revolved_whole_is_a_ring() {
-        // A 1 by 2 rectangle from 3 to 4 out from the Z axis: a ring of volume pi (4^2 - 3^2) 2.
-        let profile = Curve::polyline(
-            vec![
-                [3.0, 0.0, 0.0],
-                [4.0, 0.0, 0.0],
-                [4.0, 0.0, 2.0],
-                [3.0, 0.0, 2.0],
-            ],
-            true,
-        )
-        .unwrap();
-        let ring = Body::revolved(
-            std::slice::from_ref(&profile),
-            [0.0; 3],
-            [0.0, 0.0, 1.0],
-            TAU,
-            true,
-        )
-        .unwrap();
-        assert!(close(ring.volume().unwrap(), PI * 7.0 * 2.0));
-        let quarter =
-            Body::revolved(&[profile], [0.0; 3], [0.0, 0.0, 1.0], PI / 2.0, true).unwrap();
-        assert!(close(quarter.volume().unwrap(), PI * 7.0 * 2.0 / 4.0));
-    }
-
-    #[test]
-    fn a_line_revolved_is_a_cylinder_wall() {
-        let line = Curve::line([2.0, 0.0, 0.0], [2.0, 0.0, 5.0]).unwrap();
-        let wall = Body::revolved(&[line], [0.0; 3], [0.0, 0.0, 1.0], TAU, false).unwrap();
-        assert!(close(wall.area().unwrap(), TAU * 2.0 * 5.0));
-    }
-
-    #[test]
-    fn two_equal_circles_loft_into_a_cylinder() {
-        let low = Curve::circle([0.0; 3], 2.0).unwrap();
-        let high = Curve::circle([0.0, 0.0, 3.0], 2.0).unwrap();
-        let tube = Body::lofted(&[low.clone(), high.clone()], true).unwrap();
-        assert!(close(tube.volume().unwrap(), PI * 4.0 * 3.0));
-        let open = Body::lofted(&[low, high], false).unwrap();
-        assert!(close(open.area().unwrap(), TAU * 2.0 * 3.0));
-    }
-
-    #[test]
-    fn three_sections_loft_smoothly_through_all_of_them() {
-        let sections: Vec<Curve> = [(0.0, 2.0), (2.0, 1.0), (4.0, 2.0)]
-            .iter()
-            .map(|(z, r)| Curve::circle([0.0, 0.0, *z], *r).unwrap())
-            .collect();
-        let body = Body::lofted(&sections, true).unwrap();
-        let (low, high) = body.bounds().unwrap();
-        assert!(close(low[2], 0.0) && close(high[2], 4.0));
-        assert!(body.volume().unwrap() > 0.0);
-    }
-
-    #[test]
-    fn a_circle_swept_along_a_line_is_a_cylinder() {
-        let section = Curve::circle([0.0; 3], 1.0).unwrap();
-        let rail = Curve::line([0.0; 3], [0.0, 0.0, 6.0]).unwrap();
-        let body = Body::swept(&[section], &rail, true).unwrap();
-        assert!((body.volume().unwrap() - PI * 6.0).abs() < 1e-3);
-    }
-
-    #[test]
     fn nested_curves_group_into_outlines_with_their_holes() {
         let hole_a = Curve::circle([3.0, 5.0, 0.0], 1.0).unwrap();
         let hole_b = Curve::circle([7.0, 5.0, 0.0], 1.0).unwrap();
@@ -402,5 +382,35 @@ mod tests {
         let length = wave.length().unwrap();
         let body = Body::extruded(&[wave], [0.0, 0.0, 1.0], 2.0, false).unwrap();
         assert!((body.area().unwrap() - 2.0 * length).abs() < 1e-3 * length);
+    }
+
+    #[test]
+    fn a_square_tapered_in_makes_a_frustum() {
+        // 10 × 10, 2 high, walls leaning in 45°: the top is 6 × 6; volume h/3 (A + B + √AB).
+        let solid = Body::extruded_tapered(
+            &square(10.0),
+            [0.0, 0.0, 1.0],
+            2.0,
+            std::f64::consts::FRAC_PI_4,
+            TaperCorners::Sharp,
+            true,
+        )
+        .unwrap();
+        let expected = 2.0 / 3.0 * (100.0 + 36.0 + 60.0);
+        assert!(
+            (solid.volume().unwrap() - expected).abs() < 1e-3,
+            "{}",
+            solid.volume().unwrap()
+        );
+    }
+
+    #[test]
+    fn pyramids_and_cones_to_a_point() {
+        let pyramid = Body::extruded_to_point(&square(3.0), [1.5, 1.5, 4.0], true).unwrap();
+        assert!((pyramid.volume().unwrap() - 12.0).abs() < 1e-6);
+        let circle = Curve::circle([0.0; 3], 2.0).unwrap();
+        let cone = Body::extruded_to_point(&circle, [0.0, 0.0, 6.0], true).unwrap();
+        let expected = std::f64::consts::PI * 4.0 * 6.0 / 3.0;
+        assert!((cone.volume().unwrap() - expected).abs() < 1e-3 * expected);
     }
 }
