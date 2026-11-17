@@ -332,11 +332,11 @@ impl Mesh {
         (self.rebuilt(&self.all_vertices(), &faces), filled)
     }
 
-    fn all_vertices(&self) -> Vec<u32> {
+    pub(crate) fn all_vertices(&self) -> Vec<u32> {
         (0..self.vertex_count()).map(index).collect()
     }
 
-    fn corners_of(&self, corners: &[usize], flip: bool) -> Vec<NewCorner> {
+    pub(crate) fn corners_of(&self, corners: &[usize], flip: bool) -> Vec<NewCorner> {
         corners
             .iter()
             .map(|&c| NewCorner {
@@ -361,7 +361,7 @@ impl Mesh {
             .collect()
     }
 
-    fn keeping_faces(&self, keep: impl Fn(usize) -> bool) -> (Self, usize) {
+    pub(crate) fn keeping_faces(&self, keep: impl Fn(usize) -> bool) -> (Self, usize) {
         let faces: Vec<Vec<NewCorner>> = (0..self.face_count())
             .filter(|&f| keep(f))
             .map(|f| self.corners_of(&self.face_range(f).collect::<Vec<_>>(), false))

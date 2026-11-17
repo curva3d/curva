@@ -6,8 +6,11 @@
 
 pub mod boolean;
 mod check;
+mod convert;
 mod measure;
 mod mesh;
+mod nurbs;
+mod reduce;
 mod repair;
 mod subd;
 mod transform;
