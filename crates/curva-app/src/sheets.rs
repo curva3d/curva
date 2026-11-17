@@ -210,6 +210,7 @@ impl Curva {
                 scene,
                 faces,
                 shapes: Arc::default(),
+                circles: Arc::default(),
                 overlay: Arc::default(),
                 preview_faces: Arc::default(),
                 objects: Arc::default(),

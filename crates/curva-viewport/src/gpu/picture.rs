@@ -71,6 +71,8 @@ pub(crate) struct Scene {
     pub(crate) selection: Arc<Vec<u64>>,
     /// Clipping planes cutting the picture, as for [`Drawing::clips`].
     pub(crate) clips: Vec<[f32; 4]>,
+    /// Whole circles drawn from their centre and axes, as for [`Drawing::circles`].
+    pub(crate) circles: Arc<Vec<crate::PlacedCircle>>,
 }
 
 /// [`draw_picture`], with uploads split into blocks of at most `chunk_bytes`.
@@ -184,6 +186,7 @@ fn picture_drawing(picture: Picture, scene: &Scene) -> Drawing {
         scene: Arc::new(lines),
         faces: Arc::new(picture.faces),
         shapes: Arc::default(),
+        circles: Arc::clone(&scene.circles),
         overlay: Arc::clone(&empty),
         preview_faces: Arc::new(Vec::new()),
         objects: Arc::clone(&scene.objects),

@@ -16,10 +16,13 @@
   Placing a block instance used to remake its body in the engine, so every tree was meshed again;
   now an instance that moves, turns, scales evenly or mirrors shares its body, and Bevy holds one
   mesh per shape and draws every copy at its place.
+- **Step 4, circles drawn from their axes, in review** (stacked on #281): *Large* now uses 800 MiB
+  of graphics memory steady instead of 1312 MiB, under the spec's 1 GB. Most of what was left was
+  the 40,000 circles, 128 segments each (328 MB); the copies' edges were only 38 MB. A whole,
+  undashed circle is now one entry, and the graphics card works out its segments.
 
 **Next**
-- Step 4, still to do: graphics memory under 1 GB (Curva's lines, written out for every copy:
-  edges once per shape next); picking and snapping on the shared shapes instead of placed copies;
+- Step 4, still to do: picking and snapping on the shared shapes instead of placed copies;
   the moving origin for *Far* (#225); Bevy's settings in millimetres.
 - Then step 5, speed (Bevy's fixed cost per frame, snapping #130).
 
@@ -30,6 +33,9 @@
   `Body::placement`.
 - `curva_viewport::Drawing` has a new field `shapes`, and `SceneParts::shared` and
   `scene_shapes_without` are new; `SceneParts::of` is unchanged.
+- `Drawing` and `SceneParts` also have a new field `circles` (whole circles drawn from their
+  axes); `SceneParts::shared` leaves those circles out of its lines. Pictures and sheets pass
+  `circles: Arc::default()` and keep drawing circles as segments.
 
 ## 16 November 2026
 

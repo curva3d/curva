@@ -249,5 +249,31 @@ during the run less its use before, read with `nvidia-smi` every 2 s.
   or mirrors shares its body's faces, and Bevy holds one mesh per shape and draws every copy at
   its place.
 - **Spec targets (§2):** first frame under 5 s met. Graphics memory under 1 GB not yet: what is
-  left is mostly Curva's lines, written out for every copy (each solid's and tree's edges, the
-  40,000 circles). The time between frames is still snapping (#130).
+  left is mostly Curva's lines (see the next section). The time between frames is still
+  snapping (#130).
+
+## Circles drawn from their axes (17 November 2026, display-on-Bevy step 4, #153)
+
+Where *Large*'s graphics memory went after copies were drawn once, read by printing each upload:
+Curva's lines were 468 MB (14.6 million line ends of 32 bytes). Of those, the 40,000 circles took
+328 MB (128 segments each), the 10,000 splines about 100 MB, and the edges of all solids and trees
+only 38 MB. An empty scene already takes about 800 MB: the window, Bevy and its lighting.
+
+Now a whole, undashed circle is one entry of 56 bytes, and the graphics card works out its 128
+segments as it draws. *Large* on the RTX 3060, release build, two runs each, alternating, same
+machine and hour; graphics memory is the card's use above its use before, read with `nvidia-smi`
+every second, its peak and its steady level over the run's second half.
+
+| | Before (#281) | After |
+|---|---|---|
+| Graphics memory, steady | 1312 MiB | 800 MiB |
+| Graphics memory, peak | 1440 MiB | 800 MiB |
+| Card time for Curva's lines | 12.85–12.91 ms | 11.49–11.58 ms |
+| First frame | 4.5–5.6 s | 4.4–5.3 s |
+| Between frames | 25.3–32.3 ms | 24.3–25.7 ms |
+
+- **Spec target (§2):** graphics memory under 1 GB is met; the scene now costs about what an
+  empty one does (the card's driver hands memory out in large blocks, so smaller changes do not
+  show). Other builds were running during the first pair of runs, so its frame times are slower.
+- Pictures for agents and sheets still draw circles as segments; only the window's views draw
+  them from their axes.

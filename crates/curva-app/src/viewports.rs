@@ -12,6 +12,8 @@ pub(crate) struct ViewportCache {
     pub(crate) faces: Arc<Vec<MeshVertex>>,
     /// Surfaces and solids, each shape held once and drawn at every copy's placement.
     pub(crate) shapes: Arc<Vec<curva_viewport::PlacedShape>>,
+    /// Whole circles, drawn by the graphics card from their centre and axes, out of the lines.
+    pub(crate) circles: Arc<Vec<curva_viewport::PlacedCircle>>,
     /// Meshes of solids, kept until they change.
     pub(crate) meshes: MeshCache,
     /// The faces and shapes with those a preview replaces left out, and which those are.
@@ -222,6 +224,7 @@ impl Curva {
             self.drawing.shaded_scene = Arc::new(parts.shaded_lines);
             self.drawing.faces = Arc::new(parts.faces);
             self.drawing.shapes = Arc::new(parts.shapes);
+            self.drawing.circles = Arc::new(parts.circles);
             self.drawing.objects = Arc::new(parts.objects);
             self.drawing.faces_without.0.clear();
         }
@@ -757,6 +760,7 @@ impl Curva {
                 }),
                 faces: pane_faces,
                 shapes: Arc::clone(&shapes),
+                circles: Arc::clone(&self.drawing.circles),
                 objects: Arc::clone(&self.drawing.objects),
                 selection: Arc::clone(&self.drawing.selection),
                 overlay: Arc::clone(&overlay),

@@ -188,14 +188,14 @@ pub fn shaded_scene_lines(outlines: &Outlines, selected: &[u64]) -> Vec<Vertex> 
 /// The objects as line segments.
 #[must_use]
 pub fn object_lines(outlines: &Outlines, selected: &[u64]) -> Vec<Vertex> {
-    lines_of(outlines, selected, false, None)
+    lines_of(outlines, selected, false, None, false)
 }
 
 /// The objects as line segments for a shaded view, where the edges of surfaces and solids
 /// are dark so they show against the faces, as in Rhino. Curves keep their layer's colour.
 #[must_use]
 pub fn shaded_object_lines(outlines: &Outlines, selected: &[u64]) -> Vec<Vertex> {
-    lines_of(outlines, selected, true, None)
+    lines_of(outlines, selected, true, None, false)
 }
 
 /// The window's scene (spec `display-pipeline.md` step 4): the lines and faces of every object,
@@ -214,6 +214,9 @@ pub struct SceneParts {
     /// Surfaces and solids drawn from the mesh they share with their copies, each at its
     /// placement; empty with [`SceneParts::of`].
     pub shapes: Vec<PlacedShape>,
+    /// Whole circles the graphics card draws from their centre and axes, one entry each, left
+    /// out of `lines` and `shaded_lines`; empty with [`SceneParts::of`].
+    pub circles: Vec<crate::PlacedCircle>,
     /// Which object each number stands for: number `n` is `objects[n]`.
     pub objects: Vec<u64>,
 }
@@ -239,24 +242,27 @@ impl SceneParts {
     pub fn of(outlines: &Outlines) -> Self {
         let (objects, numbers) = numbered(outlines);
         Self {
-            lines: lines_of(outlines, &[], false, Some(&numbers)),
-            shaded_lines: lines_of(outlines, &[], true, Some(&numbers)),
+            lines: lines_of(outlines, &[], false, Some(&numbers), false),
+            shaded_lines: lines_of(outlines, &[], true, Some(&numbers), false),
             faces: faces_of(outlines, &[], &[], Some(&numbers), true),
             shapes: Vec::new(),
+            circles: Vec::new(),
             objects,
         }
     }
 
     /// As [`SceneParts::of`], but surfaces and solids come as [`PlacedShape`]s, each shape
     /// held once however many copies there are; `faces` keeps the rest (annotation's fills).
+    /// Whole, undashed circles come as [`crate::PlacedCircle`]s, out of the lines.
     #[must_use]
     pub fn shared(outlines: &Outlines) -> Self {
         let (objects, numbers) = numbered(outlines);
         Self {
-            lines: lines_of(outlines, &[], false, Some(&numbers)),
-            shaded_lines: lines_of(outlines, &[], true, Some(&numbers)),
+            lines: lines_of(outlines, &[], false, Some(&numbers), true),
+            shaded_lines: lines_of(outlines, &[], true, Some(&numbers), true),
             faces: faces_of(outlines, &[], &[], Some(&numbers), false),
             shapes: shapes_of(outlines, &numbers),
+            circles: crate::circles::circles_of(outlines, &numbers),
             objects,
         }
     }
@@ -336,12 +342,14 @@ pub fn scene_shapes_without(
 }
 
 /// Lines of every object. With `numbers`, each vertex carries its object's number and the
-/// selection is left to the graphics card; without, selected objects are drawn so here.
+/// selection is left to the graphics card; without, selected objects are drawn so here. With
+/// `circles_apart`, the circles [`crate::circles::drawn_apart`] are left out.
 pub(crate) fn lines_of(
     outlines: &Outlines,
     selected: &[u64],
     shaded: bool,
     numbers: Option<&std::collections::HashMap<u64, u32>>,
+    circles_apart: bool,
 ) -> Vec<Vertex> {
     let mut out = Vec::new();
     for (index, (id, points)) in outlines.objects.iter().enumerate() {
@@ -356,16 +364,10 @@ pub(crate) fn lines_of(
         if shaded && outlines.seams.get(index).copied().unwrap_or(false) {
             continue;
         }
-        let on_faces = outlines.on_faces.get(index).copied().unwrap_or(false);
-        let colour = if selected.contains(id) {
-            SELECTED_COLOUR
-        } else if outlines.locked.get(index).copied().unwrap_or(false) {
-            LOCKED_COLOUR
-        } else if shaded && on_faces {
-            EDGE_ON_FACES_COLOUR
-        } else {
-            outlines.colours.get(index).copied().unwrap_or(CURVE_COLOUR)
-        };
+        if circles_apart && crate::circles::drawn_apart(outlines, index).is_some() {
+            continue;
+        }
+        let colour = piece_colour(outlines, index, selected.contains(id), shaded);
         let dashes = outlines.dashes.get(index).copied().unwrap_or(&[]);
         if dashes.is_empty() {
             polyline_with(&mut out, points, colour, width);
@@ -379,6 +381,26 @@ pub(crate) fn lines_of(
         }
     }
     out
+}
+
+/// The colour entry `index` of `outlines` draws in: the selection colour when `chosen`, grey
+/// when locked, dark for an edge on faces in a `shaded` view, else its own.
+pub(crate) fn piece_colour(
+    outlines: &Outlines,
+    index: usize,
+    chosen: bool,
+    shaded: bool,
+) -> [f32; 3] {
+    let on_faces = outlines.on_faces.get(index).copied().unwrap_or(false);
+    if chosen {
+        SELECTED_COLOUR
+    } else if outlines.locked.get(index).copied().unwrap_or(false) {
+        LOCKED_COLOUR
+    } else if shaded && on_faces {
+        EDGE_ON_FACES_COLOUR
+    } else {
+        outlines.colours.get(index).copied().unwrap_or(CURVE_COLOUR)
+    }
 }
 
 /// The surfaces and solids as shaded triangles, selected ones in the selection colour.
