@@ -17,6 +17,7 @@ mod repair;
 mod smooth;
 mod subd;
 mod subd_edit;
+mod subd_primitives;
 mod transform;
 mod triangulate;
 

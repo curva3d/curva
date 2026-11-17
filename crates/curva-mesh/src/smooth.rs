@@ -103,6 +103,79 @@ impl SubD {
         Ok((result, centre, refined))
     }
 
+    /// The same SubD with its cage points moved so that each one's point on the smooth surface
+    /// lands on `targets` (one per cage point), as Rhino places its SubD spheres and tori: the
+    /// surface then passes through the shape's own points.
+    ///
+    /// Each cage point's limit point is a fixed blend of it and its neighbours; the cage is found
+    /// by moving every point by what its limit point still misses, again and again (a Jacobi
+    /// iteration, which settles because each limit point leans mostly on its own cage point),
+    /// until the largest miss is a ten-billionth of the shape's size.
+    ///
+    /// # Errors
+    /// When the library refuses the cage, or the targets are not one per cage point.
+    // CUSTOM MESH OPERATION: subd-limit-fit
+    pub fn fitted(self, targets: &[Point]) -> Result<Self, SmoothError> {
+        let cage = self.cage();
+        if targets.len() != cage.vertex_count() {
+            return Err(SmoothError(
+                "one target is needed for each cage point".to_owned(),
+            ));
+        }
+        let refiner = Refiner::new(
+            self.library_cage(),
+            Scheme::CatmullClark,
+            SchemeOptions::default(),
+        )
+        .map_err(|e| SmoothError(e.to_string()))?;
+        let result = refiner
+            .refine_uniform(&UniformRefine::from(NonZeroU8::MIN))
+            .map_err(|e| SmoothError(e.to_string()))?;
+        let limit = result
+            .limit_stencils()
+            .map_err(|e| SmoothError(e.to_string()))?;
+        // The refined point that stands for each cage point.
+        let mut row = vec![usize::MAX; cage.vertex_count()];
+        for (r, origin) in result.lineage.vertex_origin.iter().enumerate() {
+            if let subdiv_kernels::VertexOrigin::Vertex(v) = *origin {
+                row[v as usize] = r;
+            }
+        }
+        if row.contains(&usize::MAX) {
+            return Err(SmoothError("a cage point has no limit point".to_owned()));
+        }
+        let (lo, hi) = bounds_of(targets);
+        let centre: Point = std::array::from_fn(|i| f64::midpoint(lo[i], hi[i]));
+        let size = (0..3)
+            .map(|i| hi[i] - lo[i])
+            .fold(0.0, f64::max)
+            .max(f64::MIN_POSITIVE);
+        let goal: Vec<Point> = targets
+            .iter()
+            .map(|p| std::array::from_fn(|i| p[i] - centre[i]))
+            .collect();
+        let mut points = goal.clone();
+        for _ in 0..500 {
+            let on_surface = limit.position.interpolate(&result.interpolate(&points));
+            let mut worst: f64 = 0.0;
+            for (v, p) in points.iter_mut().enumerate() {
+                let miss: Point = std::array::from_fn(|i| goal[v][i] - on_surface[row[v]][i]);
+                worst = miss.iter().fold(worst, |w, m| w.max(m.abs()));
+                for i in 0..3 {
+                    p[i] += miss[i];
+                }
+            }
+            if worst <= size * 1e-10 {
+                break;
+            }
+        }
+        let placed: Vec<Point> = points
+            .iter()
+            .map(|p| std::array::from_fn(|i| p[i] + centre[i]))
+            .collect();
+        Ok(self.with_cage_points(placed))
+    }
+
     /// The cage subdivided `levels` times (1 to [`MAX_LEVELS`]): the control net one level
     /// finer, all quads, not yet on the limit surface.
     ///
@@ -358,6 +431,19 @@ fn facing(mesh: Mesh) -> Mesh {
     mesh.clone()
         .with_normals(Attribute::PerVertex(turned))
         .unwrap_or(mesh)
+}
+
+/// The lowest and highest of some points in each direction.
+fn bounds_of(points: &[Point]) -> (Point, Point) {
+    points.iter().fold(
+        ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]),
+        |(lo, hi), p| {
+            (
+                std::array::from_fn(|i| lo[i].min(p[i])),
+                std::array::from_fn(|i| hi[i].max(p[i])),
+            )
+        },
+    )
 }
 
 fn cross(a: Point, b: Point) -> Point {
