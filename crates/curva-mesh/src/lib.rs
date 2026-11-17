@@ -16,6 +16,7 @@ mod reduce;
 mod repair;
 mod smooth;
 mod subd;
+mod subd_edit;
 mod subd_primitives;
 mod to_nurbs;
 mod transform;
@@ -26,8 +27,9 @@ pub use curva_kernel::Point;
 pub use from_body::density_tolerances;
 pub use mesh::{Attribute, Mesh, MeshError};
 pub use primitives::{Frame, SphereStyle};
-pub use smooth::{MAX_LEVELS, Patch, SmoothError};
+pub use smooth::{LiveSurface, MAX_LEVELS, Patch, SmoothError};
 pub use subd::{Sharpness, SubD, SubDDisplay, VertexTag};
+pub use subd_edit::{FillStyle, StitchAt};
 pub use to_nurbs::ToNurbsError;
 pub use triangulate::Triangles;
 

@@ -247,6 +247,61 @@ impl SubD {
         }
     }
 
+    /// A SubD on a changed cage, keeping what it can: `points[v]` is old point `v`'s number in
+    /// the new cage (if it is still there), and `faces[f]` new face `f`'s old number (if it had
+    /// one). Edges keep their sharpness and points their corner tags where both ends are still
+    /// there; faces keep their colours; the new cage's open border is creased as always.
+    pub(crate) fn carried_to(
+        &self,
+        cage: Mesh,
+        points: &[Option<u32>],
+        faces: &[Option<usize>],
+    ) -> Self {
+        let mut subd = Self::new(cage);
+        subd.display = self.display;
+        let uses = subd.edge_uses();
+        let old_uses = self.edge_uses();
+        for &([a, b], s) in &self.sharp {
+            // A border's crease comes from being a border, so only inner edges' carry over.
+            if old_uses.get(&(a, b)).is_none_or(|f| f.len() != 2) {
+                continue;
+            }
+            if let (Some(Some(na)), Some(Some(nb))) =
+                (points.get(a as usize), points.get(b as usize))
+            {
+                let key = ((*na).min(*nb), (*na).max(*nb));
+                if uses.get(&key).is_some_and(|f| f.len() == 2) {
+                    subd.set_sharpness(key, s);
+                }
+            }
+        }
+        let mut corners: Vec<u32> = self
+            .corners
+            .iter()
+            .filter_map(|&v| points.get(v as usize).copied().flatten())
+            .collect();
+        corners.sort_unstable();
+        corners.dedup();
+        subd.corners = corners;
+        if let Some(old) = &self.colours {
+            let colours: Vec<Option<[f32; 3]>> = faces
+                .iter()
+                .map(|f| f.and_then(|f| old.get(f).copied().flatten()))
+                .collect();
+            if colours.len() == subd.cage.face_count() && colours.iter().any(Option::is_some) {
+                subd.colours = Some(colours);
+            }
+        }
+        subd
+    }
+
+    /// The same SubD with these points no longer corners.
+    #[must_use]
+    pub fn without_corners(mut self, points: &[u32]) -> Self {
+        self.corners.retain(|v| !points.contains(v));
+        self
+    }
+
     /// The same SubD with its cage points moved to `points` (one for each), its faces, tags and
     /// colours kept.
     pub(crate) fn with_cage_points(mut self, points: Vec<Point>) -> Self {
