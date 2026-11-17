@@ -202,6 +202,7 @@ impl Curva {
             let (clips, faces) = self.clipped_view(
                 curva_document::clipping::ClipView::Detail(detail.frame),
                 &model_faces,
+                [0.0; 3],
             );
             let drawing = curva_viewport::Drawing {
                 clips,

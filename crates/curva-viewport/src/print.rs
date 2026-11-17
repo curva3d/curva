@@ -98,6 +98,7 @@ fn marks_of(
                 colour,
                 width,
                 dashes: dashes.clone(),
+                source: Some(object.id),
             });
         }
     };
@@ -136,7 +137,11 @@ fn marks_of(
                         .filter_map(|points| placing.outline(&points))
                         .collect();
                     if !contours.is_empty() {
-                        marks.push(Mark::Fill { contours, colour });
+                        marks.push(Mark::Fill {
+                            contours,
+                            colour,
+                            source: Some(object.id),
+                        });
                     }
                 }
             }

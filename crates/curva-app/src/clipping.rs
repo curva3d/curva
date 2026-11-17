@@ -25,7 +25,23 @@ pub(crate) struct SectionFills {
 /// The faces filling where `cuts` cut the model's closed solids, each in the colour of the
 /// solid's section style: its own, else its layer's, else the plane's (spec `layouts.md` §3).
 /// A style with no fill leaves the cut open.
-fn fills_for(state: &State, cuts: &[PlaneCut]) -> Vec<curva_viewport::MeshVertex> {
+/// `cut` as the graphics card cuts with it, `[nx, ny, nz, d]`, cutting away where `n·p + d > 0`,
+/// for positions measured from `origin` (#225); worked out in double precision, so a plane far
+/// from the origin cuts where it is ([`PlaneCut::for_drawing`] is this from the origin).
+fn plane_from(cut: &PlaneCut, origin: Point) -> [f32; 4] {
+    let d = (0..3)
+        .map(|i| cut.keep[i] * (cut.origin[i] - origin[i]))
+        .sum::<f64>();
+    #[allow(clippy::cast_possible_truncation)]
+    [
+        -cut.keep[0] as f32,
+        -cut.keep[1] as f32,
+        -cut.keep[2] as f32,
+        d as f32,
+    ]
+}
+
+fn fills_for(state: &State, cuts: &[PlaneCut], origin: Point) -> Vec<curva_viewport::MeshVertex> {
     let mut out = Vec::new();
     for cut in cuts {
         for object in state
@@ -59,7 +75,7 @@ fn fills_for(state: &State, cuts: &[PlaneCut]) -> Vec<curva_viewport::MeshVertex
                 if let Some(position) = mesh.positions.get(index) {
                     #[allow(clippy::cast_possible_truncation)]
                     out.push(curva_viewport::MeshVertex {
-                        position: position.map(|v| v as f32),
+                        position: curva_viewport::narrow_from(*position, origin),
                         normal: cut.keep.map(|v| v as f32),
                         colour,
                         object: curva_viewport::NO_OBJECT,
@@ -77,12 +93,13 @@ impl Curva {
     pub(crate) fn clipping_for(
         &mut self,
         view: ClipView,
+        origin: Point,
     ) -> (Vec<[f32; 4]>, Option<Arc<Vec<curva_viewport::MeshVertex>>>) {
         let cuts = self.doc.planes_cutting(view);
         if cuts.is_empty() {
             return (Vec::new(), None);
         }
-        let planes: Vec<[f32; 4]> = cuts.iter().map(PlaneCut::for_drawing).collect();
+        let planes: Vec<[f32; 4]> = cuts.iter().map(|cut| plane_from(cut, origin)).collect();
         let fills = &mut self.section_fills;
         if !fills
             .made_from
@@ -96,7 +113,7 @@ impl Curva {
         if let Some((_, made)) = fills.by_planes.iter().find(|(p, _)| *p == planes) {
             return (planes, Some(Arc::clone(made)));
         }
-        let made = Arc::new(fills_for(self.doc.state(), &cuts));
+        let made = Arc::new(fills_for(self.doc.state(), &cuts, origin));
         fills.by_planes.push((planes.clone(), Arc::clone(&made)));
         (planes, Some(made))
     }
@@ -129,8 +146,9 @@ impl Curva {
         &mut self,
         view: ClipView,
         faces: &Arc<Vec<curva_viewport::MeshVertex>>,
+        origin: Point,
     ) -> (Vec<[f32; 4]>, Arc<Vec<curva_viewport::MeshVertex>>) {
-        let (planes, fills) = self.clipping_for(view);
+        let (planes, fills) = self.clipping_for(view, origin);
         let Some(fills) = fills.filter(|f| !f.is_empty()) else {
             return (planes, Arc::clone(faces));
         };
@@ -191,7 +209,7 @@ mod tests {
     fn colours(doc: &Document) -> Vec<[f32; 3]> {
         let cuts = doc.planes_cutting(ClipView::Viewport(0));
         let mut found: Vec<[f32; 3]> = Vec::new();
-        for vertex in fills_for(doc.state(), &cuts) {
+        for vertex in fills_for(doc.state(), &cuts, [0.0; 3]) {
             if !found.contains(&vertex.colour) {
                 found.push(vertex.colour);
             }
