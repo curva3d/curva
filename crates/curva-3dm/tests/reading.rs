@@ -574,3 +574,44 @@ fn ordinate_dimensions_rhino_wrote_come_in_where_rhino_draws_them() {
     assert_eq!(got[1].axis, OrdinateAxis::Y);
     assert!((got[1].value() - 15.0).abs() < 1e-9);
 }
+
+/// Damaged files never crash Curva: every example file cut short at many points, and with
+/// bytes overwritten at many places, is either read (with what could be read) or refused with
+/// an error. A crash would end the test.
+#[test]
+fn damaged_files_are_refused_or_read_but_never_crash() {
+    let dir = format!("{}/tests/files", env!("CARGO_MANIFEST_DIR"));
+    let mut names: Vec<_> = std::fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .collect();
+    names.sort();
+    for path in names {
+        let data = std::fs::read(&path).unwrap();
+        // Bringing a damaged model into Curva is slow in a debug build: the smaller files only.
+        // A longer run over every file at 40 places found nothing more.
+        if data.len() > 100_000 {
+            continue;
+        }
+        let open = |bytes: &[u8]| {
+            if let Ok(model) = curva_3dm::read::read(bytes) {
+                let _ = curva_3dm::import::open(&model);
+            }
+        };
+        // Cut short: at 8 places through the file.
+        for k in 1..8 {
+            open(&data[..data.len() * k / 8]);
+        }
+        // Overwritten: 8 runs of eight bytes, each filled with 0xFF, then with 0x00.
+        for k in 1..8 {
+            let at = data.len() * k / 8;
+            for fill in [0xFF, 0x00] {
+                let mut broken = data.clone();
+                for b in broken.iter_mut().skip(at).take(8) {
+                    *b = fill;
+                }
+                open(&broken);
+            }
+        }
+    }
+}

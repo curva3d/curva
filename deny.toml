@@ -20,6 +20,9 @@ allow = [
     # Owner approved 16 November 2026 (Bevy pilot, #228): MIT without its credit condition; Bevy
     # needs it through encase.
     "MIT-0",
+    # Owner approved 17 November 2026 for all of Curva (decision 0034): the Boost licence, as
+    # permissive as MIT; first needed by manifold-rust through clipper2-rust.
+    "BSL-1.0",
 ]
 
 # Owner approved 9 November 2026 (PR #33): font licences, for egui's bundled fonts only.

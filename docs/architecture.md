@@ -411,8 +411,9 @@ from M1. This section is about mesh and SubD **objects** the user models with.
 - **SubD to NURBS**, as Rhino does: subdiv-kernels' regular patches become exact solidcore surfaces
   through `curva-kernel`; patches around irregular points are approximated. A listed custom
   operation.
-- **Not now:** quad remeshing (quadrs is the candidate when it is needed), halfedge (unless a test
-  shows it saves real work), csgrs and boolmesh.
+- **Quad remeshing (QuadRemesh):** **quadrs** (MIT), with SubD modelling; Curva adds Rhino's
+  options on top (decision 0033).
+- **Not now:** halfedge (unless a test shows it saves real work), csgrs and boolmesh.
 - **Rules:** one library per job, each behind one Curva interface, pinned and upgraded once per
   release, results checked by tests (decision 0032).
 
