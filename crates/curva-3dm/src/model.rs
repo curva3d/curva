@@ -494,6 +494,8 @@ pub enum Geometry {
     },
     /// A mesh (`ON_Mesh`).
     Mesh(curva_mesh::Mesh),
+    /// A SubD (`ON_SubD`).
+    SubD(curva_mesh::SubD),
     /// A block instance: its definition's id and placement (row-major 4 × 4).
     Instance {
         /// The definition.
