@@ -25,25 +25,45 @@ compared with Rhino 8's. Meshes now join faces by where their points are, as Rhi
 ReduceMesh, TriangulateMesh, QuadrangulateMesh, ExtractMeshFaces and MeshToNURB (#274 part 1,
 PR #310). ReduceMesh is quadric error edge collapse (Garland and Heckbert, 1997), Curva's own.
 PLY read and written, text and binary (#275 PLY part, PR #311), checked both ways against Rhino 8.
+`.3dm` meshes read and written (#275, PR #314): n-gons, normals, texture coordinates, colours
+and double-precision points; Rhino 7 and 8 files read, and Rhino 8 reads Curva's as valid.
+The mesh primitives' geometry (#270 part 1, PR #318): box, plane, sphere in Rhino's three styles,
+cylinder and cone with both cap styles, and torus; face counts, areas and volumes match Rhino 8's.
 
-**In review:** `.3dm` meshes read and written (the rest of #275), in new files
-`crates/curva-3dm/src/read/mesh.rs` and `write/mesh.rs`, with one-line registrations: n-gons,
-normals, texture coordinates, colours and double-precision points. Read Rhino 7 and 8 files, and
-Rhino 8 reads Curva's as valid meshes. The importer still leaves meshes out, as before, until the
-document holds them.
+**In review:**
+- Mesh from NURBS (#271 part 1, PR #322): the kernel's triangles as a mesh, and Rhino's density
+  slider mapped to tolerances (0.5 is the viewport's). Other densities need a kernel function,
+  asked of the features stream in #319.
+- Stage B begins (#320): the SubD structure (edge sharpness, Rhino's point tags, per-face
+  colours, flat or smooth display) and subdiv-kernels 0.1.0 in `smooth.rs`, the one file that
+  calls it: refined cages, the limit surface with normals, and crease and border curves for the
+  viewport. Rhino 8's limit surfaces of the same cages agree to 0.025%.
+- `.3dm` SubDs read and written (#323), next, on top of #320: Rhino 8 reads Curva's as valid
+  SubDs with its own limit volumes and areas.
+
+**Precision measured (spec §3.2):** subdiv-kernels' single-precision weights, applied level by
+level to Curva's double-precision points measured from the centre, move a 10 m cube a million
+millimetres from the origin by 0.00033 mm after three levels (the spec allows 0.01 mm). On a
+regular grid the limit surface equals the bicubic B-spline to 3 × 10⁻⁸ (spec §7's exactness test).
 
 **Waiting for #266:** the hook-ups that need meshes in the document: STL, OBJ, PLY and `.3dm`
 meshes in Open, Import and Export (#269 part 2, #275), the four MeshBoolean commands (#272 part 2),
 the `Check`, MeshRepair, UnifyMeshNormals, FillMeshHoles, Weld, RebuildMeshNormals and
-CullDegenerateMeshFaces commands (#273 part 2), and the five commands of #274 (part 2).
+CullDegenerateMeshFaces commands (#273 part 2), the five commands of #274 (part 2), and the six
+primitive commands with `What`, `Properties`, `Join` and `Explode` for meshes (#270 part 2), the
+`Mesh` command (#271 part 2), and SubDs in the document, `SubDDisplayToggle`, ToSubD and SubD
+export.
 
-**Next:** the library parts of #270 (mesh primitives) and #271 (Mesh from NURBS) (spec §10). Asked of the other streams: the two shape kinds in the
-document (#266, features; needed before any command or file hook-up) and drawing meshes (#267,
-display).
+**Next:** Stage B's remaining library work after #323, then Stage C's: the six SubD primitives'
+cages, and QuadRemesh on quadrs (spec §10). Asked of the other streams: the two shape kinds in the
+document (#266, features; needed before any command or file hook-up), drawing meshes (#267,
+display), drawing SubDs (#324, display), and meshing at a chosen density (#319, features).
 
 **Found on the way**
-- subdiv-kernels' weights are single precision; step 2 measures whether that is enough for
-  ToNURBS (spec §3.2).
+- subdiv-kernels' weights are single precision; measured as plenty (above), so no change is
+  needed from its author for now.
+- Rhino 8 makes a SubD from a mesh with its open border creased but no corners (an open grid's
+  outer points are tagged crease, so its corners round off); Curva's `SubD::new` does the same.
 - subdiv-kernels' optional Bevy feature targets Bevy 0.19 (Curva is on 0.20.1): never enable it.
 - Adding the two shape kinds touches about 30 exhaustive checks in features-owned code, so it is a
   features issue, not a one-line registration (spec §6).
@@ -72,6 +92,10 @@ display).
   buffer's size in 8 bytes, where openNURBS writes 4 (`WriteSize`) in every version. Nothing used
   them until meshes, so the mesh files carry their own correct copy; the shared ones are for the
   features stream to fix (#313).
+- RhinoCommon's `Mesh.CreateFromCylinder` makes a cylinder with one cap facing in: Rhino calls it
+  not oriented and gives its volume as 3.771 where it holds 5.657. Curva's face out.
+- Rhino's quad sphere (MeshSphere `Quads`) places its points its own way, between an even grid on
+  the cube and an equal-angle one; Curva uses equal angles, its sizes within 0.3% of Rhino's.
 
 ## 16 November 2026
 

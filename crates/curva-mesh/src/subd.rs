@@ -266,7 +266,7 @@ pub(crate) mod tests {
     use crate::mesh::tests::cube;
 
     #[test]
-    fn a_subd_moves_with_its_cage_and_keeps_its_tags() {
+    fn a_subd_moves_with_its_cage() {
         let subd = SubD::new(cube())
             .with_creases(&[[0, 1]])
             .translated([0.0, 0.0, 5.0]);

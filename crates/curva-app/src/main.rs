@@ -66,8 +66,7 @@ use curva_mcp::Session;
 use curva_viewport::{
     CPlane, Camera, DEPTH_BITS, Drawing, Gumball, GumballChange, Handle, LineRenderer, MeshCache,
     MeshVertex, Outlines, PickFilter, Picture, SnapHit, SnapKind, SnapSet, StandardView,
-    VIEW_SLOTS, constrained, face_vertices, ghost_faces, ghost_lines, grid_lines_in, object_lines,
-    save_picture, scene_lines, shaded_object_lines, shaded_scene_lines,
+    VIEW_SLOTS, constrained, ghost_faces, ghost_lines, grid_lines_in, save_picture,
 };
 use eframe::egui;
 use std::sync::Arc;

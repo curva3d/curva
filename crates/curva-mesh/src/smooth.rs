@@ -141,6 +141,102 @@ impl SubD {
         // faces do.
         Ok(facing(mesh))
     }
+
+    /// The creases and open borders on the smooth surface, `levels` subdivisions fine, each as a
+    /// run of points (a closed one repeats its first point at the end): the lines the viewport
+    /// draws on a smooth SubD.
+    ///
+    /// # Errors
+    /// When the library refuses the cage.
+    pub fn crease_curves(&self, levels: u8) -> Result<Vec<Vec<Point>>, SmoothError> {
+        let (result, centre, refined) = self.refine(levels)?;
+        let limit = result
+            .limit_stencils()
+            .map_err(|e| SmoothError(e.to_string()))?;
+        let on_surface: Vec<Point> = limit
+            .position
+            .interpolate(&refined)
+            .iter()
+            .map(|p| std::array::from_fn(|i| p[i] + centre[i]))
+            .collect();
+        let topology = &result.topology;
+        // How many refined faces use each refined edge, to find the open border.
+        let mut uses: std::collections::HashMap<(u32, u32), u32> = std::collections::HashMap::new();
+        let mut at = 0;
+        for &n in &topology.face_vertex_counts {
+            let face = &topology.face_vertex_indices[at..at + n as usize];
+            for k in 0..face.len() {
+                let (a, b) = (face[k], face[(k + 1) % face.len()]);
+                *uses.entry((a.min(b), a.max(b))).or_default() += 1;
+            }
+            at += n as usize;
+        }
+        // A crease stays infinitely sharp at every level, so the refined edges still marked so
+        // are exactly the cage's creases, subdivided.
+        let lines: Vec<[u32; 2]> = topology
+            .edge_vertices
+            .iter()
+            .zip(&topology.edge_creases)
+            .filter(|&(&[a, b], &crease)| {
+                crease >= INFINITE || uses.get(&(a.min(b), a.max(b))).copied() == Some(1)
+            })
+            .map(|(&e, _)| e)
+            .collect();
+        Ok(chains(&lines)
+            .into_iter()
+            .map(|run| run.iter().map(|&v| on_surface[v as usize]).collect())
+            .collect())
+    }
+}
+
+/// Edges joined end to end into runs: each run goes from a point where the lines do not simply
+/// continue (an end, or where three or more meet) to the next such point; lines left over form
+/// closed loops, which repeat their first point.
+fn chains(lines: &[[u32; 2]]) -> Vec<Vec<u32>> {
+    let mut next: std::collections::BTreeMap<u32, Vec<usize>> = std::collections::BTreeMap::new();
+    for (i, &[a, b]) in lines.iter().enumerate() {
+        next.entry(a).or_default().push(i);
+        next.entry(b).or_default().push(i);
+    }
+    let mut used = vec![false; lines.len()];
+    let mut runs = Vec::new();
+    let walk = |start: u32, first: usize, used: &mut Vec<bool>| {
+        let mut run = vec![start];
+        let (mut here, mut line) = (start, first);
+        loop {
+            used[line] = true;
+            let [a, b] = lines[line];
+            here = if a == here { b } else { a };
+            run.push(here);
+            let onward = &next[&here];
+            if onward.len() != 2 {
+                break;
+            }
+            match onward.iter().find(|&&l| !used[l]) {
+                Some(&l) => line = l,
+                None => break,
+            }
+        }
+        run
+    };
+    let ends: Vec<u32> = next
+        .iter()
+        .filter(|(_, l)| l.len() != 2)
+        .map(|(&v, _)| v)
+        .collect();
+    for v in ends {
+        for &l in &next[&v].clone() {
+            if !used[l] {
+                runs.push(walk(v, l, &mut used));
+            }
+        }
+    }
+    for l in 0..lines.len() {
+        if !used[l] {
+            runs.push(walk(lines[l][0], l, &mut used));
+        }
+    }
+    runs
 }
 
 /// A refined level's quads as a mesh, its points moved back from `centre`.

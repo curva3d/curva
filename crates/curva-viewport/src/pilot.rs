@@ -336,7 +336,11 @@ struct Pictures {
 }
 
 thread_local! {
-    static PICTURES: std::cell::RefCell<Option<Pictures>> = const { std::cell::RefCell::new(None) };
+    /// The picture device, kept for the thread's life. Never dropped when the thread ends: Bevy's
+    /// own per-thread values may be gone by then, and dropping it panicked a test's thread on
+    /// exit. The system frees it with the program.
+    static PICTURES: std::cell::RefCell<Option<std::mem::ManuallyDrop<Pictures>>> =
+        const { std::cell::RefCell::new(None) };
 }
 
 /// The format pictures are drawn in.
@@ -408,7 +412,7 @@ fn with_pictures<R>(job: impl FnOnce(&mut Pictures) -> Result<R, String>) -> Res
     PICTURES.with(|kept| {
         let mut kept = kept.borrow_mut();
         if kept.is_none() {
-            *kept = Some(Pictures::new()?);
+            *kept = Some(std::mem::ManuallyDrop::new(Pictures::new()?));
         }
         job(kept.as_mut().ok_or("no picture device")?)
     })
