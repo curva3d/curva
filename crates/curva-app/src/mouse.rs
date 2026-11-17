@@ -216,6 +216,24 @@ pub(crate) fn clipboard_requests(
     (copy, cut, paste)
 }
 
+/// How a click or a box pick in a viewport is read: its view, its corner on screen, its size,
+/// and whether Shift adds to the selection or Ctrl takes away from it.
+struct Picking {
+    camera: Camera,
+    origin: egui::Pos2,
+    size: [f64; 2],
+    shift: bool,
+    remove: bool,
+}
+
+impl Picking {
+    /// A point on screen in the viewport's own pixels.
+    fn local(&self, position: egui::Pos2) -> [f64; 2] {
+        let offset = position - self.origin;
+        [f64::from(offset.x), f64::from(offset.y)]
+    }
+}
+
 impl Curva {
     /// The held points and their guidelines on a viewport's plane: along its X and Y, and at
     /// 45° unless ortho is on (Shift flipping it for the moment).
@@ -408,6 +426,81 @@ impl Curva {
         response: &egui::Response,
         size: [f64; 2],
     ) {
+        // Double-clicking a note edits it in place.
+        if self.text_double_click(pane, response, size) {
+            self.active = pane;
+            return;
+        }
+        // In a detail entered on a sheet, panning and zooming move the detail's view instead.
+        if self.detail_mouse(ui, pane, response, size) {
+            self.active = pane;
+            return;
+        }
+        self.navigate(ui, pane, response, size);
+        let in_title = |position: egui::Pos2| position.y < response.rect.top() + TITLE_HEIGHT;
+        if response.double_clicked() && response.interact_pointer_pos().is_some_and(in_title) {
+            self.maximised = if self.maximised.is_some() {
+                None
+            } else {
+                Some(pane)
+            };
+        }
+        let events = ui.input(|input| input.events.clone());
+        let on_viewport = |position: egui::Pos2| {
+            response.rect.contains(position)
+                && !in_title(position)
+                && ui.ctx().layer_id_at(position) == Some(response.layer_id)
+        };
+        if self.gumball_mouse(ui, pane, response, size, &events) {
+            return;
+        }
+        if self.sketch_mouse(ui, pane, response, size) {
+            return;
+        }
+        let gestures = self.panes[pane].gestures.take(&events, on_viewport);
+        let picking = Picking {
+            camera: self.panes[pane].camera,
+            origin: response.rect.min,
+            size,
+            shift: ui.input(|input| input.modifiers.shift),
+            remove: ui.input(|input| input.modifiers.command),
+        };
+        // Checked once, so the click that ends a command does not also change the selection.
+        if self.takes_position() {
+            for (pressed, _) in gestures {
+                if !self.takes_position() {
+                    break;
+                }
+                // Where it was pressed, as that is where the user aimed.
+                if let Some((at, _)) = self.aim(ui, pane, picking.local(pressed), size) {
+                    self.active = pane;
+                    self.share_work_plane();
+                    self.processor.click(&mut self.doc, at);
+                }
+            }
+            return;
+        }
+        let wants = |kind: Kind| {
+            self.processor
+                .current_request()
+                .is_some_and(|request| request.kind == kind)
+        };
+        let (wants_edges, wants_faces) = (wants(Kind::Edges), wants(Kind::Faces));
+        for (from, to) in gestures {
+            if wants_faces {
+                self.pick_faces(&picking, from, to);
+            } else if wants_edges {
+                self.pick_edges(&picking, from, to);
+            } else {
+                self.pick_objects(&picking, from, to);
+            }
+        }
+    }
+
+    /// Moves the view: Ctrl + right-drag zooms about where the drag began (dragging up comes
+    /// closer), a middle drag or Shift + right-drag pans (a right drag too in a parallel view), a
+    /// right drag orbits, and the wheel zooms.
+    fn navigate(&mut self, ui: &egui::Ui, pane: usize, response: &egui::Response, size: [f64; 2]) {
         // Not `drag_delta`: egui holds that back for the first 6 points to tell a click from a
         // drag, and only the left button clicks here. The view must move from the first pixel.
         let (delta, shift, ctrl, middle, right, pressed) = ui.input(|input| {
@@ -421,19 +514,8 @@ impl Curva {
             )
         });
         let (dx, dy) = (f64::from(delta.x), f64::from(delta.y));
-        // Double-clicking a note edits it in place.
-        if self.text_double_click(pane, response, size) {
-            self.active = pane;
-            return;
-        }
-        // In a detail entered on a sheet, panning and zooming move the detail's view instead.
-        if self.detail_mouse(ui, pane, response, size) {
-            self.active = pane;
-            return;
-        }
         if response.is_pointer_button_down_on() {
             self.active = pane;
-            // Ctrl + right-drag zooms about where the drag began; dragging up comes closer.
             let plane = self.panes[pane].plane;
             let origin = response.rect.min;
             let about = pressed.and_then(|at| {
@@ -460,108 +542,66 @@ impl Curva {
                 self.panes[pane].camera.zoom((-scroll * 0.002).exp());
             }
         }
-        let in_title = |position: egui::Pos2| position.y < response.rect.top() + TITLE_HEIGHT;
-        if response.double_clicked() && response.interact_pointer_pos().is_some_and(in_title) {
-            self.maximised = if self.maximised.is_some() {
-                None
-            } else {
-                Some(pane)
-            };
-        }
-        let events = ui.input(|input| input.events.clone());
-        let on_viewport = |position: egui::Pos2| {
-            response.rect.contains(position)
-                && !in_title(position)
-                && ui.ctx().layer_id_at(position) == Some(response.layer_id)
+    }
+
+    /// A command is asking for faces, so a click or a box from `from` to `to` picks faces, not
+    /// objects.
+    fn pick_faces(&mut self, p: &Picking, from: egui::Pos2, to: egui::Pos2) {
+        let hits = if is_box_drag(from, to) {
+            self.outlines
+                .faces_in_box(&p.camera, p.local(from), p.local(to), p.size)
+        } else {
+            self.outlines
+                .pick_face(&p.camera, p.local(from), p.size)
+                .into_iter()
+                .collect()
         };
-        if self.gumball_mouse(ui, pane, response, size, &events) {
+        let picked = combined_selection(self.doc.face_selection(), hits, p.shift, p.remove);
+        self.doc.select_faces(&picked);
+    }
+
+    /// A command is asking for edges, so a click or a box from `from` to `to` picks edges, not
+    /// objects.
+    fn pick_edges(&mut self, p: &Picking, from: egui::Pos2, to: egui::Pos2) {
+        let hits = if is_box_drag(from, to) {
+            self.outlines
+                .edges_in_box(&p.camera, p.local(from), p.local(to), p.size)
+        } else {
+            self.outlines
+                .pick_edge(&p.camera, p.local(from), p.size, PICK_REACH)
+                .into_iter()
+                .collect()
+        };
+        let picked = combined_selection(self.doc.edge_selection(), hits, p.shift, p.remove);
+        self.doc.select_edges(&picked);
+    }
+
+    /// A click or a box from `from` to `to` picks control points if it hits any, and objects
+    /// otherwise; picking one member of a group picks the whole group, as in Rhino.
+    fn pick_objects(&mut self, p: &Picking, from: egui::Pos2, to: egui::Pos2) {
+        let boxed = is_box_drag(from, to);
+        let grips = self.grips_hit(&p.camera, (p.local(from), p.local(to)), boxed, p.size);
+        if !grips.is_empty() {
+            // A control point was hit, so the points picked change and the objects do not.
+            let picked = combined_selection(self.doc.grip_selection(), grips, p.shift, p.remove);
+            self.doc.select_grips(&picked);
             return;
         }
-        if self.sketch_mouse(ui, pane, response, size) {
-            return;
+        if !p.shift && !p.remove {
+            self.doc.select_grips(&[]);
         }
-        let gestures = self.panes[pane].gestures.take(&events, on_viewport);
-        let remove = ui.input(|input| input.modifiers.command);
-        let origin = response.rect.min;
-        let local = |position: egui::Pos2| {
-            let offset = position - origin;
-            [f64::from(offset.x), f64::from(offset.y)]
+        let hits = if boxed {
+            self.outlines
+                .in_box(&p.camera, p.local(from), p.local(to), p.size)
+        } else {
+            let hit = self
+                .outlines
+                .pick(&p.camera, p.local(from), p.size, PICK_REACH);
+            hit.into_iter().collect()
         };
-        // Checked once, so the click that ends a command does not also change the selection.
-        if self.takes_position() {
-            for (pressed, _) in gestures {
-                if !self.takes_position() {
-                    break;
-                }
-                // Where it was pressed, as that is where the user aimed.
-                if let Some((at, _)) = self.aim(ui, pane, local(pressed), size) {
-                    self.active = pane;
-                    self.share_work_plane();
-                    self.processor.click(&mut self.doc, at);
-                }
-            }
-            return;
-        }
-        let camera = self.panes[pane].camera;
-        let wants = |kind: Kind| {
-            self.processor
-                .current_request()
-                .is_some_and(|request| request.kind == kind)
-        };
-        let (wants_edges, wants_faces) = (wants(Kind::Edges), wants(Kind::Faces));
-        for (from, to) in gestures {
-            let boxed = is_box_drag(from, to);
-            if wants_faces {
-                // A command is asking for faces, so clicks and boxes pick faces, not objects.
-                let hits = if boxed {
-                    self.outlines
-                        .faces_in_box(&camera, local(from), local(to), size)
-                } else {
-                    self.outlines
-                        .pick_face(&camera, local(from), size)
-                        .into_iter()
-                        .collect()
-                };
-                let picked = combined_selection(self.doc.face_selection(), hits, shift, remove);
-                self.doc.select_faces(&picked);
-                continue;
-            }
-            if wants_edges {
-                // A command is asking for edges, so clicks and boxes pick edges, not objects.
-                let hits = if boxed {
-                    self.outlines
-                        .edges_in_box(&camera, local(from), local(to), size)
-                } else {
-                    self.outlines
-                        .pick_edge(&camera, local(from), size, PICK_REACH)
-                        .into_iter()
-                        .collect()
-                };
-                let picked = combined_selection(self.doc.edge_selection(), hits, shift, remove);
-                self.doc.select_edges(&picked);
-                continue;
-            }
-            let grips = self.grips_hit(&camera, (local(from), local(to)), boxed, size);
-            if !grips.is_empty() {
-                // A control point was hit, so the points picked change and the objects do not.
-                let picked = combined_selection(self.doc.grip_selection(), grips, shift, remove);
-                self.doc.select_grips(&picked);
-                continue;
-            }
-            if !shift && !remove {
-                self.doc.select_grips(&[]);
-            }
-            let hits = if boxed {
-                self.outlines.in_box(&camera, local(from), local(to), size)
-            } else {
-                let hit = self.outlines.pick(&camera, local(from), size, PICK_REACH);
-                hit.into_iter().collect()
-            };
-            // Picking one member of a group picks the whole group, as in Rhino.
-            let hits = self.doc.with_groups(&hits);
-            let chosen = combined_selection(self.doc.selection(), hits, shift, remove);
-            self.doc.select(&chosen);
-        }
+        let hits = self.doc.with_groups(&hits);
+        let chosen = combined_selection(self.doc.selection(), hits, p.shift, p.remove);
+        self.doc.select(&chosen);
     }
 
     pub(crate) fn paint_snap_marker(
