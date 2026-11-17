@@ -1,6 +1,6 @@
 //! One frame of the viewport, drawn into the window by egui.
 
-use crate::pilot::{BevyPicture, Engine, Pilot, PilotSeed};
+use crate::pilot::{BevyPicture, Pilot, PilotSeed};
 use crate::{MeshVertex, Vertex};
 use egui_wgpu::wgpu;
 use std::sync::Arc;
@@ -37,10 +37,6 @@ pub struct Drawing {
     pub shaded: bool,
     /// Whether shaded faces are see-through, for the Ghosted display mode.
     pub ghosted: bool,
-    /// Whether shaded faces show zebra stripes.
-    pub zebra: bool,
-    /// Whether shaded faces show their draft angles.
-    pub draft: bool,
     /// Where the view is in the window, in points.
     pub area: epaint::Rect,
     /// The window's frame number, so the first view drawn in a frame clears the scene texture.
@@ -50,9 +46,6 @@ pub struct Drawing {
     /// The 3D background's colour at the bottom, which it shades to from `background` at the
     /// top.
     pub background_low: epaint::Color32,
-    /// Which engine draws the view: Bevy (decisions 0028 and 0029), or Curva's own drawing for
-    /// pictures until they move to Bevy.
-    pub engine: Engine,
     /// The camera `matrix` was made from, for views Bevy draws.
     pub camera: crate::Camera,
 }
@@ -71,19 +64,15 @@ impl Drawing {
         (high.x - low.x >= 1.0 && high.y - low.y >= 1.0).then_some((low, high))
     }
 
-    /// For a view Bevy draws, Bevy's picture of it, starting Bevy the first time: `Some(None)`
-    /// while Bevy has not made it yet. `None` for a view Curva draws itself, or if Bevy cannot
-    /// start.
+    /// Bevy's picture of the view, starting Bevy the first time; `None` while Bevy has not made it
+    /// yet, or if Bevy cannot start.
     fn bevy_picture(
         &self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         screen: &egui_wgpu::ScreenDescriptor,
         resources: &mut egui_wgpu::CallbackResources,
-    ) -> Option<Option<BevyPicture>> {
-        if self.engine != Engine::Bevy {
-            return None;
-        }
+    ) -> Option<BevyPicture> {
         let (low, high) = self.pixel_area(screen.size_in_pixels, screen.pixels_per_point)?;
         if resources.get::<Pilot>().is_none() {
             let format = resources.get::<LineRenderer>()?.compositor.format;
@@ -91,7 +80,7 @@ impl Drawing {
             resources.insert(Pilot::new(&seed, device, queue, format));
         }
         let size = [(high.x - low.x) as u32, (high.y - low.y) as u32];
-        Some(resources.get_mut::<Pilot>()?.picture(self, size))
+        resources.get_mut::<Pilot>()?.picture(self, size)
     }
 }
 
@@ -106,7 +95,7 @@ impl egui_wgpu::CallbackTrait for Drawing {
     ) -> Vec<wgpu::CommandBuffer> {
         // Bevy draws and sends its own work to the card first, so its picture is ready for
         // the copy below.
-        let bevy = self.bevy_picture(device, queue, screen, resources);
+        let picture = self.bevy_picture(device, queue, screen, resources);
         let Some(renderer) = resources.get_mut::<LineRenderer>() else {
             return Vec::new();
         };
@@ -117,105 +106,53 @@ impl egui_wgpu::CallbackTrait for Drawing {
             2.0 / pixels.y.max(1.0),
             PIXELS_PER_MM * screen.pixels_per_point,
         ];
-        // A view Bevy draws needs none of Curva's own uploads (until Curva's lines are drawn on
-        // Bevy's pictures, step 3).
-        if bevy.is_none() {
-            renderer.update(device, queue, self, pixel);
-        }
-        renderer
-            .background
-            .set(queue, self.background, self.background_low);
         // Drawn into the scene texture now, and copied to the screen when egui paints.
         let size = screen.size_in_pixels;
         let target = renderer.compositor.target(device, size);
         let first = target.cleared != Some(self.frame);
         target.cleared = Some(self.frame);
         let (colour, depth) = (target.colour.clone(), target.depth.clone());
-        let Some((low, high)) = self.pixel_area(size, screen.pixels_per_point) else {
-            return Vec::new();
-        };
-        if let Some(picture) = bevy {
-            // The first viewport of a frame clears the whole texture, gaps included.
-            if first {
-                drop(surfaces_pass(
-                    encoder,
-                    &colour,
-                    &depth,
-                    Some(self.background),
-                    None,
-                ));
-            }
-            // Bevy's picture goes to the view's place, then Curva's outlines and lines are drawn
-            // on it, hidden by Bevy's depth.
-            if let Some(picture) = picture {
-                let (x, y) = (low.x as u32, low.y as u32);
-                encoder.copy_texture_to_texture(
-                    picture.colour.as_image_copy(),
-                    wgpu::TexelCopyTextureInfo {
-                        texture: colour.texture(),
-                        mip_level: 0,
-                        origin: wgpu::Origin3d { x, y, z: 0 },
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    wgpu::Extent3d {
-                        width: picture.colour.width().min(size[0].saturating_sub(x)),
-                        height: picture.colour.height().min(size[1].saturating_sub(y)),
-                        depth_or_array_layers: 1,
-                    },
-                );
-                let area = [low.x, low.y, high.x - low.x, high.y - low.y];
-                lines_on_bevy(
-                    renderer,
-                    (device, queue),
-                    encoder,
-                    self,
-                    picture.depth.as_ref(),
-                    [&colour, &depth],
-                    (area, pixel),
-                );
-            }
-            return Vec::new();
-        }
-        // A view is drawn in up to three passes: surfaces, outlines found from their depth, then
-        // lines and previews. The card's clock times them as one.
-        let timing = renderer
-            .timer
-            .as_mut()
-            .and_then(|timer| timer.begin_view(self.frame));
-        let clock = |end: bool| {
-            timing
-                .as_ref()
-                .map(|(queries, first)| wgpu::RenderPassTimestampWrites {
-                    query_set: queries,
-                    beginning_of_pass_write_index: (!end).then_some(*first),
-                    end_of_pass_write_index: end.then_some(*first + 1),
-                })
-        };
         // The first viewport of a frame clears the whole texture, gaps included.
-        let clear = first.then_some(self.background);
-        let mut pass = surfaces_pass(encoder, &colour, &depth, clear, clock(false));
-        let area = [low.x, low.y, high.x - low.x, high.y - low.y];
-        fit(&mut pass, area);
-        renderer.background.draw(&mut pass);
-        renderer.draw_under(&mut pass, self.slot);
-        drop(pass);
-        if renderer.outlines_wanted(self.slot) {
-            renderer.outliner.draw(
-                device,
-                queue,
+        if first {
+            drop(surfaces_pass(
                 encoder,
                 &colour,
                 &depth,
-                area,
-                crate::EDGE_ON_FACES_COLOUR,
-            );
+                Some(self.background),
+                None,
+            ));
         }
-        let mut pass = lines_pass(encoder, &colour, &depth, clock(true));
-        fit(&mut pass, area);
-        renderer.draw_over(&mut pass, self.slot);
-        drop(pass);
-        if let Some(timer) = &mut renderer.timer {
-            timer.finish_pass(encoder);
+        let Some((low, high)) = self.pixel_area(size, screen.pixels_per_point) else {
+            return Vec::new();
+        };
+        // Bevy's picture goes to the view's place, then Curva's outlines and lines are drawn on
+        // it, hidden by Bevy's depth.
+        if let Some(picture) = picture {
+            let (x, y) = (low.x as u32, low.y as u32);
+            encoder.copy_texture_to_texture(
+                picture.colour.as_image_copy(),
+                wgpu::TexelCopyTextureInfo {
+                    texture: colour.texture(),
+                    mip_level: 0,
+                    origin: wgpu::Origin3d { x, y, z: 0 },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::Extent3d {
+                    width: picture.colour.width().min(size[0].saturating_sub(x)),
+                    height: picture.colour.height().min(size[1].saturating_sub(y)),
+                    depth_or_array_layers: 1,
+                },
+            );
+            let area = [low.x, low.y, high.x - low.x, high.y - low.y];
+            lines_on_bevy(
+                renderer,
+                (device, queue),
+                encoder,
+                self,
+                picture.depth.as_ref(),
+                [&colour, &depth],
+                (area, pixel),
+            );
         }
         Vec::new()
     }
@@ -358,7 +295,23 @@ fn lines_on_bevy(
             crate::EDGE_ON_FACES_COLOUR,
         );
     }
-    let mut pass = lines_pass(encoder, colour, depth, None);
+    // The benchmark's card timer times Curva's lines; Bevy's own time joins it in step 5.
+    let timing = renderer
+        .timer
+        .as_mut()
+        .and_then(|timer| timer.begin_view(drawing.frame));
+    let clock = timing
+        .as_ref()
+        .map(|(queries, first)| wgpu::RenderPassTimestampWrites {
+            query_set: queries,
+            beginning_of_pass_write_index: Some(*first),
+            end_of_pass_write_index: Some(*first + 1),
+        });
+    let mut pass = lines_pass(encoder, colour, depth, clock);
     fit(&mut pass, area);
     renderer.draw_over(&mut pass, drawing.slot);
+    drop(pass);
+    if let Some(timer) = &mut renderer.timer {
+        timer.finish_pass(encoder);
+    }
 }

@@ -39,16 +39,6 @@ use bevy::{
     window::ExitCondition,
 };
 
-/// Which engine draws a view's faces.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Engine {
-    /// Curva's own drawing, as before the pilot.
-    #[default]
-    Curva,
-    /// Bevy draws the view (decisions 0028 and 0029).
-    Bevy,
-}
-
 /// What Bevy needs from the window's graphics set-up besides the device and queue, kept at
 /// start-up so Bevy can be started the first time a view is set to it.
 #[derive(Clone)]
@@ -447,8 +437,6 @@ fn picture_drawing(
         clips: Vec::new(),
         shaded: true,
         ghosted: picture.ghosted,
-        zebra: false,
-        draft: false,
         area: epaint::Rect::from_min_size(
             epaint::Pos2::ZERO,
             epaint::vec2(size[0] as f32, size[1] as f32),
@@ -456,7 +444,6 @@ fn picture_drawing(
         frame: 0,
         background,
         background_low: background,
-        engine: Engine::Bevy,
         camera,
     }
 }
@@ -596,8 +583,6 @@ mod tests {
             clips: Vec::new(),
             shaded: true,
             ghosted: false,
-            zebra: false,
-            draft: false,
             area: epaint::Rect::from_min_size(
                 epaint::Pos2::ZERO,
                 epaint::vec2(SIZE[0] as f32, SIZE[1] as f32),
@@ -605,7 +590,6 @@ mod tests {
             frame: 0,
             background: BACKGROUND,
             background_low: BACKGROUND,
-            engine: Engine::Bevy,
             camera,
         }
     }

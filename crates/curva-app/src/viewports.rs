@@ -32,10 +32,6 @@ pub(crate) struct Pane {
     pub(crate) named: Option<String>,
     /// How it draws surfaces and solids: by their edges, filled in and lit, or see-through.
     pub(crate) display: DisplayMode,
-    /// Whether shaded faces show zebra stripes (`Zebra`).
-    pub(crate) zebra: bool,
-    /// Whether shaded faces show draft angles (`DraftAnalysis`).
-    pub(crate) draft: bool,
     /// Views to step back to with `UndoView`, newest last, and the view they were left from.
     pub(crate) views_back: Vec<Camera>,
     /// Views stepped back from, for `RedoView`, newest last.
@@ -95,8 +91,6 @@ impl Pane {
             } else {
                 DisplayMode::Wireframe
             },
-            zebra: false,
-            draft: false,
         }
     }
 }
@@ -456,20 +450,11 @@ impl Curva {
             ViewRequest::ShowPrint => self.open_piece(layout::Piece::Print),
             ViewRequest::ShowNotes => self.open_piece(layout::Piece::Notes),
             ViewRequest::ClipIn(frames, on) => self.clip_in(&frames, on),
-            ViewRequest::DraftAnalysis => {
-                let pane = &mut self.panes[self.active];
-                pane.draft = !pane.draft;
-                if pane.display == DisplayMode::Wireframe {
-                    pane.display = DisplayMode::Shaded;
-                }
-            }
-            ViewRequest::Zebra => {
-                let pane = &mut self.panes[self.active];
-                pane.zebra = !pane.zebra;
-                if pane.display == DisplayMode::Wireframe {
-                    pane.display = DisplayMode::Shaded;
-                }
-            }
+            // Zebra and Draft angle are set aside while the display moves to Bevy (the owner's
+            // decision B, `docs/specs/display-on-bevy.md` §5); they come back as their own work.
+            ViewRequest::DraftAnalysis | ViewRequest::Zebra => self
+                .processor
+                .note(self.text.render(&Message::new("ui.analysis.set-aside"))),
             ViewRequest::Plan => {
                 let pane = &mut self.panes[self.active];
                 let plane = pane.plane;
@@ -766,13 +751,10 @@ impl Curva {
                 light: camera.forward().map(|value| value as f32),
                 shaded: display != DisplayMode::Wireframe,
                 ghosted: display == DisplayMode::Ghosted,
-                zebra: self.panes[*pane].zebra,
-                draft: self.panes[*pane].draft,
                 area: *rect,
                 frame: ui.ctx().cumulative_frame_nr(),
                 background: self.pane_background(*pane).0,
                 background_low: self.pane_background(*pane).1,
-                engine: curva_viewport::Engine::Bevy,
                 camera: *camera,
             };
             ui.painter().add(egui_wgpu_callback(*rect, drawing));
