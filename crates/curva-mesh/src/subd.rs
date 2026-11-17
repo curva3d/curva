@@ -247,6 +247,14 @@ impl SubD {
         }
     }
 
+    /// The same SubD with its cage points moved to `points` (one for each), its faces, tags and
+    /// colours kept.
+    pub(crate) fn with_cage_points(mut self, points: Vec<Point>) -> Self {
+        let normals = self.cage.normals().clone();
+        self.cage = self.cage.with_vertices(points, normals);
+        self
+    }
+
     /// Each edge with the faces that use it, keyed lower point first.
     pub(crate) fn edge_uses(&self) -> BTreeMap<(u32, u32), Vec<usize>> {
         let mut uses: BTreeMap<(u32, u32), Vec<usize>> = BTreeMap::new();
