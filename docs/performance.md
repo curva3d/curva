@@ -293,3 +293,49 @@ origin; on the RTX 3060, release build, two runs each:
 *Far* costs the same as *Large*. Whether it shimmers is now a test, not a look by eye: a small model
 500 km out draws the same picture as at the origin, through Curva's lines and through Bevy
 (`far_from_the_origin_draws_as_at_the_origin`, `far_from_the_origin_bevy_draws_as_at_the_origin`).
+
+## Building a plan (17 November 2026, Live plans step 3, #203)
+
+A plan is Make2D from the top with a clipping plane at 1.2 m keeping what is below (spec
+`live-plans.md` §6). Release build on the owner's machine, with other builds running, so times
+vary by about 10%. Measured with `cargo test --release -p curva-app plan_build -- --ignored
+--nocapture`, which names the scene in `PLAN_SCENE` (the test house by default).
+
+**The test house** (26 solids, the plan 70 to 82 lines and fills):
+
+| Step | Before | After |
+|---|---|---|
+| Cutting each solid at the plane, for fills and cut lines | 158 ms (each cut done twice) | 80 ms (once) |
+| Clipping the solids at the plane | 103 ms | 58 ms |
+| Hidden lines | 56 ms | 48 ms |
+| Putting the drawing in the model | under 1 ms | under 1 ms |
+| **Whole plan** | **319–321 ms** | **187–212 ms** |
+
+- Each cut through a solid was worked out twice, once for its fill and once for its cut lines; now
+  once.
+- **A bug was found and fixed on the way (#308):** a clipping plane that misses a solid was taken
+  as cutting it, so solids wholly above the cut, such as the upper floor's slab, were drawn in the
+  plan. The fix also skips the geometry engine for those solids, which is most of the clipping
+  step's saving. The plan changed with that fix (now 22 solids drawn, not 26); the speed changes
+  here leave it identical, line for line.
+- Where lines cross is now found through a grid of cells, so only lines near each other are
+  compared, in the same order: identical results on five test scenes in four views.
+- **Not faster: cutting the solids on all cores.** Run side by side, each cut took 3 to 15 times
+  longer than alone, so the whole took as long. The geometry engine seems to do one cut at a time
+  inside; worth finding out why.
+
+**The *Large* scene** (10,000 solids, 50,000 curves) did not finish:
+
+| Step | Time |
+|---|---|
+| Cutting and clipping the solids | 15–19 s |
+| Each solid's edges and silhouettes | 60–78 s |
+| Where lines cross | over 12 minutes; stopped |
+
+Finding the edges takes 6 to 8 ms a solid, and the dense curves of *Large* overlap so much that
+working out their crossings, not finding which might cross, is what takes the time.
+
+**Against the targets (§6):** the test house opens in 0.2 s (target 1 s), and an edit to one wall,
+with step 4's kept results, would redo about 7 ms of cutting plus the hidden lines near it, inside
+the 50 ms target. *Large* is far from its targets (open under 5 s, edit under 0.1 s) with the
+present methods; see the report on #203.
