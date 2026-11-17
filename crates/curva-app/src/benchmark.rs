@@ -717,11 +717,10 @@ mod tests {
     }
 
     /// The test house drawn as a plan: Make2D from the top with a clipping plane at 1.2 m keeping
-    /// what is below (spec `live-plans.md` §6). Prints how long it took and what it made. Run it
-    /// in an optimised build: `cargo test --release -p curva-app plan_build -- --ignored
+    /// what is below (spec `live-plans.md` §6). Prints how long it took and what it made. To
+    /// time it, run it in an optimised build: `cargo test --release -p curva-app plan_build --
     /// --nocapture`.
     #[test]
-    #[ignore = "a timing, run by hand in an optimised build"]
     fn plan_build_of_the_test_house() {
         use curva_document::clipping::{ClippingPlane, SectionFill};
         let mut doc = Document::default();

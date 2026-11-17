@@ -298,8 +298,8 @@ origin; on the RTX 3060, release build, two runs each:
 
 A plan is Make2D from the top with a clipping plane at 1.2 m keeping what is below (spec
 `live-plans.md` §6). Release build on the owner's machine, with other builds running, so times
-vary by about 10%. Measured with `cargo test --release -p curva-app plan_build -- --ignored
---nocapture`, which names the scene in `PLAN_SCENE` (the test house by default).
+vary by about 10%. Measured with `cargo test --release -p curva-app plan_build -- --nocapture`,
+which names the scene in `PLAN_SCENE` (the test house by default).
 
 **The test house** (26 solids, the plan 70 to 82 lines and fills):
 
