@@ -339,3 +339,21 @@ working out their crossings, not finding which might cross, is what takes the ti
 with step 4's kept results, would redo about 7 ms of cutting plus the hidden lines near it, inside
 the 50 ms target. *Large* is far from its targets (open under 5 s, edit under 0.1 s) with the
 present methods; see the report on #203.
+
+### *Large*, first fixes (17 November 2026, #317)
+
+- **Where lines cross: 700 s → under 1 s.** Counted on *Large*: 210,000 pairs of lines overlap,
+  and all but 5,000 take no time. Those 5,000 are the cylinders' top and bottom circles, which lie
+  exactly on each other seen from above; each pair took about 140 ms, compared point by point.
+  Lines lying on each other already did not cross when straight; now curves do the same. The
+  five hidden-line test scenes come out byte for byte the same (and run in 53 s, not 89 s).
+- **Edges: far fewer trips to the geometry engine.** A moved copy of a solid (all of *Large*'s
+  solids are copies of 100 shapes) asked the engine to copy, place and describe it again each
+  time its edges, face kinds or face directions were wanted: about 26 times for a box. It now
+  keeps the description once read. Not timed on its own yet.
+- **Why cutting does not use all cores:** the geometry engine (solidcore-ops) passes every call
+  through one lock, so only one runs at a time. Changing that is upstream's work.
+- **Still not finishing:** with both fixes *Large* ran past 40 minutes and was stopped. The time
+  now goes to a later step, most likely deciding which pieces of line are hidden (a ray test for
+  each piece). Next for #317.
+- The test house's plan is unchanged, line for line (193 ms).
