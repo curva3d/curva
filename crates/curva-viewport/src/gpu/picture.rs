@@ -199,7 +199,6 @@ fn picture_drawing(picture: Picture, scene: &Scene) -> Drawing {
         background_low: epaint::Color32::BLACK,
         engine: crate::Engine::Curva,
         camera: crate::Camera::default(),
-        bevy_last: false,
     }
 }
 
