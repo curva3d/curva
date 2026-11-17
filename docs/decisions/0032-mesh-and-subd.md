@@ -1,6 +1,7 @@
 # 0032: Mesh and SubD: a slim set of libraries, and a third stream starting now
 
-**Status:** Decided by the owner in chat · 16 November 2026. Updates decision 0008 (mesh boolean
+**Status:** Decided by the owner in chat · 16 November 2026. Quad remeshing row replaced by 0033
+(QuadRemesh now, on quadrs). Updates decision 0008 (mesh boolean
 library) and architecture §6 and §10d.
 
 **What was decided.**
