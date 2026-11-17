@@ -114,7 +114,7 @@ fn read_text(data: &[u8]) -> Result<Contents, ReadError> {
 
 /// A single-precision number as the decimal it was written from: `0.1` stays `0.1` rather than
 /// becoming `0.100000001490116`, so a part drawn in round millimetres keeps round numbers.
-fn widen(x: f32) -> f64 {
+pub(crate) fn widen(x: f32) -> f64 {
     x.to_string().parse().unwrap_or(f64::from(x))
 }
 
