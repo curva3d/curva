@@ -39,6 +39,8 @@ pub(crate) struct ModelScene {
     scene: Arc<Vec<curva_viewport::Vertex>>,
     shaded_scene: Arc<Vec<curva_viewport::Vertex>>,
     faces: Arc<Vec<curva_viewport::MeshVertex>>,
+    /// What its positions are measured from: the middle of the model (#225).
+    origin: Point,
     made: bool,
 }
 
@@ -199,10 +201,13 @@ impl Curva {
                 &model.scene
             });
             let model_faces = Arc::clone(&model.faces);
+            let origin = model.origin;
+            // The camera measured as the model's positions are, from its middle (#225).
+            let camera = camera.measured_from(origin);
             let (clips, faces) = self.clipped_view(
                 curva_document::clipping::ClipView::Detail(detail.frame),
                 &model_faces,
-                [0.0; 3],
+                origin,
             );
             let drawing = curva_viewport::Drawing {
                 clips,
@@ -271,9 +276,15 @@ impl Curva {
             }
             scene.meshes.fields = curva_document::fields::FieldContext::now(self.doc.path());
             let outlines = Outlines::of_space(&seen, None, &mut scene.meshes).inked(PAPER_INK);
-            scene.scene = Arc::new(object_lines(&outlines, &[]));
-            scene.shaded_scene = Arc::new(shaded_object_lines(&outlines, &[]));
-            scene.faces = Arc::new(face_vertices(&outlines, &[]));
+            let origin = outlines.drawing_origin();
+            scene.scene = Arc::new(curva_viewport::object_lines_from(&outlines, &[], origin));
+            scene.shaded_scene = Arc::new(curva_viewport::shaded_object_lines_from(
+                &outlines,
+                &[],
+                origin,
+            ));
+            scene.faces = Arc::new(curva_viewport::face_vertices_from(&outlines, &[], origin));
+            scene.origin = origin;
             scene.made = true;
         }
         scene

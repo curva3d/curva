@@ -7,19 +7,25 @@
 pub mod boolean;
 mod check;
 mod convert;
+mod from_body;
 mod measure;
 mod mesh;
 mod nurbs;
+mod primitives;
 mod reduce;
 mod repair;
+mod smooth;
 mod subd;
 mod transform;
 mod triangulate;
 
 pub use check::MeshCheck;
 pub use curva_kernel::Point;
+pub use from_body::density_tolerances;
 pub use mesh::{Attribute, Mesh, MeshError};
-pub use subd::SubD;
+pub use primitives::{Frame, SphereStyle};
+pub use smooth::{MAX_LEVELS, SmoothError};
+pub use subd::{Sharpness, SubD, SubDDisplay, VertexTag};
 pub use triangulate::Triangles;
 
 #[cfg(test)]
