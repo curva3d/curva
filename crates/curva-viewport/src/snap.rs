@@ -7,6 +7,10 @@ use curva_kernel::{Curve, Point, closest_between};
 
 /// How close to something the cursor must be to snap to it, in pixels.
 const SNAP_REACH: f64 = 12.0;
+/// How much farther than the nearest place found a segment may lie on screen, in pixels, and
+/// still be searched for meeting points and perpendicular feet: a meeting point lies on its
+/// second segment only to within `MEETING_TOLERANCE`, which may show as a fraction of a pixel.
+const SEGMENT_MARGIN: f64 = 1.0;
 /// How close two curves must come, in millimetres, to count as meeting.
 const MEETING_TOLERANCE: f64 = 1e-3;
 /// The spacing grid snap rounds to, in millimetres.
@@ -204,11 +208,11 @@ fn screen_gap(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> f64 {
     (p[0] - a[0] - t * dx).hypot(p[1] - a[1] - t * dy)
 }
 
-/// Adds the segments of a run of points that are within reach of the cursor on screen.
+/// Adds the segments of a run of points that are within `reach` pixels of the cursor on screen.
 fn collect_near(
     found: &mut Vec<NearbySegment>,
     view: &Projector,
-    cursor: [f64; 2],
+    (cursor, reach): ([f64; 2], f64),
     object: usize,
     points: &[Point],
 ) {
@@ -219,7 +223,7 @@ fn collect_near(
             && let Some(to) = screen
         {
             let gap = screen_gap(cursor, from, to);
-            if gap <= SNAP_REACH {
+            if gap <= reach {
                 found.push(NearbySegment {
                     object,
                     a,
@@ -286,7 +290,17 @@ pub(crate) fn box_around(points: &[Point]) -> Option<(Point, Point)> {
 
 /// Whether a whole box is too far from the cursor on screen to matter, which skips most curves
 /// without looking at their points. A box partly behind the camera is never skipped.
-fn box_out_of_reach(view: &Projector, (low, high): (Point, Point), cursor: [f64; 2]) -> bool {
+fn box_out_of_reach(view: &Projector, bounds: (Point, Point), cursor: [f64; 2]) -> bool {
+    box_beyond(view, bounds, (cursor, SNAP_REACH))
+}
+
+/// Whether a whole box lies more than `reach` pixels from the cursor on screen; never for a box
+/// partly behind the camera.
+fn box_beyond(
+    view: &Projector,
+    (low, high): (Point, Point),
+    (cursor, reach): ([f64; 2], f64),
+) -> bool {
     let (mut left, mut right) = (f64::INFINITY, f64::NEG_INFINITY);
     let (mut top, mut bottom) = (f64::INFINITY, f64::NEG_INFINITY);
     for corner in 0..8 {
@@ -305,10 +319,10 @@ fn box_out_of_reach(view: &Projector, (low, high): (Point, Point), cursor: [f64;
         top = top.min(at[1]);
         bottom = bottom.max(at[1]);
     }
-    cursor[0] < left - SNAP_REACH
-        || cursor[0] > right + SNAP_REACH
-        || cursor[1] < top - SNAP_REACH
-        || cursor[1] > bottom + SNAP_REACH
+    cursor[0] < left - reach
+        || cursor[0] > right + reach
+        || cursor[1] < top - reach
+        || cursor[1] > bottom + reach
 }
 
 /// The objects' boxes and the snap places, each in a tree of boxes (#130), so snapping looks only
@@ -351,10 +365,11 @@ impl Outlines {
         })
     }
 
+    /// The segments within `reach` pixels of the cursor, of the objects and of `drawing`.
     fn segments_near(
         &self,
         view: &Projector,
-        cursor: [f64; 2],
+        (cursor, reach): ([f64; 2], f64),
         drawing: &[Point],
     ) -> Vec<NearbySegment> {
         let mut found = Vec::new();
@@ -363,13 +378,13 @@ impl Outlines {
         let near = self
             .snap_trees()
             .objects
-            .query(|bounds| !box_out_of_reach(view, bounds, cursor));
+            .query(|bounds| !box_beyond(view, bounds, (cursor, reach)));
         for object in near {
             if let Some((_, points)) = self.objects.get(object) {
-                collect_near(&mut found, view, cursor, object, points);
+                collect_near(&mut found, view, (cursor, reach), object, points);
             }
         }
-        collect_near(&mut found, view, cursor, usize::MAX, drawing);
+        collect_near(&mut found, view, (cursor, reach), usize::MAX, drawing);
         found
     }
 
@@ -405,14 +420,14 @@ impl Outlines {
             view.project(point)
                 .map(|at| (at[0] - cursor[0]).hypot(at[1] - cursor[1]))
         };
-        let mut offered: Vec<(f64, SnapHit)> = Vec::new();
-        let mut offer = |kind: SnapKind, point: Point| {
+        let offer = |offered: &mut Vec<(f64, SnapHit)>, kind: SnapKind, point: Point| {
             if let Some(distance) = gap(point)
                 && distance <= SNAP_REACH
             {
                 offered.push((distance, SnapHit { kind, point }));
             }
         };
+        let mut offered: Vec<(f64, SnapHit)> = Vec::new();
         // In a shaded view, a point behind a face cannot be seen and is not offered.
         let seen = |point: Point| !set.visible_only || !self.hidden(camera, size, point);
         // Only places whose point could be within reach, in their own order, as before.
@@ -422,38 +437,55 @@ impl Outlines {
             .query(|bounds| !box_out_of_reach(&view, bounds, cursor));
         for place in places.iter().filter_map(|&at| self.sites.get(at)) {
             if set.has(place.kind) {
-                offer(place.kind, place.point);
+                offer(&mut offered, place.kind, place.point);
             }
         }
         if set.end {
             for point in &drawing[..drawing.len().saturating_sub(1)] {
-                offer(SnapKind::End, *point);
+                offer(&mut offered, SnapKind::End, *point);
             }
         }
         if set.mid {
             for pair in drawing.windows(2) {
-                offer(SnapKind::Mid, along(pair[0], pair[1], 0.5));
+                offer(&mut offered, SnapKind::Mid, along(pair[0], pair[1], 0.5));
             }
         }
+        // The nearest place seen so far (#130). A meeting point lies on both its segments and a
+        // perpendicular foot on its own, so only segments nearer the cursor than that place can give
+        // a nearer point: with the whole of a large scene in view, that skips almost all of them.
+        offered.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut best = offered.into_iter().find(|(_, hit)| seen(hit.point));
+        let reach = best
+            .as_ref()
+            .map_or(SNAP_REACH, |(distance, _)| distance + SEGMENT_MARGIN);
         let segments = if set.intersection || set.perpendicular || set.near {
-            self.segments_near(&view, cursor, drawing)
+            self.segments_near(&view, (cursor, reach), drawing)
         } else {
             Vec::new()
         };
+        let mut more: Vec<(f64, SnapHit)> = Vec::new();
         if set.intersection {
             for point in meeting_points(&segments) {
-                offer(SnapKind::Intersection, point);
+                offer(&mut more, SnapKind::Intersection, point);
             }
         }
         if set.perpendicular
             && let Some(from) = from
         {
             for foot in perpendicular_feet(&segments, from) {
-                offer(SnapKind::Perpendicular, foot);
+                offer(&mut more, SnapKind::Perpendicular, foot);
             }
         }
-        offered.sort_by(|a, b| a.0.total_cmp(&b.0));
-        if let Some((_, hit)) = offered.into_iter().find(|(_, hit)| seen(hit.point)) {
+        more.sort_by(|a, b| a.0.total_cmp(&b.0));
+        // A place wins a tie, as when all were sorted together with places first.
+        if let Some(nearer) = more.into_iter().find(|(_, hit)| seen(hit.point))
+            && best
+                .as_ref()
+                .is_none_or(|(distance, _)| nearer.0 < *distance)
+        {
+            best = Some(nearer);
+        }
+        if let Some((_, hit)) = best {
             return Some(hit);
         }
         if !set.near {
@@ -639,7 +671,7 @@ impl Outlines {
                 );
             }
         }
-        for segment in self.segments_near(&view, cursor, &[]) {
+        for segment in self.segments_near(&view, (cursor, SNAP_REACH), &[]) {
             for line in &lines {
                 candidates.extend(
                     meeting(span(*line), (segment.a, segment.b))
@@ -708,6 +740,86 @@ mod tests {
         shapes.snap(&camera, [at[0] + 4.0, at[1] - 3.0], SIZE, &set, from)
     }
 
+    /// The snap as found before #130's shortcut: every place, meeting point and perpendicular
+    /// foot within reach, from every segment within reach, sorted together, places first.
+    fn snap_searching_everything(
+        shapes: &Outlines,
+        camera: &Camera,
+        cursor: [f64; 2],
+        set: &SnapSet,
+        from: Option<Point>,
+    ) -> Option<SnapHit> {
+        let view = camera.projector(SIZE);
+        let gap = |point: Point| {
+            view.project(point)
+                .map(|at| (at[0] - cursor[0]).hypot(at[1] - cursor[1]))
+        };
+        let mut offered: Vec<(f64, SnapHit)> = Vec::new();
+        let mut offer = |kind: SnapKind, point: Point| {
+            if let Some(distance) = gap(point)
+                && distance <= SNAP_REACH
+            {
+                offered.push((distance, SnapHit { kind, point }));
+            }
+        };
+        for place in shapes.sites.iter().filter(|place| set.has(place.kind)) {
+            offer(place.kind, place.point);
+        }
+        let segments = shapes.segments_near(&view, (cursor, SNAP_REACH), &[]);
+        if set.intersection {
+            for point in meeting_points(&segments) {
+                offer(SnapKind::Intersection, point);
+            }
+        }
+        if set.perpendicular
+            && let Some(from) = from
+        {
+            for foot in perpendicular_feet(&segments, from) {
+                offer(SnapKind::Perpendicular, foot);
+            }
+        }
+        offered.sort_by(|a, b| a.0.total_cmp(&b.0));
+        offered.into_iter().next().map(|(_, hit)| hit)
+    }
+
+    /// #130: searching only the segments nearer the cursor than the nearest place found gives
+    /// the snap searching everything gave, all over a dense tangle of lines and circles, with
+    /// every snap on but Near.
+    #[test]
+    fn the_shortcut_snaps_as_searching_everything() {
+        let mut curves = Vec::new();
+        for i in 0..12 {
+            let t = f64::from(i);
+            curves.push(line(
+                [-40.0 + 3.0 * t, -30.0, 0.0],
+                [35.0 - 2.0 * t, 30.0, 0.0],
+            ));
+            curves.push(line(
+                [-40.0, -25.0 + 4.0 * t, 0.0],
+                [40.0, 20.0 - 3.5 * t, 0.0],
+            ));
+            curves.push(Curve::circle([-20.0 + 4.0 * t, 5.0 - t, 0.0], 3.0 + t).unwrap());
+        }
+        let shapes = outlines(curves);
+        let camera = Camera::default();
+        let set = SnapSet {
+            near: false,
+            visible_only: false,
+            ..SnapSet::default()
+        };
+        let mut compared = 0;
+        for x in (0..800).step_by(11) {
+            for y in (0..600).step_by(9) {
+                let cursor = [f64::from(x), f64::from(y)];
+                let from = Some([1.0, 2.0, 0.0]);
+                let quick = shapes.snap(&camera, cursor, SIZE, &set, from);
+                let everything = snap_searching_everything(&shapes, &camera, cursor, &set, from);
+                assert_eq!(quick, everything, "at {cursor:?}");
+                compared += usize::from(quick.is_some());
+            }
+        }
+        assert!(compared > 100, "only {compared} snaps found");
+    }
     #[test]
     fn end_finds_the_exact_end_of_a_line() {
         let shapes = outlines(vec![line([0.0; 3], [30.0, 0.0, 0.0])]);

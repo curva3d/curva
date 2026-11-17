@@ -293,3 +293,25 @@ origin; on the RTX 3060, release build, two runs each:
 *Far* costs the same as *Large*. Whether it shimmers is now a test, not a look by eye: a small model
 500 km out draws the same picture as at the origin, through Curva's lines and through Bevy
 (`far_from_the_origin_draws_as_at_the_origin`, `far_from_the_origin_bevy_draws_as_at_the_origin`).
+
+## Snapping searches only what could win (17 November 2026, #130)
+
+Snapping offers the nearest snap within reach of the cursor. A meeting point lies on both its
+segments and a perpendicular foot on its own, so once the nearest place (an end, a middle, a centre)
+is known, only segments nearer the cursor than it can give a nearer point; the rest are no longer
+searched, and the tree of object boxes skips them too. A test compares the result with searching
+everything at 4,900 cursor positions over a tangle of lines and circles.
+
+Measured as the benchmark measures it (every snap on, cursor in the middle of the Perspective view),
+RTX 3060, release build, two runs each:
+
+| | Before | After |
+|---|---|---|
+| *Large*, snapping per frame | 20.6 ms | 3.6–4.2 ms |
+| *Large*, between frames | 24.0–24.5 ms | 16.2 ms |
+| *Large*, processor's work per frame | 25.2 ms | 8.9–9.6 ms |
+| *Medium*, snapping per frame | 0.48 ms | 0.23 ms |
+
+On *Large* the whole scene is in view, so the cursor still has thousands of ends, middles and
+centres within reach; they are most of what remains. #130's aim of under 1 ms is not met yet.
+16.2 ms between frames is the screen's own rate (60 a second), so frames now wait for the screen.
