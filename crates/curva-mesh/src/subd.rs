@@ -5,8 +5,8 @@
 //! are smooth or creased, each with a sharpness (0 smooth, infinite for Rhino 8's creases, so
 //! softer creases can come later without changing files), and its points are tagged as Rhino
 //! tags them: smooth, crease, corner or dart. Texture coordinates ride on the cage's corners;
-//! colours, when given, are one per face. The smooth surface itself is never stored: it is
-//! worked out by subdiv-kernels (`smooth.rs`).
+//! colours, when given, are one per face (a face may have none, as in Rhino). The smooth surface
+//! itself is never stored: it is worked out by subdiv-kernels (`smooth.rs`).
 
 use crate::{Mesh, Point};
 use curva_kernel::Similarity;
@@ -23,6 +23,19 @@ impl Sharpness {
     pub const SMOOTH: Self = Self(Some(0.0));
     /// A crease: infinitely sharp.
     pub const CREASE: Self = Self(None);
+
+    /// A sharpness of `value`: 0 or less is smooth, infinity a crease; numbers between are the
+    /// partly sharp edges Rhino 8 can make.
+    #[must_use]
+    pub fn new(value: f64) -> Self {
+        if value.is_nan() || value <= 0.0 {
+            Self::SMOOTH
+        } else if value.is_infinite() {
+            Self::CREASE
+        } else {
+            Self(Some(value))
+        }
+    }
 
     /// The sharpness as a number, infinity for a crease.
     #[must_use]
@@ -71,7 +84,7 @@ pub struct SubD {
     /// Points tagged as corners by the user (other tags follow from the edges).
     corners: Vec<u32>,
     /// One colour per face, when coloured.
-    colours: Option<Vec<[f32; 3]>>,
+    colours: Option<Vec<Option<[f32; 3]>>>,
     display: SubDDisplay,
 }
 
@@ -109,6 +122,16 @@ impl SubD {
         self
     }
 
+    /// The same SubD with the edge between two points given this sharpness (when they share an
+    /// edge).
+    #[must_use]
+    pub fn with_sharpness(mut self, [a, b]: [u32; 2], sharpness: Sharpness) -> Self {
+        if self.edge_uses().contains_key(&(a.min(b), a.max(b))) {
+            self.set_sharpness((a, b), sharpness);
+        }
+        self
+    }
+
     /// The same SubD with these points kept sharp as corners.
     #[must_use]
     pub fn with_corners(mut self, points: &[u32]) -> Self {
@@ -121,9 +144,9 @@ impl SubD {
         self
     }
 
-    /// The same SubD with a colour for each face; `None` when the count does not match.
+    /// The same SubD with a colour, or none, for each face; `None` when the count does not match.
     #[must_use]
-    pub fn with_face_colours(mut self, colours: Vec<[f32; 3]>) -> Option<Self> {
+    pub fn with_face_colours(mut self, colours: Vec<Option<[f32; 3]>>) -> Option<Self> {
         (colours.len() == self.cage.face_count()).then(|| {
             self.colours = Some(colours);
             self
@@ -177,7 +200,7 @@ impl SubD {
 
     /// The face colours, when it has them.
     #[must_use]
-    pub fn face_colours(&self) -> Option<&[[f32; 3]]> {
+    pub fn face_colours(&self) -> Option<&[Option<[f32; 3]>]> {
         self.colours.as_deref()
     }
 
@@ -310,11 +333,11 @@ pub(crate) mod tests {
     fn face_colours_need_one_per_face() {
         assert!(
             SubD::new(cube())
-                .with_face_colours(vec![[1.0, 0.0, 0.0]; 5])
+                .with_face_colours(vec![Some([1.0, 0.0, 0.0]); 5])
                 .is_none()
         );
         let coloured = SubD::new(cube())
-            .with_face_colours(vec![[1.0, 0.0, 0.0]; 6])
+            .with_face_colours(vec![Some([1.0, 0.0, 0.0]); 6])
             .unwrap();
         assert_eq!(coloured.face_colours().map(<[_]>::len), Some(6));
         assert_eq!(
