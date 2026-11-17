@@ -1154,6 +1154,25 @@ mod tests {
     const CUTS: &str = "Make2D::Visible::Clipping plane intersections";
 
     #[test]
+    fn a_solid_wholly_beyond_a_clipping_plane_is_not_drawn() {
+        use curva_document::clipping::SectionFill;
+        let mut doc = Document::default();
+        // The plane through the cube's middle keeps the lower half; a second box lies wholly
+        // above it, cut away.
+        let (cube, frame) = cut_cube(&mut doc, true, SectionFill::None);
+        let above = doc.add_body(Body::cuboid([2.0, 2.0, 20.0], [3.0, 3.0, 3.0]).unwrap());
+        doc.select(&[cube, frame, above]);
+        let _ = run(&mut doc, &["Make2D", "Projection", ""]);
+        let mut alone = Document::default();
+        let (cube, frame) = cut_cube(&mut alone, true, SectionFill::None);
+        alone.select(&[cube, frame]);
+        let _ = run(&mut alone, &["Make2D", "Projection", ""]);
+        // The box above adds nothing: the drawing is the cut cube's alone.
+        let count = |doc: &Document| doc.state().objects.len();
+        assert_eq!(count(&doc), count(&alone) + 1);
+    }
+
+    #[test]
     fn a_cut_seen_face_on_is_filled_with_its_section_style() {
         use curva_document::clipping::SectionFill;
         let mut doc = Document::default();
