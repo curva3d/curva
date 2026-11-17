@@ -82,6 +82,7 @@ pub fn write_pdf(pages: &[Page]) -> Result<Vec<u8>, String> {
                     colour,
                     width,
                     dashes,
+                    ..
                 } => {
                     let Some(line) = path(&[(points, *closed)], height) else {
                         continue;
@@ -109,7 +110,9 @@ pub fn write_pdf(pages: &[Page]) -> Result<Vec<u8>, String> {
                     }));
                     surface.draw_path(&line);
                 }
-                Mark::Fill { contours, colour } => {
+                Mark::Fill {
+                    contours, colour, ..
+                } => {
                     let outlines: Vec<(&[[f64; 2]], bool)> =
                         contours.iter().map(|c| (c.as_slice(), true)).collect();
                     let Some(shape) = path(&outlines, height) else {
@@ -146,6 +149,7 @@ mod tests {
                     colour: [0.0; 3],
                     width: 0.5,
                     dashes: vec![2.0, 1.0],
+                    source: None,
                 },
                 Mark::Fill {
                     contours: vec![
@@ -153,6 +157,7 @@ mod tests {
                         vec![[30.0, 30.0], [50.0, 30.0], [50.0, 50.0], [30.0, 50.0]],
                     ],
                     colour: [1.0, 0.0, 0.0],
+                    source: None,
                 },
             ],
         }
@@ -166,6 +171,27 @@ mod tests {
         // Two pages, A4 landscape in points.
         assert!(text.contains("/Count 2"), "not two pages");
         assert!(text.contains("841.8"), "not A4 wide");
+    }
+
+    /// The same page with every mark naming an object.
+    fn with_sources(mut page: Page) -> Page {
+        for (n, mark) in page.marks.iter_mut().enumerate() {
+            match mark {
+                Mark::Line { source, .. } | Mark::Fill { source, .. } => {
+                    *source = Some(n as u64 + 7)
+                }
+            }
+        }
+        page
+    }
+
+    #[test]
+    fn the_objects_marks_come_from_do_not_change_the_pdf() {
+        assert_eq!(
+            write_pdf(&[a4()]).unwrap(),
+            write_pdf(&[with_sources(a4())]).unwrap()
+        );
+        assert_eq!(svg::write_svg(&a4()), svg::write_svg(&with_sources(a4())));
     }
 
     #[test]
