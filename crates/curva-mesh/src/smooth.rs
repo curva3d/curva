@@ -200,7 +200,7 @@ fn chains(lines: &[[u32; 2]]) -> Vec<Vec<u32>> {
     }
     let mut used = vec![false; lines.len()];
     let mut runs = Vec::new();
-    let mut walk = |start: u32, first: usize, used: &mut Vec<bool>| {
+    let walk = |start: u32, first: usize, used: &mut Vec<bool>| {
         let mut run = vec![start];
         let (mut here, mut line) = (start, first);
         loop {
