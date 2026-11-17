@@ -191,15 +191,11 @@ fn picture_drawing(picture: Picture, scene: &Scene) -> Drawing {
         light: picture.light,
         shaded,
         ghosted: picture.ghosted,
-        zebra: false,
-        draft: false,
         area: epaint::Rect::NOTHING,
         frame: 0,
         background: epaint::Color32::BLACK,
         background_low: epaint::Color32::BLACK,
-        engine: crate::Engine::Curva,
         camera: crate::Camera::default(),
-        bevy_last: false,
     }
 }
 

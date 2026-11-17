@@ -217,15 +217,11 @@ impl Curva {
                 light: camera.forward().map(|value| value as f32),
                 shaded,
                 ghosted,
-                zebra: false,
-                draft: false,
                 area: shown,
                 frame: ui.ctx().cumulative_frame_nr(),
                 background: PAPER,
                 background_low: PAPER,
-                engine: curva_viewport::Engine::Curva,
                 camera,
-                bevy_last: false,
             };
             ui.painter()
                 .with_clip_rect(on_screen)

@@ -66,6 +66,8 @@ const STUDIO_SKY_BRIGHTNESS: f32 = 150.0;
 const OPEN_SKY_BRIGHTNESS: f32 = 120.0;
 /// How much of what is behind a ghosted face shows through, as in Curva's Ghosted mode.
 const GHOSTED_ALPHA: f32 = 0.5;
+/// How much a command's preview covers what is behind it, as Curva's ghosted faces did.
+const PREVIEW_ALPHA: f32 = 0.5;
 
 /// A mesh's contents, as a fingerprint and a length: equal contents share one Bevy mesh.
 type MeshKey = (u64, usize);
@@ -120,6 +122,9 @@ pub(super) struct ViewScene {
     sun: Entity,
     /// Curva's background behind the scene, and the two colours it was made with.
     backdrop: Entity,
+    /// A command's live preview of the surfaces it makes, see-through, and the faces it shows.
+    preview: Entity,
+    preview_faces: Option<Arc<Vec<MeshVertex>>>,
     backdrop_colours: Option<(epaint::Color32, epaint::Color32)>,
     /// What was last handed to Bevy: whether faces show, and the view (its lens and shape).
     shaded: Option<bool>,
@@ -157,6 +162,25 @@ impl ViewScene {
                 unlit: true,
                 ..default()
             });
+        // Previews are drawn in the preview colour, half see-through, as Curva's ghosted faces.
+        let ghost = world
+            .resource_mut::<Assets<StandardMaterial>>()
+            .add(StandardMaterial {
+                base_color: Color::WHITE.with_alpha(PREVIEW_ALPHA),
+                alpha_mode: AlphaMode::Blend,
+                double_sided: true,
+                cull_mode: None,
+                ..default()
+            });
+        let preview = world
+            .spawn((
+                MeshMaterial3d(ghost),
+                Transform::IDENTITY,
+                Visibility::Hidden,
+                layer.clone(),
+                NotShadowCaster,
+            ))
+            .id();
         let backdrop = world
             .spawn((
                 MeshMaterial3d(flat),
@@ -173,6 +197,8 @@ impl ViewScene {
             from_above,
             sun,
             backdrop,
+            preview,
+            preview_faces: None,
             backdrop_colours: None,
             shaded: None,
             view: None,
@@ -253,6 +279,7 @@ impl ViewScene {
                 .build(),
             );
         }
+        self.place_preview(world, &drawing.preview_faces);
         let new_faces = !self
             .faces
             .as_ref()
@@ -295,6 +322,37 @@ impl ViewScene {
     /// Puts Curva's background behind everything this view shows: a flat, unlit surface just
     /// inside the farthest distance drawn, filling the view, shaded from `drawing.background` at
     /// the top to `drawing.background_low` at the bottom, as Curva's own background is.
+    /// Shows a command's preview of the surfaces it makes, or hides it when there is none.
+    fn place_preview(&mut self, world: &mut World, faces: &Arc<Vec<MeshVertex>>) {
+        if self
+            .preview_faces
+            .as_ref()
+            .is_some_and(|shown| Arc::ptr_eq(shown, faces))
+        {
+            return;
+        }
+        self.preview_faces = Some(Arc::clone(faces));
+        if faces.is_empty() {
+            world.entity_mut(self.preview).insert(Visibility::Hidden);
+            return;
+        }
+        let positions: Vec<[f32; 3]> = faces.iter().map(|corner| corner.position).collect();
+        let normals: Vec<[f32; 3]> = faces.iter().map(|corner| corner.normal).collect();
+        let colours: Vec<[f32; 4]> = faces
+            .iter()
+            .map(|corner| {
+                let [r, g, b] = corner.colour;
+                Color::srgb(r, g, b).to_linear().to_f32_array()
+            })
+            .collect();
+        let mesh =
+            bevy_mesh(positions, normals).with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colours);
+        let mesh = world.resource_mut::<Assets<Mesh>>().add(mesh);
+        world
+            .entity_mut(self.preview)
+            .insert((Mesh3d(mesh), Visibility::Visible));
+    }
+
     fn place_backdrop(&mut self, world: &mut World, drawing: &Drawing) {
         let colours = (drawing.background, drawing.background_low);
         if self.backdrop_colours != Some(colours) {

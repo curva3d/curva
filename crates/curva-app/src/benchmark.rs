@@ -349,8 +349,6 @@ pub(crate) struct BenchmarkScene {
     pub(crate) select: bool,
     /// A small two-storey building with trees, for pictures of visualisation styles.
     pub(crate) building: bool,
-    /// Every view drawn by Bevy (`--bevy`, decision 0029).
-    pub(crate) bevy: bool,
     /// A small house with walls, openings, a table and a stair, for cut drawings.
     pub(crate) house: bool,
 }
@@ -367,7 +365,6 @@ impl BenchmarkScene {
             offset: [0.0; 3],
             select: false,
             building: false,
-            bevy: false,
             house: false,
         };
         match name {
@@ -461,7 +458,11 @@ impl Benchmark {
         println!("frame gap: median {middle:.1} ms, 99th percentile {worst:.1} ms");
         println!("work per frame: {work:.2} ms");
         match gpu_frame_ms(frame) {
-            Some(ms) if self.gpu_timer => println!("graphics card per frame: {ms:.2} ms"),
+            Some(ms) if self.gpu_timer => {
+                println!(
+                    "graphics card per frame, Curva's lines only (Bevy's time comes in step 5): {ms:.2} ms"
+                );
+            }
             _ => println!("graphics card per frame: not measured (the card has no timer)"),
         }
         if let Some(gap) = self.selection_gap_ms() {
@@ -530,7 +531,6 @@ mod tests {
             offset,
             select: false,
             building: false,
-            bevy: false,
             house: false,
         }
     }

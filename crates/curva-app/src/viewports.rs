@@ -32,12 +32,6 @@ pub(crate) struct Pane {
     pub(crate) named: Option<String>,
     /// How it draws surfaces and solids: by their edges, filled in and lit, or see-through.
     pub(crate) display: DisplayMode,
-    /// Whether shaded faces show zebra stripes (`Zebra`).
-    pub(crate) zebra: bool,
-    /// Whether shaded faces show draft angles (`DraftAnalysis`).
-    pub(crate) draft: bool,
-    /// Which engine draws it: Curva, or Bevy for the pilot (decision 0028).
-    pub(crate) engine: curva_viewport::Engine,
     /// Views to step back to with `UndoView`, newest last, and the view they were left from.
     pub(crate) views_back: Vec<Camera>,
     /// Views stepped back from, for `RedoView`, newest last.
@@ -97,9 +91,6 @@ impl Pane {
             } else {
                 DisplayMode::Wireframe
             },
-            zebra: false,
-            draft: false,
-            engine: curva_viewport::Engine::Curva,
         }
     }
 }
@@ -449,10 +440,8 @@ impl Curva {
             }
             ViewRequest::Show(name) => {
                 let display = self.panes[self.active].display;
-                let engine = self.panes[self.active].engine;
                 self.panes[self.active] = Pane::new(standard_view(name));
                 self.panes[self.active].display = display;
-                self.panes[self.active].engine = engine;
             }
             ViewRequest::ShowBlocks => self.open_piece(layout::Piece::Blocks),
             ViewRequest::ShowLayouts => self.open_piece(layout::Piece::Layouts),
@@ -461,20 +450,11 @@ impl Curva {
             ViewRequest::ShowPrint => self.open_piece(layout::Piece::Print),
             ViewRequest::ShowNotes => self.open_piece(layout::Piece::Notes),
             ViewRequest::ClipIn(frames, on) => self.clip_in(&frames, on),
-            ViewRequest::DraftAnalysis => {
-                let pane = &mut self.panes[self.active];
-                pane.draft = !pane.draft;
-                if pane.display == DisplayMode::Wireframe {
-                    pane.display = DisplayMode::Shaded;
-                }
-            }
-            ViewRequest::Zebra => {
-                let pane = &mut self.panes[self.active];
-                pane.zebra = !pane.zebra;
-                if pane.display == DisplayMode::Wireframe {
-                    pane.display = DisplayMode::Shaded;
-                }
-            }
+            // Zebra and Draft angle are set aside while the display moves to Bevy (the owner's
+            // decision B, `docs/specs/display-on-bevy.md` §5); they come back as their own work.
+            ViewRequest::DraftAnalysis | ViewRequest::Zebra => self
+                .processor
+                .note(self.text.render(&Message::new("ui.analysis.set-aside"))),
             ViewRequest::Plan => {
                 let pane = &mut self.panes[self.active];
                 let plane = pane.plane;
@@ -596,7 +576,6 @@ impl Curva {
             egui::Sense::click(),
         );
         let mut chosen = None;
-        let mut chosen_engine = None;
         egui::Popup::menu(&response).show(|ui| {
             for (mode, key) in [
                 (DisplayMode::Wireframe, "ui.display.wireframe"),
@@ -611,28 +590,9 @@ impl Curva {
                     chosen = Some(mode);
                 }
             }
-            // The Bevy pilot (decision 0028): which engine draws this view.
-            ui.separator();
-            ui.label(self.text.render(&Message::new("ui.display.engine")));
-            for (engine, key) in [
-                (curva_viewport::Engine::Curva, "ui.display.engine-curva"),
-                (curva_viewport::Engine::BevyPilot, "ui.display.engine-bevy"),
-            ] {
-                let current = self.panes[pane].engine == engine;
-                if ui
-                    .selectable_label(current, self.text.render(&Message::new(key)))
-                    .clicked()
-                {
-                    chosen_engine = Some(engine);
-                }
-            }
         });
         if let Some(mode) = chosen {
             self.panes[pane].display = mode;
-            self.active = pane;
-        }
-        if let Some(engine) = chosen_engine {
-            self.panes[pane].engine = engine;
             self.active = pane;
         }
     }
@@ -758,11 +718,6 @@ impl Curva {
             }
             Arc::clone(&self.drawing.faces_without.1)
         };
-        // Bevy draws all its views of a frame together, when the last of them comes.
-        let last_bevy = shown
-            .iter()
-            .map(|(pane, ..)| *pane)
-            .rfind(|pane| self.panes[*pane].engine == curva_viewport::Engine::BevyPilot);
         for (pane, rect, _) in &shown {
             let size = pane_size(*rect);
             // Clipping planes cut the model's viewports, never a sheet.
@@ -796,15 +751,11 @@ impl Curva {
                 light: camera.forward().map(|value| value as f32),
                 shaded: display != DisplayMode::Wireframe,
                 ghosted: display == DisplayMode::Ghosted,
-                zebra: self.panes[*pane].zebra,
-                draft: self.panes[*pane].draft,
                 area: *rect,
                 frame: ui.ctx().cumulative_frame_nr(),
                 background: self.pane_background(*pane).0,
                 background_low: self.pane_background(*pane).1,
-                engine: self.panes[*pane].engine,
                 camera: *camera,
-                bevy_last: Some(*pane) == last_bevy,
             };
             ui.painter().add(egui_wgpu_callback(*rect, drawing));
             self.paint_details(ui, *pane, *rect, size);
