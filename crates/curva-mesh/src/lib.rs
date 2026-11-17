@@ -12,6 +12,7 @@ mod mesh;
 mod nurbs;
 mod reduce;
 mod repair;
+mod smooth;
 mod subd;
 mod transform;
 mod triangulate;
@@ -19,7 +20,8 @@ mod triangulate;
 pub use check::MeshCheck;
 pub use curva_kernel::Point;
 pub use mesh::{Attribute, Mesh, MeshError};
-pub use subd::SubD;
+pub use smooth::{MAX_LEVELS, SmoothError};
+pub use subd::{Sharpness, SubD, SubDDisplay, VertexTag};
 pub use triangulate::Triangles;
 
 #[cfg(test)]

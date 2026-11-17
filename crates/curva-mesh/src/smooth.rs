@@ -1,0 +1,200 @@
+//! A SubD's smooth surface, on subdiv-kernels (decision 0032, spec `docs/specs/mesh-and-subd.md`
+//! §3.2). This file is the only one that calls it.
+//!
+//! The library works out Catmull–Clark's weights (Rhino's SubD rule, matching Pixar's OpenSubdiv)
+//! for the cage's shape, with its creases and corners, and Curva applies them to its own
+//! double-precision points, measured from the cage's centre so a SubD far from the origin keeps
+//! its digits. Each level's weights are applied in turn, not multiplied together first, so the
+//! library's single-precision weights round as little as they can (see the precision test).
+
+use crate::{Attribute, Mesh, Point, SubD, VertexTag};
+use std::fmt;
+use std::num::NonZeroU8;
+use subdiv_kernels::topology::Mesh as Cage;
+use subdiv_kernels::{Refiner, Scheme, SchemeOptions, UniformRefine};
+
+/// Sharpness the library takes as infinite (OpenSubdiv's `SHARPNESS_INFINITE`).
+const INFINITE: f32 = 10.0;
+
+/// The most subdivision levels asked for: 6 turns each face into 4096 quads, finer than any
+/// display needs.
+pub const MAX_LEVELS: u8 = 6;
+
+/// Why a SubD's surface could not be worked out. The text is for logs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SmoothError(pub String);
+
+impl fmt::Display for SmoothError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for SmoothError {}
+
+impl SubD {
+    /// The cage as the library sees it: its faces, its edges with their sharpness, and its
+    /// corners.
+    fn library_cage(&self) -> Cage {
+        let cage = self.cage();
+        let edges: Vec<(u32, u32)> = self.edge_uses().into_keys().collect();
+        Cage {
+            vertex_count: u32::try_from(cage.vertex_count()).unwrap_or(u32::MAX),
+            face_vertex_counts: cage
+                .faces()
+                .map(|f| u32::try_from(f.len()).unwrap_or(u32::MAX))
+                .collect(),
+            face_vertex_indices: cage.corners().to_vec(),
+            edge_vertices: edges.iter().map(|&(a, b)| [a, b]).collect(),
+            edge_creases: edges
+                .iter()
+                .map(|&(a, b)| {
+                    let s = self.sharpness(a, b).value();
+                    #[allow(clippy::cast_possible_truncation)]
+                    let s = s.min(f64::from(INFINITE)) as f32;
+                    s
+                })
+                .collect(),
+            vertex_corners: (0..cage.vertex_count())
+                .map(|v| {
+                    let v = u32::try_from(v).unwrap_or(u32::MAX);
+                    if self.vertex_tag(v) == VertexTag::Corner {
+                        INFINITE
+                    } else {
+                        0.0
+                    }
+                })
+                .collect(),
+        }
+    }
+
+    /// The cage's centre and its points measured from it.
+    fn centred_points(&self) -> (Point, Vec<Point>) {
+        let centre = self.bounds().map_or([0.0; 3], |(lo, hi)| {
+            std::array::from_fn(|i| f64::midpoint(lo[i], hi[i]))
+        });
+        let points = self
+            .cage()
+            .vertices()
+            .iter()
+            .map(|p| std::array::from_fn(|i| p[i] - centre[i]))
+            .collect();
+        (centre, points)
+    }
+
+    /// The cage subdivided `levels` times (1 to [`MAX_LEVELS`]) by Catmull–Clark, as its quads,
+    /// and the refinement it came from. Each refined face remembers its cage face.
+    fn refine(
+        &self,
+        levels: u8,
+    ) -> Result<(subdiv_kernels::RefinementResult, Point, Vec<Point>), SmoothError> {
+        let levels = NonZeroU8::new(levels.clamp(1, MAX_LEVELS)).unwrap_or(NonZeroU8::MIN);
+        let refiner = Refiner::new(
+            self.library_cage(),
+            Scheme::CatmullClark,
+            SchemeOptions::default(),
+        )
+        .map_err(|e| SmoothError(e.to_string()))?;
+        let result = refiner
+            .refine_uniform(&UniformRefine::from(levels))
+            .map_err(|e| SmoothError(e.to_string()))?;
+        let (centre, points) = self.centred_points();
+        let refined = result.interpolate(&points);
+        Ok((result, centre, refined))
+    }
+
+    /// The cage subdivided `levels` times (1 to [`MAX_LEVELS`]): the control net one level
+    /// finer, all quads, not yet on the limit surface.
+    ///
+    /// # Errors
+    /// When the library refuses the cage.
+    pub fn refined(&self, levels: u8) -> Result<Mesh, SmoothError> {
+        let (result, centre, refined) = self.refine(levels)?;
+        quads_mesh(&result.topology, centre, &refined)
+    }
+
+    /// The smooth surface itself, as quads `levels` subdivisions fine (1 to [`MAX_LEVELS`]),
+    /// every point moved onto the limit surface and given its normal there: what a smooth SubD
+    /// looks like, for display and for meshing.
+    ///
+    /// # Errors
+    /// When the library refuses the cage.
+    pub fn surface(&self, levels: u8) -> Result<Mesh, SmoothError> {
+        let (result, centre, refined) = self.refine(levels)?;
+        let limit = result
+            .limit_stencils()
+            .map_err(|e| SmoothError(e.to_string()))?;
+        let on_surface = limit.position.interpolate(&refined);
+        let t1 = limit.tangent1.interpolate(&refined);
+        let t2 = limit.tangent2.interpolate(&refined);
+        let normals: Vec<Point> = t1
+            .iter()
+            .zip(&t2)
+            .map(|(a, b)| unit(cross(*a, *b)))
+            .collect();
+        let mesh = quads_mesh(&result.topology, centre, &on_surface)?;
+        let mesh = mesh
+            .clone()
+            .with_normals(Attribute::PerVertex(normals))
+            .unwrap_or(mesh);
+        // The library's tangents follow its own face order; turn the normals to face the way the
+        // faces do.
+        Ok(facing(mesh))
+    }
+}
+
+/// A refined level's quads as a mesh, its points moved back from `centre`.
+fn quads_mesh(topology: &Cage, centre: Point, points: &[Point]) -> Result<Mesh, SmoothError> {
+    let vertices = points
+        .iter()
+        .map(|p| std::array::from_fn(|i| p[i] + centre[i]))
+        .collect();
+    let mut faces = Vec::with_capacity(topology.face_vertex_counts.len());
+    let mut at = 0;
+    for &n in &topology.face_vertex_counts {
+        let n = n as usize;
+        faces.push(topology.face_vertex_indices[at..at + n].to_vec());
+        at += n;
+    }
+    Mesh::new(vertices, &faces).map_err(|e| SmoothError(e.to_string()))
+}
+
+/// The mesh with its normals turned, all together, to agree with its faces.
+fn facing(mesh: Mesh) -> Mesh {
+    let Attribute::PerVertex(normals) = mesh.normals().clone() else {
+        return mesh;
+    };
+    let agree: f64 = (0..mesh.face_count())
+        .map(|f| {
+            let face = mesh.face(f);
+            let p: Vec<Point> = face.iter().map(|&v| mesh.vertices()[v as usize]).collect();
+            let n = crate::triangulate::newell_normal(&p);
+            let m = normals[face[0] as usize];
+            n[0] * m[0] + n[1] * m[1] + n[2] * m[2]
+        })
+        .sum();
+    if agree >= 0.0 {
+        return mesh;
+    }
+    let turned = normals.iter().map(|n| n.map(|c| -c)).collect();
+    mesh.clone()
+        .with_normals(Attribute::PerVertex(turned))
+        .unwrap_or(mesh)
+}
+
+fn cross(a: Point, b: Point) -> Point {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+
+fn unit(v: Point) -> Point {
+    let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+    if l > 0.0 { v.map(|c| c / l) } else { v }
+}
+
+#[cfg(test)]
+#[path = "smooth_tests.rs"]
+mod tests;
