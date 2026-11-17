@@ -19,15 +19,20 @@ these decisions:
 
 **Merged:** the spec (PR #265); Stage A step 1, the mesh structure in `crates/curva-mesh`
 (#268, PR #276); STL and OBJ read and written, new crate `crates/curva-meshfiles` (#269 part 1,
-PR #293), checked both ways against Rhino 8.
+PR #293), checked both ways against Rhino 8; mesh booleans on manifold-rust (#272 part 1, PR #297).
 
-**In review:** mesh booleans on manifold-rust, `crates/curva-mesh/src/boolean.rs` (#272 part 1,
-PR #297).
+**In review:** `Check` for meshes and MeshRepair's main fixes (#273 part 1). The report counts
+what Rhino 8's `Check` counts, checked against it on the same meshes. The fixes: unify normals,
+fill holes, remove degenerate and duplicate faces and unused points, weld, rebuild normals. They
+are Curva's own, listed in the new `docs/mesh/custom-operations.md`. Meshes now join faces by where
+their points are, as Rhino does, so an unwelded mesh counts as closed.
 
 **Waiting for #266:** the hook-ups that need meshes in the document: STL and OBJ in Open, Import
-and Export (#269 part 2) and the four MeshBoolean commands (#272 part 2).
+and Export (#269 part 2), the four MeshBoolean commands (#272 part 2), and the `Check`, MeshRepair,
+UnifyMeshNormals, FillMeshHoles, Weld, RebuildMeshNormals and CullDegenerateMeshFaces commands
+(#273 part 2).
 
-**Next:** the library parts of the rest of Stage A, #270 to #275 (spec §10). Asked of the other streams: the two shape kinds in the
+**Next:** the library parts of the rest of Stage A: #270, #271, #274 and #275 (spec §10). Asked of the other streams: the two shape kinds in the
 document (#266, features; needed before any command or file hook-up) and drawing meshes (#267,
 display).
 
@@ -45,6 +50,14 @@ display).
 - Rhino 8's mesh booleans leave open results with missing faces when the two meshes have faces
   in the same plane (two overlapping cubes: union volume 1.333 and area 7, where 1.5 and 8 are
   right, with or without a tolerance). Curva's, on manifold-rust, come out closed and right.
+- manifold-rust can test only closed meshes for faces crossing each other, so `Check` says "not
+  known" for open ones, where Rhino counts the crossing pairs. An open-mesh test is for later.
+- Where Curva differs from Rhino on purpose: its UnifyMeshNormals turns a closed mesh that points
+  wholly inwards the right way out (Rhino leaves it), and on an open mesh it keeps the way most
+  faces point (Rhino sometimes keeps the fewer).
+- Rhino's `Check` calls an edge of 0.0001 "extremely short" and one of 0.00015 not, at a tolerance
+  of 0.001 and any mesh size; a face is degenerate when its height is under about 1.5 × 10⁻⁸ of its
+  longest edge.
 
 ## 16 November 2026
 

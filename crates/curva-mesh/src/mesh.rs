@@ -282,12 +282,23 @@ impl Mesh {
         &self.colours
     }
 
-    /// Each edge with how many faces use it, keyed by its two vertices, lower number first.
+    /// Each edge with how many faces use it, keyed by its two ends, lower number first.
+    ///
+    /// As in Rhino, edges join faces by where their vertices are, not by vertex number, so two
+    /// vertices at one place (an unwelded edge) still join their faces; each end is given by the
+    /// lowest-numbered vertex at its place (see [`Mesh::places`]).
     fn edge_uses(&self) -> HashMap<(u32, u32), u32> {
+        let place = self.places();
         let mut uses = HashMap::with_capacity(self.corners.len());
         for face in self.faces() {
             for (k, &a) in face.iter().enumerate() {
-                let b = face[(k + 1) % face.len()];
+                let (a, b) = (
+                    place[a as usize],
+                    place[face[(k + 1) % face.len()] as usize],
+                );
+                if a == b {
+                    continue;
+                }
                 *uses.entry((a.min(b), a.max(b))).or_insert(0) += 1;
             }
         }
@@ -360,11 +371,102 @@ impl Mesh {
             ..self.clone()
         }
     }
+
+    /// For each vertex, the first vertex at exactly the same place (itself when it is the first).
+    ///
+    /// Rhino's `Check` and repairs see a mesh this way, so two vertices at one place (an unwelded
+    /// edge) still join their faces. Minus zero counts as zero.
+    pub(crate) fn places(&self) -> Vec<u32> {
+        let mut first: HashMap<[u64; 3], u32> = HashMap::with_capacity(self.vertices.len());
+        self.vertices
+            .iter()
+            .enumerate()
+            .map(|(i, p)| {
+                *first
+                    .entry(p.map(|c| (c + 0.0).to_bits()))
+                    .or_insert(index(i))
+            })
+            .collect()
+    }
+
+    /// A new mesh made from this one: `kept` names the old vertex each new vertex is, and each
+    /// face lists its corners.
+    ///
+    /// Normals, texture coordinates and colours follow the old corners. Data stored per vertex
+    /// stays per vertex where every corner of each vertex still agrees, and becomes per corner
+    /// otherwise, so nothing is lost or made up. Callers give faces of three or more corners with
+    /// no vertex twice.
+    pub(crate) fn rebuilt(&self, kept: &[u32], faces: &[Vec<NewCorner>]) -> Self {
+        let made: Vec<NewCorner> = faces.iter().flatten().copied().collect();
+        let mut face_ends = Vec::with_capacity(faces.len());
+        let mut end = 0;
+        for face in faces {
+            end += face.len();
+            face_ends.push(index(end));
+        }
+        let old = &self.corners;
+        Self {
+            vertices: kept.iter().map(|&v| self.vertices[v as usize]).collect(),
+            corners: made.iter().map(|c| c.vertex).collect(),
+            face_ends,
+            normals: carried(&self.normals, kept, &made, old, |n, flip| {
+                if flip { n.map(|c| -c) } else { *n }
+            }),
+            texture: carried(&self.texture, kept, &made, old, |t, _| *t),
+            colours: carried(&self.colours, kept, &made, old, |c, _| *c),
+        }
+    }
+}
+
+/// A corner of a face of a mesh being made from another (see [`Mesh::rebuilt`]).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct NewCorner {
+    /// Its vertex in the new mesh.
+    pub vertex: u32,
+    /// The old corner whose normal, texture coordinate and colour it takes.
+    pub from: usize,
+    /// Whether its face was turned round, so its normal turns too.
+    pub flip: bool,
+}
+
+/// One kind of data carried into a rebuilt mesh (see [`Mesh::rebuilt`]).
+fn carried<T: Clone + PartialEq>(
+    data: &Attribute<T>,
+    kept: &[u32],
+    made: &[NewCorner],
+    old: &[u32],
+    turn: impl Fn(&T, bool) -> T,
+) -> Attribute<T> {
+    let value = |c: &NewCorner| {
+        data.at(c.from, old[c.from] as usize)
+            .map(|v| turn(v, c.flip))
+    };
+    let Some(per_corner) = made.iter().map(value).collect::<Option<Vec<T>>>() else {
+        return Attribute::None;
+    };
+    let Attribute::PerVertex(values) = data else {
+        return Attribute::PerCorner(per_corner);
+    };
+    let mut per_vertex: Vec<Option<T>> = vec![None; kept.len()];
+    for (c, v) in made.iter().zip(per_corner.iter()) {
+        match &per_vertex[c.vertex as usize] {
+            None => per_vertex[c.vertex as usize] = Some(v.clone()),
+            Some(seen) if seen == v => {}
+            Some(_) => return Attribute::PerCorner(per_corner),
+        }
+    }
+    Attribute::PerVertex(
+        per_vertex
+            .into_iter()
+            .zip(kept)
+            .map(|(v, &k)| v.unwrap_or_else(|| values[k as usize].clone()))
+            .collect(),
+    )
 }
 
 /// A list position as stored. Meshes are limited to about four billion corners, far beyond what
 /// fits in memory as Curva objects.
-fn index(i: usize) -> u32 {
+pub(crate) fn index(i: usize) -> u32 {
     u32::try_from(i).unwrap_or(u32::MAX)
 }
 

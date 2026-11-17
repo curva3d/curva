@@ -65,7 +65,7 @@ impl Mesh {
 /// (Sutherland, Sproull and Schumacker, "A characterization of ten hidden-surface algorithms",
 /// 1974, p. 15). A polygon too twisted to have an ear left is finished as a fan, so this never
 /// fails; the fan may then overlap, as Rhino's own display of such faces does.
-fn ear_clip(points: &[Point]) -> Vec<[usize; 3]> {
+pub(crate) fn ear_clip(points: &[Point]) -> Vec<[usize; 3]> {
     let normal = newell_normal(points);
     // Drop the axis the normal leans on most; flip one axis if it points backwards, so the polygon
     // stays counter-clockwise on the page.
