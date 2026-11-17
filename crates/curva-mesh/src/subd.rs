@@ -76,9 +76,10 @@ pub struct SubD {
 }
 
 impl SubD {
-    /// A SubD with this cage, smooth everywhere except its open borders, which are creases as in
-    /// Rhino; a border point used by only one face is a corner. Points at exactly the same place
-    /// are joined first, as a SubD's cage is one piece of surface.
+    /// A SubD with this cage, smooth everywhere except its open borders, which are creases, as
+    /// Rhino 8 makes one from a mesh (`SubD.CreateFromMesh` with its smooth options): no corners, so
+    /// an open grid's outer corners round off. Points at exactly the same place are joined first,
+    /// as a SubD's cage is one piece of surface.
     #[must_use]
     pub fn new(cage: Mesh) -> Self {
         let (cage, _) = cage.welded(0.0);
@@ -92,14 +93,6 @@ impl SubD {
                 subd.set_sharpness(edge, Sharpness::CREASE);
             }
         }
-        let mut faces_at = vec![0u32; subd.cage.vertex_count()];
-        for &v in subd.cage.corners() {
-            faces_at[v as usize] += 1;
-        }
-        subd.corners = (0..subd.cage.vertex_count())
-            .filter(|&v| faces_at[v] == 1)
-            .map(|v| u32::try_from(v).unwrap_or(u32::MAX))
-            .collect();
         subd
     }
 
@@ -279,7 +272,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn an_open_cage_has_creased_borders_and_corners_where_one_face_meets() {
+    fn an_open_cage_has_creased_borders_and_no_corners_as_in_rhino() {
         // A 2 × 2 grid of squares.
         let points: Vec<Point> = (0..3)
             .flat_map(|j| (0..3).map(move |i| [f64::from(i), f64::from(j), 0.0]))
@@ -287,7 +280,11 @@ pub(crate) mod tests {
         let faces = [[0, 1, 4, 3], [1, 2, 5, 4], [3, 4, 7, 6], [4, 5, 8, 7]];
         let subd = SubD::new(Mesh::new(points, &faces).unwrap());
         assert_eq!(subd.creases().count(), 8);
-        assert_eq!(subd.vertex_tag(0), VertexTag::Corner);
+        assert_eq!(subd.vertex_tag(0), VertexTag::Crease);
+        assert_eq!(
+            subd.clone().with_corners(&[0]).vertex_tag(0),
+            VertexTag::Corner
+        );
         assert_eq!(subd.vertex_tag(1), VertexTag::Crease);
         assert_eq!(subd.vertex_tag(4), VertexTag::Smooth);
     }

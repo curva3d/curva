@@ -254,7 +254,7 @@ fn a_smooth_cube_becomes_a_rounded_closed_surface_with_outward_normals() {
 }
 
 #[test]
-fn an_open_grid_keeps_its_corners_where_they_are() {
+fn an_open_grid_keeps_the_corners_it_is_given() {
     let points: Vec<Point> = (0..4u32)
         .flat_map(|j| {
             (0..4u32).map(move |i| [f64::from(i), f64::from(j), f64::from((i * j) % 3) * 0.2])
@@ -265,6 +265,7 @@ fn an_open_grid_keeps_its_corners_where_they_are() {
         .flat_map(|j| (0..3).map(move |i| [at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1)]))
         .collect();
     let surface = SubD::new(Mesh::new(points.clone(), &faces).unwrap())
+        .with_corners(&[0, 3, 12, 15])
         .surface(2)
         .unwrap();
     for corner in [0usize, 3, 12, 15] {
@@ -272,4 +273,47 @@ fn an_open_grid_keeps_its_corners_where_they_are() {
         assert!(moved < 1e-9, "corner {corner} moved by {moved}");
     }
     assert!(!surface.is_closed());
+}
+
+/// A cube cage of side 2 from the origin.
+fn cube2() -> Mesh {
+    cube().mapped(&curva_kernel::Similarity::scaling([0.0; 3], 2.0))
+}
+
+// Rhino 8's limit surfaces of the same cages (`SubD.CreateFromMesh`, then `ToBrep`, 17 November
+// 2026): the smooth cube holds 2.620377 and covers 9.197474; the open 3 × 3 grid covers 8.666667;
+// the cube creased on every edge is the cube, 8 and 24. Curva's surface, six levels fine, is
+// facets just inside the limit surface, so a little smaller (measured: 0.025% less volume).
+
+#[test]
+fn a_smooth_cube_matches_rhinos_limit_surface() {
+    let surface = SubD::new(cube2()).surface(6).unwrap();
+    let (volume, area) = (surface.volume().unwrap(), surface.area());
+    assert!((volume / 2.620_377 - 1.0).abs() < 5e-4, "volume {volume}");
+    assert!((area / 9.197_474 - 1.0).abs() < 5e-4, "area {area}");
+}
+
+#[test]
+fn an_open_grid_rounds_its_corners_as_rhinos_does() {
+    let points: Vec<Point> = (0..4u32)
+        .flat_map(|j| (0..4u32).map(move |i| [f64::from(i), f64::from(j), 0.0]))
+        .collect();
+    let at = |i: u32, j: u32| j * 4 + i;
+    let faces: Vec<[u32; 4]> = (0..3)
+        .flat_map(|j| (0..3).map(move |i| [at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1)]))
+        .collect();
+    let surface = SubD::new(Mesh::new(points, &faces).unwrap())
+        .surface(6)
+        .unwrap();
+    let area = surface.area();
+    assert!((area / 8.666_667 - 1.0).abs() < 5e-4, "area {area}");
+}
+
+#[test]
+fn a_cube_creased_everywhere_matches_rhinos() {
+    let subd = SubD::new(cube2());
+    let edges: Vec<[u32; 2]> = subd.edge_uses().into_keys().map(|(a, b)| [a, b]).collect();
+    let surface = subd.with_creases(&edges).surface(2).unwrap();
+    assert!((surface.volume().unwrap() - 8.0).abs() < 1e-5);
+    assert!((surface.area() - 24.0).abs() < 1e-5);
 }
