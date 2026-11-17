@@ -4,6 +4,7 @@
 //! only place that calls the outside mesh libraries (manifold-rust, subdiv-kernels, quadrs), so an
 //! upgrade or a swap touches nothing else (decision 0032).
 
+pub mod boolean;
 mod measure;
 mod mesh;
 mod subd;

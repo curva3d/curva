@@ -65,7 +65,7 @@ fn length(v: Point) -> f64 {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::mesh::tests::cube;
     use std::f64::consts::PI;
@@ -114,7 +114,7 @@ mod tests {
     }
 
     /// A sphere of radius 1 with `n` faces around and `n / 2` from pole to pole.
-    fn uv_sphere(n: u32) -> Mesh {
+    pub(crate) fn uv_sphere(n: u32) -> Mesh {
         let rings = n / 2;
         let mut v = vec![[0.0, 0.0, -1.0]];
         for r in 1..rings {
