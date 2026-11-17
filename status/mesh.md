@@ -19,20 +19,21 @@ these decisions:
 
 **Merged:** the spec (PR #265); Stage A step 1, the mesh structure in `crates/curva-mesh`
 (#268, PR #276); STL and OBJ read and written, new crate `crates/curva-meshfiles` (#269 part 1,
-PR #293), checked both ways against Rhino 8; mesh booleans on manifold-rust (#272 part 1, PR #297).
+PR #293), checked both ways against Rhino 8; mesh booleans on manifold-rust (#272 part 1, PR #297);
+`Check` for meshes and MeshRepair's main fixes (#273 part 1, PR #306), with `Check`'s counts
+compared with Rhino 8's. Meshes now join faces by where their points are, as Rhino does.
 
-**In review:** `Check` for meshes and MeshRepair's main fixes (#273 part 1). The report counts
-what Rhino 8's `Check` counts, checked against it on the same meshes. The fixes: unify normals,
-fill holes, remove degenerate and duplicate faces and unused points, weld, rebuild normals. They
-are Curva's own, listed in the new `docs/mesh/custom-operations.md`. Meshes now join faces by where
-their points are, as Rhino does, so an unwelded mesh counts as closed.
+**In review:** ReduceMesh, TriangulateMesh, QuadrangulateMesh, ExtractMeshFaces and MeshToNURB
+(#274 part 1). ReduceMesh is quadric error edge collapse (Garland and Heckbert, 1997), Curva's
+own; QuadrangulateMesh makes as many quads as Rhino's on the same mesh; MeshToNURB makes one
+surface per face through Curva's kernel and sews them, a closed mesh giving a solid.
 
 **Waiting for #266:** the hook-ups that need meshes in the document: STL and OBJ in Open, Import
-and Export (#269 part 2), the four MeshBoolean commands (#272 part 2), and the `Check`, MeshRepair,
+and Export (#269 part 2), the four MeshBoolean commands (#272 part 2), the `Check`, MeshRepair,
 UnifyMeshNormals, FillMeshHoles, Weld, RebuildMeshNormals and CullDegenerateMeshFaces commands
-(#273 part 2).
+(#273 part 2), and the five commands of #274 (part 2).
 
-**Next:** the library parts of the rest of Stage A: #270, #271, #274 and #275 (spec §10). Asked of the other streams: the two shape kinds in the
+**Next:** the library parts of the rest of Stage A: #270, #271 and #275 (spec §10). Asked of the other streams: the two shape kinds in the
 document (#266, features; needed before any command or file hook-up) and drawing meshes (#267,
 display).
 
@@ -58,6 +59,9 @@ display).
 - Rhino's `Check` calls an edge of 0.0001 "extremely short" and one of 0.00015 not, at a tolerance
   of 0.001 and any mesh size; a face is degenerate when its height is under about 1.5 × 10⁻⁸ of its
   longest edge.
+- Rhino 8's `Mesh.Reduce` left a 512-face UV sphere unreduced (960 triangles, asked for 200),
+  though it reduces its own `CreateFromSphere` meshes; Curva's ReduceMesh reduces both.
+- ReduceMesh does not carry texture coordinates or colours yet; normals are worked out again.
 
 ## 16 November 2026
 
