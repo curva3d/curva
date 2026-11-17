@@ -13,6 +13,7 @@ use crate::read::class;
 mod annotation;
 mod geometry;
 mod mesh;
+mod subd;
 mod views;
 use annotation::*;
 use geometry::*;
@@ -414,6 +415,7 @@ fn object_type(g: &Geometry) -> i64 {
         Geometry::Instance { .. } => 0x1000,
         Geometry::Dot { .. } => 0x2000,
         Geometry::Mesh(_) => 0x20,
+        Geometry::SubD(_) => 0x4_0000,
         Geometry::Hatch(_) => 0x10000,
         Geometry::Text(_)
         | Geometry::Dimension(_)
@@ -477,6 +479,7 @@ fn write_geometry(w: &mut Writer, g: &Geometry) {
         }
         Geometry::Hatch(h) => class_object(w, class::HATCH, |w| write_hatch(w, h)),
         Geometry::Mesh(m) => class_object(w, class::MESH, |w| mesh::write_mesh(w, m)),
+        Geometry::SubD(s) => class_object(w, class::SUBD, |w| subd::write_subd(w, s)),
         Geometry::Dot {
             at,
             text,
