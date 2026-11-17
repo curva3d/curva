@@ -21,3 +21,5 @@ switch to it, delete Curva's code and the row, and say so in the release notes. 
 | fill-holes | `curva-mesh/src/repair.rs` (`Mesh::with_holes_filled`) | MeshRepair, FillMeshHoles | none (it only takes closed meshes) | manifold-rust 0.19.2 |
 | triangles-to-quads | `curva-mesh/src/convert.rs` (`Mesh::quadrangulated`) | QuadrangulateMesh | none | manifold-rust 0.19.2 |
 | reduce-mesh | `curva-mesh/src/reduce.rs` (`Mesh::reduced`) | ReduceMesh | manifold-rust's `simplify` merges edges within a distance, on closed triangle meshes only, and takes no face count | manifold-rust 0.19.2 |
+| subd-limit-fit | `curva-mesh/src/smooth.rs` (`SubD::fitted`) | SubDSphere, SubDTorus | subdiv-kernels' `InverseStencilMap` says which outputs a cage point moves, not where to put cage points so their limit points land on given places | subdiv-kernels 0.1.0 |
+| subd-feature-patches | `curva-mesh/src/smooth.rs` (`SubD::bezier_patches`) | ToNURBS | subdiv-kernels gives exact bicubic patches only on regular quads; around star points, creases and borders it evaluates the surface but makes no patches | subdiv-kernels 0.1.0 |

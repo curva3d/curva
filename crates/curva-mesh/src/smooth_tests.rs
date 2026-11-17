@@ -361,3 +361,36 @@ fn an_open_grid_has_its_border_as_one_closed_curve_and_a_smooth_cube_none() {
     );
     assert!(SubD::new(cube()).crease_curves(2).unwrap().is_empty());
 }
+
+#[test]
+fn a_live_surface_follows_moved_cage_points_with_the_same_faces() {
+    let subd = SubD::new(cube());
+    let live = LiveSurface::new(&subd, 3).unwrap();
+    // Unmoved, it is the surface itself.
+    let (points, normals) = live.positions(subd.cage().vertices());
+    let surface = subd.surface(3).unwrap();
+    for (a, b) in points.iter().zip(surface.vertices()) {
+        assert!((0..3).all(|k| (a[k] - b[k]).abs() < 1e-12));
+    }
+    assert_eq!(Attribute::PerVertex(normals), surface.normals().clone());
+    // Moved, it matches a SubD made with the moved cage.
+    let mut moved = subd.cage().vertices().to_vec();
+    moved[6] = [1.5, 1.5, 2.0];
+    let (points, _) = live.positions(&moved);
+    let again = SubD::new(
+        Mesh::new(
+            moved,
+            &subd.cage().faces().map(<[u32]>::to_vec).collect::<Vec<_>>(),
+        )
+        .unwrap(),
+    )
+    .surface(3)
+    .unwrap();
+    for (a, b) in points.iter().zip(again.vertices()) {
+        assert!(
+            (0..3).all(|k| (a[k] - b[k]).abs() < 1e-9),
+            "{a:?} against {b:?}"
+        );
+    }
+    assert_eq!(live.mesh().face_count(), again.face_count());
+}

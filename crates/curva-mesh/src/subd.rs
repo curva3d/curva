@@ -5,8 +5,8 @@
 //! are smooth or creased, each with a sharpness (0 smooth, infinite for Rhino 8's creases, so
 //! softer creases can come later without changing files), and its points are tagged as Rhino
 //! tags them: smooth, crease, corner or dart. Texture coordinates ride on the cage's corners;
-//! colours, when given, are one per face. The smooth surface itself is never stored: it is
-//! worked out by subdiv-kernels (`smooth.rs`).
+//! colours, when given, are one per face (a face may have none, as in Rhino). The smooth surface
+//! itself is never stored: it is worked out by subdiv-kernels (`smooth.rs`).
 
 use crate::{Mesh, Point};
 use curva_kernel::Similarity;
@@ -23,6 +23,19 @@ impl Sharpness {
     pub const SMOOTH: Self = Self(Some(0.0));
     /// A crease: infinitely sharp.
     pub const CREASE: Self = Self(None);
+
+    /// A sharpness of `value`: 0 or less is smooth, infinity a crease; numbers between are the
+    /// partly sharp edges Rhino 8 can make.
+    #[must_use]
+    pub fn new(value: f64) -> Self {
+        if value.is_nan() || value <= 0.0 {
+            Self::SMOOTH
+        } else if value.is_infinite() {
+            Self::CREASE
+        } else {
+            Self(Some(value))
+        }
+    }
 
     /// The sharpness as a number, infinity for a crease.
     #[must_use]
@@ -71,7 +84,7 @@ pub struct SubD {
     /// Points tagged as corners by the user (other tags follow from the edges).
     corners: Vec<u32>,
     /// One colour per face, when coloured.
-    colours: Option<Vec<[f32; 3]>>,
+    colours: Option<Vec<Option<[f32; 3]>>>,
     display: SubDDisplay,
 }
 
@@ -109,6 +122,16 @@ impl SubD {
         self
     }
 
+    /// The same SubD with the edge between two points given this sharpness (when they share an
+    /// edge).
+    #[must_use]
+    pub fn with_sharpness(mut self, [a, b]: [u32; 2], sharpness: Sharpness) -> Self {
+        if self.edge_uses().contains_key(&(a.min(b), a.max(b))) {
+            self.set_sharpness((a, b), sharpness);
+        }
+        self
+    }
+
     /// The same SubD with these points kept sharp as corners.
     #[must_use]
     pub fn with_corners(mut self, points: &[u32]) -> Self {
@@ -121,9 +144,9 @@ impl SubD {
         self
     }
 
-    /// The same SubD with a colour for each face; `None` when the count does not match.
+    /// The same SubD with a colour, or none, for each face; `None` when the count does not match.
     #[must_use]
-    pub fn with_face_colours(mut self, colours: Vec<[f32; 3]>) -> Option<Self> {
+    pub fn with_face_colours(mut self, colours: Vec<Option<[f32; 3]>>) -> Option<Self> {
         (colours.len() == self.cage.face_count()).then(|| {
             self.colours = Some(colours);
             self
@@ -177,7 +200,7 @@ impl SubD {
 
     /// The face colours, when it has them.
     #[must_use]
-    pub fn face_colours(&self) -> Option<&[[f32; 3]]> {
+    pub fn face_colours(&self) -> Option<&[Option<[f32; 3]>]> {
         self.colours.as_deref()
     }
 
@@ -222,6 +245,69 @@ impl SubD {
             Err(_) if s == Sharpness::SMOOTH => {}
             Err(i) => self.sharp.insert(i, (key, s)),
         }
+    }
+
+    /// A SubD on a changed cage, keeping what it can: `points[v]` is old point `v`'s number in
+    /// the new cage (if it is still there), and `faces[f]` new face `f`'s old number (if it had
+    /// one). Edges keep their sharpness and points their corner tags where both ends are still
+    /// there; faces keep their colours; the new cage's open border is creased as always.
+    pub(crate) fn carried_to(
+        &self,
+        cage: Mesh,
+        points: &[Option<u32>],
+        faces: &[Option<usize>],
+    ) -> Self {
+        let mut subd = Self::new(cage);
+        subd.display = self.display;
+        let uses = subd.edge_uses();
+        let old_uses = self.edge_uses();
+        for &([a, b], s) in &self.sharp {
+            // A border's crease comes from being a border, so only inner edges' carry over.
+            if old_uses.get(&(a, b)).is_none_or(|f| f.len() != 2) {
+                continue;
+            }
+            if let (Some(Some(na)), Some(Some(nb))) =
+                (points.get(a as usize), points.get(b as usize))
+            {
+                let key = ((*na).min(*nb), (*na).max(*nb));
+                if uses.get(&key).is_some_and(|f| f.len() == 2) {
+                    subd.set_sharpness(key, s);
+                }
+            }
+        }
+        let mut corners: Vec<u32> = self
+            .corners
+            .iter()
+            .filter_map(|&v| points.get(v as usize).copied().flatten())
+            .collect();
+        corners.sort_unstable();
+        corners.dedup();
+        subd.corners = corners;
+        if let Some(old) = &self.colours {
+            let colours: Vec<Option<[f32; 3]>> = faces
+                .iter()
+                .map(|f| f.and_then(|f| old.get(f).copied().flatten()))
+                .collect();
+            if colours.len() == subd.cage.face_count() && colours.iter().any(Option::is_some) {
+                subd.colours = Some(colours);
+            }
+        }
+        subd
+    }
+
+    /// The same SubD with these points no longer corners.
+    #[must_use]
+    pub fn without_corners(mut self, points: &[u32]) -> Self {
+        self.corners.retain(|v| !points.contains(v));
+        self
+    }
+
+    /// The same SubD with its cage points moved to `points` (one for each), its faces, tags and
+    /// colours kept.
+    pub(crate) fn with_cage_points(mut self, points: Vec<Point>) -> Self {
+        let normals = self.cage.normals().clone();
+        self.cage = self.cage.with_vertices(points, normals);
+        self
     }
 
     /// Each edge with the faces that use it, keyed lower point first.
@@ -302,11 +388,11 @@ pub(crate) mod tests {
     fn face_colours_need_one_per_face() {
         assert!(
             SubD::new(cube())
-                .with_face_colours(vec![[1.0, 0.0, 0.0]; 5])
+                .with_face_colours(vec![Some([1.0, 0.0, 0.0]); 5])
                 .is_none()
         );
         let coloured = SubD::new(cube())
-            .with_face_colours(vec![[1.0, 0.0, 0.0]; 6])
+            .with_face_colours(vec![Some([1.0, 0.0, 0.0]); 6])
             .unwrap();
         assert_eq!(coloured.face_colours().map(<[_]>::len), Some(6));
         assert_eq!(
