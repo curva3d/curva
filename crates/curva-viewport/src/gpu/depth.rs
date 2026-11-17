@@ -14,7 +14,8 @@ const HANDOVER_SHADER: &str = "
 struct Handover {
     // The view's top left corner on the scene texture, in pixels.
     corner: vec4<f32>,
-    // Bevy's lens: x 1 if flat; y its nearest and z its farthest distance.
+    // Bevy's lens: x 1 if flat; y its nearest and z its farthest distance; w where its backdrop
+    // begins: Curva's background, not a surface.
     bevy: vec4<f32>,
     // Curva's: x 1 if flat; y nearest, z farthest, w the distance to the target.
     curva: vec4<f32>,
@@ -37,6 +38,8 @@ struct Handover {
     } else {
         distance = h.bevy.y / d;
     }
+    // Nor at Bevy's backdrop, so the grid shows there.
+    if (distance >= h.bevy.w) { return 1.0; }
     if (h.curva.x > 0.5) {
         return clamp(distance / h.range.x + 0.5 - h.curva.w / h.range.x, 0.0, 1.0);
     }
@@ -135,6 +138,9 @@ impl Handover {
         let (near, far) = (lens.near as f32, lens.far as f32);
         // The target is half-way through a flat view's depth range (`Camera::matrix`).
         let distance = (lens.near + lens.far) as f32 / 2.0;
+        // Just short of Bevy's backdrop (`ViewScene::place_backdrop`).
+        let backdrop =
+            (lens.near + (crate::camera::BACKDROP_DEPTH - 0.01) * (lens.far - lens.near)) as f32;
         let numbers: [f32; 16] = [
             area[0],
             area[1],
@@ -143,7 +149,7 @@ impl Handover {
             flat,
             near,
             far,
-            0.0,
+            backdrop,
             flat,
             near,
             far,

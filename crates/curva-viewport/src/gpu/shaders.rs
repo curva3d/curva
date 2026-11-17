@@ -33,13 +33,16 @@ fn widened(width: f32, chosen: bool) -> f32 {{
     )
 }
 
-/// The grid: true one-pixel lines, two vertices a segment.
+/// The grid: true one-pixel lines, two vertices a segment, put at the far end of the depth
+/// (just inside it, so it is not cut off there), so anything drawn, Curva's or Bevy's, covers it
+/// (#344).
 pub(crate) const GRID_SHADER: &str = "
 struct Uniforms { matrix: mat4x4<f32>, light: vec4<f32>, pixel: vec4<f32>, clips: array<vec4<f32>, 4> };
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 struct Out { @builtin(position) position: vec4<f32>, @location(0) colour: vec3<f32> };
 @vertex fn vertex_main(@location(0) p: vec3<f32>, @location(1) c: vec3<f32>) -> Out {
-    return Out(uniforms.matrix * vec4<f32>(p, 1.0), c);
+    let at = uniforms.matrix * vec4<f32>(p, 1.0);
+    return Out(vec4<f32>(at.xy, at.w * 0.99999, at.w), c);
 }
 @fragment fn fragment_main(input: Out) -> @location(0) vec4<f32> {
     return vec4<f32>(input.colour, 1.0);

@@ -493,21 +493,47 @@ impl LineRenderer {
         pass.set_bind_group(0, &slot.bind_group, &[]);
         let faces = self.surfaces.as_ref().filter(|faces| faces.count > 0);
         // The grid goes first, writing no depth, so whatever lies on it or near it draws over
-        // it, as in Rhino; drawn after faces, it showed through faces lying exactly on it. It
-        // stays a pixel wide; the model's lines have their own widths.
-        if let Some(grid) = slot.grid.as_ref().filter(|lines| lines.count > 0) {
-            pass.set_pipeline(&self.grid);
-            for (buffer, count) in &grid.chunks {
-                pass.set_vertex_buffer(0, buffer.slice(..));
-                pass.draw(0..*count, 0..1);
-            }
-        }
+        // it, as in Rhino; drawn after faces, it showed through faces lying exactly on it.
+        Self::grid_lines(pass, &self.grid, slot);
         // Solid faces go next and hide the lines behind them.
         if slot.shaded
             && !slot.ghosted
             && let Some(faces) = faces
         {
             Self::draw_faces(pass, &self.faces, faces);
+        }
+    }
+
+    /// Whether view `slot` has a grid to draw.
+    fn grid_wanted(&self, slot: usize) -> bool {
+        self.slots
+            .get(slot)
+            .and_then(|slot| slot.grid.as_ref())
+            .is_some_and(|grid| grid.count > 0)
+    }
+
+    /// A view's grid alone, on a view Bevy drew, before its outlines: the grid's shader puts it
+    /// at the far end of the depth, so it shows only where the depth Bevy handed over is empty,
+    /// and whatever lies on or near it covers it, as in [`Self::draw_under`] (#344).
+    fn draw_grid(&self, pass: &mut wgpu::RenderPass<'_>, slot: usize) {
+        if let Some(slot) = self.slots.get(slot) {
+            pass.set_bind_group(0, &slot.bind_group, &[]);
+            Self::grid_lines(pass, &self.grid, slot);
+        }
+    }
+
+    /// The grid's lines, a pixel wide; the model's lines have their own widths.
+    fn grid_lines(
+        pass: &mut wgpu::RenderPass<'_>,
+        pipeline: &wgpu::RenderPipeline,
+        slot: &ViewSlot,
+    ) {
+        if let Some(grid) = slot.grid.as_ref().filter(|lines| lines.count > 0) {
+            pass.set_pipeline(pipeline);
+            for (buffer, count) in &grid.chunks {
+                pass.set_vertex_buffer(0, buffer.slice(..));
+                pass.draw(0..*count, 0..1);
+            }
         }
     }
 

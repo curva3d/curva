@@ -3,6 +3,18 @@
 *Written only by the display stream, which owns the inside of `crates/curva-viewport` (see
 `AGENTS.md`). Updated at the end of every work session. Newest first.*
 
+## 18 November 2026
+
+**Done**
+- **The grid shows again in 3D and flat views** (#344, reported by the owner). Since step 3c
+  (#255) took out Curva's own surface drawing, views Bevy draws only got Curva's second part
+  (lines, previews), and the grid was in the first part, so it was never drawn. Now it is drawn
+  on Bevy's picture before the outlines, only where Bevy drew nothing, so surfaces lying on it
+  or near it cover it as before. On the way: Bevy's background is a flat surface just inside
+  the farthest distance, which the depth handed to Curva's lines took as a surface; it now counts
+  as nothing drawn. New test: through the window's own path, the grid shows beside a face lying
+  on it and not through it. The grid's place far from the origin is unchanged (#305).
+
 ## 17 November 2026
 
 **Done**

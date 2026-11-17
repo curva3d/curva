@@ -220,15 +220,20 @@ fn surfaces_pass<'encoder>(
     })
 }
 
-/// The pass drawing a view's lines and previews over its surfaces and outlines.
+/// The pass drawing a view's lines and previews over its surfaces and outlines, or, with
+/// `keep`, its grid, keeping the depth for the outline pass after it.
 fn lines_pass<'encoder>(
     encoder: &'encoder mut wgpu::CommandEncoder,
-    colour: &wgpu::TextureView,
-    depth: &wgpu::TextureView,
+    [colour, depth]: [&wgpu::TextureView; 2],
+    keep: bool,
     timestamp_writes: Option<wgpu::RenderPassTimestampWrites<'_>>,
 ) -> wgpu::RenderPass<'encoder> {
     encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-        label: Some("curva viewport lines"),
+        label: Some(if keep {
+            "curva viewport grid"
+        } else {
+            "curva viewport lines"
+        }),
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
             view: colour,
             depth_slice: None,
@@ -242,7 +247,11 @@ fn lines_pass<'encoder>(
             view: depth,
             depth_ops: Some(wgpu::Operations {
                 load: wgpu::LoadOp::Load,
-                store: wgpu::StoreOp::Discard,
+                store: if keep {
+                    wgpu::StoreOp::Store
+                } else {
+                    wgpu::StoreOp::Discard
+                },
             }),
             stencil_ops: None,
         }),
@@ -290,6 +299,12 @@ fn lines_on_bevy(
             &drawing.camera.lens(),
         );
     }
+    // The grid goes under the outlines, as in Curva's own drawing, where Bevy drew nothing.
+    if renderer.grid_wanted(drawing.slot) {
+        let mut pass = lines_pass(encoder, [colour, depth], true, None);
+        fit(&mut pass, area);
+        renderer.draw_grid(&mut pass, drawing.slot);
+    }
     if renderer.outlines_wanted(drawing.slot) {
         renderer.outliner.draw(
             device,
@@ -313,7 +328,7 @@ fn lines_on_bevy(
             beginning_of_pass_write_index: Some(*first),
             end_of_pass_write_index: Some(*first + 1),
         });
-    let mut pass = lines_pass(encoder, colour, depth, clock);
+    let mut pass = lines_pass(encoder, [colour, depth], false, clock);
     fit(&mut pass, area);
     renderer.draw_over(&mut pass, drawing.slot);
     drop(pass);
