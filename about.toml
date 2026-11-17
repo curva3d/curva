@@ -13,6 +13,9 @@ accepted = [
     "Ubuntu-font-1.0",
     # Boost licence, allowed for all of Curva (decision 0034), as in deny.toml.
     "BSL-1.0",
+    # MIT without its credit condition, approved 16 November 2026 for Bevy (through encase); in
+    # deny.toml since then.
+    "MIT-0",
 ]
 ignore-build-dependencies = true
 ignore-dev-dependencies = true
