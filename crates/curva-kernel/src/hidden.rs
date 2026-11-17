@@ -535,9 +535,11 @@ fn crossing_points(sources: &[Source], flat: f64) -> Result<Vec<Vec<Point>>, Ker
         let (a, b) = (boxes[i], boxes[j]);
         (0..2).all(|k| a.0[k] <= b.1[k] + flat && b.0[k] <= a.1[k] + flat)
     };
+    let grid = Grid::of(&boxes, flat);
     let mut cuts: Vec<Vec<Point>> = vec![Vec::new(); sources.len()];
     for i in 0..sources.len() {
-        for j in 0..sources.len() {
+        // Only lines sharing a cell can overlap; taken in order, as if every line were tried.
+        for j in grid.near(i) {
             if i == j || !overlap(i, j) {
                 continue;
             }
@@ -559,6 +561,72 @@ fn crossing_points(sources: &[Source], flat: f64) -> Result<Vec<Vec<Point>>, Ker
         }
     }
     Ok(cuts)
+}
+
+/// The drawing divided into square-ish cells, about as many as there are lines, with the lines
+/// whose boxes (grown by `flat`) reach into each cell. Two boxes that overlap share a cell.
+struct Grid<'a> {
+    boxes: &'a [([f64; 2], [f64; 2])],
+    flat: f64,
+    low: [f64; 2],
+    size: [f64; 2],
+    side: usize,
+    cells: Vec<Vec<usize>>,
+}
+
+impl<'a> Grid<'a> {
+    fn of(boxes: &'a [([f64; 2], [f64; 2])], flat: f64) -> Self {
+        let mut low = [f64::INFINITY; 2];
+        let mut high = [f64::NEG_INFINITY; 2];
+        for (a, b) in boxes {
+            for k in 0..2 {
+                low[k] = low[k].min(a[k] - flat);
+                high[k] = high[k].max(b[k] + flat);
+            }
+        }
+        let side = ((boxes.len() as f64).sqrt().ceil() as usize).clamp(1, 1024);
+        let size = [0, 1].map(|k| ((high[k] - low[k]) / side as f64).max(flat).max(1e-12));
+        let mut grid = Self {
+            boxes,
+            flat,
+            low,
+            size,
+            side,
+            cells: vec![Vec::new(); side * side],
+        };
+        for i in 0..boxes.len() {
+            for cell in grid.cells_of(i) {
+                grid.cells[cell].push(i);
+            }
+        }
+        grid
+    }
+
+    /// The cells line `i`'s grown box reaches into.
+    fn cells_of(&self, i: usize) -> Vec<usize> {
+        let (a, b) = self.boxes[i];
+        let at = |v: f64, k: usize| {
+            let n = ((v - self.low[k]) / self.size[k]).floor();
+            (n.max(0.0) as usize).min(self.side - 1)
+        };
+        let (x0, x1) = (at(a[0] - self.flat, 0), at(b[0] + self.flat, 0));
+        let (y0, y1) = (at(a[1] - self.flat, 1), at(b[1] + self.flat, 1));
+        (y0..=y1)
+            .flat_map(|y| (x0..=x1).map(move |x| y * self.side + x))
+            .collect()
+    }
+
+    /// The lines sharing a cell with line `i`, itself included, in order.
+    fn near(&self, i: usize) -> Vec<usize> {
+        let mut near: Vec<usize> = self
+            .cells_of(i)
+            .into_iter()
+            .flat_map(|cell| self.cells[cell].iter().copied())
+            .collect();
+        near.sort_unstable();
+        near.dedup();
+        near
+    }
 }
 
 /// The line `source` cut where others cross it, its pieces in runs of the same visibility. A

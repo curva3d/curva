@@ -326,30 +326,15 @@ impl Make2D {
         let mut fills = Vec::new();
         let mut sections = Vec::new();
         for (id, body) in bodies_of(doc, ids) {
-            if !self.without_clip_cuts {
-                fills.extend(fills::fills_of(doc, id, &body, cuts, &layer_of(id)));
-                for cut in cuts {
-                    if let Ok(outline) = body.section(cut.origin, cut.keep) {
-                        // Only where the rest of the cuts keep it.
-                        for piece in outline.iter().flat_map(straight_pieces) {
-                            for kept in clipped_curve(&piece, cuts, Some(cut.frame)) {
-                                sections.push(kept);
-                                cut_layers.push(layer_of(id));
-                            }
-                        }
-                    }
-                }
+            let part = self.cut_body(doc, id, body, cuts, &layer_of(id))?;
+            fills.extend(part.fills);
+            for section in part.sections {
+                sections.push(section);
+                cut_layers.push(part.layer.clone());
             }
-            let mut kept = Some(body);
-            for cut in cuts {
-                kept = match kept {
-                    Some(b) => clipped_body(&b, cut)?,
-                    None => None,
-                };
-            }
-            if let Some(body) = kept {
+            if let Some(body) = part.kept {
                 bodies.push(body);
-                body_layers.push(layer_of(id));
+                body_layers.push(part.layer);
             }
         }
         for (id, curve) in curves_of(doc, ids) {
@@ -373,6 +358,47 @@ impl Make2D {
                 .collect(),
             sections_from,
             fills,
+        })
+    }
+
+    /// One body cut by the clipping planes `cuts`: unless left out, its fills and the outlines
+    /// where the planes cut it (only where the rest of the cuts keep them); and what the planes
+    /// leave of it, if anything.
+    fn cut_body(
+        &self,
+        doc: &Document,
+        id: u64,
+        body: Body,
+        cuts: &[PlaneCut],
+        layer: &str,
+    ) -> Result<CutBody, curva_kernel::KernelError> {
+        let mut fills = Vec::new();
+        let mut sections = Vec::new();
+        if !self.without_clip_cuts {
+            // Each cut through the body once, for both its fill and its outline lines.
+            let outlines: Vec<Option<Vec<Curve>>> = cuts
+                .iter()
+                .map(|cut| body.section(cut.origin, cut.keep).ok())
+                .collect();
+            fills = fills::fills_of(doc, id, &outlines, cuts, layer);
+            for (cut, outline) in cuts.iter().zip(&outlines) {
+                for piece in outline.iter().flatten().flat_map(straight_pieces) {
+                    sections.extend(clipped_curve(&piece, cuts, Some(cut.frame)));
+                }
+            }
+        }
+        let mut kept = Some(body);
+        for cut in cuts {
+            kept = match kept {
+                Some(b) => clipped_body(&b, cut)?,
+                None => None,
+            };
+        }
+        Ok(CutBody {
+            fills,
+            sections,
+            kept,
+            layer: layer.to_owned(),
         })
     }
 
@@ -514,6 +540,15 @@ impl Make2D {
 }
 
 /// Make2D's inputs, cut by the chosen clipping planes.
+/// One body after the clipping planes: its fills, the outlines where the planes cut it, what is
+/// left of it, and its layer's path.
+struct CutBody {
+    fills: Vec<fills::Fill>,
+    sections: Vec<Curve>,
+    kept: Option<Body>,
+    layer: String,
+}
+
 struct Inputs {
     bodies: Vec<Body>,
     /// The chosen curves, then the outlines where the planes cut the bodies.
