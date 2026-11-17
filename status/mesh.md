@@ -25,19 +25,20 @@ compared with Rhino 8's. Meshes now join faces by where their points are, as Rhi
 ReduceMesh, TriangulateMesh, QuadrangulateMesh, ExtractMeshFaces and MeshToNURB (#274 part 1,
 PR #310). ReduceMesh is quadric error edge collapse (Garland and Heckbert, 1997), Curva's own.
 PLY read and written, text and binary (#275 PLY part, PR #311), checked both ways against Rhino 8.
+`.3dm` meshes read and written (#275, PR #314): n-gons, normals, texture coordinates, colours
+and double-precision points; Rhino 7 and 8 files read, and Rhino 8 reads Curva's as valid.
 
-**In review:** `.3dm` meshes read and written (the rest of #275), in new files
-`crates/curva-3dm/src/read/mesh.rs` and `write/mesh.rs`, with one-line registrations: n-gons,
-normals, texture coordinates, colours and double-precision points. Read Rhino 7 and 8 files, and
-Rhino 8 reads Curva's as valid meshes. The importer still leaves meshes out, as before, until the
-document holds them.
+**In review:** the mesh primitives' geometry (#270 part 1): box, plane, sphere in Rhino's three
+styles, cylinder and cone with both cap styles, and torus, in a `Frame` so commands can place
+them. Face counts, areas and volumes match Rhino 8's on the same shapes.
 
 **Waiting for #266:** the hook-ups that need meshes in the document: STL, OBJ, PLY and `.3dm`
 meshes in Open, Import and Export (#269 part 2, #275), the four MeshBoolean commands (#272 part 2),
 the `Check`, MeshRepair, UnifyMeshNormals, FillMeshHoles, Weld, RebuildMeshNormals and
-CullDegenerateMeshFaces commands (#273 part 2), and the five commands of #274 (part 2).
+CullDegenerateMeshFaces commands (#273 part 2), the five commands of #274 (part 2), and the six
+primitive commands with `What`, `Properties`, `Join` and `Explode` for meshes (#270 part 2).
 
-**Next:** the library parts of #270 (mesh primitives) and #271 (Mesh from NURBS) (spec §10). Asked of the other streams: the two shape kinds in the
+**Next:** the library part of #271 (Mesh from NURBS) (spec §10). Asked of the other streams: the two shape kinds in the
 document (#266, features; needed before any command or file hook-up) and drawing meshes (#267,
 display).
 
@@ -72,6 +73,10 @@ display).
   buffer's size in 8 bytes, where openNURBS writes 4 (`WriteSize`) in every version. Nothing used
   them until meshes, so the mesh files carry their own correct copy; the shared ones are for the
   features stream to fix (#313).
+- RhinoCommon's `Mesh.CreateFromCylinder` makes a cylinder with one cap facing in: Rhino calls it
+  not oriented and gives its volume as 3.771 where it holds 5.657. Curva's face out.
+- Rhino's quad sphere (MeshSphere `Quads`) places its points its own way, between an even grid on
+  the cube and an equal-angle one; Curva uses equal angles, its sizes within 0.3% of Rhino's.
 
 ## 16 November 2026
 

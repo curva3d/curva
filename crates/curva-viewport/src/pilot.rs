@@ -336,7 +336,11 @@ struct Pictures {
 }
 
 thread_local! {
-    static PICTURES: std::cell::RefCell<Option<Pictures>> = const { std::cell::RefCell::new(None) };
+    /// The picture device, kept for the thread's life. Never dropped when the thread ends: Bevy's
+    /// own per-thread values may be gone by then, and dropping it panicked a test's thread on
+    /// exit. The system frees it with the program.
+    static PICTURES: std::cell::RefCell<Option<std::mem::ManuallyDrop<Pictures>>> =
+        const { std::cell::RefCell::new(None) };
 }
 
 /// The format pictures are drawn in.
@@ -408,7 +412,7 @@ fn with_pictures<R>(job: impl FnOnce(&mut Pictures) -> Result<R, String>) -> Res
     PICTURES.with(|kept| {
         let mut kept = kept.borrow_mut();
         if kept.is_none() {
-            *kept = Some(Pictures::new()?);
+            *kept = Some(std::mem::ManuallyDrop::new(Pictures::new()?));
         }
         job(kept.as_mut().ok_or("no picture device")?)
     })
@@ -686,6 +690,101 @@ mod tests {
             .filter(|(a, b)| a.iter().zip(b.iter()).any(|(x, y)| x.abs_diff(*y) > 2))
             .count();
         assert!(differing <= 8, "{differing} pixels differ");
+    }
+
+    /// A box standing on a slab, `scale` millimetres to the unit, seen in perspective and framed
+    /// whole, as a window scene measured from its own origin.
+    fn slab_and_box(scale: f64) -> Drawing {
+        let mut doc = curva_document::Document::default();
+        let box_at = |corner: [f64; 3], size: [f64; 3]| {
+            curva_kernel::Body::cuboid(corner.map(|v| v * scale), size.map(|v| v * scale)).unwrap()
+        };
+        doc.add_body(box_at([-10.0, -10.0, -0.5], [20.0, 20.0, 0.5]));
+        doc.add_body(box_at([-2.0, -2.0, 0.0], [4.0, 4.0, 6.0]));
+        let outlines = crate::Outlines::of(doc.state());
+        let parts = crate::SceneParts::shared(&outlines);
+        let mut camera = StandardView::Perspective.camera();
+        let (low, high) = outlines.bounds().unwrap();
+        camera.frame(low, high);
+        let camera = camera.measured_from(parts.origin);
+        let mut view = drawing(StandardView::Perspective, parts.faces.clone());
+        view.shapes = Arc::new(parts.shapes.clone());
+        view.objects = Arc::new(parts.objects.clone());
+        view.matrix = camera.matrix(f64::from(SIZE[0]) / f64::from(SIZE[1]));
+        view.light = camera.forward().map(|value| value as f32);
+        view.camera = camera;
+        view
+    }
+
+    /// Bevy's whole picture of `view`, once Bevy has had the updates a new scene needs.
+    fn whole_picture(
+        pilot: &mut Pilot,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        view: &Drawing,
+    ) -> Vec<u8> {
+        for _ in 0..3 {
+            pilot.draw(view, SIZE);
+        }
+        let texture = pilot.draw(view, SIZE).expect("Bevy's picture");
+        crate::gpu::read_texture(device, queue, &texture, SIZE)
+    }
+
+    /// How many pixels of two pictures differ by more than `by` in some channel.
+    fn differing(a: &[u8], b: &[u8], by: u8) -> usize {
+        a.chunks(4)
+            .zip(b.chunks(4))
+            .filter(|(p, q)| p.iter().zip(q.iter()).any(|(x, y)| x.abs_diff(*y) > by))
+            .count()
+    }
+
+    /// Bevy's settings follow the model's size in millimetres, not Bevy's metre defaults (spec
+    /// `display-on-bevy.md` step 4): a box standing on a slab, casting its shadow in the Sunlit
+    /// look, drawn 10 mm across and then 10 km across in the same view, framed alike, gives the
+    /// same picture.
+    #[test]
+    fn a_model_draws_alike_at_any_size() {
+        let _turn = one_at_a_time();
+        let Some((mut pilot, device, queue)) = pilot() else {
+            return;
+        };
+        pilot.look = Look {
+            lighting: Lighting::Sunlit,
+            ..Look::default()
+        };
+        let small = whole_picture(&mut pilot, &device, &queue, &slab_and_box(1.0));
+        let large = whole_picture(&mut pilot, &device, &queue, &slab_and_box(1.0e6));
+        let shown = small.chunks(4).filter(|p| p[..3] != [200, 120, 40]).count();
+        assert!(shown > 200, "the model shows: {shown} pixels");
+        let apart = differing(&small, &large, 6);
+        assert!(apart <= shown / 50, "{apart} of {shown} pixels differ");
+    }
+
+    /// Turning a view Sunlit without moving it sets its shadows for the model's size, as a view
+    /// that was Sunlit from the start has them: a 10 km model, where Bevy's metre defaults would
+    /// lose the shadow.
+    #[test]
+    fn turning_sunlit_sets_the_shadows_for_the_model() {
+        let _turn = one_at_a_time();
+        let Some((mut pilot, device, queue)) = pilot() else {
+            return;
+        };
+        let view = slab_and_box(1.0e6);
+        let sunlit = Look {
+            lighting: Lighting::Sunlit,
+            ..Look::default()
+        };
+        pilot.look = sunlit;
+        let from_the_start = whole_picture(&mut pilot, &device, &queue, &view);
+        // Shadows set for a 10 mm model, then the 10 km one in Studio, then turned Sunlit without
+        // moving: its shadows must be set again for its size.
+        whole_picture(&mut pilot, &device, &queue, &slab_and_box(1.0));
+        pilot.look = Look::default();
+        whole_picture(&mut pilot, &device, &queue, &view);
+        pilot.look = sunlit;
+        let turned = whole_picture(&mut pilot, &device, &queue, &view);
+        let apart = differing(&from_the_start, &turned, 6);
+        assert!(apart <= 8, "{apart} pixels differ");
     }
 
     /// Every `// CUSTOM BEVY PART:` mark has a row in `docs/bevy/custom-parts.md`, and every row a
