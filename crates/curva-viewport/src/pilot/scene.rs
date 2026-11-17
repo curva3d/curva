@@ -266,7 +266,8 @@ impl ViewScene {
                 .entity_mut(self.headlight)
                 .insert(Transform::IDENTITY.looking_to(towards, up));
         }
-        if self.look != Some(look) {
+        let new_look = self.look != Some(look);
+        if new_look {
             self.look = Some(look);
             self.light(world, look);
             let materials = self.materials.values().cloned().collect::<Vec<_>>();
@@ -277,9 +278,10 @@ impl ViewScene {
                 }
             }
         }
-        if look.lighting == Lighting::Sunlit && new_view {
+        if look.lighting == Lighting::Sunlit && (new_view || new_look) {
             // Shadows reach from just in front of the viewer to well past what it looks at, in
-            // millimetres (Bevy's defaults are for metres).
+            // millimetres (Bevy's defaults are for metres), set again whenever the camera moves
+            // or the look turns Sunlit.
             let distance = drawing.camera.distance as f32;
             world.entity_mut(self.sun).insert(
                 bevy::light::CascadeShadowConfigBuilder {

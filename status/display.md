@@ -21,16 +21,22 @@
   of graphics memory steady instead of 1312 MiB, under the spec's 1 GB. Most of what was left was
   the 40,000 circles, 128 segments each (328 MB); the copies' edges were only 38 MB. A whole,
   undashed circle is now one entry, and the graphics card works out its segments.
-- **Step 4, far from the origin, in review** (#225): a window scene is measured from a point near
+- **Step 4, far from the origin, merged** (#305): a window scene is measured from a point near
   the model (its middle, to the nearest metre), worked out in double precision before narrowing,
   and its camera, grid, previews and clipping planes are moved to match; shared meshes are
   measured from their own middle. New *Far* checks: a model 500 km out draws the same picture as
   at the origin, on Curva's lines (310 pixels differed before) and on Bevy's surfaces (576).
   *Far* runs as fast as *Large*. Custom part `far-origin` listed; `big_space` checked and not used.
+  Drawing only: document coordinates, saved files, copy and paste, snapping and the coordinates
+  shown stay exactly where they are (owner's rule, so pasted objects land alike across files).
+- **Step 4, Bevy's settings in millimetres, in review:** checked by a new test, a box casting its
+  shadow drawn 10 mm and 10 km across gives the same picture. Shadow distances already followed
+  the view; one gap fixed: a view turned Sunlit without moving kept shadow distances set for an
+  earlier view (a second new test, which failed before the fix).
 
 **Next**
-- Step 4, still to do: picking and snapping on the shared shapes instead of placed copies; Bevy's
-  settings in millimetres; pictures for agents and sheets measured from the model too (they still
+- Step 4, still to do: picking and snapping on the shared shapes instead of placed copies;
+  pictures for agents and sheets measured from the model too (they still
   measure from the origin, so a far model's pictures are jagged).
 - Then step 5, speed (Bevy's fixed cost per frame, snapping #130).
 
