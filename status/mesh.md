@@ -60,7 +60,7 @@ display).
   of 0.001 and any mesh size; a face is degenerate when its height is under about 1.5 × 10⁻⁸ of its
   longest edge.
 - Rhino 8's `Mesh.Reduce` left a 512-face UV sphere unreduced (960 triangles, asked for 200),
-  though it reduces its own `CreateFromSphere` meshes; Curva's ReduceMesh reduces both.
+  though it reduces its own `CreateFromSphere` meshes; Curva's ReduceMesh reduces that sphere.
 - ReduceMesh does not carry texture coordinates or colours yet; normals are worked out again.
 
 ## 16 November 2026
