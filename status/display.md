@@ -10,6 +10,13 @@
   into a flat face by the modelling engine, about 3 ms a letter: a 3.6 MB drawing of the owner's
   with 356 texts spent 19 s on them before its first frame. They are now filled in their plane by
   lyon (decision 0030); working out that drawing went from 24.6 s to 5.6 s.
+- **Meshes show and can be picked** (#267, spec `mesh-and-subd.md` Stage A, items 1, 2 and 4).
+  Meshes from `.3dm` files and mesh tools were in the model but invisible. Now they shade, from
+  their own normals where they have them (an unwelded edge shows as a crease) or else smooth
+  across welded edges, as Rhino does; their wires show in wireframe and are left out where faces
+  show; a click on a mesh picks it as a solid when closed, a surface when open; and a print shows
+  its borders. Still to do: vertex colours (item 3), and speed for meshes of millions of edges
+  (each wire is listed as its own line for now).
 - **The owner's own project files orbit** (asked by the owner through the features stream).
   The benchmark can now open a file (`--open`); the seven files that read in under a minute were
   orbited, all fine except one 3.6 MB drawing, whose text and block splines made 14.9 million
