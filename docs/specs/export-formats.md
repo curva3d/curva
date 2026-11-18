@@ -123,7 +123,7 @@ this dialog again" is kept, as a checkbox in Advanced, with a way back in the ex
   on crates.io yet. **The crates.io name `openskp` belongs to a different project**
   (hew3d/openskp, GPL-3.0), which Curva does not use.
 
-**Recommended route (waiting on the owner's yes): OpenSKP's own Rust package, not a port of Curva's own and not a
+**Route (owner, 19 November 2026): OpenSKP's own Rust package, not a port of Curva's own and not a
 separate repository.** Curva depends on it from its GitHub repository, pinned to one commit, as it
 does solidcore (`deny.toml` gains it in `allow-git`); a new pin is taken at each release. Fixes Curva
 needs go to OpenSKP's repository as pull requests, as its Rust package itself came in, so Curva
@@ -184,5 +184,6 @@ Small pull requests, in order:
 1. The spec is approved as written ("continue with your recommendation"). All code added to Curva is
    Rust.
 2. SKP: researched (§4). OpenSKP's own Rust package, from its repository, as the last step (§8,
-   step 7): no port and no separate repository. Recommended; waiting on the owner's yes.
+   step 7): no port and no separate repository (owner, 19 November 2026: "let's use openskp existing
+   rust package").
 3. STEP's default schema is AP214 (it carries colours and layers; Rhino's default is AP203).
