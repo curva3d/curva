@@ -6,7 +6,7 @@ use super::meshfiles::{MeshFormat, export_mesh_file, import_mesh_file};
 use crate::commands::{ask_objects, unexpected};
 use crate::{
     Answer, CURVA_FILES, Command, DWG_FILES, DXF_FILES, FileFormat, Message, OBJ_FILES, PLY_FILES,
-    PrintJob, PrintTo, RHINO_FILES, Request, STL_FILES, SVG_FILES, Step, ViewRequest,
+    PrintJob, PrintTo, RHINO_FILES, Request, STEP_FILES, STL_FILES, SVG_FILES, Step, ViewRequest,
 };
 use curva_3dm::import::Report;
 use curva_document::Document;
@@ -35,6 +35,7 @@ pub const EXPORT_FORMATS: &[FileFormat] = &[
     RHINO_FILES,
     DXF_FILES,
     DWG_FILES,
+    STEP_FILES,
     STL_FILES,
     OBJ_FILES,
     PLY_FILES,
@@ -276,6 +277,17 @@ impl Command for Export {
                 if let Some(format) = MeshFormat::of(&path) {
                     let chosen = self.chosen.as_deref();
                     return match export_mesh_file(doc, chosen, &path, format) {
+                        Ok(summary) => Step::Done(Some(Message::with(
+                            "done.export_cad",
+                            vec![path.display().to_string(), summary],
+                        ))),
+                        Err(e) => failed(e),
+                    };
+                }
+                if super::step::is_step(&path) {
+                    let schema = curva_kernel::step::StepSchema::default();
+                    let chosen = self.chosen.as_deref();
+                    return match super::step::write_step_file(doc, chosen, &path, schema) {
                         Ok(summary) => Step::Done(Some(Message::with(
                             "done.export_cad",
                             vec![path.display().to_string(), summary],
