@@ -63,6 +63,7 @@ pub use spline::Spline;
 pub use surface::NurbsSurface;
 mod text;
 pub use text::{font_bytes, text_outlines};
+pub mod step;
 mod tween;
 pub use body::{Body, BodyMesh};
 pub use conic::{Chamfered, Elliptical, chamfer_lines};
