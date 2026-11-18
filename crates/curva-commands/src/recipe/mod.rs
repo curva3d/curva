@@ -34,6 +34,8 @@ pub enum Value {
     Edges(Vec<curva_document::EdgePick>),
     /// Picked faces of surfaces and solids.
     Faces(Vec<curva_document::FacePick>),
+    /// Picked points, edges and faces of meshes and SubDs.
+    MeshParts(Vec<curva_document::MeshPick>),
     /// Enter on an optional step.
     Empty,
 }

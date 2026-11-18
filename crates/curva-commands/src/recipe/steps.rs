@@ -113,6 +113,13 @@ impl StepDef {
         Self::new(prompt, Kind::Faces)
     }
 
+    /// Asks for points, edges and faces of meshes and SubDs, picked in the viewport; parts
+    /// picked beforehand answer it (#333).
+    #[must_use]
+    pub fn mesh_parts(prompt: &'static str) -> Self {
+        Self::new(prompt, Kind::MeshParts)
+    }
+
     /// Asks for objects; a selection made beforehand answers it.
     #[must_use]
     pub fn objects(prompt: &'static str) -> Self {

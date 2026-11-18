@@ -56,6 +56,8 @@ pub enum Kind {
     Edges,
     /// Faces of surfaces and solids, picked in the viewport.
     Faces,
+    /// Points, edges and faces of meshes and SubDs, picked in the viewport (#333).
+    MeshParts,
 }
 
 /// One question a command asks.
@@ -111,6 +113,12 @@ pub const DXF_FILES: FileFormat = ("files.dxf", &["dxf"]);
 /// AutoCAD's drawing files.
 pub const DWG_FILES: FileFormat = ("files.dwg", &["dwg"]);
 
+/// Mesh files Curva reads and writes itself: STL, OBJ and PLY (spec `mesh-and-subd.md` §5).
+pub const STL_FILES: FileFormat = ("files.stl", &["stl"]);
+/// Wavefront OBJ files.
+pub const OBJ_FILES: FileFormat = ("files.obj", &["obj"]);
+/// PLY files.
+pub const PLY_FILES: FileFormat = ("files.ply", &["ply"]);
 /// STEP files, for other CAD programs (spec `export-formats.md`).
 pub const STEP_FILES: FileFormat = ("files.step", &["stp", "step"]);
 
@@ -269,6 +277,8 @@ pub enum Answer {
     Edges(Vec<curva_document::EdgePick>),
     /// Picked faces of surfaces and solids.
     Faces(Vec<curva_document::FacePick>),
+    /// Picked points, edges and faces of meshes and SubDs.
+    MeshParts(Vec<curva_document::MeshPick>),
     /// A file location.
     Path(String),
     /// One of the request's option words.
