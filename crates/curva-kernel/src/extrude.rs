@@ -63,16 +63,15 @@ pub(crate) fn sweep_pieces(curve: &Curve) -> Result<Vec<SweepCurve>, KernelError
                     "a smooth curve did not become NURBS".to_owned(),
                 ));
             };
-            if !weights.is_empty() {
-                // Edited circles keep weights; how the engine reads them is not yet checked,
-                // so they are refused rather than swept wrongly.
-                return Err(KernelError(
-                    "weighted curves cannot be swept yet; rebuild the curve first".to_owned(),
-                ));
-            }
+            // The engine takes each control point as it is, with its weight beside it
+            // (`[x, y, z, w]`), as it gives them back (`engine_ops::from_sweep_curve`).
             vec![SweepCurve::Nurbs {
                 degree,
-                points: points.iter().map(|p| [p[0], p[1], p[2], 1.0]).collect(),
+                points: points
+                    .iter()
+                    .enumerate()
+                    .map(|(i, p)| [p[0], p[1], p[2], weights.get(i).copied().unwrap_or(1.0)])
+                    .collect(),
                 knots,
             }]
         }
@@ -401,5 +400,47 @@ mod tests {
         let cone = Body::extruded_to_point(&circle, [0.0, 0.0, 6.0], true).unwrap();
         let expected = std::f64::consts::PI * 4.0 * 6.0 / 3.0;
         assert!((cone.volume().unwrap() - expected).abs() < 1e-3 * expected);
+    }
+
+    #[test]
+    fn a_weighted_curve_extruded_is_the_shape_it_draws() {
+        // A circle as a weighted NURBS curve (as Rhino files and edited circles hold them),
+        // far from the origin: its solid has the true cylinder's volume.
+        let (cx, cy, r) = (3000.0, -2000.0, 5.0);
+        let corner = std::f64::consts::FRAC_1_SQRT_2;
+        let around = [
+            (1.0, 0.0),
+            (1.0, 1.0),
+            (0.0, 1.0),
+            (-1.0, 1.0),
+            (-1.0, 0.0),
+            (-1.0, -1.0),
+            (0.0, -1.0),
+            (1.0, -1.0),
+            (1.0, 0.0),
+        ];
+        let weighted = Curve::nurbs(
+            2,
+            vec![
+                0.0, 0.0, 0.0, 0.25, 0.25, 0.5, 0.5, 0.75, 0.75, 1.0, 1.0, 1.0,
+            ],
+            around
+                .iter()
+                .map(|(x, y)| [cx + r * x, cy + r * y, 0.0])
+                .collect(),
+            (0..9)
+                .map(|k| if k % 2 == 1 { corner } else { 1.0 })
+                .collect(),
+        )
+        .unwrap();
+        let solid = Body::extruded(&[weighted], [0.0, 0.0, 1.0], 12.0, true).unwrap();
+        let volume = solid.volume().unwrap();
+        assert!(
+            close(volume, std::f64::consts::PI * 25.0 * 12.0),
+            "{volume}"
+        );
+        // Its top edge lies on the circle.
+        let (low, high) = solid.bounds().unwrap();
+        assert!(close(high[0] - low[0], 10.0) && close(high[1] - low[1], 10.0));
     }
 }
