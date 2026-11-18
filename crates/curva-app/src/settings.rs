@@ -29,7 +29,7 @@ pub(crate) fn centred_dialog(ctx: &egui::Context, id: &str, contents: impl FnOnc
         .order(egui::Order::Foreground)
         .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
         .show(ctx, |ui| {
-            panel_frame(false).show(ui, |ui| {
+            panel_frame().show(ui, |ui| {
                 ui.set_max_width(420.0);
                 contents(ui);
             });

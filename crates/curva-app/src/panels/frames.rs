@@ -50,31 +50,32 @@ pub(crate) struct PanelDrag {
     pub(crate) size: egui::Vec2,
 }
 
-/// The frame every panel is drawn in: rounded, edged and shadowed, glass or solid; glowing in the
-/// accent while another panel dragged over it would merge into it.
-pub(crate) fn panel_frame(glowing: bool) -> egui::Frame {
+/// The frame every panel is drawn in: rounded, edged and shadowed, glass or solid. A panel that
+/// a dragged one would merge into glows inside its edge as well (`glow::edge_glow`).
+pub(crate) fn panel_frame() -> egui::Frame {
     egui::Frame::new()
         .fill(theme::current().glass)
-        .stroke(egui::Stroke::new(
-            if glowing { 2.0 } else { 1.0 },
-            if glowing {
-                theme::ACCENT
-            } else {
-                theme::current().panel_edge
-            },
-        ))
+        .stroke(egui::Stroke::new(1.0, theme::current().panel_edge))
         .corner_radius(PANEL_RADIUS)
         .shadow(egui::Shadow {
             offset: [0, 4],
-            blur: if glowing { 24 } else { 16 },
+            blur: 16,
             spread: 0,
-            color: if glowing {
-                theme::ACCENT.gamma_multiply(0.5)
-            } else {
-                egui::Color32::from_black_alpha(90)
-            },
+            color: egui::Color32::from_black_alpha(90),
         })
         .inner_margin(PANEL_MARGIN)
+}
+
+/// A panel frame lit in the accent all round, for a box being typed into (text edited in place).
+pub(crate) fn lit_panel_frame() -> egui::Frame {
+    panel_frame()
+        .stroke(egui::Stroke::new(2.0, theme::ACCENT))
+        .shadow(egui::Shadow {
+            offset: [0, 4],
+            blur: 24,
+            spread: 0,
+            color: theme::ACCENT.gamma_multiply(0.5),
+        })
 }
 
 /// What every panel drawn in one frame shares: the window below the top bar, whether a command
@@ -447,7 +448,7 @@ impl Curva {
         let panel = place.id();
         let mut event = PanelEvent::Nothing;
         let glass = self.settings.glass;
-        let frame = panel_frame(glowing).fill(if glass {
+        let frame = panel_frame().fill(if glass {
             theme::current().glass
         } else {
             theme::current().panel
@@ -478,6 +479,15 @@ impl Curva {
                     ui.add_space(TITLE_ROW);
                     self.piece_contents(ui, place.showing());
                 });
+                // A dragged panel would merge into this one: it glows inside its edge, most
+                // where the mouse is.
+                if glowing && let Some(pointer) = ui.ctx().pointer_latest_pos() {
+                    ui.painter().add(crate::panels::glow::edge_glow(
+                        rect,
+                        f32::from(PANEL_RADIUS),
+                        pointer,
+                    ));
+                }
                 // Added after the contents, so these sit above the panel's own controls.
                 event = self.panel_title(ui, place, rect);
                 if let Some(resize) = resize_handles(ui, place, rect) {

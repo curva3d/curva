@@ -307,7 +307,7 @@ impl Curva {
     /// specializations as a dial in the middle, the selected one centred.
     pub(crate) fn top_bar(&mut self, ctx: &egui::Context, rect: egui::Rect) {
         let glass = self.settings.glass;
-        let frame = panel_frame(false).fill(if glass {
+        let frame = panel_frame().fill(if glass {
             theme::current().glass
         } else {
             theme::current().panel
