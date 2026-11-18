@@ -2,7 +2,7 @@ use crate::field::greedy_color;
 use crate::meshio::Vec3;
 use crate::preprocess::Link;
 use glam::IVec2;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 pub const INVALID_INDEX: usize = usize::MAX;
 
@@ -161,7 +161,7 @@ fn downsample(level: &HierarchyLevel) -> (HierarchyLevel, Vec<usize>) {
     let mut adjacency = vec![Vec::new(); positions.len()];
     for coarse_idx in 0..positions.len() {
         let pair = from_coarser[coarse_idx];
-        let mut weights = HashMap::<usize, f64>::new();
+        let mut weights = BTreeMap::<usize, f64>::new();
         for &u in &pair {
             if u == INVALID_INDEX {
                 continue;

@@ -10,8 +10,19 @@ first.*
 borders at the same place, and WeldEdge joins them back, smooth, as Rhino 8 does. Curva's cut
 box matches Rhino's own in its counts, its tags and its limit area (17.150913, to 11 decimal
 places), and Rhino 8 reads Curva's as valid. A SubD can now hold such a cut: `SubD::from_cage`
-keeps points at the same place apart, and the `.3dm` reader uses it. With this, every library
-part of Stages A, B and C is done except QuadRemesh, which still waits on the owner (below).
+keeps points at the same place apart, and the `.3dm` reader uses it.
+
+**QuadRemesh, part 1 (#329):** the owner chose a patched copy of quadrs (decision 0036). Curva
+carries quadrs 1.0.0 in `crates/curva-mesh/vendor/quadrs`, with ordered maps in four places, so the
+same mesh and seed give the same quads on every run and machine. The fix was offered to the author
+([vidstige/quadrs#1](https://github.com/vidstige/quadrs/issues/1)). When a release has it, Curva
+goes back to the released crate and deletes the copy (steps in #349; checked at every mesh library
+upgrade, `docs/mesh/custom-operations.md`). On top of quadrs, two listed custom operations: the
+quads' points are moved back onto the original surface, as Rhino's are, and the count is brought
+within the spec's 10% by running again with the request scaled (394 quads for 400 asked on a
+sphere). A mesh or a SubD comes out. With this, every library part of Stages A, B and C is done
+except QuadRemesh's parts 2 and 3 (hard edges and adaptive size; guide curves and symmetry) and
+its comparison with Rhino on the test models.
 
 **Found on the way**
 - Rhino's WeldEdge welds only edges at exactly the same place. It refuses a gap of 0.0006 at a
@@ -19,6 +30,11 @@ part of Stages A, B and C is done except QuadRemesh, which still waits on the ow
 - Until now, reading a `.3dm` SubD joined points at the same place, so a cut SubD saved by Rhino
   came in sewn shut, and its edge sharpness could land on the wrong edges. Fixed with
   `SubD::from_cage`.
+- quadrs 1.0.0 sizes its quads for the count asked, then splits each into four, so it gives about
+  four times the faces asked and half the edge length; Curva asks for a quarter and twice. Its count
+  is also rough (about a fifth over), and it leaves points up to 0.9 off a sphere of radius 10.
+- quadrs works in single precision, and Instant Meshes is sensitive to its input's last digits: a
+  mesh moved a million millimetres from the origin remeshes as well, but into different quads.
 
 ## 16 and 17 November 2026 (second session, after the move to E:)
 
@@ -71,7 +87,7 @@ commands are listed under "Waiting for #266".
 The library parts of Stages A, B and C are done, except QuadRemesh (below). What is left needs
 the other streams first (see "Asked of the other streams").
 
-**Waiting on the owner:** QuadRemesh (#329). quadrs, chosen in decision 0033 because it was said
+**Waiting on the owner (decided 18 November: decision 0036, above):** QuadRemesh (#329). quadrs, chosen in decision 0033 because it was said
 to give the same quads every time, does not: it uses Rust's randomly seeded hash maps, so the
 same mesh and seed give slightly different quads from one run to the next (504 to 524 faces for
 one request). It also makes about four times the quads asked for, which Curva can allow for.

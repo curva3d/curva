@@ -1,5 +1,5 @@
 use crate::meshio::Vec3;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 const EPS: f64 = 1e-12;
 
@@ -320,7 +320,7 @@ impl EmbeddedGraph {
             self.normals[target] + self.normals[merge],
             self.normals[target],
         );
-        let mut neighbors = HashSet::new();
+        let mut neighbors = BTreeSet::new();
         for link in &self.adjacency[target] {
             neighbors.insert(link.id);
         }

@@ -2,7 +2,7 @@ use crate::extract::{EmbeddedGraph, TaggedLink};
 use crate::field::FieldState;
 use crate::meshio::Vec3;
 use crate::rotational_symmetry::{Frame, RoSy4, Sample};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 #[derive(Clone)]
 struct CollapseEdge {
@@ -13,7 +13,7 @@ struct CollapseEdge {
 
 pub fn extract_graph<M: RoSy4>(state: &FieldState) -> EmbeddedGraph {
     let inv_scale = 1.0 / state.scale;
-    let mut adjacency = vec![HashSet::<usize>::new(); state.positions.len()];
+    let mut adjacency = vec![BTreeSet::<usize>::new(); state.positions.len()];
     let mut collapse_edges = Vec::new();
 
     for i in 0..state.positions.len() {
@@ -73,14 +73,14 @@ pub fn extract_graph<M: RoSy4>(state: &FieldState) -> EmbeddedGraph {
             .copied()
             .map(|n| dsu.find(n))
             .filter(|&n| n != merged && n != other)
-            .collect::<HashSet<_>>();
+            .collect::<BTreeSet<_>>();
         adjacency[merged].clear();
         adjacency[other].clear();
         adjacency[merged] = neighbors;
         collapse_counts[merged] = collapse_counts[a] + collapse_counts[b] + 1;
     }
 
-    let mut root_to_index = HashMap::new();
+    let mut root_to_index = BTreeMap::new();
     for i in 0..state.positions.len() {
         let root = dsu.find(i);
         if adjacency[root].is_empty() {
@@ -119,12 +119,12 @@ pub fn extract_graph<M: RoSy4>(state: &FieldState) -> EmbeddedGraph {
 
     let mut graph_adjacency = vec![Vec::new(); root_to_index.len()];
     for (&root, &index) in &root_to_index {
-        let mut neighbors = adjacency[root]
+        let neighbors = adjacency[root]
             .iter()
             .filter_map(|&neighbor| root_to_index.get(&dsu.find(neighbor)).copied())
             .filter(|&neighbor| neighbor != index)
-            .collect::<HashSet<_>>();
-        graph_adjacency[index] = neighbors.drain().map(TaggedLink::new).collect();
+            .collect::<BTreeSet<_>>();
+        graph_adjacency[index] = neighbors.into_iter().map(TaggedLink::new).collect();
     }
 
     let mut graph = EmbeddedGraph {
@@ -138,7 +138,7 @@ pub fn extract_graph<M: RoSy4>(state: &FieldState) -> EmbeddedGraph {
     graph
 }
 
-fn has_cluster_edge(adjacency: &[HashSet<usize>], dsu: &Dsu, a: usize, b: usize) -> bool {
+fn has_cluster_edge(adjacency: &[BTreeSet<usize>], dsu: &Dsu, a: usize, b: usize) -> bool {
     adjacency[a].iter().any(|&neighbor| dsu.find(neighbor) == b)
         || adjacency[b].iter().any(|&neighbor| dsu.find(neighbor) == a)
 }
