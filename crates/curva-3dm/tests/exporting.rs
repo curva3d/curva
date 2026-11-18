@@ -190,6 +190,8 @@ fn measure(shape: &Shape) -> (f64, f64) {
         Shape::Body(b) => (b.area().unwrap(), b.volume().unwrap_or(0.0)),
         Shape::Instance(i) => (i.placement[3][0], i.definition as f64),
         Shape::Annotation(_) => unreachable!("the sample has no annotation"),
+        Shape::Mesh(m) => (m.area(), m.volume().unwrap_or(0.0)),
+        Shape::SubD(s) => (s.cage().area(), s.cage().volume().unwrap_or(0.0)),
     }
 }
 
@@ -1769,4 +1771,32 @@ fn section_styles_come_back_on_objects_layers_and_clipping_planes() {
     assert_eq!(clip.hatch, Some(SectionHatch::new("Plus")));
     let frame = back.objects.iter().find(|o| o.id == clip.frame).unwrap();
     assert_eq!(frame.section, None, "the plane's style is the plane's");
+}
+
+/// A mesh and a SubD written to `.3dm` and read back are the same objects (#266).
+#[test]
+fn meshes_and_subds_come_back_the_same() {
+    use curva_mesh::{Frame, Mesh, SubD};
+    let mesh = Mesh::mesh_box(&Frame::world(), [2.0, 3.0, 4.0], [2, 1, 1]);
+    let subd = SubD::subd_box(&Frame::world(), [1.0, 1.0, 1.0], [1, 1, 1]);
+    let mut state = State::default();
+    let layer = state.layers[0].id;
+    state.objects = vec![
+        object(1, Shape::Mesh(mesh.clone()), layer).into(),
+        object(2, Shape::SubD(subd.clone()), layer).into(),
+    ];
+    let back = round_trip(&state);
+    let meshes: Vec<_> = back.objects.iter().filter_map(|o| o.shape.mesh()).collect();
+    let subds: Vec<_> = back.objects.iter().filter_map(|o| o.shape.subd()).collect();
+    assert_eq!(meshes.len(), 1);
+    // Rhino keeps one normal per point, so a box's hard edges split its points on the way out,
+    // as Rhino's own box is stored; welded back they are the same twelve points.
+    let back_mesh = meshes[0];
+    assert_eq!(back_mesh.faces().count(), mesh.faces().count());
+    assert_eq!(back_mesh.welded(0.0).0.vertex_count(), mesh.vertex_count());
+    assert!(back_mesh.is_closed());
+    assert!((back_mesh.area() - mesh.area()).abs() < 1e-9);
+    assert!((back_mesh.volume().unwrap() - mesh.volume().unwrap()).abs() < 1e-9);
+    assert_eq!(subds.len(), 1);
+    assert_eq!(subds[0].cage().vertices(), subd.cage().vertices());
 }

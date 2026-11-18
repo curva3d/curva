@@ -117,6 +117,8 @@ fn marks_of(
                 }
             }
             Shape::Instance(_) => {}
+            // Meshes and SubDs print once the display stream draws them (#267, #324).
+            Shape::Mesh(_) | Shape::SubD(_) => {}
             // Dots are drawn on the screen and do not print yet.
             Shape::Annotation(curva_document::annotation::Annotation::Dot(_)) => {}
             Shape::Annotation(annotation) => {

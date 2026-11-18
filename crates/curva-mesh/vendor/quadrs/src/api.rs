@@ -1,4 +1,4 @@
-use crate::boundary::{build_boundary_constraints, build_boundary_hierarchy};
+use crate::boundary::{add_crease_constraints, build_boundary_constraints, build_boundary_hierarchy};
 use crate::field::{
     freeze_orientation_ivars, freeze_position_ivars, initialize_state, optimize_orientations,
     optimize_orientations_frozen, optimize_positions, optimize_positions_frozen,
@@ -53,6 +53,9 @@ pub struct RemeshOptions {
     pub frozen_position_iterations: usize,
     pub seed: Option<u64>,
     pub mode: RemeshMode,
+    /// Inside edges whose faces meet at more than this many degrees are kept as hard edges: the
+    /// quads follow them. `None` keeps none.
+    pub crease_angle: Option<f64>,
 }
 
 impl RemeshOptions {
@@ -68,6 +71,7 @@ impl RemeshOptions {
             frozen_position_iterations: 20,
             seed: None,
             mode: RemeshMode::Intrinsic,
+            crease_angle: None,
         }
     }
 }
@@ -153,7 +157,13 @@ pub fn remesh(mesh: &Mesh, options: &RemeshOptions) -> Result<RemeshResult, Reme
     let levels = build_hierarchy(&tri_mesh.vertices, &normals, &areas, &adjacency);
     let boundaries = build_boundary_hierarchy(
         &levels,
-        build_boundary_constraints(&tri_mesh, &dedges, &normals),
+        {
+            let mut constraints = build_boundary_constraints(&tri_mesh, &dedges, &normals);
+            if let Some(angle) = options.crease_angle {
+                add_crease_constraints(&tri_mesh, &dedges, &normals, angle, &mut constraints);
+            }
+            constraints
+        },
     );
     let seed = options.seed.map(Rng::new).unwrap_or_else(Rng::from_time);
     let mesh = match options.mode {

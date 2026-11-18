@@ -63,6 +63,10 @@ fn stretched_shape(
             }
             Ok(Shape::Body(made))
         }
+        // Not yet: the mesh crate cannot stretch a mesh or SubD.
+        Shape::Mesh(_) | Shape::SubD(_) => Err(KernelError(
+            "meshes and SubDs cannot be stretched yet".to_owned(),
+        )),
         Shape::Instance(_) | Shape::Annotation(_) => {
             // The stretch as one affine map, placed on the instance or the text.
             let stretch = |v: Point| -> Point {

@@ -88,8 +88,6 @@ const PERSPECTIVE: usize = 1;
 /// The band at the top of a viewport that holds its title, in points.
 const TITLE_HEIGHT: f32 = 22.0;
 const PANE_GAP: f32 = 2.0;
-/// The part of a viewport's corner that opens its display menu when clicked.
-const TITLE_SIZE: egui::Vec2 = egui::vec2(120.0, 22.0);
 /// Which viewport fills the window when Curva opens.
 const STARTING_LAYOUT: Option<usize> = Some(PERSPECTIVE);
 const LOG_LINES: usize = 3;

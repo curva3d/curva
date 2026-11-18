@@ -17,6 +17,22 @@ enum RowAction {
 impl Curva {
     /// The Layouts panel's contents.
     pub(crate) fn layouts_panel(&mut self, ui: &mut egui::Ui) {
+        // The model first, so the panel opens it as it opens a layout.
+        let model = self.text.render(&Message::new("ui.layout.model"));
+        if ui
+            .add_sized(
+                [ui.available_width(), 24.0],
+                egui::Button::selectable(self.doc.space().is_none(), model),
+            )
+            .clicked()
+            && self.doc.space().is_some()
+        {
+            if self.processor.is_running() {
+                self.processor.cancel(&mut self.doc);
+            }
+            self.doc.set_space(None);
+        }
+        ui.add_space(4.0);
         if ui
             .button(self.text.render(&Message::new("ui.layout.new")))
             .clicked()
