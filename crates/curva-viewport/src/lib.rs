@@ -7,6 +7,7 @@ mod gpu;
 mod gumball;
 mod index;
 mod lines;
+mod meshes;
 mod outline;
 mod outlines;
 mod palette;

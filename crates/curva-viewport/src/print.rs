@@ -117,8 +117,17 @@ fn marks_of(
                 }
             }
             Shape::Instance(_) => {}
-            // Meshes and SubDs print once the display stream draws them (#267, #324).
-            Shape::Mesh(_) | Shape::SubD(_) => {}
+            // A mesh prints its borders: all its wires would blacken a scan's print (#267).
+            Shape::Mesh(mesh) => {
+                let at = mesh.vertices();
+                for [a, b] in mesh.naked_edges() {
+                    if let (Some(&p), Some(&q)) = (at.get(a as usize), at.get(b as usize)) {
+                        line(&[p, q], marks);
+                    }
+                }
+            }
+            // SubDs print once the display stream draws them (#324).
+            Shape::SubD(_) => {}
             // Dots are drawn on the screen and do not print yet.
             Shape::Annotation(curva_document::annotation::Annotation::Dot(_)) => {}
             Shape::Annotation(annotation) => {

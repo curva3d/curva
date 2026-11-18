@@ -13,6 +13,7 @@ workspace = true
 [dependencies]
 curva-document = { path = "../curva-document" }
 curva-kernel = { path = "../curva-kernel" }
+curva-mesh = { path = "../curva-mesh" }
 egui-wgpu = "0.37"
 epaint = "0.37"
 png = "0.18"

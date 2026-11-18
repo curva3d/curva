@@ -3,6 +3,17 @@
 *Written only by the display stream, which owns the inside of `crates/curva-viewport` (see
 `AGENTS.md`). Updated at the end of every work session. Newest first.*
 
+## 19 November 2026
+
+**Done**
+- **Meshes show and can be picked** (#267, spec `mesh-and-subd.md` Stage A, items 1, 2 and 4).
+  Meshes from `.3dm` files and mesh tools were in the model but invisible. Now they shade, from
+  their own normals where they have them (an unwelded edge shows as a crease) or else smooth
+  across welded edges, as Rhino does; their wires show in wireframe and are left out where faces
+  show; a click on a mesh picks it as a solid when closed, a surface when open; and a print shows
+  its borders. Still to do: vertex colours (item 3), and speed for meshes of millions of edges
+  (each wire is listed as its own line for now).
+
 ## 18 November 2026
 
 **Done**
