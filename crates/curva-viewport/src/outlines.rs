@@ -5,19 +5,98 @@ use curva_kernel::{Curve, Point};
 
 use crate::{CURVE_COLOUR, PickFilter, PickKind, mesh_box, snap};
 
+/// Where a copy of a shape sits: a 4 × 4 matrix for points written as rows, `p' = p·A + t`
+/// ([`curva_kernel::Body::placement`]).
+pub(crate) type Placement = [[f64; 4]; 4];
+
+/// The placement that leaves a shape where it was made.
+const IN_PLACE: Placement = [
+    [1.0, 0.0, 0.0, 0.0],
+    [0.0, 1.0, 0.0, 0.0],
+    [0.0, 0.0, 1.0, 0.0],
+    [0.0, 0.0, 0.0, 1.0],
+];
+
 /// A body's triangles, ready to shade.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Faces {
     pub(crate) id: u64,
     pub(crate) colour: [f32; 3],
     pub(crate) locked: bool,
-    /// Shared with the mesh cache, so drawing again copies no triangles.
+    /// The triangles as made. For a body, the mesh it shares with its copies, unplaced
+    /// ([`curva_kernel::Body::shared_mesh`]), so each shape is held once however many copies
+    /// there are (#153); read its corners where this copy sits with [`Self::corner`].
     pub(crate) mesh: std::sync::Arc<curva_kernel::BodyMesh>,
-    /// The lowest and highest corners of the mesh, so a line of sight can skip it quickly.
+    /// For a body, where this copy sits; `None` for an annotation's fills, drawn where made.
+    pub(crate) placement: Option<Placement>,
+    /// The lowest and highest corners of the placed mesh, or a box around them, so a line of
+    /// sight can skip it quickly.
     pub(crate) around: (Point, Point),
-    /// For a body, the mesh it shares with its copies, unplaced, and where this copy sits
-    /// ([`curva_kernel::Body::shared_mesh`]), so views can hold each shape once (#153).
-    pub(crate) shared: Option<(std::sync::Arc<curva_kernel::BodyMesh>, [[f64; 4]; 4])>,
+}
+
+impl Faces {
+    /// For a body, the mesh it shares with its copies and where this copy sits, so views can
+    /// hold each shape once (#153).
+    pub(crate) fn shared(&self) -> Option<(&std::sync::Arc<curva_kernel::BodyMesh>, &Placement)> {
+        Some((&self.mesh, self.placement.as_ref()?))
+    }
+
+    /// Corner `index` of the triangles, where this copy sits.
+    pub(crate) fn corner(&self, index: u32) -> Option<Point> {
+        let p = *self.mesh.positions.get(index as usize)?;
+        Some(match &self.placement {
+            Some(m) if *m != IN_PLACE => placed(m, p),
+            _ => p,
+        })
+    }
+
+    /// The surface's direction at corner `index`, where this copy sits, a unit long.
+    pub(crate) fn normal(&self, index: u32) -> Option<Point> {
+        let d = *self.mesh.normals.get(index as usize)?;
+        Some(match &self.placement {
+            Some(m) if *m != IN_PLACE => turned(m, d),
+            _ => d,
+        })
+    }
+}
+
+/// `p` where `m` puts it.
+pub(crate) fn placed(m: &Placement, p: Point) -> Point {
+    std::array::from_fn(|j| p[0] * m[0][j] + p[1] * m[1][j] + p[2] * m[2][j] + m[3][j])
+}
+
+/// The direction `d` turned as `m` turns it, a unit long, as the kernel places a mesh's normals.
+fn turned(m: &Placement, d: Point) -> Point {
+    let t: Point = std::array::from_fn(|j| d[0] * m[0][j] + d[1] * m[1][j] + d[2] * m[2][j]);
+    let length = (t[0] * t[0] + t[1] * t[1] + t[2] * t[2]).sqrt();
+    if length > 0.0 {
+        t.map(|v| v / length)
+    } else {
+        t
+    }
+}
+
+/// The box around `around` placed by `m`: its eight corners placed, then boxed.
+fn placed_box(m: &Placement, (low, high): (Point, Point)) -> (Point, Point) {
+    if *m == IN_PLACE {
+        return (low, high);
+    }
+    let mut out = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+    for corner in 0..8 {
+        let p = placed(
+            m,
+            std::array::from_fn(|k| {
+                if corner >> k & 1 == 0 {
+                    low[k]
+                } else {
+                    high[k]
+                }
+            }),
+        );
+        out.0 = std::array::from_fn(|k| out.0[k].min(p[k]));
+        out.1 = std::array::from_fn(|k| out.1[k].max(p[k]));
+    }
+    out
 }
 
 /// The drawable outline of each object.
@@ -25,8 +104,8 @@ pub(crate) struct Faces {
 pub struct Outlines {
     /// The triangles of each surface and solid, for shaded views.
     pub(crate) faces: Vec<Faces>,
-    /// Object id and points along it.
-    pub objects: Vec<(u64, Vec<Point>)>,
+    /// Object id and points along it, shared with the cache of what each object drew as.
+    pub objects: Vec<(u64, std::sync::Arc<[Point]>)>,
     /// The fixed places that can be snapped to.
     pub(crate) sites: Vec<snap::Site>,
     /// The colour of each object, in the same order.
@@ -123,7 +202,8 @@ pub struct MeshCache {
 }
 
 impl MeshCache {
-    /// The body's mesh, and whether it is a closed solid.
+    /// The body's mesh as made, shared with its copies ([`curva_kernel::Body::shared_mesh`]),
+    /// and whether it is a closed solid.
     pub(crate) fn mesh(
         &mut self,
         id: u64,
@@ -134,7 +214,7 @@ impl MeshCache {
         {
             return Some((std::sync::Arc::clone(mesh), *solid));
         }
-        let mesh = std::sync::Arc::new(body.mesh().ok()?);
+        let mesh = body.shared_mesh().ok()?;
         let solid = body.is_solid();
         self.held
             .insert(id, (body.clone(), std::sync::Arc::clone(&mesh), solid));
@@ -207,7 +287,7 @@ impl MeshCache {
                 Some((
                     *id,
                     (*body).clone(),
-                    std::sync::Arc::new(body.mesh().ok()?),
+                    body.shared_mesh().ok()?,
                     body.is_solid(),
                 ))
             })
@@ -365,9 +445,9 @@ impl Outlines {
                         .zip(&mesh.seams)
                         .filter_map(|(id, seam)| seam.then_some(*id))
                         .collect();
-                    let edges = edge_curves(&mesh);
-                    let shared = body.shared_mesh().ok().map(|m| (m, body.placement()));
-                    outlines.push_faces(object.id, look, mesh, shared);
+                    let placement = body.placement();
+                    let edges = edge_curves(&mesh, &placement);
+                    outlines.push_faces(object.id, look, mesh, Some(placement));
                     edges
                 }
                 // Instances inside definitions are opened before this.
@@ -385,22 +465,23 @@ impl Outlines {
         outlines
     }
 
-    /// A body's or annotation's filled faces, for shading, with a body's `shared` mesh and
-    /// placement.
+    /// A body's or annotation's filled faces, for shading: a body's `mesh` as made, shared
+    /// with its copies, and where this copy sits.
     fn push_faces(
         &mut self,
         id: u64,
         look: Look,
         mesh: std::sync::Arc<curva_kernel::BodyMesh>,
-        shared: Option<(std::sync::Arc<curva_kernel::BodyMesh>, [[f64; 4]; 4])>,
+        placement: Option<Placement>,
     ) {
+        let made = mesh_box(&mesh);
         self.faces.push(Faces {
             id,
             colour: look.colour,
             locked: look.locked,
-            around: mesh_box(&mesh),
+            around: placement.as_ref().map_or(made, |m| placed_box(m, made)),
             mesh,
-            shared,
+            placement,
         });
     }
 
@@ -452,7 +533,7 @@ impl Outlines {
             self.edge_of.push(edge);
             self.circles.push(crate::circles::axes_of(&outline));
             self.kinds.push(kind);
-            self.objects.push((id, points));
+            self.objects.push((id, points.into()));
         }
     }
 }
@@ -466,15 +547,28 @@ struct Look {
     dashes: &'static [f64],
 }
 
-/// A mesh's edges as curves, each with its number among the body's edges.
-fn edge_curves(mesh: &curva_kernel::BodyMesh) -> Vec<(Curve, Option<usize>)> {
+/// A mesh's edges as curves where `placement` puts them, each with its number among the body's
+/// edges.
+fn edge_curves(
+    mesh: &curva_kernel::BodyMesh,
+    placement: &Placement,
+) -> Vec<(Curve, Option<usize>)> {
+    let place = |p: &Point| {
+        if *placement == IN_PLACE {
+            *p
+        } else {
+            placed(placement, *p)
+        }
+    };
     mesh.edges
         .iter()
         .zip(&mesh.edge_ids)
         .filter_map(|(run, id)| match run.len() {
             0 | 1 => None,
-            2 => Curve::line(run[0], run[1]).ok().map(|c| (c, Some(*id))),
-            _ => Curve::polyline(run.clone(), false)
+            2 => Curve::line(place(&run[0]), place(&run[1]))
+                .ok()
+                .map(|c| (c, Some(*id))),
+            _ => Curve::polyline(run.iter().map(place).collect(), false)
                 .ok()
                 .map(|c| (c, Some(*id))),
         })
