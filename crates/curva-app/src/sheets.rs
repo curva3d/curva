@@ -5,9 +5,6 @@
 
 use crate::*;
 
-/// The height of the tab row below the viewports, in points.
-pub(crate) const TAB_ROW: f32 = 24.0;
-
 /// The colour of a sheet, and of the lines drawn on it.
 const PAPER: egui::Color32 = egui::Color32::from_rgb(250, 250, 247);
 pub(crate) const PAPER_INK: [f32; 3] = [0.12, 0.12, 0.14];
@@ -483,49 +480,5 @@ impl Curva {
             egui::Stroke::new(1.0, theme::current().panel_edge),
             egui::StrokeKind::Outside,
         );
-    }
-
-    /// The tabs below the viewports: the model, then each layout, then a button for a new one.
-    pub(crate) fn sheet_tabs(&mut self, ui: &mut egui::Ui, row: egui::Rect) {
-        let mut chosen = None;
-        let mut new_layout = false;
-        let current = self.doc.space();
-        let titles: Vec<(u64, String)> = self
-            .doc
-            .layouts()
-            .iter()
-            .enumerate()
-            .map(|(index, layout)| (layout.id, layout_title(&self.text, layout, index)))
-            .collect();
-        let model = self.text.render(&Message::new("ui.layout.model"));
-        let mut child = ui.new_child(
-            egui::UiBuilder::new()
-                .max_rect(row)
-                .layout(egui::Layout::left_to_right(egui::Align::Center)),
-        );
-        if child.selectable_label(current.is_none(), model).clicked() {
-            chosen = Some(None);
-        }
-        for (id, title) in titles {
-            if child.selectable_label(current == Some(id), title).clicked() {
-                chosen = Some(Some(id));
-            }
-        }
-        if child
-            .button("+")
-            .on_hover_text(self.text.render(&Message::new("ui.layout.new")))
-            .clicked()
-        {
-            new_layout = true;
-        }
-        if let Some(space) = chosen {
-            if self.processor.is_running() {
-                self.processor.cancel(&mut self.doc);
-            }
-            self.doc.set_space(space);
-        }
-        if new_layout {
-            self.run_from_button("Layout");
-        }
     }
 }

@@ -576,16 +576,6 @@ impl Curva {
 
     pub(crate) fn paint_frame(&self, ui: &egui::Ui, pane: usize, rect: egui::Rect) {
         let painter = ui.painter_at(rect);
-        painter.text(
-            rect.left_top() + egui::vec2(6.0, 3.0),
-            egui::Align2::LEFT_TOP,
-            self.panes[pane].named.clone().unwrap_or_else(|| {
-                self.text
-                    .render(&Message::new(view_label(self.panes[pane].view)))
-            }),
-            egui::TextStyle::Body.resolve(ui.style()),
-            theme::current().quiet,
-        );
         if pane == self.active && self.maximised.is_none() {
             painter.rect_stroke(
                 rect,
@@ -593,36 +583,6 @@ impl Curva {
                 egui::Stroke::new(1.0, theme::ACCENT),
                 egui::StrokeKind::Inside,
             );
-        }
-    }
-
-    /// Clicking a viewport's title opens a menu of display modes, as in Rhino.
-    pub(crate) fn display_menu(&mut self, ui: &egui::Ui, pane: usize, rect: egui::Rect) {
-        let title = egui::Rect::from_min_size(rect.min, TITLE_SIZE);
-        let response = ui.interact(
-            title,
-            ui.scope_id().with(("display menu", pane)),
-            egui::Sense::click(),
-        );
-        let mut chosen = None;
-        egui::Popup::menu(&response).show(|ui| {
-            for (mode, key) in [
-                (DisplayMode::Wireframe, "ui.display.wireframe"),
-                (DisplayMode::Shaded, "ui.display.shaded"),
-                (DisplayMode::Ghosted, "ui.display.ghosted"),
-            ] {
-                let current = self.panes[pane].display == mode;
-                if ui
-                    .selectable_label(current, self.text.render(&Message::new(key)))
-                    .clicked()
-                {
-                    chosen = Some(mode);
-                }
-            }
-        });
-        if let Some(mode) = chosen {
-            self.panes[pane].display = mode;
-            self.active = pane;
         }
     }
 
@@ -639,14 +599,6 @@ impl Curva {
         if !wants(Kind::Faces) && !self.doc.face_selection().is_empty() {
             self.doc.select_faces(&[]);
         }
-        // The tabs for the model and the layouts run along the bottom.
-        let row = egui::Rect::from_min_max(egui::pos2(area.min.x, area.max.y - TAB_ROW), area.max);
-        let area = egui::Rect::from_min_max(area.min, egui::pos2(area.max.x, row.min.y));
-        let reach = egui::Rect::from_min_max(
-            reach.min,
-            egui::pos2(reach.max.x, reach.max.y.min(row.min.y)),
-        );
-        self.sheet_tabs(ui, row);
         let mut shown = Vec::new();
         self.pane_areas = [None; VIEW_SLOTS];
         for (pane, visible) in pane_rects(area, self.maximised) {
@@ -654,7 +606,6 @@ impl Curva {
             self.pane_areas[pane] = Some((rect, visible));
             self.frame_sheet(pane, rect, visible);
             let response = ui.allocate_rect(rect, egui::Sense::click_and_drag());
-            self.display_menu(ui, pane, rect);
             self.handle_mouse(ui, pane, &response, pane_size(rect));
             shown.push((pane, rect, response));
         }
