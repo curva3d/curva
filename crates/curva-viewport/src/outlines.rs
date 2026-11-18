@@ -424,6 +424,8 @@ impl Outlines {
             let mut kind = PickKind::Curve;
             // A body's seams, by edge number, which shaded views leave out.
             let mut seam_edges: Vec<usize> = Vec::new();
+            // Whether its lines are a mesh's wires, all left out where faces show.
+            let mut wires = false;
             let pieces: Vec<(Curve, Option<usize>)> = match shape {
                 Shape::Curve(curve) => {
                     if matches!(curve, Curve::Point { .. }) {
@@ -453,8 +455,24 @@ impl Outlines {
                 }
                 // Instances inside definitions are opened before this.
                 Shape::Instance(_) => continue,
-                // Meshes and SubDs are drawn by the display stream's #267 and #324.
-                Shape::Mesh(_) | Shape::SubD(_) => continue,
+                // A mesh shades from its own triangles, placed already, and draws its wires,
+                // which views showing faces leave out as Rhino does (#267).
+                Shape::Mesh(mesh) => {
+                    kind = if mesh.is_closed() {
+                        PickKind::Solid
+                    } else {
+                        PickKind::Surface
+                    };
+                    wires = true;
+                    let drawn = std::sync::Arc::new(crate::meshes::body_mesh(mesh));
+                    outlines.push_faces(object.id, look, drawn, Some(IN_PLACE));
+                    curva_document::shape::mesh_edges(mesh)
+                        .into_iter()
+                        .map(|line| (line, None))
+                        .collect()
+                }
+                // SubDs are drawn by the display stream's #324.
+                Shape::SubD(_) => continue,
                 Shape::Annotation(annotation) => {
                     if matches!(annotation, curva_document::annotation::Annotation::Dot(_)) {
                         kind = PickKind::Point;
@@ -462,13 +480,14 @@ impl Outlines {
                     outlines.annotation_lines(state, object, *key, annotation, look, cache)
                 }
             };
-            let on_faces = shape.body().is_some();
+            let on_faces = shape.body().is_some() || wires;
+            let seam = |edge: Option<usize>| wires || edge.is_some_and(|e| seam_edges.contains(&e));
             // Annotations' letters and marks keep only the points their shape needs.
             let look = Look {
                 coarse: matches!(shape, Shape::Annotation(_)),
                 ..look
             };
-            outlines.push_pieces(object.id, pieces, look, kind, &seam_edges, on_faces);
+            outlines.push_pieces(object.id, pieces, look, kind, &seam, on_faces);
         }
         outlines
     }
@@ -520,7 +539,7 @@ impl Outlines {
         pieces: Vec<(Curve, Option<usize>)>,
         look: Look,
         kind: PickKind,
-        seam_edges: &[usize],
+        seam: &dyn Fn(Option<usize>) -> bool,
         on_faces: bool,
     ) {
         for (outline, edge) in pieces {
@@ -541,8 +560,7 @@ impl Outlines {
             self.widths.push(look.width);
             self.dashes.push(look.dashes);
             self.on_faces.push(on_faces);
-            self.seams
-                .push(edge.is_some_and(|e| seam_edges.contains(&e)));
+            self.seams.push(seam(edge));
             self.edge_of.push(edge);
             self.circles.push(crate::circles::axes_of(&outline));
             self.kinds.push(kind);

@@ -1985,6 +1985,7 @@ dependencies = [
  "bevy",
  "curva-document",
  "curva-kernel",
+ "curva-mesh",
  "egui-wgpu",
  "epaint",
  "png",
