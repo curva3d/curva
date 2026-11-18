@@ -226,6 +226,16 @@ impl Body {
         self.engine()
     }
 
+    /// The engine's body as made, without the placement: shared by every copy.
+    pub(crate) fn unplaced_engine_body(&self) -> Result<EngineBody, KernelError> {
+        self.unplaced().engine()
+    }
+
+    /// The same for every copy of one body as made, whatever their placements.
+    pub(crate) fn shape_key(&self) -> usize {
+        std::sync::Arc::as_ptr(&self.shared) as usize
+    }
+
     /// A body from the engine's native text, in place. The text is read once, here.
     pub(crate) fn from_native(native: String) -> Result<Self, String> {
         let engine = EngineBody::from_smb(native.as_bytes().to_vec(), TEXT_FORMAT)
