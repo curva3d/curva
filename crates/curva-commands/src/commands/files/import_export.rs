@@ -1,12 +1,14 @@
-//! Rhino `.3dm` files at the command line (spec `docs/specs/3dm-files.md` §3), and AutoCAD's
-//! `.dxf` and `.dwg` (spec `drawing-output.md` §3): `Import`, `Export`, `ExportSelected`, and the
-//! `.3dm`, `.dxf` and `.dwg` side of `Open` and `SaveAs`.
+//! Rhino `.3dm` files at the command line (spec `docs/specs/3dm-files.md` §3), AutoCAD's `.dxf`
+//! and `.dwg` (spec `drawing-output.md` §3), and SketchUp's `.skp` (read only): `Import`,
+//! `Export`, `ExportSelected`, and the `.3dm`, `.dxf`, `.dwg` and `.skp` side of `Open` and
+//! `SaveAs`.
 
 use super::meshfiles::{MeshFormat, export_mesh_file, import_mesh_file};
 use crate::commands::{ask_objects, unexpected};
 use crate::{
     Answer, CURVA_FILES, Command, DWG_FILES, DXF_FILES, FileFormat, Message, OBJ_FILES, PLY_FILES,
-    PrintJob, PrintTo, RHINO_FILES, Request, STEP_FILES, STL_FILES, SVG_FILES, Step, ViewRequest,
+    PrintJob, PrintTo, RHINO_FILES, Request, SKP_FILES, STEP_FILES, STL_FILES, SVG_FILES, Step,
+    ViewRequest,
 };
 use curva_3dm::import::Report;
 use curva_document::Document;
@@ -14,7 +16,8 @@ use curva_dxf::Format as CadFormat;
 use std::path::{Path, PathBuf};
 
 /// What `Open` and `Import` read, Curva's own files first.
-pub const READ_FORMATS: &[FileFormat] = &[CURVA_FILES, RHINO_FILES, DXF_FILES, DWG_FILES];
+pub const READ_FORMATS: &[FileFormat] =
+    &[CURVA_FILES, RHINO_FILES, DXF_FILES, DWG_FILES, SKP_FILES];
 
 /// What `Import` reads: what `Open` reads, and mesh files.
 pub const IMPORT_FORMATS: &[FileFormat] = &[
@@ -53,6 +56,26 @@ pub fn model_name(doc: &Document) -> Option<String> {
 pub fn is_3dm(path: &Path) -> bool {
     path.extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("3dm"))
+}
+
+/// Whether a typed path names a SketchUp `.skp` file.
+pub fn is_skp(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("skp"))
+}
+
+/// A SketchUp file's model, read.
+fn read_skp(path: &Path) -> Result<curva_skp::Model, String> {
+    let data = std::fs::read(path).map_err(|e| e.to_string())?;
+    curva_skp::read(&data)
+}
+
+/// A `.skp` file as a new model, unsaved, named after the file, as `.3dm` files open.
+pub fn open_skp(path: &Path) -> Result<(Document, curva_skp::Report), String> {
+    let (mut doc, report) = curva_skp::open(&read_skp(path)?);
+    let beside = path.with_extension("curva");
+    doc.set_path((!beside.exists()).then_some(beside));
+    Ok((doc, report))
 }
 
 /// A path as typed, without the quotes a pasted one may have.
@@ -147,6 +170,18 @@ impl Command for Import {
             None => Step::Ask(Request::file_to_open("prompt.import.path", IMPORT_FORMATS)),
             Some(Answer::Path(text)) => {
                 let path = typed(&text);
+                if is_skp(&path) {
+                    return match read_skp(&path) {
+                        Ok(model) => {
+                            let report = curva_skp::import(&model, doc);
+                            Step::Done(Some(Message::with(
+                                "done.import",
+                                vec![path.display().to_string(), report.summary()],
+                            )))
+                        }
+                        Err(e) => failed(e),
+                    };
+                }
                 if let Some(format) = MeshFormat::of(&path) {
                     return match import_mesh_file(doc, &path, format) {
                         Ok(summary) => Step::Done(Some(Message::with(

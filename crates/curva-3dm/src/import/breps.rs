@@ -48,10 +48,16 @@ fn index(i: i32) -> Option<usize> {
     usize::try_from(i).ok()
 }
 
-/// A tolerance from the file, at least [`BREP_TOLERANCE`]; that where it gives none.
+/// The largest tolerance the engine takes for an edge or a point (its `MAX_TOLERANCE`, 1).
+/// Rhino keeps looser ones where surfaces were joined at a loose tolerance; they are taken at
+/// just under it, and the engine's repair closes the joins (#317's owner files).
+const LOOSEST: f64 = 0.999;
+
+/// A tolerance from the file, from [`BREP_TOLERANCE`] to [`LOOSEST`]; the least where it gives
+/// none.
 fn at_least(tolerance: f64) -> f64 {
     if tolerance.is_finite() && tolerance > 0.0 {
-        tolerance.max(BREP_TOLERANCE)
+        tolerance.clamp(BREP_TOLERANCE, LOOSEST)
     } else {
         BREP_TOLERANCE
     }
@@ -388,4 +394,20 @@ pub(super) fn cross3(a: P3, b: P3) -> P3 {
 pub(super) fn unit3(a: P3) -> Option<P3> {
     let length = dot3(a, a).sqrt();
     (length > 1e-12 && length.is_finite()).then(|| a.map(|v| v / length))
+}
+
+#[cfg(test)]
+mod tolerance_tests {
+    use super::*;
+
+    #[test]
+    fn a_files_tolerances_are_kept_within_what_the_engine_takes() {
+        assert_eq!(at_least(0.01), 0.01);
+        assert_eq!(at_least(1e-9), BREP_TOLERANCE);
+        assert_eq!(at_least(0.0), BREP_TOLERANCE);
+        assert_eq!(at_least(f64::NAN), BREP_TOLERANCE);
+        // A loose join from Rhino comes in just under the engine's limit of 1.
+        assert_eq!(at_least(2.5), LOOSEST);
+        const { assert!(LOOSEST < 1.0) };
+    }
 }
