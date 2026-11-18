@@ -96,21 +96,40 @@ fn nurbs_surface(s: &model::Surface) -> Result<NurbsSurface, KernelError> {
                 domain_of(&curves[1])[0],
                 domain_of(&curves[1])[1],
             )?;
-            let rational = |s: &Spline| s.points.iter().any(|p| (p[3] - 1.0).abs() > 1e-12);
-            if rational(&a) || rational(&b) {
-                return Err(KernelError("a sum surface of rational curves".to_owned()));
-            }
+            // S(u, v) = A(u) + B(v) + base, exactly: control point (i, j) is a_i + b_j + base
+            // and its weight a's weight times b's, which divides back out to the sum. The
+            // splines hold their points weighted (`[x w, y w, z w, w]`).
+            let plain = |p: &[f64; 4]| -> P3 { std::array::from_fn(|k| p[k] / p[3]) };
             let net: Vec<Vec<P3>> = a
                 .points
                 .iter()
                 .map(|p| {
                     b.points
                         .iter()
-                        .map(|q| std::array::from_fn(|k| p[k] + q[k] + base[k]))
+                        .map(|q| {
+                            let (p, q) = (plain(p), plain(q));
+                            std::array::from_fn(|k| p[k] + q[k] + base[k])
+                        })
                         .collect()
                 })
                 .collect();
-            NurbsSurface::new([a.degree, b.degree], a.knots, b.knots, &net, None)
+            let weights: Vec<Vec<f64>> = a
+                .points
+                .iter()
+                .map(|p| b.points.iter().map(|q| p[3] * q[3]).collect())
+                .collect();
+            let weighted = a
+                .points
+                .iter()
+                .chain(&b.points)
+                .any(|p| (p[3] - 1.0).abs() > 1e-12);
+            NurbsSurface::new(
+                [a.degree, b.degree],
+                a.knots,
+                b.knots,
+                &net,
+                weighted.then_some(weights.as_slice()),
+            )
         }
         model::Surface::Revolution { .. } => Err(KernelError(
             "a surface of revolution has no NURBS form here".to_owned(),
@@ -502,5 +521,53 @@ pub(super) fn warped(pcurve: Spline, warps: &[Warp; 2]) -> Spline {
         degree: 1,
         knots,
         points,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A quarter of a cylinder as Rhino can hold it: a weighted quarter circle summed with a
+    /// straight line up. It used to be left out ("a sum surface of rational curves").
+    #[test]
+    fn a_sum_surface_of_a_weighted_arc_is_the_exact_cylinder() {
+        let (r, h) = (5.0, 10.0);
+        let w = std::f64::consts::FRAC_1_SQRT_2;
+        let arc = model::Curve::Nurbs(model::NurbsCurve {
+            dimension: 3,
+            order: 3,
+            knots: vec![0.0, 0.0, 1.0, 1.0],
+            points: vec![
+                [r, 0.0, 0.0, 1.0],
+                [r * w, r * w, 0.0, w],
+                [0.0, r, 0.0, 1.0],
+            ],
+            rational: true,
+        });
+        let up = model::Curve::Nurbs(model::NurbsCurve {
+            dimension: 3,
+            order: 2,
+            knots: vec![0.0, 1.0],
+            points: vec![[0.0, 0.0, 0.0, 1.0], [0.0, 0.0, h, 1.0]],
+            rational: false,
+        });
+        let sum = model::Surface::Sum {
+            curves: [Box::new(arc), Box::new(up)],
+            base: [100.0, 0.0, 0.0],
+        };
+        let body = surface_body(&sum).unwrap();
+        let area = body.area().unwrap();
+        let quarter = std::f64::consts::FRAC_PI_2 * r * h;
+        assert!(
+            (area - quarter).abs() < 1e-6 * quarter,
+            "{area} against {quarter}"
+        );
+        let (low, high) = body.bounds().unwrap();
+        assert!(
+            (low[0] - 100.0).abs() < 1e-6 && (high[0] - 105.0).abs() < 1e-6,
+            "{low:?} {high:?}"
+        );
+        assert!((high[2] - h).abs() < 1e-6);
     }
 }
