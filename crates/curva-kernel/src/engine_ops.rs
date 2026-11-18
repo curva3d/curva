@@ -209,6 +209,9 @@ impl Body {
     /// Where the plane through `at` with normal `normal` cuts the body, as curves (Rhino's
     /// Section and Contour).
     pub fn section(&self, at: Point, normal: Point) -> Result<Vec<Curve>, KernelError> {
+        if self.wholly_beside(at, normal)? {
+            return Ok(Vec::new());
+        }
         let (body, order) = self.engine_with_order()?;
         let mut pieces = Vec::new();
         for face in 0..order.faces.len() {
@@ -226,6 +229,49 @@ impl Body {
             }
         }
         crate::join_all(&pieces)
+    }
+
+    /// Whether the body's box lies wholly on one side of the plane through `at` square to
+    /// `normal`, clear of it by more than the sewing tolerance, so the plane cannot meet the body
+    /// and asking the engine can be skipped (#317).
+    pub fn wholly_beside(&self, at: Point, normal: Point) -> Result<bool, KernelError> {
+        Ok(self.side_of_plane(at, normal)?.is_some())
+    }
+
+    /// Which side of the plane through `at` square to `normal` the body's box lies wholly on,
+    /// clear of it by more than the sewing tolerance: `Some(true)` the side `normal` points to,
+    /// `Some(false)` the other, `None` when the box reaches the plane.
+    pub fn side_of_plane(&self, at: Point, normal: Point) -> Result<Option<bool>, KernelError> {
+        let (low, high) = self.bounds()?;
+        let length = (0..3).map(|i| normal[i] * normal[i]).sum::<f64>().sqrt();
+        if length.is_nan()
+            || length <= 0.0
+            || !(0..3).all(|i| low[i].is_finite() && high[i].is_finite())
+        {
+            return Ok(None);
+        }
+        let mut lowest = f64::INFINITY;
+        let mut highest = f64::NEG_INFINITY;
+        for corner in 0..8 {
+            let p: Point = std::array::from_fn(|i| {
+                if corner >> i & 1 == 0 {
+                    low[i]
+                } else {
+                    high[i]
+                }
+            });
+            let along = (0..3).map(|i| normal[i] * (p[i] - at[i])).sum::<f64>() / length;
+            lowest = lowest.min(along);
+            highest = highest.max(along);
+        }
+        let clear = crate::SEW_TOLERANCE;
+        Ok(if lowest > clear {
+            Some(true)
+        } else if highest < -clear {
+            Some(false)
+        } else {
+            None
+        })
     }
 
     /// Curves projected along `direction` onto the body's faces (Rhino's Project).
@@ -682,5 +728,31 @@ mod tests {
                 1e-6
             ));
         }
+    }
+
+    #[test]
+    fn a_plane_clear_of_a_solid_meets_it_nowhere() {
+        let cube = Body::cuboid([0.0; 3], [10.0, 10.0, 10.0]).unwrap();
+        let up = [0.0, 0.0, 1.0];
+        // Above, below, and touching the top: only the last reaches it.
+        assert_eq!(
+            cube.side_of_plane([0.0, 0.0, 12.0], up).unwrap(),
+            Some(false)
+        );
+        assert_eq!(
+            cube.side_of_plane([0.0, 0.0, -2.0], up).unwrap(),
+            Some(true)
+        );
+        assert_eq!(cube.side_of_plane([0.0, 0.0, 10.0], up).unwrap(), None);
+        // A tilted plane past one corner, and one through the box.
+        let tilted = [1.0, 1.0, 1.0];
+        assert_eq!(
+            cube.side_of_plane([11.0, 11.0, 11.0], tilted).unwrap(),
+            Some(false)
+        );
+        assert_eq!(cube.side_of_plane([5.0, 5.0, 5.0], tilted).unwrap(), None);
+        // A section by a plane clear of it is empty, by one through it is not.
+        assert!(cube.section([0.0, 0.0, 12.0], up).unwrap().is_empty());
+        assert!(!cube.section([0.0, 0.0, 5.0], up).unwrap().is_empty());
     }
 }

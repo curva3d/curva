@@ -51,14 +51,19 @@ pub(super) fn without_overlaps(
 /// The drawing divided into square-ish cells, about as many as there are lines, with the kept
 /// lines whose boxes reach into each cell. A line's box is grown by twice the tolerance and a
 /// hundredth of its size (its sample points can cut a little inside a curve), so a line that
-/// comes within the tolerance of another shares a cell with it.
+/// comes within the tolerance of another has a grown box overlapping its own.
 struct Cells {
     flat: f64,
     low: [f64; 2],
     size: [f64; 2],
     side: usize,
     cells: Vec<Vec<usize>>,
+    /// Each kept line's grown box; `None` for a line with no box, which is always near.
+    boxes: Vec<Option<Box2>>,
 }
+
+/// A box in the view plane: low and high corners.
+type Box2 = ([f64; 2], [f64; 2]);
 
 impl Cells {
     fn over(drawn: &[DrawnLine], flat: f64) -> Self {
@@ -83,17 +88,25 @@ impl Cells {
             size,
             side,
             cells: vec![Vec::new(); side * side],
+            boxes: Vec::new(),
         }
     }
 
-    /// The cells the grown box of `curve` reaches into.
-    fn of(&self, curve: &Curve) -> Vec<usize> {
+    /// The grown box of `curve`, or `None` when it has none.
+    fn grown(&self, curve: &Curve) -> Option<Box2> {
         let (a, b) = bounds2(curve);
         if !(a[0].is_finite() && a[1].is_finite() && b[0].is_finite() && b[1].is_finite()) {
-            // No box: every cell, so nothing is missed.
-            return (0..self.cells.len()).collect();
+            return None;
         }
         let grow = 2.0 * self.flat + 0.01 * (b[0] - a[0]).hypot(b[1] - a[1]);
+        Some((a.map(|v| v - grow), b.map(|v| v + grow)))
+    }
+
+    /// The cells a grown box reaches into; every cell for none, so nothing is missed.
+    fn of(&self, grown: Option<Box2>) -> Vec<usize> {
+        let Some((a, b)) = grown else {
+            return (0..self.cells.len()).collect();
+        };
         let at = |v: f64, k: usize| {
             let n = ((v - self.low[k]) / self.size[k]).floor();
             if n.is_nan() {
@@ -102,28 +115,36 @@ impl Cells {
                 (n.max(0.0) as usize).min(self.side - 1)
             }
         };
-        let (x0, x1) = (at(a[0] - grow, 0), at(b[0] + grow, 0));
-        let (y0, y1) = (at(a[1] - grow, 1), at(b[1] + grow, 1));
+        let (x0, x1) = (at(a[0], 0), at(b[0], 0));
+        let (y0, y1) = (at(a[1], 1), at(b[1], 1));
         (y0..=y1)
             .flat_map(|y| (x0..=x1).map(move |x| y * self.side + x))
             .collect()
     }
 
+    /// Notes kept line `index`, which must be the next one.
     fn add(&mut self, index: usize, curve: &Curve) {
-        for cell in self.of(curve) {
+        let grown = self.grown(curve);
+        for cell in self.of(grown) {
             self.cells[cell].push(index);
         }
+        self.boxes.push(grown);
     }
 
-    /// The kept lines sharing a cell with `curve`, in the order they were kept.
+    /// The kept lines whose grown box overlaps that of `curve`, in the order they were kept.
     fn near(&self, curve: &Curve) -> Vec<usize> {
+        let grown = self.grown(curve);
         let mut near: Vec<usize> = self
-            .of(curve)
+            .of(grown)
             .into_iter()
             .flat_map(|cell| self.cells[cell].iter().copied())
             .collect();
         near.sort_unstable();
         near.dedup();
+        near.retain(|&i| match (grown, self.boxes[i]) {
+            (Some((a, b)), Some((c, d))) => (0..2).all(|k| a[k] <= d[k] && c[k] <= b[k]),
+            _ => true,
+        });
         near
     }
 }
