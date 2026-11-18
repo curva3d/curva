@@ -1,6 +1,6 @@
 # Spec: exporting to OBJ, STL, FBX, STEP, USD and SKP
 
-**Status:** Draft for the owner's approval (asked for in chat, 18 November 2026).
+**Status:** Approved by the owner in chat · 18 November 2026, with the decisions in §9. All code added to Curva is Rust.
 **Covers:** `Export` and `ExportSelected` (today: `.3dm`, `.dxf`, `.dwg`, `.svg`) gaining six formats,
 and the one mesh panel they share with the `Mesh` command (mesh spec §1, Stage A). Written by the
 mesh stream, which owns mesh making and the mesh file formats (`AGENTS.md`).
@@ -13,7 +13,7 @@ results checked by tests (as decision 0032).
 
 | What you will notice | How |
 |---|---|
-| `Export` and `ExportSelected` write OBJ, STL, FBX, STEP and USD; SKP waits on your decision (§4) | One writer per format in Curva's file crates; the existing commands gain the formats |
+| `Export` and `ExportSelected` write OBJ, STL, FBX, STEP, USD and SKP | One writer per format in Curva's file crates; the existing commands gain the formats |
 | STEP keeps NURBS exact: surfaces and solids arrive in other CAD programs as real solids | solidcore's own STEP writer, from the engine Curva already uses |
 | The mesh formats mesh NURBS objects first, with one panel, the same panel as the `Mesh` command | One mesh panel (§2), used by `Mesh`, STL, OBJ, FBX, USD and SKP |
 | Every panel is simple first: one slider and the few options most people change | A **simple** view, and an **Advanced** switch for everything Rhino offers (§2, §3) |
@@ -33,7 +33,7 @@ results checked by tests (as decision 0032).
 | **FBX** | Meshed (§2) | As they are | Left out | Binary FBX 7.4; Z up or Y up; layer colours as Phong or Lambert materials |
 | **STEP** | **Exact** (AP203, AP214, AP242) | Faceted solids (`FACETED_BREP`) | Left out | The format CAD programs (SolidWorks, Fusion, Inventor) read best |
 | **USD** | Meshed (§2) | As they are | Left out | `.usda` (text), `.usdc` (binary) or `.usdz` (one packed file, for Apple's AR viewers) |
-| **SKP** | Meshed (§2) | As they are | Left out | Waits on the owner's decision (§4) |
+| **SKP** | Meshed (§2) | As they are | Left out | SketchUp 2020 format, which every SketchUp since 2020 opens (§4) |
 
 - **Units:** every format is written in the model's units, with the unit named in the file where the
   format has a place for it (STEP, FBX, USD); OBJ and STL have none, so the panel says which unit the
@@ -101,12 +101,28 @@ this dialog again" is kept, as a checkbox in Advanced, with a way back in the ex
 | STEP | **solidcore's `step-export`**, the engine Curva already uses: exact B-rep (`MANIFOLD_SOLID_BREP`, `BREP_WITH_VOIDS`), faceted bodies, the AP203, AP214 and AP242 schemas, colours, product structure and units | Apache-2.0 (already allowed) | Writes; rejects geometry it cannot write rather than approximating it |
 | FBX | **fbxcel** 0.9 with its `writer` feature: the FBX 7.4 binary node writer. Curva builds the scene (meshes, materials, Z up or Y up) on top | MIT or Apache-2.0 | Last release 2022; the FBX 7.4 format has not changed. Curva writes the scene itself, so fbxcel is only the low-level writer |
 | USD | **openusd** (pure Rust): writes `.usda`, `.usdc` and `.usdz` | MIT | Active (0.8.0, October 2026), not yet 1.0: pinned exactly |
-| SKP | **No pure-Rust writer exists.** See below | | |
+| SKP | **No Rust writer exists.** Curva's own, ported from OpenSKP (below) | MIT (OpenSKP's notice kept) | Last step |
 
-**SKP: the owner's decision.** SketchUp's own format is closed. The choices:
-1. **Leave SKP out for now** (recommended). SketchUp Pro opens DWG, DXF and 3DS. Curva already writes DWG and DXF, so SketchUp users can bring Curva models in. Revisit when a pure-Rust SKP writer exists.
-2. **Trimble's SketchUp SDK:** a closed C library with its own licence. It needs a registered developer account and ships as binaries per system. It is not pure Rust, and it is likely incompatible with Curva's GPL application licence (decision 0025).
-3. **Curva's own SKP writer**, from the reverse-engineered format work of the MIT OpenSKP project (TypeScript, Python and C#; it writes only the 2013–2020 format). Weeks of work, with a risk of files SketchUp rejects.
+**SKP.** SketchUp's own format is closed, and no Rust library writes it. Researched on 18 November
+2026, at the owner's request, including how the open-source SketchUp-like modeller IngeTrazo does it:
+- **IngeTrazo** (Python) reads and writes `.skp` through **OpenSKP**: an MIT-licensed, clean-room,
+  reverse-engineered SKP library (github.com/iamahsanmehmood/openskp, active, in TypeScript, Python,
+  .NET, Dart and C++). It reads both SKP generations: the 2021+ VFF container and the 2013–2020 MFC
+  `CArchive` one. It **writes the 2013–2020 format**: faces with holes, edges, arcs and circles,
+  materials and textures, layers, components and groups, attributes. Each feature is checked against
+  Trimble's own SDK, and its reference `.skp` files are published with the code. Current SketchUp
+  versions open files saved in the 2013–2020 format.
+- **Trimble's SketchUp SDK** is a closed C library with its own licence, shipped as binaries per
+  system. It is not Rust, and it is likely incompatible with Curva's GPL application licence
+  (decision 0025). Not used.
+
+**Recommended route: Curva's own SKP writer in Rust, ported from OpenSKP's writer** (about 3,500
+lines of C++; MIT, so the port keeps OpenSKP's copyright notice). Curva meshes NURBS with the mesh
+panel and writes the faces, layers and colours, with blocks as SketchUp components. It is tested
+byte for byte against OpenSKP's published reference files, and opened in Rhino 8, which reads SKP.
+It writes the SketchUp 2020 format, which SketchUp 2020 and every later version open. If SketchUp
+or OpenSKP's checks reject the files, SKP is left out and SketchUp users take DWG or DXF, which Curva
+already writes and SketchUp Pro opens.
 
 ## 5. What it needs from the other streams
 
@@ -152,10 +168,12 @@ Small pull requests, in order:
 4. **Advanced views** of all panels, once #319 gives the kernel Rhino's meshing parameters.
 5. **Live preview and deviation colouring**, once its display issue is done.
 6. Meshes and SubDs in every format, once #266 is done.
-7. SKP, if the owner chooses option 2 or 3 (§4).
+7. **SKP**: Curva's own Rust port of OpenSKP's writer (§4).
 
-## 9. The owner's decisions
+## 9. The owner's decisions (18 November 2026)
 
-1. Approve this spec, or change it.
-2. SKP: leave out for now (recommended), Trimble's SDK, or Curva's own writer (§4).
-3. STEP's default schema: AP214 (recommended: it carries colours and layers; Rhino's default is AP203).
+1. The spec is approved as written ("continue with your recommendation"). All code added to Curva is
+   Rust.
+2. SKP: researched (§4). The recommended route is Curva's own Rust port of OpenSKP's writer, as the
+   last step (§8, step 7), unless the owner says otherwise.
+3. STEP's default schema is AP214 (it carries colours and layers; Rhino's default is AP203).
