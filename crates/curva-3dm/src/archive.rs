@@ -489,19 +489,20 @@ impl<'a> Reader<'a> {
         Some(u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
     }
 
-    /// A zlib-compressed buffer as openNURBS writes it (`WriteCompressedBuffer`): its size,
-    /// its CRC, and then the bytes, stored or deflated.
+    /// A zlib-compressed buffer as openNURBS writes it (`WriteCompressedBuffer`): its size in
+    /// four bytes in every archive version (`WriteSize`, #313), its CRC, and then the bytes,
+    /// stored or deflated.
     ///
     /// # Errors
     /// If it is damaged.
     pub fn compressed(&mut self) -> Result<Vec<u8>> {
-        let size = self.u64_size()?;
+        let size = self.u32()?;
         if size == 0 {
             return Ok(Vec::new());
         }
         let _crc = self.u32()?;
         let method = self.u8()?;
-        let size = usize::try_from(size).map_err(|_| bad("a buffer too large"))?;
+        let size = size as usize;
         match method {
             0 => Ok(self.bytes(size)?.to_vec()),
             1 => {
@@ -519,18 +520,6 @@ impl<'a> Reader<'a> {
                 Ok(out)
             }
             _ => Err(bad("an unknown compression")),
-        }
-    }
-
-    /// A size, 4 bytes before archive version 50 and 8 after.
-    ///
-    /// # Errors
-    /// At the end.
-    pub fn u64_size(&mut self) -> Result<u64> {
-        if self.version >= 50 {
-            u64::try_from(self.i64()?).map_err(|_| bad("a negative size"))
-        } else {
-            Ok(u64::from(self.u32()?))
         }
     }
 }
@@ -686,9 +675,10 @@ impl Writer {
         }
     }
 
-    /// A buffer as `WriteCompressedBuffer` writes it, deflated.
+    /// A buffer as `WriteCompressedBuffer` writes it, deflated: its size in four bytes, as
+    /// openNURBS' `WriteSize` writes it in every archive version (#313).
     pub fn compressed(&mut self, data: &[u8]) {
-        self.i64(data.len() as i64);
+        self.u32(u32::try_from(data.len()).unwrap_or(u32::MAX));
         if data.is_empty() {
             return;
         }
@@ -702,5 +692,36 @@ impl Writer {
         self.begin(tcode::ANONYMOUS_CHUNK);
         self.out.extend_from_slice(&packed);
         self.end();
+    }
+}
+
+#[cfg(test)]
+mod compressed_tests {
+    use super::*;
+
+    /// openNURBS writes a compressed buffer's size in four bytes in every archive version
+    /// (`WriteSize` in `opennurbs_archive.cpp`), then its CRC and how it is stored (#313).
+    #[test]
+    fn a_compressed_buffer_has_its_size_in_four_bytes_and_comes_back() {
+        let data: Vec<u8> = (0..1000u32).flat_map(|i| (i % 7).to_le_bytes()).collect();
+        let mut w = Writer::default();
+        w.compressed(&data);
+        w.u32(0xC0FFEE);
+        let out = &w.out;
+        assert_eq!(u32::from_le_bytes(out[0..4].try_into().unwrap()), 4000);
+        assert_eq!(
+            u32::from_le_bytes(out[4..8].try_into().unwrap()),
+            crc32fast::hash(&data)
+        );
+        assert_eq!(out[8], 1, "deflated");
+        let mut r = Reader::new(out, 70);
+        assert_eq!(r.compressed().unwrap(), data);
+        // Read to its end exactly: what follows is read as written.
+        assert_eq!(r.u32().unwrap(), 0xC0FFEE);
+        // An empty buffer is its size alone.
+        let mut w = Writer::default();
+        w.compressed(&[]);
+        assert_eq!(w.out, [0, 0, 0, 0]);
+        assert!(Reader::new(&w.out, 70).compressed().unwrap().is_empty());
     }
 }

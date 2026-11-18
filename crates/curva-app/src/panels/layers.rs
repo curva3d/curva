@@ -20,12 +20,20 @@ pub(super) const GRIP: f32 = 7.0;
 pub(super) fn tree_rows(
     layers: &[curva_document::Layer],
 ) -> Vec<(&curva_document::Layer, usize, bool)> {
-    let known = |id: u64| layers.iter().any(|l| l.id == id);
+    let known: std::collections::HashSet<u64> = layers.iter().map(|l| l.id).collect();
+    // Each layer's sublayers, in the list's order, found once rather than for every layer.
+    let mut children_of: std::collections::HashMap<u64, Vec<&curva_document::Layer>> =
+        std::collections::HashMap::new();
+    for layer in layers {
+        if let Some(parent) = layer.parent.filter(|p| known.contains(p)) {
+            children_of.entry(parent).or_default().push(layer);
+        }
+    }
     let mut rows = Vec::new();
     // Layers still to list, the next last; a layer whose parent is missing is top-level.
     let mut stack: Vec<(&curva_document::Layer, usize)> = layers
         .iter()
-        .filter(|l| l.parent.is_none_or(|p| !known(p)))
+        .filter(|l| l.parent.is_none_or(|p| !known.contains(&p)))
         .rev()
         .map(|l| (l, 0))
         .collect();
@@ -34,10 +42,7 @@ pub(super) fn tree_rows(
         if !listed.insert(layer.id) {
             continue;
         }
-        let children: Vec<&curva_document::Layer> = layers
-            .iter()
-            .filter(|l| l.parent == Some(layer.id))
-            .collect();
+        let children = children_of.remove(&layer.id).unwrap_or_default();
         rows.push((layer, depth, !children.is_empty()));
         if !layer.collapsed {
             stack.extend(children.into_iter().rev().map(|l| (l, depth + 1)));
@@ -184,5 +189,49 @@ impl Curva {
                 });
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tree_rows;
+    use curva_document::Document;
+
+    #[test]
+    fn the_layer_tree_lists_each_layer_under_its_parent_depth_first() {
+        let mut doc = Document::default();
+        let walls = doc.add_layer("Walls".to_owned());
+        let doors = doc.add_sublayer(walls, "Doors".to_owned());
+        let frames = doc.add_sublayer(doors, "Frames".to_owned());
+        let roof = doc.add_layer("Roof".to_owned());
+        let tiles = doc.add_sublayer(roof, "Tiles".to_owned());
+        let windows = doc.add_sublayer(walls, "Windows".to_owned());
+        doc.set_layer_collapsed(roof, true);
+        let mut layers = doc.layers().to_vec();
+        // A layer whose parent is missing is listed at the top level.
+        let mut stray = layers[layers.len() - 1].clone();
+        stray.id = 999;
+        stray.name = "Stray".to_owned();
+        stray.parent = Some(12_345);
+        layers.push(stray);
+        let rows: Vec<(u64, usize, bool)> = tree_rows(&layers)
+            .into_iter()
+            .map(|(l, depth, has)| (l.id, depth, has))
+            .collect();
+        let first = layers[0].id;
+        assert_eq!(
+            rows,
+            [
+                (first, 0, false),
+                (walls, 0, true),
+                (doors, 1, true),
+                (frames, 2, false),
+                (windows, 1, false),
+                // Collapsed: its sublayer is not listed, but it still shows it has one.
+                (roof, 0, true),
+                (999, 0, false),
+            ]
+        );
+        assert!(!rows.iter().any(|(id, ..)| *id == tiles));
     }
 }

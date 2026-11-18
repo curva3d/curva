@@ -663,7 +663,10 @@ impl Curva {
         }
         // Picking objects, edges or faces shows the pointer with a small box beside it.
         let picking = self.processor.current_request().is_some_and(|request| {
-            matches!(request.kind, Kind::Objects | Kind::Edges | Kind::Faces)
+            matches!(
+                request.kind,
+                Kind::Objects | Kind::Edges | Kind::Faces | Kind::MeshParts
+            )
         });
         if let Some((.., position)) = hovered
             && picking
