@@ -1,3 +1,4 @@
+// Changed by Curva (decision 0037): adds `with_own_kernel`, a kernel per thread. See ../README.md.
 //! The session's guards: each test fails without the guard it names.
 
 use std::sync::{Arc, Mutex};
@@ -479,4 +480,57 @@ fn a_result_finished_after_the_cancel_is_not_returned() {
     );
     let r: Result<bool> = run("reads", |k| Ok(k.cancel.is_none()));
     assert_eq!(r, Ok(true), "the token is off the kernel after the call");
+}
+
+/// Inside `with_own_kernel` a thread's calls run on its own kernel: they finish while the
+/// process's kernel is held elsewhere, where they would otherwise wait for it.
+#[test]
+fn a_thread_with_its_own_kernel_does_not_wait_for_the_process_kernel() {
+    use std::sync::mpsc::channel;
+    let (ready, is_ready) = channel();
+    let (go, may_go) = channel::<()>();
+    let (done, is_done) = channel();
+    let worker = std::thread::spawn(move || {
+        with_own_kernel(|| {
+            ready.send(()).unwrap();
+            may_go.recv().unwrap();
+            let a = make_box([0.0; 3], [2.0; 3]).unwrap();
+            let b = make_box([1.0; 3], [2.0; 3]).unwrap();
+            let joined = crate::boolean::boolean(a, b, crate::BooleanOp::Union)
+                .unwrap()
+                .unwrap();
+            done.send(joined.volume(1e-9).unwrap()).unwrap();
+        });
+    });
+    is_ready.recv().unwrap();
+    let held = KERNEL.lock().unwrap_or_else(PoisonError::into_inner);
+    go.send(()).unwrap();
+    // Without its own kernel the worker waits for `held` and never answers: this gives up after
+    // a minute rather than hanging the test run.
+    let volume = is_done.recv_timeout(std::time::Duration::from_secs(60));
+    drop(held);
+    assert_eq!(volume.map(|v| (v * 1e6).round()), Ok(15.0e6));
+    worker.join().unwrap();
+}
+
+/// Work split over threads with their own kernels gives exactly what the process's kernel gives.
+#[test]
+fn own_kernels_side_by_side_answer_as_the_process_kernel() {
+    let work = |i: u32| {
+        let at = f64::from(i);
+        let a = make_box([at, 0.0, 0.0], [2.0, 3.0, 4.0]).unwrap();
+        let b = make_box([at + 1.0, 1.0, 1.0], [2.0, 3.0, 4.0]).unwrap();
+        let cut = crate::boolean::boolean(a, b, crate::BooleanOp::Subtract)
+            .unwrap()
+            .unwrap();
+        (cut.volume(1e-9).unwrap().to_bits(), cut.bounds().unwrap())
+    };
+    let alone: Vec<_> = (0..8).map(work).collect();
+    let side_by_side: Vec<_> = std::thread::scope(|scope| {
+        let handles: Vec<_> = (0..8)
+            .map(|i| scope.spawn(move || with_own_kernel(|| work(i))))
+            .collect();
+        handles.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+    assert_eq!(side_by_side, alone);
 }

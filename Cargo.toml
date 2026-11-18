@@ -1,6 +1,6 @@
 [workspace]
 members = ["crates/*", "evaluation/harness"]
-exclude = ["crates/curva-mesh/vendor"] # patched copies of libraries, linted by their authors
+exclude = ["crates/curva-mesh/vendor", "crates/curva-kernel/vendor"] # patched copies of libraries, linted by their authors
 resolver = "3"
 
 [workspace.package]

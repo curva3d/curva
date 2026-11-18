@@ -1,3 +1,4 @@
+// Changed by Curva (decision 0037): adds `with_own_kernel`, a kernel per thread. See ../README.md.
 //! The session: one kernel for the process (SMLib's context is process-global too, and some of
 //! its state, such as the fillet solver's latched step, lives for the whole process), every call
 //! under its lock and a panic guard.
@@ -20,6 +21,10 @@
 //!   and under its own panic guard; calling ops from it is refused ([`Error::Reentered`]), as is
 //!   calling ops from inside a kernel call. Ops itself writes nothing and logs nothing.
 //! - **The call running now:** [`current_call`] reads it without a lock, for crash reports.
+//! - **A thread's own kernel:** inside [`with_own_kernel`], a thread's calls run on a kernel of
+//!   its own instead of waiting for the process's, so independent work split over threads (each
+//!   thread on its own bodies) runs side by side. Every other rule above holds for it as for the
+//!   process's kernel.
 #![cfg_attr(
     feature = "profile",
     doc = "- **Profiles** (feature `profile`): [`profiled`] returns the kernel's profile of each \
@@ -180,6 +185,8 @@ fn replacement(old: Option<&Kernel>) -> Kernel {
 }
 
 thread_local! {
+    /// This thread's own kernel, while it runs inside [`with_own_kernel`].
+    static OWN: std::cell::RefCell<Own> = const { std::cell::RefCell::new(Own::Off) };
     /// This thread's own fixes, when it named some ([`set_thread_fixes`]).
     static THREAD_FIXES: Cell<Option<UpstreamFixes>> = const { Cell::new(None) };
     /// How many kernel calls this thread is inside: a panic now is caught ([`run_on`]).
@@ -241,6 +248,100 @@ pub fn profiled<T>(f: impl FnOnce() -> T) -> (T, Vec<CallProfile>) {
     let mine = PROFILES.with(|p| p.borrow().clone().unwrap_or_default());
     drop(restore);
     (value, mine)
+}
+
+/// Runs `f` with this thread's ops calls on a kernel of its own, configured as the process's
+/// ([`fresh`], with the process-lifetime state the process's kernel holds as `f` starts), instead
+/// of waiting for the process's kernel. For work split over threads, each on its own bodies:
+/// their calls then run side by side rather than one at a time. The kernel is dropped when `f`
+/// returns; nested, the outer one's kernel is used.
+///
+/// Bodies are not tied to a kernel, so a body made inside may be used outside and the other way
+/// round; but two threads must not edit one body at once (each call locks the body it edits,
+/// as it does now). [`current_call`] names the call started last on any thread.
+pub fn with_own_kernel<T>(f: impl FnOnce() -> T) -> T {
+    /// Ends this thread's own kernel, on a return or a panic out of `f`.
+    struct End;
+    impl Drop for End {
+        fn drop(&mut self) {
+            OWN.with(|o| *o.borrow_mut() = Own::Off);
+        }
+    }
+    if OWN.with(|o| matches!(*o.borrow(), Own::On(_))) {
+        return f();
+    }
+    // Made now, alike the process's kernel and with its process-lifetime state.
+    let own = replacement(
+        KERNEL
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref(),
+    );
+    OWN.with(|o| *o.borrow_mut() = Own::On(Some(Box::new(own))));
+    let end = End;
+    let value = f();
+    drop(end);
+    value
+}
+
+/// Whether this thread runs on a kernel of its own ([`with_own_kernel`]).
+enum Own {
+    /// No: its calls run on the process's kernel.
+    Off,
+    /// Yes: the kernel, between calls (taken out during one).
+    On(Option<Box<Kernel>>),
+}
+
+/// The kernel a call runs on: the process's, under its lock, or this thread's own, taken out of
+/// [`OWN`] for the call and put back after.
+enum Slot {
+    Shared(std::sync::MutexGuard<'static, Option<Kernel>>),
+    Own(Box<Option<Kernel>>),
+}
+
+impl Slot {
+    /// This thread's own kernel when it runs inside [`with_own_kernel`], else the process's.
+    fn take() -> Self {
+        match OWN.with(|o| match &mut *o.borrow_mut() {
+            Own::On(kernel) => Some(kernel.take().map(|k| *k)),
+            Own::Off => None,
+        }) {
+            Some(own) => Slot::Own(Box::new(own)),
+            None => Slot::Shared(KERNEL.lock().unwrap_or_else(PoisonError::into_inner)),
+        }
+    }
+}
+
+impl std::ops::Deref for Slot {
+    type Target = Option<Kernel>;
+    fn deref(&self) -> &Option<Kernel> {
+        match self {
+            Slot::Shared(guard) => guard,
+            Slot::Own(kernel) => kernel,
+        }
+    }
+}
+
+impl std::ops::DerefMut for Slot {
+    fn deref_mut(&mut self) -> &mut Option<Kernel> {
+        match self {
+            Slot::Shared(guard) => guard,
+            Slot::Own(kernel) => kernel,
+        }
+    }
+}
+
+impl Drop for Slot {
+    fn drop(&mut self) {
+        if let Slot::Own(kernel) = self {
+            let kernel = kernel.take().map(Box::new);
+            OWN.with(|o| {
+                if let Own::On(slot) = &mut *o.borrow_mut() {
+                    *slot = kernel;
+                }
+            });
+        }
+    }
 }
 
 /// Is this thread inside a kernel call, whose panic the session catches? (Crash reports mark
@@ -373,7 +474,7 @@ fn run_with<T: Answer>(
     if token.as_ref().is_some_and(CancelToken::is_cancelled) {
         return Err(Error::Cancelled);
     }
-    let mut guard = KERNEL.lock().unwrap_or_else(PoisonError::into_inner);
+    let mut guard = Slot::take();
     let k = guard.get_or_insert_with(fresh);
     k.fixes = current_fixes();
     k.cancel.clone_from(&token);
