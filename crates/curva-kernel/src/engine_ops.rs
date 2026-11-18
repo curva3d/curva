@@ -729,4 +729,30 @@ mod tests {
             ));
         }
     }
+
+    #[test]
+    fn a_plane_clear_of_a_solid_meets_it_nowhere() {
+        let cube = Body::cuboid([0.0; 3], [10.0, 10.0, 10.0]).unwrap();
+        let up = [0.0, 0.0, 1.0];
+        // Above, below, and touching the top: only the last reaches it.
+        assert_eq!(
+            cube.side_of_plane([0.0, 0.0, 12.0], up).unwrap(),
+            Some(false)
+        );
+        assert_eq!(
+            cube.side_of_plane([0.0, 0.0, -2.0], up).unwrap(),
+            Some(true)
+        );
+        assert_eq!(cube.side_of_plane([0.0, 0.0, 10.0], up).unwrap(), None);
+        // A tilted plane past one corner, and one through the box.
+        let tilted = [1.0, 1.0, 1.0];
+        assert_eq!(
+            cube.side_of_plane([11.0, 11.0, 11.0], tilted).unwrap(),
+            Some(false)
+        );
+        assert_eq!(cube.side_of_plane([5.0, 5.0, 5.0], tilted).unwrap(), None);
+        // A section by a plane clear of it is empty, by one through it is not.
+        assert!(cube.section([0.0, 0.0, 12.0], up).unwrap().is_empty());
+        assert!(!cube.section([0.0, 0.0, 5.0], up).unwrap().is_empty());
+    }
 }
