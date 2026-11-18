@@ -11,3 +11,4 @@ pub(crate) mod print;
 pub(crate) mod properties;
 pub(crate) mod resize;
 pub(crate) mod title_row;
+pub(crate) mod view_picker;

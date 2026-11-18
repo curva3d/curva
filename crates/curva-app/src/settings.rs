@@ -364,21 +364,26 @@ impl Curva {
         };
         let title = self.text.render(&Message::new(label(current)));
         let mut chosen = None;
-        egui::ComboBox::from_id_salt("display mode")
-            .selected_text(title)
-            .width(ui.available_width())
-            .show_ui(ui, |ui| {
-                for mode in [
-                    DisplayMode::Wireframe,
-                    DisplayMode::Shaded,
-                    DisplayMode::Ghosted,
-                ] {
-                    let name = self.text.render(&Message::new(label(mode)));
-                    if ui.selectable_label(mode == current, name).clicked() {
-                        chosen = Some(mode);
+        // The display mode and, beside it, the view (`panels::view_picker`).
+        let half = ((ui.available_width() - ui.spacing().item_spacing.x) / 2.0).max(60.0);
+        ui.horizontal(|ui| {
+            egui::ComboBox::from_id_salt("display mode")
+                .selected_text(title)
+                .width(half)
+                .show_ui(ui, |ui| {
+                    for mode in [
+                        DisplayMode::Wireframe,
+                        DisplayMode::Shaded,
+                        DisplayMode::Ghosted,
+                    ] {
+                        let name = self.text.render(&Message::new(label(mode)));
+                        if ui.selectable_label(mode == current, name).clicked() {
+                            chosen = Some(mode);
+                        }
                     }
-                }
-            });
+                });
+            self.view_picker(ui);
+        });
         if let Some(mode) = chosen {
             self.panes[self.active].display = mode;
         }
