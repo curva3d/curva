@@ -5,4 +5,5 @@ pub(crate) mod new;
 pub(crate) mod open;
 pub(crate) mod save;
 pub(crate) mod save_as;
+pub(crate) mod step;
 mod support;
