@@ -295,15 +295,6 @@ fn object_in(
         detail_object_in(state, report, look, came, a, d, space);
         return;
     }
-    // Meshes come in once the document holds them (#266); until then they are left out.
-    if let Geometry::Mesh(_) = &object.geometry {
-        Report::count(&mut report.skipped, "mesh");
-        return;
-    }
-    if let Geometry::SubD(_) = &object.geometry {
-        Report::count(&mut report.skipped, "SubD");
-        return;
-    }
     let (shape, kind) = match shape_in(model, state, look, object, space) {
         Ok(made) => made,
         Err(why) => {

@@ -13,6 +13,10 @@ pub enum Shape {
     Instance(crate::blocks::Instance),
     /// Text and other annotation (spec `annotation.md`).
     Annotation(crate::annotation::Annotation),
+    /// A polygon mesh (spec `mesh-and-subd.md` §2.1).
+    Mesh(curva_mesh::Mesh),
+    /// A SubD: a cage of points smoothed into a surface (spec `mesh-and-subd.md` §2.2).
+    SubD(curva_mesh::SubD),
 }
 
 impl Shape {
@@ -21,7 +25,11 @@ impl Shape {
     pub fn curve(&self) -> Option<&Curve> {
         match self {
             Self::Curve(curve) => Some(curve),
-            Self::Body(_) | Self::Instance(_) | Self::Annotation(_) => None,
+            Self::Body(_)
+            | Self::Instance(_)
+            | Self::Annotation(_)
+            | Self::Mesh(_)
+            | Self::SubD(_) => None,
         }
     }
 
@@ -30,7 +38,29 @@ impl Shape {
     pub fn body(&self) -> Option<&Body> {
         match self {
             Self::Body(body) => Some(body),
-            Self::Curve(_) | Self::Instance(_) | Self::Annotation(_) => None,
+            Self::Curve(_)
+            | Self::Instance(_)
+            | Self::Annotation(_)
+            | Self::Mesh(_)
+            | Self::SubD(_) => None,
+        }
+    }
+
+    /// The mesh, if this is one.
+    #[must_use]
+    pub fn mesh(&self) -> Option<&curva_mesh::Mesh> {
+        match self {
+            Self::Mesh(mesh) => Some(mesh),
+            _ => None,
+        }
+    }
+
+    /// The SubD, if this is one.
+    #[must_use]
+    pub fn subd(&self) -> Option<&curva_mesh::SubD> {
+        match self {
+            Self::SubD(subd) => Some(subd),
+            _ => None,
         }
     }
 
@@ -42,6 +72,8 @@ impl Shape {
             Self::Instance(_) => None,
             Self::Annotation(annotation) => annotation_bounds(annotation),
             Self::Body(body) => body.bounds().ok(),
+            Self::Mesh(mesh) => mesh.bounds(),
+            Self::SubD(subd) => subd.bounds(),
             Self::Curve(curve) => {
                 let points = curve.sample().ok()?;
                 let first = *points.first()?;
@@ -66,6 +98,8 @@ impl Shape {
                 placement: crate::blocks::followed_by(&i.placement, &crate::blocks::moved_by(by)),
             }),
             Self::Annotation(annotation) => Self::Annotation(annotation.translated(by)),
+            Self::Mesh(mesh) => Self::Mesh(mesh.translated(by)),
+            Self::SubD(subd) => Self::SubD(subd.translated(by)),
         }
     }
 
@@ -83,6 +117,8 @@ impl Shape {
                 ),
             }),
             Self::Annotation(annotation) => Self::Annotation(annotation.mapped(change)),
+            Self::Mesh(mesh) => Self::Mesh(mesh.mapped(change)),
+            Self::SubD(subd) => Self::SubD(subd.mapped(change)),
         }
     }
 
@@ -95,8 +131,31 @@ impl Shape {
             // An instance's lines come from its definition, which the document resolves.
             Self::Instance(_) => Vec::new(),
             Self::Annotation(annotation) => annotation_curves(annotation),
+            Self::Mesh(mesh) => mesh_edges(mesh),
+            // A SubD's cage, the lines its points are moved by.
+            Self::SubD(subd) => mesh_edges(subd.cage()),
         }
     }
+}
+
+/// A mesh's edges as lines, each once, in the order its faces first reach them.
+#[must_use]
+pub fn mesh_edges(mesh: &curva_mesh::Mesh) -> Vec<Curve> {
+    let points = mesh.vertices();
+    let mut seen = std::collections::HashSet::new();
+    let mut lines = Vec::new();
+    for face in mesh.faces() {
+        for (k, &a) in face.iter().enumerate() {
+            let b = face[(k + 1) % face.len()];
+            if a == b || !seen.insert((a.min(b), a.max(b))) {
+                continue;
+            }
+            if let (Some(&p), Some(&q)) = (points.get(a as usize), points.get(b as usize)) {
+                lines.extend(Curve::line(p, q));
+            }
+        }
+    }
+    lines
 }
 
 /// The outlines of an annotation, for its extent: a text's letters; for a dimension, the lines
@@ -358,4 +417,45 @@ fn annotation_bounds(annotation: &crate::annotation::Annotation) -> Option<(Poin
             std::array::from_fn(|i| hi[i].max(p[i])),
         )
     }))
+}
+
+#[cfg(test)]
+mod mesh_tests {
+    use super::*;
+    use curva_mesh::{Frame, Mesh, SubD};
+
+    #[test]
+    fn a_mesh_and_a_subd_are_saved_moved_and_outlined_as_shapes() {
+        let mesh = Mesh::mesh_box(&Frame::world(), [2.0, 3.0, 4.0], [1, 1, 1]);
+        let subd = SubD::subd_box(&Frame::world(), [1.0, 1.0, 1.0], [1, 1, 1]);
+        let mut doc = crate::Document::default();
+        let m = doc.add_shape(Shape::Mesh(mesh.clone()));
+        let s = doc.add_shape(Shape::SubD(subd.clone()));
+        // Saved and opened again, each comes back as it was.
+        let path = std::env::temp_dir().join(format!("curva-266-{}.curva", std::process::id()));
+        doc.save(&path).unwrap();
+        let opened = crate::Document::open(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        let shape_of = |d: &crate::Document, id: u64| {
+            d.state()
+                .objects
+                .iter()
+                .find(|o| o.id == id)
+                .unwrap()
+                .shape
+                .clone()
+        };
+        assert_eq!(shape_of(&opened, m), Shape::Mesh(mesh.clone()));
+        assert_eq!(shape_of(&opened, s), Shape::SubD(subd));
+        // Moved and turned with every other shape, its box follows.
+        let shape = Shape::Mesh(mesh);
+        assert_eq!(shape.bounds(), Some(([0.0; 3], [2.0, 3.0, 4.0])));
+        let moved = shape.translated([10.0, 0.0, 0.0]);
+        assert_eq!(moved.bounds(), Some(([10.0, 0.0, 0.0], [12.0, 3.0, 4.0])));
+        let doubled = shape.mapped(&Similarity::scaling([0.0; 3], 2.0));
+        assert_eq!(doubled.bounds(), Some(([0.0; 3], [4.0, 6.0, 8.0])));
+        // A box mesh's twelve edges are its outline, each once.
+        assert_eq!(shape.outlines().len(), 12);
+        assert!(shape.curve().is_none() && shape.body().is_none() && shape.mesh().is_some());
+    }
 }

@@ -429,6 +429,8 @@ fn kind_of(shape: &Shape) -> &'static str {
         Shape::Body(_) => "polysurfaces",
         Shape::Instance(_) => "block instances",
         Shape::Annotation(_) => "texts",
+        Shape::Mesh(_) => "meshes",
+        Shape::SubD(_) => "SubDs",
     }
 }
 
@@ -461,6 +463,8 @@ fn geometry_of(
             Geometry::Instance { block, xform }
         }
         Shape::Annotation(a) => return annotation_geometry(a, patterns, styles, state),
+        Shape::Mesh(m) => Geometry::Mesh(m.clone()),
+        Shape::SubD(s) => Geometry::SubD(s.clone()),
     })
 }
 

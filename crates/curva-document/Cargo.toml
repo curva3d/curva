@@ -12,6 +12,8 @@ workspace = true
 
 [dependencies]
 curva-kernel = { path = "../curva-kernel" }
+# Meshes and SubDs (spec `mesh-and-subd.md` §6.1, #266): the mesh stream's crate.
+curva-mesh = { path = "../curva-mesh" }
 serde = { version = "1", features = ["derive", "rc"] }
 # Exact numbers in files: a body read back a hair off can differ from the one saved.
 serde_json = { version = "1", features = ["float_roundtrip"] }

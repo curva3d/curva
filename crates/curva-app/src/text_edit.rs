@@ -73,7 +73,7 @@ impl Curva {
             .fixed_pos(editing.at + egui::vec2(12.0, 12.0))
             .order(egui::Order::Foreground)
             .show(ctx, |ui| {
-                panel_frame(true).show(ui, |ui| {
+                lit_panel_frame().show(ui, |ui| {
                     let edit = ui.add(
                         egui::TextEdit::multiline(&mut editing.words)
                             .desired_rows(3)
