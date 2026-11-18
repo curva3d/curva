@@ -1,6 +1,7 @@
 //! `Export` and `ExportSelected` to STEP (`.stp`, `.step`): surfaces, polysurfaces and solids kept
 //! exact, through the kernel's STEP writer (spec `docs/specs/export-formats.md`, step 1). Curves,
-//! block copies and annotation are left out and counted.
+//! block copies, annotation, meshes and SubDs are left out and counted (meshes as faceted solids
+//! come later, spec §8 step 6).
 
 use curva_document::{Document, Shape};
 use curva_kernel::step::{StepPart, StepSchema, write_step};
@@ -38,7 +39,11 @@ pub fn write_step_file(
                 body,
                 name: (!object.name.is_empty()).then_some(object.name.as_str()),
             }),
-            Shape::Curve(_) | Shape::Instance(_) | Shape::Annotation(_) => other += 1,
+            Shape::Curve(_)
+            | Shape::Instance(_)
+            | Shape::Annotation(_)
+            | Shape::Mesh(_)
+            | Shape::SubD(_) => other += 1,
         }
     }
     if parts.is_empty() {
