@@ -1,7 +1,8 @@
-//! History: curves that remember how they were made and follow the curve they came from.
+//! History: objects that remember how they were made and follow the object they came from: a
+//! curve from a curve (mirror, offset), a mesh from a surface or solid (Rhino's `Mesh`, #335).
 
-use crate::Document;
-use curva_kernel::{Curve, Point, Similarity};
+use crate::{Document, Shape};
+use curva_kernel::{Point, Similarity};
 use serde::{Deserialize, Serialize};
 
 /// How an object was made from another.
@@ -25,24 +26,59 @@ pub enum Recipe {
         /// Which side it is on: `1.0` for the left looking along the source.
         side: f64,
     },
+    /// A mesh of the surface or solid `source` (Rhino's `Mesh`).
+    MeshOf {
+        /// The object it follows.
+        source: u64,
+        /// How fine, from 0 (coarse) to 1 (fine), as Rhino's slider
+        /// (`curva_mesh::density_tolerances`).
+        density: f64,
+    },
 }
 
 impl Recipe {
     fn source(&self) -> u64 {
         match self {
-            Self::Mirror { source, .. } | Self::Offset { source, .. } => *source,
+            Self::Mirror { source, .. }
+            | Self::Offset { source, .. }
+            | Self::MeshOf { source, .. } => *source,
         }
     }
 
-    fn make(&self, source: &Curve) -> Option<Curve> {
+    /// Whether it can be made from `source`'s kind of shape: a curve for a mirror or offset, a
+    /// surface or solid for a mesh.
+    fn takes(&self, source: &Shape) -> bool {
         match self {
-            Self::Mirror { change, .. } => Some(source.mapped(change)),
+            Self::Mirror { .. } | Self::Offset { .. } => source.curve().is_some(),
+            Self::MeshOf { .. } => source.body().is_some(),
+        }
+    }
+
+    /// The object made from `source`, if it can be made.
+    fn make(&self, source: &Shape) -> Option<Shape> {
+        match self {
+            Self::Mirror { change, .. } => Some(Shape::Curve(source.curve()?.mapped(change))),
             Self::Offset {
                 normal,
                 distance,
                 side,
                 ..
-            } => source.offset_on_side(*normal, *distance, *side).ok(),
+            } => source
+                .curve()?
+                .offset_on_side(*normal, *distance, *side)
+                .ok()
+                .map(Shape::Curve),
+            Self::MeshOf { density, .. } => {
+                let body = source.body()?;
+                let (low, high) = body.bounds().ok()?;
+                let size = (0..3)
+                    .map(|k| (high[k] - low[k]).powi(2))
+                    .sum::<f64>()
+                    .sqrt();
+                let (chord, angle) = curva_mesh::density_tolerances(*density, size);
+                let made = body.mesh_with(chord, Some(angle)).ok()?;
+                Some(Shape::Mesh(curva_mesh::Mesh::from_body_mesh(&made)))
+            }
         }
     }
 }
@@ -89,7 +125,7 @@ impl Document {
         self.refresh_ties();
     }
 
-    /// Remakes the curves made with History from the curves they follow.
+    /// Remakes the objects made with History from the objects they follow.
     fn refresh_curve_history(&mut self) {
         for index in 0..self.state.objects.len() {
             let Some(recipe) = self.state.objects[index].recipe else {
@@ -100,13 +136,13 @@ impl Document {
                 .objects
                 .iter()
                 .find(|object| object.id == recipe.source())
-                .and_then(|object| object.curve().cloned());
+                .map(|object| object.shape.clone())
+                .filter(|shape| recipe.takes(shape));
             match source {
                 None => std::sync::Arc::make_mut(&mut self.state.objects[index]).recipe = None,
-                Some(curve) => {
-                    if let Some(made) = recipe.make(&curve) {
-                        std::sync::Arc::make_mut(&mut self.state.objects[index]).shape =
-                            crate::Shape::Curve(made);
+                Some(shape) => {
+                    if let Some(made) = recipe.make(&shape) {
+                        std::sync::Arc::make_mut(&mut self.state.objects[index]).shape = made;
                     }
                 }
             }
@@ -117,6 +153,7 @@ impl Document {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use curva_kernel::{Body, Curve};
 
     const X: Point = [1.0, 0.0, 0.0];
 
@@ -229,5 +266,42 @@ mod tests {
                 .iter()
                 .any(|o| o.id == child && o.recipe.is_some())
         );
+    }
+
+    #[test]
+    fn a_mesh_made_with_history_follows_its_solid() {
+        let mut doc = Document::default();
+        doc.set_recording_history(true);
+        let source = doc.add_body(Body::cuboid([0.0; 3], [10.0, 10.0, 10.0]).unwrap());
+        let recipe = Recipe::MeshOf {
+            source,
+            density: 0.5,
+        };
+        let made = recipe.make(&doc.state().objects[0].shape.clone()).unwrap();
+        let mesh = doc.add_shape(made);
+        doc.record_recipe(mesh, recipe);
+        let bounds = |doc: &Document| {
+            doc.state()
+                .objects
+                .iter()
+                .find(|o| o.id == mesh)
+                .and_then(|o| o.shape.mesh())
+                .and_then(curva_mesh::Mesh::bounds)
+                .unwrap()
+        };
+        assert_eq!(bounds(&doc), ([0.0; 3], [10.0, 10.0, 10.0]));
+        // The solid grows; the mesh follows it.
+        doc.replace_shape(
+            source,
+            Shape::Body(Body::cuboid([0.0; 3], [20.0, 10.0, 5.0]).unwrap()),
+        );
+        doc.refresh_history();
+        assert_eq!(bounds(&doc), ([0.0; 3], [20.0, 10.0, 5.0]));
+        assert!(doc.recipe_of(mesh).is_some());
+        // A curve in the solid's place cannot be meshed: the mesh forgets its recipe and stays.
+        doc.replace_shape(source, Shape::Curve(line()));
+        doc.refresh_history();
+        assert!(doc.recipe_of(mesh).is_none());
+        assert_eq!(bounds(&doc), ([0.0; 3], [20.0, 10.0, 5.0]));
     }
 }

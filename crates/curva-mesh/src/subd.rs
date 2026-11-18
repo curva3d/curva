@@ -240,6 +240,25 @@ impl SubD {
         }
     }
 
+    /// The SubD changed by any affine map (see [`Mesh::transformed`]): its cage changes, and its
+    /// creases, tags and colours stay, as Rhino stretches a SubD.
+    #[must_use]
+    pub fn transformed(&self, map: [[f64; 4]; 4]) -> Self {
+        Self {
+            cage: self.cage.transformed(map),
+            ..self.clone()
+        }
+    }
+
+    /// Each cage point moved by `map`, as Rhino deforms a SubD (its control points move).
+    #[must_use]
+    pub fn deformed(&self, map: impl Fn(Point) -> Point) -> Self {
+        Self {
+            cage: self.cage.deformed(map),
+            ..self.clone()
+        }
+    }
+
     /// Sets an edge's sharpness, keeping the list sorted (a smooth edge is left out).
     fn set_sharpness(&mut self, (a, b): (u32, u32), s: Sharpness) {
         let key = [a.min(b), a.max(b)];
@@ -333,6 +352,22 @@ impl SubD {
 pub(crate) mod tests {
     use super::*;
     use crate::mesh::tests::cube;
+
+    #[test]
+    fn a_subd_stretches_and_deforms_with_its_cage_keeping_its_creases() {
+        let subd = SubD::new(cube()).with_creases(&[[0, 1]]);
+        let long = subd.transformed([
+            [2.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ]);
+        assert_eq!(long.bounds(), Some(([0.0; 3], [2.0, 1.0, 1.0])));
+        assert!(long.sharpness(0, 1).is_crease());
+        let raised = subd.deformed(|p| [p[0], p[1], p[2] + p[0]]);
+        assert_eq!(raised.bounds(), Some(([0.0; 3], [1.0, 1.0, 2.0])));
+        assert!(raised.sharpness(1, 0).is_crease());
+    }
 
     #[test]
     fn a_subd_moves_with_its_cage() {
