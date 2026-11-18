@@ -34,9 +34,34 @@ impl Body {
         if is_in_place(&self.placement) {
             return Ok(made.clone());
         }
+        Ok(self.placed_mesh(made))
+    }
+
+    /// Triangles for a mesh object (Rhino's `Mesh` command): facets within `chord` of the
+    /// surface, in the model's units, none turning more than `angle` radians (`None`: the chord
+    /// alone). Made afresh each time; the display mesh ([`Body::mesh`]) is left as it is.
+    ///
+    /// # Errors
+    ///
+    /// When the engine cannot describe or mesh the faces.
+    pub fn mesh_with(&self, chord: f64, angle: Option<f64>) -> Result<BodyMesh, KernelError> {
+        // Meshed as made, where lengths are the placement's scale smaller.
+        let tolerance = MeshTolerance {
+            chord: chord / self.scale(),
+            angle,
+        };
+        let made = self.meshed_as_made(&tolerance)?;
+        if is_in_place(&self.placement) {
+            return Ok(made);
+        }
+        Ok(self.placed_mesh(&made))
+    }
+
+    /// A mesh of the faces as made, placed where the body is.
+    fn placed_mesh(&self, made: &BodyMesh) -> BodyMesh {
         let point = |p: &Point| self.placed_point(*p);
         let direction = |d: &Point| self.placed_direction(*d);
-        Ok(BodyMesh {
+        BodyMesh {
             positions: made.positions.iter().map(point).collect(),
             normals: made.normals.iter().map(direction).collect(),
             triangles: made.triangles.clone(),
@@ -48,48 +73,61 @@ impl Body {
             edge_ids: made.edge_ids.clone(),
             seams: made.seams.clone(),
             triangle_faces: made.triangle_faces.clone(),
-        })
+        }
     }
 
     /// The faces as made, without the placement, meshed the first time it is asked for, then
     /// kept: picking an edge or drawing a moved copy meshes nothing again.
     fn unplaced_mesh(&self) -> Result<&BodyMesh, KernelError> {
         if self.shared.mesh.get().is_none() {
-            let (low, high) = self.unplaced_bounds()?;
-            let record = self.unplaced_record()?;
-            let size = (0..3)
-                .map(|axis| (high[axis] - low[axis]).powi(2))
-                .sum::<f64>()
-                .sqrt();
-            let (tess, _) = plan(record, &MeshTolerance::display_of(size), size)
-                .map_err(|e| failed("meshing a body", e))?;
-            let (mesh, _) = tess.evaluate();
-            let seams = seam_edges(&mesh, size);
-            let kept: Vec<usize> = (0..mesh.edges.len())
-                .filter(|index| !mesh.seams.get(*index).copied().unwrap_or(false))
-                .collect();
-            let point = |v: &solidcore_record::Vec3| [v.x, v.y, v.z];
-            let _ = self.shared.mesh.set(Arc::new(BodyMesh {
-                positions: mesh.positions.iter().map(point).collect(),
-                normals: mesh.normals.iter().map(point).collect(),
-                triangles: mesh.triangles.clone(),
-                edges: kept
-                    .iter()
-                    .map(|&index| mesh.edges[index].iter().map(point).collect())
-                    .collect(),
-                seams: kept
-                    .iter()
-                    .map(|&index| seams.get(index).copied().unwrap_or(false))
-                    .collect(),
-                edge_ids: kept,
-                triangle_faces: mesh.tri_face.iter().map(|&face| face as usize).collect(),
-            }));
+            let size = self.size_as_made()?;
+            let made = self.meshed_as_made(&MeshTolerance::display_of(size))?;
+            let _ = self.shared.mesh.set(Arc::new(made));
         }
         self.shared
             .mesh
             .get()
             .map(Arc::as_ref)
             .ok_or_else(|| KernelError("meshing a body failed".to_owned()))
+    }
+}
+
+impl Body {
+    /// The length of the diagonal of the box around the faces as made.
+    fn size_as_made(&self) -> Result<f64, KernelError> {
+        let (low, high) = self.unplaced_bounds()?;
+        Ok((0..3)
+            .map(|axis| (high[axis] - low[axis]).powi(2))
+            .sum::<f64>()
+            .sqrt())
+    }
+
+    /// The faces as made, meshed within `tolerance`.
+    fn meshed_as_made(&self, tolerance: &MeshTolerance) -> Result<BodyMesh, KernelError> {
+        let size = self.size_as_made()?;
+        let record = self.unplaced_record()?;
+        let (tess, _) = plan(record, tolerance, size).map_err(|e| failed("meshing a body", e))?;
+        let (mesh, _) = tess.evaluate();
+        let seams = seam_edges(&mesh, size);
+        let kept: Vec<usize> = (0..mesh.edges.len())
+            .filter(|index| !mesh.seams.get(*index).copied().unwrap_or(false))
+            .collect();
+        let point = |v: &solidcore_record::Vec3| [v.x, v.y, v.z];
+        Ok(BodyMesh {
+            positions: mesh.positions.iter().map(point).collect(),
+            normals: mesh.normals.iter().map(point).collect(),
+            triangles: mesh.triangles.clone(),
+            edges: kept
+                .iter()
+                .map(|&index| mesh.edges[index].iter().map(point).collect())
+                .collect(),
+            seams: kept
+                .iter()
+                .map(|&index| seams.get(index).copied().unwrap_or(false))
+                .collect(),
+            edge_ids: kept,
+            triangle_faces: mesh.tri_face.iter().map(|&face| face as usize).collect(),
+        })
     }
 }
 
@@ -233,5 +271,31 @@ mod tests {
         let cube = Body::cuboid([0.0; 3], [1.0, 1.0, 1.0]).unwrap();
         assert_eq!(cube.placement(), super::super::IN_PLACE);
         assert_eq!(*cube.shared_mesh().unwrap(), cube.mesh().unwrap());
+    }
+
+    #[test]
+    fn a_mesh_at_a_chosen_tolerance_keeps_within_it_and_leaves_the_display_mesh() {
+        let sphere = Body::sphere([0.0; 3], 10.0).unwrap();
+        let display = sphere.mesh().unwrap();
+        let farthest = |mesh: &crate::BodyMesh, centre: crate::Point, radius: f64| {
+            mesh.positions
+                .iter()
+                .map(|p| (crate::gap(*p, centre) - radius).abs())
+                .fold(0.0, f64::max)
+        };
+        // Facets sag inwards from the surface; their corners lie on it.
+        let fine = sphere.mesh_with(0.01, None).unwrap();
+        let coarse = sphere.mesh_with(1.0, None).unwrap();
+        assert!(fine.triangles.len() > 4 * coarse.triangles.len());
+        assert!(farthest(&fine, [0.0; 3], 10.0) < 1e-6);
+        // A doubled, moved copy is meshed to the same tolerance in the model's units.
+        let doubled = sphere
+            .mapped(&Similarity::scaling([0.0; 3], 2.0))
+            .translated([100.0, 0.0, 0.0]);
+        let copy = doubled.mesh_with(0.01, None).unwrap();
+        assert!(farthest(&copy, [100.0, 0.0, 0.0], 20.0) < 1e-6);
+        assert!(copy.triangles.len() > fine.triangles.len());
+        // The display mesh is as it was.
+        assert_eq!(sphere.mesh().unwrap(), display);
     }
 }
