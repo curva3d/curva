@@ -6,6 +6,10 @@
 ## 19 November 2026
 
 **Done**
+- **Edits in a drawing full of blocks no longer pause for a second or more.** After any change,
+  every block was worked out again; now an unchanged block keeps what it drew while its
+  definition and the settings it reads stay the same. On the owner's 3.6 MB drawing, each edit
+  went from 1.5 s of redrawing to 0.33 s.
 - **A drawing full of text opens about 19 s sooner.** Letters and arrowheads were each made
   into a flat face by the modelling engine, about 3 ms a letter: a 3.6 MB drawing of the owner's
   with 356 texts spent 19 s on them before its first frame. They are now filled in their plane by

@@ -514,3 +514,8 @@ filled in their own plane by lyon, as decision 0030 has it (`fills.rs`):
 Most of what is left of the texts' time is laying out and sampling the letters' outlines. After
 any change to the model, blocks and dimensions are worked out again (1.3 s on this drawing), which
 is next to look at.
+
+Unchanged blocks now keep what they drew while the block definitions and what they read for
+annotations (unit, layouts, hatch patterns, annotation styles) are the same; a block holding text
+with fields or a dimension is still drawn again each time. Working out that drawing again after an
+edit elsewhere: 1.5 s before, 0.33 s after.

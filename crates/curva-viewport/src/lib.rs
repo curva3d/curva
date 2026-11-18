@@ -595,6 +595,34 @@ mod tests {
         assert!(!parts.lines.is_empty());
     }
 
+    /// After an edit elsewhere, an unchanged instance keeps what it drew last time instead of being
+    /// worked out again; when its block changes, it is drawn again.
+    #[test]
+    fn an_unchanged_instance_is_not_drawn_again_until_its_block_changes() {
+        let mut doc = Document::default();
+        let line = doc.add(Curve::line([0.0; 3], [10.0, 0.0, 0.0]).unwrap());
+        let (definition, instance) = doc.define_block("B".into(), [0.0; 3], &[line]);
+        let mut cache = MeshCache::default();
+        let points_of = |outlines: &Outlines| {
+            let (_, points) = outlines
+                .objects
+                .iter()
+                .find(|(id, _)| *id == instance)
+                .unwrap();
+            std::sync::Arc::clone(points)
+        };
+        let first = points_of(&Outlines::of_cached(doc.state(), &mut cache));
+        doc.add(Curve::line([0.0, 5.0, 0.0], [1.0, 5.0, 0.0]).unwrap());
+        let second = points_of(&Outlines::of_cached(doc.state(), &mut cache));
+        assert!(std::sync::Arc::ptr_eq(&first, &second));
+        let mut objects = doc.definitions()[0].objects.clone();
+        objects[0].shape =
+            curva_document::Shape::Curve(Curve::line([0.0; 3], [20.0, 0.0, 0.0]).unwrap());
+        doc.set_definition_objects(definition, objects);
+        let third = points_of(&Outlines::of_cached(doc.state(), &mut cache));
+        assert_eq!(third.last(), Some(&[20.0, 0.0, 0.0]));
+    }
+
     /// For the window, two instances of a block and a moved copy of a solid come as copies of
     /// one shape each at its own place, with no triangles written out (#153); pictures still
     /// get every triangle.
