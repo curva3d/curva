@@ -56,6 +56,8 @@ pub enum Kind {
     Edges,
     /// Faces of surfaces and solids, picked in the viewport.
     Faces,
+    /// Points, edges and faces of meshes and SubDs, picked in the viewport (#333).
+    MeshParts,
 }
 
 /// One question a command asks.
@@ -266,6 +268,8 @@ pub enum Answer {
     Edges(Vec<curva_document::EdgePick>),
     /// Picked faces of surfaces and solids.
     Faces(Vec<curva_document::FacePick>),
+    /// Picked points, edges and faces of meshes and SubDs.
+    MeshParts(Vec<curva_document::MeshPick>),
     /// A file location.
     Path(String),
     /// One of the request's option words.

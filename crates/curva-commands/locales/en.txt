@@ -471,6 +471,7 @@ ui.close.where = You can bring it back from Settings, in the Interface tab.
 ui.close.close = Close
 ui.panel.close = Close this panel
 ui.untitled = Untitled
+error.pick_mesh_parts = Pick points, edges or faces of a mesh or SubD (Ctrl+Shift-click), then press Enter.
 ui.path_copied = Path copied
 ui.path_copy_hint = Click to copy the path
 ui.specialization.freeform = Freeform
