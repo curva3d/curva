@@ -89,3 +89,47 @@ pub fn build_boundary_hierarchy(
     }
     hierarchy
 }
+
+/// Holds inside edges whose two faces meet at more than `angle_deg` degrees like borders: the
+/// points on them get the edge's direction and stay on it, so the quads follow hard edges.
+pub fn add_crease_constraints(
+    mesh: &TriMesh,
+    dedges: &DirectedEdges,
+    normals: &[Vec3],
+    angle_deg: f64,
+    constraints: &mut [Option<BoundaryConstraint>],
+) {
+    let face_normal = |f: usize| {
+        let [a, b, c] = mesh.faces[f];
+        (mesh.vertices[b] - mesh.vertices[a])
+            .cross(mesh.vertices[c] - mesh.vertices[a])
+            .normalize_or_zero()
+    };
+    let limit = libm::cos(angle_deg.to_radians());
+    for edge in 0..dedges.e2e.len() {
+        let other = dedges.e2e[edge];
+        if other == INVALID || other < edge {
+            continue;
+        }
+        if face_normal(edge / 3).dot(face_normal(other / 3)) >= limit {
+            continue;
+        }
+        let face = mesh.faces[edge / 3];
+        let i0 = face[edge % 3];
+        let i1 = face[(edge + 1) % 3];
+        let direction = mesh.vertices[i1] - mesh.vertices[i0];
+        if direction.length_squared() <= 1e-12 {
+            continue;
+        }
+        for i in [i0, i1] {
+            let tangent = (direction - normals[i] * normals[i].dot(direction)).normalize_or_zero();
+            if tangent != Vec3::ZERO {
+                constraints[i] = Some(BoundaryConstraint {
+                    origin: mesh.vertices[i],
+                    tangent,
+                    weight: 1.0,
+                });
+            }
+        }
+    }
+}

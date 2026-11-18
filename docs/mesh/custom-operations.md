@@ -25,6 +25,7 @@ switch to it, delete Curva's code and the row, and say so in the release notes. 
 | subd-feature-patches | `curva-mesh/src/smooth.rs` (`SubD::bezier_patches`) | ToNURBS | subdiv-kernels gives exact bicubic patches only on regular quads; around star points, creases and borders it evaluates the surface but makes no patches | subdiv-kernels 0.1.0 |
 | quad-remesh-onto-surface | `curva-mesh/src/quad_remesh.rs` (`onto_triangles`) | QuadRemesh | quadrs places its points by averaging and leaves them off a curved surface; Rhino's QuadRemesh leaves them on the original | quadrs 1.0.0 |
 | quad-remesh-count | `curva-mesh/src/quad_remesh.rs` (`Mesh::quad_remeshed`) | QuadRemesh | quadrs' face count is rough (a fifth over is common, against the spec's 10%), so Curva runs it again with the request scaled, up to three tries | quadrs 1.0.0 |
+| quad-remesh-hard-edges | `curva-mesh/src/quad_remesh.rs` (`onto_hard_edges`) | QuadRemesh (`DetectHardEdges`) | quadrs, with the `crease_angle` option Curva added to its copy, brings points within about a fifth of a quad of each hard edge; Rhino puts them exactly on, corners included | quadrs 1.0.0 |
 
 ## Patched copies of libraries
 
@@ -35,4 +36,4 @@ mesh library upgrade, like the operations above.
 
 | Library | Copy | The fix | Offered | Go back when | Checked at |
 |---|---|---|---|---|---|
-| quadrs 1.0.0 | `crates/curva-mesh/vendor/quadrs` | ordered maps in four places (`graph.rs`, `extract.rs`, `hierarchy.rs`), and its seven sines, arc tangents and exponentials worked out by the `libm` crate, so the same mesh and seed give the same quads on every run and every system | [vidstige/quadrs#1](https://github.com/vidstige/quadrs/issues/1) | a quadrs release passes `the_same_seed_gives_the_same_quads`; steps in #349 | quadrs 1.0.0, 18 November 2026 |
+| quadrs 1.0.0 | `crates/curva-mesh/vendor/quadrs` | ordered maps in four places (`graph.rs`, `extract.rs`, `hierarchy.rs`), and its seven sines, arc tangents and exponentials worked out by the `libm` crate, so the same mesh and seed give the same quads on every run and every system; and a `crease_angle` option that holds hard edges like borders (`boundary.rs`, `api.rs`) | [vidstige/quadrs#1](https://github.com/vidstige/quadrs/issues/1) | a quadrs release passes `the_same_seed_gives_the_same_quads` on every system and has a hard-edge option; steps in #349 (the hard-edge option is not offered to the author yet) | quadrs 1.0.0, 18 November 2026 |
