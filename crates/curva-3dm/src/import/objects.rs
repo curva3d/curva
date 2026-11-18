@@ -68,13 +68,39 @@ struct Arrivals {
 pub(super) fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
     let look = lookups(model, state, report);
     let mut came = Arrivals::default();
-    for object in &model.objects {
-        object_in(model, state, report, &look, &mut came, object);
+    for (object, solid) in model.objects.iter().zip(solids_ahead(model)) {
+        object_in(model, state, report, &look, &mut came, object, solid);
     }
     object_numbers_in_fields(state, &came.object_numbers);
     clipping_planes_in(model, state, &look, &came);
     detail_layers_in(model, state, &look, &came);
     blocks_in(model, state, report, &look, came.definitions);
+}
+
+/// Each object's solid, for the polysurfaces and extrusions, built on every core at once: building
+/// them is most of the time a big file takes to open (#317). `None` for the other objects.
+fn solids_ahead(model: &Model) -> Vec<Option<Result<Body, KernelError>>> {
+    let solids: Vec<(usize, &Geometry)> = model
+        .objects
+        .iter()
+        .enumerate()
+        .filter(|(_, o)| matches!(o.geometry, Geometry::Brep(_) | Geometry::Extrusion(_)))
+        .map(|(i, o)| (i, &o.geometry))
+        .collect();
+    let built = curva_kernel::parallel::each_in_parallel(solids.len(), |k| {
+        Ok(match solids[k].1 {
+            Geometry::Brep(b) => super::breps::brep_body(b),
+            Geometry::Extrusion(e) => super::breps::extrusion_body(e),
+            _ => Err(KernelError("not a solid".to_owned())),
+        })
+    })
+    .unwrap_or_default();
+    let mut ahead: Vec<Option<Result<Body, KernelError>>> =
+        model.objects.iter().map(|_| None).collect();
+    for ((i, _), solid) in solids.iter().zip(built) {
+        ahead[*i] = Some(solid);
+    }
+    ahead
 }
 
 /// The file's tables into Curva's model, as the objects will name them: the unit, document
@@ -275,6 +301,7 @@ fn object_in(
     look: &Lookups,
     came: &mut Arrivals,
     object: &model::Object,
+    solid: Option<Result<Body, KernelError>>,
 ) {
     let a = &object.attributes;
     let space = if a.page_space {
@@ -295,7 +322,7 @@ fn object_in(
         detail_object_in(state, report, look, came, a, d, space);
         return;
     }
-    let (shape, kind) = match shape_in(model, state, look, object, space) {
+    let (shape, kind) = match shape_in(model, state, look, object, space, solid) {
         Ok(made) => made,
         Err(why) => {
             Report::count(&mut report.skipped, &format!("unreadable ({why})"));
@@ -376,6 +403,7 @@ fn shape_in(
     look: &Lookups,
     object: &model::Object,
     space: Option<u64>,
+    solid: Option<Result<Body, KernelError>>,
 ) -> Result<(Shape, &'static str), String> {
     let scale = if space.is_some() {
         look.page_mm
@@ -384,6 +412,7 @@ fn shape_in(
     };
     let (shape, kind) = shape_of(
         &object.geometry,
+        solid,
         &look.block_ids,
         &model.dim_styles,
         &model.hatch_patterns,

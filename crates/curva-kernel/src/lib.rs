@@ -44,6 +44,7 @@ mod knots;
 pub use engine_ops::{Carry, Contact};
 mod extrude;
 pub mod hidden;
+pub mod parallel;
 pub mod rays;
 mod split;
 mod sweep;
