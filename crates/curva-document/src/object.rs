@@ -72,6 +72,10 @@ struct StoredObject {
     instance: Option<crate::blocks::Instance>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     annotation: Option<annotation::Annotation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mesh: Option<curva_mesh::Mesh>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    subd: Option<curva_mesh::SubD>,
     #[serde(default)]
     layer: u64,
     #[serde(default)]
@@ -108,17 +112,21 @@ impl TryFrom<StoredObject> for Object {
     type Error = String;
 
     fn try_from(stored: StoredObject) -> Result<Self, String> {
-        let shape = match (
-            stored.curve,
-            stored.body,
-            stored.instance,
-            stored.annotation,
-        ) {
-            (Some(curve), None, None, None) => Shape::Curve(curve),
-            (None, Some(body), None, None) => Shape::Body(body),
-            (None, None, Some(instance), None) => Shape::Instance(instance),
-            (None, None, None, Some(annotation)) => Shape::Annotation(annotation),
-            _ => return Err(format!("object {} needs a curve or a body", stored.id)),
+        // Exactly one of the shapes.
+        let shapes: Vec<Shape> = [
+            stored.curve.map(Shape::Curve),
+            stored.body.map(Shape::Body),
+            stored.instance.map(Shape::Instance),
+            stored.annotation.map(Shape::Annotation),
+            stored.mesh.map(Shape::Mesh),
+            stored.subd.map(Shape::SubD),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        let shape = match <[Shape; 1]>::try_from(shapes) {
+            Ok([shape]) => shape,
+            Err(_) => return Err(format!("object {} needs a curve or a body", stored.id)),
         };
         Ok(Self {
             id: stored.id,
@@ -144,18 +152,14 @@ impl TryFrom<StoredObject> for Object {
 
 impl From<Object> for StoredObject {
     fn from(object: Object) -> Self {
-        let (curve, body, instance, annotation) = match object.shape {
-            Shape::Curve(curve) => (Some(curve), None, None, None),
-            Shape::Body(body) => (None, Some(body), None, None),
-            Shape::Instance(instance) => (None, None, Some(instance), None),
-            Shape::Annotation(annotation) => (None, None, None, Some(annotation)),
-        };
-        Self {
+        let mut stored = Self {
             id: object.id,
-            curve,
-            body,
-            instance,
-            annotation,
+            curve: None,
+            body: None,
+            instance: None,
+            annotation: None,
+            mesh: None,
+            subd: None,
             layer: object.layer,
             hidden: object.hidden,
             name: object.name,
@@ -171,7 +175,16 @@ impl From<Object> for StoredObject {
             space: object.space,
             section: object.section,
             ties: object.ties,
+        };
+        match object.shape {
+            Shape::Curve(curve) => stored.curve = Some(curve),
+            Shape::Body(body) => stored.body = Some(body),
+            Shape::Instance(instance) => stored.instance = Some(instance),
+            Shape::Annotation(annotation) => stored.annotation = Some(annotation),
+            Shape::Mesh(mesh) => stored.mesh = Some(mesh),
+            Shape::SubD(subd) => stored.subd = Some(subd),
         }
+        stored
     }
 }
 

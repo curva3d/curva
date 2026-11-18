@@ -90,10 +90,29 @@ fn extrusions_come_in_as_bodies() {
     assert_eq!(bodies, 7, "{}", report.summary());
 }
 
+/// Meshes and SubDs come in as objects since the document holds them (#266); point clouds are
+/// still left out.
 #[test]
-fn meshes_and_point_clouds_are_listed_as_left_out() {
-    let (_, report) = open("v7_my_mesh.3dm");
-    assert_eq!(report.skipped, vec![("mesh".to_owned(), 1)]);
+fn meshes_and_subds_come_in_and_point_clouds_are_listed_as_left_out() {
+    let (doc, report) = open("v7_my_mesh.3dm");
+    assert!(report.skipped.is_empty(), "{}", report.summary());
+    let meshes: Vec<_> = doc
+        .state()
+        .objects
+        .iter()
+        .filter_map(|o| o.shape.mesh())
+        .collect();
+    assert_eq!(meshes.len(), 1);
+    assert!(meshes[0].faces().count() > 0);
+    let (doc, report) = open("v8_subds.3dm");
+    assert!(report.skipped.is_empty(), "{}", report.summary());
+    let subds = doc
+        .state()
+        .objects
+        .iter()
+        .filter(|o| o.shape.subd().is_some())
+        .count();
+    assert_eq!(subds, 3);
     let (doc, report) = open("v7_my_points.3dm");
     assert_eq!(doc.state().objects.len(), 2);
     assert_eq!(report.skipped, vec![("point cloud".to_owned(), 1)]);

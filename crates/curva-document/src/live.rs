@@ -42,6 +42,8 @@ fn print_of(shapes: &[&Shape]) -> u64 {
             Shape::Body(b) => serde_json::to_string(b),
             Shape::Instance(i) => serde_json::to_string(i),
             Shape::Annotation(a) => serde_json::to_string(a),
+            Shape::Mesh(m) => serde_json::to_string(m),
+            Shape::SubD(s) => serde_json::to_string(s),
         };
         text.unwrap_or_default().hash(&mut hasher);
     }

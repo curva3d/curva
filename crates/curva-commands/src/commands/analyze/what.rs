@@ -119,6 +119,17 @@ impl Recipe for What {
                         .unwrap_or_default();
                     format!("surface{area}")
                 }
+                Shape::Mesh(mesh) => format!(
+                    "{}mesh of {} points and {} faces",
+                    if mesh.is_closed() { "closed " } else { "" },
+                    mesh.vertices().len(),
+                    mesh.faces().count()
+                ),
+                Shape::SubD(subd) => format!(
+                    "SubD of {} cage points and {} faces",
+                    subd.cage().vertices().len(),
+                    subd.cage().faces().count()
+                ),
             })
             .collect();
         Ok(Made {

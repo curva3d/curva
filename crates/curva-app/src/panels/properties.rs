@@ -357,6 +357,8 @@ impl Curva {
                 let (id, dimension) = (object.id, dimension.clone());
                 self.dimension_properties(ui, id, &dimension);
             }
+            // What a mesh or SubD shows here comes with its commands (#270 part 2).
+            Shape::Mesh(_) | Shape::SubD(_) => {}
             Shape::Instance(instance) => {
                 let name = self
                     .doc

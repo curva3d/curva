@@ -137,6 +137,8 @@ pub fn shape_placed(shape: &Shape, m: &Placement) -> Option<Shape> {
             placement: followed_by(&i.placement, m),
         }),
         Shape::Annotation(annotation) => Shape::Annotation(annotation.placed(m)),
+        // A placement may stretch, which the mesh crate cannot do yet: left out until it can.
+        Shape::Mesh(_) | Shape::SubD(_) => return None,
     })
 }
 

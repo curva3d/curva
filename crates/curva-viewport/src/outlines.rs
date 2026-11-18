@@ -372,6 +372,8 @@ impl Outlines {
                 }
                 // Instances inside definitions are opened before this.
                 Shape::Instance(_) => continue,
+                // Meshes and SubDs are drawn by the display stream's #267 and #324.
+                Shape::Mesh(_) | Shape::SubD(_) => continue,
                 Shape::Annotation(annotation) => {
                     if matches!(annotation, curva_document::annotation::Annotation::Dot(_)) {
                         kind = PickKind::Point;

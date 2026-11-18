@@ -98,6 +98,11 @@ struct Step {
     bytes: usize,
 }
 
+/// About how many bytes a mesh holds: its points and its faces' corners.
+fn mesh_bytes(mesh: &curva_mesh::Mesh) -> usize {
+    std::mem::size_of_val(mesh.vertices()) + mesh.faces().map(|f| f.len() * 4 + 16).sum::<usize>()
+}
+
 /// About how many bytes `state` holds that `beside` does not share with it: the objects it
 /// does not have in common (solids counted only if their faces are not shared too), and the
 /// list of objects itself.
@@ -119,6 +124,8 @@ fn weigh(state: &State, beside: &State) -> usize {
             + match &o.shape {
                 Shape::Curve(curve) => curve.heap_bytes(),
                 Shape::Body(body) if !faces.contains(&body.faces_key()) => body.held_bytes(),
+                Shape::Mesh(mesh) => mesh_bytes(mesh),
+                Shape::SubD(subd) => mesh_bytes(subd.cage()),
                 Shape::Body(_) | Shape::Instance(_) | Shape::Annotation(_) => 0,
             }
     };
