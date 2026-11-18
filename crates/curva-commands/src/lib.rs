@@ -111,6 +111,15 @@ pub const DXF_FILES: FileFormat = ("files.dxf", &["dxf"]);
 /// AutoCAD's drawing files.
 pub const DWG_FILES: FileFormat = ("files.dwg", &["dwg"]);
 
+/// Mesh files Curva reads and writes itself: STL, OBJ and PLY (spec `mesh-and-subd.md` §5).
+pub const STL_FILES: FileFormat = ("files.stl", &["stl"]);
+/// Wavefront OBJ files.
+pub const OBJ_FILES: FileFormat = ("files.obj", &["obj"]);
+/// PLY files.
+pub const PLY_FILES: FileFormat = ("files.ply", &["ply"]);
+/// STEP files, for other CAD programs (spec `export-formats.md`).
+pub const STEP_FILES: FileFormat = ("files.step", &["stp", "step"]);
+
 /// Hatch pattern files, as AutoCAD and Rhino write them.
 pub const PAT_FILES: FileFormat = ("files.pat", &["pat"]);
 

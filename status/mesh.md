@@ -4,7 +4,33 @@
 mesh and SubD files elsewhere (see `AGENTS.md`). Updated at the end of every work session. Newest
 first.*
 
+## 19 November 2026
+
+**Meshes and SubDs are in the document** (features stream, #266, PR #352), so the commands and
+file hook-ups that waited on it have started:
+- **STL, OBJ and PLY in `Import`, `Export` and `ExportSelected`** (#269 part 2, #275). Each mesh
+  in a file comes in as a named mesh object. Going out, meshes are written as they are, SubDs as
+  their smooth surface (Rhino's default level), and surfaces and solids meshed at the viewport's
+  density until the mesh panel comes (`export-formats.md` §2). STL and PLY are written binary.
+  `Open` of mesh files is next.
+- **Any affine map and deformations for meshes and SubDs** (#354, asked for by the features
+  stream): `transformed` and `deformed`, for stretched blocks, ScaleNU, the gumball's stretch and
+  the deformation commands.
+- **SKP:** the owner chose OpenSKP's own Rust package (no port, no separate repository; spec
+  updated). The features stream is adding SketchUp import as the crate `curva-skp`; SKP export
+  goes into that crate as its own file, so Curva pins OpenSKP once.
+
 ## 18 November 2026
+
+**Export spec approved, and STEP export (#361):** the owner asked the mesh stream for export to
+OBJ, STL, FBX, STEP, USD and SKP, with simple panels and an Advanced switch, and a live preview
+of meshing (`docs/specs/export-formats.md`, approved the same day: all new code Rust, AP214 by
+default, SKP by a Rust port of OpenSKP's writer as the last step). Step 1 is in: `Export` and
+`ExportSelected` write `.stp` and `.step` files through solidcore's own STEP writer, exact,
+AP214, in millimetres (models in other units are scaled), with object names. Rhino 8 opens
+Curva's box, sphere and box-with-a-hole as valid closed solids with the same volumes (8000.000000,
+4188.790205 and 6927.669708 against Curva's 8000, 4188.790227 and 6927.669708). Curves, block
+copies and annotation are left out and counted; the schema panel comes with the panels.
 
 **QuadRemesh hard edges (#329 part 2, first half):** QuadRemesh keeps hard edges by default, as
 Rhino's `DetectHardEdges`: edges where the faces meet at more than 30° (Rhino 8 smooths a 30°
