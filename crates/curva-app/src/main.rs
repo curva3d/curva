@@ -502,6 +502,11 @@ fn run() -> Result<(), String> {
                 ..scene
             }
         });
+    // `--open <file>` with `--orbit-benchmark`: orbit a model from a file (`.3dm`, `.dwg`, `.dxf`
+    // or `.curva`) instead of a generated scene.
+    let model = value("--open")
+        .filter(|_| benchmark.is_some())
+        .map(std::path::PathBuf::from);
     eframe::run_native(
         "Curva",
         eframe::NativeOptions {
@@ -540,7 +545,10 @@ fn run() -> Result<(), String> {
             ..eframe::NativeOptions::default()
         },
         Box::new(move |context| {
-            let app = Curva::new(context, benchmark).opened(&context.egui_ctx, file.as_deref());
+            let mut app = Curva::new(context, benchmark).opened(&context.egui_ctx, file.as_deref());
+            if let Some(path) = model.as_deref() {
+                app.open_for_benchmark(path);
+            }
             Ok(Box::new(app))
         }),
     )

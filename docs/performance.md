@@ -465,3 +465,36 @@ release build, RTX 3060, peak memory as Windows reports it, two runs each:
 
 About 1 GB less. Frames did not get slower: moving corners into place costs nothing that shows
 here. (The memory-limit work for the graphics card, spec step 13, is separate.)
+
+## Real project files (19 November 2026)
+
+The owner's own project files, kept on the owner's machine and not named here. `curva
+--orbit-benchmark --open <file>` now orbits a model read from a file (`.3dm`, `.dwg`, `.dxf` or
+`.curva`) instead of a generated scene. Release build, RTX 3060, the files that open in under a
+minute (the larger ones take minutes to read for now):
+
+| File | Objects | Frame gap (median) | Work per frame | Graphics card (Curva's lines) |
+|---|---|---|---|---|
+| Drawing, 0.2 MB `.dwg` | 116 | 7.2–8.5 ms | 6.7–7.9 ms | 4.2 ms |
+| Drawing, 3.6 MB `.dwg` | 4,893 | 28.8–29.6 ms | 26.7–28.4 ms | 27.0–27.2 ms |
+| Model, 8 MB `.3dm` | 101 | 5.5 ms | 5.0 ms | 0.02 ms |
+| Model, 17 MB `.3dm` | 22,322 | 8.0 ms | 7.6 ms | 1.2 ms |
+| Model, 44 MB `.3dm` | 159 | 6.8 ms | 6.7 ms | 0.03 ms |
+| Model, 82 MB `.3dm` | 1,138 | 10.7 ms | 11.3 ms | 0.3 ms |
+| Model, 118 MB `.3dm`, mostly curves and hatches | 147,674 | 16.8 ms | 17.0 ms | 0.95 ms |
+
+The 3.6 MB drawing was 14.9 million points: its text 7.3 million (about 730 points a letter
+outline) and the splines inside its blocks 5 million, as curves are sampled at a fixed number of
+points per control point. Annotations' outlines now keep only the points within 1/500 of their own
+size of the sampled outline, and splines within 1/5000 (snap places are still found from every
+sampled point). It is now 1.1 million points:
+
+| 3.6 MB drawing | Graphics card (Curva's lines) | Frame gap | Work per frame |
+|---|---|---|---|
+| Before | 27.0–27.2 ms | 28.8–29.6 ms | 26.7–28.4 ms |
+| After | 1.9 ms | 24.7–26.6 ms | 25.6–27.1 ms |
+
+The gap barely moved because the main processor's work per frame is the limit there: timed panel
+by panel, the Layers panel takes 14.8 ms of each frame on that drawing (7.8 ms on the 118 MB model),
+passed to the features stream, whose code it is. On the 118 MB model the graphics card's time fell
+from 0.95 to 0.09 ms and the 0.2 MB drawing's from 4.2 to 0.16 ms.
