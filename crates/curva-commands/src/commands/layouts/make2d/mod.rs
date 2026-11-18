@@ -425,11 +425,11 @@ impl Make2D {
         let (view, place) = self.view(doc);
         let lines = draw(&view)?;
         // From a view, the drawing's lower left corner goes to the world origin, as in Rhino.
-        let shift = match extent(&lines) {
-            Some((low, _)) if self.projection == Projection::View && doc.view().is_some() => {
-                [-low[0], -low[1]]
-            }
-            _ => [0.0, 0.0],
+        // (Measured only then: every line is sampled for it, #317.)
+        let from_view = self.projection == Projection::View && doc.view().is_some();
+        let shift = match from_view.then(|| extent(&lines)).flatten() {
+            Some((low, _)) => [-low[0], -low[1]],
+            None => [0.0, 0.0],
         };
         Ok((vec![(view, lines, shift)], place))
     }
@@ -484,6 +484,9 @@ impl Make2D {
                     made.push(id);
                 }
             }
+            // Each layer's lines moved onto it together: moving one object at a time looks
+            // through the whole model each time (#317).
+            let mut onto: std::collections::BTreeMap<u64, Vec<u64>> = Default::default();
             for line in lines {
                 Self::add_line(
                     doc,
@@ -493,8 +496,12 @@ impl Make2D {
                     &inputs.source_layers,
                     inputs.sections_from,
                     &on_layer,
+                    &mut onto,
                     &mut made,
                 );
+            }
+            for (layer, ids) in onto {
+                doc.move_to_layer(&ids, layer);
             }
         }
         made
@@ -510,6 +517,7 @@ impl Make2D {
         source_layers: &[String],
         sections_from: usize,
         on_layer: &dyn Fn(&str, Option<&String>) -> String,
+        onto: &mut std::collections::BTreeMap<u64, Vec<u64>>,
         made: &mut Vec<u64>,
     ) {
         {
@@ -533,7 +541,7 @@ impl Make2D {
             let path = on_layer(name, source_layers.get(line.source));
             let layer = layer_named(doc, &path, !line.visible);
             let id = doc.add(curve);
-            doc.move_to_layer(&[id], layer);
+            onto.entry(layer).or_default().push(id);
             made.push(id);
         }
     }
