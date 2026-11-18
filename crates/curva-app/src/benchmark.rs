@@ -73,6 +73,28 @@ impl Benchmark {
     }
 }
 
+/// What the benchmark orbits instead of a generated scene with `--open <file>`.
+impl Curva {
+    /// Opens `path` as the Open command would (a `.3dm`, `.dwg`, `.dxf` or `.curva` file), says
+    /// how long that took and what came in, and frames every view on it.
+    pub(crate) fn open_for_benchmark(&mut self, path: &std::path::Path) {
+        let started = std::time::Instant::now();
+        self.processor.submit(&mut self.doc, "Open");
+        self.processor
+            .submit(&mut self.doc, &format!("\"{}\"", path.display()));
+        println!(
+            "opened a model of {} objects in {:.1} s",
+            self.doc.state().objects.len(),
+            started.elapsed().as_secs_f64()
+        );
+        if let Some((low, high)) = Outlines::of(self.doc.state()).bounds() {
+            for pane in &mut self.panes {
+                pane.camera.frame(low, high);
+            }
+        }
+    }
+}
+
 /// Builds a benchmark scene: square grids side by side along X, in this order: circles, spline
 /// curves, solids, then block instances of a tree, all moved by `scene.offset`.
 /// Returns a line saying what the scene holds, for the report.

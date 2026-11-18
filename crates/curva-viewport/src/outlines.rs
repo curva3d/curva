@@ -404,6 +404,7 @@ impl Outlines {
             locked: object.locked || state.layer_locked(object.layer),
             width: object.print_width.resolved(layer),
             dashes: object.linetype.resolved(layer).pattern(),
+            coarse: false,
         };
         // An instance draws its definition's objects, placed, all under its own id.
         let parts: Vec<(Shape, u64)> = match &object.shape {
@@ -462,6 +463,11 @@ impl Outlines {
                 }
             };
             let on_faces = shape.body().is_some();
+            // Annotations' letters and marks keep only the points their shape needs.
+            let look = Look {
+                coarse: matches!(shape, Shape::Annotation(_)),
+                ..look
+            };
             outlines.push_pieces(object.id, pieces, look, kind, &seam_edges, on_faces);
         }
         outlines
@@ -522,6 +528,11 @@ impl Outlines {
                 continue;
             };
             self.sites.extend(snap::sites_of(&outline, &points));
+            // Snap places come from every sampled point; drawing, picking and boxes need fewer.
+            let points = crate::simplify::fewer(
+                points,
+                crate::simplify::part_of_size(&outline, look.coarse),
+            );
             let first = points.first().copied().unwrap_or_default();
             let around = snap::box_around(&points).unwrap_or((first, first));
             self.boxes.push(around);
@@ -540,13 +551,15 @@ impl Outlines {
     }
 }
 
-/// How an object's pieces draw: its colour, whether it is locked, its width and its dashes.
+/// How an object's pieces draw: its colour, whether it is locked, its width and its dashes,
+/// and whether its outlines keep only the points their shape needs ([`crate::simplify`]).
 #[derive(Clone, Copy)]
 struct Look {
     colour: [f32; 3],
     locked: bool,
     width: Option<f64>,
     dashes: &'static [f64],
+    coarse: bool,
 }
 
 /// A mesh's edges as curves where `placement` puts them, each with its number among the body's

@@ -13,6 +13,7 @@ mod palette;
 mod pick;
 mod pilot;
 pub mod print;
+mod simplify;
 mod snap;
 mod styles;
 mod timer;
