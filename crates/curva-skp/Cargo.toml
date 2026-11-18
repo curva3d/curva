@@ -1,0 +1,19 @@
+[package]
+name = "curva-skp"
+description = "SketchUp files (.skp) read into a Curva model, through OpenSKP."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+curva-document = { path = "../curva-document" }
+curva-kernel = { path = "../curva-kernel" }
+curva-mesh = { path = "../curva-mesh" }
+# SketchUp's format, read without Trimble's toolkit (owner's decision, 18 November 2026). MIT, pure
+# Rust, not on crates.io yet, so taken from its repository at a fixed commit.
+openskp = { git = "https://github.com/iamahsanmehmood/openskp", rev = "cfb472e2636a0ff9183a71690f14df33186500d6" }

@@ -121,6 +121,8 @@ pub const OBJ_FILES: FileFormat = ("files.obj", &["obj"]);
 pub const PLY_FILES: FileFormat = ("files.ply", &["ply"]);
 /// STEP files, for other CAD programs (spec `export-formats.md`).
 pub const STEP_FILES: FileFormat = ("files.step", &["stp", "step"]);
+/// SketchUp's models, read through OpenSKP.
+pub const SKP_FILES: FileFormat = ("files.skp", &["skp"]);
 
 /// Hatch pattern files, as AutoCAD and Rhino write them.
 pub const PAT_FILES: FileFormat = ("files.pat", &["pat"]);

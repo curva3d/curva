@@ -35,6 +35,24 @@ impl Command for Open {
                 }
             }
             Some(Answer::Path(text))
+                if crate::commands::import_export::is_skp(Path::new(
+                    text.trim().trim_matches('"'),
+                )) =>
+            {
+                match crate::commands::import_export::open_skp(Path::new(
+                    text.trim().trim_matches('"'),
+                )) {
+                    Ok((opened, report)) => {
+                        *doc = opened;
+                        Step::Done(Some(Message::with(
+                            "done.open_3dm",
+                            vec![text.clone(), report.summary()],
+                        )))
+                    }
+                    Err(error) => Step::Failed(Message::with("error.file", vec![error])),
+                }
+            }
+            Some(Answer::Path(text))
                 if curva_dxf::Format::of(Path::new(text.trim().trim_matches('"'))).is_some() =>
             {
                 let path = Path::new(text.trim().trim_matches('"'));

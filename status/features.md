@@ -11,6 +11,18 @@ to then (display modes, glass, line widths, speed measurements).*
 `CLA.md`, `CONTRIBUTING.md` and the `CLA` check (`.github/workflows/cla.yml`). Outside contributors sign
 once by commenting on their first pull request; signatures go to the `cla-signatures` branch.
 
+## Features stream — 19 November 2026
+
+- **SketchUp files open** (the owner's choice: OpenSKP's pure-Rust reader, MIT, taken from its
+  repository at a fixed commit; SketchUp's own toolkit may not ship with Curva). New crate
+  `curva-skp`; `Open` and `Import` read `.skp`. Faces come in as meshes (one per tag and material in
+  each component or group), components as blocks, top-level groups as grouped objects, tags as layers,
+  materials as colours, loose edges as polylines; SketchUp's inches in the file's unit. The owner's
+  22 MB SketchUp 2014 test file opens in 1.6 s (54 blocks placed 5,364 times, 161 groups, 168 meshes,
+  7 layers; 7 hidden faces left out). Faces' own tags in files from before SketchUp 2021 are not named
+  by OpenSKP; they take their group's tag, and the report says so. The mesh stream adds SketchUp
+  export to the same crate later.
+
 ## Features stream — 18 November 2026
 
 - **Meshes and SubDs are shapes in the document** (#266, for the mesh stream). `Shape` has two new

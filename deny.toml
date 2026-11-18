@@ -63,4 +63,6 @@ allow-wildcard-paths = true
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
-allow-git = ["https://github.com/tangency-labs/solidcore"]
+# OpenSKP: SketchUp files (owner, 18 November 2026). The crates.io name `openskp` is another, GPL
+# project, so it comes from its repository at a fixed commit.
+allow-git = ["https://github.com/tangency-labs/solidcore", "https://github.com/iamahsanmehmood/openskp"]

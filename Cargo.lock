@@ -1892,6 +1892,7 @@ dependencies = [
  "curva-kernel",
  "curva-mesh",
  "curva-meshfiles",
+ "curva-skp",
 ]
 
 [[package]]
@@ -1965,6 +1966,16 @@ version = "0.4.3"
 dependencies = [
  "curva-document",
  "krilla",
+]
+
+[[package]]
+name = "curva-skp"
+version = "0.4.3"
+dependencies = [
+ "curva-document",
+ "curva-kernel",
+ "curva-mesh",
+ "openskp",
 ]
 
 [[package]]
@@ -3915,6 +3926,11 @@ name = "once_cell_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
+
+[[package]]
+name = "openskp"
+version = "1.5.0"
+source = "git+https://github.com/iamahsanmehmood/openskp?rev=cfb472e2636a0ff9183a71690f14df33186500d6#cfb472e2636a0ff9183a71690f14df33186500d6"
 
 [[package]]
 name = "orbclient"

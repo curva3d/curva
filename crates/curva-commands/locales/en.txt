@@ -874,6 +874,7 @@ files.dwg = AutoCAD drawing
 files.stl = STL mesh
 files.obj = Wavefront OBJ
 files.ply = PLY mesh
+files.skp = SketchUp model
 files.pat = Hatch patterns
 ui.desktop.offer = Add Curva to your applications, so it shows with its icon in the dock and the menu.
 ui.desktop.added = Curva is in your applications.
