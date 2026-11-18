@@ -59,6 +59,31 @@ pub(crate) fn gumball_extruded(
     }
 }
 
+/// A stretch by `factor` along `axis` (of length 1) about `origin`, as one affine map in
+/// Curva's row form (`p' = p·A + t`).
+fn stretch_map(origin: Point, axis: Point, factor: f64) -> [[f64; 4]; 4] {
+    let stretched = |v: Point| -> Point {
+        let along = curva_kernel::dot(v, axis) * (factor - 1.0);
+        std::array::from_fn(|k| v[k] + axis[k] * along)
+    };
+    let row = |v: Point| {
+        let p = stretched(v);
+        [p[0], p[1], p[2], 0.0]
+    };
+    let moved = stretched(origin);
+    [
+        row([1.0, 0.0, 0.0]),
+        row([0.0, 1.0, 0.0]),
+        row([0.0, 0.0, 1.0]),
+        [
+            origin[0] - moved[0],
+            origin[1] - moved[1],
+            origin[2] - moved[2],
+            1.0,
+        ],
+    ]
+}
+
 impl Curva {
     /// The gumball for the current selection, if it should show.
     pub(crate) fn gumball(&self) -> Option<Gumball> {
@@ -299,12 +324,16 @@ impl Curva {
                             curve.stretched(origin, axis, factor).map(Shape::Curve)
                         }
                         Shape::Body(body) => body.stretched(origin, axis, factor).map(Shape::Body),
+                        Shape::Mesh(_) | Shape::SubD(_) => {
+                            Ok(curva_document::blocks::shape_placed(
+                                &shape,
+                                &stretch_map(origin, axis, factor),
+                            )
+                            .unwrap_or(shape.clone()))
+                        }
                         // A block stays a block and text keeps its shape: their stretch is
-                        // skipped, as is a mesh's or SubD's until the mesh crate can stretch.
-                        Shape::Instance(_)
-                        | Shape::Annotation(_)
-                        | Shape::Mesh(_)
-                        | Shape::SubD(_) => continue,
+                        // skipped.
+                        Shape::Instance(_) | Shape::Annotation(_) => continue,
                     };
                     match stretched {
                         Ok(made) => self.doc.replace_shape(id, made),
