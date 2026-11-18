@@ -6,6 +6,16 @@ first.*
 
 ## 18 November 2026
 
+**Export spec approved, and STEP export (#361):** the owner asked the mesh stream for export to
+OBJ, STL, FBX, STEP, USD and SKP, with simple panels and an Advanced switch, and a live preview
+of meshing (`docs/specs/export-formats.md`, approved the same day: all new code Rust, AP214 by
+default, SKP by a Rust port of OpenSKP's writer as the last step). Step 1 is in: `Export` and
+`ExportSelected` write `.stp` and `.step` files through solidcore's own STEP writer, exact,
+AP214, in millimetres (models in other units are scaled), with object names. Rhino 8 opens
+Curva's box, sphere and box-with-a-hole as valid closed solids with the same volumes (8000.000000,
+4188.790205 and 6927.669708 against Curva's 8000, 4188.790227 and 6927.669708). Curves, block
+copies and annotation are left out and counted; the schema panel comes with the panels.
+
 **SubD Weld and Unweld (#345):** UnweldEdge cuts a SubD open along inner edges into creased
 borders at the same place, and WeldEdge joins them back, smooth, as Rhino 8 does. Curva's cut
 box matches Rhino's own in its counts, its tags and its limit area (17.150913, to 11 decimal

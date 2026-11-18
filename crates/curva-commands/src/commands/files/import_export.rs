@@ -5,7 +5,7 @@
 use crate::commands::{ask_objects, unexpected};
 use crate::{
     Answer, CURVA_FILES, Command, DWG_FILES, DXF_FILES, FileFormat, Message, PrintJob, PrintTo,
-    RHINO_FILES, Request, SVG_FILES, Step, ViewRequest,
+    RHINO_FILES, Request, STEP_FILES, SVG_FILES, Step, ViewRequest,
 };
 use curva_3dm::import::Report;
 use curva_document::Document;
@@ -19,7 +19,8 @@ pub const READ_FORMATS: &[FileFormat] = &[CURVA_FILES, RHINO_FILES, DXF_FILES, D
 pub const SAVE_FORMATS: &[FileFormat] = &[CURVA_FILES, RHINO_FILES];
 
 /// What `Export` and `ExportSelected` write.
-pub const EXPORT_FORMATS: &[FileFormat] = &[RHINO_FILES, DXF_FILES, DWG_FILES, SVG_FILES];
+pub const EXPORT_FORMATS: &[FileFormat] =
+    &[RHINO_FILES, DXF_FILES, DWG_FILES, STEP_FILES, SVG_FILES];
 
 /// The model's file name without its extension, for a save dialog's name field.
 pub fn model_name(doc: &Document) -> Option<String> {
@@ -243,6 +244,17 @@ impl Command for Export {
                         black: false,
                         to: PrintTo::Svg(path.display().to_string()),
                     }));
+                }
+                if super::step::is_step(&path) {
+                    let schema = curva_kernel::step::StepSchema::default();
+                    let chosen = self.chosen.as_deref();
+                    return match super::step::write_step_file(doc, chosen, &path, schema) {
+                        Ok(summary) => Step::Done(Some(Message::with(
+                            "done.export_cad",
+                            vec![path.display().to_string(), summary],
+                        ))),
+                        Err(e) => failed(e),
+                    };
                 }
                 if let Some(format) = CadFormat::of(&path) {
                     return match write_cad(doc, self.chosen.as_deref(), &path, format) {
