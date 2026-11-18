@@ -350,6 +350,8 @@ impl<R: Recipe> Command for RecipeCommand<R> {
             Some(Answer::Edges(picked) | Answer::Faces(picked)) if picked.is_empty() => {
                 return self.ask(doc);
             }
+            Some(Answer::MeshParts(picked)) if picked.is_empty() => return self.ask(doc),
+            Some(Answer::MeshParts(picked)) => Value::MeshParts(picked),
             Some(Answer::Edges(picked)) => Value::Edges(picked),
             Some(Answer::Faces(picked)) => Value::Faces(picked),
             Some(Answer::Empty) => match self

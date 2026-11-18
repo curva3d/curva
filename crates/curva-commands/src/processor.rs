@@ -366,6 +366,11 @@ impl Processor {
                 let faces = doc.face_selection();
                 doc.select_faces(&[]);
                 self.advance(doc, Some(Answer::Faces(faces)));
+            } else if request.kind == Kind::MeshParts && !doc.mesh_part_selection().is_empty() {
+                // Parts picked before the command, as Rhino's preselection.
+                let parts = doc.mesh_part_selection();
+                doc.select_mesh_parts(&[]);
+                self.advance(doc, Some(Answer::MeshParts(parts)));
             } else if request.allow_empty {
                 self.advance(doc, Some(Answer::Empty));
             } else {
@@ -427,6 +432,7 @@ impl Processor {
             Kind::Objects => Err(Message::new("error.pick_objects")),
             Kind::Edges => Err(Message::new("error.pick_edges")),
             Kind::Faces => Err(Message::new("error.pick_faces")),
+            Kind::MeshParts => Err(Message::new("error.pick_mesh_parts")),
             Kind::PickPart => parse_length(typed, doc.state().unit)
                 .map(Answer::Number)
                 .ok_or_else(|| Message::new("error.pick_part")),
