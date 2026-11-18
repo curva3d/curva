@@ -3,7 +3,12 @@
 use curva_document::SavedView;
 use curva_kernel::Point;
 
-const FIELD_OF_VIEW: f64 = 0.7;
+/// The perspective view's lens, as Rhino's standard: 50 mm on 35 mm film (36 × 24 mm), whose
+/// shorter side, 24 mm, spans the view's height: 2·atan(12 / 50), about 27°.
+const LENS_LENGTH: f64 = 50.0;
+/// How far up and down a flat view sees, against how far out it is, as before the lens
+/// followed Rhino's, so flat views keep their scale.
+const FLAT_FIELD: f64 = 0.7;
 /// Keeps the camera from flipping over the top.
 const MOST_PITCH: f64 = 1.55;
 /// Radians turned per pixel dragged.
@@ -62,7 +67,8 @@ impl Default for Camera {
             target: [0.0; 3],
             yaw: -1.0,
             pitch: 0.6,
-            distance: 150.0,
+            // Framing what the earlier, wider lens showed from 150.
+            distance: 228.0,
             fixed_axes: None,
             parallel: false,
         }
@@ -236,8 +242,18 @@ impl Camera {
         (forward, right, cross(right, forward))
     }
 
+    /// How far out the view is against half its height seen there.
     fn focal(&self) -> f64 {
-        1.0 / (FIELD_OF_VIEW / 2.0).tan()
+        if self.parallel {
+            1.0 / (FLAT_FIELD / 2.0).tan()
+        } else {
+            LENS_LENGTH / 12.0
+        }
+    }
+
+    /// How far up and down the view sees, in radians.
+    fn field_of_view(&self) -> f64 {
+        2.0 * (1.0 / self.focal()).atan()
     }
 
     /// The same view as [`Camera::matrix`], as the parts another engine's camera is made of
@@ -256,7 +272,7 @@ impl Camera {
             forward,
             up,
             parallel: self.parallel,
-            fov: FIELD_OF_VIEW,
+            fov: self.field_of_view(),
             half_height: self.distance / self.focal(),
             near,
             far,
@@ -535,6 +551,25 @@ pub(crate) struct Lens {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The perspective view sees as Rhino's standard 50 mm lens does: its height spans what
+    /// 24 mm of film does at 50 mm, about 27°, in Curva's matrix and in the lens Bevy gets alike;
+    /// flat views keep their scale.
+    #[test]
+    fn the_perspective_lens_is_rhinos_50_mm() {
+        let camera = Camera::default();
+        let rhino = 2.0 * (12.0_f64 / 50.0).atan();
+        assert!((camera.lens().fov - rhino).abs() < 1e-12);
+        assert!((rhino.to_degrees() - 26.99).abs() < 0.01);
+        // A point at the top edge of the view, at the target's distance, lands on the edge.
+        let (_, _, up) = camera.axes();
+        let half = camera.distance * (rhino / 2.0).tan();
+        let edge = std::array::from_fn(|k| camera.target[k] + up[k] * half);
+        let at = camera.project(edge, [800.0, 600.0]).unwrap();
+        assert!(at[1].abs() < 1e-6, "{at:?}");
+        let flat = StandardView::Top.camera();
+        assert!((flat.lens().half_height - PARALLEL_DISTANCE * (0.35_f64).tan()).abs() < 1e-9);
+    }
 
     #[test]
     fn the_mouse_finds_heights_along_a_line() {
