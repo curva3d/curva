@@ -29,7 +29,7 @@ pub use curva_kernel::Point;
 pub use from_body::density_tolerances;
 pub use mesh::{Attribute, Mesh, MeshError};
 pub use primitives::{Frame, SphereStyle};
-pub use quad_remesh::{QuadRemeshError, QuadRemeshOptions, QuadTarget};
+pub use quad_remesh::{HARD_EDGE_ANGLE, QuadRemeshError, QuadRemeshOptions, QuadTarget};
 pub use smooth::{LiveSurface, MAX_LEVELS, Patch, SmoothError};
 pub use subd::{Sharpness, SubD, SubDDisplay, VertexTag};
 pub use subd_edit::{FillStyle, StitchAt};

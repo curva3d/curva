@@ -66,7 +66,8 @@ impl Recipe for CageEdit {
             let points: Vec<Point> = match &object.shape {
                 Shape::Curve(c) => c.sample().unwrap_or_default(),
                 Shape::Body(b) => b.bounds().map(|(l, h)| vec![l, h]).unwrap_or_default(),
-                Shape::Instance(_) => Vec::new(),
+                // Meshes and SubDs are not deformed yet (`support::deformed_objects`).
+                Shape::Instance(_) | Shape::Mesh(_) | Shape::SubD(_) => Vec::new(),
                 Shape::Annotation(_) => object
                     .shape
                     .bounds()

@@ -181,6 +181,8 @@ impl<'a> Session<'a> {
                     Shape::Body(_) => ("surface", None, None),
                     Shape::Instance(_) => ("block instance", None, None),
                     Shape::Annotation(_) => ("text", None, None),
+                    Shape::Mesh(mesh) => ("mesh", None, mesh.volume()),
+                    Shape::SubD(_) => ("SubD", None, None),
                 };
                 json!({
                     "id": object.id,

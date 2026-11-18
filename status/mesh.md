@@ -16,6 +16,15 @@ Curva's box, sphere and box-with-a-hole as valid closed solids with the same vol
 4188.790205 and 6927.669708 against Curva's 8000, 4188.790227 and 6927.669708). Curves, block
 copies and annotation are left out and counted; the schema panel comes with the panels.
 
+**QuadRemesh hard edges (#329 part 2, first half):** QuadRemesh keeps hard edges by default, as
+Rhino's `DetectHardEdges`: edges where the faces meet at more than 30° (Rhino 8 smooths a 30°
+fold and keeps a 31° one). The quadrs copy gained a `crease_angle` option that holds such edges
+like borders, and Curva snaps the nearest points onto the edges and corners (a listed custom
+operation). A 20 mm box remeshed to 600 quads comes out exact, no face inside it and volume
+8000.0, as Rhino's does; without hard edges quadrs leaves faces 0.68 mm inside. The option is
+not offered to quadrs' author yet: that needs the owner's go-ahead. Adaptive size (the second half
+of part 2) is next; it needs a change to quadrs' solver.
+
 **SubD Weld and Unweld (#345):** UnweldEdge cuts a SubD open along inner edges into creased
 borders at the same place, and WeldEdge joins them back, smooth, as Rhino 8 does. Curva's cut
 box matches Rhino's own in its counts, its tags and its limit area (17.150913, to 11 decimal

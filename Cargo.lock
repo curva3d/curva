@@ -1897,6 +1897,7 @@ name = "curva-document"
 version = "0.4.3"
 dependencies = [
  "curva-kernel",
+ "curva-mesh",
  "jiff",
  "serde",
  "serde_json",
