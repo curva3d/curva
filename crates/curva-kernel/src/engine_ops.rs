@@ -48,10 +48,17 @@ fn from_sweep_curve(
                 Some(interval),
             )
         }
+        // The engine gives each control point as it is, with its weight beside it
+        // (`[x, y, z, w]`); the record's rational spline wants it multiplied by the weight
+        // (`[x·w, y·w, z·w, w]`). Taken as they came, weighted points (every cut through a
+        // cylinder, cone or sphere) moved out by one over their weight.
         S::Nurbs { points, knots, .. } => from_record_curve(
             &RecordCurve::RationalSpline {
                 knots: knots.clone(),
-                homogeneous: points.clone(),
+                homogeneous: points
+                    .iter()
+                    .map(|&[x, y, z, w]| [x * w, y * w, z * w, w])
+                    .collect(),
             },
             Some(interval),
         ),
@@ -754,5 +761,30 @@ mod tests {
         // A section by a plane clear of it is empty, by one through it is not.
         assert!(cube.section([0.0, 0.0, 12.0], up).unwrap().is_empty());
         assert!(!cube.section([0.0, 0.0, 5.0], up).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_cut_through_a_cylinder_lies_on_its_circle_near_and_far_from_the_origin() {
+        for centre in [
+            [0.0, 0.0, 0.0],
+            [-5136.0, -4000.0, 0.0],
+            [5.0e8, 5.0e8, 0.0],
+        ] {
+            // Made at the origin and moved, as far models are.
+            let base = crate::Curve::circle([0.0; 3], 5.0).unwrap();
+            let cylinder = Body::extruded(&[base], [0.0, 0.0, 1.0], 12.0, true)
+                .unwrap()
+                .translated(centre);
+            let cut = cylinder.section([0.0, 0.0, 3.0], [0.0, 0.0, 1.0]).unwrap();
+            assert_eq!(cut.len(), 1);
+            for p in cut[0].sample().unwrap() {
+                let off = ((p[0] - centre[0]).powi(2) + (p[1] - centre[1]).powi(2)).sqrt();
+                assert!(
+                    (off - 5.0).abs() < 1e-6,
+                    "{centre:?}: {p:?} is {off} from the axis"
+                );
+                assert!((p[2] - 3.0).abs() < 1e-9);
+            }
+        }
     }
 }
