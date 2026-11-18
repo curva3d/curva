@@ -154,7 +154,12 @@ impl Curva {
         let mut table = self.layer_table_size(ui, id, current);
         self.layer_header(ui, &mut table, &last_widest);
         let mut name_fit = 0.0_f32;
-        let state = self.doc.state().clone();
+        // What the rows look up about layers (a parent's visibility, lock and parent), without
+        // copying the whole model every frame: that took most of a frame on large files.
+        let state = curva_document::State {
+            layers: layers.to_vec(),
+            ..curva_document::State::default()
+        };
         for (layer, depth, has_sublayers) in tree_rows(layers) {
             let listed = Listed {
                 layer,

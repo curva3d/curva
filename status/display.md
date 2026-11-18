@@ -3,6 +3,17 @@
 *Written only by the display stream, which owns the inside of `crates/curva-viewport` (see
 `AGENTS.md`). Updated at the end of every work session. Newest first.*
 
+## 19 November 2026
+
+**Done**
+- **The owner's own project files orbit** (asked by the owner through the features stream).
+  The benchmark can now open a file (`--open`); the seven files that read in under a minute were
+  orbited, all fine except one 3.6 MB drawing, whose text and block splines made 14.9 million
+  points (27 ms a frame on the graphics card). Text, dimensions and hatches now keep only the
+  points their shape needs, and splines nearly all; that drawing is now 1.1 million points and
+  1.9 ms. What still slows it is the Layers panel, 15 ms a frame there, passed to the features
+  stream. Figures in `docs/performance.md`; the files stay on the owner's machine, unnamed.
+
 ## 18 November 2026
 
 **Done**
