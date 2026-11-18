@@ -51,10 +51,13 @@ once by commenting on their first pull request; signatures go to the `cla-signat
   - Step 3 (#315, #203): the test house's plan is down from 0.32 s to about 0.2 s, its drawing
     identical. *Large* does not finish (edges 60–78 s, crossings over 12 minutes).
   - The owner's decision: *Large* first, then step 4 (#317). Part 1 merged (#341): crossings 700 s → 2 s,
-    edges 78 s → 7 s. Part 2 (in review): leaving out lines drawn twice compared every pair (over 48
-    minutes); now only neighbours. *Large*'s plan finishes in 122 s, about 25 times the 5 s target.
-- **Next (features):** Live plans step 4 (#204), or more *Large* speed if the owner wants it first; the tie hand-over once #296
-  lands; Make2D fills behind other objects.
+    edges 78 s → 7 s. Part 2 merged (#347): *Large* finishes, 122 s. The owner (18 November): keep on
+    *Large*, drawings open all the time in architecture work. Part 3 (in review): 122 s → 26 s, the house
+    and hidden-line scenes identical. Explored: a solidcore patch letting each thread run on an engine
+    of its own (written and tested locally, not published), for cutting on every core.
+- **Next (features):** *Large* part 4 (the engine patch, once the owner agrees to publish the fork and
+  the upstream issue); then Live plans step 4 (#204); the tie hand-over once #296 lands; Make2D fills
+  behind other objects.
 
 
 **The repository moved** from `V:` to `E:` (an external SSD, a ReFS Dev Drive) on 16 November: it is at

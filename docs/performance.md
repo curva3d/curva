@@ -382,6 +382,30 @@ still some 25 times too slow, though it now finishes. What remains: cutting and 
 and about a minute not yet broken down (likely putting 75,000 objects into the model). Live plans
 step 4 keeps results between edits, which is what the edit target (0.1 s) depends on.
 
+### *Large* in 26 s (18 November 2026, #317 part 3)
+
+Timed stage by stage, the 122 s went: cutting 15–19 s, setting up the visibility tests 12 s, the
+visibility tests 31 s, leaving out lines drawn twice 27 s, and putting the 75,000 lines into the
+model 41 s. Each was doing far more than it needed:
+
+| Stage on *Large* | Part 2 | Part 3 | What changed |
+|---|---|---|---|
+| Cutting | 15–19 s | 4.6 s | a solid whose box lies wholly on one side of the plane is not sent to the engine |
+| Setting up the visibility tests | 11.7 s | 0.1 s | each shape read once for all its copies, the ray carried back to it |
+| The visibility tests | 31.5 s | 15.5 s, then on every core | a tree of boxes: a ray only tries the solids it passes |
+| Leaving out lines drawn twice | 26.7 s | 4.5 s | only lines whose boxes overlap are compared closely |
+| Measuring the drawing | 6.5 s | none | only when drawing from a view, where it is used |
+| Putting the lines into the model | 40.6 s | 0.2 s | each layer's lines moved onto it together, not one at a time |
+| **Whole plan** | **122 s** | **26 s** (twice: 26.5 s, 25.9 s) | |
+
+The test house's plan and the five hidden-line test scenes come out byte for byte the same (the
+house in 184 ms).
+
+**Against the target** (open under 5 s): about 5 times too slow. What remains is mostly edges,
+crossings and cutting, which go through the geometry engine one call at a time (its lock). A
+solidcore patch letting each thread run on an engine of its own is written and tested locally, for
+part 4.
+
 ## Snapping searches only what could win (17 November 2026, #130)
 
 Snapping offers the nearest snap within reach of the cursor. A meeting point lies on both its
