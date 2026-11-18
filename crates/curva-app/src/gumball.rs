@@ -55,7 +55,7 @@ pub(crate) fn gumball_extruded(
         }
         Shape::Body(body) if !body.is_solid() => Some(body.extruded_straight(axis, distance)),
         Shape::Body(_) => None,
-        Shape::Instance(_) | Shape::Annotation(_) => None,
+        Shape::Instance(_) | Shape::Annotation(_) | Shape::Mesh(_) | Shape::SubD(_) => None,
     }
 }
 
@@ -300,8 +300,11 @@ impl Curva {
                         }
                         Shape::Body(body) => body.stretched(origin, axis, factor).map(Shape::Body),
                         // A block stays a block and text keeps its shape: their stretch is
-                        // skipped.
-                        Shape::Instance(_) | Shape::Annotation(_) => continue,
+                        // skipped, as is a mesh's or SubD's until the mesh crate can stretch.
+                        Shape::Instance(_)
+                        | Shape::Annotation(_)
+                        | Shape::Mesh(_)
+                        | Shape::SubD(_) => continue,
                     };
                     match stretched {
                         Ok(made) => self.doc.replace_shape(id, made),

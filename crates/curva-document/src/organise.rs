@@ -294,7 +294,8 @@ impl Document {
                     (!self.state.blocks.iter().any(|d| d.id == i.definition))
                         .then(|| "a block instance of a missing definition".to_owned())
                 }
-                crate::Shape::Annotation(_) => None,
+                // Checked by `Check` (#273), as Rhino's Audit leaves meshes to it.
+                crate::Shape::Annotation(_) | crate::Shape::Mesh(_) | crate::Shape::SubD(_) => None,
             };
             if let Some(why) = problem {
                 found.push((object.id, why));

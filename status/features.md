@@ -11,6 +11,20 @@ to then (display modes, glass, line widths, speed measurements).*
 `CLA.md`, `CONTRIBUTING.md` and the `CLA` check (`.github/workflows/cla.yml`). Outside contributors sign
 once by commenting on their first pull request; signatures go to the `cla-signatures` branch.
 
+## Features stream — 18 November 2026
+
+- **Meshes and SubDs are shapes in the document** (#266, for the mesh stream). `Shape` has two new
+  kinds, `Mesh` and `SubD`, holding `curva-mesh`'s types; `.curva` files save and open them, and older
+  files open unchanged. Every place that handles each kind of shape now says what a mesh or SubD does:
+  they move, turn, count, show in `What` and have their box; a SubD's cage gives its edges.
+  - **`.3dm`:** meshes and SubDs now come in and go out instead of being left out. A mesh with hard
+    edges is written with its points split along them, as Rhino stores its own box (Rhino keeps one
+    normal per point); welded back, it is the same mesh. New tests on both sides.
+  - **Not yet:** stretching (ScaleNU, cage edits, placements that stretch) refuses or skips them until
+    the mesh crate can deform; Properties shows nothing for them yet (#270 part 2). Drawing and
+    printing them are the display stream's (#267, #324). Until then a mesh read from `.3dm` is kept in
+    the document, and saved again, but not drawn.
+
 ## Features stream — 17 November 2026
 
 **Later on 17 November:**

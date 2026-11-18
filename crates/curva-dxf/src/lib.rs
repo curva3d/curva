@@ -527,6 +527,9 @@ impl Writer<'_> {
             }
             Shape::Annotation(_) => (Vec::new(), "dots and other annotations"),
             Shape::Body(_) => (Vec::new(), "surfaces and solids"),
+            // Not written to DXF yet (its MESH and POLYFACE entities are for later).
+            Shape::Mesh(_) => (Vec::new(), "meshes"),
+            Shape::SubD(_) => (Vec::new(), "SubDs"),
             Shape::Instance(instance) => {
                 let name = self.block(instance.definition);
                 (
