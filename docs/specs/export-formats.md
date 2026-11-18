@@ -101,9 +101,9 @@ this dialog again" is kept, as a checkbox in Advanced, with a way back in the ex
 | STEP | **solidcore's `step-export`**, the engine Curva already uses: exact B-rep (`MANIFOLD_SOLID_BREP`, `BREP_WITH_VOIDS`), faceted bodies, the AP203, AP214 and AP242 schemas, colours, product structure and units | Apache-2.0 (already allowed) | Writes; rejects geometry it cannot write rather than approximating it |
 | FBX | **fbxcel** 0.9 with its `writer` feature: the FBX 7.4 binary node writer. Curva builds the scene (meshes, materials, Z up or Y up) on top | MIT or Apache-2.0 | Last release 2022; the FBX 7.4 format has not changed. Curva writes the scene itself, so fbxcel is only the low-level writer |
 | USD | **openusd** (pure Rust): writes `.usda`, `.usdc` and `.usdz` | MIT | Active (0.8.0, October 2026), not yet 1.0: pinned exactly |
-| SKP | **No Rust writer exists.** Curva's own, ported from OpenSKP (below) | MIT (OpenSKP's notice kept) | Last step |
+| SKP | **OpenSKP's own Rust package** (below), from its GitHub repository, pinned to one commit | MIT | Last step |
 
-**SKP.** SketchUp's own format is closed, and no Rust library writes it. Researched on 18 November
+**SKP.** SketchUp's own format is closed. Researched on 18 November
 2026, at the owner's request, including how the open-source SketchUp-like modeller IngeTrazo does it:
 - **IngeTrazo** (Python) reads and writes `.skp` through **OpenSKP**: an MIT-licensed, clean-room,
   reverse-engineered SKP library (github.com/iamahsanmehmood/openskp, active, in TypeScript, Python,
@@ -116,12 +116,21 @@ this dialog again" is kept, as a checkbox in Advanced, with a way back in the ex
   system. It is not Rust, and it is likely incompatible with Curva's GPL application licence
   (decision 0025). Not used.
 
-**Recommended route: Curva's own SKP writer in Rust, ported from OpenSKP's writer** (about 3,500
-lines of C++; MIT, so the port keeps OpenSKP's copyright notice). Curva meshes NURBS with the mesh
-panel and writes the faces, layers and colours, with blocks as SketchUp components. It is tested
-byte for byte against OpenSKP's published reference files, and opened in Rhino 8, which reads SKP.
-It writes the SketchUp 2020 format, which SketchUp 2020 and every later version open. If SketchUp
-or OpenSKP's checks reject the files, SKP is left out and SketchUp users take DWG or DXF, which Curva
+- **OpenSKP already has a Rust package** (`packages/rust` in its repository, version 1.5.0, merged
+  in November 2026): pure Rust with no outside crates (its DEFLATE, ZIP and FlatBuffers code is its
+  own), MIT. It reads both SKP generations and writes new 2013–2020 files (`openskp::create()`),
+  and its tests require it to reproduce the C++ writer's reference files byte for byte. It is not
+  on crates.io yet. **The crates.io name `openskp` belongs to a different project**
+  (hew3d/openskp, GPL-3.0), which Curva does not use.
+
+**Route (owner, 19 November 2026): OpenSKP's own Rust package, not a port of Curva's own and not a
+separate repository.** Curva depends on it from its GitHub repository, pinned to one commit, as it
+does solidcore (`deny.toml` gains it in `allow-git`); a new pin is taken at each release. Fixes Curva
+needs go to OpenSKP's repository as pull requests, as its Rust package itself came in, so Curva
+carries no SKP code of its own beyond the call. Curva meshes NURBS with the mesh panel and writes
+the faces, layers and colours, with blocks as SketchUp components; the files are opened in Rhino 8,
+which reads SKP. It writes the SketchUp 2020 format, which SketchUp 2020 and every later version
+open. If SketchUp rejects the files, SKP is left out and SketchUp users take DWG or DXF, which Curva
 already writes and SketchUp Pro opens.
 
 ## 5. What it needs from the other streams
@@ -168,12 +177,13 @@ Small pull requests, in order:
 4. **Advanced views** of all panels, once #319 gives the kernel Rhino's meshing parameters.
 5. **Live preview and deviation colouring**, once its display issue is done.
 6. Meshes and SubDs in every format, once #266 is done.
-7. **SKP**: Curva's own Rust port of OpenSKP's writer (§4).
+7. **SKP** through OpenSKP's own Rust package (§4).
 
 ## 9. The owner's decisions (18 November 2026)
 
 1. The spec is approved as written ("continue with your recommendation"). All code added to Curva is
    Rust.
-2. SKP: researched (§4). The recommended route is Curva's own Rust port of OpenSKP's writer, as the
-   last step (§8, step 7), unless the owner says otherwise.
+2. SKP: researched (§4). OpenSKP's own Rust package, from its repository, as the last step (§8,
+   step 7): no port and no separate repository (owner, 19 November 2026: "let's use openskp existing
+   rust package").
 3. STEP's default schema is AP214 (it carries colours and layers; Rhino's default is AP203).

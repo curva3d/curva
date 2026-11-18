@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 
 mod edges;
 pub use edges::{EdgePick, FacePick};
+mod mesh_picks;
+pub use mesh_picks::{MeshPart, MeshPick};
 mod grips;
 mod history;
 pub use grips::Grip;
@@ -185,6 +187,8 @@ pub struct Document {
     edge_selection: Vec<EdgePick>,
     /// Faces of bodies picked for a command. Not saved, and not part of undo.
     face_selection: Vec<FacePick>,
+    /// Parts of meshes and SubDs picked for a command (#333). Not saved, and not part of undo.
+    mesh_part_selection: Vec<MeshPick>,
     /// The tie that came with the point being clicked, for a command to keep. Not saved, and not
     /// part of undo.
     pick_tie: Option<tie::Tie>,

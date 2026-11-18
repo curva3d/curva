@@ -3,10 +3,12 @@
 //! `Export`, `ExportSelected`, and the `.3dm`, `.dxf`, `.dwg` and `.skp` side of `Open` and
 //! `SaveAs`.
 
+use super::meshfiles::{MeshFormat, export_mesh_file, import_mesh_file};
 use crate::commands::{ask_objects, unexpected};
 use crate::{
-    Answer, CURVA_FILES, Command, DWG_FILES, DXF_FILES, FileFormat, Message, PrintJob, PrintTo,
-    RHINO_FILES, Request, SKP_FILES, SVG_FILES, Step, ViewRequest,
+    Answer, CURVA_FILES, Command, DWG_FILES, DXF_FILES, FileFormat, Message, OBJ_FILES, PLY_FILES,
+    PrintJob, PrintTo, RHINO_FILES, Request, SKP_FILES, STEP_FILES, STL_FILES, SVG_FILES, Step,
+    ViewRequest,
 };
 use curva_3dm::import::Report;
 use curva_document::Document;
@@ -17,11 +19,31 @@ use std::path::{Path, PathBuf};
 pub const READ_FORMATS: &[FileFormat] =
     &[CURVA_FILES, RHINO_FILES, DXF_FILES, DWG_FILES, SKP_FILES];
 
+/// What `Import` reads: what `Open` reads, and mesh files.
+pub const IMPORT_FORMATS: &[FileFormat] = &[
+    CURVA_FILES,
+    RHINO_FILES,
+    DXF_FILES,
+    DWG_FILES,
+    STL_FILES,
+    OBJ_FILES,
+    PLY_FILES,
+];
+
 /// What `Save` and `SaveAs` write, Curva's own files first.
 pub const SAVE_FORMATS: &[FileFormat] = &[CURVA_FILES, RHINO_FILES];
 
 /// What `Export` and `ExportSelected` write.
-pub const EXPORT_FORMATS: &[FileFormat] = &[RHINO_FILES, DXF_FILES, DWG_FILES, SVG_FILES];
+pub const EXPORT_FORMATS: &[FileFormat] = &[
+    RHINO_FILES,
+    DXF_FILES,
+    DWG_FILES,
+    STEP_FILES,
+    STL_FILES,
+    OBJ_FILES,
+    PLY_FILES,
+    SVG_FILES,
+];
 
 /// The model's file name without its extension, for a save dialog's name field.
 pub fn model_name(doc: &Document) -> Option<String> {
@@ -145,7 +167,7 @@ pub struct Import;
 impl Command for Import {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
         match answer {
-            None => Step::Ask(Request::file_to_open("prompt.import.path", READ_FORMATS)),
+            None => Step::Ask(Request::file_to_open("prompt.import.path", IMPORT_FORMATS)),
             Some(Answer::Path(text)) => {
                 let path = typed(&text);
                 if is_skp(&path) {
@@ -157,6 +179,15 @@ impl Command for Import {
                                 vec![path.display().to_string(), report.summary()],
                             )))
                         }
+                        Err(e) => failed(e),
+                    };
+                }
+                if let Some(format) = MeshFormat::of(&path) {
+                    return match import_mesh_file(doc, &path, format) {
+                        Ok(summary) => Step::Done(Some(Message::with(
+                            "done.import",
+                            vec![path.display().to_string(), summary],
+                        ))),
                         Err(e) => failed(e),
                     };
                 }
@@ -277,6 +308,27 @@ impl Command for Export {
                         black: false,
                         to: PrintTo::Svg(path.display().to_string()),
                     }));
+                }
+                if let Some(format) = MeshFormat::of(&path) {
+                    let chosen = self.chosen.as_deref();
+                    return match export_mesh_file(doc, chosen, &path, format) {
+                        Ok(summary) => Step::Done(Some(Message::with(
+                            "done.export_cad",
+                            vec![path.display().to_string(), summary],
+                        ))),
+                        Err(e) => failed(e),
+                    };
+                }
+                if super::step::is_step(&path) {
+                    let schema = curva_kernel::step::StepSchema::default();
+                    let chosen = self.chosen.as_deref();
+                    return match super::step::write_step_file(doc, chosen, &path, schema) {
+                        Ok(summary) => Step::Done(Some(Message::with(
+                            "done.export_cad",
+                            vec![path.display().to_string(), summary],
+                        ))),
+                        Err(e) => failed(e),
+                    };
                 }
                 if let Some(format) = CadFormat::of(&path) {
                     return match write_cad(doc, self.chosen.as_deref(), &path, format) {
