@@ -1,6 +1,7 @@
 # 0033: QuadRemesh now, on quadrs
 
-**Status:** Decided by the owner in chat · 17 November 2026. Replaces the quad remeshing row of
+**Status:** Decided by the owner in chat · 17 November 2026 (added to by 0036: a patched copy until
+the author's fix). Replaces the quad remeshing row of
 decision 0032 ("nothing for now").
 
 **What was decided.** QuadRemesh is an important command, so it comes with SubD modelling (stage C

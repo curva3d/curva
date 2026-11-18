@@ -19,6 +19,11 @@ manifold-rust = { version = "=0.19.2", features = ["parallel"] }
 # SubD smoothing and the limit surface (decision 0032, spec §3.2). MIT, Apache-2.0, Zlib or
 # BSD-3-Clause. Its Bevy and graphics-card features are not used (they target an older Bevy).
 subdiv-kernels = { version = "=0.1.0", default-features = false }
+# QuadRemesh (decision 0033, spec §3.5). MIT. A patched copy of quadrs 1.0.0 in vendor/quadrs:
+# quadrs gave different quads from run to run (hash map order) and system to system (each system's
+# own sines), so the copy uses ordered maps and the libm crate (MIT or Apache-2.0). Offered to its author in vidstige/quadrs#1; when a release has the fix, go back to
+# `quadrs = "=<that version>"` and delete vendor/ (issue #349, decision 0036).
+quadrs = { path = "vendor/quadrs" }
 
 [dev-dependencies]
 serde_json = { version = "1", features = ["float_roundtrip"] }
