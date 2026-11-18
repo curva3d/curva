@@ -221,8 +221,8 @@ impl MeshCache {
         Some((mesh, solid))
     }
 
-    /// An annotation's filled shapes (letters, arrowheads): each one's contours made into a flat
-    /// face and meshed, all in one mesh, made once while the shapes are unchanged.
+    /// An annotation's filled shapes (letters, arrowheads): each one's contours filled in their
+    /// plane ([`crate::fills`]), all in one mesh, made once while the shapes are unchanged.
     pub(crate) fn annotation_mesh(
         &mut self,
         id: u64,
@@ -235,20 +235,7 @@ impl MeshCache {
         }
         let mut all = curva_kernel::BodyMesh::default();
         for glyph in fills {
-            let Ok(face) = curva_kernel::Body::planar(glyph) else {
-                continue;
-            };
-            let Ok(mesh) = face.mesh() else {
-                continue;
-            };
-            #[allow(clippy::cast_possible_truncation)]
-            let base = all.positions.len() as u32;
-            all.positions.extend(&mesh.positions);
-            all.normals.extend(&mesh.normals);
-            all.triangles
-                .extend(mesh.triangles.iter().map(|t| t.map(|i| i + base)));
-            all.triangle_faces
-                .extend(std::iter::repeat_n(0, mesh.triangles.len()));
+            crate::fills::add_filled(glyph, &mut all);
         }
         if all.triangles.is_empty() {
             return None;

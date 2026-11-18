@@ -6,6 +6,10 @@
 ## 19 November 2026
 
 **Done**
+- **A drawing full of text opens about 19 s sooner.** Letters and arrowheads were each made
+  into a flat face by the modelling engine, about 3 ms a letter: a 3.6 MB drawing of the owner's
+  with 356 texts spent 19 s on them before its first frame. They are now filled in their plane by
+  lyon (decision 0030); working out that drawing went from 24.6 s to 5.6 s.
 - **Meshes show and can be picked** (#267, spec `mesh-and-subd.md` Stage A, items 1, 2 and 4).
   Meshes from `.3dm` files and mesh tools were in the model but invisible. Now they shade, from
   their own normals where they have them (an unwelded edge shows as a crease) or else smooth
