@@ -447,3 +447,21 @@ now only for the parts of objects whose selection changed; and the benchmark its
 selectable object at each change, 10 ms on *Large*, which a click never does, now once. The
 benchmark now selects a solid when there is one, as that is the case that recolours Bevy's
 surfaces.
+
+## Memory on *Large*: copies share their mesh for picking (18 November 2026, #153)
+
+Curva's main memory on *Large* was mostly copies of the same meshes. Each copy of a body kept
+its own mesh moved into place, just so a click or snap could test its triangles, although Bevy
+already drew all copies from one shared mesh. And every object's points were held twice: once
+as last drawn (so unchanged objects are not worked out again) and once in the list the window
+draws from. Now picking and snapping move a shared mesh's corners into place when they look at
+them, and the points are held once and shared by both lists. `--orbit-benchmark --scene large`,
+release build, RTX 3060, peak memory as Windows reports it, two runs each:
+
+| | Peak memory in use (working set) | Peak memory reserved (private bytes) | Work per frame |
+|---|---|---|---|
+| Before | 2,117–2,436 MB | 3,793–3,794 MB | 9.7–11.5 ms |
+| After | 1,305–1,511 MB | 2,804–2,827 MB | 9.1–9.3 ms |
+
+About 1 GB less. Frames did not get slower: moving corners into place costs nothing that shows
+here. (The memory-limit work for the graphics card, spec step 13, is separate.)
