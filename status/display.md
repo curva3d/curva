@@ -6,6 +6,10 @@
 ## 19 November 2026
 
 **Done**
+- **Edits in a drawing full of blocks no longer pause for a second or more.** After any change,
+  every block was worked out again; now an unchanged block keeps what it drew while its
+  definition and the settings it reads stay the same. On the owner's 3.6 MB drawing, each edit
+  went from 1.5 s of redrawing to 0.33 s.
 - **Meshes show and can be picked** (#267, spec `mesh-and-subd.md` Stage A, items 1, 2 and 4).
   Meshes from `.3dm` files and mesh tools were in the model but invisible. Now they shade, from
   their own normals where they have them (an unwelded edge shows as a crease) or else smooth

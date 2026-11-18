@@ -155,6 +155,37 @@ pub(crate) fn has_fields(shape: &Shape) -> bool {
     }
 }
 
+/// Whether what blocks draw from besides their own objects is the same in `held` as in `now`:
+/// the definitions, and for annotations inside them the unit, length display, layouts, hatch
+/// patterns and annotation styles.
+fn same_context(held: &State, now: &State) -> bool {
+    held.blocks == now.blocks
+        && held.unit == now.unit
+        && held.length_display == now.length_display
+        && held.layouts == now.layouts
+        && held.hatch_patterns == now.hatch_patterns
+        && held.annotation_styles == now.annotation_styles
+}
+
+/// Whether a block, or a block placed in it, holds text with fields or a dimension
+/// ([`has_fields`], hatches aside, which read only what [`same_context`] compares).
+fn block_has_fields(state: &State, definition: u64, depth: usize) -> bool {
+    if depth > 16 {
+        return true;
+    }
+    state
+        .blocks
+        .iter()
+        .find(|d| d.id == definition)
+        .is_some_and(|d| {
+            d.objects.iter().any(|o| match &o.shape {
+                Shape::Instance(inner) => block_has_fields(state, inner.definition, depth + 1),
+                Shape::Annotation(curva_document::annotation::Annotation::Hatch(_)) => false,
+                shape => has_fields(shape),
+            })
+        })
+}
+
 /// An annotation as it shows: its fields worked out.
 pub(crate) fn shown_annotation(
     annotation: &curva_document::annotation::Annotation,
@@ -199,6 +230,9 @@ pub struct MeshCache {
     /// has not changed is not sampled again (`docs/reviews/code-health-2026-11-14.md`, fix 3).
     pub(crate) drawn:
         std::collections::HashMap<u64, (std::sync::Arc<Object>, Vec<Layer>, Outlines)>,
+    /// The model as last drawn, without its objects: what blocks draw from besides themselves,
+    /// so unchanged instances are not drawn again while it stays the same.
+    pub(crate) context: Option<State>,
 }
 
 impl MeshCache {
@@ -315,6 +349,11 @@ impl Outlines {
     #[must_use]
     pub fn of_space(state: &State, space: Option<u64>, cache: &mut MeshCache) -> Self {
         cache.refresh(state);
+        // What blocks draw from besides themselves; while unchanged, so is an unchanged instance.
+        let context_same = cache
+            .context
+            .as_ref()
+            .is_some_and(|held| same_context(held, state));
         let mut outlines = Self::default();
         let mut earlier = std::mem::take(&mut cache.drawn);
         for object in state.objects.iter().filter(|o| o.space == space) {
@@ -325,15 +364,20 @@ impl Outlines {
                 .into_iter()
                 .cloned()
                 .collect();
-            // An instance draws its definition, and text with fields reads other things, which
-            // can change without them, so those are always drawn again; any other object only
-            // when it or its layers changed.
+            // Text with fields and dimensions read other things, which can change without them, so
+            // those are always drawn again; an instance too when what it draws from changed, or its
+            // blocks hold such text; any other object only when it or its layers changed.
             let part = match earlier.remove(&object.id) {
                 Some((was, was_chain, part))
                     if std::sync::Arc::ptr_eq(&was, object)
                         && was_chain == chain
-                        && !matches!(object.shape, Shape::Instance(_))
-                        && !has_fields(&object.shape) =>
+                        && !has_fields(&object.shape)
+                        && match &object.shape {
+                            Shape::Instance(instance) => {
+                                context_same && !block_has_fields(state, instance.definition, 0)
+                            }
+                            _ => true,
+                        } =>
                 {
                     part
                 }
@@ -343,6 +387,12 @@ impl Outlines {
             cache
                 .drawn
                 .insert(object.id, (std::sync::Arc::clone(object), chain, part));
+        }
+        if !context_same {
+            cache.context = Some(State {
+                objects: Vec::new(),
+                ..state.clone()
+            });
         }
         outlines
     }
