@@ -1890,6 +1890,8 @@ dependencies = [
  "curva-document",
  "curva-dxf",
  "curva-kernel",
+ "curva-mesh",
+ "curva-meshfiles",
 ]
 
 [[package]]

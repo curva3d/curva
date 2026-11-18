@@ -4,6 +4,22 @@
 mesh and SubD files elsewhere (see `AGENTS.md`). Updated at the end of every work session. Newest
 first.*
 
+## 19 November 2026
+
+**Meshes and SubDs are in the document** (features stream, #266, PR #352), so the commands and
+file hook-ups that waited on it have started:
+- **STL, OBJ and PLY in `Import`, `Export` and `ExportSelected`** (#269 part 2, #275). Each mesh
+  in a file comes in as a named mesh object. Going out, meshes are written as they are, SubDs as
+  their smooth surface (Rhino's default level), and surfaces and solids meshed at the viewport's
+  density until the mesh panel comes (`export-formats.md` §2). STL and PLY are written binary.
+  `Open` of mesh files is next.
+- **Any affine map and deformations for meshes and SubDs** (#354, asked for by the features
+  stream): `transformed` and `deformed`, for stretched blocks, ScaleNU, the gumball's stretch and
+  the deformation commands.
+- **SKP:** the owner chose OpenSKP's own Rust package (no port, no separate repository; spec
+  updated). The features stream is adding SketchUp import as the crate `curva-skp`; SKP export
+  goes into that crate as its own file, so Curva pins OpenSKP once.
+
 ## 18 November 2026
 
 **Export spec approved, and STEP export (#361):** the owner asked the mesh stream for export to
