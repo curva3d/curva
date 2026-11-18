@@ -302,8 +302,9 @@ impl Document {
         if self.state.layers.iter().all(|l| l.id != layer) {
             return;
         }
+        let moved: std::collections::HashSet<u64> = objects.iter().copied().collect();
         for object in &mut self.state.objects {
-            if objects.contains(&object.id) {
+            if moved.contains(&object.id) {
                 std::sync::Arc::make_mut(object).layer = layer;
             }
         }

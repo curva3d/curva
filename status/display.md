@@ -6,6 +6,13 @@
 ## 18 November 2026
 
 **Done**
+- **The perspective view uses Rhino's standard lens** (owner, testing 0.4.3: the 3D view's camera
+  looked different from Rhino's). Its lens was a 40° field of view, wider than Rhino's 50 mm on
+  35 mm film (about 27° from top to bottom), so models looked more stretched toward the edges. Now
+  50 mm, in Curva's lines and Bevy's surfaces alike; the starting view stands farther back (228
+  instead of 150) so it frames what it did. Flat views keep their scale. Not yet as Rhino: in a view
+  taller than it is wide, Rhino fits the 24 mm to the width; Curva always fits it to the height.
+  New test: `the_perspective_lens_is_rhinos_50_mm`.
 - **The grid shows again in 3D and flat views** (#344, reported by the owner). Since step 3c
   (#255) took out Curva's own surface drawing, views Bevy draws only got Curva's second part
   (lines, previews), and the grid was in the first part, so it was never drawn. Now it is drawn

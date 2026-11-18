@@ -17,7 +17,7 @@
 //!    lines drawn twice. A square comes out as four lines; a box from above as its four outline
 //!    lines.
 
-use crate::rays::RayScene;
+use crate::rays::{RayBodies, RayScene};
 use crate::{Body, Curve, KernelError, Point};
 
 mod overlaps;
@@ -383,14 +383,53 @@ pub fn hidden_lines(
     let cuts = crossing_points(&sources, scale.flat)?;
 
     // 4. Each piece's visibility; 5. runs of the same visibility joined.
-    let mut scene = RayScene::new(bodies)?;
-    scene.set_tolerance(scale.tolerance * 10.0);
-    let mut drawn: Vec<DrawnLine> = Vec::new();
-    for (index, source) in sources.iter().enumerate() {
-        let runs = visibility_runs(source, &cuts[index], bodies, &mut scene, view, &scale)?;
-        drawn_lines(source, runs, &mut drawn);
-    }
+    let drawn = visible_lines(&sources, &cuts, bodies, view, &scale)?;
     Ok(without_overlaps(drawn, options, scale.flat))
+}
+
+/// Steps 4 and 5 for every line, in order: on all the processor's cores, each with a ray scene
+/// of its own (the bodies written out once for all of them) and every so many lines (#317).
+fn visible_lines(
+    sources: &[Source],
+    cuts: &[Vec<Point>],
+    bodies: &[Body],
+    view: &View,
+    scale: &Scale,
+) -> Result<Vec<DrawnLine>, KernelError> {
+    let written = RayBodies::of(bodies)?;
+    let threads = std::thread::available_parallelism()
+        .map_or(1, usize::from)
+        .min(sources.len().div_ceil(256))
+        .max(1);
+    let share = |first: usize| -> Result<Vec<(usize, Vec<DrawnLine>)>, KernelError> {
+        let mut scene = RayScene::of(&written)?;
+        scene.set_tolerance(scale.tolerance * 10.0);
+        let mut out = Vec::new();
+        for index in (first..sources.len()).step_by(threads) {
+            let source = &sources[index];
+            let runs = visibility_runs(source, &cuts[index], bodies, &mut scene, view, scale)?;
+            let mut lines = Vec::new();
+            drawn_lines(source, runs, &mut lines);
+            out.push((index, lines));
+        }
+        Ok(out)
+    };
+    let shares: Vec<_> = std::thread::scope(|scope| {
+        let running: Vec<_> = (0..threads)
+            .map(|first| scope.spawn(move || share(first)))
+            .collect();
+        running
+            .into_iter()
+            .map(|r| r.join().unwrap_or_else(|p| std::panic::resume_unwind(p)))
+            .collect()
+    });
+    let mut by_line: Vec<Vec<DrawnLine>> = vec![Vec::new(); sources.len()];
+    for done in shares {
+        for (index, lines) in done? {
+            by_line[index] = lines;
+        }
+    }
+    Ok(by_line.into_iter().flatten().collect())
 }
 
 /// The scene's size and middle, for tolerances and a perspective view's scale; `None` when it
