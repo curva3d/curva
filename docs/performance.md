@@ -498,3 +498,19 @@ The gap barely moved because the main processor's work per frame is the limit th
 by panel, the Layers panel takes 14.8 ms of each frame on that drawing (7.8 ms on the 118 MB model),
 passed to the features stream, whose code it is. On the 118 MB model the graphics card's time fell
 from 0.95 to 0.09 ms and the 0.2 MB drawing's from 4.2 to 0.16 ms.
+
+### Opening the 3.6 MB drawing: letters filled by lyon (19 November 2026)
+
+That drawing read in 0.4 s but showed its first frame after about 21 s. Working out what to draw
+took 24.6 s, 19 s of it for its 356 texts: each letter was made into a flat face by the modelling
+engine and meshed, about 3 ms a letter. Letters are flat, so their outlines are now sampled and
+filled in their own plane by lyon, as decision 0030 has it (`fills.rs`):
+
+| Working out what to draw | Texts | Dimensions | Blocks | All |
+|---|---|---|---|---|
+| Before | 19.0 s | 1.5 s | 3.5 s | 24.6 s |
+| After | 2.8 s | 0.5 s | 1.2 s | 5.6 s |
+
+Most of what is left of the texts' time is laying out and sampling the letters' outlines. After
+any change to the model, blocks and dimensions are worked out again (1.3 s on this drawing), which
+is next to look at.

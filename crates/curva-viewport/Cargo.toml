@@ -13,6 +13,8 @@ workspace = true
 [dependencies]
 curva-document = { path = "../curva-document" }
 curva-kernel = { path = "../curva-kernel" }
+# Fills annotations' letters and arrowheads with triangles (decision 0030).
+lyon_tessellation = "1.0"
 egui-wgpu = "0.37"
 epaint = "0.37"
 png = "0.18"

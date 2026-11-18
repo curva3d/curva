@@ -6,6 +6,10 @@
 ## 19 November 2026
 
 **Done**
+- **A drawing full of text opens about 19 s sooner.** Letters and arrowheads were each made
+  into a flat face by the modelling engine, about 3 ms a letter: a 3.6 MB drawing of the owner's
+  with 356 texts spent 19 s on them before its first frame. They are now filled in their plane by
+  lyon (decision 0030); working out that drawing went from 24.6 s to 5.6 s.
 - **The owner's own project files orbit** (asked by the owner through the features stream).
   The benchmark can now open a file (`--open`); the seven files that read in under a minute were
   orbited, all fine except one 3.6 MB drawing, whose text and block splines made 14.9 million

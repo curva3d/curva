@@ -2,6 +2,7 @@
 
 mod camera;
 mod circles;
+mod fills;
 mod glass;
 mod gpu;
 mod gumball;
