@@ -11,6 +11,7 @@
 //! a mesh far from the origin keeps its digits.
 
 use crate::{Mesh, Point, SubD};
+use std::collections::BTreeMap;
 use std::fmt;
 
 /// How dense the quads should be, as Rhino's `TargetQuadCount` and `TargetEdgeLength`.
@@ -29,15 +30,24 @@ pub struct QuadRemeshOptions {
     pub target: QuadTarget,
     /// The seed that makes the result repeatable; the same seed gives the same quads.
     pub seed: u64,
+    /// Keep hard edges, as Rhino's `DetectHardEdges`: edges where the faces meet at more than
+    /// [`HARD_EDGE_ANGLE`] degrees, with points along them and on their corners.
+    pub hard_edges: bool,
 }
 
+/// Where faces meet at more than this many degrees, the edge is hard. Measured on Rhino 8's
+/// QuadRemesh: a fold of 30° is smoothed over and one of 31° kept.
+pub const HARD_EDGE_ANGLE: f64 = 30.0;
+
 impl QuadRemeshOptions {
-    /// About `count` quads, with Curva's fixed seed. Rhino's own default is 2000.
+    /// About `count` quads, with Curva's fixed seed and hard edges kept, as Rhino's defaults
+    /// (Rhino's own count is 2000).
     #[must_use]
     pub fn count(count: usize) -> Self {
         Self {
             target: QuadTarget::Count(count),
             seed: 1,
+            hard_edges: true,
         }
     }
 }
@@ -84,6 +94,7 @@ impl Mesh {
         let run = |target| {
             let mut settings = quadrs::RemeshOptions::new(target);
             settings.seed = Some(options.seed);
+            settings.crease_angle = options.hard_edges.then_some(HARD_EDGE_ANGLE);
             quadrs::remesh(&input, &settings).map_err(|e| QuadRemeshError(format!("{e:?}")))
         };
         let result = match options.target {
@@ -134,9 +145,127 @@ impl Mesh {
                     .then_some(face)
             })
             .collect();
-        let points = onto_triangles(&points, self.vertices(), &triangles);
+        let mut points = onto_triangles(&points, self.vertices(), &triangles);
+        if options.hard_edges {
+            let side = (self.area() / faces.len().max(1) as f64).sqrt();
+            onto_hard_edges(&mut points, self.vertices(), &triangles, side);
+        }
         let mesh = Mesh::new(points, &faces).map_err(|e| QuadRemeshError(e.to_string()))?;
         Ok(mesh.without_unused_vertices().0)
+    }
+}
+
+fn sub(a: Point, b: Point) -> Point {
+    std::array::from_fn(|i| a[i] - b[i])
+}
+
+fn dot(a: Point, b: Point) -> f64 {
+    (0..3).map(|i| a[i] * b[i]).sum()
+}
+
+fn distance(a: Point, b: Point) -> f64 {
+    dot(sub(a, b), sub(a, b)).sqrt()
+}
+
+// CUSTOM MESH OPERATION: quad-remesh-hard-edges
+/// The finishing step for hard edges. quadrs, held along them (its `crease_angle`), brings its
+/// points within about a fifth of a quad of each hard edge; Rhino's QuadRemesh puts them exactly
+/// on, corners included. So the point nearest each corner (where three or more hard edges meet)
+/// goes onto it, and points within `0.3 × side` of a hard edge go onto the edge. `side` is about a
+/// quad's side.
+fn onto_hard_edges(points: &mut [Point], vertices: &[Point], triangles: &[[u32; 3]], side: f64) {
+    let normal = |t: &[u32; 3]| {
+        let (a, b, c) = (
+            vertices[t[0] as usize],
+            vertices[t[1] as usize],
+            vertices[t[2] as usize],
+        );
+        let (u, v) = (sub(b, a), sub(c, a));
+        let n = [
+            u[1] * v[2] - u[2] * v[1],
+            u[2] * v[0] - u[0] * v[2],
+            u[0] * v[1] - u[1] * v[0],
+        ];
+        let length = dot(n, n).sqrt().max(f64::MIN_POSITIVE);
+        n.map(|x| x / length)
+    };
+    // Edges by their two points' places, so an unwelded edge counts as one.
+    let mut place_of: std::collections::HashMap<[u64; 3], u32> = std::collections::HashMap::new();
+    let place = |v: u32, place_of: &mut std::collections::HashMap<[u64; 3], u32>| {
+        *place_of
+            .entry(vertices[v as usize].map(f64::to_bits))
+            .or_insert(v)
+    };
+    let mut faces_of: BTreeMap<(u32, u32), Vec<Point>> = BTreeMap::new();
+    for t in triangles {
+        let n = normal(t);
+        for k in 0..3 {
+            let (a, b) = (
+                place(t[k], &mut place_of),
+                place(t[(k + 1) % 3], &mut place_of),
+            );
+            faces_of.entry((a.min(b), a.max(b))).or_default().push(n);
+        }
+    }
+    let limit = HARD_EDGE_ANGLE.to_radians().cos();
+    let hard: Vec<(u32, u32)> = faces_of
+        .iter()
+        .filter(|(_, n)| n.len() == 2 && dot(n[0], n[1]) < limit)
+        .map(|(&e, _)| e)
+        .collect();
+    if hard.is_empty() {
+        return;
+    }
+    let mut ends: BTreeMap<u32, usize> = BTreeMap::new();
+    for &(a, b) in &hard {
+        *ends.entry(a).or_default() += 1;
+        *ends.entry(b).or_default() += 1;
+    }
+    let mut placed = vec![false; points.len()];
+    for (&corner, _) in ends.iter().filter(|&(_, &n)| n >= 3) {
+        let c = vertices[corner as usize];
+        let nearest = (0..points.len())
+            .filter(|&i| !placed[i])
+            .min_by(|&i, &j| distance(points[i], c).total_cmp(&distance(points[j], c)));
+        if let Some(i) = nearest
+            && distance(points[i], c) < 0.5 * side
+        {
+            points[i] = c;
+            placed[i] = true;
+        }
+    }
+    // Hard edges listed by grid cell, so each point looks only at those nearby.
+    let cell = |p: Point| -> [i64; 3] { p.map(|x| (x / side).floor() as i64) };
+    let mut near: std::collections::HashMap<[i64; 3], Vec<usize>> =
+        std::collections::HashMap::new();
+    for (k, &(a, b)) in hard.iter().enumerate() {
+        let (ca, cb) = (cell(vertices[a as usize]), cell(vertices[b as usize]));
+        for x in ca[0].min(cb[0]) - 1..=ca[0].max(cb[0]) + 1 {
+            for y in ca[1].min(cb[1]) - 1..=ca[1].max(cb[1]) + 1 {
+                for z in ca[2].min(cb[2]) - 1..=ca[2].max(cb[2]) + 1 {
+                    near.entry([x, y, z]).or_default().push(k);
+                }
+            }
+        }
+    }
+    for (i, p) in points.iter_mut().enumerate() {
+        if placed[i] {
+            continue;
+        }
+        let mut best = (0.3 * side, None);
+        for &k in near.get(&cell(*p)).into_iter().flatten() {
+            let (a, b) = (vertices[hard[k].0 as usize], vertices[hard[k].1 as usize]);
+            let d = sub(b, a);
+            let t = (dot(sub(*p, a), d) / dot(d, d).max(f64::MIN_POSITIVE)).clamp(0.0, 1.0);
+            let on: Point = std::array::from_fn(|j| a[j] + t * d[j]);
+            let gap = distance(on, *p);
+            if gap < best.0 {
+                best = (gap, Some(on));
+            }
+        }
+        if let Some(on) = best.1 {
+            *p = on;
+        }
     }
 }
 
@@ -382,6 +511,79 @@ mod tests {
             (0..3).all(|i| (first[i] - pinned[i]).abs() < 1e-6),
             "{first:?}"
         );
+    }
+
+    /// How far inside a 20 mm box (from the origin) the middle of the deepest face lies, and the
+    /// result's volume.
+    fn cut_inside_box(options: &QuadRemeshOptions) -> (f64, f64) {
+        let cube = Mesh::mesh_box(&Frame::world(), [20.0; 3], [10; 3]);
+        let out = cube.quad_remeshed(options).unwrap();
+        let p = out.vertices();
+        let deepest = out
+            .faces()
+            .map(|f| {
+                let m: Point = std::array::from_fn(|i| {
+                    f.iter().map(|&v| p[v as usize][i]).sum::<f64>() / f.len() as f64
+                });
+                (0..3)
+                    .map(|i| m[i].min(20.0 - m[i]))
+                    .fold(f64::INFINITY, f64::min)
+            })
+            .fold(0.0, f64::max);
+        (deepest, out.volume().unwrap().abs())
+    }
+
+    #[test]
+    fn a_box_keeps_its_hard_edges_and_corners_as_in_rhino() {
+        // Rhino 8's QuadRemesh on the same box, 600 quads, DetectHardEdges: no face inside,
+        // volume 8000.0; without it, faces 0.063 inside.
+        let (deepest, volume) = cut_inside_box(&QuadRemeshOptions::count(600));
+        assert!(deepest < 1e-9, "a face {deepest} inside the box");
+        assert!((volume - 8000.0).abs() < 1e-6, "volume {volume}");
+        let soft = QuadRemeshOptions {
+            hard_edges: false,
+            ..QuadRemeshOptions::count(600)
+        };
+        let (deepest, volume) = cut_inside_box(&soft);
+        assert!(deepest > 0.1, "without hard edges the corners round off");
+        assert!(volume < 7990.0);
+    }
+
+    #[test]
+    fn a_fold_is_hard_above_30_degrees_as_in_rhino() {
+        // A 20 × 10 plate folded along x = 10, welded.
+        let plate = |degrees: f64| {
+            let slope = degrees.to_radians().tan();
+            let points: Vec<Point> = (0..21)
+                .flat_map(|i| {
+                    (0..11).map(move |j| {
+                        let x = f64::from(i);
+                        [
+                            x,
+                            f64::from(j),
+                            if x <= 10.0 { 0.0 } else { (x - 10.0) * slope },
+                        ]
+                    })
+                })
+                .collect();
+            let faces: Vec<[u32; 4]> = (0..20)
+                .flat_map(|i| (0..10).map(move |j| i * 11 + j))
+                .map(|a| [a, a + 11, a + 12, a + 1])
+                .collect();
+            Mesh::new(points, &faces).unwrap()
+        };
+        let on_fold = |degrees: f64| {
+            let out = plate(degrees)
+                .quad_remeshed(&QuadRemeshOptions::count(200))
+                .unwrap();
+            out.vertices()
+                .iter()
+                .filter(|p| p[0] == 10.0 && p[2] == 0.0)
+                .count()
+        };
+        // Rhino 8 put 22 points on a 31° fold and none on a 30° one.
+        assert!(on_fold(45.0) >= 8, "{} points on a 45° fold", on_fold(45.0));
+        assert_eq!(on_fold(20.0), 0, "a 20° fold is smoothed over");
     }
 
     #[test]
