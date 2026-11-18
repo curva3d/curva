@@ -79,8 +79,8 @@ impl EmbeddedGraph {
             self.adjacency[i].sort_by(|lhs, rhs| {
                 let vl = self.positions[lhs.id] - origin;
                 let vr = self.positions[rhs.id] - origin;
-                let al = t.dot(vl).atan2(s.dot(vl));
-                let ar = t.dot(vr).atan2(s.dot(vr));
+                let al = libm::atan2(t.dot(vl), s.dot(vl));
+                let ar = libm::atan2(t.dot(vr), s.dot(vr));
                 ar.total_cmp(&al)
             });
         }
@@ -494,7 +494,7 @@ fn angle_error(v0: Vec3, v1: Vec3, v2: Vec3, target_deg: f64) -> f64 {
     let d0 = normalize_or(v0 - v1, Vec3::new(1.0, 0.0, 0.0));
     let d1 = normalize_or(v2 - v1, Vec3::new(0.0, 1.0, 0.0));
     let cosine = d0.dot(d1).clamp(-1.0, 1.0);
-    (cosine.acos().to_degrees() - target_deg).abs()
+    (libm::acos(cosine).to_degrees() - target_deg).abs()
 }
 
 fn tag_boundary_hole_edges(adjacency: &mut [Vec<TaggedLink>]) {

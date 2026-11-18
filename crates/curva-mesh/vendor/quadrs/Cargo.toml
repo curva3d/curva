@@ -18,3 +18,4 @@ include = [
 
 [dependencies]
 glam = { version = "0.32.1", default-features = false, features = ["std"] }
+libm = "0.2"

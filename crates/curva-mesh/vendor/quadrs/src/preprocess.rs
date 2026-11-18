@@ -155,7 +155,7 @@ pub fn generate_smooth_normals(mesh: &TriMesh) -> Vec<Vec3> {
             if denom <= EPS {
                 continue;
             }
-            let angle = (d0.dot(d1) / denom).clamp(-1.0, 1.0).acos();
+            let angle = libm::acos((d0.dot(d1) / denom).clamp(-1.0, 1.0));
             if angle.is_finite() {
                 normals[face[corner]] += face_normal * angle;
             }

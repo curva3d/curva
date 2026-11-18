@@ -4182,6 +4182,7 @@ name = "quadrs"
 version = "1.0.0"
 dependencies = [
  "glam 0.32.1",
+ "libm",
 ]
 
 [[package]]

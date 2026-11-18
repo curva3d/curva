@@ -35,4 +35,4 @@ mesh library upgrade, like the operations above.
 
 | Library | Copy | The fix | Offered | Go back when | Checked at |
 |---|---|---|---|---|---|
-| quadrs 1.0.0 | `crates/curva-mesh/vendor/quadrs` | ordered maps in four places, so the same mesh and seed give the same quads on every run (`graph.rs`, `extract.rs`, `hierarchy.rs`) | [vidstige/quadrs#1](https://github.com/vidstige/quadrs/issues/1) | a quadrs release passes `the_same_seed_gives_the_same_quads`; steps in #349 | quadrs 1.0.0, 18 November 2026 |
+| quadrs 1.0.0 | `crates/curva-mesh/vendor/quadrs` | ordered maps in four places (`graph.rs`, `extract.rs`, `hierarchy.rs`), and its seven sines, arc tangents and exponentials worked out by the `libm` crate, so the same mesh and seed give the same quads on every run and every system | [vidstige/quadrs#1](https://github.com/vidstige/quadrs/issues/1) | a quadrs release passes `the_same_seed_gives_the_same_quads`; steps in #349 | quadrs 1.0.0, 18 November 2026 |

@@ -99,11 +99,9 @@ pub fn extract_graph<M: RoSy4>(state: &FieldState) -> EmbeddedGraph {
         let Some(&cluster) = root_to_index.get(&root) else {
             continue;
         };
-        let weight = (-((state.origins[i] - state.positions[i]).length_squared())
-            * inv_scale
-            * inv_scale
-            * 9.0)
-            .exp();
+        let weight = libm::exp(
+            -((state.origins[i] - state.positions[i]).length_squared()) * inv_scale * inv_scale * 9.0,
+        );
         positions[cluster] += state.origins[i] * weight;
         normals[cluster] += state.normals[i] * weight;
         weights[cluster] += weight;

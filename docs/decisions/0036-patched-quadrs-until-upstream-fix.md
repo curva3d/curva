@@ -6,8 +6,10 @@ quadrs), which stands.
 **What was decided.** quadrs 1.0.0 does not give the same quads twice for the same mesh and seed,
 which Curva needs (the same file must remesh the same way on every machine and every day). Curva
 keeps a copy of quadrs 1.0.0 in `crates/curva-mesh/vendor/quadrs` with a small fix: four places
-that used hash maps, whose order changes on every run, use ordered maps instead. Nothing else in the
-copy is changed. The fix was offered to quadrs' author
+that used hash maps, whose order changes on every run, use ordered maps instead; and its seven
+sines, arc tangents and exponentials come from the `libm` crate (MIT or Apache-2.0, pure Rust),
+because each system's own can differ in the last digit, which grew into different quads on Linux
+and Windows. Nothing else in the copy is changed. The fix was offered to quadrs' author
 ([vidstige/quadrs#1](https://github.com/vidstige/quadrs/issues/1)). **When a quadrs release has the
 fix, Curva goes back to the released crate and deletes its copy**, so Curva carries as little custom
 code as possible. The steps are in issue #349, and the copy is checked at every mesh library upgrade

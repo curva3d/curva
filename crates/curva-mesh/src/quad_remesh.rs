@@ -5,9 +5,10 @@
 //! quadrs follows Instant Meshes (Jakob, Tarini, Panozzo and Sorkine-Hornung, "Instant
 //! field-aligned meshes", SIGGRAPH Asia 2015): it lays a field of directions over the surface and
 //! grows quads along it. Given the same mesh and the same seed it makes the same quads every
-//! time: Curva uses a patched copy of quadrs 1.0.0 (`vendor/quadrs`), as 1.0.0 itself walks its
-//! hash maps in a different order on each run. Points go in measured from the mesh's centre, so
-//! a mesh far from the origin keeps its digits (quadrs works in single precision).
+//! time, on every system: Curva uses a patched copy of quadrs 1.0.0 (`vendor/quadrs`), as 1.0.0
+//! walks its hash maps in a different order on each run and uses each system's own sines and
+//! exponentials, which can differ in the last digit. Points go in measured from the centre, so
+//! a mesh far from the origin keeps its digits.
 
 use crate::{Mesh, Point, SubD};
 use std::fmt;
@@ -283,6 +284,24 @@ mod tests {
         )
     }
 
+    /// A sphere of radius 10 from a cube's 16 × 16 grids pushed out from the centre. Only square
+    /// roots make it, which every system works out alike, so it is the same on every machine (a
+    /// UV sphere's sines and cosines can differ in the last digit from system to system).
+    fn cube_sphere() -> Mesh {
+        let cube = Mesh::mesh_box(&Frame::world(), [2.0; 3], [16; 3]);
+        let points: Vec<Point> = cube
+            .vertices()
+            .iter()
+            .map(|p| {
+                let d: Point = std::array::from_fn(|i| p[i] - 1.0);
+                let r = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+                d.map(|c| 10.0 * c / r)
+            })
+            .collect();
+        let faces: Vec<Vec<u32>> = cube.faces().map(<[u32]>::to_vec).collect();
+        Mesh::new(points, &faces).unwrap()
+    }
+
     fn quads(m: &Mesh) -> usize {
         m.faces().filter(|f| f.len() == 4).count()
     }
@@ -326,8 +345,8 @@ mod tests {
             .translated([1.0e6, -2.0e6, 3.0e5])
             .quad_remeshed(&QuadRemeshOptions::count(200))
             .unwrap();
-        // quadrs works in single precision, and Instant Meshes is sensitive to its input's last
-        // digits, so a moved mesh's quads grow differently. What must hold is precision: the
+        // Instant Meshes is sensitive to its input's last digits, and moving a mesh rounds them,
+        // so a moved mesh's quads grow differently. What must hold is precision: the
         // points sit on the original as closely far away as at the origin: within the input
         // sphere's own faceting (at most 0.0214 inside radius 10, at its faces' middles).
         let centre = [1.0e6, -2.0e6, 3.0e5];
@@ -353,12 +372,12 @@ mod tests {
     /// change is looked at and the numbers are updated.
     #[test]
     fn the_result_is_pinned_for_upgrades() {
-        let out = sphere()
+        let out = cube_sphere()
             .quad_remeshed(&QuadRemeshOptions::count(200))
             .unwrap();
-        assert_eq!((out.face_count(), out.vertex_count()), (210, 212));
+        assert_eq!((out.face_count(), out.vertex_count()), (198, 200));
         let first = out.vertices()[0];
-        let pinned = [1.781_249_447, -1.201_569_620, -9.760_140_391];
+        let pinned = [-4.083_161_280, -7.758_225_646, -4.793_129_703];
         assert!(
             (0..3).all(|i| (first[i] - pinned[i]).abs() < 1e-6),
             "{first:?}"

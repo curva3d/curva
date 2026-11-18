@@ -13,8 +13,9 @@ places), and Rhino 8 reads Curva's as valid. A SubD can now hold such a cut: `Su
 keeps points at the same place apart, and the `.3dm` reader uses it.
 
 **QuadRemesh, part 1 (#329):** the owner chose a patched copy of quadrs (decision 0036). Curva
-carries quadrs 1.0.0 in `crates/curva-mesh/vendor/quadrs`, with ordered maps in four places, so the
-same mesh and seed give the same quads on every run and machine. The fix was offered to the author
+carries quadrs 1.0.0 in `crates/curva-mesh/vendor/quadrs`, with ordered maps in four places and its
+maths functions from `libm`, so the same mesh and seed give the same quads on every run and
+every system (Linux and Windows gave 188 and 210 quads before the second part). The fix was offered to the author
 ([vidstige/quadrs#1](https://github.com/vidstige/quadrs/issues/1)). When a release has it, Curva
 goes back to the released crate and deletes the copy (steps in #349; checked at every mesh library
 upgrade, `docs/mesh/custom-operations.md`). On top of quadrs, two listed custom operations: the
@@ -33,7 +34,7 @@ its comparison with Rhino on the test models.
 - quadrs 1.0.0 sizes its quads for the count asked, then splits each into four, so it gives about
   four times the faces asked and half the edge length; Curva asks for a quarter and twice. Its count
   is also rough (about a fifth over), and it leaves points up to 0.9 off a sphere of radius 10.
-- quadrs works in single precision, and Instant Meshes is sensitive to its input's last digits: a
+- quadrs works in double precision, but Instant Meshes is sensitive to its input's last digits: a
   mesh moved a million millimetres from the origin remeshes as well, but into different quads.
 
 ## 16 and 17 November 2026 (second session, after the move to E:)

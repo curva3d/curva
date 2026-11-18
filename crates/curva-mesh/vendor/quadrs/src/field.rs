@@ -317,7 +317,7 @@ pub fn coordinate_system(normal: Vec3) -> (Vec3, Vec3) {
 fn init_random_tangent(normal: Vec3, rng: Rng) -> Vec3 {
     let (s, t) = coordinate_system(normal);
     let angle = rng.next() * std::f64::consts::TAU;
-    s * angle.cos() + t * angle.sin()
+    s * libm::cos(angle) + t * libm::sin(angle)
 }
 
 fn init_random_origin(position: Vec3, normal: Vec3, scale: f64, rng: Rng) -> Vec3 {
