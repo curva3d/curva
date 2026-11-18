@@ -11,7 +11,12 @@ pub(crate) struct TopBar {
     pub(crate) specialization: usize,
     /// Curva's mark, made from the window icon the first time the bar is drawn.
     pub(crate) mark: Option<egui::TextureHandle>,
+    /// When the file's path was last copied by clicking it, for its glow and note.
+    pub(crate) copied_at: Option<f64>,
 }
+
+/// How long the glow and the note show after the path is copied, in seconds.
+const COPIED_FOR: f64 = 1.6;
 
 /// `path` shortened in the middle until `fits` accepts it: the first part and as many of the
 /// last parts as fit, with `…` between (spec `feedback-0.4.2.md` §4).
@@ -384,67 +389,114 @@ impl Curva {
         self.bar.mark.clone()
     }
 
-    /// The model's name on top and its path below, smaller and quieter, both right-aligned in
-    /// `room`; a long path is shortened in the middle and shown in full on hover. An untitled
-    /// model shows its name alone.
-    fn file_label(&self, ui: &egui::Ui, room: egui::Rect) {
+    /// The model's folder and name on one line, right-aligned in `room`: the folder quieter, a
+    /// long one shortened in the middle and shown in full on hover. Clicking the line, with
+    /// either button, copies the full path (the name of an untitled model); the line then glows
+    /// and a note says it was copied.
+    fn file_label(&mut self, ui: &egui::Ui, room: egui::Rect) {
         if room.width() < 24.0 {
             return;
         }
-        let path = self.doc.path();
-        let name = path.and_then(|p| p.file_stem()).map_or_else(
+        let path = self.doc.path().map(std::path::Path::to_path_buf);
+        let name = path.as_ref().and_then(|p| p.file_name()).map_or_else(
             || self.text.render(&Message::new("ui.untitled")),
-            |stem| stem.to_string_lossy().into_owned(),
+            |file| file.to_string_lossy().into_owned(),
         );
-        let painter = ui.painter_at(room);
         let colours = theme::current();
-        let right = room.max.x;
-        let middle = room.center().y;
-        let Some(path) = path else {
-            painter.text(
-                egui::pos2(right, middle),
-                egui::Align2::RIGHT_CENTER,
-                name,
-                egui::FontId::proportional(13.0),
-                colours.text,
-            );
-            return;
-        };
-        painter.text(
-            egui::pos2(right, middle - 1.0),
-            egui::Align2::RIGHT_BOTTOM,
-            name,
-            egui::FontId::proportional(12.5),
-            colours.text,
-        );
-        let full = path.to_string_lossy().into_owned();
-        let font = egui::FontId::proportional(10.0);
-        let width = room.width();
-        let shown = shortened_path(&full, |text| {
+        let name_font = egui::FontId::proportional(12.5);
+        let folder_font = egui::FontId::proportional(11.0);
+        let width = |text: &str, font: &egui::FontId| {
             ui.fonts_mut(|fonts| {
                 fonts
-                    .layout_no_wrap(text.to_owned(), font.clone(), colours.quiet)
+                    .layout_no_wrap(text.to_owned(), font.clone(), colours.text)
                     .size()
                     .x
-                    <= width
             })
-        });
-        let drawn = painter.text(
-            egui::pos2(right, middle),
-            egui::Align2::RIGHT_TOP,
-            shown,
-            font,
-            colours.quiet,
+        };
+        let name_width = width(&name, &name_font);
+        let folder = path
+            .as_ref()
+            .and_then(|p| p.parent())
+            .map(|f| format!("{}{}", f.to_string_lossy(), std::path::MAIN_SEPARATOR));
+        let room_for_folder = (room.width() - name_width - 8.0).max(0.0);
+        let shown = folder
+            .as_ref()
+            .map(|full| shortened_path(full, |text| width(text, &folder_font) <= room_for_folder));
+        let folder_width = shown.as_ref().map_or(0.0, |s| width(s, &folder_font));
+        let middle = room.center().y;
+        let line = egui::Rect::from_min_max(
+            egui::pos2(room.max.x - name_width - folder_width - 6.0, middle - 10.0),
+            egui::pos2(room.max.x + 4.0, middle + 10.0),
         );
-        let hover = ui.interact(
-            drawn.union(egui::Rect::from_min_max(
-                egui::pos2(drawn.min.x, room.min.y),
-                drawn.max,
-            )),
+        let painter = ui.painter_at(room.expand(4.0));
+        // The glow after copying, strongest at first and fading out.
+        let now = ui.input(|i| i.time);
+        let glow = self
+            .bar
+            .copied_at
+            .map(|at| 1.0 - ((now - at) / COPIED_FOR).clamp(0.0, 1.0))
+            .filter(|left| *left > 0.0);
+        if let Some(left) = glow {
+            let strength = (left * left) as f32;
+            let accent = theme::ACCENT;
+            painter.rect_filled(line, 6.0, accent.gamma_multiply(0.22 * strength));
+            painter.rect_stroke(
+                line,
+                6.0,
+                egui::Stroke::new(1.5, accent.gamma_multiply(strength)),
+                egui::StrokeKind::Outside,
+            );
+            ui.ctx().request_repaint();
+        }
+        painter.text(
+            egui::pos2(room.max.x, middle),
+            egui::Align2::RIGHT_CENTER,
+            &name,
+            name_font,
+            colours.text,
+        );
+        if let Some(shown) = &shown {
+            painter.text(
+                egui::pos2(room.max.x - name_width, middle),
+                egui::Align2::RIGHT_CENTER,
+                shown,
+                folder_font,
+                colours.quiet,
+            );
+        }
+        let response = ui.interact(
+            line,
             egui::Id::NULL.with("top bar path"),
-            egui::Sense::hover(),
+            egui::Sense::click(),
         );
-        hover.on_hover_text(full);
+        let full = path
+            .as_ref()
+            .map_or_else(|| name.clone(), |p| p.to_string_lossy().into_owned());
+        if response.clicked() || response.secondary_clicked() {
+            ui.ctx().copy_text(full.clone());
+            self.bar.copied_at = Some(now);
+        }
+        if glow.is_some() {
+            // The note, just under the line.
+            let note = self.text.render(&Message::new("ui.path_copied"));
+            egui::Area::new(egui::Id::NULL.with("path copied"))
+                .order(egui::Order::Tooltip)
+                .fixed_pos(egui::pos2(line.max.x - 4.0, line.max.y + 6.0))
+                .pivot(egui::Align2::RIGHT_TOP)
+                .interactable(false)
+                .show(ui.ctx(), |ui| {
+                    egui::Frame::popup(ui.style())
+                        .stroke(egui::Stroke::new(1.0, theme::ACCENT))
+                        .show(ui, |ui| ui.label(note));
+                });
+        } else {
+            response
+                .on_hover_cursor(egui::CursorIcon::PointingHand)
+                .on_hover_text(format!(
+                    "{full}\n{}",
+                    self.text.render(&Message::new("ui.path_copy_hint"))
+                ));
+        }
     }
 
     /// The specializations as a dial that loops: the selected one in the centre, its neighbours
