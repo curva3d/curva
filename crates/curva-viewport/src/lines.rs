@@ -357,7 +357,7 @@ fn shapes_of(
         .faces
         .iter()
         .filter_map(|faces| {
-            let (mesh, placement) = faces.shared.as_ref()?;
+            let (mesh, placement) = faces.shared()?;
             Some(PlacedShape {
                 object: numbers.get(&faces.id).copied().unwrap_or(NO_OBJECT),
                 colour: if faces.locked {
@@ -518,7 +518,7 @@ pub(crate) fn faces_of(
     for faces in outlines
         .faces
         .iter()
-        .filter(|faces| !hidden.contains(&faces.id) && (!apart || faces.shared.is_none()))
+        .filter(|faces| !hidden.contains(&faces.id) && (!apart || faces.shared().is_none()))
     {
         let colour = if selected.contains(&faces.id) {
             SELECTED_COLOUR
@@ -531,18 +531,15 @@ pub(crate) fn faces_of(
             .and_then(|numbers| numbers.get(&faces.id))
             .copied()
             .unwrap_or(NO_OBJECT);
-        let mesh = &faces.mesh;
-        for triangle in &mesh.triangles {
+        for triangle in &faces.mesh.triangles {
             for &corner in triangle {
-                let index = corner as usize;
-                let (Some(position), Some(normal)) =
-                    (mesh.positions.get(index), mesh.normals.get(index))
+                let (Some(position), Some(normal)) = (faces.corner(corner), faces.normal(corner))
                 else {
                     continue;
                 };
                 out.push(MeshVertex {
-                    position: narrow_from(*position, origin),
-                    normal: narrow(*normal),
+                    position: narrow_from(position, origin),
+                    normal: narrow(normal),
                     colour,
                     object,
                 });

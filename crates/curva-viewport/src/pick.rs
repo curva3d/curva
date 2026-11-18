@@ -149,7 +149,7 @@ impl Outlines {
 
     /// The objects that can be picked: those not on a locked layer, and of a kind the
     /// selection filter lets through.
-    pub(crate) fn selectable(&self) -> impl Iterator<Item = &(u64, Vec<Point>)> {
+    pub(crate) fn selectable(&self) -> impl Iterator<Item = &(u64, std::sync::Arc<[Point]>)> {
         self.objects
             .iter()
             .enumerate()
@@ -168,7 +168,7 @@ impl Outlines {
         self.objects
             .iter()
             .enumerate()
-            .filter_map(|(index, (id, points))| match points.as_slice() {
+            .filter_map(|(index, (id, points))| match &points[..] {
                 [only] => {
                     let colour = if selected.contains(id) {
                         SELECTED_COLOUR
@@ -284,8 +284,8 @@ impl Outlines {
                 mesh.triangles.iter().any(|triangle| {
                     let on_screen: Vec<[f64; 2]> = triangle
                         .iter()
-                        .filter_map(|&c| mesh.positions.get(c as usize))
-                        .filter_map(|p| camera.project(*p, size))
+                        .filter_map(|&c| faces.corner(c))
+                        .filter_map(|p| camera.project(p, size))
                         .collect();
                     let [a, b, c] = on_screen.as_slice() else {
                         return false;
@@ -380,10 +380,8 @@ impl Outlines {
         for faces in self.faces.iter().filter(|faces| !faces.locked) {
             let mesh = &faces.mesh;
             for (triangle, face) in mesh.triangles.iter().zip(&mesh.triangle_faces) {
-                let corners: Vec<Point> = triangle
-                    .iter()
-                    .filter_map(|&c| mesh.positions.get(c as usize).copied())
-                    .collect();
+                let corners: Vec<Point> =
+                    triangle.iter().filter_map(|&c| faces.corner(c)).collect();
                 let on_screen: Vec<[f64; 2]> = corners
                     .iter()
                     .filter_map(|p| camera.project(*p, size))
@@ -428,10 +426,9 @@ impl Outlines {
                 std::collections::BTreeMap::new();
             for (triangle, face) in mesh.triangles.iter().zip(&mesh.triangle_faces) {
                 for &corner in triangle {
-                    let inside = mesh
-                        .positions
-                        .get(corner as usize)
-                        .and_then(|p| camera.project(*p, size))
+                    let inside = faces
+                        .corner(corner)
+                        .and_then(|p| camera.project(p, size))
                         .is_some_and(|p| inside_box(p, low, high));
                     let entry = verdicts.entry(*face).or_insert((true, false));
                     entry.0 &= inside;
@@ -460,7 +457,7 @@ impl Outlines {
                     .zip(&mesh.triangle_faces)
                     .filter(move |(_, face)| **face == pick.1)
                     .filter_map(move |(triangle, _)| {
-                        let corner = |i: usize| mesh.positions.get(triangle[i] as usize).copied();
+                        let corner = |i: usize| faces.corner(triangle[i]);
                         Some([corner(0)?, corner(1)?, corner(2)?])
                     })
             })
@@ -474,7 +471,7 @@ impl Outlines {
             .iter()
             .zip(&self.edge_of)
             .find(|((id, _), edge)| *id == pick.0 && **edge == Some(pick.1))
-            .map(|((_, points), _)| points.as_slice())
+            .map(|((_, points), _)| &points[..])
     }
 
     /// The objects chosen by a box dragged on screen from `from` to `to`, as in Rhino.
@@ -685,7 +682,7 @@ impl Outlines {
             }
             let mesh = &faces.mesh;
             mesh.triangles.iter().any(|triangle| {
-                let corner = |i: usize| mesh.positions.get(triangle[i] as usize).copied();
+                let corner = |i: usize| faces.corner(triangle[i]);
                 let (Some(a), Some(b), Some(c)) = (corner(0), corner(1), corner(2)) else {
                     return false;
                 };
