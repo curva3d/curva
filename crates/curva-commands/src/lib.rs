@@ -111,6 +111,9 @@ pub const DXF_FILES: FileFormat = ("files.dxf", &["dxf"]);
 /// AutoCAD's drawing files.
 pub const DWG_FILES: FileFormat = ("files.dwg", &["dwg"]);
 
+/// SketchUp's models, read through OpenSKP.
+pub const SKP_FILES: FileFormat = ("files.skp", &["skp"]);
+
 /// Hatch pattern files, as AutoCAD and Rhino write them.
 pub const PAT_FILES: FileFormat = ("files.pat", &["pat"]);
 

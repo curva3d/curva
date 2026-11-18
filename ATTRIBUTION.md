@@ -39,6 +39,13 @@ Curva calls solidcore (Apache-2.0) for its geometry: https://github.com/tangency
 Its licence and NOTICE ship with its source at the pinned revision in `Cargo.lock`. A copy of the
 NOTICE is in `licenses/solidcore-NOTICE.txt`, and goes with every release build.
 
+## OpenSKP
+
+Curva reads SketchUp files with OpenSKP's Rust package (MIT), by its contributors:
+https://github.com/iamahsanmehmood/openskp. It was made by working out SketchUp's file format
+without Trimble's toolkit, and is not affiliated with or endorsed by Trimble or SketchUp. Its
+licence ships with its source at the pinned revision in `Cargo.lock`.
+
 ## Inter
 
 The interface's text is set in Inter 4.1, by The Inter Project Authors (https://github.com/rsms/inter),

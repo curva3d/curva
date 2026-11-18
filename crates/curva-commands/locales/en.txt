@@ -869,6 +869,7 @@ files.pdf = PDF drawing
 files.svg = SVG drawing
 files.dxf = AutoCAD DXF
 files.dwg = AutoCAD drawing
+files.skp = SketchUp model
 files.pat = Hatch patterns
 ui.desktop.offer = Add Curva to your applications, so it shows with its icon in the dock and the menu.
 ui.desktop.added = Curva is in your applications.
