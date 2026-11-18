@@ -15,6 +15,12 @@ pub(super) fn ahead(cut: &PlaneCut, p: Point) -> f64 {
 /// wholly cut away. Cut by a square sheet on the plane, well beyond the body, through the
 /// engine's split.
 pub(super) fn clipped_body(body: &Body, cut: &PlaneCut) -> Result<Option<Body>, KernelError> {
+    // Wholly on one side: kept whole or cut away, as the engine's split would leave it (#317).
+    match body.side_of_plane(cut.origin, cut.keep)? {
+        Some(true) => return Ok(Some(body.clone())),
+        Some(false) => return Ok(None),
+        None => {}
+    }
     let (low, high) = body.bounds()?;
     let centre: Point = std::array::from_fn(|i| (low[i] + high[i]) / 2.0);
     let size = (0..3)

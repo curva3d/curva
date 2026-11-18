@@ -209,6 +209,9 @@ impl Body {
     /// Where the plane through `at` with normal `normal` cuts the body, as curves (Rhino's
     /// Section and Contour).
     pub fn section(&self, at: Point, normal: Point) -> Result<Vec<Curve>, KernelError> {
+        if self.wholly_beside(at, normal)? {
+            return Ok(Vec::new());
+        }
         let (body, order) = self.engine_with_order()?;
         let mut pieces = Vec::new();
         for face in 0..order.faces.len() {
@@ -226,6 +229,49 @@ impl Body {
             }
         }
         crate::join_all(&pieces)
+    }
+
+    /// Whether the body's box lies wholly on one side of the plane through `at` square to
+    /// `normal`, clear of it by more than the sewing tolerance, so the plane cannot meet the body
+    /// and asking the engine can be skipped (#317).
+    pub fn wholly_beside(&self, at: Point, normal: Point) -> Result<bool, KernelError> {
+        Ok(self.side_of_plane(at, normal)?.is_some())
+    }
+
+    /// Which side of the plane through `at` square to `normal` the body's box lies wholly on,
+    /// clear of it by more than the sewing tolerance: `Some(true)` the side `normal` points to,
+    /// `Some(false)` the other, `None` when the box reaches the plane.
+    pub fn side_of_plane(&self, at: Point, normal: Point) -> Result<Option<bool>, KernelError> {
+        let (low, high) = self.bounds()?;
+        let length = (0..3).map(|i| normal[i] * normal[i]).sum::<f64>().sqrt();
+        if length.is_nan()
+            || length <= 0.0
+            || !(0..3).all(|i| low[i].is_finite() && high[i].is_finite())
+        {
+            return Ok(None);
+        }
+        let mut lowest = f64::INFINITY;
+        let mut highest = f64::NEG_INFINITY;
+        for corner in 0..8 {
+            let p: Point = std::array::from_fn(|i| {
+                if corner >> i & 1 == 0 {
+                    low[i]
+                } else {
+                    high[i]
+                }
+            });
+            let along = (0..3).map(|i| normal[i] * (p[i] - at[i])).sum::<f64>() / length;
+            lowest = lowest.min(along);
+            highest = highest.max(along);
+        }
+        let clear = crate::SEW_TOLERANCE;
+        Ok(if lowest > clear {
+            Some(true)
+        } else if highest < -clear {
+            Some(false)
+        } else {
+            None
+        })
     }
 
     /// Curves projected along `direction` onto the body's faces (Rhino's Project).
