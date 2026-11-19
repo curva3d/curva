@@ -282,9 +282,11 @@ impl Warp {
 fn arc_spans(a: f64, b: f64) -> Vec<[f64; 2]> {
     let n = ((b - a).abs() / FRAC - 1e-9).ceil().max(1.0) as usize;
     let step = (b - a) / n as f64;
-    (0..n)
-        .map(|k| [a + k as f64 * step, a + (k + 1) as f64 * step])
-        .collect()
+    // The last span ends at `b` itself: summed steps can stop a rounding short of it, and the
+    // face's range, which ends at `b`, would then reach past the surface's, which the engine
+    // refuses.
+    let at = |k: usize| if k == n { b } else { a + k as f64 * step };
+    (0..n).map(|k| [at(k), at(k + 1)]).collect()
 }
 
 /// The knots of arcs over `spans`, and for each control point its angle (a middle point's is
@@ -569,5 +571,33 @@ mod tests {
             "{low:?} {high:?}"
         );
         assert!((high[2] - h).abs() < 1e-6);
+    }
+
+    /// A piece of a cylinder turned through an angle whose quarter-turn steps add up to a rounding
+    /// short of its end, as in one of the owner's files. It used to be left out ("parameter interval
+    /// outside the natural domain").
+    #[test]
+    fn a_revolution_whose_steps_fall_short_of_its_angle_comes_in() {
+        let angles = [0.277_174_184_114_610_4, 3.488_076_299_119_063];
+        let spans = arc_spans(angles[0], angles[1]);
+        assert_eq!(spans.last().map(|s| s[1]), Some(angles[1]));
+        let (r, h) = (2.0, 3.0);
+        let side = model::Curve::Line {
+            ends: [[r, 0.0, 0.0], [r, 0.0, h]],
+            domain: [0.0, h],
+        };
+        let surface = model::Surface::Revolution {
+            curve: Box::new(side),
+            axis: [[0.0; 3], [0.0, 0.0, 1.0]],
+            angles,
+            domain: angles,
+            transposed: false,
+        };
+        let area = surface_body(&surface).unwrap().area().unwrap();
+        let expected = (angles[1] - angles[0]) * r * h;
+        assert!(
+            (area - expected).abs() < 1e-6 * expected,
+            "{area} against {expected}"
+        );
     }
 }
