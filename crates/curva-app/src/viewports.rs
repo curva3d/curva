@@ -142,6 +142,10 @@ pub(crate) fn view_label(view: StandardView) -> &'static str {
         StandardView::Front => "ui.view.front",
         StandardView::Right => "ui.view.right",
         StandardView::Perspective => "ui.view.perspective",
+        StandardView::Bottom => "ui.view.bottom",
+        StandardView::Left => "ui.view.left",
+        StandardView::Back => "ui.view.back",
+        StandardView::TwoPoint => "ui.view.two_point",
     }
 }
 

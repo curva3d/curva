@@ -13,6 +13,14 @@ once by commenting on their first pull request; signatures go to the `cla-signat
 
 ## Features stream — 19 November 2026
 
+- **Big drawings open 2 to 8 times faster** (#379, #317 part 4; the owner's choice, decision 0037).
+  Curva carries a patched copy of solidcore's `solidcore-ops` that gives each thread its own engine,
+  so opened solids, plan cuts and hidden lines are worked on every core. The owner's largest test
+  file opens in 377 s instead of 902 s, the 626 MB one in 22 s instead of 189 s, with exactly the same
+  objects. Offered upstream as tangency-labs/solidcore#3358; the copy is deleted once solidcore has
+  the fix and the tests and timings pass on it (#381). Timings in `docs/performance.md`.
+- **Meshes and SubDs stretch, deform and sit in stretched blocks** (#376): ScaleNU, cage edits,
+  the gumball's stretch, the deforming commands and block placements now move their points.
 - **SketchUp files open** (the owner's choice: OpenSKP's pure-Rust reader, MIT, taken from its
   repository at a fixed commit; SketchUp's own toolkit may not ship with Curva). New crate
   `curva-skp`; `Open` and `Import` read `.skp`. Faces come in as meshes (one per tag and material in

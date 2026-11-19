@@ -6,6 +6,12 @@
 ## 19 November 2026
 
 **Done**
+- **The camera offers all the views the new view picker shows** (#356, for the features stream's
+  picker). Bottom, Left and Back views as Rhino's, each with its own drawing plane; a two-point
+  perspective that stays level, so upright lines stay upright and parallel on screen (dragging up
+  and down does not tilt it); and an adjustable lens, read and set in millimetres or as Rhino's
+  angle of view (50 mm is 39.6°), kept when the view is turned. Saved views do not keep the lens
+  yet: that needs a field in the saved view, which is the features stream's.
 - **Edits in a drawing full of blocks no longer pause for a second or more.** After any change,
   every block was worked out again; now an unchanged block keeps what it drew while its
   definition and the settings it reads stay the same. On the owner's 3.6 MB drawing, each edit
