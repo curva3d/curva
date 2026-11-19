@@ -2,7 +2,6 @@
 # split. An entry may only shrink; remove it once it is within the limit. Never add to it.
 file crates/curva-3dm/src/model.rs 822
 file crates/curva-3dm/src/read/mod.rs 824
-file crates/curva-commands/src/commands/mod.rs 924
 file crates/curva-dxf/src/lib.rs 1354
 file crates/curva-kernel/src/hidden.rs 816
 fn crates/curva-3dm/src/import/surfaces.rs nurbs_surface 85
