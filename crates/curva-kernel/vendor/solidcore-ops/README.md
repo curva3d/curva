@@ -7,6 +7,6 @@ see `LICENSE` and `NOTICE`) at commit `9342f32`, with one change, kept in `curva
   of waiting for the one kernel the whole program shares. Curva uses it to build solids, cut plans
   and find hidden lines on every core at once. Files changed carry a "Changed by Curva" line.
 
-Nothing else is changed. The change was offered to solidcore's authors; **when solidcore has it,
+Nothing else is changed. The change was offered to solidcore's authors (tangency-labs/solidcore#3358); **when solidcore has it,
 Curva goes back to the released engine and deletes this folder**, after its tests and timings pass
 on it (decision 0037).

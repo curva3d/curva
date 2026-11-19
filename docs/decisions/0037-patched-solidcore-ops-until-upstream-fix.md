@@ -15,9 +15,9 @@ Curva calls it through `curva_kernel::parallel::each_in_parallel`, which today b
 an opened `.3dm`, cuts each solid for a plan (Make2D) and finds each solid's lines for hidden-line
 drawings, on every core at once.
 
-The change was offered to solidcore's authors as an issue on tangency-labs/solidcore, as the owner
+The change was offered to solidcore's authors in [tangency-labs/solidcore#3358](https://github.com/tangency-labs/solidcore/issues/3358), as the owner
 asked. **When solidcore has the fix, Curva goes back to the released crate and deletes the copy**,
-once Curva's tests pass on it and the timings in `docs/performance.md` hold, so Curva carries as
+once Curva's tests pass on it and the timings hold (steps in issue #381), so Curva carries as
 little custom code as possible.
 
 **Why.** The owner needs drawings to open quickly, since architects will open them all the time.

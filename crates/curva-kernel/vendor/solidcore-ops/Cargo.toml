@@ -1,7 +1,7 @@
 # A copy of solidcore-ops from tangency-labs/solidcore at commit 9342f32c0770aeaa570dba596e4ed2b7fe327849,
 # with one change (curva.patch): `session::with_own_kernel`, so independent work on several
 # threads no longer waits for the one process kernel. Delete this copy once solidcore has the fix
-# and Curva's tests and timings pass on it (decision 0037).
+# and Curva's tests and timings pass on it (decision 0037, tangency-labs/solidcore#3358).
 [package]
 name = "solidcore-ops"
 description = "The modelling operations applications built on solidcore call: each a sequence of kernel calls, converting through solidcore-convert, computing no geometry of its own"
