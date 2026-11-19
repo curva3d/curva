@@ -1969,6 +1969,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "curva-size-check"
+version = "0.4.3"
+
+[[package]]
 name = "curva-skp"
 version = "0.4.3"
 dependencies = [

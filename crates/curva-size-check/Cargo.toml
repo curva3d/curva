@@ -1,0 +1,11 @@
+[package]
+name = "curva-size-check"
+description = "The size limits of AGENTS.md checked by a test: source files under 800 lines, functions under 80."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
