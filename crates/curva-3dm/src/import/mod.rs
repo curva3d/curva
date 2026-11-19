@@ -24,6 +24,7 @@ pub(crate) use breps::*;
 #[allow(clippy::wildcard_imports)]
 use curves::*;
 use objects::bring_in;
+pub use objects::ZERO_LENGTH;
 use surfaces::*;
 use views::*;
 

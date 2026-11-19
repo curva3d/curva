@@ -25,6 +25,24 @@ fn every_example_file_opens_with_a_report() {
 }
 
 #[test]
+fn a_line_of_zero_length_is_listed_as_drawing_nothing() {
+    let path = format!("{}/tests/files/v7_my_curves.3dm", env!("CARGO_MANIFEST_DIR"));
+    let mut model = curva_3dm::read::read(&std::fs::read(path).unwrap()).unwrap();
+    let count = model.objects.len();
+    let at = [5.0, 6.0, 0.0];
+    model.objects[0].geometry = curva_3dm::model::Geometry::Curve(curva_3dm::model::Curve::Line {
+        ends: [at, at],
+        domain: [0.0, 1.0],
+    });
+    let (doc, report) = curva_3dm::import::open(&model);
+    assert_eq!(
+        report.skipped,
+        vec![(curva_3dm::import::ZERO_LENGTH.to_owned(), 1)]
+    );
+    assert_eq!(doc.state().objects.len(), count - 1);
+}
+
+#[test]
 fn curves_come_in_with_their_names_layers_and_sizes() {
     let (doc, report) = open("v7_my_curves.3dm");
     assert!(report.skipped.is_empty(), "{}", report.summary());
