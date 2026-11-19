@@ -1094,3 +1094,7 @@ titleblock.revision = REVISION
 prompt.titleblock.project_new = Project
 prompt.titleblock.title_new = Drawing title
 prompt.titleblock.drawn_by_new = Drawn by
+prompt.mesh.objects = Select surfaces, polysurfaces or SubDs to mesh, then press Enter
+done.mesh = Made {0} meshes, {1} faces in all.
+error.mesh_nothing = There are no surfaces, polysurfaces or SubDs to mesh.
+prompt.mesh.density = Polygon density, from 0 (fewer) to 1 (more)

@@ -7,6 +7,7 @@ mod arguments;
 mod curves;
 mod files;
 mod layouts;
+pub mod mesh;
 mod modify;
 mod organise;
 mod select;
@@ -122,7 +123,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 276] = [
+pub static COMMANDS: [CommandDef; 277] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -437,6 +438,7 @@ pub static COMMANDS: [CommandDef; 276] = [
     recipe!("RebuildUV", [], true, rebuild_uv::RebuildUv),
     recipe!("CurvatureGraph", [], true, curvature_graph::CurvatureGraph),
     recipe!("Cap", [], true, cap::Cap),
+    recipe!("Mesh", [], true, mesh::mesh_command::MeshCommand),
     recipe!(
         "ExtractIsocurve",
         [],
@@ -1030,7 +1032,8 @@ mod tests {
     ];
 
     /// Commands whose preview needs its own setup, tested in their own files.
-    const PREVIEW_TESTED_ELSEWHERE: [&str; 76] = [
+    const PREVIEW_TESTED_ELSEWHERE: [&str; 77] = [
+        "Mesh",
         "DimCurveLength",
         "DimArea",
         "DimVolume",
