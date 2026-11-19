@@ -75,6 +75,7 @@ mod tests {
             distance: 10.0,
             axes: None,
             parallel: true,
+            lens: None,
         });
         doc
     }

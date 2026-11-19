@@ -24,6 +24,10 @@ pub struct SavedView {
     pub axes: Option<[Point; 3]>,
     /// Whether it has no perspective.
     pub parallel: bool,
+    /// A perspective's lens length in millimetres on 35 mm film, as Rhino gives it; `None` for a
+    /// view saved before lenses were kept, or with the standard lens.
+    #[serde(default)]
+    pub lens: Option<f64>,
 }
 
 impl Document {
@@ -115,6 +119,17 @@ impl Document {
 mod tests {
     use super::*;
 
+    #[test]
+    fn a_view_saved_before_lenses_were_kept_opens_with_none() {
+        let old = r#"{"name":"A","kind":"Top","target":[0,0,0],"yaw":0,"pitch":0,"distance":5,"axes":null,"parallel":true}"#;
+        let view: SavedView = serde_json::from_str(old).unwrap();
+        assert_eq!(view.lens, None);
+        let mut with = view.clone();
+        with.lens = Some(28.0);
+        let back: SavedView = serde_json::from_str(&serde_json::to_string(&with).unwrap()).unwrap();
+        assert_eq!(back.lens, Some(28.0));
+    }
+
     fn view(name: &str, distance: f64) -> SavedView {
         SavedView {
             name: name.to_owned(),
@@ -125,6 +140,7 @@ mod tests {
             distance,
             axes: None,
             parallel: false,
+            lens: None,
         }
     }
 
