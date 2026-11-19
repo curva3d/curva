@@ -512,6 +512,8 @@ impl Camera {
             distance: self.distance,
             axes: self.fixed_axes,
             parallel: self.parallel,
+            // Kept by the display stream once the camera has a lens (#382).
+            lens: None,
         }
     }
 

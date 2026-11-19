@@ -325,6 +325,7 @@ fn named_views_and_construction_planes_come_back() {
             distance: 150.0,
             axes: None,
             parallel: false,
+            lens: None,
         },
         SavedView {
             name: "Plan".to_owned(),
@@ -335,6 +336,7 @@ fn named_views_and_construction_planes_come_back() {
             distance: 330.0,
             axes: Some([[0.0, 0.0, -1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]),
             parallel: true,
+            lens: None,
         },
         SavedView {
             name: "Elevation".to_owned(),
@@ -345,6 +347,7 @@ fn named_views_and_construction_planes_come_back() {
             distance: 80.0,
             axes: Some([[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]),
             parallel: true,
+            lens: None,
         },
     ];
     for v in &views {
