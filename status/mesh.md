@@ -9,6 +9,21 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## 19 November 2026 (later)
+
+**Mesh panel, part 1: the settings, and the `Mesh` command** (owner: mesh panel first):
+- **One set of mesh settings** (`curva_mesh::MeshSettings`) for `Mesh` and STL/OBJ/PLY export. It
+  holds the density slider, Rhino's Coarse/Default/Smooth presets (Smooth is Rhino's density 0.8
+  and 20°, measured in Rhino 8), a maximum angle and a maximum distance, and the SubD level.
+  The last settings used are remembered, and export uses them.
+- **`Mesh`** (new): choose surfaces, solids or SubDs, then type a density (Enter keeps the last).
+  `MaxAngle`, `MaxDistance` and `SubDLevel` are options. The preview shows the mesh's edges, and
+  meshes of surfaces and solids follow their source with History.
+- **The panel itself** needs a step in the command framework that opens it: asked of the features
+  stream in #387. The numbers under the slider (faces, how far facets stray, file size) are
+  already worked out by `mesh_objects` and `file_bytes`. Rhino's other detailed controls wait on
+  the kernel's mesher.
+
 ## 19 November 2026
 
 **Meshes and SubDs are in the document** (features stream, #266, PR #352), so the commands and

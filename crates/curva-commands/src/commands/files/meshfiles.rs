@@ -1,15 +1,14 @@
 //! STL, OBJ and PLY in `Import`, `Export` and `ExportSelected` (spec `docs/specs/mesh-and-subd.md`
 //! §5, `export-formats.md` §1), through `curva-meshfiles`. Coming in, each mesh in the file is a
 //! mesh object, named as in the file. Going out, meshes are written as they are, SubDs as their
-//! smooth surface, and surfaces and solids meshed at the viewport's density until the mesh panel
-//! comes (`export-formats.md` §2). These formats carry no unit: the numbers are in the model's.
+//! smooth surface, and surfaces and solids meshed with the mesh settings last used by `Mesh` or
+//! the mesh panel (`export-formats.md` §2). These formats carry no unit: the numbers are in the
+//! model's.
 
+use crate::commands::mesh::meshing::{mesh_objects, remembered_settings};
 use curva_document::{Document, Shape};
 use curva_mesh::Mesh;
 use std::path::Path;
-
-/// The SubD levels a SubD is smoothed by when written to a mesh file: Rhino's default.
-const SUBD_LEVELS: u8 = 4;
 
 /// A mesh file format Curva reads and writes itself.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -94,42 +93,46 @@ pub fn export_mesh_file(
     path: &Path,
     format: MeshFormat,
 ) -> Result<String, String> {
-    let mut meshes: Vec<(String, Mesh)> = Vec::new();
-    let mut other = 0usize;
-    for object in &doc.state().objects {
-        if only.is_some_and(|ids| !ids.contains(&object.id))
-            || (only.is_none() && (object.space.is_some() || object.hidden))
-        {
-            continue;
-        }
-        let mesh = match &object.shape {
-            Shape::Mesh(mesh) => Some(mesh.clone()),
-            Shape::SubD(subd) => subd.surface(SUBD_LEVELS).ok(),
-            Shape::Body(body) => Mesh::from_body(body).ok(),
-            Shape::Curve(_) | Shape::Instance(_) | Shape::Annotation(_) => None,
-        };
-        match mesh {
-            Some(mesh) if mesh.face_count() > 0 => meshes.push((object.name.clone(), mesh)),
-            _ => other += 1,
-        }
-    }
+    let ids = exported_ids(doc, only);
+    let (meshes, numbers) = mesh_objects(doc, &ids, &remembered_settings(doc));
     if meshes.is_empty() {
         return Err("there are no meshes, SubDs, surfaces or solids to write".to_owned());
     }
-    let list: Vec<(&str, &Mesh)> = meshes.iter().map(|(n, m)| (n.as_str(), m)).collect();
-    let bytes = match format {
-        MeshFormat::Stl => curva_meshfiles::stl::write_binary(&list),
-        MeshFormat::Obj => curva_meshfiles::obj::write(&list).into_bytes(),
-        MeshFormat::Ply => curva_meshfiles::ply::write_binary(&list),
-    };
+    let bytes = file_bytes(&meshes, format);
     let partial = path.with_extension("partial");
     std::fs::write(&partial, bytes).map_err(|e| e.to_string())?;
     std::fs::rename(&partial, path).map_err(|e| e.to_string())?;
+    let other = numbers.left_out;
     Ok(if other == 0 {
         format!("{} meshes", meshes.len())
     } else {
         format!("{} meshes; {other} other objects left out", meshes.len())
     })
+}
+
+/// The objects an export writes: those in `only`, or every visible one in the model's space.
+#[must_use]
+pub fn exported_ids(doc: &Document, only: Option<&[u64]>) -> Vec<u64> {
+    doc.state()
+        .objects
+        .iter()
+        .filter(|o| match only {
+            Some(ids) => ids.contains(&o.id),
+            None => o.space.is_none() && !o.hidden,
+        })
+        .map(|o| o.id)
+        .collect()
+}
+
+/// Meshes as a file's bytes, for writing and for the mesh panel's file size.
+#[must_use]
+pub fn file_bytes(meshes: &[(u64, String, Mesh)], format: MeshFormat) -> Vec<u8> {
+    let list: Vec<(&str, &Mesh)> = meshes.iter().map(|(_, n, m)| (n.as_str(), m)).collect();
+    match format {
+        MeshFormat::Stl => curva_meshfiles::stl::write_binary(&list),
+        MeshFormat::Obj => curva_meshfiles::obj::write(&list).into_bytes(),
+        MeshFormat::Ply => curva_meshfiles::ply::write_binary(&list),
+    }
 }
 
 #[cfg(test)]
@@ -189,6 +192,23 @@ mod tests {
         let mesh = back.state().objects[0].shape.mesh().unwrap();
         assert!((mesh.volume().unwrap() - 1000.0).abs() < 1e-6);
         std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn export_uses_the_density_last_given_to_mesh() {
+        let mut doc = Document::default();
+        doc.add_body(Body::sphere([0.0; 3], 5.0).unwrap());
+        let faces = |doc: &Document, name: &str| {
+            let path = scratch(name);
+            export_mesh_file(doc, None, &path, MeshFormat::Stl).unwrap();
+            let mut back = Document::default();
+            import_mesh_file(&mut back, &path, MeshFormat::Stl).unwrap();
+            std::fs::remove_file(&path).ok();
+            back.state().objects[0].shape.mesh().unwrap().face_count()
+        };
+        let before = faces(&doc, "before.stl");
+        doc.remember("mesh.density", 0.9);
+        assert!(faces(&doc, "after.stl") > before);
     }
 
     #[test]
