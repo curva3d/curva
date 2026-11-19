@@ -1,5 +1,6 @@
-//! `Open`: replaces the model with one from a file.
+//! `Open`: replaces the model with one from a file, Curva's own or another program's.
 
+use super::meshfiles::{MeshFormat, open_mesh_file};
 use crate::commands::unexpected;
 use crate::{Answer, Command, Message, Request, Step};
 use curva_document::Document;
@@ -65,6 +66,24 @@ impl Command for Open {
                         Step::Done(Some(Message::with(
                             "done.open_3dm",
                             vec![text.clone(), report.summary()],
+                        )))
+                    }
+                    Err(error) => Step::Failed(Message::with("error.file", vec![error])),
+                }
+            }
+            Some(Answer::Path(text))
+                if MeshFormat::of(Path::new(text.trim().trim_matches('"'))).is_some() =>
+            {
+                let path = Path::new(text.trim().trim_matches('"'));
+                let Some(format) = MeshFormat::of(path) else {
+                    return unexpected();
+                };
+                match open_mesh_file(path, format) {
+                    Ok((opened, summary)) => {
+                        *doc = opened;
+                        Step::Done(Some(Message::with(
+                            "done.open_3dm",
+                            vec![text.clone(), summary],
                         )))
                     }
                     Err(error) => Step::Failed(Message::with("error.file", vec![error])),
