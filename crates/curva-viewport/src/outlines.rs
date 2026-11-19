@@ -32,6 +32,9 @@ pub(crate) struct Faces {
     /// The lowest and highest corners of the placed mesh, or a box around them, so a line of
     /// sight can skip it quickly.
     pub(crate) around: (Point, Point),
+    /// For a mesh with vertex colours, the colour at each of `mesh`'s positions, shown instead
+    /// of its layer's colour (#267).
+    pub(crate) colours: Option<std::sync::Arc<Vec<[f32; 3]>>>,
 }
 
 impl Faces {
@@ -152,6 +155,23 @@ pub(crate) fn has_fields(shape: &Shape) -> bool {
         Shape::Annotation(curva_document::annotation::Annotation::Dot(_)) => false,
         Shape::Annotation(_) => true,
         _ => false,
+    }
+}
+
+/// The curves an object draws as, each with its number among a body's edges, if it is one.
+type Pieces = Vec<(Curve, Option<usize>)>;
+
+/// What an object draws, each with its mesh-cache key: itself, or for an instance its definition's
+/// objects, placed, all under its own id.
+fn parts_of(state: &State, object: &Object) -> Vec<(Shape, u64)> {
+    match &object.shape {
+        Shape::Instance(instance) => state
+            .instance_shapes(instance)
+            .into_iter()
+            .enumerate()
+            .map(|(index, (shape, _))| (shape, INSTANCE_KEYS + (object.id << 12) + index as u64))
+            .collect(),
+        shape => vec![(shape.clone(), object.id)],
     }
 }
 
@@ -443,19 +463,7 @@ impl Outlines {
             dashes: object.linetype.resolved(layer).pattern(),
             coarse: false,
         };
-        // An instance draws its definition's objects, placed, all under its own id.
-        let parts: Vec<(Shape, u64)> = match &object.shape {
-            Shape::Instance(instance) => state
-                .instance_shapes(instance)
-                .into_iter()
-                .enumerate()
-                .map(|(index, (shape, _))| {
-                    (shape, INSTANCE_KEYS + (object.id << 12) + index as u64)
-                })
-                .collect(),
-            shape => vec![(shape.clone(), object.id)],
-        };
-        for (shape, key) in &parts {
+        for (shape, key) in &parts_of(state, object) {
             // A body is meshed once: its triangles for shading, and its edges, each listed
             // under the body's id, for wireframe, picking and snapping.
             let mut kind = PickKind::Curve;
@@ -471,23 +479,12 @@ impl Outlines {
                     vec![(curve.clone(), None)]
                 }
                 Shape::Body(body) => {
-                    let Some((mesh, solid)) = cache.mesh(*key, body) else {
+                    let Some((edges, body_kind, seams)) =
+                        outlines.body_pieces(object.id, *key, body, look, cache)
+                    else {
                         continue;
                     };
-                    kind = if solid {
-                        PickKind::Solid
-                    } else {
-                        PickKind::Surface
-                    };
-                    seam_edges = mesh
-                        .edge_ids
-                        .iter()
-                        .zip(&mesh.seams)
-                        .filter_map(|(id, seam)| seam.then_some(*id))
-                        .collect();
-                    let placement = body.placement();
-                    let edges = edge_curves(&mesh, &placement);
-                    outlines.push_faces(object.id, look, mesh, Some(placement));
+                    (kind, seam_edges) = (body_kind, seams);
                     edges
                 }
                 // Instances inside definitions are opened before this.
@@ -495,18 +492,10 @@ impl Outlines {
                 // A mesh shades from its own triangles, placed already, and draws its wires,
                 // which views showing faces leave out as Rhino does (#267).
                 Shape::Mesh(mesh) => {
-                    kind = if mesh.is_closed() {
-                        PickKind::Solid
-                    } else {
-                        PickKind::Surface
-                    };
                     wires = true;
-                    let drawn = std::sync::Arc::new(crate::meshes::body_mesh(mesh));
-                    outlines.push_faces(object.id, look, drawn, Some(IN_PLACE));
-                    curva_document::shape::mesh_edges(mesh)
-                        .into_iter()
-                        .map(|line| (line, None))
-                        .collect()
+                    let (lines, mesh_kind) = outlines.mesh_pieces(object.id, mesh, look);
+                    kind = mesh_kind;
+                    lines
                 }
                 // SubDs are drawn by the display stream's #324.
                 Shape::SubD(_) => continue,
@@ -529,6 +518,54 @@ impl Outlines {
         outlines
     }
 
+    /// A body's faces, as meshed once, and its edges as pieces, with its kind and its seams by
+    /// edge number; `None` if it could not be meshed.
+    fn body_pieces(
+        &mut self,
+        id: u64,
+        key: u64,
+        body: &curva_kernel::Body,
+        look: Look,
+        cache: &mut MeshCache,
+    ) -> Option<(Pieces, PickKind, Vec<usize>)> {
+        let (mesh, solid) = cache.mesh(key, body)?;
+        let kind = if solid {
+            PickKind::Solid
+        } else {
+            PickKind::Surface
+        };
+        let seams = mesh
+            .edge_ids
+            .iter()
+            .zip(&mesh.seams)
+            .filter_map(|(id, seam)| seam.then_some(*id))
+            .collect();
+        let placement = body.placement();
+        let edges = edge_curves(&mesh, &placement);
+        self.push_faces(id, look, mesh, Some(placement));
+        Some((edges, kind, seams))
+    }
+
+    /// A mesh's faces from its own triangles, placed already, with its vertex colours if it has
+    /// them, and its wires as pieces, with its kind (#267).
+    fn mesh_pieces(&mut self, id: u64, mesh: &curva_mesh::Mesh, look: Look) -> (Pieces, PickKind) {
+        let kind = if mesh.is_closed() {
+            PickKind::Solid
+        } else {
+            PickKind::Surface
+        };
+        let (drawn, colours) = crate::meshes::body_mesh(mesh);
+        self.push_faces(id, look, std::sync::Arc::new(drawn), Some(IN_PLACE));
+        if let (Some(colours), Some(faces)) = (colours, self.faces.last_mut()) {
+            faces.colours = Some(std::sync::Arc::new(colours));
+        }
+        let lines = curva_document::shape::mesh_edges(mesh)
+            .into_iter()
+            .map(|line| (line, None))
+            .collect();
+        (lines, kind)
+    }
+
     /// A body's or annotation's filled faces, for shading: a body's `mesh` as made, shared
     /// with its copies, and where this copy sits.
     fn push_faces(
@@ -546,6 +583,7 @@ impl Outlines {
             around: placement.as_ref().map_or(made, |m| placed_box(m, made)),
             mesh,
             placement,
+            colours: None,
         });
     }
 

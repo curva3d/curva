@@ -294,6 +294,9 @@ pub struct PlacedShape {
     pub mesh: std::sync::Arc<curva_kernel::BodyMesh>,
     /// Where this copy sits, for points written as rows ([`curva_kernel::Body::placement`]).
     pub placement: [[f64; 4]; 4],
+    /// For a mesh with vertex colours, the colour at each of `mesh`'s positions; `colour` is
+    /// then white, so the faces show these as they are (#267).
+    pub colours: Option<std::sync::Arc<Vec<[f32; 3]>>>,
 }
 
 impl SceneParts {
@@ -362,11 +365,14 @@ fn shapes_of(
                 object: numbers.get(&faces.id).copied().unwrap_or(NO_OBJECT),
                 colour: if faces.locked {
                     LOCKED_COLOUR
+                } else if faces.colours.is_some() {
+                    [1.0; 3]
                 } else {
                     faces.colour
                 },
                 mesh: std::sync::Arc::clone(mesh),
                 placement: placed_from(placement, origin),
+                colours: faces.colours.clone(),
             })
         })
         .collect()
@@ -527,6 +533,11 @@ pub(crate) fn faces_of(
         } else {
             faces.colour
         };
+        // A mesh's own colours show unless it is selected or locked.
+        let own = faces
+            .colours
+            .as_deref()
+            .filter(|_| !selected.contains(&faces.id) && !faces.locked);
         let object = numbers
             .and_then(|numbers| numbers.get(&faces.id))
             .copied()
@@ -540,7 +551,10 @@ pub(crate) fn faces_of(
                 out.push(MeshVertex {
                     position: narrow_from(position, origin),
                     normal: narrow(normal),
-                    colour,
+                    colour: own
+                        .and_then(|own| own.get(corner as usize))
+                        .copied()
+                        .unwrap_or(colour),
                     object,
                 });
             }
