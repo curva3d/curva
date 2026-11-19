@@ -12,3 +12,8 @@ status page, so two sessions never edit the same file:
   [`status/mesh.md`](status/mesh.md).
 
 Read all three before starting work; write only yours. Who owns what is in `AGENTS.md`.
+
+**Next release: 0.4.4.** Everything in it is listed in
+[`docs/specs/release-0.4.4.md`](docs/specs/release-0.4.4.md) (decision 0038) and tracked in the
+GitHub milestone **0.4.4**. Work on those items first; new work goes into the next update unless
+the owner adds it.
