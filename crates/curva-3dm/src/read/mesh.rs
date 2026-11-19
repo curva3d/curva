@@ -16,6 +16,22 @@ use curva_mesh::{Attribute, Mesh, Point};
 /// # Errors
 /// When the record is damaged or of a version Curva does not read (1.x, from Rhino 1 and 2).
 pub(crate) fn mesh(r: &mut Reader) -> Result<Mesh> {
+    let (minor, vcount, quads) = header_and_faces(r)?;
+    let arrays = arrays(r, vcount)?;
+    let (ngons, doubles) = later_versions(r, minor, vcount)?;
+    // Version 3.8's double-precision box after this is worked out again too.
+    let points = chosen_points(&arrays.points, doubles, vcount);
+    let faces = faces(&quads, &ngons, vcount);
+    let mesh = Mesh::new(points, &faces).map_err(|e| bad(e.to_string()))?;
+    with_attributes(mesh, &arrays, vcount)
+}
+
+/// An n-gon: its outline and the triangles it is kept as.
+type Ngon = (Vec<u32>, Vec<u32>);
+
+/// The version's minor number, the point count and the faces as four point numbers each, after
+/// the counts, boxes and settings that are worked out again.
+fn header_and_faces(r: &mut Reader) -> Result<(u32, usize, Vec<[u32; 4]>)> {
     let (major, minor) = r.chunk_version()?;
     if major != 3 {
         return Err(bad(format!("a mesh of version {major}.{minor}")));
@@ -46,7 +62,19 @@ pub(crate) fn mesh(r: &mut Reader) -> Result<Mesh> {
         }
         quads.push(vi);
     }
+    Ok((u32::from(minor), vcount, quads))
+}
 
+/// The per-point arrays, as stored.
+struct Arrays {
+    points: Vec<f32>,
+    normals: Vec<f32>,
+    texture: Vec<f32>,
+    colours: Vec<u8>,
+}
+
+/// The points, normals, texture coordinates, curvatures and colours, as compressed arrays.
+fn arrays(r: &mut Reader, vcount: usize) -> Result<Arrays> {
     let floats = |bytes: &[u8], each: usize| -> Result<Vec<f32>> {
         if !bytes.is_empty() && bytes.len() != vcount * each * 4 {
             return Err(bad("a mesh array of the wrong size"));
@@ -69,8 +97,17 @@ pub(crate) fn mesh(r: &mut Reader) -> Result<Mesh> {
     if points_f.len() != vcount * 3 {
         return Err(bad("a mesh without its points"));
     }
+    Ok(Arrays {
+        points: points_f,
+        normals: normals_f,
+        texture: texture_f,
+        colours: colours_raw,
+    })
+}
 
-    let mut ngons: Vec<(Vec<u32>, Vec<u32>)> = Vec::new();
+/// What later versions add: the n-gons and the points at double precision.
+fn later_versions(r: &mut Reader, minor: u32, vcount: usize) -> Result<(Vec<Ngon>, Vec<Point>)> {
+    let mut ngons: Vec<Ngon> = Vec::new();
     let mut doubles: Vec<Point> = Vec::new();
     if minor >= 2 {
         let _packed_rotate = r.i32()?;
@@ -88,6 +125,18 @@ pub(crate) fn mesh(r: &mut Reader) -> Result<Mesh> {
         r.skip(3)?; // manifold, oriented and solid flags, all worked out again
     }
     if minor >= 6 && r.bool()? {
+        ngons = read_ngons(r)?;
+    }
+    if minor >= 7 && r.bool()? {
+        doubles = read_doubles(r, vcount)?;
+    }
+    Ok((ngons, doubles))
+}
+
+/// The n-gons, each its outline and its triangles.
+fn read_ngons(r: &mut Reader) -> Result<Vec<Ngon>> {
+    let mut ngons = Vec::new();
+    {
         let (_, mut body) = r.anonymous()?;
         let count = body.u32()?;
         for _ in 0..count {
@@ -104,7 +153,13 @@ pub(crate) fn mesh(r: &mut Reader) -> Result<Mesh> {
             ngons.push((outline, faces));
         }
     }
-    if minor >= 7 && r.bool()? {
+    Ok(ngons)
+}
+
+/// The points at double precision, when there is one for each point.
+fn read_doubles(r: &mut Reader, vcount: usize) -> Result<Vec<Point>> {
+    let mut doubles = Vec::new();
+    {
         let (_, mut body) = r.anonymous()?;
         let count = body.u32()? as usize;
         if count > 0 {
@@ -125,10 +180,12 @@ pub(crate) fn mesh(r: &mut Reader) -> Result<Mesh> {
             }
         }
     }
-    // Version 3.8's double-precision box after this is worked out again too.
+    Ok(doubles)
+}
 
-    // The double-precision points where Rhino kept them and they agree with the single-precision
-    // ones (as openNURBS checks); otherwise the single-precision points as the decimals they show.
+/// The double-precision points where Rhino kept them and they agree with the single-precision
+/// ones (as openNURBS checks); otherwise the single-precision points as the decimals they show.
+fn chosen_points(points_f: &[f32], doubles: Vec<Point>, vcount: usize) -> Vec<Point> {
     let singles: Vec<Point> = points_f
         .as_chunks::<3>()
         .0
@@ -145,9 +202,11 @@ pub(crate) fn mesh(r: &mut Reader) -> Result<Mesh> {
                 let off = (0..3).fold(0.0_f64, |o, i| o.max(f64::from((d[i] as f32 - f[i]).abs())));
                 off <= m * 1e-6
             });
-    let points = if agree { doubles } else { singles };
+    if agree { doubles } else { singles }
+}
 
-    // Faces, with each n-gon's triangles replaced by its outline at its first triangle.
+/// Faces, with each n-gon's triangles replaced by its outline at its first triangle.
+fn faces(quads: &[[u32; 4]], ngons: &[Ngon], vcount: usize) -> Vec<Vec<u32>> {
     let mut in_ngon: Vec<Option<usize>> = vec![None; quads.len()];
     for (n, (outline, faces)) in ngons.iter().enumerate() {
         if outline.len() >= 3 && faces.iter().all(|&f| (f as usize) < quads.len()) {
@@ -176,10 +235,14 @@ pub(crate) fn mesh(r: &mut Reader) -> Result<Mesh> {
             faces.push(face);
         }
     }
+    faces
+}
 
-    let mut mesh = Mesh::new(points, &faces).map_err(|e| bad(e.to_string()))?;
-    if normals_f.len() == vcount * 3 && vcount > 0 {
-        let normals = normals_f
+/// The mesh with the normals, texture coordinates and colours Rhino kept for each point.
+fn with_attributes(mut mesh: Mesh, arrays: &Arrays, vcount: usize) -> Result<Mesh> {
+    if arrays.normals.len() == vcount * 3 && vcount > 0 {
+        let normals = arrays
+            .normals
             .as_chunks::<3>()
             .0
             .iter()
@@ -189,8 +252,9 @@ pub(crate) fn mesh(r: &mut Reader) -> Result<Mesh> {
             .with_normals(Attribute::PerVertex(normals))
             .map_err(|e| bad(e.to_string()))?;
     }
-    if texture_f.len() == vcount * 2 && vcount > 0 {
-        let texture = texture_f
+    if arrays.texture.len() == vcount * 2 && vcount > 0 {
+        let texture = arrays
+            .texture
             .as_chunks::<2>()
             .0
             .iter()
@@ -200,9 +264,10 @@ pub(crate) fn mesh(r: &mut Reader) -> Result<Mesh> {
             .with_texture(Attribute::PerVertex(texture))
             .map_err(|e| bad(e.to_string()))?;
     }
-    if colours_raw.len() == vcount * 4 && vcount > 0 {
+    if arrays.colours.len() == vcount * 4 && vcount > 0 {
         // `ON_Color` is red, green, blue and transparency, a byte each.
-        let colours = colours_raw
+        let colours = arrays
+            .colours
             .as_chunks::<4>()
             .0
             .iter()

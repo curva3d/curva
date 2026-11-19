@@ -25,7 +25,71 @@ pub(crate) fn write_subd(w: &mut Writer, subd: &SubD) {
         return;
     }
     w.u8(1);
-    // Edges in a fixed order, lower point first, with the faces using each and which way.
+    let (edges, edge_number, edge_faces) = edge_table(subd);
+    let ids = Ids {
+        nv: cage.vertex_count(),
+        ne: edges.len(),
+    };
+    let nf = cage.face_count();
+    w.begin_anonymous(0);
+    w.u32(1); // one level: the cage
+    w.u32(count(ids.nv));
+    w.u32(count(ids.ne));
+    w.u32(count(nf));
+    w.f64s(&[1.0, 0.0, 0.0, -1.0, 0.0, 0.0]); // the unused box
+    w.begin_anonymous(1);
+    w.u16(0);
+    w.u8(4);
+    w.u8(4);
+    w.u8(4);
+    let (lo, hi) = cage.bounds().unwrap_or(([1.0, 0.0, 0.0], [-1.0, 0.0, 0.0]));
+    w.f64s(&lo);
+    w.f64s(&hi);
+    for p in [ids.vertex(0), ids.edge(0), ids.face(0), ids.face(nf)] {
+        w.u32(p);
+    }
+    let around = rings(subd, &edges, &edge_number, &edge_faces);
+    write_vertices(w, subd, &edges, &around, &ids);
+    write_edges(w, subd, &edges, &edge_faces, &around, &ids);
+    write_faces(w, subd, &edge_number, &ids);
+    w.u8(0); // no saved surface mesh
+    w.end();
+    w.end();
+}
+
+/// Edges with their number by points, and the faces using each and which way.
+type EdgeTable = (
+    Vec<(u32, u32)>,
+    HashMap<(u32, u32), usize>,
+    Vec<Vec<(usize, bool)>>,
+);
+
+/// A count as written.
+fn count(n: usize) -> u32 {
+    u32::try_from(n).unwrap_or(u32::MAX)
+}
+
+/// The archive numbers of points, edges and faces: points first, then edges, then faces.
+struct Ids {
+    nv: usize,
+    ne: usize,
+}
+
+impl Ids {
+    fn vertex(&self, v: usize) -> u32 {
+        count(1 + v)
+    }
+    fn edge(&self, e: usize) -> u32 {
+        count(1 + self.nv + e)
+    }
+    fn face(&self, f: usize) -> u32 {
+        count(1 + self.nv + self.ne + f)
+    }
+}
+
+/// Edges in a fixed order, lower point first, with the faces using each and which way.
+fn edge_table(subd: &SubD) -> EdgeTable {
+    let cage = subd.cage();
     let mut edges: Vec<(u32, u32)> = Vec::new();
     let mut edge_number: HashMap<(u32, u32), usize> = HashMap::new();
     let mut edge_faces: Vec<Vec<(usize, bool)>> = Vec::new();
@@ -41,33 +105,19 @@ pub(crate) fn write_subd(w: &mut Writer, subd: &SubD) {
             edge_faces[e].push((f, a > b));
         }
     }
-    let (nv, ne, nf) = (cage.vertex_count(), edges.len(), cage.face_count());
-    let count = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
-    let vertex_id = |v: usize| count(1 + v);
-    let edge_id = |e: usize| count(1 + nv + e);
-    let face_id = |f: usize| count(1 + nv + ne + f);
+    (edges, edge_number, edge_faces)
+}
 
-    w.begin_anonymous(0);
-    w.u32(1); // one level: the cage
-    w.u32(count(nv));
-    w.u32(count(ne));
-    w.u32(count(nf));
-    w.f64s(&[1.0, 0.0, 0.0, -1.0, 0.0, 0.0]); // the unused box
-    w.begin_anonymous(1);
-    w.u16(0);
-    w.u8(4);
-    w.u8(4);
-    w.u8(4);
-    let (lo, hi) = cage.bounds().unwrap_or(([1.0, 0.0, 0.0], [-1.0, 0.0, 0.0]));
-    w.f64s(&lo);
-    w.f64s(&hi);
-    for p in [vertex_id(0), edge_id(0), face_id(0), face_id(nf)] {
-        w.u32(p);
-    }
-
-    let around = rings(subd, &edges, &edge_number, &edge_faces);
-    for (v, p) in cage.vertices().iter().enumerate() {
-        base(w, vertex_id(v), count(1 + v));
+/// Each point: its tag, place, and the edges and faces around it.
+fn write_vertices(
+    w: &mut Writer,
+    subd: &SubD,
+    edges: &[(u32, u32)],
+    around: &[(Vec<usize>, Vec<usize>)],
+    ids: &Ids,
+) {
+    for (v, p) in subd.cage().vertices().iter().enumerate() {
+        base(w, ids.vertex(v), count(1 + v));
         let tag = match subd.vertex_tag(count(v)) {
             VertexTag::Smooth => 1,
             VertexTag::Crease => 2,
@@ -82,19 +132,30 @@ pub(crate) fn write_subd(w: &mut Writer, subd: &SubD) {
         w.u8(0); // no saved limit points
         w.u16(u16::try_from(ring_edges.len()).unwrap_or(u16::MAX));
         for &e in ring_edges {
-            w.u32(edge_id(e));
+            w.u32(ids.edge(e));
             // Which end of the edge this point is.
             w.u8(u8::from(edges[e].1 == count(v)));
         }
         w.u16(u16::try_from(ring_faces.len()).unwrap_or(u16::MAX));
         for &f in ring_faces {
-            w.u32(face_id(f));
+            w.u32(ids.face(f));
             w.u8(0);
         }
         w.u8(END);
     }
+}
+
+/// Each edge: crease or smooth, its sector coefficients and sharpness, its points and faces.
+fn write_edges(
+    w: &mut Writer,
+    subd: &SubD,
+    edges: &[(u32, u32)],
+    edge_faces: &[Vec<(usize, bool)>],
+    around: &[(Vec<usize>, Vec<usize>)],
+    ids: &Ids,
+) {
     for (e, &(a, b)) in edges.iter().enumerate() {
-        base(w, edge_id(e), count(1 + e));
+        base(w, ids.edge(e), count(1 + e));
         let sharpness = subd.sharpness(a, b);
         let crease = sharpness.is_crease();
         w.u8(if crease { 2 } else { 1 });
@@ -102,7 +163,7 @@ pub(crate) fn write_subd(w: &mut Writer, subd: &SubD) {
         for end in [a, b] {
             let tagged = subd.vertex_tag(end) != VertexTag::Smooth;
             w.f64(if !crease && tagged {
-                coefficient(subd, &edges, &around[end as usize], end, e)
+                coefficient(subd, edges, &around[end as usize], end, e)
             } else {
                 0.0
             });
@@ -110,22 +171,27 @@ pub(crate) fn write_subd(w: &mut Writer, subd: &SubD) {
         w.f64(if crease { 0.0 } else { sharpness.value() });
         w.u16(2);
         for end in [a, b] {
-            w.u32(vertex_id(end as usize));
+            w.u32(ids.vertex(end as usize));
             w.u8(0);
         }
         w.u16(u16::try_from(edge_faces[e].len()).unwrap_or(u16::MAX));
         for &(f, backwards) in &edge_faces[e] {
-            w.u32(face_id(f));
+            w.u32(ids.face(f));
             w.u8(u8::from(backwards));
         }
         w.u8(END);
     }
+}
+
+/// Each face: its edges and which way, its colour and its texture coordinates.
+fn write_faces(w: &mut Writer, subd: &SubD, edge_number: &HashMap<(u32, u32), usize>, ids: &Ids) {
+    let cage = subd.cage();
     let texture = match cage.texture() {
         Attribute::None => None,
         t => Some(t),
     };
-    for f in 0..nf {
-        base(w, face_id(f), count(1 + f));
+    for f in 0..cage.face_count() {
+        base(w, ids.face(f), count(1 + f));
         w.u32(count(1 + f)); // its level-0 face: itself
         w.u32(0);
         let face = cage.face(f);
@@ -133,7 +199,7 @@ pub(crate) fn write_subd(w: &mut Writer, subd: &SubD) {
         w.u16(u16::try_from(face.len()).unwrap_or(u16::MAX));
         for k in 0..face.len() {
             let (a, b) = (face[k], face[(k + 1) % face.len()]);
-            w.u32(edge_id(edge_number[&(a.min(b), a.max(b))]));
+            w.u32(ids.edge(edge_number[&(a.min(b), a.max(b))]));
             w.u8(u8::from(a > b));
         }
         w.u8(0); // no texture packing
@@ -149,33 +215,33 @@ pub(crate) fn write_subd(w: &mut Writer, subd: &SubD) {
         }
         w.u8(0); // no pack id
         match texture {
-            Some(t) => {
-                w.u8(4);
-                let range = cage.face_range(f);
-                let points: Vec<[f64; 3]> = range
-                    .map(|c| {
-                        let uv = t
-                            .at(c, cage.corners()[c] as usize)
-                            .copied()
-                            .unwrap_or_default();
-                        [uv[0], uv[1], 0.0]
-                    })
-                    .collect();
-                w.u32(count(points.len() / 10));
-                for run in points.chunks(10) {
-                    w.u8(u8::try_from(run.len() * 24).unwrap_or(u8::MAX));
-                    for p in run {
-                        w.f64s(p);
-                    }
-                }
-            }
+            Some(t) => write_face_texture(w, cage, f, t),
             None => w.u8(0),
         }
         w.u8(END);
     }
-    w.u8(0); // no saved surface mesh
-    w.end();
-    w.end();
+}
+
+/// A face's texture coordinates, as points in runs of ten.
+fn write_face_texture(w: &mut Writer, cage: &curva_mesh::Mesh, f: usize, t: &Attribute<[f64; 2]>) {
+    w.u8(4);
+    let range = cage.face_range(f);
+    let points: Vec<[f64; 3]> = range
+        .map(|c| {
+            let uv = t
+                .at(c, cage.corners()[c] as usize)
+                .copied()
+                .unwrap_or_default();
+            [uv[0], uv[1], 0.0]
+        })
+        .collect();
+    w.u32(count(points.len() / 10));
+    for run in points.chunks(10) {
+        w.u8(u8::try_from(run.len() * 24).unwrap_or(u8::MAX));
+        for p in run {
+            w.f64s(p);
+        }
+    }
 }
 
 /// The start every component shares: archive number, id, level 0, and no additions.
