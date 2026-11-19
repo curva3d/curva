@@ -406,6 +406,34 @@ crossings and cutting, which go through the geometry engine one call at a time (
 solidcore patch letting each thread run on an engine of its own is written and tested locally, for
 part 4.
 
+### Every core, on an engine of its own (19 November 2026, #317 part 4)
+
+The geometry engine ran one call at a time behind one lock for the whole program. Curva now carries
+a patched copy of the engine's `solidcore-ops` that gives each thread an engine of its own (decision
+0037, offered upstream as tangency-labs/solidcore#3358; the copy is deleted once solidcore has the
+fix, #381). The solids of an opened `.3dm`, each solid's cut in a plan and each solid's lines in a
+hidden-line drawing are now worked on every core.
+
+Opening the owner's ten test `.3dm` files (kept private, named here by size), release build, 12
+cores, against main the same day. Exactly the same objects come in, and the same few are left out:
+
+| File | Before | After |
+|---|---|---|
+| 8 MB | 6.3 s | 2.3 s |
+| 17 MB | 0.5 s | 0.14 s |
+| 44 MB | 49 s | 39 s |
+| 82 MB | 38.5 s | 9.1 s |
+| 118 MB | 7.4 s | 1.5 s |
+| 357 MB | 476 s | 136 s |
+| 483 MB | 358 s | 96 s |
+| 595 MB | 170 s | 57 s |
+| 626 MB | 189 s | 22 s |
+| 838 MB | 902 s | 377 s |
+
+Plans: the test house in 89 ms instead of 184 ms, *Large* in 21 s instead of 30 s. The 44 MB and
+838 MB files still spend most of their time on a few very large single solids, which one core
+builds alone.
+
 ## Snapping searches only what could win (17 November 2026, #130)
 
 Snapping offers the nearest snap within reach of the cursor. A meeting point lies on both its
