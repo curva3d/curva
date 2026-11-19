@@ -232,6 +232,8 @@ fn shells_in(
             forward: !f.reversed,
         });
     }
+    // Closed as the engine's record counts it: each edge used at least twice, so a shell where
+    // three or four faces meet at an edge is closed too.
     let closed: Vec<bool> = shells
         .iter()
         .map(|faces_in| {
@@ -239,7 +241,7 @@ fn shells_in(
             users
                 .iter()
                 .filter(|list| list.iter().any(|f| inside.contains(f)))
-                .all(|list| list.len() == 2)
+                .all(|list| list.len() >= 2)
         })
         .collect();
     let shell_ids: Vec<u32> = (0..shells.len()).map(|s| s as u32).collect();
@@ -409,5 +411,48 @@ mod tolerance_tests {
         // A loose join from Rhino comes in just under the engine's limit of 1.
         assert_eq!(at_least(2.5), LOOSEST);
         const { assert!(LOOSEST < 1.0) };
+    }
+
+    /// Three faces meeting along both their edges, as where three walls of a Rhino solid share an
+    /// edge: the engine counts the shell closed, so it bounds a region of its own. It used to be
+    /// left out ("a closed shell bounds two regions and encloses one").
+    #[test]
+    fn a_shell_whose_edges_three_faces_share_is_closed() {
+        let face = || Face {
+            surface: RecordSurface::Plane {
+                origin: [0.0; 3],
+                u_axis: [1.0, 0.0, 0.0],
+                v_axis: [0.0, 1.0, 0.0],
+            },
+            nurbs: None,
+            domain: [[0.0, 1.0]; 2],
+            loops: vec![Loop::Edges {
+                edges: [0, 1]
+                    .map(|edge| OrientedEdge {
+                        edge,
+                        forward: true,
+                        pcurve: Curve2::Spline {
+                            knots: vec![0.0, 0.0, 1.0, 1.0],
+                            points: vec![[0.0, 0.0], [1.0, 0.0]],
+                        },
+                    })
+                    .to_vec(),
+            }],
+        };
+        let brep = Brep {
+            faces: vec![
+                model::BrepFace {
+                    loops: Vec::new(),
+                    surface: 0,
+                    reversed: false,
+                };
+                3
+            ],
+            ..Brep::default()
+        };
+        let (shells, regions) = shells_in(&brep, &[face(), face(), face()], 2).unwrap();
+        assert_eq!(shells.len(), 1);
+        assert_eq!(regions.len(), 2);
+        assert_eq!(regions[1].shells, vec![0]);
     }
 }
