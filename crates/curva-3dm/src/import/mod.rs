@@ -23,6 +23,7 @@ use annotation::*;
 pub(crate) use breps::*;
 #[allow(clippy::wildcard_imports)]
 use curves::*;
+pub use objects::ZERO_LENGTH;
 use objects::bring_in;
 use surfaces::*;
 use views::*;
