@@ -548,12 +548,7 @@ impl Outlines {
 
     /// A mesh's faces from its own triangles, placed already, with its vertex colours if it has
     /// them, and its wires as pieces, with its kind (#267).
-    fn mesh_pieces(
-        &mut self,
-        id: u64,
-        mesh: &curva_mesh::Mesh,
-        look: Look,
-    ) -> (Pieces, PickKind) {
+    fn mesh_pieces(&mut self, id: u64, mesh: &curva_mesh::Mesh, look: Look) -> (Pieces, PickKind) {
         let kind = if mesh.is_closed() {
             PickKind::Solid
         } else {
