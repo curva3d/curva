@@ -19,13 +19,14 @@ mod simplify;
 mod snap;
 mod styles;
 mod timer;
+mod views;
 
 #[cfg(test)]
 use curva_document::Object;
 #[cfg(test)]
 use curva_kernel::{Curve, Point};
 
-pub use camera::{CPlane, Camera, StandardView};
+pub use camera::{CPlane, Camera};
 pub use circles::{CIRCLE_SEGMENTS, PlacedCircle};
 pub use glass::Glass;
 pub use gpu::{
@@ -35,6 +36,7 @@ pub use gumball::{Amount, Gumball, GumballChange, Handle};
 pub use snap::{Guides, SnapHit, SnapKind, SnapSet, constrained};
 pub use styles::{PictureStyle, save_styled_picture};
 pub use timer::{OPTIONAL_FEATURES, baseline_limits, device_descriptor};
+pub use views::StandardView;
 
 pub use lines::*;
 pub use outlines::*;

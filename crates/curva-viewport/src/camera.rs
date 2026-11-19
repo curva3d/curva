@@ -1,11 +1,12 @@
 //! The viewport camera: a perspective view orbiting a target, with Z up as in Rhino.
 
+use crate::StandardView;
 use curva_document::SavedView;
 use curva_kernel::Point;
 
-/// The perspective view's lens, as Rhino's standard: 50 mm on 35 mm film (36 × 24 mm), whose
-/// shorter side, 24 mm, spans the view's height: 2·atan(12 / 50), about 27°.
-const LENS_LENGTH: f64 = 50.0;
+/// The perspective view's lens to start with, as Rhino's standard: 50 mm on 35 mm film (36 × 24 mm),
+/// whose shorter side, 24 mm, spans the view's height: 2·atan(12 / 50), about 27°.
+pub(crate) const LENS_LENGTH: f64 = 50.0;
 /// How far up and down a flat view sees, against how far out it is, as before the lens
 /// followed Rhino's, so flat views keep their scale.
 const FLAT_FIELD: f64 = 0.7;
@@ -14,7 +15,7 @@ const MOST_PITCH: f64 = 1.55;
 /// Radians turned per pixel dragged.
 const ORBIT_SPEED: f64 = 0.008;
 /// How far out a flat view starts, which shows about the whole grid.
-const PARALLEL_DISTANCE: f64 = 330.0;
+pub(crate) const PARALLEL_DISTANCE: f64 = 330.0;
 /// How far, in multiples of the viewing distance, a flat view sees in front of and behind its
 /// target before depth runs out.
 const FLAT_DEPTH_RANGE: f64 = 1000.0;
@@ -59,6 +60,11 @@ pub struct Camera {
     pub(crate) fixed_axes: Option<[Point; 3]>,
     /// Whether the view is flat, with no perspective.
     pub(crate) parallel: bool,
+    /// The perspective lens's length in millimetres on 35 mm film ([`Camera::lens_length`]).
+    pub(crate) lens_length: f64,
+    /// Whether the view is a two-point perspective: always level, so verticals stay upright and
+    /// parallel on screen, as Rhino's `TwoPointPerspective`.
+    pub(crate) two_point: bool,
 }
 
 impl Default for Camera {
@@ -71,6 +77,8 @@ impl Default for Camera {
             distance: 228.0,
             fixed_axes: None,
             parallel: false,
+            lens_length: LENS_LENGTH,
+            two_point: false,
         }
     }
 }
@@ -110,67 +118,6 @@ impl CPlane {
         y: [0.0, 0.0, 1.0],
         normal: [1.0, 0.0, 0.0],
     };
-}
-
-/// The views every model can be looked at from.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum StandardView {
-    /// From above, on the ground plane.
-    Top,
-    /// From the front, on the XZ plane.
-    Front,
-    /// From the right, on the YZ plane.
-    Right,
-    /// An orbiting perspective view, on the ground plane.
-    Perspective,
-}
-
-impl StandardView {
-    /// A camera for this view.
-    #[must_use]
-    pub fn camera(self) -> Camera {
-        let flat = |forward: Point, right: Point, up: Point| Camera {
-            fixed_axes: Some([forward, right, up]),
-            parallel: true,
-            distance: PARALLEL_DISTANCE,
-            ..Camera::default()
-        };
-        match self {
-            Self::Top => flat([0.0, 0.0, -1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]),
-            Self::Front => flat([0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]),
-            Self::Right => flat([-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]),
-            Self::Perspective => Camera::default(),
-        }
-    }
-
-    /// The plane clicks in this view land on.
-    #[must_use]
-    pub fn plane(self) -> CPlane {
-        match self {
-            Self::Top | Self::Perspective => CPlane::WORLD_XY,
-            Self::Front => CPlane::WORLD_XZ,
-            Self::Right => CPlane::WORLD_YZ,
-        }
-    }
-
-    /// The word a saved view stores for this view.
-    #[must_use]
-    pub fn key(self) -> &'static str {
-        match self {
-            Self::Top => "Top",
-            Self::Front => "Front",
-            Self::Right => "Right",
-            Self::Perspective => "Perspective",
-        }
-    }
-
-    /// The view a saved view's word stands for.
-    #[must_use]
-    pub fn from_key(key: &str) -> Option<Self> {
-        [Self::Top, Self::Front, Self::Right, Self::Perspective]
-            .into_iter()
-            .find(|view| view.key() == key)
-    }
 }
 
 /// A camera's values worked out once, as snapping projects many points on every frame.
@@ -247,7 +194,7 @@ impl Camera {
         if self.parallel {
             1.0 / (FLAT_FIELD / 2.0).tan()
         } else {
-            LENS_LENGTH / 12.0
+            self.lens_length / 12.0
         }
     }
 
@@ -449,6 +396,10 @@ impl Camera {
     /// Turns the view for a mouse drag in pixels.
     pub fn orbit(&mut self, dx: f64, dy: f64) {
         self.yaw -= dx * ORBIT_SPEED;
+        // A two-point view stays level; it only turns.
+        if self.two_point {
+            return;
+        }
         self.pitch = (self.pitch + dy * ORBIT_SPEED).clamp(-MOST_PITCH, MOST_PITCH);
     }
 
@@ -525,6 +476,9 @@ impl Camera {
             distance: view.distance,
             fixed_axes: view.axes,
             parallel: view.parallel,
+            // Saved views do not keep the lens yet; they open with Rhino's standard.
+            lens_length: LENS_LENGTH,
+            two_point: view.kind == StandardView::TwoPoint.key(),
         }
     }
 }
