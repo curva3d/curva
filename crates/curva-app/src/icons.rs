@@ -12,6 +12,7 @@ mod curves;
 mod editing;
 mod files;
 mod measuring;
+mod mesh;
 mod organising;
 mod selection;
 mod solids;
@@ -308,7 +309,7 @@ pub fn paint(painter: &egui::Painter, rect: egui::Rect, name: &str) -> bool {
 /// Draws the icon for `name`, trying each group in turn; returns whether there was one.
 fn draw(pen: &Pen<'_>, name: &str) -> bool {
     let key = name.to_lowercase();
-    let groups: [fn(&Pen<'_>, &str) -> bool; 31] = [
+    let groups: [fn(&Pen<'_>, &str) -> bool; 32] = [
         curves::curves_1,
         curves::curves_2,
         curves::curves_3,
@@ -326,6 +327,7 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
         surfaces::surfaces_4,
         solids::solids_1,
         solids::solids_2,
+        mesh::mesh_1,
         transforms::transforms_1,
         transforms::transforms_2,
         transforms::transforms_3,
