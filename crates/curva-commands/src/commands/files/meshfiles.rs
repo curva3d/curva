@@ -70,6 +70,19 @@ pub fn import_mesh_file(
     })
 }
 
+/// A mesh file as a new model, unsaved, named after the file, as `.3dm` files open. Returns the
+/// model and a summary for the command line.
+///
+/// # Errors
+/// When the file cannot be read or holds no meshes.
+pub fn open_mesh_file(path: &Path, format: MeshFormat) -> Result<(Document, String), String> {
+    let mut doc = Document::default();
+    let summary = import_mesh_file(&mut doc, path, format)?;
+    let beside = path.with_extension("curva");
+    doc.set_path((!beside.exists()).then_some(beside));
+    Ok((doc, summary))
+}
+
 /// The model's meshes, SubDs, surfaces and solids, or those among the objects in `only`, written
 /// to a mesh file through a partial file renamed into place. Returns a summary for the command line.
 ///
@@ -175,6 +188,19 @@ mod tests {
         import_mesh_file(&mut back, &path, MeshFormat::Stl).unwrap();
         let mesh = back.state().objects[0].shape.mesh().unwrap();
         assert!((mesh.volume().unwrap() - 1000.0).abs() < 1e-6);
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn a_mesh_file_opens_as_a_new_unsaved_model() {
+        let mut doc = Document::default();
+        doc.add_body(Body::cuboid([0.0; 3], [10.0; 3]).unwrap());
+        let path = scratch("opened.obj");
+        export_mesh_file(&doc, None, &path, MeshFormat::Obj).unwrap();
+        let (opened, summary) = open_mesh_file(&path, MeshFormat::Obj).unwrap();
+        assert_eq!(summary, "1 meshes");
+        assert_eq!(opened.state().objects.len(), 1);
+        assert_eq!(opened.path(), Some(path.with_extension("curva").as_path()));
         std::fs::remove_file(&path).ok();
     }
 }
