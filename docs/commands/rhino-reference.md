@@ -448,3 +448,9 @@ Rhino users build title blocks from curves and text with fields, which is what T
 | ScaleBar | Not in Rhino. Serpentine: the bar's place, for the detail there or the first one | none | `Length` `Divisions`; the detail is asked only when the sheet has more than one scaled detail; the bar follows the detail's scale, a round length when not typed, in metres for millimetre models | partly |
 | SheetIndex | Not in Rhino. Serpentine: where the index goes | none | a table of every sheet's number, name and `Title` layout user text, which follows the layouts | partly |
 | Revision | Not in Rhino. Serpentine: the revision mark, then the description; dated today | none | the mark (Enter takes the next: B after A, P02 after P01), what changed, who (Enter takes the `DrawnBy` document text); the row shows in the sheet's revision table and the mark in its title block | partly |
+
+## Mesh and SubD (mesh stream)
+
+| Command | Rhino's steps | Rhino's options | In Curva | Status |
+|---|---|---|---|---|
+| Mesh | Surfaces, polysurfaces, extrusions or SubDs; then the mesh options dialog (`-Mesh`: a polygon density on the command line, and detailed options). The originals stay; Rhino meshes a radius-5 sphere at its default into 2,048 polygons | Density slider; detailed: maximum angle, aspect ratio, minimum and maximum edge length, maximum distance edge to surface, minimum initial grid quads, refine, jagged seams, simple planes, pack textures, SubD level | the objects, then the density from 0 to 1 typed (Enter keeps the last); `MaxAngle` `MaxDistance` `SubDLevel`; the preview shows the mesh's edges; settings shared with STL, OBJ and PLY export; meshes of surfaces and solids follow them with History (density only). The mesh panel comes with the framework's panel step | partly |
