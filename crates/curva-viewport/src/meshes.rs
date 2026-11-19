@@ -10,11 +10,15 @@ use curva_kernel::Point;
 /// per vertex, shared by the faces around it. A mesh without normals gets them from its faces,
 /// averaged at each vertex, so welded edges shade smooth, as Rhino shades a mesh it reads without
 /// normals. Each triangle is listed under the face it came from, for picking faces later (#333).
+/// With it, the colour at each of its positions when the mesh has vertex colours, per vertex or
+/// per corner as stored.
 #[must_use]
-pub(crate) fn body_mesh(mesh: &curva_mesh::Mesh) -> BodyMesh {
+pub(crate) fn body_mesh(mesh: &curva_mesh::Mesh) -> (BodyMesh, Option<Vec<[f32; 3]>>) {
     let split = mesh.triangles();
     let vertices = mesh.vertices();
     let given = !mesh.normals().is_none();
+    let coloured = !mesh.colours().is_none();
+    let mut colours = Vec::new();
     // Each corner of each triangle gets its own position, so a corner's normal is its own; a
     // smooth vertex repeats its normal at every corner, which looks the same.
     let mut out = BodyMesh {
@@ -43,10 +47,18 @@ pub(crate) fn body_mesh(mesh: &curva_mesh::Mesh) -> BodyMesh {
                 smooth[v]
             };
             out.normals.push(normal);
+            if coloured {
+                colours.push(
+                    mesh.colours()
+                        .at(corner as usize, v)
+                        .copied()
+                        .unwrap_or([1.0; 3]),
+                );
+            }
         }
         out.triangles.push([first, first + 1, first + 2]);
     }
-    out
+    (out, coloured.then_some(colours))
 }
 
 /// Each vertex's normal: the faces around it, each weighted by its area, added and made one long.
@@ -107,7 +119,8 @@ mod tests {
             &[[0, 1, 2, 3]],
         )
         .unwrap();
-        let drawn = body_mesh(&quad);
+        let (drawn, colours) = body_mesh(&quad);
+        assert!(colours.is_none());
         assert_eq!(drawn.triangles.len(), 2);
         assert_eq!(drawn.triangle_faces, vec![0, 0]);
         assert!(drawn.normals.iter().all(|&n| close(n, [0.0, 0.0, 1.0])));
@@ -123,7 +136,7 @@ mod tests {
             [0.0, 0.0, 1.0],
         ];
         let faces = [[0, 1, 2], [1, 0, 3]];
-        let welded = body_mesh(&Mesh::new(points.clone(), &faces).unwrap());
+        let (welded, _) = body_mesh(&Mesh::new(points.clone(), &faces).unwrap());
         // On the shared edge both faces' corners carry the same, averaged normal.
         let half = std::f64::consts::FRAC_1_SQRT_2;
         let on_edge: Vec<Point> = welded
@@ -142,9 +155,44 @@ mod tests {
             .unwrap()
             .with_normals(Attribute::PerCorner(vec![up, up, up, side, side, side]))
             .unwrap();
-        let drawn = body_mesh(&hard);
+        let (drawn, _) = body_mesh(&hard);
         assert!(drawn.normals[..3].iter().all(|&n| close(n, up)));
         assert!(drawn.normals[3..].iter().all(|&n| close(n, side)));
+    }
+
+    /// A mesh with vertex colours shows them instead of its layer's colour, in pictures and in
+    /// the window's shared shape alike, and the selection colour when selected (#267).
+    #[test]
+    fn a_mesh_shows_its_vertex_colours() {
+        use crate::{Outlines, SceneParts, face_vertices};
+        let (red, blue) = ([1.0, 0.0, 0.0], [0.0, 0.0, 1.0]);
+        let mesh = Mesh::new(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            &[[0, 1, 2]],
+        )
+        .unwrap()
+        .with_colours(Attribute::PerVertex(vec![red, blue, red]))
+        .unwrap();
+        let mut doc = curva_document::Document::default();
+        let id = doc.add_shape(curva_document::Shape::Mesh(mesh));
+        let outlines = Outlines::of(doc.state());
+        let shown: Vec<[f32; 3]> = face_vertices(&outlines, &[])
+            .iter()
+            .map(|corner| corner.colour)
+            .collect();
+        assert_eq!(shown, vec![red, blue, red]);
+        let shared = SceneParts::shared(&outlines);
+        assert_eq!(shared.shapes[0].colour, [1.0; 3]);
+        assert_eq!(
+            shared.shapes[0].colours.as_deref(),
+            Some(&vec![red, blue, red])
+        );
+        let chosen = face_vertices(&outlines, &[id]);
+        assert!(
+            chosen
+                .iter()
+                .all(|corner| corner.colour == crate::SELECTED_COLOUR)
+        );
     }
 
     /// A closed mesh in the model shades, is picked by a click inside it as a solid, and draws

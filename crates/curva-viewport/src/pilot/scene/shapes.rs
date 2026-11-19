@@ -35,6 +35,7 @@ impl ShapeMeshes {
         &mut self,
         world: &mut World,
         mesh: &Arc<BodyMesh>,
+        colours: Option<&[[f32; 3]]>,
     ) -> (ShapeKey, Handle<Mesh>, [f64; 3]) {
         let key = Arc::as_ptr(mesh) as ShapeKey;
         if let Some(held) = self.0.get_mut(&key) {
@@ -44,7 +45,7 @@ impl ShapeMeshes {
         let centre = middle_of(mesh);
         let handle = world
             .resource_mut::<Assets<Mesh>>()
-            .add(bevy_mesh(mesh, centre));
+            .add(bevy_mesh(mesh, centre, colours));
         let held = HeldShape {
             _mesh: Arc::clone(mesh),
             handle: handle.clone(),
@@ -120,7 +121,11 @@ impl ViewScene {
                 }
                 Some(part) => {
                     meshes.give_back(world, part.shape);
-                    let (shape_key, handle, centre) = meshes.take(world, &shape.mesh);
+                    let (shape_key, handle, centre) = meshes.take(
+                        world,
+                        &shape.mesh,
+                        shape.colours.as_deref().map(Vec::as_slice),
+                    );
                     world
                         .entity_mut(part.entity)
                         .insert((Mesh3d(handle), placed(&shape.placement, centre)));
@@ -129,7 +134,11 @@ impl ViewScene {
                     part.colour = colour;
                 }
                 None => {
-                    let (shape_key, handle, centre) = meshes.take(world, &shape.mesh);
+                    let (shape_key, handle, centre) = meshes.take(
+                        world,
+                        &shape.mesh,
+                        shape.colours.as_deref().map(Vec::as_slice),
+                    );
                     let entity = world
                         .spawn((
                             Mesh3d(handle),
@@ -201,9 +210,9 @@ fn middle_of(mesh: &BodyMesh) -> [f64; 3] {
 /// A shape's triangles as a Bevy mesh, its corners measured from `centre` so they keep their
 /// precision wherever the shape was made (#225), shared between triangles as the kernel gives
 /// them, kept only on the graphics card.
-fn bevy_mesh(mesh: &BodyMesh, centre: [f64; 3]) -> Mesh {
+fn bevy_mesh(mesh: &BodyMesh, centre: [f64; 3], colours: Option<&[[f32; 3]]>) -> Mesh {
     let narrow = |p: &[f64; 3]| p.map(|value| value as f32);
-    Mesh::new(
+    let made = Mesh::new(
         PrimitiveTopology::TriangleList,
         RenderAssetUsages::RENDER_WORLD,
     )
@@ -220,13 +229,41 @@ fn bevy_mesh(mesh: &BodyMesh, centre: [f64; 3]) -> Mesh {
     )
     .with_inserted_indices(Indices::U32(
         mesh.triangles.iter().flatten().copied().collect(),
-    ))
+    ));
+    // A mesh's vertex colours (#267): the material is white, so they show as they are.
+    match colours {
+        Some(colours) => made.with_inserted_attribute(
+            Mesh::ATTRIBUTE_COLOR,
+            colours
+                .iter()
+                .map(|&[r, g, b]| Color::srgb(r, g, b).to_linear().to_f32_array())
+                .collect::<Vec<_>>(),
+        ),
+        None => made,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::placed;
     use bevy::prelude::*;
+
+    /// A mesh with vertex colours hands them to Bevy, one for each position; one without has none.
+    #[test]
+    fn vertex_colours_reach_bevys_mesh() {
+        let mesh = curva_kernel::BodyMesh {
+            positions: vec![[0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            normals: vec![[0.0, 0.0, 1.0]; 3],
+            triangles: vec![[0, 1, 2]],
+            ..Default::default()
+        };
+        let colours = [[1.0, 0.0, 0.0]; 3];
+        let coloured = super::bevy_mesh(&mesh, [0.0; 3], Some(&colours));
+        let attribute = coloured.attribute(Mesh::ATTRIBUTE_COLOR).unwrap();
+        assert_eq!(attribute.len(), 3);
+        let plain = super::bevy_mesh(&mesh, [0.0; 3], None);
+        assert!(plain.attribute(Mesh::ATTRIBUTE_COLOR).is_none());
+    }
 
     /// A placement turning a quarter about Z and moving by (10, 20, 30) puts (1, 0, 0) at
     /// (10, 21, 30) in Bevy as in the kernel.

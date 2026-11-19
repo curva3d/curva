@@ -6,6 +6,10 @@
 ## 19 November 2026
 
 **Done**
+- **Meshes show their vertex colours** (#267, Stage A item 3): a mesh that carries colours, per
+  vertex or per corner, shows them instead of its layer's colour, on screen and in pictures; the
+  selection colour still shows when it is picked. That finishes #267's Stage A, except speed for
+  meshes with millions of edges.
 - **The camera offers all the views the new view picker shows** (#356, for the features stream's
   picker). Bottom, Left and Back views as Rhino's, each with its own drawing plane; a two-point
   perspective that stays level, so upright lines stay upright and parallel on screen (dragging up

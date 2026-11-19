@@ -32,6 +32,9 @@ pub(crate) struct Faces {
     /// The lowest and highest corners of the placed mesh, or a box around them, so a line of
     /// sight can skip it quickly.
     pub(crate) around: (Point, Point),
+    /// For a mesh with vertex colours, the colour at each of `mesh`'s positions, shown instead
+    /// of its layer's colour (#267).
+    pub(crate) colours: Option<std::sync::Arc<Vec<[f32; 3]>>>,
 }
 
 impl Faces {
@@ -501,8 +504,16 @@ impl Outlines {
                         PickKind::Surface
                     };
                     wires = true;
-                    let drawn = std::sync::Arc::new(crate::meshes::body_mesh(mesh));
-                    outlines.push_faces(object.id, look, drawn, Some(IN_PLACE));
+                    let (drawn, colours) = crate::meshes::body_mesh(mesh);
+                    outlines.push_faces(
+                        object.id,
+                        look,
+                        std::sync::Arc::new(drawn),
+                        Some(IN_PLACE),
+                    );
+                    if let (Some(colours), Some(faces)) = (colours, outlines.faces.last_mut()) {
+                        faces.colours = Some(std::sync::Arc::new(colours));
+                    }
                     curva_document::shape::mesh_edges(mesh)
                         .into_iter()
                         .map(|line| (line, None))
@@ -546,6 +557,7 @@ impl Outlines {
             around: placement.as_ref().map_or(made, |m| placed_box(m, made)),
             mesh,
             placement,
+            colours: None,
         });
     }
 
