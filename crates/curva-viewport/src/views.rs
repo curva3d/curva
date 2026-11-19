@@ -223,6 +223,14 @@ mod tests {
         assert!(((300.0 - long) / (300.0 - wide) - 2.0).abs() < 1e-9);
         camera.orbit(40.0, 25.0);
         assert_eq!(camera.lens_length(), 100.0);
+        // A saved view keeps it; one saved before the lens was kept opens at 50 mm.
+        let saved = camera.saved("Long".into(), StandardView::Perspective);
+        assert_eq!(Camera::from_saved(&saved).lens_length(), 100.0);
+        let older = curva_document::SavedView {
+            lens: None,
+            ..saved
+        };
+        assert_eq!(Camera::from_saved(&older).lens_length(), LENS_LENGTH);
         // Kept within what makes sense, and nonsense ignored.
         camera.set_lens_length(1.0);
         assert_eq!(camera.lens_length(), 5.0);
