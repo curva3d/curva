@@ -123,7 +123,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 277] = [
+pub static COMMANDS: [CommandDef; 283] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -439,6 +439,12 @@ pub static COMMANDS: [CommandDef; 277] = [
     recipe!("CurvatureGraph", [], true, curvature_graph::CurvatureGraph),
     recipe!("Cap", [], true, cap::Cap),
     recipe!("Mesh", [], true, mesh::mesh_command::MeshCommand),
+    recipe!("MeshBox", [], true, mesh::primitives::MeshBox),
+    recipe!("MeshPlane", [], true, mesh::primitives::MeshPlane),
+    recipe!("MeshSphere", [], true, mesh::primitives::MeshSphere),
+    recipe!("MeshCylinder", [], true, mesh::primitives::MeshCylinder),
+    recipe!("MeshCone", [], true, mesh::primitives::MeshCone),
+    recipe!("MeshTorus", [], true, mesh::primitives::MeshTorus),
     recipe!(
         "ExtractIsocurve",
         [],
@@ -883,7 +889,13 @@ mod tests {
 
     /// For each command that changes geometry, the typed steps that reach its live preview.
     /// A new command must be added here, which is how the preview rule in AGENTS.md is enforced.
-    const PREVIEW_STEPS: [(&str, &[&str]); 62] = [
+    const PREVIEW_STEPS: [(&str, &[&str]); 68] = [
+        ("MeshBox", &["0,0"]),
+        ("MeshPlane", &["0,0"]),
+        ("MeshSphere", &["0,0"]),
+        ("MeshCylinder", &["0,0"]),
+        ("MeshCone", &["0,0"]),
+        ("MeshTorus", &["0,0"]),
         ("HandleCurve", &["0,0", "1,1", "5,0"]),
         ("Sketch", &["0,0"]),
         ("Conic", &["0,0", "10,0"]),
