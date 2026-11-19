@@ -65,6 +65,48 @@ pub(super) fn mesh_1(pen: &Pen<'_>, key: &str) -> bool {
     true
 }
 
+/// Draws the icon `key` if it is one of the mesh checks and repairs; returns whether it was.
+pub(super) fn mesh_2(pen: &Pen<'_>, key: &str) -> bool {
+    match key {
+        "check" => {
+            grid(pen, (2.0, 2.0), (14.0, 14.0), 3);
+            pen.path_in(
+                &[(10.0, 15.0), (13.5, 19.0), (20.0, 10.0)],
+                false,
+                pen.accent(),
+            );
+        }
+        "meshrepair" | "culldegeneratemeshfaces" => {
+            grid(pen, (2.0, 2.0), (14.0, 14.0), 3);
+            pen.line_in((12.0, 20.0), (20.0, 12.0), pen.accent());
+            if key == "meshrepair" {
+                pen.line_in((14.0, 12.0), (20.0, 18.0), pen.accent());
+            }
+        }
+        "unifymeshnormals" | "rebuildmeshnormals" => {
+            pen.line((2.0, 16.0), (20.0, 16.0));
+            for x in [5.0, 11.0, 17.0] {
+                pen.line_in((x, 16.0), (x, 6.0), pen.accent());
+                pen.line((x - 2.0, 8.0), (x, 6.0));
+                pen.line((x + 2.0, 8.0), (x, 6.0));
+            }
+            if key == "rebuildmeshnormals" {
+                pen.dot(11.0, 19.0);
+            }
+        }
+        "fillmeshholes" => {
+            grid(pen, (2.0, 2.0), (20.0, 20.0), 3);
+            pen.path_in(
+                &[(8.0, 8.0), (14.0, 8.0), (14.0, 14.0), (8.0, 14.0)],
+                true,
+                pen.accent(),
+            );
+        }
+        _ => return false,
+    }
+    true
+}
+
 /// A rectangle from `a` to `b` split into `n` × `n` faces.
 fn grid(pen: &Pen<'_>, a: (f32, f32), b: (f32, f32), n: u32) {
     for k in 0..=n {

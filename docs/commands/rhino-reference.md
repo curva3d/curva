@@ -460,3 +460,9 @@ Rhino users build title blocks from curves and text with fields, which is what T
 | MeshCylinder | Base circle, then height | `VerticalFaces` `AroundFaces` (10 each, measured) `Solid` `CapFaceStyle` (Tri) `BothSides` `DirectionConstraint`; the circle's ways | `Diameter` `Solid` `BothSides` `VerticalFaces` `AroundFaces` `CapFaceStyle`; Rhino's 120 faces at its defaults | partly |
 | MeshCone | Base circle, then the point's height | `VerticalFaces` `AroundFaces` (10 each, measured) `Solid` `CapFaceStyle` `DirectionConstraint`; the circle's ways | `Diameter` `Solid` `VerticalFaces` `AroundFaces` `CapFaceStyle`; Rhino's 110 faces at its defaults | partly |
 | MeshTorus | Centre and radius, then the tube's radius | `VerticalFaces` `AroundFaces` (10 each, measured) `FixInnerDimension`; the circle's ways | `VerticalFaces` `AroundFaces`; Rhino's 100 quads at its defaults | partly |
+| Check | Objects; reports what is wrong, or "This is a good mesh." | none | meshes reported as Rhino 8 counts (degenerate faces, very short edges at a tenth of the tolerance, non-manifold and naked edges, duplicate faces, faces pointing the wrong way, crossing faces, unused points, bad normals, pieces); other objects counted and left to the features stream | partly |
+| MeshRepair | A wizard of steps over the chosen mesh | none on the command line | the main fixes in one go, each an option: `CullDegenerate` `CullDuplicates` `RemoveUnusedPoints` `Weld` `UnifyNormals` `FillHoles` `RebuildNormals` | partly |
+| UnifyMeshNormals | Meshes | none | each piece one way, closed pieces out | done |
+| FillMeshHoles | Meshes | none | every hole closed | done |
+| CullDegenerateMeshFaces | Meshes | none | faces with no area taken out | done |
+| RebuildMeshNormals | Meshes | none | normals worked out again from the faces | done |

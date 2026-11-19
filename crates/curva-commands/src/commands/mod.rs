@@ -128,7 +128,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 283] = [
+pub static COMMANDS: [CommandDef; 289] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -450,6 +450,22 @@ pub static COMMANDS: [CommandDef; 283] = [
     recipe!("MeshCylinder", [], true, mesh::primitives::MeshCylinder),
     recipe!("MeshCone", [], true, mesh::primitives::MeshCone),
     recipe!("MeshTorus", [], true, mesh::primitives::MeshTorus),
+    recipe!("Check", [], true, mesh::check::Check),
+    recipe!("MeshRepair", [], true, mesh::check::MeshRepair),
+    recipe!("UnifyMeshNormals", [], true, mesh::check::UnifyMeshNormals),
+    recipe!("FillMeshHoles", [], true, mesh::check::FillMeshHoles),
+    recipe!(
+        "CullDegenerateMeshFaces",
+        [],
+        true,
+        mesh::check::CullDegenerateMeshFaces
+    ),
+    recipe!(
+        "RebuildMeshNormals",
+        [],
+        true,
+        mesh::check::RebuildMeshNormals
+    ),
     recipe!(
         "ExtractIsocurve",
         [],
@@ -815,7 +831,13 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 79] = [
+    const NOTHING_TO_PREVIEW: [&str; 85] = [
+        "Check",
+        "MeshRepair",
+        "UnifyMeshNormals",
+        "FillMeshHoles",
+        "CullDegenerateMeshFaces",
+        "RebuildMeshNormals",
         "SectionStyle",
         "Make2D",
         "Print",
@@ -1471,6 +1493,8 @@ mod tests {
                 "Contour",
                 "CurvatureGraph",
                 "Cap",
+                "Check",
+                "CullDegenerateMeshFaces",
                 "CageEdit",
                 "ChamferSrf",
                 "ChamferEdge",
