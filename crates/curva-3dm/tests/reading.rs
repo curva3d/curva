@@ -26,7 +26,10 @@ fn every_example_file_opens_with_a_report() {
 
 #[test]
 fn a_line_of_zero_length_is_listed_as_drawing_nothing() {
-    let path = format!("{}/tests/files/v7_my_curves.3dm", env!("CARGO_MANIFEST_DIR"));
+    let path = format!(
+        "{}/tests/files/v7_my_curves.3dm",
+        env!("CARGO_MANIFEST_DIR")
+    );
     let mut model = curva_3dm::read::read(&std::fs::read(path).unwrap()).unwrap();
     let count = model.objects.len();
     let at = [5.0, 6.0, 0.0];

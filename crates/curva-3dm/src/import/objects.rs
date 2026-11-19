@@ -295,7 +295,8 @@ fn pages_in(model: &Model, state: &mut State) -> BTreeMap<Uuid, u64> {
 
 /// How the report names lines with no length, which Rhino keeps but lists as bad objects and
 /// draws nothing for.
-pub const ZERO_LENGTH: &str = "lines of zero length, which draw nothing (Rhino lists them as bad objects)";
+pub const ZERO_LENGTH: &str =
+    "lines of zero length, which draw nothing (Rhino lists them as bad objects)";
 
 /// Whether the object is a line or polyline with no length, whose points all coincide (closer
 /// than Curva's smallest length, 1e-9, as `Curve::line` checks).
@@ -305,9 +306,11 @@ fn draws_nothing(geometry: &Geometry) -> bool {
         Geometry::Curve(model::Curve::Polyline { points, .. }) => points,
         _ => return false,
     };
-    points
-        .iter()
-        .all(|p| points.first().is_some_and(|first| curva_kernel::gap(*first, *p) < 1e-9))
+    points.iter().all(|p| {
+        points
+            .first()
+            .is_some_and(|first| curva_kernel::gap(*first, *p) < 1e-9)
+    })
 }
 
 /// One of the file's objects into the model, a block definition, or the report.
