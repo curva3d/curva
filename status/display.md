@@ -3,6 +3,11 @@
 *Written only by the display stream, which owns the inside of `crates/curva-viewport` (see
 `AGENTS.md`). Updated at the end of every work session. Newest first.*
 
+**Tidy-up first (owner's rule, 19 November 2026, `AGENTS.md`):** every stream starts each session
+by completing one open `tidy-up` issue in code it owns, before its next feature; with none open, it
+goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
+*(Added to every status page at the owner's request.)*
+
 ## 19 November 2026
 
 **Done**

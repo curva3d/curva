@@ -11,6 +11,11 @@ to then (display modes, glass, line widths, speed measurements).*
 `CLA.md`, `CONTRIBUTING.md` and the `CLA` check (`.github/workflows/cla.yml`). Outside contributors sign
 once by commenting on their first pull request; signatures go to the `cla-signatures` branch.
 
+**Tidy-up first (owner's rule, 19 November 2026, `AGENTS.md`):** every stream starts each session
+by completing one open `tidy-up` issue in code it owns, before its next feature; with none open, it
+goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
+*(Added to every status page at the owner's request.)*
+
 ## Features stream — 19 November 2026
 
 - **Big drawings open 2 to 8 times faster** (#379, #317 part 4; the owner's choice, decision 0037).
