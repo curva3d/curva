@@ -325,8 +325,13 @@ impl Make2D {
         let mut cut_layers = Vec::new();
         let mut fills = Vec::new();
         let mut sections = Vec::new();
-        for (id, body) in bodies_of(doc, ids) {
-            let part = self.cut_body(doc, id, body, cuts, &layer_of(id))?;
+        // Each body cut on every core (#317).
+        let chosen: Vec<(u64, Body)> = bodies_of(doc, ids);
+        let parts = curva_kernel::parallel::each_in_parallel(chosen.len(), |i| {
+            let (id, body) = &chosen[i];
+            self.cut_body(doc, *id, body.clone(), cuts, &layer_of(*id))
+        })?;
+        for part in parts {
             fills.extend(part.fills);
             for section in part.sections {
                 sections.push(section);

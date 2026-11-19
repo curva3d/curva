@@ -198,8 +198,10 @@ fn scaled(shape: Shape, scale: f64) -> Result<Shape, String> {
     curva_document::blocks::shape_placed(&shape, &m).ok_or_else(|| "scaling failed".to_owned())
 }
 
+/// `solid` is the object's solid when it was built ahead (`objects::solids_ahead`).
 fn shape_of(
     geometry: &Geometry,
+    solid: Option<Result<Body, KernelError>>,
     blocks: &BTreeMap<crate::archive::Uuid, u64>,
     styles: &[model::DimStyle],
     patterns: &[model::HatchPattern],
@@ -254,8 +256,14 @@ fn shape_of(
         } => (dot_in(*at, text, secondary, *height, font), "dots"),
         Geometry::Curve(c) => (Shape::Curve(curve(c).map_err(text)?), "curves"),
         Geometry::Surface(s) => (Shape::Body(surface_body(s).map_err(text)?), "surfaces"),
-        Geometry::Brep(b) => (Shape::Body(brep_body(b).map_err(text)?), "polysurfaces"),
-        Geometry::Extrusion(e) => (Shape::Body(extrusion_body(e).map_err(text)?), "extrusions"),
+        Geometry::Brep(b) => (
+            Shape::Body(solid.unwrap_or_else(|| brep_body(b)).map_err(text)?),
+            "polysurfaces",
+        ),
+        Geometry::Extrusion(e) => (
+            Shape::Body(solid.unwrap_or_else(|| extrusion_body(e)).map_err(text)?),
+            "extrusions",
+        ),
         Geometry::Instance { block, xform } => {
             let definition = *blocks.get(block).ok_or("a block that is not defined")?;
             // openNURBS transforms columns; Curva's placements are rows.

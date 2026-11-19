@@ -63,12 +63,9 @@ fn stretched_shape(
             }
             Ok(Shape::Body(made))
         }
-        // Not yet: the mesh crate cannot stretch a mesh or SubD.
-        Shape::Mesh(_) | Shape::SubD(_) => Err(KernelError(
-            "meshes and SubDs cannot be stretched yet".to_owned(),
-        )),
-        Shape::Instance(_) | Shape::Annotation(_) => {
-            // The stretch as one affine map, placed on the instance or the text.
+        Shape::Instance(_) | Shape::Annotation(_) | Shape::Mesh(_) | Shape::SubD(_) => {
+            // The stretch as one affine map, placed on the instance, the text, the mesh or the
+            // SubD's cage.
             let stretch = |v: Point| -> Point {
                 let mut p = v;
                 for (axis, factor) in axes.iter().zip(factors) {
@@ -244,5 +241,29 @@ mod tests {
         assert_eq!(doc.state().objects.len(), 2);
         let points = doc.state().objects[1].curve().unwrap().sample().unwrap();
         assert_eq!(points, [[3.0, 1.0, 0.0], [6.0, 1.0, 0.0]]);
+    }
+
+    #[test]
+    fn a_mesh_and_a_subd_stretch_as_the_factors_say() {
+        use curva_document::Shape;
+        use curva_mesh::{Frame, Mesh, SubD};
+        let mut doc = Document::default();
+        let mesh = doc.add_shape(Shape::Mesh(Mesh::mesh_box(
+            &Frame::world(),
+            [1.0; 3],
+            [1, 1, 1],
+        )));
+        let subd = doc.add_shape(Shape::SubD(SubD::subd_box(
+            &Frame::world(),
+            [1.0; 3],
+            [1, 1, 1],
+        )));
+        doc.select(&[mesh, subd]);
+        run(&mut doc, &["scalenu", "0,0,0", "2", "1", "3"]);
+        let state = doc.state();
+        let (low, high) = state.objects[0].shape.mesh().unwrap().bounds().unwrap();
+        assert_eq!((low, high), ([0.0; 3], [2.0, 1.0, 3.0]));
+        let (low, high) = state.objects[1].shape.subd().unwrap().bounds().unwrap();
+        assert_eq!((low, high), ([0.0; 3], [2.0, 1.0, 3.0]));
     }
 }

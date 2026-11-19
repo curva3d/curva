@@ -364,12 +364,16 @@ pub fn hidden_lines(
     };
 
     // 1. The lines to draw, exact in the model.
-    let mut models: Vec<ModelLine> = Vec::new();
-    for (index, body) in bodies.iter().enumerate() {
+    // Each body's on every core (#317).
+    let per_body = crate::parallel::each_in_parallel(bodies.len(), |index| {
+        let body = &bodies[index];
+        let mut lines = Vec::new();
         let edges = body.exact_edges()?;
-        edge_lines(body, index, &edges, options, &mut models);
-        silhouette_lines(body, index, &edges, view, &scale, &mut models)?;
-    }
+        edge_lines(body, index, &edges, options, &mut lines);
+        silhouette_lines(body, index, &edges, view, &scale, &mut lines)?;
+        Ok(lines)
+    })?;
+    let mut models: Vec<ModelLine> = per_body.into_iter().flatten().collect();
     for (index, curve) in curves.iter().enumerate() {
         for piece in pieces_of(curve) {
             models.push((piece, LineKind::Curve, bodies.len() + index, Vec::new()));

@@ -29,9 +29,11 @@ pub(crate) fn deform_all(
         let shape = match &object.shape {
             Shape::Curve(c) => Shape::Curve(c.deformed(map).map_err(|e| failed(&e))?),
             Shape::Body(b) => Shape::Body(b.deformed(map).map_err(|e| failed(&e))?),
+            // Each point moved, as Rhino deforms a mesh; a SubD by its cage.
+            Shape::Mesh(m) => Shape::Mesh(m.deformed(map)),
+            Shape::SubD(s) => Shape::SubD(s.deformed(map)),
             // A block is deformed by exploding it first, as in Rhino; text keeps its shape.
-            // Meshes and SubDs wait for a deformation from the mesh crate.
-            Shape::Instance(_) | Shape::Annotation(_) | Shape::Mesh(_) | Shape::SubD(_) => continue,
+            Shape::Instance(_) | Shape::Annotation(_) => continue,
         };
         made.replace.push((object.id, shape));
     }
