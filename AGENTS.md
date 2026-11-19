@@ -102,6 +102,9 @@ least as tidy as you found it.
 - **Tidy-up pull requests change no behaviour.** They move and split code only. Tests stay as
   they are: they may move with their code, but are never changed to pass. Issues for this work are
   labelled `tidy-up`. A pull request that only moves code may be larger than usual; say so in it.
+- **Tidy-up first (owner's rule, 19 November 2026):** every stream starts each session by
+  completing one open tidy-up issue in code it owns, before its next feature. If its stream has
+  none open, it goes straight to features.
 
 ## Tests (architecture section 15)
 
