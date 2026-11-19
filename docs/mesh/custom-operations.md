@@ -19,6 +19,8 @@ switch to it, delete Curva's code and the row, and say so in the release notes. 
 | weld-vertices | `curva-mesh/src/repair.rs` (`Mesh::welded`) | MeshRepair, Weld | `MeshGLP::merge` joins only the points on open edges of a triangle mesh, at its own tolerance, and does not take a distance | manifold-rust 0.19.2 |
 | rebuild-normals | `curva-mesh/src/repair.rs` (`Mesh::with_rebuilt_normals`) | MeshRepair, RebuildMeshNormals | manifold-rust works out normals only for its own smoothing, by angle, as extra properties | manifold-rust 0.19.2 |
 | fill-holes | `curva-mesh/src/repair.rs` (`Mesh::with_holes_filled`) | MeshRepair, FillMeshHoles | none (it only takes closed meshes) | manifold-rust 0.19.2 |
+| join-meshes | `curva-mesh/src/join.rs` (`Mesh::joined`) | Join (for meshes) | manifold-rust joins only by booleans, which weld and need closed triangle meshes; Rhino's Join keeps every point | manifold-rust 0.19.2 |
+| explode-mesh | `curva-mesh/src/join.rs` (`Mesh::pieces`) | Explode (for meshes) | none for Curva's meshes (polygons, data per corner) | manifold-rust 0.19.2 |
 | triangles-to-quads | `curva-mesh/src/convert.rs` (`Mesh::quadrangulated`) | QuadrangulateMesh | none | manifold-rust 0.19.2 |
 | reduce-mesh | `curva-mesh/src/reduce.rs` (`Mesh::reduced`) | ReduceMesh | manifold-rust's `simplify` merges edges within a distance, on closed triangle meshes only, and takes no face count | manifold-rust 0.19.2 |
 | subd-limit-fit | `curva-mesh/src/smooth.rs` (`SubD::fitted`) | SubDSphere, SubDTorus | subdiv-kernels' `InverseStencilMap` says which outputs a cage point moves, not where to put cage points so their limit points land on given places | subdiv-kernels 0.1.0 |

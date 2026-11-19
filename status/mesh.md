@@ -9,6 +9,14 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## 20 November 2026
+
+**Join and Explode for meshes (#270, second part):** `Mesh::joined` combines meshes into one
+without welding, as Rhino's Join does, and `Mesh::pieces` splits a mesh into the parts that share
+no point, as Rhino's Explode does (both listed custom operations). Hooking them into `Join`,
+`Explode` and the Properties panel is the features stream's (#414). Also, `.3dm` mesh and SubD
+reading and writing were split into steps under 80 lines (#395, the tidy-up first rule).
+
 ## 19 November 2026 (evening)
 
 **Mesh primitives (#270, first part):** `MeshBox`, `MeshPlane`, `MeshSphere`, `MeshCylinder`,
