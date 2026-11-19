@@ -142,14 +142,49 @@ fn faces_in(
         }
         // The domain is already in the record surface's parameters.
         let natural = [sorted(domain[0]), sorted(domain[1])];
+        let domain = if matches!(surface, RecordSurface::Plane { .. }) {
+            around_trims(natural, &loops)
+        } else {
+            natural
+        };
         faces.push(Face {
             surface,
             nurbs: None,
-            domain: natural,
+            domain,
             loops,
         });
     }
     Ok(faces)
+}
+
+/// A plane face's domain: a plane has no edges of its own, so its domain is only a box around the
+/// face's trims. Rhino's can be a sliver no wider than the tolerance (a face Rhino keeps, about
+/// 1e-11 wide in one of the owner's files), or fall a rounding short of a trim; the engine refuses
+/// both (status 1007). The box covers the trims' control points, which hold each trim, grown by
+/// the tolerance the B-rep is read at.
+fn around_trims(domain: [[f64; 2]; 2], loops: &[Loop]) -> [[f64; 2]; 2] {
+    let mut box_ = domain;
+    let mut take = |u: f64, v: f64| {
+        for (axis, value) in [u, v].into_iter().enumerate() {
+            if value.is_finite() {
+                box_[axis] = [box_[axis][0].min(value), box_[axis][1].max(value)];
+            }
+        }
+    };
+    for l in loops {
+        let Loop::Edges { edges } = l else { continue };
+        for used in edges {
+            match &used.pcurve {
+                Curve2::Spline { points, .. } => points.iter().for_each(|p| take(p[0], p[1])),
+                Curve2::RationalSpline { homogeneous, .. } => {
+                    homogeneous
+                        .iter()
+                        .for_each(|h| take(h[0] / h[2], h[1] / h[2]));
+                }
+            }
+        }
+    }
+    box_.map(|[low, high]| [low - BREP_TOLERANCE, high + BREP_TOLERANCE])
 }
 
 /// A trim as its edge's use by the face, with its curve on the record surface's parameters;
@@ -232,6 +267,8 @@ fn shells_in(
             forward: !f.reversed,
         });
     }
+    // Closed as the engine's record counts it: each edge used at least twice, so a shell where
+    // three or four faces meet at an edge is closed too.
     let closed: Vec<bool> = shells
         .iter()
         .map(|faces_in| {
@@ -239,7 +276,7 @@ fn shells_in(
             users
                 .iter()
                 .filter(|list| list.iter().any(|f| inside.contains(f)))
-                .all(|list| list.len() == 2)
+                .all(|list| list.len() >= 2)
         })
         .collect();
     let shell_ids: Vec<u32> = (0..shells.len()).map(|s| s as u32).collect();
@@ -409,5 +446,78 @@ mod tolerance_tests {
         // A loose join from Rhino comes in just under the engine's limit of 1.
         assert_eq!(at_least(2.5), LOOSEST);
         const { assert!(LOOSEST < 1.0) };
+    }
+
+    /// A plane face no wider than a rounding, as Rhino keeps them, gets a domain the engine
+    /// takes: its trims inside, at least twice the tolerance across.
+    #[test]
+    fn a_sliver_plane_face_gets_a_domain_around_its_trims() {
+        let side = |from: [f64; 2], to: [f64; 2]| OrientedEdge {
+            edge: 0,
+            forward: true,
+            pcurve: Curve2::Spline {
+                knots: vec![0.0, 0.0, 1.0, 1.0],
+                points: vec![from, to],
+            },
+        };
+        let (u, wide) = (4.100_000_000_041_291, 1.4e-11);
+        let loops = vec![Loop::Edges {
+            edges: vec![
+                side([u, -0.245], [u + wide, -0.245]),
+                side([u + wide, -0.245], [u + wide, 0.245]),
+                side([u + wide, 0.245], [u - 3e-12, 0.245]),
+                side([u - 3e-12, 0.245], [u, -0.245]),
+            ],
+        }];
+        let domain = around_trims([[u, u + wide], [-0.245, 0.245]], &loops);
+        assert_eq!(
+            domain[0],
+            [u - 3e-12 - BREP_TOLERANCE, u + wide + BREP_TOLERANCE]
+        );
+        assert_eq!(domain[1], [-0.245 - BREP_TOLERANCE, 0.245 + BREP_TOLERANCE]);
+        assert!(domain[0][1] - domain[0][0] >= 2.0 * BREP_TOLERANCE);
+    }
+
+    /// Three faces meeting along both their edges, as where three walls of a Rhino solid share an
+    /// edge: the engine counts the shell closed, so it bounds a region of its own. It used to be
+    /// left out ("a closed shell bounds two regions and encloses one").
+    #[test]
+    fn a_shell_whose_edges_three_faces_share_is_closed() {
+        let face = || Face {
+            surface: RecordSurface::Plane {
+                origin: [0.0; 3],
+                u_axis: [1.0, 0.0, 0.0],
+                v_axis: [0.0, 1.0, 0.0],
+            },
+            nurbs: None,
+            domain: [[0.0, 1.0]; 2],
+            loops: vec![Loop::Edges {
+                edges: [0, 1]
+                    .map(|edge| OrientedEdge {
+                        edge,
+                        forward: true,
+                        pcurve: Curve2::Spline {
+                            knots: vec![0.0, 0.0, 1.0, 1.0],
+                            points: vec![[0.0, 0.0], [1.0, 0.0]],
+                        },
+                    })
+                    .to_vec(),
+            }],
+        };
+        let brep = Brep {
+            faces: vec![
+                model::BrepFace {
+                    loops: Vec::new(),
+                    surface: 0,
+                    reversed: false,
+                };
+                3
+            ],
+            ..Brep::default()
+        };
+        let (shells, regions) = shells_in(&brep, &[face(), face(), face()], 2).unwrap();
+        assert_eq!(shells.len(), 1);
+        assert_eq!(regions.len(), 2);
+        assert_eq!(regions[1].shells, vec![0]);
     }
 }
