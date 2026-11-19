@@ -137,8 +137,8 @@ pub fn shape_placed(shape: &Shape, m: &Placement) -> Option<Shape> {
             placement: followed_by(&i.placement, m),
         }),
         Shape::Annotation(annotation) => Shape::Annotation(annotation.placed(m)),
-        // A placement may stretch, which the mesh crate cannot do yet: left out until it can.
-        Shape::Mesh(_) | Shape::SubD(_) => return None,
+        Shape::Mesh(mesh) => Shape::Mesh(mesh.transformed(*m)),
+        Shape::SubD(subd) => Shape::SubD(subd.transformed(*m)),
     })
 }
 
@@ -559,5 +559,20 @@ mod tests {
         assert!(doc.block_contains(outer, definition));
         assert!(!doc.block_contains(definition, outer));
         let _ = PLACED_AS_IS;
+    }
+
+    #[test]
+    fn a_mesh_in_a_stretched_placement_is_stretched() {
+        use curva_mesh::{Frame, Mesh};
+        let mesh = Shape::Mesh(Mesh::mesh_box(&Frame::world(), [1.0; 3], [1, 1, 1]));
+        // Twice as long in x, then moved 10 along y.
+        let placement = [
+            [2.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 10.0, 0.0, 1.0],
+        ];
+        let placed = super::shape_placed(&mesh, &placement).unwrap();
+        assert_eq!(placed.bounds(), Some(([0.0, 10.0, 0.0], [2.0, 11.0, 1.0])));
     }
 }
