@@ -10,7 +10,7 @@ use curva_kernel::{Curve, Point};
 
 /// How far, as a part of an annotation outline's own size, a point left out may lie from the
 /// line kept: a letter or a mark is seen whole, so this is far below what shows.
-const PART_OF_SIZE: f64 = 1.0 / 500.0;
+pub(crate) const PART_OF_SIZE: f64 = 1.0 / 500.0;
 
 /// The same for other smooth curves (splines, and curves joined from pieces), which are zoomed in
 /// on: a circle would keep about one point every 4 degrees.

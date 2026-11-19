@@ -155,6 +155,37 @@ pub(crate) fn has_fields(shape: &Shape) -> bool {
     }
 }
 
+/// Whether what blocks draw from besides their own objects is the same in `held` as in `now`:
+/// the definitions, and for annotations inside them the unit, length display, layouts, hatch
+/// patterns and annotation styles.
+fn same_context(held: &State, now: &State) -> bool {
+    held.blocks == now.blocks
+        && held.unit == now.unit
+        && held.length_display == now.length_display
+        && held.layouts == now.layouts
+        && held.hatch_patterns == now.hatch_patterns
+        && held.annotation_styles == now.annotation_styles
+}
+
+/// Whether a block, or a block placed in it, holds text with fields or a dimension
+/// ([`has_fields`], hatches aside, which read only what [`same_context`] compares).
+fn block_has_fields(state: &State, definition: u64, depth: usize) -> bool {
+    if depth > 16 {
+        return true;
+    }
+    state
+        .blocks
+        .iter()
+        .find(|d| d.id == definition)
+        .is_some_and(|d| {
+            d.objects.iter().any(|o| match &o.shape {
+                Shape::Instance(inner) => block_has_fields(state, inner.definition, depth + 1),
+                Shape::Annotation(curva_document::annotation::Annotation::Hatch(_)) => false,
+                shape => has_fields(shape),
+            })
+        })
+}
+
 /// An annotation as it shows: its fields worked out.
 pub(crate) fn shown_annotation(
     annotation: &curva_document::annotation::Annotation,
@@ -199,6 +230,9 @@ pub struct MeshCache {
     /// has not changed is not sampled again (`docs/reviews/code-health-2026-11-14.md`, fix 3).
     pub(crate) drawn:
         std::collections::HashMap<u64, (std::sync::Arc<Object>, Vec<Layer>, Outlines)>,
+    /// The model as last drawn, without its objects: what blocks draw from besides themselves,
+    /// so unchanged instances are not drawn again while it stays the same.
+    pub(crate) context: Option<State>,
 }
 
 impl MeshCache {
@@ -221,8 +255,8 @@ impl MeshCache {
         Some((mesh, solid))
     }
 
-    /// An annotation's filled shapes (letters, arrowheads): each one's contours made into a flat
-    /// face and meshed, all in one mesh, made once while the shapes are unchanged.
+    /// An annotation's filled shapes (letters, arrowheads): each one's contours filled in their
+    /// plane ([`crate::fills`]), all in one mesh, made once while the shapes are unchanged.
     pub(crate) fn annotation_mesh(
         &mut self,
         id: u64,
@@ -235,20 +269,7 @@ impl MeshCache {
         }
         let mut all = curva_kernel::BodyMesh::default();
         for glyph in fills {
-            let Ok(face) = curva_kernel::Body::planar(glyph) else {
-                continue;
-            };
-            let Ok(mesh) = face.mesh() else {
-                continue;
-            };
-            #[allow(clippy::cast_possible_truncation)]
-            let base = all.positions.len() as u32;
-            all.positions.extend(&mesh.positions);
-            all.normals.extend(&mesh.normals);
-            all.triangles
-                .extend(mesh.triangles.iter().map(|t| t.map(|i| i + base)));
-            all.triangle_faces
-                .extend(std::iter::repeat_n(0, mesh.triangles.len()));
+            crate::fills::add_filled(glyph, &mut all);
         }
         if all.triangles.is_empty() {
             return None;
@@ -315,6 +336,11 @@ impl Outlines {
     #[must_use]
     pub fn of_space(state: &State, space: Option<u64>, cache: &mut MeshCache) -> Self {
         cache.refresh(state);
+        // What blocks draw from besides themselves; while unchanged, so is an unchanged instance.
+        let context_same = cache
+            .context
+            .as_ref()
+            .is_some_and(|held| same_context(held, state));
         let mut outlines = Self::default();
         let mut earlier = std::mem::take(&mut cache.drawn);
         for object in state.objects.iter().filter(|o| o.space == space) {
@@ -325,15 +351,20 @@ impl Outlines {
                 .into_iter()
                 .cloned()
                 .collect();
-            // An instance draws its definition, and text with fields reads other things, which
-            // can change without them, so those are always drawn again; any other object only
-            // when it or its layers changed.
+            // Text with fields and dimensions read other things, which can change without them, so
+            // those are always drawn again; an instance too when what it draws from changed, or its
+            // blocks hold such text; any other object only when it or its layers changed.
             let part = match earlier.remove(&object.id) {
                 Some((was, was_chain, part))
                     if std::sync::Arc::ptr_eq(&was, object)
                         && was_chain == chain
-                        && !matches!(object.shape, Shape::Instance(_))
-                        && !has_fields(&object.shape) =>
+                        && !has_fields(&object.shape)
+                        && match &object.shape {
+                            Shape::Instance(instance) => {
+                                context_same && !block_has_fields(state, instance.definition, 0)
+                            }
+                            _ => true,
+                        } =>
                 {
                     part
                 }
@@ -343,6 +374,12 @@ impl Outlines {
             cache
                 .drawn
                 .insert(object.id, (std::sync::Arc::clone(object), chain, part));
+        }
+        if !context_same {
+            cache.context = Some(State {
+                objects: Vec::new(),
+                ..state.clone()
+            });
         }
         outlines
     }
@@ -424,6 +461,8 @@ impl Outlines {
             let mut kind = PickKind::Curve;
             // A body's seams, by edge number, which shaded views leave out.
             let mut seam_edges: Vec<usize> = Vec::new();
+            // Whether its lines are a mesh's wires, all left out where faces show.
+            let mut wires = false;
             let pieces: Vec<(Curve, Option<usize>)> = match shape {
                 Shape::Curve(curve) => {
                     if matches!(curve, Curve::Point { .. }) {
@@ -453,8 +492,24 @@ impl Outlines {
                 }
                 // Instances inside definitions are opened before this.
                 Shape::Instance(_) => continue,
-                // Meshes and SubDs are drawn by the display stream's #267 and #324.
-                Shape::Mesh(_) | Shape::SubD(_) => continue,
+                // A mesh shades from its own triangles, placed already, and draws its wires,
+                // which views showing faces leave out as Rhino does (#267).
+                Shape::Mesh(mesh) => {
+                    kind = if mesh.is_closed() {
+                        PickKind::Solid
+                    } else {
+                        PickKind::Surface
+                    };
+                    wires = true;
+                    let drawn = std::sync::Arc::new(crate::meshes::body_mesh(mesh));
+                    outlines.push_faces(object.id, look, drawn, Some(IN_PLACE));
+                    curva_document::shape::mesh_edges(mesh)
+                        .into_iter()
+                        .map(|line| (line, None))
+                        .collect()
+                }
+                // SubDs are drawn by the display stream's #324.
+                Shape::SubD(_) => continue,
                 Shape::Annotation(annotation) => {
                     if matches!(annotation, curva_document::annotation::Annotation::Dot(_)) {
                         kind = PickKind::Point;
@@ -462,13 +517,14 @@ impl Outlines {
                     outlines.annotation_lines(state, object, *key, annotation, look, cache)
                 }
             };
-            let on_faces = shape.body().is_some();
+            let on_faces = shape.body().is_some() || wires;
+            let seam = |edge: Option<usize>| wires || edge.is_some_and(|e| seam_edges.contains(&e));
             // Annotations' letters and marks keep only the points their shape needs.
             let look = Look {
                 coarse: matches!(shape, Shape::Annotation(_)),
                 ..look
             };
-            outlines.push_pieces(object.id, pieces, look, kind, &seam_edges, on_faces);
+            outlines.push_pieces(object.id, pieces, look, kind, &seam, on_faces);
         }
         outlines
     }
@@ -520,7 +576,7 @@ impl Outlines {
         pieces: Vec<(Curve, Option<usize>)>,
         look: Look,
         kind: PickKind,
-        seam_edges: &[usize],
+        seam: &dyn Fn(Option<usize>) -> bool,
         on_faces: bool,
     ) {
         for (outline, edge) in pieces {
@@ -541,8 +597,7 @@ impl Outlines {
             self.widths.push(look.width);
             self.dashes.push(look.dashes);
             self.on_faces.push(on_faces);
-            self.seams
-                .push(edge.is_some_and(|e| seam_edges.contains(&e)));
+            self.seams.push(seam(edge));
             self.edge_of.push(edge);
             self.circles.push(crate::circles::axes_of(&outline));
             self.kinds.push(kind);
