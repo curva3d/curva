@@ -4812,7 +4812,6 @@ dependencies = [
 [[package]]
 name = "solidcore-ops"
 version = "0.1.0"
-source = "git+https://github.com/tangency-labs/solidcore?rev=9342f32c0770aeaa570dba596e4ed2b7fe327849#9342f32c0770aeaa570dba596e4ed2b7fe327849"
 dependencies = [
  "solidcore",
  "solidcore-convert",

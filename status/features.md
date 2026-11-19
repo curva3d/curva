@@ -396,7 +396,7 @@ required check, and pull requests that touch no website files merge without it.
 
 **Known problems / risks**
 - A pipe along a rail with a sharp corner (a polyline) is refused by the engine; Rhino mitres the corner. Smooth rails work.
-- solidcore runs one operation at a time behind a single lock, so meshing many solids gains only about 2.3 times from all cores. Faster opening of large models needs that looked at upstream.
+- solidcore runs one operation at a time behind a single lock. Until solidcore fixes it, Curva carries a patched copy of `solidcore-ops` with a kernel per thread (decision 0037, `crates/curva-kernel/vendor/solidcore-ops`, offered upstream as tangency-labs/solidcore#3358); delete it once solidcore has the fix and Curva's tests and timings pass on it.
 - solidcore cannot read back its own record of some turned bodies (status 1007): a box away from the origin, turned about z by certain angles (17°, 29°, 37° and others), is refused; at the origin every angle works. Moving is not the cause, as first thought. Curva avoids it by keeping each body as made plus one placement (`crates/curva-kernel/src/body.rs`). Reported as tangency-labs/solidcore#3265.
 
 - Serpentine3D's geometry is done by OpenCascade (C++), so its geometric logic cannot be ported

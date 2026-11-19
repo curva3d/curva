@@ -14,8 +14,8 @@ workspace = true
 serde = { version = "1", features = ["derive"] }
 solidcore = { git = "https://github.com/tangency-labs/solidcore", rev = "9342f32c0770aeaa570dba596e4ed2b7fe327849" }
 # The engine's body operations, its portable record of bodies (which files store) and its
-# display meshes. Same project and licence as solidcore.
-solidcore-ops = { git = "https://github.com/tangency-labs/solidcore", rev = "9342f32c0770aeaa570dba596e4ed2b7fe327849" }
+# display meshes. Same project and licence as solidcore. solidcore-ops is a patched copy in vendor/ (decision 0037).
+solidcore-ops = { path = "vendor/solidcore-ops" } # patched copy until solidcore has `with_own_kernel` (decision 0037)
 solidcore-record = { git = "https://github.com/tangency-labs/solidcore", rev = "9342f32c0770aeaa570dba596e4ed2b7fe327849" }
 solidcore-tess = { git = "https://github.com/tangency-labs/solidcore", rev = "9342f32c0770aeaa570dba596e4ed2b7fe327849" }
 # STEP export (spec `export-formats.md` §4). Same project and licence as solidcore.

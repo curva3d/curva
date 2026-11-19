@@ -39,6 +39,10 @@ Curva calls solidcore (Apache-2.0) for its geometry: https://github.com/tangency
 Its licence and NOTICE ship with its source at the pinned revision in `Cargo.lock`. A copy of the
 NOTICE is in `licenses/solidcore-NOTICE.txt`, and goes with every release build.
 
+One of its crates, `solidcore-ops`, is a copy with one change by Curva, in
+`crates/curva-kernel/vendor/solidcore-ops` (its LICENSE and NOTICE beside it; the change in
+`curva.patch`, the changed files marked), until solidcore has the change (decision 0037).
+
 ## OpenSKP
 
 Curva reads SketchUp files with OpenSKP's Rust package (MIT), by its contributors:
