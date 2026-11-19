@@ -11,7 +11,11 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 20 November 2026
 
-**Check and MeshRepair (#273):** `Check` reports on meshes as Rhino 8 counts (or "This is a goodmesh."); other kinds of object are counted and left for the features stream. `MeshRepair` makesthe main fixes in one go, each a remembered option; `UnifyMeshNormals`, `FillMeshHoles`,`CullDegenerateMeshFaces` and `RebuildMeshNormals` are commands of their own, as in Rhino.
+**Check and MeshRepair (#273):** `Check` reports on meshes as Rhino 8 counts (or "This is a good
+mesh."); other kinds of object are counted and left for the features stream. `MeshRepair` makes
+the main fixes in one go, each a remembered option; `UnifyMeshNormals`, `FillMeshHoles`,
+`CullDegenerateMeshFaces` and `RebuildMeshNormals` are commands of their own, as in Rhino.
+
 **Join and Explode for meshes (#270, second part):** `Mesh::joined` combines meshes into one
 without welding, as Rhino's Join does, and `Mesh::pieces` splits a mesh into the parts that share
 no point, as Rhino's Explode does (both listed custom operations). Hooking them into `Join`,
