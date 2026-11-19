@@ -12,7 +12,8 @@ file hook-ups that waited on it have started:
   in a file comes in as a named mesh object. Going out, meshes are written as they are, SubDs as
   their smooth surface (Rhino's default level), and surfaces and solids meshed at the viewport's
   density until the mesh panel comes (`export-formats.md` §2). STL and PLY are written binary.
-  `Open` of mesh files is next.
+  `Open` reads them too: a mesh file opens as a new unsaved model named after the file, as
+  `.3dm` files do.
 - **Any affine map and deformations for meshes and SubDs** (#354, asked for by the features
   stream): `transformed` and `deformed`, for stretched blocks, ScaleNU, the gumball's stretch and
   the deformation commands.

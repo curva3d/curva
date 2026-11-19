@@ -15,11 +15,19 @@ use curva_document::Document;
 use curva_dxf::Format as CadFormat;
 use std::path::{Path, PathBuf};
 
-/// What `Open` and `Import` read, Curva's own files first.
-pub const READ_FORMATS: &[FileFormat] =
-    &[CURVA_FILES, RHINO_FILES, DXF_FILES, DWG_FILES, SKP_FILES];
+/// What `Open` reads, Curva's own files first.
+pub const READ_FORMATS: &[FileFormat] = &[
+    CURVA_FILES,
+    RHINO_FILES,
+    DXF_FILES,
+    DWG_FILES,
+    SKP_FILES,
+    STL_FILES,
+    OBJ_FILES,
+    PLY_FILES,
+];
 
-/// What `Import` reads: what `Open` reads, and mesh files.
+/// What `Import` reads.
 pub const IMPORT_FORMATS: &[FileFormat] = &[
     CURVA_FILES,
     RHINO_FILES,
