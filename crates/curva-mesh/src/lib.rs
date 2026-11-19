@@ -8,6 +8,7 @@ pub mod boolean;
 mod check;
 mod convert;
 mod from_body;
+mod join;
 mod measure;
 mod mesh;
 mod nurbs;
