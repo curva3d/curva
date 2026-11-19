@@ -5,11 +5,6 @@ file crates/curva-3dm/src/read/mod.rs 824
 file crates/curva-dxf/src/lib.rs 1354
 file crates/curva-kernel/src/hidden.rs 816
 fn crates/curva-3dm/src/import/surfaces.rs nurbs_surface 85
-fn crates/curva-3dm/src/read/mesh.rs mesh 199
-fn crates/curva-3dm/src/read/subd.rs read_level 84
-fn crates/curva-3dm/src/write/mesh.rs flatten 120
-fn crates/curva-3dm/src/write/mesh.rs write_mesh 159
-fn crates/curva-3dm/src/write/subd.rs write_subd 159
 fn crates/curva-app/src/agent.rs look_pictures 84
 fn crates/curva-app/src/benchmark.rs benchmark_house 90
 fn crates/curva-app/src/benchmark.rs benchmark_scene 102
