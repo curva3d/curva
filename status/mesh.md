@@ -9,6 +9,19 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## 19 November 2026 (evening)
+
+**Mesh primitives (#270, first part):** `MeshBox`, `MeshPlane`, `MeshSphere`, `MeshCylinder`,
+`MeshCone` and `MeshTorus` are commands, with previews, icons and reference rows. Each is picked
+like its solid counterpart (Box, Sphere and so on), and Rhino's face-count options are there:
+`XCount`/`YCount`/`ZCount`, `VerticalFaces`/`AroundFaces`, the sphere's `Style` and
+`Subdivisions`, `Solid` and `CapFaceStyle`. Rhino 8's defaults were measured by making each with
+Enter at every option, and Curva makes the same faces: 600 quads for a box; 100 for a plane; 80
+quads and 20 triangles for a sphere; 120 faces for a cylinder; 110 for a cone; 100 for a torus.
+The sphere's subdivision default could not be measured (2 for now). Rhino's other ways of
+picking (3Point, Diagonal, AroundCurve and so on) come later. `What`, `Properties`, `Join` and
+`Explode` for meshes are the rest of #270. `Mesh` (#271) is closed: done in #388.
+
 ## 19 November 2026 (later)
 
 **Mesh panel, part 1: the settings, and the `Mesh` command** (owner: mesh panel first):

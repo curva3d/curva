@@ -2,3 +2,4 @@
 
 pub(crate) mod mesh_command;
 pub mod meshing;
+pub(crate) mod primitives;

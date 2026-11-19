@@ -21,7 +21,57 @@ pub(super) fn mesh_1(pen: &Pen<'_>, key: &str) -> bool {
             }
             pen.dot(11.0, 11.0);
         }
+        "meshplane" => grid(pen, (3.0, 5.0), (19.0, 17.0), 4),
+        "meshbox" => {
+            // A box's front face as a grid, its top and side drawn back.
+            grid(pen, (3.0, 8.0), (14.0, 19.0), 3);
+            pen.line((3.0, 8.0), (8.0, 3.0));
+            pen.line((14.0, 8.0), (19.0, 3.0));
+            pen.line((8.0, 3.0), (19.0, 3.0));
+            pen.line((14.0, 19.0), (19.0, 14.0));
+            pen.line((19.0, 3.0), (19.0, 14.0));
+        }
+        "meshsphere" | "meshtorus" => {
+            if key == "meshsphere" {
+                pen.ellipse((3.0, 3.0, 16.0, 16.0));
+                pen.ellipse((7.0, 3.0, 8.0, 16.0));
+                pen.ellipse((3.0, 8.0, 16.0, 6.0));
+            } else {
+                pen.ellipse((2.0, 5.0, 18.0, 12.0));
+                pen.ellipse((7.0, 9.0, 8.0, 4.0));
+                pen.line((2.0, 11.0), (7.0, 11.0));
+                pen.line((15.0, 11.0), (20.0, 11.0));
+                pen.line((11.0, 5.0), (11.0, 9.0));
+                pen.line((11.0, 13.0), (11.0, 17.0));
+            }
+        }
+        "meshcylinder" | "meshcone" => {
+            pen.ellipse((4.0, 15.0, 14.0, 5.0));
+            let top = if key == "meshcylinder" {
+                pen.ellipse((4.0, 2.0, 14.0, 5.0));
+                [(4.0, 4.5), (11.0, 2.0), (18.0, 4.5), (11.0, 7.0)]
+            } else {
+                [(11.0, 3.0); 4]
+            };
+            for (k, bottom) in [(4.0, 17.5), (11.0, 15.0), (18.0, 17.5), (11.0, 20.0)]
+                .into_iter()
+                .enumerate()
+            {
+                pen.line(top[k], bottom);
+            }
+        }
         _ => return false,
     }
     true
+}
+
+/// A rectangle from `a` to `b` split into `n` × `n` faces.
+fn grid(pen: &Pen<'_>, a: (f32, f32), b: (f32, f32), n: u32) {
+    for k in 0..=n {
+        let t = k as f32 / n as f32;
+        let x = a.0 + (b.0 - a.0) * t;
+        let y = a.1 + (b.1 - a.1) * t;
+        pen.line((x, a.1), (x, b.1));
+        pen.line((a.0, y), (b.0, y));
+    }
 }
