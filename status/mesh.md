@@ -32,6 +32,13 @@ They leave what Rhino 8 leaves, measured on the same boxes:
 Where Curva differs on purpose: Rhino cuts with an open mesh and leaves an open result, and its
 Split leaves open parts; Curva refuses open meshes and its parts are closed.
 
+**QuadRemesh (#329):** a command now, with an icon and a reference row, on the quadrs library of
+part 1. Measured in Rhino 8: `-QuadRemesh` takes no options on the command line (it uses the
+dialog's choices: 2,000 quads, adaptive size 50, hard edges kept); it keeps the input, makes a
+mesh, and meshes SubDs first. Curva does the same, with `TargetQuadCount`, `DetectHardEdges` and
+`ConvertToSubD`. On a 40 × 40 sphere Rhino makes 1,750 quads and Curva 1,990; Rhino's adaptive
+size, `TargetEdgeLength`, symmetry and guide curves are still to come.
+
 **SketchUp import options asked for (#432, features):** the owner wants Rhino's "SketchUp Import
 Options", above all faces brought in as joined trimmed planes. Rhino's own Trimmed planes import
 is not measured yet: `-Import` uses the choice saved in its dialog, which a script cannot change.
