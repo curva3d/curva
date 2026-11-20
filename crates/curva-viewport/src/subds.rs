@@ -39,8 +39,9 @@ pub(crate) struct Drawing {
 
 /// What a SubD draws as: shown smooth, the smooth surface with its creases and open borders on
 /// it, and its other cage edges for wireframe; shown flat, or when the smooth surface cannot be
-/// worked out, the cage's faces shaded flat with all its edges.
-pub(crate) fn drawing(subd: &SubD) -> Drawing {
+/// worked out, the cage's faces shaded flat with all its edges. Shown smooth, faces coloured
+/// one by one carry their colours onto the surface, the rest `colour`, the object's own.
+pub(crate) fn drawing(subd: &SubD, colour: [f32; 3]) -> Drawing {
     if subd.display() == SubDDisplay::Smooth {
         let levels = levels_for(subd);
         // A closed cage without creases has no lines on its surface in every view; finding them
@@ -51,7 +52,11 @@ pub(crate) fn drawing(subd: &SubD) -> Drawing {
         } else {
             subd.crease_curves(levels)
         };
-        let parts = (subd.surface(levels), creases, subd.edge_curves(levels));
+        let parts = (
+            subd.surface_coloured(levels, colour),
+            creases,
+            subd.edge_curves(levels),
+        );
         if let (Ok(shown), Ok(creases), Ok(edges)) = parts {
             let wires = apart_from(edges, &creases);
             let polylines = |runs: Vec<Vec<Point>>| {
@@ -171,6 +176,11 @@ mod tests {
     use super::*;
     use curva_mesh::Frame;
 
+    /// [`super::drawing`] in a plain grey, for tests that do not look at colours.
+    fn drawing(subd: &SubD) -> Drawing {
+        super::drawing(subd, [0.5; 3])
+    }
+
     fn cube() -> SubD {
         SubD::subd_box(&Frame::world(), [100.0, 100.0, 100.0], [1, 1, 1])
     }
@@ -238,9 +248,9 @@ mod tests {
     }
 
     /// Shown flat, a SubD's coloured faces show their colours and the rest its own colour, as in
-    /// Rhino; shown smooth, colours wait for the smooth surface to carry them.
+    /// Rhino; shown smooth, the smooth surface carries them, a sixth of it red here.
     #[test]
-    fn a_flat_subd_shows_its_face_colours() {
+    fn a_subd_shows_its_face_colours() {
         const RED: [f32; 3] = [1.0, 0.0, 0.0];
         const OWN: [f32; 3] = [0.2, 0.4, 0.6];
         let mut given = vec![None; 6];
@@ -260,9 +270,16 @@ mod tests {
             );
         }
         assert!(colours.contains(&RED) && colours.contains(&OWN));
-        let smooth = drawing(&coloured);
-        let (drawn, _) = crate::meshes::body_mesh(&smooth.shown);
+        let smooth = super::drawing(&coloured, OWN);
+        let (drawn, given) = crate::meshes::body_mesh(&smooth.shown);
+        // The smooth surface's own colours are used; none are worked out from the cage.
         assert_eq!(face_colours(&coloured, &smooth, &drawn, OWN), None);
+        let given = given.unwrap();
+        assert_eq!(given.len(), drawn.positions.len());
+        assert!(given.iter().all(|c| *c == RED || *c == OWN));
+        let red = given.iter().filter(|c| **c == RED).count();
+        assert_eq!(red * 6, given.len());
+        assert_eq!(crate::meshes::body_mesh(&drawing(&cube()).shown).1, None);
         let plain = cube().with_display(SubDDisplay::Flat);
         let shown = drawing(&plain);
         let (drawn, _) = crate::meshes::body_mesh(&shown.shown);
