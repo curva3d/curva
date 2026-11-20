@@ -140,10 +140,7 @@ impl Export {
             let chosen = self.chosen.as_deref();
             return done(export(doc, chosen, &path, &path.display().to_string()));
         }
-        if path
-            .extension()
-            .is_some_and(|e| e.eq_ignore_ascii_case("svg"))
-        {
+        if doc.formats().of(&path).is_some_and(|f| f.drawing.is_some()) {
             // A drawing: the open layout, as it prints, or every layout from the model.
             if self.selected {
                 return Step::Failed(Message::new("error.export_svg_selected"));

@@ -16,3 +16,4 @@ curva-3dm = { path = "../curva-3dm" }
 curva-dxf = { path = "../curva-dxf" }
 curva-skp = { path = "../curva-skp" }
 curva-step = { path = "../curva-step" }
+curva-pdf = { path = "../curva-pdf" }

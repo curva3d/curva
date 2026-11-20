@@ -24,6 +24,8 @@ pub type Importer = fn(&mut Document, &Path, &str) -> Result<Done, String>;
 pub type Saver = fn(&mut Document, &Path, &str) -> Result<Done, String>;
 /// Writes the model, or only the objects given, to a file, for `Export` and `ExportSelected`.
 pub type Exporter = fn(&Document, Option<&[u64]>, &Path, &str) -> Result<Done, String>;
+/// Writes pages the viewport has drawn from layouts to a file.
+pub type PageWriter = fn(&[crate::drawing::Page], &Path, &str) -> Result<Done, String>;
 
 /// One kind of file and what Curva can do with it.
 #[derive(Clone, Debug)]
@@ -40,6 +42,10 @@ pub struct Format {
     pub save: Option<Saver>,
     /// Writing the model or the chosen objects, for `Export` and `ExportSelected`.
     pub export: Option<Exporter>,
+    /// Writing printed pages, for `Print` and `ExportPDF` (spec `drawing-output.md` §1).
+    pub print: Option<PageWriter>,
+    /// Writing layouts as drawings, as `Export` offers them: the open layout, or every one.
+    pub drawing: Option<PageWriter>,
 }
 
 impl Format {
@@ -53,6 +59,8 @@ impl Format {
             import: None,
             save: None,
             export: None,
+            print: None,
+            drawing: None,
         }
     }
 
@@ -141,7 +149,13 @@ impl Formats {
     /// What `Export` and `ExportSelected` offer.
     #[must_use]
     pub fn exporting(&self) -> Vec<(&'static str, &'static [&'static str])> {
-        self.listed(|f| f.export.is_some())
+        self.listed(|f| f.export.is_some() || f.drawing.is_some())
+    }
+
+    /// What `Print` and `ExportPDF` write to a file.
+    #[must_use]
+    pub fn printing(&self) -> Vec<(&'static str, &'static [&'static str])> {
+        self.listed(|f| f.print.is_some())
     }
 }
 
