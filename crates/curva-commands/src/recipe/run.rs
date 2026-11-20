@@ -122,6 +122,7 @@ impl<R: Recipe> RecipeCommand<R> {
             from: step.from,
             along: step.along,
             corner: step.corner,
+            panel: step.panel,
             ..Request::new(step.prompt, kind)
         })
     }
@@ -149,6 +150,10 @@ impl<R: Recipe> RecipeCommand<R> {
                             Only::Any => true,
                             Only::Curves => o.curve().is_some(),
                             Only::Bodies => o.shape.body().is_some(),
+                            Only::Meshable => {
+                                o.shape.body().is_some()
+                                    || matches!(o.shape, curva_document::Shape::SubD(_))
+                            }
                         }
                 })
             })

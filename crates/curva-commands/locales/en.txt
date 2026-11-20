@@ -26,6 +26,7 @@ prompt.save.path = File to save
 prompt.open.path = File to open
 prompt.import.path = File to import (.3dm or .curva)
 prompt.export.path = Rhino file to write (.3dm)
+prompt.export.mesh = Mesh settings for the file (Enter keeps the last ones)
 prompt.export.objects = Select objects to export
 done.line = Created a line.
 done.polyline = Created a polyline with {0} points.
