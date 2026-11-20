@@ -15,8 +15,6 @@ fn crates/curva-app/src/top_bar.rs file_label 105
 fn crates/curva-app/src/viewports.rs apply_view 105
 fn crates/curva-app/src/viewports.rs history_keys 99
 fn crates/curva-app/src/viewports.rs viewports 200
-fn crates/curva-commands/src/commands/analyze/what.rs make 121
-fn crates/curva-commands/src/commands/layouts/title_block.rs placed 171
 fn crates/curva-commands/src/processor.rs answer_typed 108
 fn crates/curva-commands/src/recipe/run.rs step 99
 fn crates/curva-document/src/annotation/arc_length.rs parts 88

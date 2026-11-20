@@ -96,48 +96,10 @@ impl TitleBlock {
         let (left, other) = if ansi { (12.7, 12.7) } else { (20.0, 10.0) };
         let [w, h] = layout.size;
         let (left, other) = (left * per_mm, other * per_mm);
-        let point = |x: f64, y: f64| -> Point { [x, y, 0.0] };
-        let mut lines = Vec::new();
-        let border = [
-            point(left, other),
-            point(w - other, other),
-            point(w - other, h - other),
-            point(left, h - other),
-        ];
-        lines.extend(Curve::polyline(border.to_vec(), true));
         // The block's lower left corner, in the border's lower right corner.
-        let x0 = w - other - WIDE * k;
-        let y0 = other;
-        let at = |u: f64, v: f64| point(x0 + u * k, y0 + v * k);
-        let mut line = |a: [f64; 2], b: [f64; 2]| {
-            lines.extend(Curve::line(at(a[0], a[1]), at(b[0], b[1])));
-        };
-        line([0.0, 0.0], [0.0, TALL]);
-        line([0.0, TALL], [WIDE, TALL]);
-        for v in [9.0, 27.0] {
-            line([0.0, v], [WIDE, v]);
-        }
-        line([110.0, 18.0], [WIDE, 18.0]);
-        line([110.0, 0.0], [110.0, 27.0]);
-        line([145.0, 0.0], [145.0, 27.0]);
-        // The main detail: the largest scaled one on the sheet.
-        let main = layout
-            .details
-            .iter()
-            .filter(|d| d.scale.is_some())
-            .filter_map(|d| {
-                let (low, high) = doc
-                    .state()
-                    .objects
-                    .iter()
-                    .find(|o| o.id == d.frame)?
-                    .shape
-                    .bounds()?;
-                Some((d.frame, (high[0] - low[0]) * (high[1] - low[1])))
-            })
-            .max_by(|a, b| a.1.total_cmp(&b.1))
-            .map(|(frame, _)| frame);
-        let scale = main.map_or_else(
+        let corner = [w - other - WIDE * k, other];
+        let lines = sheet_lines([w, h], left, other, corner, k);
+        let scale = main_detail(doc, layout).map_or_else(
             || "-".to_owned(),
             |frame| {
                 let format = if ansi { "#=1" } else { "1:#" };
@@ -145,77 +107,10 @@ impl TitleBlock {
             },
         );
         let date = if ansi { "M/d/yyyy" } else { "yyyy-MM-dd" };
-        let cells = [
-            Cell {
-                low: [0.0, 27.0],
-                high: [WIDE, TALL],
-                label: "titleblock.project",
-                value: "%<DocumentText(\"Project\")>%".to_owned(),
-                height: 3.0,
-            },
-            Cell {
-                low: [0.0, 9.0],
-                high: [110.0, 27.0],
-                label: "titleblock.title",
-                value: "%<LayoutUserText(\"Title\")>%".to_owned(),
-                height: 5.0,
-            },
-            Cell {
-                low: [110.0, 18.0],
-                high: [145.0, 27.0],
-                label: "titleblock.scale",
-                value: scale,
-                height: 2.5,
-            },
-            Cell {
-                low: [145.0, 18.0],
-                high: [WIDE, 27.0],
-                label: "titleblock.date",
-                value: format!("%<Date(\"{date}\")>%"),
-                height: 2.5,
-            },
-            Cell {
-                low: [110.0, 9.0],
-                high: [145.0, 18.0],
-                label: "titleblock.drawn_by",
-                value: "%<DocumentText(\"DrawnBy\")>%".to_owned(),
-                height: 2.5,
-            },
-            Cell {
-                low: [145.0, 9.0],
-                high: [WIDE, 18.0],
-                label: "titleblock.checked_by",
-                value: "%<DocumentText(\"CheckedBy\")>%".to_owned(),
-                height: 2.5,
-            },
-            Cell {
-                low: [0.0, 0.0],
-                high: [110.0, 9.0],
-                label: "titleblock.file",
-                value: "%<FileName()>%".to_owned(),
-                height: 2.5,
-            },
-            Cell {
-                low: [110.0, 0.0],
-                high: [145.0, 9.0],
-                label: "titleblock.sheet",
-                value: "%<PageNumber()>% / %<NumPages()>%".to_owned(),
-                height: 2.5,
-            },
-            Cell {
-                low: [145.0, 0.0],
-                high: [WIDE, 9.0],
-                label: "titleblock.revision",
-                value: "%<LayoutUserText(\"Revision\")>%".to_owned(),
-                height: 2.5,
-            },
-        ];
-        let words = Translations::english();
-        let say = |key: &'static str| words.render(&Message::new(key));
         let style = doc.current_annotation_style();
         let text = |content: String, u: f64, v: f64, height: f64| Text {
             content,
-            origin: at(u, v),
+            origin: [corner[0] + u * k, corner[1] + v * k, 0.0],
             x: [1.0, 0.0, 0.0],
             y: [0.0, 1.0, 0.0],
             height: height * k,
@@ -223,22 +118,9 @@ impl TitleBlock {
             align: TextAlign::Left,
             style,
         };
-        let label_height = 1.8;
-        let mut texts = Vec::new();
-        for cell in &cells {
-            texts.push(text(
-                say(cell.label),
-                cell.low[0] + 1.5,
-                cell.high[1] - 1.5 - label_height,
-                label_height,
-            ));
-            texts.push(text(
-                cell.value.clone(),
-                cell.low[0] + 1.5,
-                cell.low[1] + 1.5,
-                cell.height,
-            ));
-        }
+        let words = Translations::english();
+        let say = |key: &'static str| words.render(&Message::new(key));
+        let texts = cell_texts(&cells(scale, date), &text, &say);
         let table = Table {
             at: text(String::new(), 0.0, TALL, 2.5),
             kind: TableKind::Revisions(layout.id),
@@ -360,6 +242,148 @@ impl Command for TitleBlock {
     fn preview(&self, doc: &Document, _live: &Live) -> Vec<Curve> {
         self.placed(doc).map(|p| p.lines).unwrap_or_default()
     }
+}
+
+/// The border inside the sheet's margins, and the block's frame and cell lines, its lower left
+/// corner at `corner`, `k` paper units to a block unit.
+fn sheet_lines(size: [f64; 2], left: f64, other: f64, corner: [f64; 2], k: f64) -> Vec<Curve> {
+    let [w, h] = size;
+    let point = |x: f64, y: f64| -> Point { [x, y, 0.0] };
+    let mut lines = Vec::new();
+    let border = [
+        point(left, other),
+        point(w - other, other),
+        point(w - other, h - other),
+        point(left, h - other),
+    ];
+    lines.extend(Curve::polyline(border.to_vec(), true));
+    let at = |u: f64, v: f64| point(corner[0] + u * k, corner[1] + v * k);
+    let mut line = |a: [f64; 2], b: [f64; 2]| {
+        lines.extend(Curve::line(at(a[0], a[1]), at(b[0], b[1])));
+    };
+    line([0.0, 0.0], [0.0, TALL]);
+    line([0.0, TALL], [WIDE, TALL]);
+    for v in [9.0, 27.0] {
+        line([0.0, v], [WIDE, v]);
+    }
+    line([110.0, 18.0], [WIDE, 18.0]);
+    line([110.0, 0.0], [110.0, 27.0]);
+    line([145.0, 0.0], [145.0, 27.0]);
+    lines
+}
+
+/// The main detail on the sheet: the largest scaled one, by its frame.
+fn main_detail(doc: &Document, layout: &curva_document::layouts::Layout) -> Option<u64> {
+    layout
+        .details
+        .iter()
+        .filter(|d| d.scale.is_some())
+        .filter_map(|d| {
+            let (low, high) = doc
+                .state()
+                .objects
+                .iter()
+                .find(|o| o.id == d.frame)?
+                .shape
+                .bounds()?;
+            Some((d.frame, (high[0] - low[0]) * (high[1] - low[1])))
+        })
+        .max_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(frame, _)| frame)
+}
+
+/// The block's cells: where each lies, its label, and the field that fills it.
+fn cells(scale: String, date: &str) -> [Cell; 9] {
+    [
+        Cell {
+            low: [0.0, 27.0],
+            high: [WIDE, TALL],
+            label: "titleblock.project",
+            value: "%<DocumentText(\"Project\")>%".to_owned(),
+            height: 3.0,
+        },
+        Cell {
+            low: [0.0, 9.0],
+            high: [110.0, 27.0],
+            label: "titleblock.title",
+            value: "%<LayoutUserText(\"Title\")>%".to_owned(),
+            height: 5.0,
+        },
+        Cell {
+            low: [110.0, 18.0],
+            high: [145.0, 27.0],
+            label: "titleblock.scale",
+            value: scale,
+            height: 2.5,
+        },
+        Cell {
+            low: [145.0, 18.0],
+            high: [WIDE, 27.0],
+            label: "titleblock.date",
+            value: format!("%<Date(\"{date}\")>%"),
+            height: 2.5,
+        },
+        Cell {
+            low: [110.0, 9.0],
+            high: [145.0, 18.0],
+            label: "titleblock.drawn_by",
+            value: "%<DocumentText(\"DrawnBy\")>%".to_owned(),
+            height: 2.5,
+        },
+        Cell {
+            low: [145.0, 9.0],
+            high: [WIDE, 18.0],
+            label: "titleblock.checked_by",
+            value: "%<DocumentText(\"CheckedBy\")>%".to_owned(),
+            height: 2.5,
+        },
+        Cell {
+            low: [0.0, 0.0],
+            high: [110.0, 9.0],
+            label: "titleblock.file",
+            value: "%<FileName()>%".to_owned(),
+            height: 2.5,
+        },
+        Cell {
+            low: [110.0, 0.0],
+            high: [145.0, 9.0],
+            label: "titleblock.sheet",
+            value: "%<PageNumber()>% / %<NumPages()>%".to_owned(),
+            height: 2.5,
+        },
+        Cell {
+            low: [145.0, 0.0],
+            high: [WIDE, 9.0],
+            label: "titleblock.revision",
+            value: "%<LayoutUserText(\"Revision\")>%".to_owned(),
+            height: 2.5,
+        },
+    ]
+}
+
+/// Each cell's label in its top left corner and its value in its bottom left corner.
+fn cell_texts(
+    cells: &[Cell],
+    text: &impl Fn(String, f64, f64, f64) -> Text,
+    say: &impl Fn(&'static str) -> String,
+) -> Vec<Text> {
+    let label_height = 1.8;
+    let mut texts = Vec::new();
+    for cell in cells {
+        texts.push(text(
+            say(cell.label),
+            cell.low[0] + 1.5,
+            cell.high[1] - 1.5 - label_height,
+            label_height,
+        ));
+        texts.push(text(
+            cell.value.clone(),
+            cell.low[0] + 1.5,
+            cell.low[1] + 1.5,
+            cell.height,
+        ));
+    }
+    texts
 }
 
 /// Whether an object is part of a title block's text, for tests.
