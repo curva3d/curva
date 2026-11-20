@@ -8,6 +8,27 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## 20 November 2026
+
+**Done**
+- **Large scanned meshes are quicker to work with** (#267, the speed left over from Stage A).
+  A mesh's edges were each listed as their own line, so a scan of a million triangles held
+  about 1.5 million lines; now its edges are joined end to end into chains of up to 256 points,
+  some thousands for that scan, drawing exactly the same edges. On a test mesh of a million
+  triangles, working it out went from 1.4 s to 0.75 s, and handing its lines to the window from
+  140 ms to 45 ms.
+- **Clicking to pick no longer slows down in big models.** A click looked at every point of
+  every object; now it looks only at objects whose box is near the cursor, using the box tree
+  snapping already had, and a click on a face skips meshes nowhere near it. On the same test
+  mesh, a click went from about 450 ms to under 1 ms, and a click on a face away from its edges
+  from 150 ms to 35 ms. The first click after a change no longer builds snapping's whole
+  index (0.9 s on that mesh); picking builds only the small part it needs.
+
+**Next**
+- A click on the face of a scan still checks each triangle (35 ms for a million); a box tree
+  per mesh would make it instant, if it shows up in use.
+- Orbit-test the owner's larger project files once the features stream makes import faster.
+
 ## 19 November 2026
 
 **Done**

@@ -153,13 +153,18 @@ impl Outlines {
         self.objects
             .iter()
             .enumerate()
-            .filter(|(index, _)| !self.locked.get(*index).copied().unwrap_or(false))
-            .filter(|(index, _)| {
-                self.kinds
-                    .get(*index)
-                    .is_none_or(|kind| self.filter.allows(*kind))
-            })
+            .filter(|(index, _)| self.is_selectable(*index))
             .map(|(_, object)| object)
+    }
+
+    /// Whether entry `index` of `objects` can be picked: not on a locked layer, and of a kind
+    /// the selection filter lets through.
+    fn is_selectable(&self, index: usize) -> bool {
+        !self.locked.get(index).copied().unwrap_or(false)
+            && self
+                .kinds
+                .get(index)
+                .is_none_or(|kind| self.filter.allows(*kind))
     }
 
     /// Point objects with the colour to mark them in.
@@ -227,9 +232,15 @@ impl Outlines {
         reach: f64,
     ) -> Option<u64> {
         let mut best: Option<(f64, u64)> = None;
-        for (id, points) in self.selectable() {
+        let view = camera.projector(size);
+        // Only objects whose boxes come within reach of the cursor (#130).
+        for index in self.objects_near(&view, (screen, reach)) {
+            if !self.is_selectable(index) {
+                continue;
+            }
+            let (id, points) = &self.objects[index];
             let projected: Vec<Option<[f64; 2]>> =
-                points.iter().map(|p| camera.project(*p, size)).collect();
+                points.iter().map(|p| view.project(*p)).collect();
             if let [Some(only)] = projected.as_slice() {
                 let distance = (only[0] - screen[0]).hypot(only[1] - screen[1]);
                 if distance <= reach && best.is_none_or(|(d, _)| distance < d) {
@@ -376,20 +387,26 @@ impl Outlines {
         size: [f64; 2],
     ) -> Option<(u64, usize)> {
         let forward = camera.forward();
+        let view = camera.projector(size);
         let mut best: Option<(f64, (u64, usize))> = None;
-        for faces in self.faces.iter().filter(|faces| !faces.locked) {
+        // Only meshes whose boxes reach the cursor on screen (#130).
+        let near = self.faces.iter().filter(|faces| {
+            !faces.locked && !crate::snap::box_beyond(&view, faces.around, (screen, 0.0))
+        });
+        for faces in near {
             let mesh = &faces.mesh;
             for (triangle, face) in mesh.triangles.iter().zip(&mesh.triangle_faces) {
-                let corners: Vec<Point> =
-                    triangle.iter().filter_map(|&c| faces.corner(c)).collect();
-                let on_screen: Vec<[f64; 2]> = corners
-                    .iter()
-                    .filter_map(|p| camera.project(*p, size))
-                    .collect();
-                let [a, b, c] = on_screen.as_slice() else {
+                let corner = |k: usize| faces.corner(triangle[k]);
+                let (Some(p), Some(q), Some(r)) = (corner(0), corner(1), corner(2)) else {
                     continue;
                 };
-                if !inside_triangle(screen, *a, *b, *c) {
+                let corners = [p, q, r];
+                let (Some(a), Some(b), Some(c)) =
+                    (view.project(p), view.project(q), view.project(r))
+                else {
+                    continue;
+                };
+                if !inside_triangle(screen, a, b, c) {
                     continue;
                 }
                 // How far along the view the triangle's middle is, to keep the nearest.
