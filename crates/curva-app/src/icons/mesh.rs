@@ -147,9 +147,47 @@ pub(super) fn mesh_3(pen: &Pen<'_>, key: &str) -> bool {
                 pen.accent(),
             );
         }
+        key if key.starts_with("meshboolean") => mesh_boolean(pen, key),
         _ => return false,
     }
     true
+}
+
+/// Two overlapping meshed squares, with what the boolean keeps outlined.
+fn mesh_boolean(pen: &Pen<'_>, key: &str) {
+    grid(pen, (2.0, 2.0), (14.0, 14.0), 2);
+    grid(pen, (8.0, 8.0), (20.0, 20.0), 2);
+    let overlap = [(8.0, 8.0), (14.0, 8.0), (14.0, 14.0), (8.0, 14.0)];
+    let first = [
+        (2.0, 2.0),
+        (14.0, 2.0),
+        (14.0, 8.0),
+        (8.0, 8.0),
+        (8.0, 14.0),
+        (2.0, 14.0),
+    ];
+    match key {
+        "meshbooleanunion" => pen.path_in(
+            &[
+                (2.0, 2.0),
+                (14.0, 2.0),
+                (14.0, 8.0),
+                (20.0, 8.0),
+                (20.0, 20.0),
+                (8.0, 20.0),
+                (8.0, 14.0),
+                (2.0, 14.0),
+            ],
+            true,
+            pen.accent(),
+        ),
+        "meshbooleandifference" => pen.path_in(&first, true, pen.accent()),
+        "meshbooleanintersection" => pen.path_in(&overlap, true, pen.accent()),
+        _ => {
+            pen.path_in(&first, true, pen.accent());
+            pen.path_in(&overlap, true, pen.accent());
+        }
+    }
 }
 
 /// A rectangle from `a` to `b` split into `n` × `n` faces.

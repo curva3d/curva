@@ -7,7 +7,7 @@
 //! (Barki, Guennebaud and Foufou, "Exact, robust, and efficient regularized Booleans on general
 //! 3D meshes", Computers & Mathematics with Applications 70, 2015) for closed meshes that cross
 //! themselves or share edges between more than two faces. Only closed meshes have an inside,
-//! so an open one is refused, as Rhino refuses it.
+//! so an open one is refused (Rhino 8 cuts with an open mesh too, leaving an open result).
 //!
 //! Results are triangles. Normals, texture coordinates and colours do not come through yet.
 
