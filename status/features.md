@@ -37,8 +37,18 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 - **SketchUp files in Import's dialog** (#427, the owner's choice), and **SketchUp Live Components**
   added to the smart-object references in `docs/architecture.md` (#428, the owner's note).
 - **Size check at work:** it stopped `Export` and the app's start-up function from growing. `Export`
-  was split, and `Open` shrank, so both left the exceptions list. #422 opened: `commands/mod.rs` is
-  at exactly 800 lines, so its registrations should be split by tab (the mesh stream's warning).
+  was split, and `Open` shrank, so both left the exceptions list.
+- **Tidy-up #392 done** (#434): `curva-dxf`'s 1,354-line `lib.rs` split into `export`, `import`,
+  `ocs` and `units`, its six long functions in named steps; seven entries left the size list.
+- **A command step can open an interface panel** (#436, closes #387 for the mesh stream): `Mesh`
+  and STL/OBJ/PLY export ask for the mesh settings in the mesh panel (the mesh stream hooks it up in
+  #440); scripts, agents and the dashed commands never see the panel. `StepDef::meshable()` takes
+  only surfaces, solids and SubDs.
+- **SketchUp import options like Rhino 8's** (#432, the owner's request through the mesh stream):
+  faces can come in as **trimmed planes**, built straight from each face's loops and joined into
+  solids where groups close (#437); the **SketchUp Import Options** dialog shows before a `.skp` is
+  opened or imported, its choices kept in the settings (#443). Weld angle, Import curves, textures
+  and Rhino's measured numbers follow in #444.
 
 ## Features stream — 19 November 2026
 
