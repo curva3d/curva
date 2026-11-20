@@ -297,7 +297,13 @@ mod tests {
 
     /// For each command that changes geometry, the typed steps that reach its live preview.
     /// A new command must be added here, which is how the preview rule in AGENTS.md is enforced.
-    const PREVIEW_STEPS: [(&str, &[&str]); 68] = [
+    const PREVIEW_STEPS: [(&str, &[&str]); 74] = [
+        ("SubDBox", &["0,0"]),
+        ("SubDPlane", &["0,0"]),
+        ("SubDSphere", &["0,0"]),
+        ("SubDCylinder", &["0,0"]),
+        ("SubDCone", &["0,0"]),
+        ("SubDTorus", &["0,0"]),
         ("MeshBox", &["0,0"]),
         ("MeshPlane", &["0,0"]),
         ("MeshSphere", &["0,0"]),

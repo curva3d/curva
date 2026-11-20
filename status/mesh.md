@@ -11,6 +11,14 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 20 November 2026 (later still)
 
+**The SubD tab's first commands: SubDBox, SubDPlane, SubDSphere, SubDCylinder, SubDCone and SubDTorus.**
+They are picked as the mesh primitives are (the same recipes, made generic) and build their cages
+with `curva-mesh`'s SubD primitives. Rhino 8's SubD defaults, measured with Enter at every option,
+are far coarser than its mesh ones: a box of 2 × 2 × 2 (24 cage faces), a plane of 2 × 2, a sphere
+of Quads at 1 subdivision (24), a cylinder and a cone 8 around and 4 up (48 and 40, triangle caps),
+and a torus 10 by 6 (60). The test holds those counts. Measuring changed Rhino's saved options for
+these commands (a spawned Rhino saves the last values used when it closes); the owner was told.
+
 **Weld by angle (`Mesh::welded_by_angle`, for SketchUp import's Weld angle, #444):** points at the
 same place join where the faces along an edge there turn by no more than the angle, as Rhino 8's
 `Weld`. It matches Rhino exactly on a hexagonal prism with every face apart: 60 points become 38
