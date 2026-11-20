@@ -104,30 +104,15 @@ fn marks_of(
     };
     for shape in shapes {
         match &shape {
-            Shape::Curve(curve) => {
-                if let Ok(points) = curve.sample() {
+            Shape::Curve(_)
+            | Shape::Body(_)
+            | Shape::Instance(_)
+            | Shape::Mesh(_)
+            | Shape::SubD(_) => {
+                for points in shape_lines(&shape) {
                     line(&points, marks);
                 }
             }
-            Shape::Body(body) => {
-                for edge in body.edge_curves().unwrap_or_default() {
-                    if let Ok(points) = edge.sample() {
-                        line(&points, marks);
-                    }
-                }
-            }
-            Shape::Instance(_) => {}
-            // A mesh prints its borders: all its wires would blacken a scan's print (#267).
-            Shape::Mesh(mesh) => {
-                let at = mesh.vertices();
-                for [a, b] in mesh.naked_edges() {
-                    if let (Some(&p), Some(&q)) = (at.get(a as usize), at.get(b as usize)) {
-                        line(&[p, q], marks);
-                    }
-                }
-            }
-            // SubDs print once the display stream draws them (#324).
-            Shape::SubD(_) => {}
             // Dots are drawn on the screen and do not print yet.
             Shape::Annotation(curva_document::annotation::Annotation::Dot(_)) => {}
             Shape::Annotation(annotation) => {
@@ -157,6 +142,27 @@ fn marks_of(
                 }
             }
         }
+    }
+}
+
+/// The lines a shape other than an annotation prints as, in model coordinates.
+fn shape_lines(shape: &Shape) -> Vec<Vec<Point>> {
+    let sampled = |curves: Vec<Curve>| curves.iter().filter_map(|c| c.sample().ok()).collect();
+    match shape {
+        Shape::Curve(curve) => curve.sample().into_iter().collect(),
+        Shape::Body(body) => sampled(body.edge_curves().unwrap_or_default()),
+        // A mesh prints its borders: all its wires would blacken a scan's print (#267).
+        Shape::Mesh(mesh) => {
+            let at = mesh.vertices();
+            mesh.naked_edges()
+                .into_iter()
+                .filter_map(|[a, b]| Some(vec![*at.get(a as usize)?, *at.get(b as usize)?]))
+                .collect()
+        }
+        // A SubD prints the lines it draws: its creases and borders, or shown flat its cage's
+        // edges (#324).
+        Shape::SubD(subd) => sampled(crate::subds::drawing(subd).1),
+        Shape::Instance(_) | Shape::Annotation(_) => Vec::new(),
     }
 }
 
