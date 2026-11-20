@@ -19,6 +19,12 @@ impl Command for SaveAs {
             )),
             Some(Answer::Path(text)) => {
                 let path = PathBuf::from(text.trim().trim_matches('"'));
+                if let Some(save) = doc.formats().of(&path).and_then(|f| f.save) {
+                    return match save(doc, &path, &path.display().to_string()) {
+                        Ok(done) => Step::Done(Some(Message::with(done.key, done.args))),
+                        Err(error) => Step::Failed(Message::with("error.file", vec![error])),
+                    };
+                }
                 // A Rhino file is written beside the model, which keeps saving as Curva.
                 if crate::commands::import_export::is_3dm(&path) {
                     return match crate::commands::import_export::write_3dm(doc, None, &path) {
