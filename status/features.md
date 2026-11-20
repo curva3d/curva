@@ -11,8 +11,29 @@ to then (display modes, glass, line widths, speed measurements).*
 `CLA.md`, `CONTRIBUTING.md` and the `CLA` check (`.github/workflows/cla.yml`). Outside contributors sign
 once by commenting on their first pull request; signatures go to the `cla-signatures` branch.
 
+**Tidy-up first (owner's rule, 19 November 2026, `AGENTS.md`):** every stream starts each session
+by completing one open `tidy-up` issue in code it owns, before its next feature; with none open, it
+goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
+*(Added to every status page at the owner's request.)*
+
 ## Features stream — 19 November 2026
 
+- **Code health review** (`docs/reviews/code-health-2026-11-19.md`, #402) and the owner's
+  **tidy-up first** rule (#404). Tidy-up issues #391 to #401 opened. **Size check in CI** (#406):
+  files over 800 lines and functions over 80 now fail; today's 5 files and 65 functions are in
+  `crates/curva-size-check/known.txt`, which may only shrink. #401 (helpers out of
+  `commands/mod.rs`) in #410.
+- **File format registry (#391): spec waiting for the owner's approval** (`docs/specs/file-formats.md`,
+  draft PR #405). No new file formats until it is built.
+- **More of the owner's `.3dm` files come in:** surfaces of revolution whose angle ended a rounding
+  short (#386, 72 solids); plane faces only a rounding wide (#389, 35 of 37 "status 1007" solids);
+  solids where three faces meet at an edge (#403, 4 solids); zero-length lines named as such
+  (#385). Left: 2 solids with status 1007, 1 "parts do not meet end to end", 1 "tolerance not
+  finite", and the two big files' single huge solids that one core builds alone.
+- **View picker complete** (#390): Back, Left, Bottom and Two-point, and the lens in mm or degrees.
+  Saved views keep a lens field (#384); the display stream fills it.
+- **Waiting on the features stream:** #387 (the mesh stream asks for a command step that opens the
+  mesh panel).
 - **Big drawings open 2 to 8 times faster** (#379, #317 part 4; the owner's choice, decision 0037).
   Curva carries a patched copy of solidcore's `solidcore-ops` that gives each thread its own engine,
   so opened solids, plan cuts and hidden lines are worked on every core. The owner's largest test

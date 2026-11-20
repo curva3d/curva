@@ -63,6 +63,17 @@ pub(crate) fn subd(r: &mut Reader) -> Result<SubD> {
 }
 
 fn read_level(r: &mut Reader) -> Result<SubD> {
+    let partition = read_partition(r)?;
+    let version = r.version;
+    let vertices = read_vertices(r, partition[0]..partition[1], version)?;
+    let edges = read_edges(r, partition[1]..partition[2], version)?;
+    let faces = read_faces(r, partition[2]..partition[3], version)?;
+    build(&partition, &vertices, &edges, &faces)
+}
+
+/// Where the level's points, edges and faces start and end in the archive's numbering, after its
+/// index, sizes and box.
+fn read_partition(r: &mut Reader) -> Result<[u32; 4]> {
     let _index = r.u16()?;
     r.skip(3 + 6 * 8)?; // three size bytes and the cage's box
     let mut partition = [0u32; 4];
@@ -76,9 +87,13 @@ fn read_level(r: &mut Reader) -> Result<SubD> {
     {
         return Err(bad("a SubD whose parts are numbered wrongly"));
     }
-    let version = r.version;
-    let mut vertices = Vec::with_capacity((partition[1] - partition[0]) as usize);
-    for _ in partition[0]..partition[1] {
+    Ok(partition)
+}
+
+/// The points: each one's tag and place.
+fn read_vertices(r: &mut Reader, ids: std::ops::Range<u32>, version: u32) -> Result<Vec<Vertex>> {
+    let mut vertices = Vec::with_capacity(ids.len());
+    for _ in ids {
         base(r, version)?;
         let tag = r.u8()?;
         let at = r.f64s::<3>()?;
@@ -91,8 +106,13 @@ fn read_level(r: &mut Reader) -> Result<SubD> {
         finish(r, version)?;
         vertices.push(Vertex { tag, at });
     }
-    let mut edges = Vec::with_capacity((partition[2] - partition[1]) as usize);
-    for _ in partition[1]..partition[2] {
+    Ok(vertices)
+}
+
+/// The edges: each one's tag, sharpness and two points.
+fn read_edges(r: &mut Reader, ids: std::ops::Range<u32>, version: u32) -> Result<Vec<Edge>> {
+    let mut edges = Vec::with_capacity(ids.len());
+    for _ in ids {
         base(r, version)?;
         let tag = r.u8()?;
         let _faces = r.u16()?;
@@ -122,8 +142,13 @@ fn read_level(r: &mut Reader) -> Result<SubD> {
         }
         edges.push(edge);
     }
-    let mut faces = Vec::with_capacity((partition[3] - partition[2]) as usize);
-    for _ in partition[2]..partition[3] {
+    Ok(edges)
+}
+
+/// The faces: each one's edges and which way, and its colour and texture coordinates.
+fn read_faces(r: &mut Reader, ids: std::ops::Range<u32>, version: u32) -> Result<Vec<Face>> {
+    let mut faces = Vec::with_capacity(ids.len());
+    for _ in ids {
         base(r, version)?;
         let _level_zero = r.u32()?;
         let _parent = r.u32()?;
@@ -144,7 +169,7 @@ fn read_level(r: &mut Reader) -> Result<SubD> {
         }
         faces.push(face);
     }
-    build(&partition, &vertices, &edges, &faces)
+    Ok(faces)
 }
 
 /// The start every component shares: its archive number, id and level, then (from version 70)

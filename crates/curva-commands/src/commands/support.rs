@@ -2,19 +2,176 @@
 
 use crate::Answer;
 use crate::commands::arguments::*;
-use crate::commands::bodies_of;
-use crate::commands::curves_of;
 use crate::recipe::Context;
 use crate::recipe::Derived;
 use crate::recipe::Value;
+use crate::{Kind, Message, Request, Step};
 use curva_document::Document;
 use curva_document::Shape;
 use curva_kernel::Body;
 use curva_kernel::Curve;
+use curva_kernel::KernelError;
 use curva_kernel::Point;
 use curva_kernel::cross;
 use curva_kernel::dot;
 use curva_kernel::sub;
+
+pub(crate) fn unexpected() -> Step {
+    Step::Failed(Message::new("error.unexpected"))
+}
+
+/// An answer a step did not ask for, for the framework in `recipe.rs`.
+pub(crate) fn unexpected_step() -> Step {
+    unexpected()
+}
+
+/// The centre and radius of the circle through three points, on the plane with axes `x` and `y`
+/// through the first point. `None` when the points lie in a line.
+pub(crate) fn circle_through(
+    a: Point,
+    b: Point,
+    c: Point,
+    [x, y]: [Point; 2],
+) -> Option<(Point, f64)> {
+    let along = |p: Point| {
+        let d = curva_kernel::sub(p, a);
+        [curva_kernel::dot(d, x), curva_kernel::dot(d, y)]
+    };
+    let ([bx, by], [cx, cy]) = (along(b), along(c));
+    let d = 2.0 * (bx * cy - by * cx);
+    if d.abs() < 1e-12 {
+        return None;
+    }
+    let (b2, c2) = (bx * bx + by * by, cx * cx + cy * cy);
+    let (u, v) = ((cy * b2 - by * c2) / d, (bx * c2 - cx * b2) / d);
+    let centre: Point = std::array::from_fn(|i| a[i] + u * x[i] + v * y[i]);
+    Some((centre, u.hypot(v)))
+}
+
+pub(crate) fn geometry_failed(error: &KernelError) -> Step {
+    Step::Failed(Message::with("error.geometry", vec![error.to_string()]))
+}
+
+pub(crate) fn ask_point(key: &'static str, preview: Vec<Point>) -> Step {
+    Step::Ask(Request {
+        preview,
+        ..Request::new(key, Kind::Point)
+    })
+}
+
+pub(crate) fn ask_point_or_number(key: &'static str, preview: Vec<Point>) -> Step {
+    Step::Ask(Request {
+        preview,
+        ..Request::new(key, Kind::PointOrNumber)
+    })
+}
+
+/// The direction straight out of the plane being drawn on.
+pub(crate) fn plane_normal(doc: &curva_document::Document) -> Point {
+    let [x, y] = doc.work_plane();
+    curva_kernel::cross(x, y)
+}
+
+/// Most objects shown moving at once, so that a huge selection does not stall the window.
+pub(crate) const MOST_PREVIEW_OBJECTS: usize = 2000;
+
+/// A straight construction line for a preview, or nothing if its ends are in the same place.
+pub(crate) fn guide(a: Point, b: Point) -> Vec<curva_kernel::Curve> {
+    curva_kernel::Curve::line(a, b).into_iter().collect()
+}
+
+/// How chosen objects would look after a change, for a preview.
+pub(crate) fn ghosts(
+    doc: &curva_document::Document,
+    ids: &[u64],
+    change: impl Fn(&curva_kernel::Curve) -> curva_kernel::Curve,
+) -> Vec<curva_kernel::Curve> {
+    let chosen: std::collections::HashSet<u64> = ids.iter().copied().collect();
+    doc.state()
+        .objects
+        .iter()
+        .filter(|object| chosen.contains(&object.id))
+        .take(MOST_PREVIEW_OBJECTS)
+        .flat_map(|object| object.shape.outlines())
+        .map(|curve| change(&curve))
+        .collect()
+}
+
+/// The surfaces and solids among chosen objects, with their ids.
+pub(crate) fn bodies_of(
+    doc: &curva_document::Document,
+    ids: &[u64],
+) -> Vec<(u64, curva_kernel::Body)> {
+    doc.state()
+        .objects
+        .iter()
+        .filter(|object| ids.contains(&object.id))
+        .filter_map(|object| Some((object.id, object.shape.body()?.clone())))
+        .collect()
+}
+
+/// The curves of chosen objects, with their ids; surfaces and solids are left out.
+pub(crate) fn curves_of(
+    doc: &curva_document::Document,
+    ids: &[u64],
+) -> Vec<(u64, curva_kernel::Curve)> {
+    doc.state()
+        .objects
+        .iter()
+        .filter(|object| ids.contains(&object.id))
+        .filter_map(|object| Some((object.id, object.curve()?.clone())))
+        .collect()
+}
+
+/// The curve passing within `reach` of `at`, if any, for commands that pick a curve.
+pub(crate) fn curve_at(
+    doc: &curva_document::Document,
+    at: Point,
+    reach: f64,
+) -> Result<Option<(u64, curva_kernel::Curve)>, KernelError> {
+    for object in &doc.state().objects {
+        if let Some(curve) = object.curve()
+            && curva_kernel::gap(curve.closest_point(at)?, at) <= reach
+        {
+            return Ok(Some((object.id, curve.clone())));
+        }
+    }
+    Ok(None)
+}
+
+/// A curve in pieces, cut wherever it crosses the cutters.
+pub(crate) fn cut_by(
+    curve: &curva_kernel::Curve,
+    cutters: &[curva_kernel::Curve],
+) -> Result<Vec<curva_kernel::Curve>, KernelError> {
+    let mut points = Vec::new();
+    for cutter in cutters {
+        points.extend(curva_kernel::crossings(curve, cutter)?);
+    }
+    curve.cut_at(&points)
+}
+
+/// Curves worked out for a preview, without the ids they would replace.
+pub(crate) fn ghost_results(made: Vec<(u64, curva_kernel::Curve)>) -> Vec<curva_kernel::Curve> {
+    made.into_iter()
+        .take(MOST_PREVIEW_OBJECTS)
+        .map(|(_, curve)| curve)
+        .collect()
+}
+
+pub(crate) fn ask_objects(key: &'static str) -> Step {
+    Step::Ask(Request::new(key, Kind::Objects))
+}
+
+/// The objects a command works on: those given as the answer, or else the ones selected; `None`
+/// when there are none, so the command can ask for them.
+pub(crate) fn objects_or_selection(
+    doc: &curva_document::Document,
+    answer: Option<crate::Answer>,
+) -> Option<Vec<u64>> {
+    let chosen = chosen(doc, &answer);
+    (!chosen.is_empty()).then_some(chosen)
+}
 
 /// Which curves a `Sel` command for one kind of curve picks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

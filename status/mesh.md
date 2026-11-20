@@ -4,6 +4,52 @@
 mesh and SubD files elsewhere (see `AGENTS.md`). Updated at the end of every work session. Newest
 first.*
 
+**Tidy-up first (owner's rule, 19 November 2026, `AGENTS.md`):** every stream starts each session
+by completing one open `tidy-up` issue in code it owns, before its next feature; with none open, it
+goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
+*(Added to every status page at the owner's request.)*
+
+## 20 November 2026
+
+**Check and MeshRepair (#273):** `Check` reports on meshes as Rhino 8 counts (or "This is a good
+mesh."); other kinds of object are counted and left for the features stream. `MeshRepair` makes
+the main fixes in one go, each a remembered option; `UnifyMeshNormals`, `FillMeshHoles`,
+`CullDegenerateMeshFaces` and `RebuildMeshNormals` are commands of their own, as in Rhino.
+
+**Join and Explode for meshes (#270, second part):** `Mesh::joined` combines meshes into one
+without welding, as Rhino's Join does, and `Mesh::pieces` splits a mesh into the parts that share
+no point, as Rhino's Explode does (both listed custom operations). Hooking them into `Join`,
+`Explode` and the Properties panel is the features stream's (#414). Also, `.3dm` mesh and SubD
+reading and writing were split into steps under 80 lines (#395, the tidy-up first rule).
+
+## 19 November 2026 (evening)
+
+**Mesh primitives (#270, first part):** `MeshBox`, `MeshPlane`, `MeshSphere`, `MeshCylinder`,
+`MeshCone` and `MeshTorus` are commands, with previews, icons and reference rows. Each is picked
+like its solid counterpart (Box, Sphere and so on), and Rhino's face-count options are there:
+`XCount`/`YCount`/`ZCount`, `VerticalFaces`/`AroundFaces`, the sphere's `Style` and
+`Subdivisions`, `Solid` and `CapFaceStyle`. Rhino 8's defaults were measured by making each with
+Enter at every option, and Curva makes the same faces: 600 quads for a box; 100 for a plane; 80
+quads and 20 triangles for a sphere; 120 faces for a cylinder; 110 for a cone; 100 for a torus.
+The sphere's subdivision default could not be measured (2 for now). Rhino's other ways of
+picking (3Point, Diagonal, AroundCurve and so on) come later. `What`, `Properties`, `Join` and
+`Explode` for meshes are the rest of #270. `Mesh` (#271) is closed: done in #388.
+
+## 19 November 2026 (later)
+
+**Mesh panel, part 1: the settings, and the `Mesh` command** (owner: mesh panel first):
+- **One set of mesh settings** (`curva_mesh::MeshSettings`) for `Mesh` and STL/OBJ/PLY export. It
+  holds the density slider, Rhino's Coarse/Default/Smooth presets (Smooth is Rhino's density 0.8
+  and 20°, measured in Rhino 8), a maximum angle and a maximum distance, and the SubD level.
+  The last settings used are remembered, and export uses them.
+- **`Mesh`** (new): choose surfaces, solids or SubDs, then type a density (Enter keeps the last).
+  `MaxAngle`, `MaxDistance` and `SubDLevel` are options. The preview shows the mesh's edges, and
+  meshes of surfaces and solids follow their source with History.
+- **The panel itself** needs a step in the command framework that opens it: asked of the features
+  stream in #387. The numbers under the slider (faces, how far facets stray, file size) are
+  already worked out by `mesh_objects` and `file_bytes`. Rhino's other detailed controls wait on
+  the kernel's mesher.
+
 ## 19 November 2026
 
 **Meshes and SubDs are in the document** (features stream, #266, PR #352), so the commands and

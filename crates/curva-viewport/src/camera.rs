@@ -463,8 +463,7 @@ impl Camera {
             distance: self.distance,
             axes: self.fixed_axes,
             parallel: self.parallel,
-            // Kept by the display stream once the camera has a lens (#382).
-            lens: None,
+            lens: Some(self.lens_length),
         }
     }
 
@@ -478,8 +477,8 @@ impl Camera {
             distance: view.distance,
             fixed_axes: view.axes,
             parallel: view.parallel,
-            // Saved views do not keep the lens yet; they open with Rhino's standard.
-            lens_length: LENS_LENGTH,
+            // Views saved before the lens was kept open with Rhino's standard.
+            lens_length: view.lens.unwrap_or(LENS_LENGTH),
             two_point: view.kind == StandardView::TwoPoint.key(),
         }
     }

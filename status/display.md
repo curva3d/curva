@@ -3,15 +3,24 @@
 *Written only by the display stream, which owns the inside of `crates/curva-viewport` (see
 `AGENTS.md`). Updated at the end of every work session. Newest first.*
 
+**Tidy-up first (owner's rule, 19 November 2026, `AGENTS.md`):** every stream starts each session
+by completing one open `tidy-up` issue in code it owns, before its next feature; with none open, it
+goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
+*(Added to every status page at the owner's request.)*
+
 ## 19 November 2026
 
 **Done**
+- **Meshes show their vertex colours** (#267, Stage A item 3): a mesh that carries colours, per
+  vertex or per corner, shows them instead of its layer's colour, on screen and in pictures; the
+  selection colour still shows when it is picked. That finishes #267's Stage A, except speed for
+  meshes with millions of edges.
 - **The camera offers all the views the new view picker shows** (#356, for the features stream's
   picker). Bottom, Left and Back views as Rhino's, each with its own drawing plane; a two-point
   perspective that stays level, so upright lines stay upright and parallel on screen (dragging up
   and down does not tilt it); and an adjustable lens, read and set in millimetres or as Rhino's
-  angle of view (50 mm is 39.6°), kept when the view is turned. Saved views do not keep the lens
-  yet: that needs a field in the saved view, which is the features stream's.
+  angle of view (50 mm is 39.6°), kept when the view is turned. Saved views keep the lens too
+  (the field added by the features stream); views saved before open at 50 mm.
 - **Edits in a drawing full of blocks no longer pause for a second or more.** After any change,
   every block was worked out again; now an unchanged block keeps what it drew while its
   definition and the settings it reads stay the same. On the owner's 3.6 MB drawing, each edit

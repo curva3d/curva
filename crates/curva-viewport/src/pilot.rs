@@ -634,6 +634,7 @@ mod tests {
             colour: [0.6; 3],
             mesh: body.shared_mesh().unwrap(),
             placement: body.placement(),
+            colours: None,
         };
         let mut view = drawing(StandardView::Top, Vec::new());
         view.shapes = Arc::new(vec![copy(&slab), copy(&away)]);
@@ -805,6 +806,7 @@ mod tests {
             colour: [0.6; 3],
             mesh: body.shared_mesh().unwrap(),
             placement: body.placement(),
+            colours: None,
         };
         let mut view = drawing(StandardView::Top, Vec::new());
         view.objects = Arc::new(vec![7, 8]);

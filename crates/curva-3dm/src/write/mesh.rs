@@ -39,7 +39,14 @@ fn flatten(mesh: &Mesh) -> Flat {
         quads: Vec::new(),
         ngons: Vec::new(),
     };
-    // One written point per point and set of values, in the mesh's own point order.
+    let (kinds, corner_kind) = kinds(mesh);
+    let number = number_points(&mut flat, mesh, &kinds);
+    flat_faces(&mut flat, mesh, |c| number[corner_kind[c]]);
+    flat
+}
+
+/// One written point per point and set of values, and which one each corner uses.
+fn kinds(mesh: &Mesh) -> (Vec<Written>, Vec<usize>) {
     let mut seen: HashMap<Key, usize> = HashMap::new();
     let mut kinds: Vec<Written> = Vec::new();
     let mut corner_kind = Vec::with_capacity(mesh.corners().len());
@@ -73,7 +80,12 @@ fn flatten(mesh: &Mesh) -> Flat {
         });
         corner_kind.push(kind);
     }
-    // Points no face uses are kept too, so a mesh comes back as it went.
+    unused_points(mesh, &mut kinds);
+    (kinds, corner_kind)
+}
+
+/// Points no face uses, kept too, so a mesh comes back as it went.
+fn unused_points(mesh: &Mesh, kinds: &mut Vec<Written>) {
     let mut used = vec![false; mesh.vertex_count()];
     for &v in mesh.corners() {
         used[v as usize] = true;
@@ -98,6 +110,10 @@ fn flatten(mesh: &Mesh) -> Flat {
         let next = kinds.len();
         kinds.push((v32, next, n, t, col));
     }
+}
+
+/// The written points in the mesh's own point order, put in `flat`; returns each kind's number.
+fn number_points(flat: &mut Flat, mesh: &Mesh, kinds: &[Written]) -> Vec<u32> {
     let mut order: Vec<usize> = (0..kinds.len()).collect();
     order.sort_by_key(|&k| (kinds[k].0, kinds[k].1));
     let mut number = vec![0u32; kinds.len()];
@@ -115,7 +131,12 @@ fn flatten(mesh: &Mesh) -> Flat {
             all.push(col);
         }
     }
-    let at = |c: usize| number[corner_kind[c]];
+    number
+}
+
+/// The faces as four point numbers each, `at` giving a corner's; faces of more than four corners
+/// as their triangles and an n-gon.
+fn flat_faces(flat: &mut Flat, mesh: &Mesh, at: impl Fn(usize) -> u32) {
     let triangles = mesh.triangles();
     let mut first_triangle = vec![usize::MAX; mesh.face_count()];
     for (t, &f) in triangles.faces.iter().enumerate().rev() {
@@ -125,14 +146,14 @@ fn flatten(mesh: &Mesh) -> Flat {
         let range = mesh.face_range(f);
         match range.len() {
             3 => {
-                let [a, b, c] = [range.start, range.start + 1, range.start + 2].map(at);
+                let [a, b, c] = [range.start, range.start + 1, range.start + 2].map(&at);
                 flat.quads.push([a, b, c, c]);
             }
             4 => flat
                 .quads
                 .push(std::array::from_fn(|k| at(range.start + k))),
             _ => {
-                let outline: Vec<u32> = range.clone().map(at).collect();
+                let outline: Vec<u32> = range.clone().map(&at).collect();
                 let mut faces = Vec::new();
                 let mut t = first;
                 while t < triangles.faces.len() && triangles.faces[t] as usize == f {
@@ -145,7 +166,6 @@ fn flatten(mesh: &Mesh) -> Flat {
             }
         }
     }
-    flat
 }
 
 /// The lowest and highest of some numbers in each of `N` places, or the empty box openNURBS uses.
@@ -187,6 +207,14 @@ fn float_toward(x: f64, up: bool) -> f32 {
 /// One `ON_Mesh`, its class data.
 pub(crate) fn write_mesh(w: &mut Writer, mesh: &Mesh) {
     let flat = flatten(mesh);
+    let (lo, hi) = write_header(w, &flat, mesh.is_closed());
+    write_faces(w, &flat);
+    write_arrays(w, &flat);
+    write_later_versions(w, &flat, (lo, hi));
+}
+
+/// The counts, domains, boxes and settings before the faces; returns the points' box.
+fn write_header(w: &mut Writer, flat: &Flat, closed: bool) -> ([f64; 3], [f64; 3]) {
     let vcount = flat.points.len();
     w.chunk_version(3, 8);
     w.i32(i32::try_from(vcount).unwrap_or(i32::MAX));
@@ -232,11 +260,17 @@ pub(crate) fn write_mesh(w: &mut Writer, mesh: &Mesh) {
     for c in tbox {
         w.f32(c);
     }
-    w.i32(i32::from(mesh.is_closed()));
+    w.i32(i32::from(closed));
     w.u8(0); // no meshing parameters
     for _ in 0..4 {
         w.u8(0); // no curvature statistics
     }
+    (lo, hi)
+}
+
+/// The faces, as four point numbers each.
+fn write_faces(w: &mut Writer, flat: &Flat) {
+    let vcount = flat.points.len();
     // Point numbers in the smallest size that holds them.
     let size = if vcount < 256 {
         1
@@ -256,6 +290,10 @@ pub(crate) fn write_mesh(w: &mut Writer, mesh: &Mesh) {
             }
         }
     }
+}
+
+/// The points, normals, texture coordinates, curvatures and colours, as compressed arrays.
+fn write_arrays(w: &mut Writer, flat: &Flat) {
     let float_bytes = |values: &mut dyn Iterator<Item = f64>| -> Vec<u8> {
         #[allow(clippy::cast_possible_truncation)]
         values.flat_map(|c| (c as f32).to_le_bytes()).collect()
@@ -288,6 +326,12 @@ pub(crate) fn write_mesh(w: &mut Writer, mesh: &Mesh) {
                 .collect()
         }),
     );
+}
+
+/// What later versions add: the texture settings, the n-gons, and the points at double precision
+/// with their box.
+fn write_later_versions(w: &mut Writer, flat: &Flat, (lo, hi): ([f64; 3], [f64; 3])) {
+    let vcount = flat.points.len();
     w.i32(0); // texture not packed and turned
     w.uuid(Uuid([0; 16])); // no texture mapping
     if vcount > 0 {
