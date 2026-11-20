@@ -1871,6 +1871,7 @@ dependencies = [
  "curva-formats",
  "curva-kernel",
  "curva-mcp",
+ "curva-mesh",
  "curva-viewport",
  "eframe",
  "png",

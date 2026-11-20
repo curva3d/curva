@@ -123,6 +123,8 @@ struct Curva {
     file_dialogs: FileDialogs,
     /// The Print panel's choices and its waiting save dialog.
     print_panel: panels::print::PrintPanel,
+    /// The mesh panel, while a command asks for it.
+    mesh_panel: panels::mesh::MeshPanel,
     /// The layout open in the viewport area, if any.
     sheets: Sheets,
     /// Each viewport's area last frame, and the part of it the floating panels leave free.
@@ -253,6 +255,7 @@ impl Curva {
             },
             file_dialogs: FileDialogs::default(),
             print_panel: panels::print::PrintPanel::default(),
+            mesh_panel: panels::mesh::MeshPanel::default(),
             sheets: Sheets::default(),
             pane_areas: [None; VIEW_SLOTS],
             section_fills: SectionFills::default(),
@@ -383,6 +386,7 @@ impl eframe::App for Curva {
         self.serve_agents();
         self.approval_window(ui);
         self.recovery_window(ui);
+        self.mesh_panel(ui.ctx());
         self.unit_question(ui.ctx());
         self.close_question(ui.ctx());
         if let Some(autosave) = &mut self.autosave {
