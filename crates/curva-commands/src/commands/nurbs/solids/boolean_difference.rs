@@ -4,7 +4,7 @@
 
 use crate::Message;
 use crate::commands::bodies_of;
-use crate::commands::boolean_union::{DELETE_INPUT, failed};
+use crate::commands::nurbs::solids::boolean_union::{DELETE_INPUT, failed};
 use crate::recipe::{Context, Derived, Made, OptionDef, Recipe, StepDef, Value};
 use curva_document::Shape;
 use curva_kernel::Combine;

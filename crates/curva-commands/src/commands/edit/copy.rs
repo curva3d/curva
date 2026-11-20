@@ -4,7 +4,7 @@
 //! still to come (`docs/commands/rhino-reference.md`).
 
 use crate::Message;
-use crate::commands::move_objects::{end, end_step};
+use crate::commands::edit::move_objects::{end, end_step};
 use crate::commands::{Change, changed};
 use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef, Value};
 use curva_kernel::sub;

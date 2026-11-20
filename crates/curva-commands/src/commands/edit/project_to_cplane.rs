@@ -12,7 +12,7 @@ const SAME_HEIGHT: f64 = 1e-9;
 ///
 /// A curve already parallel to that plane is moved rather than rebuilt, so a circle stays a
 /// circle.
-pub(super) fn flattened_onto(
+pub(crate) fn flattened_onto(
     curve: &Curve,
     onto: Point,
     axis: Point,

@@ -3,7 +3,7 @@
 
 use crate::Message;
 use crate::commands::bodies_of;
-use crate::commands::boolean_union::{DELETE_INPUT, failed, result, united};
+use crate::commands::nurbs::solids::boolean_union::{DELETE_INPUT, failed, result, united};
 use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef, Value};
 use curva_kernel::Combine;
 
