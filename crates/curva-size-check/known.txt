@@ -21,7 +21,6 @@ fn crates/curva-commands/src/processor.rs answer_typed 108
 fn crates/curva-commands/src/recipe/run.rs step 99
 fn crates/curva-document/src/annotation/arc_length.rs parts 88
 fn crates/curva-document/src/annotation/linear.rs parts 82
-fn crates/curva-document/src/fields.rs call 190
 fn crates/curva-document/src/hatch.rs pattern_pieces 92
 fn crates/curva-document/src/sheet.rs scale_bar_parts 102
 fn crates/curva-document/src/sheet.rs table_parts 115
