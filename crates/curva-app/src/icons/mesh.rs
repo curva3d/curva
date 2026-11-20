@@ -208,6 +208,16 @@ fn subd_primitive(pen: &Pen<'_>, key: &str) -> bool {
             pen.ellipse((14.0, 6.0, 7.0, 8.0));
             &[]
         }
+        "tonurbs" => {
+            pen.ellipse((2.0, 6.0, 7.0, 8.0));
+            pen.path_in(&[(10.0, 10.0), (12.0, 10.0)], false, pen.accent());
+            pen.path_in(
+                &[(13.0, 14.0), (15.0, 7.0), (18.0, 6.0), (21.0, 13.0)],
+                false,
+                pen.accent(),
+            );
+            &[(2.0, 6.0), (9.0, 6.0), (9.0, 14.0), (2.0, 14.0)]
+        }
         "tosubd" => {
             grid(pen, (2.0, 6.0), (10.0, 14.0), 2);
             pen.path_in(&[(11.0, 10.0), (13.0, 10.0)], false, pen.accent());

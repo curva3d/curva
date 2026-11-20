@@ -11,6 +11,11 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 20 November 2026 (later still)
 
+**ToNURBS (SubDs):** measured in Rhino 8, `-ToNURBS` keeps the SubD and makes a closed polysurface;
+the volumes match Rhino's to 0.02 % (20.9673 against 20.963 m³ for a 4 m cube cage of one face a
+side, 50.3594 against 50.3587 for 2 × 2). Rhino packs the patches into 6 larger faces; Curva keeps
+one patch per quad (24) for now.
+
 **SubDDisplayToggle:** measured in Rhino 8, it switches every SubD in the model whatever is selected
 ("SubD display changed from smooth to flat. 2 SubDs changed."). Curva does the same, undoably.
 The Tab shortcut is not there yet.
