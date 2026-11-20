@@ -374,6 +374,12 @@ pub(super) fn extrusion_body(e: &model::Extrusion) -> Result<Body, KernelError> 
     if let Ok(body) = Body::extruded(&profiles, z, length, cap) {
         return Ok(body);
     }
+    // Far from the origin the sweep can fail to close (an elliptical tube 11 km out, in one of
+    // the owner's files): made in the profile plane at the origin, then moved into place whole,
+    // which keeps its faces as made.
+    if let Some(body) = extruded_at_origin(e, length, &placement) {
+        return Ok(body);
+    }
     // Profiles the sweep does not take (weighted ones): each side a surface of its own, the
     // caps flat faces, sewn together.
     let by: P3 = z.map(|v| v * length);
@@ -413,6 +419,25 @@ pub(super) fn extrusion_body(e: &model::Extrusion) -> Result<Body, KernelError> 
     Body::assembled(&parts)
 }
 
+/// The extrusion made in its profile plane, along z from the origin, then placed.
+fn extruded_at_origin(
+    e: &model::Extrusion,
+    length: f64,
+    placement: &[[f64; 4]; 4],
+) -> Option<Body> {
+    let profiles = e
+        .profiles
+        .iter()
+        .map(curve)
+        .collect::<Result<Vec<_>, _>>()
+        .ok()?;
+    let cap = e.caps[0] && e.caps[1] && profiles.iter().all(|p| p.is_closed().unwrap_or(false));
+    Body::extruded(&profiles, [0.0, 0.0, 1.0], length, cap)
+        .ok()?
+        .transformed(*placement)
+        .ok()
+}
+
 /// Curva's field of view, by which a view's distance gives how much of the model it shows.
 pub(crate) const HALF_FIELD: f64 = 0.35;
 
@@ -431,6 +456,71 @@ pub(super) fn cross3(a: P3, b: P3) -> P3 {
 pub(super) fn unit3(a: P3) -> Option<P3> {
     let length = dot3(a, a).sqrt();
     (length > 1e-12 && length.is_finite()).then(|| a.map(|v| v / length))
+}
+
+#[cfg(test)]
+mod extrusion_tests {
+    use super::*;
+
+    /// An extrusion as one of the owner's files has it: a capped elliptical tube 15 units tall,
+    /// its profile a rational NURBS ellipse whose control points carry their weights already.
+    fn elliptical_tube() -> model::Extrusion {
+        let w = std::f64::consts::FRAC_1_SQRT_2;
+        let (a, b) = (7.567_406_862_789_359, 6.479_482_245_657_572_5);
+        let (ca, cb) = (5.350_964_708_675_974, 4.581_685_834_482_309);
+        let q = std::f64::consts::FRAC_PI_8 * 2.0;
+        model::Extrusion {
+            path: [
+                [
+                    10_993.066_429_534_24,
+                    24_028.907_386_955_64,
+                    575.482_593_137_209_3,
+                ],
+                [
+                    10_993.066_429_534_24,
+                    24_028.907_386_955_64,
+                    590.617_406_862_788_4,
+                ],
+            ],
+            up: [0.986_292_529_026_102_1, -0.165_006_203_481_248_53, 0.0],
+            profiles: vec![model::Curve::Nurbs(model::NurbsCurve {
+                dimension: 2,
+                order: 3,
+                knots: vec![
+                    0.0,
+                    0.0,
+                    q,
+                    q,
+                    2.0 * q,
+                    2.0 * q,
+                    3.0 * q,
+                    3.0 * q,
+                    4.0 * q,
+                    4.0 * q,
+                ],
+                points: vec![
+                    [a, 0.0, 0.0, 1.0],
+                    [ca, cb, 0.0, w],
+                    [0.0, b, 0.0, 1.0],
+                    [-ca, cb, 0.0, w],
+                    [-a, 0.0, 0.0, 1.0],
+                    [-ca, -cb, 0.0, w],
+                    [0.0, -b, 0.0, 1.0],
+                    [ca, -cb, 0.0, w],
+                    [a, 0.0, 0.0, 1.0],
+                ],
+                rational: true,
+            })],
+            caps: [true, true],
+        }
+    }
+
+    #[test]
+    fn a_capped_elliptical_tube_comes_in_as_a_solid() {
+        let body = extrusion_body(&elliptical_tube()).unwrap();
+        assert!(body.is_solid());
+        assert_eq!(body.face_count().unwrap(), 3);
+    }
 }
 
 #[cfg(test)]
