@@ -25,29 +25,6 @@ impl Command for SaveAs {
                         Err(error) => Step::Failed(Message::with("error.file", vec![error])),
                     };
                 }
-                // A Rhino file is written beside the model, which keeps saving as Curva.
-                if crate::commands::import_export::is_3dm(&path) {
-                    return match crate::commands::import_export::write_3dm(doc, None, &path) {
-                        Ok(report) => {
-                            let mut notes: Vec<String> = report
-                                .skipped
-                                .iter()
-                                .map(|(k, n)| format!("{n} {k}"))
-                                .collect();
-                            notes.extend(report.notes);
-                            let notes = if notes.is_empty() {
-                                String::new()
-                            } else {
-                                format!(" ({})", notes.join("; "))
-                            };
-                            Step::Done(Some(Message::with(
-                                "done.save_3dm",
-                                vec![path.display().to_string(), notes],
-                            )))
-                        }
-                        Err(error) => Step::Failed(Message::with("error.file", vec![error])),
-                    };
-                }
                 match doc.save(&path) {
                     Ok(()) => Step::Done(Some(Message::with(
                         "done.save",

@@ -10,7 +10,6 @@ use crate::{
     PrintJob, PrintTo, RHINO_FILES, Request, SKP_FILES, STEP_FILES, STL_FILES, SVG_FILES, Step,
     ViewRequest,
 };
-use curva_3dm::import::Report;
 use curva_document::Document;
 use curva_dxf::Format as CadFormat;
 use std::path::{Path, PathBuf};
@@ -60,12 +59,6 @@ pub fn model_name(doc: &Document) -> Option<String> {
         .map(|stem| stem.to_string_lossy().into_owned())
 }
 
-/// Whether a typed path names a `.3dm` file.
-pub fn is_3dm(path: &Path) -> bool {
-    path.extension()
-        .is_some_and(|e| e.eq_ignore_ascii_case("3dm"))
-}
-
 /// Whether a typed path names a SketchUp `.skp` file.
 pub fn is_skp(path: &Path) -> bool {
     path.extension()
@@ -103,17 +96,6 @@ fn done(result: Result<curva_document::formats::Done, String>) -> Step {
     }
 }
 
-/// A `.3dm` file as a new model, unsaved, named after the file: it saves as a `.curva` beside
-/// it unless one is there already, and never over the `.3dm`.
-pub fn open_3dm(path: &Path) -> Result<(Document, Report), String> {
-    let data = std::fs::read(path).map_err(|e| e.to_string())?;
-    let model = curva_3dm::read::read(&data).map_err(|e| e.to_string())?;
-    let (mut doc, report) = curva_3dm::import::open(&model);
-    let beside = path.with_extension("curva");
-    doc.set_path((!beside.exists()).then_some(beside));
-    Ok((doc, report))
-}
-
 /// A `.dxf` or `.dwg` file as a new model, unsaved, named after the file, as `.3dm` files open.
 pub fn open_cad(path: &Path, format: CadFormat) -> Result<(Document, curva_dxf::Report), String> {
     let data = std::fs::read(path).map_err(|e| e.to_string())?;
@@ -139,42 +121,6 @@ fn write_cad(
     std::fs::rename(&partial, path).map_err(|e| e.to_string())?;
     Ok(report)
 }
-/// The model, or the objects in `only`, written to a `.3dm` file.
-pub fn write_3dm(doc: &Document, only: Option<&[u64]>, path: &Path) -> Result<Report, String> {
-    let (model, report) = curva_3dm::export::export_document(doc, only);
-    let bytes = curva_3dm::write::write(&model);
-    // A half-written file never replaces a whole one, as with `.curva` files.
-    let mut partial = path.as_os_str().to_owned();
-    partial.push(".partial");
-    let partial = PathBuf::from(partial);
-    std::fs::write(&partial, bytes).map_err(|e| e.to_string())?;
-    std::fs::rename(&partial, path).map_err(|e| e.to_string())?;
-    Ok(report)
-}
-
-/// What was written, for the command bar: the count of objects and anything left out.
-fn written(path: &Path, report: &Report) -> Message {
-    let objects: usize = report.brought.iter().map(|(_, n)| n).sum();
-    let mut notes: Vec<String> = report
-        .skipped
-        .iter()
-        .map(|(k, n)| format!("{n} {k}"))
-        .collect();
-    notes.extend(report.notes.iter().cloned());
-    Message::with(
-        "done.export",
-        vec![
-            objects.to_string(),
-            path.display().to_string(),
-            if notes.is_empty() {
-                String::new()
-            } else {
-                format!(" ({})", notes.join("; "))
-            },
-        ],
-    )
-}
-
 /// `Import`: a `.3dm`, `.curva`, `.dxf` or `.dwg` file's contents added to the model, its layers
 /// merged by name.
 #[derive(Default)]
@@ -225,27 +171,12 @@ impl Command for Import {
                         Err(e) => failed(e),
                     };
                 }
-                let model = if is_3dm(&path) {
-                    let data = match std::fs::read(&path) {
-                        Ok(data) => data,
-                        Err(e) => return failed(e),
-                    };
-                    match curva_3dm::read::read(&data) {
-                        Ok(model) => model,
-                        Err(e) => return failed(e),
-                    }
-                } else {
-                    // A Curva file comes in the same way, as plain geometry.
-                    match Document::open(&path) {
-                        Ok(other) => curva_3dm::export::export_document(&other, None).0,
-                        Err(e) => return failed(e),
-                    }
-                };
-                let report = curva_3dm::import::import(&model, doc);
-                Step::Done(Some(Message::with(
-                    "done.import",
-                    vec![path.display().to_string(), report.summary()],
-                )))
+                // A Curva file comes in the same way as a Rhino file, as plain geometry.
+                done(curva_3dm::format::import_curva(
+                    doc,
+                    &path,
+                    &path.display().to_string(),
+                ))
             }
             Some(_) => unexpected(),
         }
@@ -333,16 +264,10 @@ impl Export {
                 Err(e) => failed(e),
             };
         }
-        if !is_3dm(&path) {
-            return Step::Failed(Message::with(
-                "error.export_kind",
-                vec![path.display().to_string()],
-            ));
-        }
-        match write_3dm(doc, self.chosen.as_deref(), &path) {
-            Ok(report) => Step::Done(Some(written(&path, &report))),
-            Err(e) => failed(e),
-        }
+        Step::Failed(Message::with(
+            "error.export_kind",
+            vec![path.display().to_string()],
+        ))
     }
 }
 

@@ -13,6 +13,7 @@ workspace = true
 [dependencies]
 curva-commands = { path = "../curva-commands" }
 curva-document = { path = "../curva-document" }
+curva-formats = { path = "../curva-formats" }
 curva-kernel = { path = "../curva-kernel" }
 curva-mcp = { path = "../curva-mcp" }
 curva-viewport = { path = "../curva-viewport" }

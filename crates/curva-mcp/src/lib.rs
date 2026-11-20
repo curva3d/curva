@@ -378,7 +378,7 @@ impl Server {
     #[must_use]
     pub fn new(renderer: Renderer) -> Self {
         Self {
-            doc: Document::default(),
+            doc: curva_formats::new_document(),
             processor: Processor::default(),
             renderer,
         }

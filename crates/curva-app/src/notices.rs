@@ -77,7 +77,7 @@ impl Curva {
         if let Some(path) = file
             && let Ok(doc) = Document::open(path)
         {
-            self.doc = doc;
+            self.doc.replace_with(doc);
         }
         if self.benchmark.is_some() {
             return self;
@@ -268,7 +268,7 @@ impl Curva {
             self.startup.left_behind = None;
             match recovery::restore(&file) {
                 Ok(doc) => {
-                    self.doc = doc;
+                    self.doc.replace_with(doc);
                     self.drawn = None;
                     let line = self.text.render(&Message::new("done.recovered"));
                     self.processor.note(line);
