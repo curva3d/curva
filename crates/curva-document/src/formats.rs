@@ -16,8 +16,9 @@ pub struct Done {
     pub args: Vec<String>,
 }
 
-/// Reads a file into a new model. Given the file and how to name it in the message.
-pub type Opener = fn(&Path, &str) -> Result<(Document, Done), String>;
+/// Reads a file into a new model. Given the file, how to name it in the message, and the model
+/// open now, whose remembered choices (such as a format's import options) it may follow.
+pub type Opener = fn(&Path, &str, &Document) -> Result<(Document, Done), String>;
 /// Reads a file into the open model.
 pub type Importer = fn(&mut Document, &Path, &str) -> Result<Done, String>;
 /// Writes the whole model to a file, for `Save` and `SaveAs`.
@@ -49,6 +50,96 @@ pub struct Format {
     /// Whether writing it meshes the surfaces and solids, so `Export` asks for the mesh settings
     /// first (issue #387).
     pub meshes: bool,
+    /// A panel of its options the interface shows before the file is read by `Open` or
+    /// `Import`, such as SketchUp's import options (issue #432).
+    pub asks: Option<crate::formats::Panel>,
+}
+
+/// A panel of a format's options the interface shows (see [`Format::asks`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Panel {
+    /// Rhino's "SketchUp Import Options": how faces come in, joining, and groups.
+    SketchUpImport,
+}
+
+/// The choices of Rhino 8's "SketchUp Import Options" (issue #432), kept in the model so the
+/// SketchUp format reads them and the interface's panel shows them, with Rhino's first settings.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct SketchUpImport {
+    /// Faces as flat trimmed surfaces rather than meshes.
+    pub trimmed_planes: bool,
+    /// Loose edges joined into polylines where they meet.
+    pub join_edges: bool,
+    /// With trimmed planes, faces that share edges joined into polysurfaces.
+    pub join_faces: bool,
+    /// Objects inside a group on the group's layer.
+    pub group_layers: bool,
+    /// Each top-level group's objects grouped.
+    pub add_to_groups: bool,
+}
+
+impl Default for SketchUpImport {
+    fn default() -> Self {
+        Self {
+            trimmed_planes: false,
+            join_edges: true,
+            join_faces: true,
+            group_layers: false,
+            add_to_groups: true,
+        }
+    }
+}
+
+/// Where each SketchUp choice is remembered in the model, as `0` or `1`.
+const SKETCHUP_KEYS: [&str; 5] = [
+    "skp.trimmedplanes",
+    "skp.joinedges",
+    "skp.joinfaces",
+    "skp.grouplayers",
+    "skp.addtogroups",
+];
+
+impl SketchUpImport {
+    fn bits(self) -> [bool; 5] {
+        [
+            self.trimmed_planes,
+            self.join_edges,
+            self.join_faces,
+            self.group_layers,
+            self.add_to_groups,
+        ]
+    }
+
+    /// The choices last kept in `doc`, or Rhino's first settings.
+    #[must_use]
+    pub fn remembered(doc: &Document) -> Self {
+        let start = Self::default().bits();
+        let on: [bool; 5] = std::array::from_fn(|k| {
+            doc.remembered(SKETCHUP_KEYS[k])
+                .map_or(start[k], |v| v != 0.0)
+        });
+        Self {
+            trimmed_planes: on[0],
+            join_edges: on[1],
+            join_faces: on[2],
+            group_layers: on[3],
+            add_to_groups: on[4],
+        }
+    }
+
+    /// Keeps these choices in `doc`, for the next SketchUp file read.
+    pub fn remember(self, doc: &mut Document) {
+        for (key, on) in SKETCHUP_KEYS.iter().zip(self.bits()) {
+            doc.remember(key, if on { 1.0 } else { 0.0 });
+        }
+    }
+
+    /// Whether `doc` holds choices already.
+    #[must_use]
+    pub fn kept_in(doc: &Document) -> bool {
+        doc.remembered(SKETCHUP_KEYS[0]).is_some()
+    }
 }
 
 impl Format {
@@ -65,6 +156,7 @@ impl Format {
             print: None,
             drawing: None,
             meshes: false,
+            asks: None,
         }
     }
 
@@ -173,7 +265,7 @@ pub fn curva() -> Format {
     }
 }
 
-fn open_curva(path: &Path, shown: &str) -> Result<(Document, Done), String> {
+fn open_curva(path: &Path, shown: &str, _: &Document) -> Result<(Document, Done), String> {
     let opened = Document::open(path).map_err(|e| e.to_string())?;
     let done = Done {
         key: "done.open",
@@ -215,7 +307,7 @@ mod tests {
 
     fn rhino() -> Format {
         Format {
-            open: Some(|_, _| Err("not here".to_owned())),
+            open: Some(|_, _, _| Err("not here".to_owned())),
             ..Format::new("files.rhino", &["3dm"])
         }
     }
@@ -272,7 +364,7 @@ mod tests {
         assert_eq!(save(&mut doc, &file, "model").unwrap().key, "done.save");
         assert_eq!(doc.path(), Some(file.as_path()));
         let open = formats.of(&file).and_then(|f| f.open).unwrap();
-        let (opened, done) = open(&file, "model").unwrap();
+        let (opened, done) = open(&file, "model", &doc).unwrap();
         assert_eq!(done.args, vec!["model".to_owned()]);
         assert_eq!(opened.path(), Some(file.as_path()));
         std::fs::remove_dir_all(&folder).unwrap();

@@ -82,7 +82,7 @@ fn left_out(report: &Report) -> String {
     }
 }
 
-fn open(path: &Path, shown: &str) -> Result<(Document, Done), String> {
+fn open(path: &Path, shown: &str, _: &Document) -> Result<(Document, Done), String> {
     let (doc, report) = open_file(path)?;
     let done = Done {
         key: "done.open_3dm",

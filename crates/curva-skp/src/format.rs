@@ -12,6 +12,7 @@ pub fn format() -> Format {
     Format {
         open: Some(open),
         import: Some(import),
+        asks: Some(curva_document::formats::Panel::SketchUpImport),
         ..Format::new("files.skp", &["skp"])
     }
 }
@@ -23,8 +24,9 @@ fn read_file(path: &Path) -> Result<crate::Model, String> {
 }
 
 /// A `.skp` file as a new model, unsaved, named after the file, as `.3dm` files open.
-fn open(path: &Path, shown: &str) -> Result<(Document, Done), String> {
-    let (mut doc, report) = crate::open(&read_file(path)?);
+fn open(path: &Path, shown: &str, from: &Document) -> Result<(Document, Done), String> {
+    let options = crate::ImportOptions::remembered(from);
+    let (mut doc, report) = crate::open_with(&read_file(path)?, &options);
     let beside = path.with_extension("curva");
     doc.set_path((!beside.exists()).then_some(beside));
     let done = Done {
@@ -35,7 +37,8 @@ fn open(path: &Path, shown: &str) -> Result<(Document, Done), String> {
 }
 
 fn import(doc: &mut Document, path: &Path, shown: &str) -> Result<Done, String> {
-    let report = crate::import(&read_file(path)?, doc);
+    let options = crate::ImportOptions::remembered(doc);
+    let report = crate::import_with(&read_file(path)?, doc, &options);
     Ok(Done {
         key: "done.import",
         args: vec![shown.to_owned(), report.summary()],
