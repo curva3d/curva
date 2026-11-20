@@ -35,7 +35,10 @@ fn done(result: Result<curva_document::formats::Done, String>) -> Step {
 /// `Import`: a `.3dm`, `.curva`, `.dxf` or `.dwg` file's contents added to the model, its layers
 /// merged by name.
 #[derive(Default)]
-pub struct Import;
+pub struct Import {
+    /// A file to read once its format's options are given (issue #432).
+    waiting: Option<String>,
+}
 
 impl Command for Import {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
@@ -45,17 +48,32 @@ impl Command for Import {
                 doc.formats().importing(),
             )),
             Some(Answer::Path(text)) => {
-                let path = typed(&text);
-                if let Some(import) = doc.formats().of(&path).and_then(|f| f.import) {
-                    return done(import(doc, &path, &path.display().to_string()));
+                if let Some(ask) = super::open::options_asked(doc, &text) {
+                    self.waiting = Some(text);
+                    return ask;
                 }
-                // Anything else is read as Curva's own file, the first on the list.
-                match doc.formats().all().first().and_then(|f| f.import) {
-                    Some(import) => done(import(doc, &path, &path.display().to_string())),
-                    None => failed("not a kind of file Curva can import"),
-                }
+                Self::read(doc, &text)
             }
+            Some(Answer::Empty) => match self.waiting.take() {
+                Some(text) => Self::read(doc, &text),
+                None => unexpected(),
+            },
             Some(_) => unexpected(),
+        }
+    }
+}
+
+impl Import {
+    /// The file typed, read into the model by its format, or as Curva's own file.
+    fn read(doc: &mut Document, text: &str) -> Step {
+        let path = typed(text);
+        if let Some(import) = doc.formats().of(&path).and_then(|f| f.import) {
+            return done(import(doc, &path, &path.display().to_string()));
+        }
+        // Anything else is read as Curva's own file, the first on the list.
+        match doc.formats().all().first().and_then(|f| f.import) {
+            Some(import) => done(import(doc, &path, &path.display().to_string())),
+            None => failed("not a kind of file Curva can import"),
         }
     }
 }

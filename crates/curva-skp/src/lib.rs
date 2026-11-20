@@ -106,6 +106,26 @@ impl Default for ImportOptions {
     }
 }
 
+impl ImportOptions {
+    /// The choices last kept in `doc` (the interface's panel keeps them there), or Rhino's first
+    /// settings.
+    #[must_use]
+    pub fn remembered(doc: &Document) -> Self {
+        let kept = curva_document::formats::SketchUpImport::remembered(doc);
+        Self {
+            faces: if kept.trimmed_planes {
+                FacesAs::TrimmedPlanes
+            } else {
+                FacesAs::Mesh
+            },
+            join_edges: kept.join_edges,
+            join_faces: kept.join_faces,
+            group_layers: kept.group_layers,
+            add_to_groups: kept.add_to_groups,
+        }
+    }
+}
+
 /// A SketchUp file's model, read from its bytes.
 ///
 /// # Errors

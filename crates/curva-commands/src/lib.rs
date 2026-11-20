@@ -105,6 +105,10 @@ pub enum Panel {
     /// export that meshes. OK keeps the settings with `curva_document::meshing::remember_settings`
     /// and answers the step with Enter; Cancel ends the command.
     MeshSettings,
+    /// A format's options, asked before its file is read by `Open` or `Import`, such as
+    /// SketchUp's import options. OK keeps them in the model, as the format reads them, and
+    /// answers the step with Enter; Cancel ends the command.
+    Format(curva_document::formats::Panel),
 }
 
 /// A kind of file, as a file dialog lists it: the key of its name in `locales/en.txt`, and its
