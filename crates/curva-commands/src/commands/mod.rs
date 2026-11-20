@@ -375,7 +375,8 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 94] = [
+    const NOTHING_TO_PREVIEW: [&str; 95] = [
+        "ToSubD",
         "QuadRemesh",
         "MeshBooleanUnion",
         "MeshBooleanDifference",

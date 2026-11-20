@@ -11,6 +11,11 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 20 November 2026 (later still)
 
+**ToSubD (meshes):** measured in Rhino 8, `-ToSubD` makes the mesh's points the cage, leaves
+unwelded edges smooth, creases an open border with no corners, and keeps the mesh. Curva's command
+sets those defaults (`UseMesh` ControlPoints, `MeshCreases` and `MeshCorners` off); `curva-mesh`'s
+own `ToSubdOptions::default` keeps creases and corners on for its callers.
+
 **The SubD tab's first commands: SubDBox, SubDPlane, SubDSphere, SubDCylinder, SubDCone and SubDTorus.**
 They are picked as the mesh primitives are (the same recipes, made generic) and build their cages
 with `curva-mesh`'s SubD primitives. Rhino 8's SubD defaults, measured with Enter at every option,

@@ -1169,3 +1169,5 @@ done.subdsphere = Made a SubD sphere.
 done.subdcylinder = Made a SubD cylinder.
 done.subdcone = Made a SubD cone.
 done.subdtorus = Made a SubD torus.
+prompt.tosubd.objects = Select meshes to turn into SubDs, then press Enter
+done.tosubd = Made {0} SubDs.
