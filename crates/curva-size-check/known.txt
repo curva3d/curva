@@ -1,8 +1,5 @@
 # Files and functions over the size limits on 19 November 2026 (issue #400), allowed until
 # split. An entry may only shrink; remove it once it is within the limit. Never add to it.
-file crates/curva-3dm/src/model.rs 822
-file crates/curva-3dm/src/read/mod.rs 824
-file crates/curva-kernel/src/hidden.rs 816
 fn crates/curva-3dm/src/import/surfaces.rs nurbs_surface 85
 fn crates/curva-app/src/agent.rs look_pictures 84
 fn crates/curva-app/src/benchmark.rs benchmark_house 90
@@ -17,13 +14,10 @@ fn crates/curva-app/src/top_bar.rs file_label 105
 fn crates/curva-app/src/viewports.rs apply_view 105
 fn crates/curva-app/src/viewports.rs history_keys 99
 fn crates/curva-app/src/viewports.rs viewports 200
-fn crates/curva-commands/src/commands/analyze/what.rs make 121
-fn crates/curva-commands/src/commands/layouts/title_block.rs placed 171
 fn crates/curva-commands/src/processor.rs answer_typed 108
 fn crates/curva-commands/src/recipe/run.rs step 99
 fn crates/curva-document/src/annotation/arc_length.rs parts 88
 fn crates/curva-document/src/annotation/linear.rs parts 82
-fn crates/curva-document/src/fields.rs call 190
 fn crates/curva-document/src/hatch.rs pattern_pieces 92
 fn crates/curva-document/src/sheet.rs scale_bar_parts 102
 fn crates/curva-document/src/sheet.rs table_parts 115

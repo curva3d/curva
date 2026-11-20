@@ -148,7 +148,9 @@ pub(super) fn mesh_3(pen: &Pen<'_>, key: &str) -> bool {
             );
         }
         key if key.starts_with("meshboolean") => mesh_boolean(pen, key),
-        key if key.starts_with("subd") => return subd_primitive(pen, key),
+        key if key.starts_with("subd") || key == "tosubd" || key == "tonurbs" => {
+            return subd_primitive(pen, key);
+        }
         "quadremesh" => {
             pen.arc((2.0, 2.0, 18.0, 18.0), 0.0, 360.0);
             grid(pen, (5.0, 5.0), (17.0, 17.0), 3);
@@ -201,6 +203,28 @@ fn subd_primitive(pen: &Pen<'_>, key: &str) -> bool {
             pen.ellipse((2.0, 5.0, 18.0, 12.0));
             pen.ellipse((7.0, 9.0, 8.0, 4.0));
             &[(2.0, 5.0), (20.0, 5.0), (20.0, 17.0), (2.0, 17.0)]
+        }
+        "subddisplaytoggle" => {
+            grid(pen, (2.0, 6.0), (10.0, 14.0), 1);
+            pen.path_in(&[(11.0, 10.0), (13.0, 10.0)], false, pen.accent());
+            pen.ellipse((14.0, 6.0, 7.0, 8.0));
+            &[]
+        }
+        "tonurbs" => {
+            pen.ellipse((2.0, 6.0, 7.0, 8.0));
+            pen.path_in(&[(10.0, 10.0), (12.0, 10.0)], false, pen.accent());
+            pen.path_in(
+                &[(13.0, 14.0), (15.0, 7.0), (18.0, 6.0), (21.0, 13.0)],
+                false,
+                pen.accent(),
+            );
+            &[(2.0, 6.0), (9.0, 6.0), (9.0, 14.0), (2.0, 14.0)]
+        }
+        "tosubd" => {
+            grid(pen, (2.0, 6.0), (10.0, 14.0), 2);
+            pen.path_in(&[(11.0, 10.0), (13.0, 10.0)], false, pen.accent());
+            pen.ellipse((14.0, 6.0, 7.0, 8.0));
+            &[(14.0, 6.0), (21.0, 6.0), (21.0, 14.0), (14.0, 14.0)]
         }
         _ => return false,
     };

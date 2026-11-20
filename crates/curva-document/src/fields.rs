@@ -227,6 +227,19 @@ impl Evaluator<'_> {
     }
 
     fn call(&self, name: &str, args: &[Value]) -> Option<Value> {
+        match name {
+            "PageName" | "PageNumber" | "NumPages" | "PageWidth" | "PageHeight" | "PaperName"
+            | "LayoutUserText" | "DetailScale" => self.page_field(name, args),
+            "ModelUnits" | "FileName" | "Date" | "DateModified" | "DocumentText" | "Notes" => {
+                self.document_field(name, args)
+            }
+            "CurveLength" | "Area" | "Volume" => self.measure_field(name, args),
+            _ => self.object_field(name, args),
+        }
+    }
+
+    /// Fields of the layout being drawn: its name, number, size, paper and user text, and a detail's scale.
+    fn page_field(&self, name: &str, args: &[Value]) -> Option<Value> {
         let text = |s: &str| Some(Value::Text(s.to_owned()));
         #[allow(clippy::cast_precision_loss)]
         let count = |n: usize| Some(Value::Number(n as f64));
@@ -248,6 +261,45 @@ impl Evaluator<'_> {
             "PageWidth" => Some(Value::Number(self.page(&[])?.1.size[0])),
             "PageHeight" => Some(Value::Number(self.page(&[])?.1.size[1])),
             "PaperName" => text(self.page(&[])?.1.paper_name()?),
+            "LayoutUserText" => {
+                let (layout, key) = match args {
+                    [Value::Text(key)] => (self.page(&[])?.1, key),
+                    [id, Value::Text(key)] => {
+                        let id = match id {
+                            Value::Number(n) => Value::Number(*n),
+                            Value::Text(t) => Value::Number(t.trim().parse().ok()?),
+                        };
+                        (self.page(&[id])?.1, key)
+                    }
+                    _ => return None,
+                };
+                text(layout.user_text.get(key)?)
+            }
+            "DetailScale" => {
+                let frame = args.first()?.number()?;
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                let frame = frame as u64;
+                let scale = self
+                    .state
+                    .layouts
+                    .iter()
+                    .flat_map(|l| &l.details)
+                    .find(|d| d.frame == frame)?
+                    .scale?;
+                let format = match args.get(1) {
+                    Some(Value::Text(f)) => f.as_str(),
+                    _ => "",
+                };
+                Some(Value::Text(scale_in_format(scale, format)))
+            }
+            _ => None,
+        }
+    }
+
+    /// Fields of the document: its unit, file name, dates, text and notes.
+    fn document_field(&self, name: &str, args: &[Value]) -> Option<Value> {
+        let text = |s: &str| Some(Value::Text(s.to_owned()));
+        match name {
             "ModelUnits" => text(match self.state.unit {
                 crate::Unit::Millimetres => "Millimeters",
                 crate::Unit::Metres => "Meters",
@@ -287,6 +339,18 @@ impl Evaluator<'_> {
                 };
                 Some(Value::Text(net_date(self.context.saved.as_ref()?, &format)))
             }
+            "DocumentText" => match args.first() {
+                Some(Value::Text(key)) => text(self.state.document_text.get(key)?),
+                _ => None,
+            },
+            "Notes" => text(&self.state.notes),
+            _ => None,
+        }
+    }
+
+    /// Measurements of an object: its length, area and volume.
+    fn measure_field(&self, name: &str, args: &[Value]) -> Option<Value> {
+        match name {
             "CurveLength" => Some(Value::Number(self.object(args)?.curve()?.length().ok()?)),
             "Area" => {
                 let object = self.object(args)?;
@@ -313,6 +377,16 @@ impl Evaluator<'_> {
             "Volume" => Some(Value::Number(
                 self.object(args)?.shape.body()?.volume().ok()?,
             )),
+            _ => None,
+        }
+    }
+
+    /// Fields of an object: its user text, name, layer, layout and block.
+    fn object_field(&self, name: &str, args: &[Value]) -> Option<Value> {
+        let text = |s: &str| Some(Value::Text(s.to_owned()));
+        #[allow(clippy::cast_precision_loss)]
+        let count = |n: usize| Some(Value::Number(n as f64));
+        match name {
             "UserText" => {
                 let key = match args.get(1) {
                     Some(Value::Text(k)) => k,
@@ -321,25 +395,6 @@ impl Evaluator<'_> {
                 text(self.object(args)?.user_text.get(key)?)
             }
             "ObjectName" => text(&self.object(args)?.name),
-            "DocumentText" => match args.first() {
-                Some(Value::Text(key)) => text(self.state.document_text.get(key)?),
-                _ => None,
-            },
-            "LayoutUserText" => {
-                let (layout, key) = match args {
-                    [Value::Text(key)] => (self.page(&[])?.1, key),
-                    [id, Value::Text(key)] => {
-                        let id = match id {
-                            Value::Number(n) => Value::Number(*n),
-                            Value::Text(t) => Value::Number(t.trim().parse().ok()?),
-                        };
-                        (self.page(&[id])?.1, key)
-                    }
-                    _ => return None,
-                };
-                text(layout.user_text.get(key)?)
-            }
-            "Notes" => text(&self.state.notes),
             "ObjectLayer" => {
                 let layer = self.object(args)?.layer;
                 text(&self.state.layers.iter().find(|l| l.id == layer)?.name)
@@ -367,23 +422,6 @@ impl Evaluator<'_> {
                 let space = self.object(args)?.space?;
                 let index = self.state.layouts.iter().position(|l| l.id == space)?;
                 count(index + 1)
-            }
-            "DetailScale" => {
-                let frame = args.first()?.number()?;
-                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                let frame = frame as u64;
-                let scale = self
-                    .state
-                    .layouts
-                    .iter()
-                    .flat_map(|l| &l.details)
-                    .find(|d| d.frame == frame)?
-                    .scale?;
-                let format = match args.get(1) {
-                    Some(Value::Text(f)) => f.as_str(),
-                    _ => "",
-                };
-                Some(Value::Text(scale_in_format(scale, format)))
             }
             "BlockName" => {
                 let object = self.object(args)?;

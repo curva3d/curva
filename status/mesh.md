@@ -9,7 +9,28 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## 21 November 2026
+
+**SubD face colours on the smooth surface (for display, #324 follow-up):** `SubD::surface_coloured(levels, fallback)`
+gives each quad of the smooth surface its cage face's colour at every corner (`Attribute::PerCorner`),
+using the library's record of which cage face each quad comes from; a face with no colour takes
+`fallback`, and a SubD without face colours comes back uncoloured. `surface` is unchanged.
+
 ## 20 November 2026 (later still)
+
+**ToNURBS (SubDs):** measured in Rhino 8, `-ToNURBS` keeps the SubD and makes a closed polysurface;
+the volumes match Rhino's to 0.02 % (20.9673 against 20.963 m³ for a 4 m cube cage of one face a
+side, 50.3594 against 50.3587 for 2 × 2). Rhino packs the patches into 6 larger faces; Curva keeps
+one patch per quad (24) for now.
+
+**SubDDisplayToggle:** measured in Rhino 8, it switches every SubD in the model whatever is selected
+("SubD display changed from smooth to flat. 2 SubDs changed."). Curva does the same, undoably.
+The Tab shortcut is not there yet.
+
+**ToSubD (meshes):** measured in Rhino 8, `-ToSubD` makes the mesh's points the cage, leaves
+unwelded edges smooth, creases an open border with no corners, and keeps the mesh. Curva's command
+sets those defaults (`UseMesh` ControlPoints, `MeshCreases` and `MeshCorners` off); `curva-mesh`'s
+own `ToSubdOptions::default` keeps creases and corners on for its callers.
 
 **The SubD tab's first commands: SubDBox, SubDPlane, SubDSphere, SubDCylinder, SubDCone and SubDTorus.**
 They are picked as the mesh primitives are (the same recipes, made generic) and build their cages
