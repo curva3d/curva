@@ -26,6 +26,15 @@ apart by which cage face each refined face comes from.
 
 ## 20 November 2026 (later)
 
+**The mesh panel (export-formats spec §2, on features' #387 step):** `panels/mesh.rs` opens when
+`Mesh` or a mesh export asks for it. It has Rhino's presets (Coarse, Default, Smooth), the
+*Fewer polygons ↔ More polygons* slider, the SubD level when SubDs are meshed, and the faces, the
+farthest stray and the size in plain numbers under the slider. Advanced adds the most a facet may
+turn and stand off the surface. OK keeps the settings and answers the step; Cancel ends the command.
+Still to come: the rest of Rhino's detailed controls (they need fields in `MeshSettings`), the
+Preview button and live preview (#407, display), and meshing for the numbers in the background
+(it runs each time the settings change, which is slow on large models).
+
 **MeshBooleanUnion, MeshBooleanDifference, MeshBooleanIntersection and MeshBooleanSplit (#272
 part 2):** commands now, with icons and reference rows, on the manifold-rust booleans of part 1.
 They leave what Rhino 8 leaves, measured on the same boxes:
