@@ -1,6 +1,6 @@
 # 0038: Everything open ships in 0.4.4
 
-**Status:** Decided by the owner in chat · 19 November 2026.
+**Status:** Decided by the owner in chat · 19 November 2026. Replaced by 0039 (21 November 2026: 0.4.4 ships what is ready).
 
 **What was decided.** Curva 0.4.4 contains everything that was open on 19 November 2026: the mesh
 and SubD work, live plans, the display work, the remaining features, the tidy-up from the
