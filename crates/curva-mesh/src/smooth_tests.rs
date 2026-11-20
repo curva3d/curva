@@ -430,3 +430,42 @@ fn a_creased_cubes_edge_curves_are_its_straight_edges() {
     let total: f64 = runs.iter().map(|c| length(c)).sum();
     assert!((total - 24.0).abs() < 1e-5, "{total}");
 }
+
+#[test]
+fn each_quad_of_the_surface_takes_its_cage_faces_colour() {
+    const RED: [f32; 3] = [1.0, 0.0, 0.0];
+    const GREY: [f32; 3] = [0.5, 0.5, 0.5];
+    let plain = SubD::new(cube());
+    let uncoloured = plain.surface_coloured(2, GREY).unwrap();
+    assert!(matches!(uncoloured.colours(), Attribute::None));
+    // The first face is the bottom one (z = 0); every other face has no colour.
+    let mut colours = vec![None; 6];
+    colours[0] = Some(RED);
+    let subd = plain.with_face_colours(colours).unwrap();
+    let surface = subd.surface_coloured(2, GREY).unwrap();
+    let Attribute::PerCorner(corners) = surface.colours() else {
+        panic!("colours at the corners");
+    };
+    assert_eq!(corners.len(), surface.corners().len());
+    let mut at = 0;
+    let mut red = 0;
+    for f in 0..surface.face_count() {
+        let face = surface.face(f);
+        let colour = corners[at];
+        assert!(corners[at..at + face.len()].iter().all(|&c| c == colour));
+        at += face.len();
+        let z: f64 = face
+            .iter()
+            .map(|&v| surface.vertices()[v as usize][2])
+            .sum::<f64>()
+            / face.len() as f64;
+        if colour == RED {
+            red += 1;
+            assert!(z < 0.3, "a red quad lies on the bottom: {z}");
+        } else {
+            assert_eq!(colour, GREY);
+        }
+    }
+    // Two levels split each cage face into 16 quads.
+    assert_eq!(red, 16);
+}

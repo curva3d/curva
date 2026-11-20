@@ -278,6 +278,37 @@ impl SubD {
     /// # Errors
     /// When the library refuses the cage.
     pub fn surface(&self, levels: u8) -> Result<Mesh, SmoothError> {
+        Ok(self.surface_and_roots(levels)?.0)
+    }
+
+    /// [`SubD::surface`] with each quad given its cage face's colour at every corner
+    /// ([`Attribute::PerCorner`]), when the SubD has face colours; a face with none takes
+    /// `fallback`. Without face colours the surface comes back uncoloured.
+    ///
+    /// # Errors
+    /// When the library refuses the cage.
+    pub fn surface_coloured(&self, levels: u8, fallback: [f32; 3]) -> Result<Mesh, SmoothError> {
+        let (mesh, roots) = self.surface_and_roots(levels)?;
+        let Some(colours) = self.face_colours() else {
+            return Ok(mesh);
+        };
+        let per_corner = (0..mesh.face_count())
+            .flat_map(|f| {
+                let colour = roots
+                    .get(f)
+                    .and_then(|&root| colours.get(root as usize).copied().flatten())
+                    .unwrap_or(fallback);
+                std::iter::repeat_n(colour, mesh.face(f).len())
+            })
+            .collect();
+        Ok(mesh
+            .clone()
+            .with_colours(Attribute::PerCorner(per_corner))
+            .unwrap_or(mesh))
+    }
+
+    /// The smooth surface, and for each of its quads the cage face it lies in.
+    fn surface_and_roots(&self, levels: u8) -> Result<(Mesh, Vec<u32>), SmoothError> {
         let (result, centre, refined) = self.refine(levels)?;
         let limit = result
             .limit_stencils()
@@ -297,7 +328,8 @@ impl SubD {
             .unwrap_or(mesh);
         // The library's tangents follow its own face order; turn the normals to face the way the
         // faces do.
-        Ok(facing(mesh))
+        let roots = result.face_root.clone();
+        Ok((facing(mesh), roots))
     }
 
     /// Every cage edge as it lies on the smooth surface, `levels` subdivisions fine, as runs of
