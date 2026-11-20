@@ -20,7 +20,9 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
   thousand faces twice), which takes about 60 ms for a cage of 384 faces. In wireframe a
   smooth SubD also draws its cage's edges on the surface, as Rhino does, using the mesh
   stream's `edge_curves` (#438); views showing faces leave them out, and creases and borders
-  are drawn once, not twice. Still to do: faces coloured one by one show the layer colour.
+  are drawn once, not twice. Shown flat, faces coloured one by one show their colours, the
+  rest the object's colour, as in Rhino. Still to do: those colours on the smooth surface, from
+  the mesh stream's `surface_coloured` (#461).
 - **Snapping is under 1 ms a frame on the largest test scene** (#130). With a whole large
   scene in view, thousands of snap points were within reach of the cursor, and each was measured
   and sorted; now snapping searches outwards from the cursor and stops as soon as nothing nearer

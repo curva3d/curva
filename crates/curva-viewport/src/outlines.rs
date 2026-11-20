@@ -534,7 +534,11 @@ impl Outlines {
         };
         let drawing = crate::subds::drawing(subd);
         let (drawn, _) = crate::meshes::body_mesh(&drawing.shown);
+        let colours = crate::subds::face_colours(subd, &drawing, &drawn, look.colour);
         self.push_faces(id, look, std::sync::Arc::new(drawn), Some(IN_PLACE), kind);
+        if let (Some(colours), Some(faces)) = (colours, self.faces.last_mut()) {
+            faces.colours = Some(std::sync::Arc::new(colours));
+        }
         // Its other cage edges draw only where faces do not show, as a mesh's wires do.
         let wires = drawing.wires.into_iter().map(|wire| (wire, None)).collect();
         self.push_pieces(id, wires, look, kind, &|_| true, true);
