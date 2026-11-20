@@ -46,9 +46,6 @@ pub struct Format {
     pub print: Option<PageWriter>,
     /// Writing layouts as drawings, as `Export` offers them: the open layout, or every one.
     pub drawing: Option<PageWriter>,
-    /// Whether `Import`'s dialog lists it when it can be imported. Only SketchUp says no: it has
-    /// always been read when its file is typed in, but never offered there.
-    pub import_listed: bool,
 }
 
 impl Format {
@@ -64,7 +61,6 @@ impl Format {
             export: None,
             print: None,
             drawing: None,
-            import_listed: true,
         }
     }
 
@@ -141,7 +137,7 @@ impl Formats {
     /// What `Import` offers.
     #[must_use]
     pub fn importing(&self) -> Vec<(&'static str, &'static [&'static str])> {
-        self.listed(|f| f.import.is_some() && f.import_listed)
+        self.listed(|f| f.import.is_some())
     }
 
     /// What `Save` and `SaveAs` offer.

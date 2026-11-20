@@ -12,8 +12,6 @@ pub fn format() -> Format {
     Format {
         open: Some(open),
         import: Some(import),
-        // As before: `Import` reads a `.skp` typed in, but its dialog does not offer one.
-        import_listed: false,
         ..Format::new("files.skp", &["skp"])
     }
 }

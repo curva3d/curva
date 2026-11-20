@@ -27,9 +27,8 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
   dialogs' lists from the registry and adds a check that `curva-commands` and `curva-app` depend on
   no format crate. Every dialog lists the same types in the same order. **New file formats can now
   be added** (FBX, USD, SketchUp export): each is one crate that joins the list.
-- **For the owner:** `Import` reads SketchUp files typed in, but its dialog has never offered them.
-  The registry keeps that as it was (`import_listed: false`); listing them is a one-line change if
-  wanted.
+- **Import's dialog now lists SketchUp files** (the owner's choice). Import always read them when
+  typed in; the dialog had left them out.
 - **Size check at work:** it stopped `Export` and the app's start-up function from growing. `Export`
   was split, and `Open` shrank, so both left the exceptions list. #422 opened: `commands/mod.rs` is
   at exactly 800 lines, so its registrations should be split by tab (the mesh stream's warning).
