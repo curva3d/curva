@@ -11,6 +11,12 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 20 November 2026 (later still)
 
+**QuadRemesh `TargetEdgeLength` (#329):** measured in Rhino 8 on a 40 × 40 sphere of radius 5: 1,064,
+244 and 59 quads at 0.5, 1 and 2, so its quads come out about 1.12 times the length asked for.
+quadrs' own edge length made them about 0.85 times as long (434 quads at 1), so Curva now turns
+the length into Rhino's quad count over the surface's area. Rhino's adaptive size makes no
+difference on a sphere, so it does not explain Curva's 1,990 quads against Rhino's 1,750 at 2,000.
+
 **`SubD::edge_curves` (asked by display for #324):** every cage edge as it lies on the smooth
 surface, joined into runs between cage points where other than two edges meet. Rhino draws a
 smooth SubD's wireframe this way; `crease_curves` gave only creases and borders, so a smooth
