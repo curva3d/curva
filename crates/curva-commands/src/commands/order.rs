@@ -3,7 +3,7 @@
 //! `docs/specs/command-groups.md`). A new command goes in its folder's list and here.
 
 /// Every command's name, in the list's order.
-pub(super) const ORDER: [&str; 294] = [
+pub(super) const ORDER: [&str; 298] = [
     "Line",
     "Polyline",
     "InterpCrv",
@@ -207,6 +207,10 @@ pub(super) const ORDER: [&str; 294] = [
     "QuadrangulateMesh",
     "ExtractMeshFaces",
     "MeshToNURB",
+    "MeshBooleanUnion",
+    "MeshBooleanDifference",
+    "MeshBooleanIntersection",
+    "MeshBooleanSplit",
     "ExtractIsocurve",
     "ShrinkTrimmedSrf",
     "BlendSrf",
