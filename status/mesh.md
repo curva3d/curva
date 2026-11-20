@@ -11,6 +11,11 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 20 November 2026 (later still)
 
+**Weld by angle (`Mesh::welded_by_angle`, for SketchUp import's Weld angle, #444):** points at the
+same place join where the faces along an edge there turn by no more than the angle, as Rhino 8's
+`Weld`. It matches Rhino exactly on a hexagonal prism with every face apart: 60 points become 38
+up to 59°, 26 from 61° and 14 from 91°.
+
 **QuadRemesh `Symmetry` (#329):** measured in Rhino 8, its `X` mirrors y, `Y` mirrors x and `Z` mirrors
 z, about the middle of the bounding box (not the world origin). Curva cuts the mesh along each
 plane, remeshes one part, puts its border exactly on the plane, mirrors it back and welds the
