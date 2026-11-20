@@ -11,6 +11,10 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 20 November 2026 (later still)
 
+**SubDDisplayToggle:** measured in Rhino 8, it switches every SubD in the model whatever is selected
+("SubD display changed from smooth to flat. 2 SubDs changed."). Curva does the same, undoably.
+The Tab shortcut is not there yet.
+
 **ToSubD (meshes):** measured in Rhino 8, `-ToSubD` makes the mesh's points the cage, leaves
 unwelded edges smooth, creases an open border with no corners, and keeps the mesh. Curva's command
 sets those defaults (`UseMesh` ControlPoints, `MeshCreases` and `MeshCorners` off); `curva-mesh`'s

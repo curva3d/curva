@@ -1171,3 +1171,5 @@ done.subdcone = Made a SubD cone.
 done.subdtorus = Made a SubD torus.
 prompt.tosubd.objects = Select meshes to turn into SubDs, then press Enter
 done.tosubd = Made {0} SubDs.
+error.subddisplaytoggle_none = There are no SubDs in the model.
+done.subddisplaytoggle = SubD display changed from {0} to {1}. {2} SubDs changed.
