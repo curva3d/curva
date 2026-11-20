@@ -1,11 +1,13 @@
-//! STL, OBJ and PLY in `Import`, `Export` and `ExportSelected` (spec `docs/specs/mesh-and-subd.md`
+//! STL, OBJ and PLY on Curva's list of formats (spec `docs/specs/file-formats.md` §3), moved
+//! unchanged from the file commands: `Open`, `Import`, `Export` and `ExportSelected` (spec `docs/specs/mesh-and-subd.md`
 //! §5, `export-formats.md` §1), through `curva-meshfiles`. Coming in, each mesh in the file is a
 //! mesh object, named as in the file. Going out, meshes are written as they are, SubDs as their
 //! smooth surface, and surfaces and solids meshed with the mesh settings last used by `Mesh` or
 //! the mesh panel (`export-formats.md` §2). These formats carry no unit: the numbers are in the
 //! model's.
 
-use crate::commands::mesh::meshing::{mesh_objects, remembered_settings};
+use curva_document::formats::{Done, Format};
+use curva_document::meshing::{mesh_objects, remembered_settings};
 use curva_document::{Document, Shape};
 use curva_mesh::Mesh;
 use std::path::Path;
@@ -34,6 +36,75 @@ impl MeshFormat {
     }
 }
 
+/// STL files, as the list holds them.
+#[must_use]
+pub fn stl() -> Format {
+    Format {
+        open: Some(|path, shown| open(path, shown, MeshFormat::Stl)),
+        import: Some(|doc, path, shown| import(doc, path, shown, MeshFormat::Stl)),
+        export: Some(|doc, only, path, shown| export(doc, only, path, shown, MeshFormat::Stl)),
+        ..Format::new("files.stl", &["stl"])
+    }
+}
+
+/// Wavefront OBJ files, as the list holds them.
+#[must_use]
+pub fn obj() -> Format {
+    Format {
+        open: Some(|path, shown| open(path, shown, MeshFormat::Obj)),
+        import: Some(|doc, path, shown| import(doc, path, shown, MeshFormat::Obj)),
+        export: Some(|doc, only, path, shown| export(doc, only, path, shown, MeshFormat::Obj)),
+        ..Format::new("files.obj", &["obj"])
+    }
+}
+
+/// PLY files, as the list holds them.
+#[must_use]
+pub fn ply() -> Format {
+    Format {
+        open: Some(|path, shown| open(path, shown, MeshFormat::Ply)),
+        import: Some(|doc, path, shown| import(doc, path, shown, MeshFormat::Ply)),
+        export: Some(|doc, only, path, shown| export(doc, only, path, shown, MeshFormat::Ply)),
+        ..Format::new("files.ply", &["ply"])
+    }
+}
+
+fn open(path: &Path, shown: &str, format: MeshFormat) -> Result<(Document, Done), String> {
+    let (doc, summary) = open_mesh_file(path, format)?;
+    let done = Done {
+        key: "done.open_3dm",
+        args: vec![shown.to_owned(), summary],
+    };
+    Ok((doc, done))
+}
+
+fn import(
+    doc: &mut Document,
+    path: &Path,
+    shown: &str,
+    format: MeshFormat,
+) -> Result<Done, String> {
+    let summary = import_mesh_file(doc, path, format)?;
+    Ok(Done {
+        key: "done.import",
+        args: vec![shown.to_owned(), summary],
+    })
+}
+
+fn export(
+    doc: &Document,
+    only: Option<&[u64]>,
+    path: &Path,
+    shown: &str,
+    format: MeshFormat,
+) -> Result<Done, String> {
+    let summary = export_mesh_file(doc, only, path, format)?;
+    Ok(Done {
+        key: "done.export_cad",
+        args: vec![shown.to_owned(), summary],
+    })
+}
+
 /// The meshes in a mesh file added to the model, each a mesh object named as in the file.
 /// Returns a summary for the command line.
 ///
@@ -46,9 +117,9 @@ pub fn import_mesh_file(
 ) -> Result<String, String> {
     let data = std::fs::read(path).map_err(|e| e.to_string())?;
     let contents = match format {
-        MeshFormat::Stl => curva_meshfiles::stl::read(&data),
-        MeshFormat::Obj => curva_meshfiles::obj::read(&data),
-        MeshFormat::Ply => curva_meshfiles::ply::read(&data),
+        MeshFormat::Stl => crate::stl::read(&data),
+        MeshFormat::Obj => crate::obj::read(&data),
+        MeshFormat::Ply => crate::ply::read(&data),
     }
     .map_err(|e| e.to_string())?;
     if contents.meshes.is_empty() {
@@ -129,9 +200,9 @@ pub fn exported_ids(doc: &Document, only: Option<&[u64]>) -> Vec<u64> {
 pub fn file_bytes(meshes: &[(u64, String, Mesh)], format: MeshFormat) -> Vec<u8> {
     let list: Vec<(&str, &Mesh)> = meshes.iter().map(|(_, n, m)| (n.as_str(), m)).collect();
     match format {
-        MeshFormat::Stl => curva_meshfiles::stl::write_binary(&list),
-        MeshFormat::Obj => curva_meshfiles::obj::write(&list).into_bytes(),
-        MeshFormat::Ply => curva_meshfiles::ply::write_binary(&list),
+        MeshFormat::Stl => crate::stl::write_binary(&list),
+        MeshFormat::Obj => crate::obj::write(&list).into_bytes(),
+        MeshFormat::Ply => crate::ply::write_binary(&list),
     }
 }
 

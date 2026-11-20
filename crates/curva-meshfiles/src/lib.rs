@@ -5,6 +5,7 @@
 //! None of them records units: numbers are read and written as they are, and the command that
 //! opens or saves the file says which unit they are in.
 
+pub mod format;
 pub mod obj;
 pub mod ply;
 pub mod stl;

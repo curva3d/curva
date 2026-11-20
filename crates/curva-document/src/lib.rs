@@ -26,6 +26,7 @@ pub mod fields;
 pub mod formats;
 pub mod hatch;
 pub mod layouts;
+pub mod meshing;
 mod organise;
 pub mod section;
 pub mod shape;

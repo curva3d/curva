@@ -17,7 +17,6 @@ curva-formats = { path = "../curva-formats" }
 curva-kernel = { path = "../curva-kernel" }
 curva-mcp = { path = "../curva-mcp" }
 curva-viewport = { path = "../curva-viewport" }
-curva-pdf = { path = "../curva-pdf" }
 eframe = { version = "0.37", default-features = false, features = ["default_fonts", "wgpu", "wayland", "x11"] }
 # The panel arrangement is kept as a small JSON file. Both are already in the build through
 # curva-document.

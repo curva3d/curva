@@ -1,11 +1,30 @@
-//! `Export` and `ExportSelected` to STEP (`.stp`, `.step`): surfaces, polysurfaces and solids kept
-//! exact, through the kernel's STEP writer (spec `docs/specs/export-formats.md`, step 1). Curves,
-//! block copies, annotation, meshes and SubDs are left out and counted (meshes as faceted solids
-//! come later, spec §8 step 6).
+//! STEP files (`.stp`, `.step`) on Curva's list of formats (spec `docs/specs/file-formats.md`
+//! §3), moved unchanged from the file commands. `Export` and `ExportSelected` write surfaces,
+//! polysurfaces and solids exact, through the kernel's STEP writer (spec
+//! `docs/specs/export-formats.md`, step 1). Curves, block copies, annotation, meshes and SubDs are
+//! left out and counted (meshes as faceted solids come later, spec §8 step 6).
 
+use curva_document::formats::{Done, Format};
 use curva_document::{Document, Shape};
 use curva_kernel::step::{StepPart, StepSchema, write_step};
 use std::path::Path;
+
+/// STEP files, as the list holds them: written only, in the default schema.
+#[must_use]
+pub fn format() -> Format {
+    Format {
+        export: Some(export),
+        ..Format::new("files.step", &["stp", "step"])
+    }
+}
+
+fn export(doc: &Document, only: Option<&[u64]>, path: &Path, shown: &str) -> Result<Done, String> {
+    let summary = write_step_file(doc, only, path, StepSchema::default())?;
+    Ok(Done {
+        key: "done.export_cad",
+        args: vec![shown.to_owned(), summary],
+    })
+}
 
 /// Whether a path names a STEP file.
 pub fn is_step(path: &Path) -> bool {

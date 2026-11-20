@@ -1,6 +1,5 @@
 //! `Open`: replaces the model with one from a file, Curva's own or another program's.
 
-use super::meshfiles::{MeshFormat, open_mesh_file};
 use crate::commands::unexpected;
 use crate::{Answer, Command, Message, Request, Step};
 use curva_document::Document;
@@ -43,21 +42,7 @@ impl Command for Open {
         if let Some(step) = through_the_list(doc, &text) {
             return step;
         }
-        let path = Path::new(text.trim().trim_matches('"'));
-        let summarised =
-            |summary: String| Message::with("done.open_3dm", vec![text.clone(), summary]);
-        if crate::commands::import_export::is_skp(path) {
-            let read = crate::commands::import_export::open_skp(path);
-            return opened(doc, read.map(|(m, r)| (m, summarised(r.summary()))));
-        }
-        if let Some(format) = curva_dxf::Format::of(path) {
-            let read = crate::commands::import_export::open_cad(path, format);
-            return opened(doc, read.map(|(m, r)| (m, summarised(r.summary()))));
-        }
-        if let Some(format) = MeshFormat::of(path) {
-            let read = open_mesh_file(path, format);
-            return opened(doc, read.map(|(m, s)| (m, summarised(s))));
-        }
+        // Anything else is read as Curva's own file, as it always was.
         let read = Document::open(Path::new(&text)).map_err(|e| e.to_string());
         opened(
             doc,

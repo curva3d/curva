@@ -3,6 +3,7 @@
 //! `krilla`. Paper millimetres become PDF points (1/72 inch), and the page's upward Y becomes
 //! PDF's downward one.
 
+pub mod format;
 mod svg;
 pub use svg::write_svg;
 

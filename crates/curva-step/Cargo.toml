@@ -1,0 +1,15 @@
+[package]
+name = "curva-step"
+description = "STEP files written from a Curva model through the kernel's STEP writer, on Curva's list of formats."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+curva-document = { path = "../curva-document" }
+curva-kernel = { path = "../curva-kernel" }

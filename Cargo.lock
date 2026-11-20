@@ -1871,7 +1871,6 @@ dependencies = [
  "curva-formats",
  "curva-kernel",
  "curva-mcp",
- "curva-pdf",
  "curva-viewport",
  "eframe",
  "png",
@@ -1924,6 +1923,11 @@ version = "0.4.3"
 dependencies = [
  "curva-3dm",
  "curva-document",
+ "curva-dxf",
+ "curva-meshfiles",
+ "curva-pdf",
+ "curva-skp",
+ "curva-step",
 ]
 
 [[package]]
@@ -1968,6 +1972,8 @@ dependencies = [
 name = "curva-meshfiles"
 version = "0.4.3"
 dependencies = [
+ "curva-document",
+ "curva-kernel",
  "curva-mesh",
 ]
 
@@ -1991,6 +1997,14 @@ dependencies = [
  "curva-kernel",
  "curva-mesh",
  "openskp",
+]
+
+[[package]]
+name = "curva-step"
+version = "0.4.3"
+dependencies = [
+ "curva-document",
+ "curva-kernel",
 ]
 
 [[package]]

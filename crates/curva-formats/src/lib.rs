@@ -15,6 +15,15 @@ pub fn all() -> Arc<Formats> {
         ..formats::curva()
     });
     list.add(curva_3dm::format::format());
+    list.add(curva_dxf::format::dxf());
+    list.add(curva_dxf::format::dwg());
+    list.add(curva_skp::format::format());
+    list.add(curva_step::format());
+    list.add(curva_meshfiles::format::stl());
+    list.add(curva_meshfiles::format::obj());
+    list.add(curva_meshfiles::format::ply());
+    list.add(curva_pdf::format::pdf());
+    list.add(curva_pdf::format::svg());
     Arc::new(list)
 }
 
@@ -33,6 +42,21 @@ mod tests {
     #[test]
     fn curva_files_come_first_then_rhino() {
         let names: Vec<_> = all().all().iter().map(|f| f.name).collect();
-        assert_eq!(names, ["files.curva", "files.rhino"]);
+        assert_eq!(
+            names,
+            [
+                "files.curva",
+                "files.rhino",
+                "files.dxf",
+                "files.dwg",
+                "files.skp",
+                "files.step",
+                "files.stl",
+                "files.obj",
+                "files.ply",
+                "files.pdf",
+                "files.svg",
+            ]
+        );
     }
 }

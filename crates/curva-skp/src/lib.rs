@@ -14,6 +14,8 @@
 //! Left out, and listed in the report: hidden faces and edges, texts, dimensions, section planes,
 //! construction lines and points, and images.
 
+pub mod format;
+
 use curva_document::blocks::Placement;
 use curva_document::{Document, Shape, Unit};
 
