@@ -288,10 +288,37 @@ pub(crate) fn box_around(points: &[Point]) -> Option<(Point, Point)> {
     )
 }
 
-/// Whether a whole box is too far from the cursor on screen to matter, which skips most curves
-/// without looking at their points. A box partly behind the camera is never skipped.
-fn box_out_of_reach(view: &Projector, bounds: (Point, Point), cursor: [f64; 2]) -> bool {
-    box_beyond(view, bounds, (cursor, SNAP_REACH))
+/// How far `point` shows from the cursor on screen; nothing when it is behind the camera.
+fn point_gap(view: &Projector, cursor: [f64; 2], point: Point) -> Option<f64> {
+    view.project(point)
+        .map(|at| (at[0] - cursor[0]).hypot(at[1] - cursor[1]))
+}
+
+/// No more than the distance on screen from the cursor to any point in a box: the distance to the
+/// rectangle around its projected corners, which holds the whole projected box; nothing for a box
+/// partly behind the camera. A hair is taken off, so rounding never puts it past a point inside.
+fn box_gap(view: &Projector, (low, high): (Point, Point), cursor: [f64; 2]) -> f64 {
+    let (mut left, mut right) = (f64::INFINITY, f64::NEG_INFINITY);
+    let (mut top, mut bottom) = (f64::INFINITY, f64::NEG_INFINITY);
+    for corner in 0..8 {
+        let pick = |axis: usize| {
+            if corner & (1 << axis) == 0 {
+                low[axis]
+            } else {
+                high[axis]
+            }
+        };
+        let Some(at) = view.project([pick(0), pick(1), pick(2)]) else {
+            return 0.0;
+        };
+        left = left.min(at[0]);
+        right = right.max(at[0]);
+        top = top.min(at[1]);
+        bottom = bottom.max(at[1]);
+    }
+    let across = (left - cursor[0]).max(cursor[0] - right).max(0.0);
+    let down = (top - cursor[1]).max(cursor[1] - bottom).max(0.0);
+    (across.hypot(down) - 1e-9).max(0.0)
 }
 
 /// Whether a whole box lies more than `reach` pixels from the cursor on screen; never for a box
@@ -326,14 +353,16 @@ pub(crate) fn box_beyond(
 }
 
 /// The objects' boxes and the snap places, each in a tree of boxes (#130), so picking and
-/// snapping look only at what is near the cursor. Each tree is made once per model, the first
-/// time it is asked for: picking needs only the objects' tree, much smaller than the places'.
+/// snapping look only at what is near the cursor. Each tree is made once per model: by
+/// [`Outlines::prepare_snapping`] away from the frame, or else the first time it is asked for.
+/// Picking needs only the objects' tree, much smaller than the places'. Copies of the outlines
+/// share the trees, and a question asked while a tree is being made waits for it.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct SnapIndex {
     /// One item per entry of `Outlines::objects`, by its box.
-    objects: std::sync::OnceLock<std::sync::Arc<BoxTree>>,
+    objects: std::sync::Arc<std::sync::OnceLock<BoxTree>>,
     /// One item per entry of `Outlines::sites`, by its point.
-    sites: std::sync::OnceLock<std::sync::Arc<BoxTree>>,
+    sites: std::sync::Arc<std::sync::OnceLock<BoxTree>>,
 }
 
 /// Outlines compare by what they hold; the index is only a quicker way to search it.
@@ -344,26 +373,45 @@ impl PartialEq for SnapIndex {
 }
 
 impl Outlines {
+    /// Starts making the trees picking and snapping search, on a thread of their own, so that the
+    /// first snap after a change does not hold up a frame while they are made (half a second for
+    /// a scene of 60,000 objects). Snapping before they are ready waits for them.
+    pub fn prepare_snapping(&self) {
+        let index = self.snap_index.clone();
+        let boxes = self.object_boxes();
+        let points = self.site_points();
+        std::thread::spawn(move || {
+            index.objects.get_or_init(|| BoxTree::new(boxes));
+            index.sites.get_or_init(|| BoxTree::new(points));
+        });
+    }
+
+    /// Each object's box, in order; an object without one is never skipped.
+    fn object_boxes(&self) -> Vec<(Point, Point)> {
+        let everywhere = ([f64::NEG_INFINITY; 3], [f64::INFINITY; 3]);
+        (0..self.objects.len())
+            .map(|object| self.boxes.get(object).copied().unwrap_or(everywhere))
+            .collect()
+    }
+
+    /// Each snap place as a box around its point, in order.
+    fn site_points(&self) -> Vec<(Point, Point)> {
+        self.sites
+            .iter()
+            .map(|site| (site.point, site.point))
+            .collect()
+    }
+
     fn object_tree(&self) -> &BoxTree {
-        self.snap_index.objects.get_or_init(|| {
-            // An object without a box is never skipped, as before.
-            let everywhere = ([f64::NEG_INFINITY; 3], [f64::INFINITY; 3]);
-            let boxes = (0..self.objects.len())
-                .map(|object| self.boxes.get(object).copied().unwrap_or(everywhere))
-                .collect();
-            std::sync::Arc::new(BoxTree::new(boxes))
-        })
+        self.snap_index
+            .objects
+            .get_or_init(|| BoxTree::new(self.object_boxes()))
     }
 
     fn site_tree(&self) -> &BoxTree {
-        self.snap_index.sites.get_or_init(|| {
-            let points = self
-                .sites
-                .iter()
-                .map(|site| (site.point, site.point))
-                .collect();
-            std::sync::Arc::new(BoxTree::new(points))
-        })
+        self.snap_index
+            .sites
+            .get_or_init(|| BoxTree::new(self.site_points()))
     }
 
     /// The entries of `objects` whose boxes come within `reach` pixels of the cursor, in their own
@@ -388,7 +436,7 @@ impl Outlines {
         drawing: &[Point],
     ) -> Vec<NearbySegment> {
         let mut found = Vec::new();
-        // A box inside a box out of reach is out of reach too (`box_out_of_reach` tests the box's
+        // A box inside a box out of reach is out of reach too (`box_beyond` tests the box's
         // projected outline), so the tree skips only what testing each object would skip.
         let near = self
             .object_tree()
@@ -430,10 +478,7 @@ impl Outlines {
         drawing: &[Point],
     ) -> Option<SnapHit> {
         let view = camera.projector(size);
-        let gap = |point: Point| {
-            view.project(point)
-                .map(|at| (at[0] - cursor[0]).hypot(at[1] - cursor[1]))
-        };
+        let gap = |point: Point| point_gap(&view, cursor, point);
         let offer = |offered: &mut Vec<(f64, SnapHit)>, kind: SnapKind, point: Point| {
             if let Some(distance) = gap(point)
                 && distance <= SNAP_REACH
@@ -441,33 +486,12 @@ impl Outlines {
                 offered.push((distance, SnapHit { kind, point }));
             }
         };
-        let mut offered: Vec<(f64, SnapHit)> = Vec::new();
         // In a shaded view, a point behind a face cannot be seen and is not offered.
         let seen = |point: Point| !set.visible_only || !self.hidden(camera, size, point);
-        // Only places whose point could be within reach, in their own order, as before.
-        let places = self
-            .site_tree()
-            .query(|bounds| !box_out_of_reach(&view, bounds, cursor));
-        for place in places.iter().filter_map(|&at| self.sites.get(at)) {
-            if set.has(place.kind) {
-                offer(&mut offered, place.kind, place.point);
-            }
-        }
-        if set.end {
-            for point in &drawing[..drawing.len().saturating_sub(1)] {
-                offer(&mut offered, SnapKind::End, *point);
-            }
-        }
-        if set.mid {
-            for pair in drawing.windows(2) {
-                offer(&mut offered, SnapKind::Mid, along(pair[0], pair[1], 0.5));
-            }
-        }
         // The nearest place seen so far (#130). A meeting point lies on both its segments and a
         // perpendicular foot on its own, so only segments nearer the cursor than that place can give
         // a nearer point: with the whole of a large scene in view, that skips almost all of them.
-        offered.sort_by(|a, b| a.0.total_cmp(&b.0));
-        let mut best = offered.into_iter().find(|(_, hit)| seen(hit.point));
+        let mut best = self.nearest_place(&view, cursor, set, drawing, &seen);
         let reach = best
             .as_ref()
             .map_or(SNAP_REACH, |(distance, _)| distance + SEGMENT_MARGIN);
@@ -513,6 +537,61 @@ impl Outlines {
                 point: along(segment.a, segment.b, nearest_along(segment, &gap)),
             })
             .filter(|hit| seen(hit.point))
+    }
+
+    /// The nearest place that `seen` lets through, an end, middle or centre of an object or a
+    /// point of the curve being drawn, with its distance from the cursor on screen. The tree of
+    /// places is searched outwards from the cursor and stops there (#130): with a whole large
+    /// scene in view, thousands of places are within reach, but only those nearer than the answer
+    /// are looked at. Between places equally near, the first in the model wins, then the object's
+    /// over the drawing's, as when all were sorted together.
+    fn nearest_place(
+        &self,
+        view: &Projector,
+        cursor: [f64; 2],
+        set: &SnapSet,
+        drawing: &[Point],
+        seen: &dyn Fn(Point) -> bool,
+    ) -> Option<(f64, SnapHit)> {
+        let place = self
+            .site_tree()
+            .nearest(
+                SNAP_REACH,
+                |bounds| box_gap(view, bounds, cursor),
+                |at| {
+                    let place = &self.sites[at];
+                    set.has(place.kind)
+                        .then(|| point_gap(view, cursor, place.point))
+                        .flatten()
+                },
+                |at| seen(self.sites[at].point),
+            )
+            .map(|(at, distance)| {
+                let place = &self.sites[at];
+                let (kind, point) = (place.kind, place.point);
+                (distance, SnapHit { kind, point })
+            });
+        let ends = drawing[..drawing.len().saturating_sub(1)]
+            .iter()
+            .filter(|_| set.end)
+            .map(|&point| (SnapKind::End, point));
+        let middles = drawing
+            .windows(2)
+            .filter(|_| set.mid)
+            .map(|pair| (SnapKind::Mid, along(pair[0], pair[1], 0.5)));
+        let mut offered: Vec<(f64, SnapHit)> = ends
+            .chain(middles)
+            .filter_map(|(kind, point)| {
+                let distance = point_gap(view, cursor, point).filter(|d| *d <= SNAP_REACH)?;
+                Some((distance, SnapHit { kind, point }))
+            })
+            .collect();
+        offered.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let drawn = offered.into_iter().find(|(_, hit)| seen(hit.point));
+        match (place, drawn) {
+            (Some(place), Some(drawn)) if drawn.0 < place.0 => Some(drawn),
+            (place, drawn) => place.or(drawn),
+        }
     }
 }
 
@@ -1238,7 +1317,8 @@ mod tests {
     }
 
     /// #130: the index skips a whole box only when it is out of reach, so every box inside it
-    /// must be out of reach too, or a snap point would be lost. Checked over many boxes, views
+    /// must be out of reach too, or a snap point would be lost; and a box's gap is no more than
+    /// any point inside it is from the cursor. Checked over many boxes, views
     /// and cursor positions, flat and in perspective, including boxes reaching behind the camera.
     #[test]
     fn a_box_inside_one_out_of_reach_is_out_of_reach_too() {
@@ -1270,8 +1350,15 @@ mod tests {
                     [0, 1, 2].map(|axis| corner(a.max(b), axis)),
                 );
                 let cursor = [next() * size[0], next() * size[1]];
-                if box_out_of_reach(&projector, outer, cursor) {
-                    assert!(box_out_of_reach(&projector, inner, cursor));
+                // No point inside a box is nearer on screen than its gap, which the nearest-first
+                // search through the places relies on.
+                let inside = [0, 1, 2].map(|axis| corner(next(), axis));
+                if let Some(at) = projector.project(inside) {
+                    let gap = (at[0] - cursor[0]).hypot(at[1] - cursor[1]);
+                    assert!(box_gap(&projector, outer, cursor) <= gap);
+                }
+                if box_beyond(&projector, outer, (cursor, SNAP_REACH)) {
+                    assert!(box_beyond(&projector, inner, (cursor, SNAP_REACH)));
                     checked += 1;
                 }
             }

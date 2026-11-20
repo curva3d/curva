@@ -456,6 +456,29 @@ On *Large* the whole scene is in view, so the cursor still has thousands of ends
 centres within reach; they are most of what remains. #130's aim of under 1 ms is not met yet.
 16.2 ms between frames is the screen's own rate (60 a second), so frames now wait for the screen.
 
+## Snapping searches outwards from the cursor (20 November 2026, #130)
+
+With a whole large scene in view, thousands of snap places lie within reach of the cursor; each
+was measured and all were sorted to find the nearest. Snapping now searches the tree of places
+nearest first and stops at the first place seen that nothing still unsearched can beat, taking the
+same place as before, ties included (a test compares it with trying every place in order). The trees
+are also made on a thread of their own as soon as the model is drawn (`prepare_snapping`), so the
+first snap after a change rarely waits for them.
+
+The benchmark's figure used to be an average that included the first snap, which makes the trees
+(half a second on *Large*); it now leaves out the opening frames, as the frame gaps do, and prints
+the first snap on its own. Both rows below are measured that way, RTX 3060, release build, two runs
+each, the same in both:
+
+| | Before | After |
+|---|---|---|
+| *Large*, snapping per frame | 1.19 ms | 0.14 ms |
+| *Large*, the first snap | 523 ms | 338–390 ms |
+| *Medium*, snapping per frame | 0.08 ms | 0.06 ms |
+
+#130's aim of under 1 ms on *Large* is met. The first snap in the benchmark comes straight after the
+model is drawn, so it still waits for most of the trees; in use, the pointer moves later.
+
 ## Selecting under 1 ms (17 November 2026, display-on-Bevy step 5)
 
 The spec asks that a frame after a selection change take under 1 ms more than an ordinary one.

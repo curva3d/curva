@@ -60,4 +60,3 @@ fn crates/curva-viewport/src/gpu/depth.rs write 86
 fn crates/curva-viewport/src/pilot.rs draw_all 101
 fn crates/curva-viewport/src/pilot/scene.rs update 114
 fn crates/curva-viewport/src/print.rs marks_of 89
-fn crates/curva-viewport/src/snap.rs snap_while_drawing 95
