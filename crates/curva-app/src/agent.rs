@@ -107,7 +107,7 @@ pub(crate) fn picture(
     scene: Option<BenchmarkScene>,
     view: Option<StandardView>,
 ) -> Result<(), String> {
-    let mut doc = Document::default();
+    let mut doc = curva_formats::new_document();
     if let Some(scene) = scene {
         benchmark_scene(&mut doc, scene)?;
     }

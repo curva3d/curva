@@ -224,7 +224,7 @@ impl Curva {
                     adapter: state.adapter.clone(),
                 });
         }
-        let mut doc = Document::default();
+        let mut doc = curva_formats::new_document();
         // Benchmarks neither autosave nor offer recovery.
         let folder = recovery::folder().filter(|_| benchmark.is_none());
         let left_behind = folder.as_deref().and_then(recovery::left_behind);

@@ -1,0 +1,15 @@
+[package]
+name = "curva-formats"
+description = "The full list of file formats Curva reads and writes, gathered from the format crates."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+curva-document = { path = "../curva-document" }
+curva-3dm = { path = "../curva-3dm" }

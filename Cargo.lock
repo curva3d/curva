@@ -1868,6 +1868,7 @@ version = "0.4.3"
 dependencies = [
  "curva-commands",
  "curva-document",
+ "curva-formats",
  "curva-kernel",
  "curva-mcp",
  "curva-pdf",
@@ -1889,6 +1890,7 @@ dependencies = [
  "curva-3dm",
  "curva-document",
  "curva-dxf",
+ "curva-formats",
  "curva-kernel",
  "curva-mesh",
  "curva-meshfiles",
@@ -1917,6 +1919,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "curva-formats"
+version = "0.4.3"
+dependencies = [
+ "curva-3dm",
+ "curva-document",
+]
+
+[[package]]
 name = "curva-kernel"
 version = "0.4.3"
 dependencies = [
@@ -1937,6 +1947,7 @@ version = "0.4.3"
 dependencies = [
  "curva-commands",
  "curva-document",
+ "curva-formats",
  "curva-kernel",
  "serde_json",
 ]

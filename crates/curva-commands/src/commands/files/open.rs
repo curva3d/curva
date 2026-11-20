@@ -46,10 +46,6 @@ impl Command for Open {
         let path = Path::new(text.trim().trim_matches('"'));
         let summarised =
             |summary: String| Message::with("done.open_3dm", vec![text.clone(), summary]);
-        if crate::commands::import_export::is_3dm(path) {
-            let read = crate::commands::import_export::open_3dm(path);
-            return opened(doc, read.map(|(m, r)| (m, summarised(r.summary()))));
-        }
         if crate::commands::import_export::is_skp(path) {
             let read = crate::commands::import_export::open_skp(path);
             return opened(doc, read.map(|(m, r)| (m, summarised(r.summary()))));

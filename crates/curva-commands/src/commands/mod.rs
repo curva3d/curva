@@ -711,6 +711,8 @@ pub fn autofilled(typed: &str, highlighted: usize) -> String {
 /// Runs typed lines through a fresh processor, for the commands' tests.
 #[cfg(test)]
 fn run(doc: &mut curva_document::Document, lines: &[&str]) -> crate::Processor {
+    // The formats the interface hands every model.
+    doc.set_formats(curva_formats::all());
     let mut processor = crate::Processor::default();
     for line in lines {
         processor.submit(doc, line);
