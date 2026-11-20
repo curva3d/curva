@@ -55,7 +55,6 @@ fn crates/curva-mesh/src/subd_edit.rs with_ring_cut 89
 fn crates/curva-mesh/src/to_subd.rs from_mesh 82
 fn crates/curva-meshfiles/src/obj.rs read 92
 fn crates/curva-meshfiles/src/ply.rs read 117
-fn crates/curva-skp/src/lib.rs faces_in 102
 fn crates/curva-viewport/src/gpu/depth.rs write 86
 fn crates/curva-viewport/src/pilot.rs draw_all 101
 fn crates/curva-viewport/src/pilot/scene.rs update 114

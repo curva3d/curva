@@ -15,6 +15,7 @@
 //! construction lines and points, and images.
 
 pub mod format;
+mod planes;
 
 use curva_document::blocks::Placement;
 use curva_document::{Document, Shape, Unit};
@@ -66,6 +67,45 @@ impl Report {
     }
 }
 
+/// How SketchUp faces come in (Rhino's "Import faces as").
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum FacesAs {
+    /// Meshes, one for each tag and material in each group or component, as Rhino does first.
+    #[default]
+    Mesh,
+    /// Flat trimmed surfaces built from each face's loops, joined as the options say.
+    TrimmedPlanes,
+}
+
+/// The choices of Rhino 8's "SketchUp Import Options" dialog that Curva follows (issue #432),
+/// with Rhino's first settings.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ImportOptions {
+    /// How faces come in.
+    pub faces: FacesAs,
+    /// Edges that bound no face joined into polylines where they meet; otherwise one line each.
+    pub join_edges: bool,
+    /// With trimmed planes, faces of a group or component that share edges joined into
+    /// polysurfaces (solids where they close).
+    pub join_faces: bool,
+    /// Objects inside a group on the group's layer, rather than their own.
+    pub group_layers: bool,
+    /// The objects of each top-level group grouped together.
+    pub add_to_groups: bool,
+}
+
+impl Default for ImportOptions {
+    fn default() -> Self {
+        Self {
+            faces: FacesAs::Mesh,
+            join_edges: true,
+            join_faces: true,
+            group_layers: false,
+            add_to_groups: true,
+        }
+    }
+}
+
 /// A SketchUp file's model, read from its bytes.
 ///
 /// # Errors
@@ -77,20 +117,33 @@ pub fn read(bytes: &[u8]) -> Result<SkpModel, String> {
         .map_err(|e| e.to_string())
 }
 
-/// A new Curva model holding the SketchUp model, in its unit.
+/// A new Curva model holding the SketchUp model, in its unit, with Rhino's first import settings.
 #[must_use]
 pub fn open(model: &SkpModel) -> (Document, Report) {
+    open_with(model, &ImportOptions::default())
+}
+
+/// A new Curva model holding the SketchUp model, in its unit, brought in as `options` say.
+#[must_use]
+pub fn open_with(model: &SkpModel, options: &ImportOptions) -> (Document, Report) {
     let mut doc = Document::default();
     let unit = unit_of(model);
     doc.set_unit(unit, false);
-    let report = import(model, &mut doc);
+    let report = import_with(model, &mut doc, options);
     (doc, report)
 }
 
-/// The SketchUp model added to `doc`, in `doc`'s unit.
+/// The SketchUp model added to `doc`, in `doc`'s unit, with Rhino's first import settings.
 #[must_use]
 pub fn import(model: &SkpModel, doc: &mut Document) -> Report {
+    import_with(model, doc, &ImportOptions::default())
+}
+
+/// The SketchUp model added to `doc`, in `doc`'s unit, brought in as `options` say.
+#[must_use]
+pub fn import_with(model: &SkpModel, doc: &mut Document, options: &ImportOptions) -> Report {
     let mut reader = Reader {
+        options: *options,
         model,
         inch: 25.4 / doc.state().unit.millimetres(),
         materials: model
@@ -110,7 +163,7 @@ pub fn import(model: &SkpModel, doc: &mut Document) -> Report {
     let made = reader.definition_objects(doc, root, &identity());
     // Top-level groups: their objects together as a group.
     for group in made.groups {
-        if group.len() > 1 {
+        if options.add_to_groups && group.len() > 1 {
             doc.group(&group);
         }
     }
@@ -169,6 +222,7 @@ struct Made {
 }
 
 struct Reader<'a> {
+    options: ImportOptions,
     model: &'a SkpModel,
     /// Curva units in an inch.
     inch: f64,
@@ -219,7 +273,10 @@ impl Reader<'_> {
         at: &Placement,
     ) -> Made {
         let mut made = Made::default();
-        made.objects.extend(self.faces_in(doc, definition, at));
+        made.objects.extend(match self.options.faces {
+            FacesAs::Mesh => self.faces_in(doc, definition, at),
+            FacesAs::TrimmedPlanes => self.faces_as_planes(doc, definition, at),
+        });
         made.objects.extend(self.edges_in(doc, definition, at));
         let left = [
             ("texts", definition.texts.len()),
@@ -300,6 +357,51 @@ impl Reader<'_> {
         block
     }
 
+    /// The tag an object inside the group being read goes on: its own, or the group's when it
+    /// has none or when the options put a group's objects on the group's layer.
+    fn tag_for(&self, own: &str) -> String {
+        if own.is_empty() || (self.options.group_layers && !self.outer_tag.is_empty()) {
+            self.outer_tag.clone()
+        } else {
+            own.to_owned()
+        }
+    }
+
+    /// A face's tag: its own, by name or by number, or its group's.
+    fn face_tag(&mut self, face: &openskp::model::Face) -> String {
+        let own = if face.layer.is_empty() {
+            match face.layer_id.and_then(|id| self.tag_names.get(&id)) {
+                Some(name) => name.clone(),
+                None => {
+                    self.unnamed_face_tags |= face.layer_id.is_some_and(|id| id != 0);
+                    String::new()
+                }
+            }
+        } else {
+            face.layer.clone()
+        };
+        self.tag_for(&own)
+    }
+
+    /// `shape` added on `tag`'s layer, coloured by `material` when it has one.
+    fn placed_shape(
+        &self,
+        doc: &mut Document,
+        shape: Shape,
+        tag: &str,
+        material: Option<EntityId>,
+    ) -> u64 {
+        let layer = self.layer(doc, tag);
+        let id = doc.add_shape_on(shape, Some(layer));
+        if let Some(colour) = material
+            .and_then(|m| self.materials.get(&m))
+            .map(|m| m.color)
+        {
+            doc.set_colour(&[id], Some([0, 1, 2].map(|k| f32::from(colour[k]) / 255.0)));
+        }
+        id
+    }
+
     /// The faces of `definition` as meshes, one for each tag and material, placed by `at`.
     fn faces_in(
         &mut self,
@@ -316,23 +418,7 @@ impl Reader<'_> {
                 hidden += 1;
                 continue;
             }
-            let loops: Vec<Vec<EntityId>> = face
-                .loops
-                .iter()
-                .map(|lp| {
-                    lp.iter()
-                        .filter_map(|c| {
-                            let edge = definition.edges.get(&c.edge_id)?;
-                            Some(if c.orientation >= 0 {
-                                edge.v1_id
-                            } else {
-                                edge.v2_id
-                            })
-                        })
-                        .collect()
-                })
-                .filter(|lp: &Vec<EntityId>| lp.len() >= 3)
-                .collect();
+            let loops = face_loops(definition, face);
             if loops.is_empty() {
                 continue;
             }
@@ -341,17 +427,7 @@ impl Reader<'_> {
             };
             let triangles =
                 openskp::triangulator::triangulate_face_3d(&definition.vertices, &loops, normal);
-            let tag = if face.layer.is_empty() {
-                match face.layer_id.and_then(|id| self.tag_names.get(&id)) {
-                    Some(name) => name.clone(),
-                    None => {
-                        self.unnamed_face_tags |= face.layer_id.is_some_and(|id| id != 0);
-                        self.outer_tag.clone()
-                    }
-                }
-            } else {
-                face.layer.clone()
-            };
+            let tag = self.face_tag(face);
             let part = parts.entry((tag, face.material_id)).or_default();
             for triangle in triangles {
                 let mut corners = [0u32; 3];
@@ -390,14 +466,7 @@ impl Reader<'_> {
                 );
                 continue;
             };
-            let layer = self.layer(doc, &tag);
-            let id = doc.add_shape_on(Shape::Mesh(mesh), Some(layer));
-            if let Some(colour) = material
-                .and_then(|m| self.materials.get(&m))
-                .map(|m| m.color)
-            {
-                doc.set_colour(&[id], Some([0, 1, 2].map(|k| f32::from(colour[k]) / 255.0)));
-            }
+            let id = self.placed_shape(doc, Shape::Mesh(mesh), &tag, material);
             made.push(id);
             Report::count(&mut self.report.brought, "meshes", 1);
         }
@@ -428,34 +497,62 @@ impl Reader<'_> {
                 .filter_map(|id| definition.vertices.get(id))
                 .map(|v| placed([v.x * self.inch, v.y * self.inch, v.z * self.inch], at))
                 .collect();
-            let curve = match points.len() {
-                0 | 1 => continue,
-                2 => Curve::line(points[0], points[1]),
-                _ => Curve::polyline(points, run.closed),
+            let curves: Vec<Curve> = if self.options.join_edges {
+                match points.len() {
+                    0 | 1 => Vec::new(),
+                    2 => Curve::line(points[0], points[1]).into_iter().collect(),
+                    _ => Curve::polyline(points, run.closed).into_iter().collect(),
+                }
+            } else {
+                // One line for each edge, as SketchUp has them.
+                let mut ends: Vec<(Point, Point)> =
+                    points.windows(2).map(|w| (w[0], w[1])).collect();
+                if run.closed && points.len() > 2 {
+                    ends.push((points[points.len() - 1], points[0]));
+                }
+                ends.into_iter()
+                    .filter_map(|(a, b)| Curve::line(a, b).ok())
+                    .collect()
             };
-            let Ok(curve) = curve else {
+            if curves.is_empty() {
                 continue;
-            };
+            }
             let layer = run
                 .edge_ids
                 .first()
                 .and_then(|id| definition.edges.get(id))
                 .map_or_else(
                     || self.layer(doc, &self.outer_tag),
-                    |e| {
-                        let tag = if e.layer.is_empty() {
-                            &self.outer_tag
-                        } else {
-                            &e.layer
-                        };
-                        self.layer(doc, tag)
-                    },
+                    |e| self.layer(doc, &self.tag_for(&e.layer)),
                 );
-            made.push(doc.add_shape_on(Shape::Curve(curve), Some(layer)));
-            Report::count(&mut self.report.brought, "curves", 1);
+            for curve in curves {
+                made.push(doc.add_shape_on(Shape::Curve(curve), Some(layer)));
+                Report::count(&mut self.report.brought, "curves", 1);
+            }
         }
         made
     }
+}
+
+/// A face's loops as its corners' SketchUp ids, in order, each with three corners or more; the
+/// outer loop first.
+fn face_loops(definition: &Definition, face: &openskp::model::Face) -> Vec<Vec<EntityId>> {
+    face.loops
+        .iter()
+        .map(|lp| {
+            lp.iter()
+                .filter_map(|c| {
+                    let edge = definition.edges.get(&c.edge_id)?;
+                    Some(if c.orientation >= 0 {
+                        edge.v1_id
+                    } else {
+                        edge.v2_id
+                    })
+                })
+                .collect()
+        })
+        .filter(|lp: &Vec<EntityId>| lp.len() >= 3)
+        .collect()
 }
 
 /// Each tag's name by its number, as the edges give both: OpenSKP names a face's tag only in
