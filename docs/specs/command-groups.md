@@ -36,16 +36,17 @@ Surfaces and Solids; Mesh and SubD beside them. The rest are shared by every kin
 | **Surfaces** | As today |
 | **Solids** | As today, plus the booleans from Modify: BooleanUnion, BooleanDifference, BooleanIntersection, BooleanSplit, EditBoolean, BreakBoolean |
 | **Mesh** *(new)* | Mesh, MeshBox, MeshSphere, MeshCylinder, MeshCone, MeshTorus, MeshPlane, ReduceMesh, TriangulateMesh, QuadrangulateMesh, ExtractMeshFaces, MeshRepair, FillMeshHoles, UnifyMeshNormals, RebuildMeshNormals, CullDegenerateMeshFaces, MeshToNURB |
-| **SubD** *(new)* | SubDLevel today; the mesh stream adds the rest as they arrive |
+| **SubD** *(new)* | None yet: `SubDLevel` turned out to be an option of `Mesh`, not a command. The tab stays hidden until the mesh stream adds SubD commands |
 | **Edit** | From Modify: Trim, Split, Join, Explode; Move, Copy, Rotate, Scale, Mirror, Array, ArrayLinear, Align, Distribute; Shear, Twist, Bend, Taper, Flow, CageEdit |
 | **Organise** | From Modify: Group, Ungroup, Block, Insert, BlockManager, BlockEdit, ExplodeBlock; ChangeLayer, MatchProperties, Linetype, PrintWidth, SetUserText, GetUserText, Purge; Lock, Unlock, LockSwap, BringToFront, SendToBack |
-| **Annotate** *(new)* | Text, TextObject, Dim, DimAligned, DimRotated, DimRadius, DimDiameter, DimAngle, DimOrdinate, Leader, Dot, Hatch, DimCurveLength, DimArea, DimVolume |
+| **Annotate** *(new)* | Text, Dim, DimAligned, DimRotated, DimRadius, DimDiameter, DimAngle, DimOrdinate, Leader, Dot, Hatch, DimCurveLength, DimArea, DimVolume |
 | **Layouts** *(new)* | Layout, Detail, TitleBlock, ScaleBar, SheetIndex, Revision, CopyLayout, Make2D, Print, ExportPDF |
 | **Analyze** | As today |
 | **Select** | As today |
 
-Each button keeps its icon and tooltip. The tab remembered between sessions is kept by name, so
-someone who left Curva on *Modify* comes back on *Edit*.
+Each button keeps its icon and tooltip. Two buttons settled while building (20 November 2026):
+**Volume** keeps its button in Analyze only (it was in Solids too), and **Check** (the mesh check)
+gets a Mesh button. TextObject stays in Curves, since it makes curves.
 
 ## 3. The code
 
@@ -63,8 +64,9 @@ someone who left Curva on *Modify* comes back on *Edit*.
 
 Each step is its own pull request.
 
-1. **The folders and the per-group lists** (#422). Code moves only: the command list and its order
-   are pinned by a test first, and the tabs look as they do today.
+1. **The folders and the per-group lists** (#422). Code moves only: the command list keeps its
+   order (which is the order completions offer) through `commands/order.rs`, with a test that every
+   command has one place there; the tabs look as they do today.
 2. **The tabs of section 2.** A test checks that every button names a real command, that no
    command has a button in two tabs, and that every mesh and SubD command has a button.
 
