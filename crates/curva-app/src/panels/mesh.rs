@@ -11,7 +11,7 @@ use curva_document::meshing::{MeshNumbers, mesh_objects, remember_settings, reme
 use curva_mesh::{MOST_SUBD_LEVEL, MeshPreset, MeshSettings};
 
 /// The panel's state while it is open, and the Advanced switch, kept between openings.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct MeshPanel {
     /// The settings being edited; `None` while the panel is closed.
     settings: Option<MeshSettings>,
@@ -19,6 +19,11 @@ pub(crate) struct MeshPanel {
     advanced: bool,
     /// The numbers for the last settings shown, so meshing runs only when they change.
     numbers: Option<(MeshSettings, MeshNumbers)>,
+}
+
+/// Where egui keeps the panel's state between frames.
+fn state_id() -> egui::Id {
+    egui::Id::NULL.with("mesh panel state")
 }
 
 /// What the panel's buttons asked for.
@@ -73,13 +78,13 @@ impl Curva {
 
     /// The line under the slider for `settings`, meshing again only when they changed, and
     /// whether SubDs are among the objects.
-    fn mesh_panel_numbers(&mut self, settings: MeshSettings) -> (String, bool) {
+    fn mesh_panel_numbers(&self, state: &mut MeshPanel, settings: MeshSettings) -> (String, bool) {
         let ids = self.mesh_panel_objects();
-        let numbers = match self.mesh_panel.numbers {
+        let numbers = match state.numbers {
             Some((shown, numbers)) if shown == settings => numbers,
             _ => {
                 let numbers = mesh_objects(&self.doc, &ids, &settings).1;
-                self.mesh_panel.numbers = Some((settings, numbers));
+                state.numbers = Some((settings, numbers));
                 numbers
             }
         };
@@ -108,16 +113,16 @@ impl Curva {
             .current_request()
             .is_some_and(|r| r.panel == Some(curva_commands::Panel::MeshSettings));
         if !asked {
-            self.mesh_panel.settings = None;
+            ctx.data_mut(|d| d.get_temp_mut_or_default::<MeshPanel>(state_id()).settings = None);
             return;
         }
-        let mut settings = *self
-            .mesh_panel
+        let mut state: MeshPanel = ctx.data_mut(|d| d.get_temp(state_id())).unwrap_or_default();
+        let mut settings = *state
             .settings
             .get_or_insert_with(|| remembered_settings(&self.doc));
-        let (numbers_text, subds) = self.mesh_panel_numbers(settings);
+        let (numbers_text, subds) = self.mesh_panel_numbers(&mut state, settings);
         let unit = self.doc.state().unit.symbol();
-        let mut advanced = self.mesh_panel.advanced;
+        let mut advanced = state.advanced;
         let mut answer = Answer::Waiting;
         let say = |key: &'static str| self.text.render(&Message::new(key));
         centred_dialog(ctx, "mesh panel", |ui| {
@@ -148,20 +153,21 @@ impl Curva {
                 }
             });
         });
-        self.mesh_panel.advanced = advanced;
-        self.mesh_panel.settings = Some(settings);
+        state.advanced = advanced;
+        state.settings = Some(settings);
         match answer {
             Answer::Ok => {
-                self.mesh_panel.settings = None;
+                state.settings = None;
                 remember_settings(&mut self.doc, &settings);
                 self.processor.submit(&mut self.doc, "");
             }
             Answer::Cancel => {
-                self.mesh_panel.settings = None;
+                state.settings = None;
                 self.processor.cancel(&mut self.doc);
             }
             Answer::Waiting => {}
         }
+        ctx.data_mut(|d| d.insert_temp(state_id(), state));
     }
 }
 
