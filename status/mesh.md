@@ -9,6 +9,13 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## 21 November 2026
+
+**SubD face colours on the smooth surface (for display, #324 follow-up):** `SubD::surface_coloured(levels, fallback)`
+gives each quad of the smooth surface its cage face's colour at every corner (`Attribute::PerCorner`),
+using the library's record of which cage face each quad comes from; a face with no colour takes
+`fallback`, and a SubD without face colours comes back uncoloured. `surface` is unchanged.
+
 ## 20 November 2026 (later still)
 
 **SubDDisplayToggle:** measured in Rhino 8, it switches every SubD in the model whatever is selected
