@@ -13,7 +13,7 @@ status page, so two sessions never edit the same file:
 
 Read all three before starting work; write only yours. Who owns what is in `AGENTS.md`.
 
-**Next release: 0.4.4.** Everything in it is listed in
-[`docs/specs/release-0.4.4.md`](docs/specs/release-0.4.4.md) (decision 0038) and tracked in the
-GitHub milestone **0.4.4**. Work on those items first; new work goes into the next update unless
-the owner adds it.
+**0.4.4 was published on 21 November 2026 with what was ready** (decision 0039, replacing 0038).
+The items of [`docs/specs/release-0.4.4.md`](docs/specs/release-0.4.4.md) still open move to the
+next update, tracked in the GitHub milestone **0.4.5**. Work on those items first; new work goes
+into the next update unless the owner adds it.
