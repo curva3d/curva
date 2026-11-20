@@ -32,7 +32,7 @@ impl Format {
 #[must_use]
 pub fn dxf() -> Listed {
     Listed {
-        open: Some(|path, shown| open(path, shown, Format::Dxf)),
+        open: Some(|path, shown, _| open(path, shown, Format::Dxf)),
         import: Some(|doc, path, shown| import(doc, path, shown, Format::Dxf)),
         export: Some(|doc, only, path, shown| export(doc, only, path, shown, Format::Dxf)),
         ..Listed::new("files.dxf", &["dxf"])
@@ -43,7 +43,7 @@ pub fn dxf() -> Listed {
 #[must_use]
 pub fn dwg() -> Listed {
     Listed {
-        open: Some(|path, shown| open(path, shown, Format::Dwg)),
+        open: Some(|path, shown, _| open(path, shown, Format::Dwg)),
         import: Some(|doc, path, shown| import(doc, path, shown, Format::Dwg)),
         export: Some(|doc, only, path, shown| export(doc, only, path, shown, Format::Dwg)),
         ..Listed::new("files.dwg", &["dwg"])

@@ -642,6 +642,49 @@ mod tests {
     }
 
     #[test]
+    fn a_format_s_options_are_asked_before_its_file_is_read_in_the_interface_only() {
+        use curva_document::formats::{Done, Format, Formats, Panel as FormatPanel};
+        // A format that reads a choice remembered in the model open now.
+        fn opened(
+            _: &std::path::Path,
+            shown: &str,
+            from: &Document,
+        ) -> Result<(Document, Done), String> {
+            let mut doc = Document::default();
+            doc.remember("chosen", from.remembered("chosen").unwrap_or(0.0));
+            let done = Done {
+                key: "done.open",
+                args: vec![shown.to_owned()],
+            };
+            Ok((doc, done))
+        }
+        let mut formats = Formats::default();
+        formats.add(Format {
+            open: Some(opened),
+            asks: Some(FormatPanel::SketchUpImport),
+            ..Format::new("files.skp", &["skp"])
+        });
+        let formats = std::sync::Arc::new(formats);
+        let open = |dialogs: bool| {
+            let mut doc = Document::default();
+            doc.set_formats(std::sync::Arc::clone(&formats));
+            doc.remember("chosen", 7.0);
+            let mut processor = Processor::default();
+            processor.use_file_dialogs(dialogs);
+            processor.submit(&mut doc, "Open");
+            processor.submit(&mut doc, "model.skp");
+            let asked = processor.current_request().and_then(|r| r.panel);
+            if asked.is_some() {
+                processor.submit(&mut doc, "");
+            }
+            (asked, doc.remembered("chosen"), processor.is_running())
+        };
+        let panel = crate::Panel::Format(FormatPanel::SketchUpImport);
+        assert_eq!(open(true), (Some(panel), Some(7.0), false));
+        assert_eq!(open(false), (None, Some(7.0), false));
+    }
+
+    #[test]
     fn a_dash_asks_for_the_location_on_the_command_line() {
         let folder = std::env::temp_dir().join(format!("curva-dash-{}", std::process::id()));
         std::fs::create_dir_all(&folder).unwrap();

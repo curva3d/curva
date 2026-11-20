@@ -14,6 +14,7 @@ mod mesh;
 mod nurbs;
 mod primitives;
 mod quad_remesh;
+mod quad_symmetry;
 mod reduce;
 mod repair;
 mod settings;
@@ -25,6 +26,7 @@ mod to_nurbs;
 mod to_subd;
 mod transform;
 mod triangulate;
+mod weld_angle;
 
 pub use check::MeshCheck;
 pub use curva_kernel::Point;

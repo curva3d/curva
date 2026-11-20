@@ -9,7 +9,7 @@ use crate::commands::arguments::{number, point};
 use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef, Value};
 use curva_document::Shape;
 use curva_kernel::{Curve, Point, cross, dot, sub};
-use curva_mesh::{Frame, Mesh, SphereStyle};
+use curva_mesh::{Frame, Mesh, SmoothError, SphereStyle, SubD};
 
 const SMALLEST: f64 = 1e-9;
 const MOST_FACES: u32 = 1000;
@@ -26,6 +26,12 @@ const TWO_POINT: &str = "2Point";
 
 const fn faces(name: &'static str) -> OptionDef {
     OptionDef::whole(name, 10, 1, MOST_FACES)
+}
+
+/// A face count: 10 for a mesh, as Rhino 8's mesh primitives, or `subd` for a SubD, as its SubD
+/// primitives (measured with Enter at every option).
+const fn faces_for(name: &'static str, is_subd: bool, subd: u32) -> OptionDef {
+    OptionDef::whole(name, if is_subd { subd } else { 10 }, 1, MOST_FACES)
 }
 
 fn count(cx: &Context<'_>, name: &str) -> u32 {
@@ -47,9 +53,24 @@ fn frame_at(cx: &Context<'_>, origin: Point) -> Frame {
     }
 }
 
-fn added(mesh: Mesh, done: &'static str) -> Result<Made, Message> {
+/// A mesh, or a SubD cage when `subd`.
+fn either(
+    subd: bool,
+    mesh: impl FnOnce() -> Mesh,
+    cage: impl FnOnce() -> Result<SubD, SmoothError>,
+) -> Result<Shape, Message> {
+    if subd {
+        cage()
+            .map(Shape::SubD)
+            .map_err(|e| Message::with("error.geometry", vec![e.to_string()]))
+    } else {
+        Ok(Shape::Mesh(mesh()))
+    }
+}
+
+fn added(shape: Result<Shape, Message>, done: &'static str) -> Result<Made, Message> {
     Ok(Made {
-        add: vec![Shape::Mesh(mesh)],
+        add: vec![shape?],
         message: Some(Message::new(done)),
         ..Made::default()
     })
@@ -119,16 +140,21 @@ fn rectangle_steps(
 
 /// `MeshBox`: a box's base as `Box` takes it, then its height (Enter: the base's width).
 #[derive(Default)]
-pub struct MeshBox;
+pub struct Boxed<const SUBD: bool>;
 
-impl Recipe for MeshBox {
-    const NAME: &'static str = "meshbox";
+/// Rhino's `MeshBox`.
+pub type MeshBox = Boxed<false>;
+/// Rhino's `SubDBox`: the same picking, a SubD cage with Rhino's SubD face counts.
+pub type SubDBox = Boxed<true>;
+
+impl<const SUBD: bool> Recipe for Boxed<SUBD> {
+    const NAME: &'static str = if SUBD { "subdbox" } else { "meshbox" };
     const OPTIONS: &'static [OptionDef] = &[
         OptionDef::mode(CENTER),
         OptionDef::toggle(BOTH_SIDES, false),
-        faces("XCount"),
-        faces("YCount"),
-        faces("ZCount"),
+        faces_for("XCount", SUBD, 2),
+        faces_for("YCount", SUBD, 2),
+        faces_for("ZCount", SUBD, 2),
     ];
 
     fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
@@ -173,20 +199,36 @@ impl Recipe for MeshBox {
         };
         let counts = ["XCount", "YCount", "ZCount"].map(|name| count(cx, name));
         added(
-            Mesh::mesh_box(&frame_at(cx, start), [wide, deep, high], counts),
-            "done.meshbox",
+            {
+                let frame = frame_at(cx, start);
+                let size = [wide, deep, high];
+                either(
+                    SUBD,
+                    || Mesh::mesh_box(&frame, size, counts),
+                    || Ok(SubD::subd_box(&frame, size, counts)),
+                )
+            },
+            if SUBD { "done.subdbox" } else { "done.meshbox" },
         )
     }
 }
 
 /// `MeshPlane`: a flat rectangle of faces from two corners, or its centre and a corner.
 #[derive(Default)]
-pub struct MeshPlane;
+pub struct Planed<const SUBD: bool>;
 
-impl Recipe for MeshPlane {
-    const NAME: &'static str = "meshplane";
-    const OPTIONS: &'static [OptionDef] =
-        &[OptionDef::mode(CENTER), faces("XCount"), faces("YCount")];
+/// Rhino's `MeshPlane`.
+pub type MeshPlane = Planed<false>;
+/// Rhino's `SubDPlane`: the same picking, a SubD cage with Rhino's SubD face counts.
+pub type SubDPlane = Planed<true>;
+
+impl<const SUBD: bool> Recipe for Planed<SUBD> {
+    const NAME: &'static str = if SUBD { "subdplane" } else { "meshplane" };
+    const OPTIONS: &'static [OptionDef] = &[
+        OptionDef::mode(CENTER),
+        faces_for("XCount", SUBD, 2),
+        faces_for("YCount", SUBD, 2),
+    ];
 
     fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
         rectangle_steps(cx, &[CENTER, "XCount", "YCount"], &["XCount", "YCount"])
@@ -205,8 +247,19 @@ impl Recipe for MeshPlane {
         };
         let counts = [count(cx, "XCount"), count(cx, "YCount")];
         added(
-            Mesh::mesh_plane(&frame_at(cx, corner), size, counts),
-            "done.meshplane",
+            {
+                let frame = frame_at(cx, corner);
+                either(
+                    SUBD,
+                    || Mesh::mesh_plane(&frame, size, counts),
+                    || Ok(SubD::subd_plane(&frame, size, counts)),
+                )
+            },
+            if SUBD {
+                "done.subdplane"
+            } else {
+                "done.meshplane"
+            },
         )
     }
 }
@@ -254,18 +307,25 @@ fn sphere_size(cx: &Context<'_>) -> Option<(Point, f64)> {
 
 /// `MeshSphere`: its centre, then its radius, in Rhino's UV, Quads or Triangles style.
 #[derive(Default)]
-pub struct MeshSphere;
+pub struct Sphered<const SUBD: bool>;
 
-impl Recipe for MeshSphere {
-    const NAME: &'static str = "meshsphere";
+/// Rhino's `MeshSphere`.
+pub type MeshSphere = Sphered<false>;
+/// Rhino's `SubDSphere`: the same picking, a SubD cage with Rhino's SubD face counts.
+pub type SubDSphere = Sphered<true>;
+
+impl<const SUBD: bool> Recipe for Sphered<SUBD> {
+    const NAME: &'static str = if SUBD { "subdsphere" } else { "meshsphere" };
     const OPTIONS: &'static [OptionDef] = &[
         OptionDef::mode(TWO_POINT),
         OptionDef::toggle(DIAMETER, false),
-        OptionDef::name(STYLE, "UV"),
+        // SubDSphere starts with Quads at 1 subdivision (24 faces), measured.
+        OptionDef::name(STYLE, if SUBD { "Quads" } else { "UV" }),
         faces(VERTICAL),
         faces(AROUND),
-        // Rhino's range; its default could not be measured, so 2 (96 quads, 320 triangles).
-        OptionDef::whole(SUBDIVISIONS, 2, 0, 6),
+        // Rhino's range; MeshSphere's default could not be measured, so 2 (96 quads, 320
+        // triangles).
+        OptionDef::whole(SUBDIVISIONS, if SUBD { 1 } else { 2 }, 0, 6),
     ];
 
     fn choices(&self, _cx: &Context<'_>, option: &str) -> Option<Vec<String>> {
@@ -308,8 +368,19 @@ impl Recipe for MeshSphere {
             },
         };
         added(
-            Mesh::mesh_sphere(&frame_at(cx, c), r, style),
-            "done.meshsphere",
+            {
+                let frame = frame_at(cx, c);
+                either(
+                    SUBD,
+                    || Mesh::mesh_sphere(&frame, r, style),
+                    || SubD::subd_sphere(&frame, r, style),
+                )
+            },
+            if SUBD {
+                "done.subdsphere"
+            } else {
+                "done.meshsphere"
+            },
         )
     }
 }
@@ -338,16 +409,21 @@ fn cap_choices(option: &str) -> Option<Vec<String>> {
 
 /// `MeshCylinder`: the centre of its base, its radius, then its height.
 #[derive(Default)]
-pub struct MeshCylinder;
+pub struct Cylindered<const SUBD: bool>;
 
-impl Recipe for MeshCylinder {
-    const NAME: &'static str = "meshcylinder";
+/// Rhino's `MeshCylinder`.
+pub type MeshCylinder = Cylindered<false>;
+/// Rhino's `SubDCylinder`: the same picking, a SubD cage with Rhino's SubD face counts.
+pub type SubDCylinder = Cylindered<true>;
+
+impl<const SUBD: bool> Recipe for Cylindered<SUBD> {
+    const NAME: &'static str = if SUBD { "subdcylinder" } else { "meshcylinder" };
     const OPTIONS: &'static [OptionDef] = &[
         OptionDef::toggle(DIAMETER, false),
         OptionDef::toggle(SOLID, true),
         OptionDef::toggle(BOTH_SIDES, false),
-        faces(VERTICAL),
-        faces(AROUND),
+        faces_for(VERTICAL, SUBD, 4),
+        faces_for(AROUND, SUBD, 8),
         OptionDef::name(CAP_STYLE, "Tri"),
     ];
 
@@ -379,30 +455,41 @@ impl Recipe for MeshCylinder {
             (c, high)
         };
         added(
-            Mesh::mesh_cylinder(
-                &frame_at(cx, start),
-                r,
-                high,
-                (count(cx, VERTICAL), count(cx, AROUND)),
-                cx.toggle(SOLID),
-                quad_caps(cx),
-            ),
-            "done.meshcylinder",
+            {
+                let frame = frame_at(cx, start);
+                let faces = (count(cx, VERTICAL), count(cx, AROUND));
+                let (solid, quads) = (cx.toggle(SOLID), quad_caps(cx));
+                either(
+                    SUBD,
+                    || Mesh::mesh_cylinder(&frame, r, high, faces, solid, quads),
+                    || Ok(SubD::subd_cylinder(&frame, r, high, faces, solid, quads)),
+                )
+            },
+            if SUBD {
+                "done.subdcylinder"
+            } else {
+                "done.meshcylinder"
+            },
         )
     }
 }
 
 /// `MeshCone`: the centre of its base, its radius, then the height of its point.
 #[derive(Default)]
-pub struct MeshCone;
+pub struct Coned<const SUBD: bool>;
 
-impl Recipe for MeshCone {
-    const NAME: &'static str = "meshcone";
+/// Rhino's `MeshCone`.
+pub type MeshCone = Coned<false>;
+/// Rhino's `SubDCone`: the same picking, a SubD cage with Rhino's SubD face counts.
+pub type SubDCone = Coned<true>;
+
+impl<const SUBD: bool> Recipe for Coned<SUBD> {
+    const NAME: &'static str = if SUBD { "subdcone" } else { "meshcone" };
     const OPTIONS: &'static [OptionDef] = &[
         OptionDef::toggle(DIAMETER, false),
         OptionDef::toggle(SOLID, true),
-        faces(VERTICAL),
-        faces(AROUND),
+        faces_for(VERTICAL, SUBD, 4),
+        faces_for(AROUND, SUBD, 8),
         OptionDef::name(CAP_STYLE, "Tri"),
     ];
 
@@ -428,26 +515,38 @@ impl Recipe for MeshCone {
             return Ok(circle_guide(cx, c, r));
         };
         added(
-            Mesh::mesh_cone(
-                &frame_at(cx, c),
-                r,
-                high,
-                (count(cx, VERTICAL), count(cx, AROUND)),
-                cx.toggle(SOLID),
-                quad_caps(cx),
-            ),
-            "done.meshcone",
+            {
+                let frame = frame_at(cx, c);
+                let faces = (count(cx, VERTICAL), count(cx, AROUND));
+                let (solid, quads) = (cx.toggle(SOLID), quad_caps(cx));
+                either(
+                    SUBD,
+                    || Mesh::mesh_cone(&frame, r, high, faces, solid, quads),
+                    || Ok(SubD::subd_cone(&frame, r, high, faces, solid, quads)),
+                )
+            },
+            if SUBD {
+                "done.subdcone"
+            } else {
+                "done.meshcone"
+            },
         )
     }
 }
 
 /// `MeshTorus`: its centre, the radius to the middle of its tube, then the tube's radius.
 #[derive(Default)]
-pub struct MeshTorus;
+pub struct Torused<const SUBD: bool>;
 
-impl Recipe for MeshTorus {
-    const NAME: &'static str = "meshtorus";
-    const OPTIONS: &'static [OptionDef] = &[faces(VERTICAL), faces(AROUND)];
+/// Rhino's `MeshTorus`.
+pub type MeshTorus = Torused<false>;
+/// Rhino's `SubDTorus`: the same picking, a SubD cage with Rhino's SubD face counts.
+pub type SubDTorus = Torused<true>;
+
+impl<const SUBD: bool> Recipe for Torused<SUBD> {
+    const NAME: &'static str = if SUBD { "subdtorus" } else { "meshtorus" };
+    const OPTIONS: &'static [OptionDef] =
+        &[faces_for(VERTICAL, SUBD, 6), faces_for(AROUND, SUBD, 10)];
 
     fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
         let mut steps = circle_steps(cx, "torus", &[VERTICAL, AROUND]);
@@ -473,13 +572,20 @@ impl Recipe for MeshTorus {
             return Err(Message::new("error.torus"));
         }
         added(
-            Mesh::mesh_torus(
-                &frame_at(cx, c),
-                r,
-                tube,
-                (count(cx, VERTICAL), count(cx, AROUND)),
-            ),
-            "done.meshtorus",
+            {
+                let frame = frame_at(cx, c);
+                let faces = (count(cx, VERTICAL), count(cx, AROUND));
+                either(
+                    SUBD,
+                    || Mesh::mesh_torus(&frame, r, tube, faces),
+                    || SubD::subd_torus(&frame, r, tube, faces),
+                )
+            },
+            if SUBD {
+                "done.subdtorus"
+            } else {
+                "done.meshtorus"
+            },
         )
     }
 }
@@ -522,6 +628,26 @@ mod tests {
         ];
         for (steps, want) in cases {
             assert_eq!(counts(&made(steps)), want, "{steps:?}");
+        }
+    }
+
+    #[test]
+    fn each_subd_default_matches_rhinos_cage() {
+        // Rhino 8, Enter at every option (20 November 2026): cage faces and points.
+        let cases: [(&[&str], _); 6] = [
+            (&["subdbox", "0,0", "4,3", "2"], (24, 26)),
+            (&["subdplane", "0,0", "4,3"], (4, 9)),
+            (&["subdsphere", "0,0", "5"], (24, 26)),
+            (&["subdcylinder", "0,0", "2", "5"], (48, 42)),
+            (&["subdcone", "0,0", "2", "5"], (40, 34)),
+            (&["subdtorus", "0,0", "5", "1"], (60, 60)),
+        ];
+        for (steps, want) in cases {
+            let mut doc = Document::default();
+            run(&mut doc, steps);
+            let object = doc.state().objects.last().expect("made");
+            let cage = object.shape.subd().expect("a SubD").cage();
+            assert_eq!((cage.face_count(), cage.vertex_count()), want, "{steps:?}");
         }
     }
 
