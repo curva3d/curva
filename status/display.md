@@ -11,6 +11,13 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 ## 20 November 2026
 
 **Done**
+- **Snapping is under 1 ms a frame on the largest test scene** (#130). With a whole large
+  scene in view, thousands of snap points were within reach of the cursor, and each was measured
+  and sorted; now snapping searches outwards from the cursor and stops as soon as nothing nearer
+  can exist, choosing the same point as before. *Large*: 1.19 ms to 0.14 ms a frame. The search
+  structure is now also built in the background after each change, so the first snap after an
+  edit rarely waits for it (it took half a second on *Large*). The benchmark now reports that
+  first snap on its own instead of hiding it in the average.
 - **Edits in a drawing full of dimensions no longer pause.** After any change, every dimension
   and hatch was worked out again, because their look follows the model's unit and styles; now they
   keep what they drew while those settings stay the same. On the owner's 3.6 MB drawing, each
