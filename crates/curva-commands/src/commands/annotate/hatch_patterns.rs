@@ -14,7 +14,7 @@ impl Command for HatchPatterns {
         match answer {
             None => Step::Ask(Request::file_to_open(
                 "prompt.hatch_patterns.path",
-                &[PAT_FILES],
+                [PAT_FILES],
             )),
             Some(Answer::Path(text)) => {
                 let path = std::path::PathBuf::from(text.trim().trim_matches('"'));

@@ -14,7 +14,7 @@ impl Command for SaveAs {
         match answer {
             None => Step::Ask(Request::file_to_save(
                 "prompt.save.path",
-                crate::commands::import_export::SAVE_FORMATS,
+                doc.formats().saving(),
                 crate::commands::import_export::model_name(doc),
             )),
             Some(Answer::Path(text)) => {

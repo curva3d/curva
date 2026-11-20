@@ -98,32 +98,6 @@ pub type FileFormat = (&'static str, &'static [&'static str]);
 /// Curva's own files.
 pub const CURVA_FILES: FileFormat = ("files.curva", &["curva"]);
 
-/// Rhino's files.
-pub const RHINO_FILES: FileFormat = ("files.rhino", &["3dm"]);
-
-/// PDF drawings.
-pub const PDF_FILES: FileFormat = ("files.pdf", &["pdf"]);
-
-/// SVG drawings, one file per layout.
-pub const SVG_FILES: FileFormat = ("files.svg", &["svg"]);
-
-/// AutoCAD's exchange files.
-pub const DXF_FILES: FileFormat = ("files.dxf", &["dxf"]);
-
-/// AutoCAD's drawing files.
-pub const DWG_FILES: FileFormat = ("files.dwg", &["dwg"]);
-
-/// Mesh files Curva reads and writes itself: STL, OBJ and PLY (spec `mesh-and-subd.md` §5).
-pub const STL_FILES: FileFormat = ("files.stl", &["stl"]);
-/// Wavefront OBJ files.
-pub const OBJ_FILES: FileFormat = ("files.obj", &["obj"]);
-/// PLY files.
-pub const PLY_FILES: FileFormat = ("files.ply", &["ply"]);
-/// STEP files, for other CAD programs (spec `export-formats.md`).
-pub const STEP_FILES: FileFormat = ("files.step", &["stp", "step"]);
-/// SketchUp's models, read through OpenSKP.
-pub const SKP_FILES: FileFormat = ("files.skp", &["skp"]);
-
 /// Hatch pattern files, as AutoCAD and Rhino write them.
 pub const PAT_FILES: FileFormat = ("files.pat", &["pat"]);
 
@@ -156,7 +130,7 @@ pub struct FileDialog {
     /// Whether it picks a file to write, with a name field, rather than one to read.
     pub save: bool,
     /// The kinds of file offered, the usual one first.
-    pub formats: &'static [FileFormat],
+    pub formats: Vec<FileFormat>,
     /// For saving: the name the field starts with; `None` for an untitled model, which the
     /// interface names in its own language.
     pub name: Option<String>,
@@ -182,11 +156,11 @@ impl Request {
 
     /// A request for a file to read, with the system's open dialog offering `formats`.
     #[must_use]
-    pub fn file_to_open(key: &'static str, formats: &'static [FileFormat]) -> Self {
+    pub fn file_to_open(key: &'static str, formats: impl Into<Vec<FileFormat>>) -> Self {
         Self {
             file: Some(FileDialog {
                 save: false,
-                formats,
+                formats: formats.into(),
                 name: None,
             }),
             ..Self::new(key, Kind::Path)
@@ -198,13 +172,13 @@ impl Request {
     #[must_use]
     pub fn file_to_save(
         key: &'static str,
-        formats: &'static [FileFormat],
+        formats: impl Into<Vec<FileFormat>>,
         name: Option<String>,
     ) -> Self {
         Self {
             file: Some(FileDialog {
                 save: true,
-                formats,
+                formats: formats.into(),
                 name,
             }),
             ..Self::new(key, Kind::Path)

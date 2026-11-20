@@ -1,5 +1,6 @@
 //! The kinds of file each file dialog offers, in order, written down before the formats move onto
-//! one list (spec `docs/specs/file-formats.md` §4, step 1). Every later step keeps these the same.
+//! one list (spec `docs/specs/file-formats.md` §4, step 1). Every later step keeps these the same;
+//! since step 5 the lists come from the full list of formats the interface hands every model.
 
 use curva_commands::Processor;
 use curva_document::Document;
@@ -43,7 +44,7 @@ fn list(formats: &[(&str, &[&str])]) -> Vec<(String, Vec<String>)> {
 #[test]
 fn open_offers_these_formats_in_this_order() {
     assert_eq!(
-        offered(&mut Document::default(), &["Open"]),
+        offered(&mut curva_formats::new_document(), &["Open"]),
         list(&[
             ("files.curva", &["curva"]),
             ("files.rhino", &["3dm"]),
@@ -60,7 +61,7 @@ fn open_offers_these_formats_in_this_order() {
 #[test]
 fn import_offers_these_formats_in_this_order() {
     assert_eq!(
-        offered(&mut Document::default(), &["Import"]),
+        offered(&mut curva_formats::new_document(), &["Import"]),
         list(&[
             ("files.curva", &["curva"]),
             ("files.rhino", &["3dm"]),
@@ -76,8 +77,14 @@ fn import_offers_these_formats_in_this_order() {
 #[test]
 fn save_and_save_as_offer_these_formats_in_this_order() {
     let saved = list(&[("files.curva", &["curva"]), ("files.rhino", &["3dm"])]);
-    assert_eq!(offered(&mut Document::default(), &["Save"]), saved);
-    assert_eq!(offered(&mut Document::default(), &["SaveAs"]), saved);
+    assert_eq!(
+        offered(&mut curva_formats::new_document(), &["Save"]),
+        saved
+    );
+    assert_eq!(
+        offered(&mut curva_formats::new_document(), &["SaveAs"]),
+        saved
+    );
 }
 
 #[test]
@@ -92,7 +99,7 @@ fn export_and_export_selected_offer_these_formats_in_this_order() {
         ("files.ply", &["ply"]),
         ("files.svg", &["svg"]),
     ]);
-    let mut doc = Document::default();
+    let mut doc = curva_formats::new_document();
     assert_eq!(offered(&mut doc, &["Export"]), exported);
     let mut processor = Processor::default();
     processor.submit(&mut doc, "Line");
@@ -105,7 +112,7 @@ fn export_and_export_selected_offer_these_formats_in_this_order() {
 
 #[test]
 fn printing_to_a_file_offers_pdf() {
-    let mut doc = Document::default();
+    let mut doc = curva_formats::new_document();
     let paper = curva_document::layouts::paper_size("A3").unwrap();
     doc.add_layout("Plans".to_owned(), paper, true);
     assert_eq!(

@@ -3,9 +3,7 @@
 //! and the assistant: options first (which layouts, colour or black, a PDF or the printer), then
 //! Enter asks for the file or sends the pages to the printer. The interface makes the pages.
 
-use crate::{
-    Answer, Command, Kind, Message, PDF_FILES, PrintJob, PrintTo, Request, Step, ViewRequest,
-};
+use crate::{Answer, Command, Kind, Message, PrintJob, PrintTo, Request, Step, ViewRequest};
 use curva_document::Document;
 
 const LAYOUTS: &str = "Layouts";
@@ -44,7 +42,7 @@ impl ExportPdf {
                 .first()
                 .and_then(|id| doc.layout(*id))
                 .map(|l| l.name.clone());
-            Request::file_to_save("prompt.print.file", &[PDF_FILES], name)
+            Request::file_to_save("prompt.print.file", doc.formats().printing(), name)
         } else {
             Request {
                 allow_empty: true,
