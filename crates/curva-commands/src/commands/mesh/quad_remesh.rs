@@ -13,8 +13,20 @@ use curva_document::meshing::{mesh_of, remembered_settings};
 use curva_mesh::{QuadRemeshOptions, QuadTarget, SubD};
 
 const TARGET: &str = "TargetQuadCount";
+const EDGE_LENGTH: &str = "TargetEdgeLength";
 const HARD_EDGES: &str = "DetectHardEdges";
 const SUBD: &str = "ConvertToSubD";
+
+/// Quads about `TargetEdgeLength` long when it is set, else about `TargetQuadCount` of them, as
+/// in Rhino.
+fn target(cx: &Context<'_>) -> QuadTarget {
+    let length = cx.number(EDGE_LENGTH);
+    if length > 0.0 {
+        QuadTarget::EdgeLength(length)
+    } else {
+        QuadTarget::Count(cx.number(TARGET).round().max(1.0) as usize)
+    }
+}
 
 /// The recipe.
 #[derive(Default)]
@@ -24,6 +36,8 @@ impl Recipe for QuadRemesh {
     const NAME: &'static str = "quadremesh";
     const OPTIONS: &'static [OptionDef] = &[
         OptionDef::whole(TARGET, 2000, 1, 1_000_000),
+        // 0, as in Rhino, aims at the quad count instead.
+        OptionDef::distance(EDGE_LENGTH, 0.0, true),
         OptionDef::toggle(HARD_EDGES, true),
         OptionDef::toggle(SUBD, false),
     ];
@@ -47,7 +61,7 @@ impl Recipe for QuadRemesh {
             return Err(Message::new("error.quadremesh_nothing"));
         }
         let options = QuadRemeshOptions {
-            target: QuadTarget::Count(cx.number(TARGET).round().max(1.0) as usize),
+            target: target(cx),
             hard_edges: cx.toggle(HARD_EDGES),
             ..QuadRemeshOptions::count(2000)
         };
@@ -114,11 +128,19 @@ mod tests {
         assert_eq!(objects.len(), 2);
         assert_eq!(objects[0].shape.mesh().unwrap().face_count(), 1600);
         let quads = objects[1].shape.mesh().unwrap();
-        // Rhino 8 makes 1,750 quads here and Curva 1,990: Rhino's adaptive size (50) makes
-        // fewer where the surface is flat. Within 15 % of Rhino's.
+        // Rhino 8 makes 1,750 quads here (with or without its adaptive size) and Curva 1,990.
+        // Within 15 % of Rhino's.
         let count = quads.face_count();
         assert!((1490..=2010).contains(&count), "{count}");
         assert!(quads.is_closed());
+    }
+
+    #[test]
+    fn target_edge_length_sets_the_quads_size_as_in_rhino() {
+        let doc = remeshed(&["TargetEdgeLength", "1"]);
+        let count = doc.state().objects[1].shape.mesh().unwrap().face_count();
+        // Rhino 8 makes 244 quads here.
+        assert!((220..=270).contains(&count), "{count}");
     }
 
     #[test]

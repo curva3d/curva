@@ -22,6 +22,7 @@ const STYLE: &str = "Style";
 const VERTICAL: &str = "VerticalFaces";
 const AROUND: &str = "AroundFaces";
 const SUBDIVISIONS: &str = "Subdivisions";
+const TWO_POINT: &str = "2Point";
 
 const fn faces(name: &'static str) -> OptionDef {
     OptionDef::whole(name, 10, 1, MOST_FACES)
@@ -237,6 +238,20 @@ fn circle_steps(
     steps
 }
 
+/// The options offered while the ends of a diameter are picked.
+const SPHERE_FACES: &[&str] = &[STYLE, VERTICAL, AROUND, SUBDIVISIONS];
+
+/// A sphere's centre and radius: from the centre and radius, or with `2Point` from the ends of a
+/// diameter, as `Sphere`.
+fn sphere_size(cx: &Context<'_>) -> Option<(Point, f64)> {
+    if cx.mode == Some(TWO_POINT) {
+        let (a, b) = (point(cx, 0)?, point(cx, 1)?);
+        let half = (0..3).map(|i| (b[i] - a[i]).powi(2)).sum::<f64>().sqrt() / 2.0;
+        return Some((std::array::from_fn(|i| (a[i] + b[i]) / 2.0), half));
+    }
+    Some((point(cx, 0)?, radius(cx, 1)?))
+}
+
 /// `MeshSphere`: its centre, then its radius, in Rhino's UV, Quads or Triangles style.
 #[derive(Default)]
 pub struct MeshSphere;
@@ -244,6 +259,7 @@ pub struct MeshSphere;
 impl Recipe for MeshSphere {
     const NAME: &'static str = "meshsphere";
     const OPTIONS: &'static [OptionDef] = &[
+        OptionDef::mode(TWO_POINT),
         OptionDef::toggle(DIAMETER, false),
         OptionDef::name(STYLE, "UV"),
         faces(VERTICAL),
@@ -257,15 +273,24 @@ impl Recipe for MeshSphere {
     }
 
     fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
+        if cx.mode == Some(TWO_POINT) {
+            let mut steps = vec![StepDef::point("prompt.sphere.start").offering(SPHERE_FACES)];
+            steps.extend(point(cx, 0).map(|a| {
+                StepDef::point("prompt.sphere.end")
+                    .from(a)
+                    .offering(SPHERE_FACES)
+            }));
+            return steps;
+        }
         circle_steps(
             cx,
             "sphere",
-            &[DIAMETER, STYLE, VERTICAL, AROUND, SUBDIVISIONS],
+            &[TWO_POINT, DIAMETER, STYLE, VERTICAL, AROUND, SUBDIVISIONS],
         )
     }
 
     fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
-        let (Some(c), Some(r)) = (point(cx, 0), radius(cx, 1)) else {
+        let Some((c, r)) = sphere_size(cx) else {
             return Ok(Made::default());
         };
         if r <= SMALLEST {
@@ -591,5 +616,17 @@ mod tests {
         let mut doc = Document::default();
         run(&mut doc, &["meshtorus", "0,0", "2", "3"]);
         assert!(doc.state().objects.is_empty());
+    }
+
+    #[test]
+    fn two_points_give_the_ends_of_a_diameter_as_for_sphere() {
+        let mesh = made(&["meshsphere", "2Point", "0,0", "4,0"]);
+        let (low, high) = mesh.bounds().unwrap();
+        assert!(
+            (low[0]).abs() < 1e-9 && (high[0] - 4.0).abs() < 1e-9,
+            "{low:?} {high:?}"
+        );
+        assert!((high[2] - 2.0).abs() < 1e-9);
+        assert_eq!(counts(&mesh).0, 100);
     }
 }
