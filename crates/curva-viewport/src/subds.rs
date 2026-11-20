@@ -247,15 +247,21 @@ mod tests {
         }));
     }
 
-    /// Shown flat, a SubD's coloured faces show their colours and the rest its own colour, as in
-    /// Rhino; shown smooth, the smooth surface carries them, a sixth of it red here.
-    #[test]
-    fn a_subd_shows_its_face_colours() {
-        const RED: [f32; 3] = [1.0, 0.0, 0.0];
-        const OWN: [f32; 3] = [0.2, 0.4, 0.6];
+    const RED: [f32; 3] = [1.0, 0.0, 0.0];
+    const OWN: [f32; 3] = [0.2, 0.4, 0.6];
+
+    /// A cube with one face red and the rest uncoloured.
+    fn one_red_face() -> SubD {
         let mut given = vec![None; 6];
         given[0] = Some(RED);
-        let coloured = cube().with_face_colours(given).unwrap();
+        cube().with_face_colours(given).unwrap()
+    }
+
+    /// Shown flat, a SubD's coloured faces show their colours and the rest its own colour, as in
+    /// Rhino; shown smooth, the smooth surface carries them instead.
+    #[test]
+    fn a_flat_subd_shows_its_face_colours() {
+        let coloured = one_red_face();
         let flat = coloured.clone().with_display(SubDDisplay::Flat);
         let shown = drawing(&flat);
         let (drawn, _) = crate::meshes::body_mesh(&shown.shown);
@@ -270,20 +276,28 @@ mod tests {
             );
         }
         assert!(colours.contains(&RED) && colours.contains(&OWN));
+        let smooth = drawing(&coloured);
+        let (drawn, _) = crate::meshes::body_mesh(&smooth.shown);
+        assert_eq!(face_colours(&coloured, &smooth, &drawn, OWN), None);
+        let plain = cube().with_display(SubDDisplay::Flat);
+        let shown = drawing(&plain);
+        let (drawn, _) = crate::meshes::body_mesh(&shown.shown);
+        assert_eq!(face_colours(&plain, &shown, &drawn, OWN), None);
+    }
+
+    /// Shown smooth, a SubD's face colours spread over the smooth surface each face makes, the
+    /// rest in its own colour: a sixth of a cube's surface red for one red face.
+    #[test]
+    fn a_smooth_subd_shows_its_face_colours() {
+        let coloured = one_red_face();
         let smooth = super::drawing(&coloured, OWN);
         let (drawn, given) = crate::meshes::body_mesh(&smooth.shown);
-        // The smooth surface's own colours are used; none are worked out from the cage.
-        assert_eq!(face_colours(&coloured, &smooth, &drawn, OWN), None);
         let given = given.unwrap();
         assert_eq!(given.len(), drawn.positions.len());
         assert!(given.iter().all(|c| *c == RED || *c == OWN));
         let red = given.iter().filter(|c| **c == RED).count();
         assert_eq!(red * 6, given.len());
         assert_eq!(crate::meshes::body_mesh(&drawing(&cube()).shown).1, None);
-        let plain = cube().with_display(SubDDisplay::Flat);
-        let shown = drawing(&plain);
-        let (drawn, _) = crate::meshes::body_mesh(&shown.shown);
-        assert_eq!(face_colours(&plain, &shown, &drawn, OWN), None);
     }
 
     /// Each straight segment of `lines`, its ends as exact bits, the lower end first.
