@@ -15,7 +15,7 @@ pub struct New;
 /// new model is chosen by setting it on the empty one (spec `feedback-0.4.2.md` §3).
 fn start_over(doc: &mut Document) -> Step {
     let (unit, display) = (doc.state().unit, doc.state().length_display);
-    *doc = Document::default();
+    doc.replace_with(Document::default());
     doc.set_unit(unit, false);
     doc.set_length_display(display);
     Step::Done(Some(Message::new("done.new")))

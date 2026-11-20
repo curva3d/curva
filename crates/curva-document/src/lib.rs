@@ -23,6 +23,7 @@ pub mod annotation;
 pub mod clipping;
 pub mod drawing;
 pub mod fields;
+pub mod formats;
 pub mod hatch;
 pub mod layouts;
 mod organise;
@@ -196,6 +197,9 @@ pub struct Document {
     space: Option<u64>,
     /// Where the last-used viewport looks from, for Make2D. Not saved, and not part of undo.
     view: Option<curva_kernel::hidden::View>,
+    /// The file formats the file commands offer (spec `file-formats.md`). Not saved, and not part
+    /// of undo; a model that replaces this one keeps them.
+    formats: std::sync::Arc<formats::Formats>,
 }
 
 impl Document {

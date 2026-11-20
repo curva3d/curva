@@ -95,6 +95,14 @@ fn failed(error: impl std::fmt::Display) -> Step {
     Step::Failed(Message::with("error.file", vec![error.to_string()]))
 }
 
+/// What a format on the model's list reports, for the command bar.
+fn done(result: Result<curva_document::formats::Done, String>) -> Step {
+    match result {
+        Ok(done) => Step::Done(Some(Message::with(done.key, done.args))),
+        Err(error) => failed(error),
+    }
+}
+
 /// A `.3dm` file as a new model, unsaved, named after the file: it saves as a `.curva` beside
 /// it unless one is there already, and never over the `.3dm`.
 pub fn open_3dm(path: &Path) -> Result<(Document, Report), String> {
@@ -178,6 +186,9 @@ impl Command for Import {
             None => Step::Ask(Request::file_to_open("prompt.import.path", IMPORT_FORMATS)),
             Some(Answer::Path(text)) => {
                 let path = typed(&text);
+                if let Some(import) = doc.formats().of(&path).and_then(|f| f.import) {
+                    return done(import(doc, &path, &path.display().to_string()));
+                }
                 if is_skp(&path) {
                     return match read_skp(&path) {
                         Ok(model) => {
@@ -260,6 +271,81 @@ impl Command for ExportSelected {
     }
 }
 
+impl Export {
+    /// The model, or the chosen objects, written to the file typed.
+    fn write(&self, doc: &mut Document, text: &str) -> Step {
+        let mut path = typed(text);
+        if path.extension().is_none() {
+            path.set_extension("3dm");
+        }
+        if let Some(export) = doc.formats().of(&path).and_then(|f| f.export) {
+            let chosen = self.chosen.as_deref();
+            return done(export(doc, chosen, &path, &path.display().to_string()));
+        }
+        if path
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("svg"))
+        {
+            // A drawing: the open layout, as it prints, or every layout from the model.
+            if self.selected {
+                return Step::Failed(Message::new("error.export_svg_selected"));
+            }
+            let layouts = match doc.space() {
+                Some(sheet) => vec![sheet],
+                None => doc.layouts().iter().map(|l| l.id).collect(),
+            };
+            if layouts.is_empty() {
+                return Step::Failed(Message::new("error.export_svg_no_layouts"));
+            }
+            return Step::View(ViewRequest::Print(PrintJob {
+                layouts,
+                black: false,
+                to: PrintTo::Svg(path.display().to_string()),
+            }));
+        }
+        if let Some(format) = MeshFormat::of(&path) {
+            let chosen = self.chosen.as_deref();
+            return match export_mesh_file(doc, chosen, &path, format) {
+                Ok(summary) => Step::Done(Some(Message::with(
+                    "done.export_cad",
+                    vec![path.display().to_string(), summary],
+                ))),
+                Err(e) => failed(e),
+            };
+        }
+        if super::step::is_step(&path) {
+            let schema = curva_kernel::step::StepSchema::default();
+            let chosen = self.chosen.as_deref();
+            return match super::step::write_step_file(doc, chosen, &path, schema) {
+                Ok(summary) => Step::Done(Some(Message::with(
+                    "done.export_cad",
+                    vec![path.display().to_string(), summary],
+                ))),
+                Err(e) => failed(e),
+            };
+        }
+        if let Some(format) = CadFormat::of(&path) {
+            return match write_cad(doc, self.chosen.as_deref(), &path, format) {
+                Ok(report) => Step::Done(Some(Message::with(
+                    "done.export_cad",
+                    vec![path.display().to_string(), report.summary()],
+                ))),
+                Err(e) => failed(e),
+            };
+        }
+        if !is_3dm(&path) {
+            return Step::Failed(Message::with(
+                "error.export_kind",
+                vec![path.display().to_string()],
+            ));
+        }
+        match write_3dm(doc, self.chosen.as_deref(), &path) {
+            Ok(report) => Step::Done(Some(written(&path, &report))),
+            Err(e) => failed(e),
+        }
+    }
+}
+
 impl Command for Export {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
         match answer {
@@ -291,73 +377,7 @@ impl Command for Export {
                 EXPORT_FORMATS,
                 model_name(doc),
             )),
-            Some(Answer::Path(text)) => {
-                let mut path = typed(&text);
-                if path.extension().is_none() {
-                    path.set_extension("3dm");
-                }
-                if path
-                    .extension()
-                    .is_some_and(|e| e.eq_ignore_ascii_case("svg"))
-                {
-                    // A drawing: the open layout, as it prints, or every layout from the model.
-                    if self.selected {
-                        return Step::Failed(Message::new("error.export_svg_selected"));
-                    }
-                    let layouts = match doc.space() {
-                        Some(sheet) => vec![sheet],
-                        None => doc.layouts().iter().map(|l| l.id).collect(),
-                    };
-                    if layouts.is_empty() {
-                        return Step::Failed(Message::new("error.export_svg_no_layouts"));
-                    }
-                    return Step::View(ViewRequest::Print(PrintJob {
-                        layouts,
-                        black: false,
-                        to: PrintTo::Svg(path.display().to_string()),
-                    }));
-                }
-                if let Some(format) = MeshFormat::of(&path) {
-                    let chosen = self.chosen.as_deref();
-                    return match export_mesh_file(doc, chosen, &path, format) {
-                        Ok(summary) => Step::Done(Some(Message::with(
-                            "done.export_cad",
-                            vec![path.display().to_string(), summary],
-                        ))),
-                        Err(e) => failed(e),
-                    };
-                }
-                if super::step::is_step(&path) {
-                    let schema = curva_kernel::step::StepSchema::default();
-                    let chosen = self.chosen.as_deref();
-                    return match super::step::write_step_file(doc, chosen, &path, schema) {
-                        Ok(summary) => Step::Done(Some(Message::with(
-                            "done.export_cad",
-                            vec![path.display().to_string(), summary],
-                        ))),
-                        Err(e) => failed(e),
-                    };
-                }
-                if let Some(format) = CadFormat::of(&path) {
-                    return match write_cad(doc, self.chosen.as_deref(), &path, format) {
-                        Ok(report) => Step::Done(Some(Message::with(
-                            "done.export_cad",
-                            vec![path.display().to_string(), report.summary()],
-                        ))),
-                        Err(e) => failed(e),
-                    };
-                }
-                if !is_3dm(&path) {
-                    return Step::Failed(Message::with(
-                        "error.export_kind",
-                        vec![path.display().to_string()],
-                    ));
-                }
-                match write_3dm(doc, self.chosen.as_deref(), &path) {
-                    Ok(report) => Step::Done(Some(written(&path, &report))),
-                    Err(e) => failed(e),
-                }
-            }
+            Some(Answer::Path(text)) => self.write(doc, &text),
             Some(_) => unexpected(),
         }
     }
