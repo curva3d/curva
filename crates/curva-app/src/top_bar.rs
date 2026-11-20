@@ -490,7 +490,10 @@ mod tests {
         assert_eq!(super::glow_left(Some(5.0), 5.0), Some(1.0));
         let halfway = super::glow_left(Some(5.0), 5.0 + super::COPIED_FOR / 2.0).unwrap();
         assert!((halfway - 0.5).abs() < 1e-9);
-        assert_eq!(super::glow_left(Some(5.0), 5.0 + super::COPIED_FOR + 0.01), None);
+        assert_eq!(
+            super::glow_left(Some(5.0), 5.0 + super::COPIED_FOR + 0.01),
+            None
+        );
     }
 
     #[test]
