@@ -142,18 +142,16 @@ pub struct Outlines {
 /// Mesh-cache keys from here up are instances' parts.
 pub(crate) const INSTANCE_KEYS: u64 = 1 << 52;
 
-/// Whether a shape reads things besides itself and so is drawn again each time: text holding
-/// fields (`%<...>%`), and dimensions, whose look follows their style and the model's unit.
+/// Whether a shape reads things besides itself and the settings [`same_context`] compares, and so
+/// is drawn again each time: text holding fields (`%<...>%`), which read the file, the time and
+/// other objects; a scale bar, which reads its detail view; and a table, which reads the sheets.
+/// Dimensions and hatches read only those settings, so they are drawn again when those change.
 pub(crate) fn has_fields(shape: &Shape) -> bool {
+    use curva_document::annotation::Annotation;
     match shape {
-        Shape::Annotation(curva_document::annotation::Annotation::Text(text)) => {
-            text.content.contains("%<")
-        }
-        Shape::Annotation(curva_document::annotation::Annotation::Leader(leader)) => {
-            leader.content.contains("%<")
-        }
-        Shape::Annotation(curva_document::annotation::Annotation::Dot(_)) => false,
-        Shape::Annotation(_) => true,
+        Shape::Annotation(Annotation::Text(text)) => text.content.contains("%<"),
+        Shape::Annotation(Annotation::Leader(leader)) => leader.content.contains("%<"),
+        Shape::Annotation(Annotation::ScaleBar(_) | Annotation::Table(_)) => true,
         _ => false,
     }
 }
@@ -187,8 +185,7 @@ fn same_context(held: &State, now: &State) -> bool {
         && held.annotation_styles == now.annotation_styles
 }
 
-/// Whether a block, or a block placed in it, holds text with fields or a dimension
-/// ([`has_fields`], hatches aside, which read only what [`same_context`] compares).
+/// Whether a block, or a block placed in it, holds a shape drawn again each time ([`has_fields`]).
 fn block_has_fields(state: &State, definition: u64, depth: usize) -> bool {
     if depth > 16 {
         return true;
@@ -200,7 +197,6 @@ fn block_has_fields(state: &State, definition: u64, depth: usize) -> bool {
         .is_some_and(|d| {
             d.objects.iter().any(|o| match &o.shape {
                 Shape::Instance(inner) => block_has_fields(state, inner.definition, depth + 1),
-                Shape::Annotation(curva_document::annotation::Annotation::Hatch(_)) => false,
                 shape => has_fields(shape),
             })
         })
@@ -371,9 +367,10 @@ impl Outlines {
                 .into_iter()
                 .cloned()
                 .collect();
-            // Text with fields and dimensions read other things, which can change without them, so
-            // those are always drawn again; an instance too when what it draws from changed, or its
-            // blocks hold such text; any other object only when it or its layers changed.
+            // Text with fields, scale bars and tables read other things, which can change without
+            // them, so those are always drawn again; other annotation and instances too when the
+            // settings they read changed, or an instance's blocks hold such shapes; any other
+            // object only when it or its layers changed.
             let part = match earlier.remove(&object.id) {
                 Some((was, was_chain, part))
                     if std::sync::Arc::ptr_eq(&was, object)
@@ -383,6 +380,7 @@ impl Outlines {
                             Shape::Instance(instance) => {
                                 context_same && !block_has_fields(state, instance.definition, 0)
                             }
+                            Shape::Annotation(_) => context_same,
                             _ => true,
                         } =>
                 {

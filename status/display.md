@@ -11,6 +11,11 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 ## 20 November 2026
 
 **Done**
+- **Edits in a drawing full of dimensions no longer pause.** After any change, every dimension
+  and hatch was worked out again, because their look follows the model's unit and styles; now they
+  keep what they drew while those settings stay the same. On the owner's 3.6 MB drawing, each
+  edit went from 0.43 s of redrawing to 0.043 s. Text with fields, scale bars and tables are
+  still redrawn each time, as they read other things.
 - **Large scanned meshes are quicker to work with** (#267, the speed left over from Stage A).
   A mesh's edges were each listed as their own line, so a scan of a million triangles held
   about 1.5 million lines; now its edges are joined end to end into chains of up to 256 points,
