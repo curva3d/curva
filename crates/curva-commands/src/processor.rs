@@ -325,6 +325,7 @@ impl Processor {
                 active.typed = true;
                 if let Some(request) = active.request.as_mut() {
                     request.file = None;
+                    request.panel = None;
                 }
             }
         } else {
@@ -525,6 +526,11 @@ impl Processor {
             Step::Ask(mut request) => {
                 if !self.dialogs || active.typed {
                     request.file = None;
+                    if request.panel.take().is_some() && request.panel_only {
+                        // A step only for a panel the interface is not showing: Enter at once.
+                        self.advance(doc, Some(Answer::Empty));
+                        return;
+                    }
                 }
                 active.request = Some(request);
             }
@@ -585,6 +591,54 @@ mod tests {
         let dialog = app.current_request().and_then(|r| r.file.clone()).unwrap();
         assert!(dialog.save);
         assert_eq!(dialog.name, None);
+    }
+
+    #[test]
+    fn mesh_settings_open_the_panel_only_where_the_interface_shows_it() {
+        let panel = |dialogs: bool, typed: &str| {
+            let mut doc = curva_formats::new_document();
+            let id = doc.add_body(curva_kernel::Body::cuboid([0.0; 3], [10.0; 3]).unwrap());
+            doc.select(&[id]);
+            let mut processor = Processor::default();
+            processor.use_file_dialogs(dialogs);
+            processor.submit(&mut doc, typed);
+            processor.current_request().map(|r| r.panel)
+        };
+        assert_eq!(panel(true, "Mesh"), Some(Some(crate::Panel::MeshSettings)));
+        assert_eq!(panel(false, "Mesh"), Some(None));
+        assert_eq!(panel(true, "-Mesh"), Some(None));
+    }
+
+    #[test]
+    fn export_to_a_mesh_file_asks_the_panel_in_the_interface_and_writes_at_once_elsewhere() {
+        let folder = std::env::temp_dir().join(format!("curva-meshpanel-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let write = |dialogs: bool, command: &str, name: &str| {
+            let file = folder.join(name);
+            let mut doc = curva_formats::new_document();
+            doc.add_body(curva_kernel::Body::cuboid([0.0; 3], [10.0; 3]).unwrap());
+            let mut processor = Processor::default();
+            processor.use_file_dialogs(dialogs);
+            processor.submit(&mut doc, command);
+            processor.submit(&mut doc, &file.display().to_string());
+            let asked = processor.current_request().and_then(|r| r.panel);
+            let before = file.exists();
+            if asked.is_some() {
+                processor.submit(&mut doc, "");
+            }
+            (asked, before, file.exists())
+        };
+        // The interface: the panel, then Enter writes the file.
+        assert_eq!(
+            write(true, "Export", "a.stl"),
+            (Some(crate::Panel::MeshSettings), false, true)
+        );
+        // Scripts and the dashed command: written at once, no extra step.
+        assert_eq!(write(false, "Export", "b.stl"), (None, true, true));
+        assert_eq!(write(true, "-Export", "c.obj"), (None, true, true));
+        // A format that does not mesh asks nothing.
+        assert_eq!(write(true, "Export", "d.3dm"), (None, true, true));
+        std::fs::remove_dir_all(&folder).ok();
     }
 
     #[test]

@@ -133,3 +133,126 @@ fn components_groups_tags_and_faces_come_in_where_they_were() {
         .unwrap();
     assert_eq!(loose.0, state.current_layer);
 }
+
+/// A 10-inch cube as a group of six faces sharing their edges, and a 30-inch square with a
+/// 10-inch hole, loose.
+fn cube_and_holed_square() -> Vec<u8> {
+    let mut skp = openskp::create::create();
+    {
+        let mut group = skp.add_group(&GroupOptions::default()).unwrap();
+        let c = |x: f64, y: f64, z: f64| [x, y, z];
+        let faces = [
+            vec![
+                c(0., 0., 0.),
+                c(0., 10., 0.),
+                c(10., 10., 0.),
+                c(10., 0., 0.),
+            ],
+            vec![
+                c(0., 0., 10.),
+                c(10., 0., 10.),
+                c(10., 10., 10.),
+                c(0., 10., 10.),
+            ],
+            vec![
+                c(0., 0., 0.),
+                c(10., 0., 0.),
+                c(10., 0., 10.),
+                c(0., 0., 10.),
+            ],
+            vec![
+                c(10., 0., 0.),
+                c(10., 10., 0.),
+                c(10., 10., 10.),
+                c(10., 0., 10.),
+            ],
+            vec![
+                c(10., 10., 0.),
+                c(0., 10., 0.),
+                c(0., 10., 10.),
+                c(10., 10., 10.),
+            ],
+            vec![
+                c(0., 10., 0.),
+                c(0., 0., 0.),
+                c(0., 0., 10.),
+                c(0., 10., 10.),
+            ],
+        ];
+        for face in faces {
+            group.add_face(&face, &FaceOptions::default()).unwrap();
+        }
+        group.close().unwrap();
+    }
+    let outer = vec![
+        [100.0, 0.0, 0.0],
+        [130.0, 0.0, 0.0],
+        [130.0, 30.0, 0.0],
+        [100.0, 30.0, 0.0],
+    ];
+    skp.add_face(
+        &outer,
+        &FaceOptions {
+            holes: vec![square(110.0, 10.0)],
+            ..FaceOptions::default()
+        },
+    )
+    .unwrap();
+    skp.to_bytes().unwrap()
+}
+
+/// The bodies brought in, the model's square units in a square inch, and the report.
+fn bodies(options: &curva_skp::ImportOptions) -> (Vec<curva_kernel::Body>, f64, String) {
+    let model = curva_skp::read(&cube_and_holed_square()).unwrap();
+    let (doc, report) = curva_skp::open_with(&model, options);
+    let inch = 25.4 / doc.state().unit.millimetres();
+    let bodies = doc
+        .state()
+        .objects
+        .iter()
+        .filter_map(|o| o.shape.body().cloned())
+        .collect();
+    (bodies, inch * inch, report.summary())
+}
+
+#[test]
+fn trimmed_planes_join_a_closed_group_into_a_solid_and_keep_a_face_s_hole() {
+    let options = curva_skp::ImportOptions {
+        faces: curva_skp::FacesAs::TrimmedPlanes,
+        ..curva_skp::ImportOptions::default()
+    };
+    let (bodies, square_inch, summary) = bodies(&options);
+    assert_eq!(bodies.len(), 2, "{summary}");
+    let solid = bodies.iter().find(|b| b.is_solid()).expect(&summary);
+    assert_eq!(solid.face_count().unwrap(), 6);
+    assert!((solid.area().unwrap() / square_inch - 600.0).abs() < 1e-6);
+    let holed = bodies.iter().find(|b| !b.is_solid()).expect(&summary);
+    assert_eq!(holed.face_count().unwrap(), 1);
+    assert!(
+        (holed.area().unwrap() / square_inch - 800.0).abs() < 1e-6,
+        "{summary}"
+    );
+    assert!(
+        summary.contains("1 solids") && summary.contains("1 surfaces"),
+        "{summary}"
+    );
+}
+
+#[test]
+fn trimmed_planes_without_joining_are_one_surface_each() {
+    let options = curva_skp::ImportOptions {
+        faces: curva_skp::FacesAs::TrimmedPlanes,
+        join_faces: false,
+        ..curva_skp::ImportOptions::default()
+    };
+    let (bodies, _, summary) = bodies(&options);
+    assert_eq!(bodies.len(), 7, "{summary}");
+    assert!(bodies.iter().all(|b| b.face_count().unwrap() == 1));
+}
+
+#[test]
+fn faces_come_in_as_meshes_unless_asked() {
+    let (bodies, _, summary) = bodies(&curva_skp::ImportOptions::default());
+    assert!(bodies.is_empty(), "{summary}");
+    assert!(summary.contains("meshes"), "{summary}");
+}

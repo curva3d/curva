@@ -46,6 +46,9 @@ pub struct Format {
     pub print: Option<PageWriter>,
     /// Writing layouts as drawings, as `Export` offers them: the open layout, or every one.
     pub drawing: Option<PageWriter>,
+    /// Whether writing it meshes the surfaces and solids, so `Export` asks for the mesh settings
+    /// first (issue #387).
+    pub meshes: bool,
 }
 
 impl Format {
@@ -61,6 +64,7 @@ impl Format {
             export: None,
             print: None,
             drawing: None,
+            meshes: false,
         }
     }
 

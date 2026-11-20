@@ -17,6 +17,24 @@ smooth SubD's wireframe this way; `crease_curves` gave only creases and borders,
 closed SubD had nothing to draw. Found on the way: subdiv-kernels 0.1.0's own `edge_polylines`
 option loses points (runs of 6 and 3 where 9 are right at three levels), so Curva finds the edges
 from which cage face each refined face comes from instead.
+## 20 November 2026 (later)
+
+**MeshBooleanUnion, MeshBooleanDifference, MeshBooleanIntersection and MeshBooleanSplit (#272
+part 2):** commands now, with icons and reference rows, on the manifold-rust booleans of part 1.
+They leave what Rhino 8 leaves, measured on the same boxes:
+- Union replaces the meshes with one; Difference and Intersection replace each mesh of the first
+  set on its own and delete the second set; Split replaces each mesh with its outside part, adds
+  its inside part and keeps the second set.
+- Difference's `DeleteInput` (on at first, asked at the second step in Rhino) off keeps the cutters.
+- Meshes that do not overlap are left alone, and then nothing changes.
+
+Where Curva differs on purpose: Rhino cuts with an open mesh and leaves an open result, and its
+Split leaves open parts; Curva refuses open meshes and its parts are closed.
+
+**SketchUp import options asked for (#432, features):** the owner wants Rhino's "SketchUp Import
+Options", above all faces brought in as joined trimmed planes. Rhino's own Trimmed planes import
+is not measured yet: `-Import` uses the choice saved in its dialog, which a script cannot change.
+The numbers go on #432 once the choice is saved in Rhino.
 
 ## 20 November 2026
 
