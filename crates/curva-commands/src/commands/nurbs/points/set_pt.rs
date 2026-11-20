@@ -1,6 +1,6 @@
 //! `SetPt`: lines objects up on one, two or all three coordinates of a point.
 
-use crate::commands::project_to_cplane::flattened_onto;
+use crate::commands::edit::project_to_cplane::flattened_onto;
 use crate::commands::{
     ask_objects, curves_of, geometry_failed, ghost_results, objects_or_selection, unexpected,
 };

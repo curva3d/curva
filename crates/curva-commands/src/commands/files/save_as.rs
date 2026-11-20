@@ -15,7 +15,7 @@ impl Command for SaveAs {
             None => Step::Ask(Request::file_to_save(
                 "prompt.save.path",
                 doc.formats().saving(),
-                crate::commands::import_export::model_name(doc),
+                crate::commands::files::import_export::model_name(doc),
             )),
             Some(Answer::Path(text)) => {
                 let path = PathBuf::from(text.trim().trim_matches('"'));

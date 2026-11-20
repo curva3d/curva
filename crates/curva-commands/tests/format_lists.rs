@@ -67,6 +67,7 @@ fn import_offers_these_formats_in_this_order() {
             ("files.rhino", &["3dm"]),
             ("files.dxf", &["dxf"]),
             ("files.dwg", &["dwg"]),
+            ("files.skp", &["skp"]),
             ("files.stl", &["stl"]),
             ("files.obj", &["obj"]),
             ("files.ply", &["ply"]),

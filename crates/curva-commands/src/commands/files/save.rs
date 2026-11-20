@@ -27,7 +27,7 @@ impl Command for Save {
                 None => Step::Ask(Request::file_to_save(
                     "prompt.save.path",
                     doc.formats().saving(),
-                    crate::commands::import_export::model_name(doc),
+                    crate::commands::files::import_export::model_name(doc),
                 )),
             },
             Some(Answer::Path(text)) => write(doc, &PathBuf::from(text)),

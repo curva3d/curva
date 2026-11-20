@@ -27,9 +27,15 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
   dialogs' lists from the registry and adds a check that `curva-commands` and `curva-app` depend on
   no format crate. Every dialog lists the same types in the same order. **New file formats can now
   be added** (FBX, USD, SketchUp export): each is one crate that joins the list.
-- **For the owner:** `Import` reads SketchUp files typed in, but its dialog has never offered them.
-  The registry keeps that as it was (`import_listed: false`); listing them is a one-line change if
-  wanted.
+- **Commands grouped by kind of geometry** (`docs/specs/command-groups.md`, approved by the owner
+  today, #429). The code is filed as `nurbs/{curves,surfaces,solids,points}`, `mesh`, `subd`,
+  `edit`, `organise`, `annotate`, `layouts`, `analyze`, `select`, `view`, `files`, each listing its
+  own commands and its tab's buttons (#430, closes #422; completions keep their order through
+  `commands/order.rs`). The top bar now shows **NURBS** (Curves, Surfaces, Solids), **Mesh**, then
+  **Edit**, **Organise**, **Annotate**, **Layouts**, Analyze and Select; Modify is gone. SubD has a
+  folder and a tab that stays hidden until it has commands (there are none yet).
+- **SketchUp files in Import's dialog** (#427, the owner's choice), and **SketchUp Live Components**
+  added to the smart-object references in `docs/architecture.md` (#428, the owner's note).
 - **Size check at work:** it stopped `Export` and the app's start-up function from growing. `Export`
   was split, and `Open` shrank, so both left the exceptions list. #422 opened: `commands/mod.rs` is
   at exactly 800 lines, so its registrations should be split by tab (the mesh stream's warning).
