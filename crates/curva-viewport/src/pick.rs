@@ -265,7 +265,8 @@ impl Outlines {
     }
 
     /// Whether the object `id` can be picked: not on a locked layer, and of a kind the
-    /// selection filter lets through.
+    /// selection filter lets through. An object drawn by its faces alone, such as a smooth SubD
+    /// without creases, is judged by its faces (#324).
     pub(crate) fn can_pick(&self, id: u64) -> bool {
         self.objects.iter().enumerate().any(|(index, (other, _))| {
             *other == id
@@ -274,7 +275,10 @@ impl Outlines {
                     .kinds
                     .get(index)
                     .is_none_or(|kind| self.filter.allows(*kind))
-        })
+        }) || self
+            .faces
+            .iter()
+            .any(|faces| faces.id == id && !faces.locked && self.filter.allows(faces.kind))
     }
 
     /// The surfaces and solids a crossing box touches through their faces alone: those with a

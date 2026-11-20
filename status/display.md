@@ -11,6 +11,16 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 ## 20 November 2026
 
 **Done**
+- **SubDs show** (#324, spec `mesh-and-subd.md` Stage B, items 1 to 4). SubDs from `.3dm`
+  files and SubD tools were in the model but invisible. Now a SubD shades as its smooth
+  surface, as Rhino draws it, with its creases and open borders drawn on it and its outline
+  following the view; shown flat, its cage's own faces shade flat with all its edges; a click
+  on it picks it, as a solid when its cage is closed; and a print shows its lines. Each SubD is
+  subdivided as finely as about 50,000 quads allow (a cube's cage four times, a cage of a few
+  thousand faces twice), which takes about 60 ms for a cage of 384 faces. Still to do: in
+  wireframe a smooth SubD with no creases shows nothing, where Rhino draws the cage's edges on
+  the surface; the mesh stream is asked for those lines (`edge_curves`). Faces coloured one by
+  one show the layer colour for now.
 - **Snapping is under 1 ms a frame on the largest test scene** (#130). With a whole large
   scene in view, thousands of snap points were within reach of the cursor, and each was measured
   and sorted; now snapping searches outwards from the cursor and stops as soon as nothing nearer

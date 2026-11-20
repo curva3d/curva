@@ -35,6 +35,9 @@ pub(crate) struct Faces {
     /// For a mesh with vertex colours, the colour at each of `mesh`'s positions, shown instead
     /// of its layer's colour (#267).
     pub(crate) colours: Option<std::sync::Arc<Vec<[f32; 3]>>>,
+    /// What sort of object the faces belong to, for the selection filter, so an object drawn by
+    /// its faces alone, such as a smooth SubD without creases, can still be picked (#324).
+    pub(crate) kind: PickKind,
 }
 
 impl Faces {
@@ -495,8 +498,13 @@ impl Outlines {
                     kind = mesh_kind;
                     lines
                 }
-                // SubDs are drawn by the display stream's #324.
-                Shape::SubD(_) => continue,
+                // A SubD shades from its smooth surface, or its cage shown flat, and draws its
+                // creases and borders, or its cage's edges, as a body draws its edges (#324).
+                Shape::SubD(subd) => {
+                    let (lines, subd_kind) = outlines.subd_pieces(object.id, subd, look);
+                    kind = subd_kind;
+                    lines
+                }
                 Shape::Annotation(annotation) => {
                     if matches!(annotation, curva_document::annotation::Annotation::Dot(_)) {
                         kind = PickKind::Point;
@@ -504,7 +512,7 @@ impl Outlines {
                     outlines.annotation_lines(state, object, *key, annotation, look, cache)
                 }
             };
-            let on_faces = shape.body().is_some() || wires;
+            let on_faces = shape.body().is_some() || shape.subd().is_some() || wires;
             let seam = |edge: Option<usize>| wires || edge.is_some_and(|e| seam_edges.contains(&e));
             // Annotations' letters and marks keep only the points their shape needs.
             let look = Look {
@@ -514,6 +522,20 @@ impl Outlines {
             outlines.push_pieces(object.id, pieces, look, kind, &seam, on_faces);
         }
         outlines
+    }
+
+    /// A SubD's faces as [`crate::subds::drawing`] gives them, placed already, and its lines as
+    /// pieces, with its kind: a solid when its cage is closed (#324).
+    fn subd_pieces(&mut self, id: u64, subd: &curva_mesh::SubD, look: Look) -> (Pieces, PickKind) {
+        let kind = if subd.cage().is_closed() {
+            PickKind::Solid
+        } else {
+            PickKind::Surface
+        };
+        let (shown, lines) = crate::subds::drawing(subd);
+        let (drawn, _) = crate::meshes::body_mesh(&shown);
+        self.push_faces(id, look, std::sync::Arc::new(drawn), Some(IN_PLACE), kind);
+        (lines.into_iter().map(|line| (line, None)).collect(), kind)
     }
 
     /// A body's faces, as meshed once, and its edges as pieces, with its kind and its seams by
@@ -540,7 +562,7 @@ impl Outlines {
             .collect();
         let placement = body.placement();
         let edges = edge_curves(&mesh, &placement);
-        self.push_faces(id, look, mesh, Some(placement));
+        self.push_faces(id, look, mesh, Some(placement), kind);
         Some((edges, kind, seams))
     }
 
@@ -553,7 +575,7 @@ impl Outlines {
             PickKind::Surface
         };
         let (drawn, colours) = crate::meshes::body_mesh(mesh);
-        self.push_faces(id, look, std::sync::Arc::new(drawn), Some(IN_PLACE));
+        self.push_faces(id, look, std::sync::Arc::new(drawn), Some(IN_PLACE), kind);
         if let (Some(colours), Some(faces)) = (colours, self.faces.last_mut()) {
             faces.colours = Some(std::sync::Arc::new(colours));
         }
@@ -572,6 +594,7 @@ impl Outlines {
         look: Look,
         mesh: std::sync::Arc<curva_kernel::BodyMesh>,
         placement: Option<Placement>,
+        kind: PickKind,
     ) {
         let made = mesh_box(&mesh);
         self.faces.push(Faces {
@@ -582,6 +605,7 @@ impl Outlines {
             mesh,
             placement,
             colours: None,
+            kind,
         });
     }
 
@@ -600,7 +624,7 @@ impl Outlines {
         let annotation = &shown_annotation(annotation, state, object.space, &cache.fields);
         let drawing = curva_document::shape::annotation_drawing(annotation, state, object.space);
         if let Some(mesh) = cache.annotation_mesh(key, &drawing.fills) {
-            self.push_faces(object.id, look, mesh, None);
+            self.push_faces(object.id, look, mesh, None, PickKind::Curve);
         }
         drawing.lines.into_iter().map(|c| (c, None)).collect()
     }
