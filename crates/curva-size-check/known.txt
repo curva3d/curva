@@ -11,7 +11,6 @@ fn crates/curva-app/src/main.rs new 109
 fn crates/curva-app/src/main.rs run 119
 fn crates/curva-app/src/sheets.rs detail_mouse 102
 fn crates/curva-app/src/sheets.rs paint_details 104
-fn crates/curva-app/src/top_bar.rs file_label 105
 fn crates/curva-app/src/viewports.rs apply_view 105
 fn crates/curva-app/src/viewports.rs history_keys 99
 fn crates/curva-app/src/viewports.rs viewports 200

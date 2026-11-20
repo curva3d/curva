@@ -220,11 +220,8 @@ impl Curva {
         if room.width() < 24.0 {
             return;
         }
-        let path = self.doc.path().map(std::path::Path::to_path_buf);
-        let name = path.as_ref().and_then(|p| p.file_name()).map_or_else(
-            || self.text.render(&Message::new("ui.untitled")),
-            |file| file.to_string_lossy().into_owned(),
-        );
+        let untitled = self.text.render(&Message::new("ui.untitled"));
+        let (name, folder, full) = path_parts(self.doc.path(), untitled);
         let colours = theme::current();
         let name_font = egui::FontId::proportional(12.5);
         let folder_font = egui::FontId::proportional(11.0);
@@ -237,10 +234,6 @@ impl Curva {
             })
         };
         let name_width = width(&name, &name_font);
-        let folder = path
-            .as_ref()
-            .and_then(|p| p.parent())
-            .map(|f| format!("{}{}", f.to_string_lossy(), std::path::MAIN_SEPARATOR));
         let room_for_folder = (room.width() - name_width - 8.0).max(0.0);
         let shown = folder
             .as_ref()
@@ -254,21 +247,9 @@ impl Curva {
         let painter = ui.painter_at(room.expand(4.0));
         // The glow after copying, strongest at first and fading out.
         let now = ui.input(|i| i.time);
-        let glow = self
-            .bar
-            .copied_at
-            .map(|at| 1.0 - ((now - at) / COPIED_FOR).clamp(0.0, 1.0))
-            .filter(|left| *left > 0.0);
+        let glow = glow_left(self.bar.copied_at, now);
         if let Some(left) = glow {
-            let strength = (left * left) as f32;
-            let accent = theme::ACCENT;
-            painter.rect_filled(line, 6.0, accent.gamma_multiply(0.22 * strength));
-            painter.rect_stroke(
-                line,
-                6.0,
-                egui::Stroke::new(1.5, accent.gamma_multiply(strength)),
-                egui::StrokeKind::Outside,
-            );
+            paint_glow(&painter, line, left);
             ui.ctx().request_repaint();
         }
         painter.text(
@@ -292,26 +273,12 @@ impl Curva {
             egui::Id::NULL.with("top bar path"),
             egui::Sense::click(),
         );
-        let full = path
-            .as_ref()
-            .map_or_else(|| name.clone(), |p| p.to_string_lossy().into_owned());
         if response.clicked() || response.secondary_clicked() {
             ui.ctx().copy_text(full.clone());
             self.bar.copied_at = Some(now);
         }
         if glow.is_some() {
-            // The note, just under the line.
-            let note = self.text.render(&Message::new("ui.path_copied"));
-            egui::Area::new(egui::Id::NULL.with("path copied"))
-                .order(egui::Order::Tooltip)
-                .fixed_pos(egui::pos2(line.max.x - 4.0, line.max.y + 6.0))
-                .pivot(egui::Align2::RIGHT_TOP)
-                .interactable(false)
-                .show(ui.ctx(), |ui| {
-                    egui::Frame::popup(ui.style())
-                        .stroke(egui::Stroke::new(1.0, theme::ACCENT))
-                        .show(ui, |ui| ui.label(note));
-                });
+            copied_note(ui, line, self.text.render(&Message::new("ui.path_copied")));
         } else {
             response
                 .on_hover_cursor(egui::CursorIcon::PointingHand)
@@ -449,8 +416,83 @@ impl Curva {
     }
 }
 
+/// What the file label shows for a model saved at `path`, or an untitled one: its name, its
+/// folder with a trailing separator (none when untitled), and the full path that a click copies.
+fn path_parts(
+    path: Option<&std::path::Path>,
+    untitled: String,
+) -> (String, Option<String>, String) {
+    let name = path
+        .and_then(|p| p.file_name())
+        .map_or(untitled, |file| file.to_string_lossy().into_owned());
+    let folder = path
+        .and_then(|p| p.parent())
+        .map(|f| format!("{}{}", f.to_string_lossy(), std::path::MAIN_SEPARATOR));
+    let full = path.map_or_else(|| name.clone(), |p| p.to_string_lossy().into_owned());
+    (name, folder, full)
+}
+
+/// How much of the glow after copying is left at `now`: 1 just after, fading to nothing over
+/// [`COPIED_FOR`] seconds; `None` once it has gone or before anything was copied.
+fn glow_left(copied_at: Option<f64>, now: f64) -> Option<f64> {
+    copied_at
+        .map(|at| 1.0 - ((now - at) / COPIED_FOR).clamp(0.0, 1.0))
+        .filter(|left| *left > 0.0)
+}
+
+/// The glow round the path line after copying, strongest at first.
+fn paint_glow(painter: &egui::Painter, line: egui::Rect, left: f64) {
+    #[allow(clippy::cast_possible_truncation)]
+    let strength = (left * left) as f32;
+    let accent = theme::ACCENT;
+    painter.rect_filled(line, 6.0, accent.gamma_multiply(0.22 * strength));
+    painter.rect_stroke(
+        line,
+        6.0,
+        egui::Stroke::new(1.5, accent.gamma_multiply(strength)),
+        egui::StrokeKind::Outside,
+    );
+}
+
+/// The note that the path was copied, just under the line.
+fn copied_note(ui: &egui::Ui, line: egui::Rect, note: String) {
+    egui::Area::new(egui::Id::NULL.with("path copied"))
+        .order(egui::Order::Tooltip)
+        .fixed_pos(egui::pos2(line.max.x - 4.0, line.max.y + 6.0))
+        .pivot(egui::Align2::RIGHT_TOP)
+        .interactable(false)
+        .show(ui.ctx(), |ui| {
+            egui::Frame::popup(ui.style())
+                .stroke(egui::Stroke::new(1.0, theme::ACCENT))
+                .show(ui, |ui| ui.label(note));
+        });
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_file_label_shows_name_folder_and_copies_the_full_path() {
+        let path = std::path::Path::new("models").join("tower.curva");
+        let (name, folder, full) = super::path_parts(Some(&path), "Untitled".to_owned());
+        assert_eq!(name, "tower.curva");
+        assert_eq!(folder, Some(format!("models{}", std::path::MAIN_SEPARATOR)));
+        assert_eq!(full, path.to_string_lossy());
+        let untitled = super::path_parts(None, "Untitled".to_owned());
+        assert_eq!(
+            untitled,
+            ("Untitled".to_owned(), None, "Untitled".to_owned())
+        );
+    }
+
+    #[test]
+    fn the_copy_glow_fades_out_and_then_is_gone() {
+        assert_eq!(super::glow_left(None, 5.0), None);
+        assert_eq!(super::glow_left(Some(5.0), 5.0), Some(1.0));
+        let halfway = super::glow_left(Some(5.0), 5.0 + super::COPIED_FOR / 2.0).unwrap();
+        assert!((halfway - 0.5).abs() < 1e-9);
+        assert_eq!(super::glow_left(Some(5.0), 5.0 + super::COPIED_FOR + 0.01), None);
+    }
+
     #[test]
     fn a_long_path_is_shortened_in_the_middle_keeping_the_file_name() {
         let fits = |limit: usize| move |text: &str| text.chars().count() <= limit;
