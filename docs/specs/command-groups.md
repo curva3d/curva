@@ -1,7 +1,8 @@
 # Spec: commands grouped by kind of geometry (NURBS, Mesh, SubD)
 
-**Status:** Draft, for the owner's approval in chat. The owner asked on 20 November 2026 for the
-commands to be organised by NURBS, mesh, SubD and so on, in the code **and in the menus**.
+**Status:** Approved by the owner on 20 November 2026, with both recommendations in section 6
+(one Edit tab; Annotate and Layouts tabs now). The owner asked that day for the commands to be
+organised by NURBS, mesh, SubD and so on, in the code **and in the menus**.
 **Covers:** the command tabs in the top bar (Freeform specialization) and the folders the commands
 live in (`crates/curva-commands/src/commands/`). Every command keeps its name, aliases, options
 and behaviour; typing a command works exactly as before. Issue #422 (the command list at the size
@@ -72,7 +73,7 @@ Each step is its own pull request.
 New commands. The Architecture, Publisher and Analysis specializations' tabs, which will follow
 the same pattern when they get commands. Menus that drop down from the tabs, or customising them.
 
-## 6. Choices for the owner
+## 6. The owner's choices (both recommendations approved)
 
 - **One "Edit" tab for cutting, joining and transforming** (recommended), or Rhino's split into a
   *Transform* tab and leaving Trim, Split, Join and Explode in Curves and Surfaces.
