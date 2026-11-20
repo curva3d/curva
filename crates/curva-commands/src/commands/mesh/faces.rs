@@ -11,6 +11,12 @@ use curva_document::{MeshPart, Shape};
 use curva_mesh::Mesh;
 use std::collections::BTreeMap;
 
+/// QuadrangulateMesh's defaults, measured in Rhino 8: triangles leaning less than 5° apart join,
+/// into quads whose longer diagonal is at most twice the shorter. ReduceMesh joins its triangles
+/// back into quads with them.
+const PLANARITY: f64 = 5.0;
+const RECTANGULARITY: f64 = 2.0;
+
 /// How many triangles a mesh counts as, as Rhino counts polygons for ReduceMesh: a quad is two.
 fn triangle_count(mesh: &Mesh) -> usize {
     mesh.faces().map(|f| f.len().saturating_sub(2)).sum()
@@ -29,13 +35,13 @@ impl Recipe for ReduceMesh {
     fn steps(&self, _cx: &Context<'_>) -> Vec<StepDef> {
         vec![
             StepDef::objects("prompt.reducemesh.objects"),
-            StepDef::number("prompt.reducemesh.percent").remembered("Percent", 50.0),
+            StepDef::number("prompt.reducemesh.percent").remembered("ReductionPercentage", 50.0),
         ]
     }
 
     fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
         let percent = number(cx, 1)
-            .or_else(|| cx.doc.remembered("reducemesh.percent"))
+            .or_else(|| cx.doc.remembered("reducemesh.reductionpercentage"))
             .unwrap_or(50.0)
             .clamp(0.0, 100.0);
         let count = cx.number("PolygonCount") as usize;
@@ -47,8 +53,12 @@ impl Recipe for ReduceMesh {
                 } else {
                     (triangle_count(mesh) as f64 * (1.0 - percent / 100.0)).round() as usize
                 };
+                // As Rhino 8 does (measured): reduced to the target in triangles, then pairs
+                // joined back into quads with QuadrangulateMesh's defaults.
                 let (reduced, _) = mesh.reduced(target);
-                let removed = triangle_count(mesh).saturating_sub(reduced.face_count());
+                let (reduced, _) =
+                    reduced.quadrangulated(PLANARITY.to_radians(), 1.0 / RECTANGULARITY);
+                let removed = triangle_count(mesh).saturating_sub(triangle_count(&reduced));
                 (reduced, removed)
             },
             "done.reducemesh",
@@ -74,16 +84,15 @@ impl Recipe for TriangulateMesh {
 
 /// `QuadrangulateMesh`: pairs of triangles joined into quads, in place. `Planarity` is the most
 /// the two triangles may lean apart, in degrees; `Rectangularity` the most the quad's longer
-/// diagonal may be over its shorter one (1 or more). The defaults are RhinoCommon's suggested
-/// 2° and a diagonal ratio of 0.875.
+/// diagonal may be over its shorter one (1 or more). The defaults are Rhino 8's, measured.
 #[derive(Default)]
 pub struct QuadrangulateMesh;
 
 impl Recipe for QuadrangulateMesh {
     const NAME: &'static str = "quadrangulatemesh";
     const OPTIONS: &'static [OptionDef] = &[
-        OptionDef::number("Planarity", 2.0),
-        OptionDef::number("Rectangularity", 1.0 / 0.875),
+        OptionDef::number("Planarity", PLANARITY),
+        OptionDef::number("Rectangularity", RECTANGULARITY),
     ];
 
     fn steps(&self, _cx: &Context<'_>) -> Vec<StepDef> {
@@ -230,6 +239,77 @@ mod tests {
         doc.remember("reducemesh.polygoncount", 100.0);
         run(&mut doc, &["selall", "reducemesh", ""]);
         assert!(mesh(&doc, 0).face_count() <= 100);
+    }
+
+    /// A radius-5 UV sphere of 40 × 40 faces: 1,520 quads and 80 triangles, 3,120 triangles as
+    /// Rhino counts them, as Rhino 8's `Mesh.CreateFromSphere(sphere, 40, 40)` makes it.
+    fn sphere_40() -> Mesh {
+        use curva_mesh::SphereStyle;
+        let style = SphereStyle::Uv {
+            vertical: 40,
+            around: 40,
+        };
+        Mesh::mesh_sphere(&Frame::world(), 5.0, style)
+    }
+
+    #[test]
+    fn reduce_mesh_reaches_rhinos_counts_and_joins_quads_back() {
+        // Measured in Rhino 8 with `-ReduceMesh ReductionPercentage=…`: the sphere's 3,120
+        // triangles go to exactly 1,560 at 50 % (443 quads and 674 triangles) and 312 at 90 %;
+        // the box's 192 go to 96 (19 quads and 58 triangles). All stay closed.
+        for (start, percent, left) in [
+            (sphere_40(), "50", 1560),
+            (sphere_40(), "90", 312),
+            (grid_box(), "50", 96),
+        ] {
+            assert_eq!(
+                super::triangle_count(&start),
+                if left == 96 { 192 } else { 3120 }
+            );
+            let mut doc = doc_with(start);
+            run(&mut doc, &["selall", "reducemesh", percent]);
+            let reduced = mesh(&doc, 0);
+            assert_eq!(super::triangle_count(reduced), left, "{percent} %");
+            assert!(reduced.is_closed());
+            assert!(reduced.faces().any(|f| f.len() == 4), "quads joined back");
+        }
+    }
+
+    /// Two triangles over the unit square, sharing the diagonal from corner 0 to corner 2.
+    fn pair(points: [[f64; 3]; 4]) -> Document {
+        doc_with(Mesh::new(points.to_vec(), &[vec![0, 1, 2], vec![0, 2, 3]]).unwrap())
+    }
+
+    #[test]
+    fn quadrangulate_mesh_joins_as_rhinos_defaults_do() {
+        // Measured in Rhino 8: lifting the fourth corner by 0.061 (faces 4.93° apart) still
+        // joins, by 0.062 (5.01°) does not; a rhombus whose diagonals are 2 : 1 joins, one at
+        // 2.04 : 1 does not.
+        let joined = |points| {
+            let mut doc = pair(points);
+            run(&mut doc, &["selall", "quadrangulatemesh"]);
+            mesh(&doc, 0).face_count() == 1
+        };
+        let fold = |z: f64| {
+            [
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, z],
+            ]
+        };
+        assert!(joined(fold(0.061)));
+        assert!(!joined(fold(0.062)));
+        let rhombus = |r: f64| {
+            [
+                [-1.0, 0.0, 0.0],
+                [0.0, -r, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, r, 0.0],
+            ]
+        };
+        assert!(joined(rhombus(0.5)));
+        assert!(!joined(rhombus(0.49)));
     }
 
     #[test]

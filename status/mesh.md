@@ -11,6 +11,17 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 20 November 2026
 
+**#274's commands measured in Rhino 8 (owner: Rhino is the minimum standard).** Rhino's script
+connection had hung because an earlier `-Mesh` call was waiting for input. A freshly spawned Rhino
+works. The measurements changed Curva:
+- QuadrangulateMesh's defaults are 5° and 2 (were 2° and 1.143 from the help pages).
+- ReduceMesh joins its triangles back into quads afterwards, as Rhino does, and reaches Rhino's
+  counts exactly (a 40 × 40 sphere: 1,560 at 50 %, 312 at 90 %).
+- MeshToNURB makes triangles trimmed flat surfaces, as Rhino does with `TrimTriangularFaces` on.
+
+ExtractMeshFaces already matched. The tests now hold Rhino's numbers. Rhino's `-ReduceMesh` starts
+at 0 % (Enter does nothing); Curva starts at 50 %.
+
 **ReduceMesh, TriangulateMesh, QuadrangulateMesh, ExtractMeshFaces and MeshToNURB (#274):**
 commands now, with icons and reference rows. Their options come from Rhino 8's help pages; the
 Rhino connection would not return script output this session, so nothing was measured.
