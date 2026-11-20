@@ -33,6 +33,8 @@ pub(crate) struct Drawing {
     /// The lines drawn only where faces do not show, as Rhino draws a smooth SubD in wireframe:
     /// its other cage edges on the smooth surface. None shown flat.
     pub(crate) wires: Vec<Curve>,
+    /// Whether `shown` is the cage itself, face for face, so its triangles name cage faces.
+    pub(crate) flat: bool,
 }
 
 /// What a SubD draws as: shown smooth, the smooth surface with its creases and open borders on
@@ -61,6 +63,7 @@ pub(crate) fn drawing(subd: &SubD) -> Drawing {
                 shown,
                 lines: polylines(creases),
                 wires: polylines(wires),
+                flat: false,
             };
         }
     }
@@ -68,6 +71,7 @@ pub(crate) fn drawing(subd: &SubD) -> Drawing {
         shown: flat(subd.cage()),
         lines: crate::meshes::wires(subd.cage()),
         wires: Vec::new(),
+        flat: true,
     }
 }
 
@@ -122,6 +126,25 @@ fn flat(cage: &Mesh) -> Mesh {
     cage.clone()
         .with_normals(Attribute::PerCorner(normals))
         .unwrap_or_else(|_| cage.clone())
+}
+
+/// The colour at each corner of `drawn`, the triangles of a SubD's [`Drawing`], from the SubD's
+/// face colours, a face without one showing `fallback`, as Rhino shows it; `None` when the SubD
+/// has no face colours or is not drawn by its cage's own faces.
+pub(crate) fn face_colours(
+    subd: &SubD,
+    drawing: &Drawing,
+    drawn: &curva_kernel::BodyMesh,
+    fallback: [f32; 3],
+) -> Option<Vec<[f32; 3]>> {
+    let colours = subd.face_colours().filter(|_| drawing.flat)?;
+    Some(
+        drawn
+            .triangle_faces
+            .iter()
+            .flat_map(|&face| [colours.get(face).copied().flatten().unwrap_or(fallback); 3])
+            .collect(),
+    )
 }
 
 /// A polygon's normal of length 1 by Newell's method, which allows for corners slightly off one
@@ -200,6 +223,7 @@ mod tests {
             shown,
             lines,
             wires,
+            ..
         } = drawing(&flat_cube);
         assert!(wires.is_empty());
         assert_eq!(shown.vertices(), flat_cube.cage().vertices());
@@ -211,6 +235,38 @@ mod tests {
             let zeros = n.iter().filter(|c| c.abs() < 1e-9).count();
             ones == 1 && zeros == 2
         }));
+    }
+
+    /// Shown flat, a SubD's coloured faces show their colours and the rest its own colour, as in
+    /// Rhino; shown smooth, colours wait for the smooth surface to carry them.
+    #[test]
+    fn a_flat_subd_shows_its_face_colours() {
+        const RED: [f32; 3] = [1.0, 0.0, 0.0];
+        const OWN: [f32; 3] = [0.2, 0.4, 0.6];
+        let mut given = vec![None; 6];
+        given[0] = Some(RED);
+        let coloured = cube().with_face_colours(given).unwrap();
+        let flat = coloured.clone().with_display(SubDDisplay::Flat);
+        let shown = drawing(&flat);
+        let (drawn, _) = crate::meshes::body_mesh(&shown.shown);
+        let colours = face_colours(&flat, &shown, &drawn, OWN).unwrap();
+        assert_eq!(colours.len(), drawn.positions.len());
+        for (triangle, &face) in drawn.triangle_faces.iter().enumerate() {
+            let expected = if face == 0 { RED } else { OWN };
+            assert!(
+                colours[triangle * 3..triangle * 3 + 3]
+                    .iter()
+                    .all(|c| *c == expected)
+            );
+        }
+        assert!(colours.contains(&RED) && colours.contains(&OWN));
+        let smooth = drawing(&coloured);
+        let (drawn, _) = crate::meshes::body_mesh(&smooth.shown);
+        assert_eq!(face_colours(&coloured, &smooth, &drawn, OWN), None);
+        let plain = cube().with_display(SubDDisplay::Flat);
+        let shown = drawing(&plain);
+        let (drawn, _) = crate::meshes::body_mesh(&shown.shown);
+        assert_eq!(face_colours(&plain, &shown, &drawn, OWN), None);
     }
 
     /// Each straight segment of `lines`, its ends as exact bits, the lower end first.
