@@ -11,7 +11,7 @@ use curva_document::{Document, Shape};
 use curva_mesh::{Mesh, MeshCheck};
 
 /// The meshes among the objects chosen at the first step, with their ids.
-fn meshes<'a>(cx: &'a Context<'_>) -> Vec<(u64, &'a Mesh)> {
+pub(super) fn meshes<'a>(cx: &'a Context<'_>) -> Vec<(u64, &'a Mesh)> {
     let ids = objects(cx, 0);
     cx.doc
         .state()
@@ -104,7 +104,7 @@ impl Recipe for Check {
 
 /// The chosen meshes changed by `fix`, which returns the new mesh and how many things it changed;
 /// the done message counts them.
-fn repaired(
+pub(super) fn repaired(
     cx: &Context<'_>,
     fix: impl Fn(&Mesh) -> (Mesh, usize),
     done: &'static str,

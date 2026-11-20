@@ -11,6 +11,14 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 20 November 2026
 
+**ReduceMesh, TriangulateMesh, QuadrangulateMesh, ExtractMeshFaces and MeshToNURB (#274):**
+commands now, with icons and reference rows. Their options come from Rhino 8's help pages; the
+Rhino connection would not return script output this session, so nothing was measured.
+`ReduceMesh` takes away a percentage (Enter keeps the last) or reduces to `PolygonCount`, with a
+preview; Rhino's "Planar only", locked points and its quadrangulating again afterwards are not
+there yet. `ExtractMeshFaces` is the first command on the mesh-parts step. `MeshToNURB`'s
+`TrimTriangularFaces` and `UseNgons` are not there yet. No mesh-stream tidy-up issue was open.
+
 **Check and MeshRepair (#273):** `Check` reports on meshes as Rhino 8 counts (or "This is a good
 mesh."); other kinds of object are counted and left for the features stream. `MeshRepair` makes
 the main fixes in one go, each a remembered option; `UnifyMeshNormals`, `FillMeshHoles`,
