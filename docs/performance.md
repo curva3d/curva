@@ -547,3 +547,8 @@ Unchanged blocks now keep what they drew while the block definitions and what th
 annotations (unit, layouts, hatch patterns, annotation styles) are the same; a block holding text
 with fields or a dimension is still drawn again each time. Working out that drawing again after an
 edit elsewhere: 1.5 s before, 0.33 s after.
+
+Dimensions and hatches now keep what they drew too, while those same settings and the length
+display are the same; only text with fields, scale bars and tables, which read other things, are
+drawn again after every edit. Working out that drawing again after an edit elsewhere: 0.43 s
+before, 0.043 s after (20 November 2026).

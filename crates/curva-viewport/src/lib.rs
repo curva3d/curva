@@ -651,4 +651,46 @@ mod tests {
         let without = scene_shapes_without(&parts.shapes, &parts.objects, &parts.objects[..1]);
         assert_eq!(without.len(), 1, "a hidden instance leaves one copy");
     }
+
+    /// After an edit elsewhere, a dimension keeps what it drew last time; when the model's unit
+    /// or length display changes, it is drawn again with the value it shows.
+    #[test]
+    fn an_unchanged_dimension_is_not_drawn_again_until_its_settings_change() {
+        use curva_document::annotation::{Annotation, Dimension, DimensionKind};
+        let mut doc = Document::default();
+        let dimension = doc.add_annotation(Annotation::Dimension(Dimension {
+            kind: DimensionKind::Horizontal,
+            first: [0.0; 3],
+            second: [100.0, 0.0, 0.0],
+            line: [50.0, 20.0, 0.0],
+            x: [1.0, 0.0, 0.0],
+            y: [0.0, 1.0, 0.0],
+            style: doc.current_annotation_style(),
+            text: None,
+        }));
+        let mut cache = MeshCache::default();
+        let points_of = |outlines: &Outlines| {
+            let (_, points) = outlines
+                .objects
+                .iter()
+                .find(|(id, _)| *id == dimension)
+                .unwrap();
+            std::sync::Arc::clone(points)
+        };
+        let first = points_of(&Outlines::of_cached(doc.state(), &mut cache));
+        let line = doc.add(Curve::line([0.0, 50.0, 0.0], [1.0, 50.0, 0.0]).unwrap());
+        let second = points_of(&Outlines::of_cached(doc.state(), &mut cache));
+        assert!(std::sync::Arc::ptr_eq(&first, &second));
+        // Its value as drawn follows the unit and the length display.
+        doc.set_unit(curva_document::Unit::Metres, false);
+        drawn_alike(&doc, &mut cache);
+        assert!(!std::sync::Arc::ptr_eq(
+            &second,
+            &points_of(&Outlines::of_cached(doc.state(), &mut cache))
+        ));
+        doc.set_length_display(curva_document::units::LengthDisplay::default());
+        drawn_alike(&doc, &mut cache);
+        doc.translate(&[line], [0.0, 1.0, 0.0]);
+        drawn_alike(&doc, &mut cache);
+    }
 }
