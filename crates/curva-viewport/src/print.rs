@@ -161,7 +161,7 @@ fn shape_lines(shape: &Shape) -> Vec<Vec<Point>> {
         }
         // A SubD prints the lines it draws: its creases and borders, or shown flat its cage's
         // edges (#324).
-        Shape::SubD(subd) => sampled(crate::subds::drawing(subd).1),
+        Shape::SubD(subd) => sampled(crate::subds::drawing(subd).lines),
         Shape::Instance(_) | Shape::Annotation(_) => Vec::new(),
     }
 }
