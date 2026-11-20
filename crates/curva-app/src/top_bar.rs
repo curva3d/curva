@@ -46,12 +46,13 @@ pub(crate) fn shortened_path(path: &str, fits: impl Fn(&str) -> bool) -> String 
 
 /// The command tabs at the top, each with its buttons, from the command folders (spec
 /// `docs/specs/command-groups.md` §2): the NURBS tabs, Mesh, then the tabs every kind of
-/// geometry shares. SubD joins after Mesh once its folder has buttons (`tabs::SUBD`).
-pub(crate) const COMMAND_TABS: [(&str, &[&str]); 10] = [
+/// geometry shares.
+pub(crate) const COMMAND_TABS: [(&str, &[&str]); 11] = [
     ("ui.tab.curves", tabs::CURVES),
     ("ui.tab.surfaces", tabs::SURFACES),
     ("ui.tab.solids", tabs::SOLIDS),
     ("ui.tab.mesh", tabs::MESH),
+    ("ui.tab.subd", tabs::SUBD),
     ("ui.tab.edit", tabs::EDIT),
     ("ui.tab.organise", tabs::ORGANISE),
     ("ui.tab.annotate", tabs::ANNOTATE),
@@ -91,13 +92,13 @@ impl Curva {
         }
         ui.horizontal(|ui| {
             for (index, (key, _)) in COMMAND_TABS.iter().enumerate() {
-                // The NURBS tabs under a small label, and a divider after them and after Mesh,
-                // before the tabs every kind of geometry shares.
+                // The NURBS tabs under a small label, a divider after them, and one after Mesh and
+                // SubD, before the tabs every kind of geometry shares.
                 if index == 0 {
                     let group = self.text.render(&Message::new("ui.tab_group.nurbs"));
                     ui.label(egui::RichText::new(group).small().weak());
                 }
-                if index == NURBS_TABS || index == NURBS_TABS + 1 {
+                if index == NURBS_TABS || index == NURBS_TABS + 2 {
                     ui.separator();
                 }
                 let label = self.text.render(&Message::new(key));
