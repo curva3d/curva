@@ -7,6 +7,7 @@ pub(crate) mod glow;
 pub(crate) mod layer_table;
 pub(crate) mod layers;
 pub(crate) mod layouts;
+pub(crate) mod mesh;
 pub(crate) mod notes;
 pub(crate) mod print;
 pub(crate) mod properties;
