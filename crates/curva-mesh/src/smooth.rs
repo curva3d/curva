@@ -300,6 +300,22 @@ impl SubD {
         Ok(facing(mesh))
     }
 
+    /// Every cage edge as it lies on the smooth surface, `levels` subdivisions fine, as runs of
+    /// points joined end to end between cage points where other than two edges meet (a closed
+    /// loop repeats its first point): how Rhino draws a smooth SubD in wireframe. Creases and
+    /// borders are among them.
+    ///
+    /// # Errors
+    /// When the library refuses the cage.
+    pub fn edge_curves(&self, levels: u8) -> Result<Vec<Vec<Point>>, SmoothError> {
+        let (result, centre, refined) = self.refine(levels)?;
+        let on_surface = on_surface(&result, centre, &refined)?;
+        Ok(chains(&cage_edge_lines(&result))
+            .into_iter()
+            .map(|run| run.iter().map(|&v| on_surface[v as usize]).collect())
+            .collect())
+    }
+
     /// The creases and open borders on the smooth surface, `levels` subdivisions fine, each as a
     /// run of points (a closed one repeats its first point at the end): the lines the viewport
     /// draws on a smooth SubD.
@@ -308,15 +324,7 @@ impl SubD {
     /// When the library refuses the cage.
     pub fn crease_curves(&self, levels: u8) -> Result<Vec<Vec<Point>>, SmoothError> {
         let (result, centre, refined) = self.refine(levels)?;
-        let limit = result
-            .limit_stencils()
-            .map_err(|e| SmoothError(e.to_string()))?;
-        let on_surface: Vec<Point> = limit
-            .position
-            .interpolate(&refined)
-            .iter()
-            .map(|p| std::array::from_fn(|i| p[i] + centre[i]))
-            .collect();
+        let on_surface = on_surface(&result, centre, &refined)?;
         let topology = &result.topology;
         // How many refined faces use each refined edge, to find the open border.
         let mut uses: std::collections::HashMap<(u32, u32), u32> = std::collections::HashMap::new();
@@ -345,6 +353,49 @@ impl SubD {
             .map(|run| run.iter().map(|&v| on_surface[v as usize]).collect())
             .collect())
     }
+}
+
+/// The refined points moved onto the limit surface, in world coordinates.
+fn on_surface(
+    result: &subdiv_kernels::RefinementResult,
+    centre: Point,
+    refined: &[Point],
+) -> Result<Vec<Point>, SmoothError> {
+    let limit = result
+        .limit_stencils()
+        .map_err(|e| SmoothError(e.to_string()))?;
+    Ok(limit
+        .position
+        .interpolate(refined)
+        .iter()
+        .map(|p| std::array::from_fn(|i| p[i] + centre[i]))
+        .collect())
+}
+
+/// The refined edges lying along cage edges: those between faces that come from different cage
+/// faces, and those on the open border (one face). Every other refined edge lies inside one cage
+/// face.
+fn cage_edge_lines(result: &subdiv_kernels::RefinementResult) -> Vec<[u32; 2]> {
+    let topology = &result.topology;
+    let mut roots: std::collections::BTreeMap<(u32, u32), Vec<u32>> =
+        std::collections::BTreeMap::new();
+    let mut at = 0;
+    for (face, &n) in topology.face_vertex_counts.iter().enumerate() {
+        let corners = &topology.face_vertex_indices[at..at + n as usize];
+        for k in 0..corners.len() {
+            let (a, b) = (corners[k], corners[(k + 1) % corners.len()]);
+            roots
+                .entry((a.min(b), a.max(b)))
+                .or_default()
+                .push(result.face_root[face]);
+        }
+        at += n as usize;
+    }
+    roots
+        .into_iter()
+        .filter(|(_, faces)| faces.len() == 1 || faces.iter().any(|&f| f != faces[0]))
+        .map(|((a, b), _)| [a, b])
+        .collect()
 }
 
 /// Edges joined end to end into runs: each run goes from a point where the lines do not simply

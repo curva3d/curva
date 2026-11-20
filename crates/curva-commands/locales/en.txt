@@ -1160,3 +1160,6 @@ ui.mesh.max_angle = Most a facet may turn
 ui.mesh.max_distance = Farthest a facet may stand off the surface
 ui.mesh.ok = OK
 ui.mesh.cancel = Cancel
+prompt.quadremesh.objects = Select meshes, SubDs, surfaces or polysurfaces to remesh into quads, then press Enter
+error.quadremesh_nothing = There are no meshes, SubDs, surfaces or polysurfaces among the objects chosen.
+done.quadremesh = Remeshed {0} objects into quads.

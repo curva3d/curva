@@ -9,6 +9,15 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## 20 November 2026 (later still)
+
+**`SubD::edge_curves` (asked by display for #324):** every cage edge as it lies on the smooth
+surface, joined into runs between cage points where other than two edges meet. Rhino draws a
+smooth SubD's wireframe this way; `crease_curves` gave only creases and borders, so a smooth
+closed SubD had nothing to draw. Found on the way: subdiv-kernels 0.1.0's own `edge_polylines`
+option loses points (runs of 6 and 3 where 9 are right at three levels), so Curva tells the edges
+apart by which cage face each refined face comes from.
+
 ## 20 November 2026 (later)
 
 **The mesh panel (export-formats spec §2, on features' #387 step):** `panels/mesh.rs` opens when
@@ -31,6 +40,13 @@ They leave what Rhino 8 leaves, measured on the same boxes:
 
 Where Curva differs on purpose: Rhino cuts with an open mesh and leaves an open result, and its
 Split leaves open parts; Curva refuses open meshes and its parts are closed.
+
+**QuadRemesh (#329):** a command now, with an icon and a reference row, on the quadrs library of
+part 1. Measured in Rhino 8: `-QuadRemesh` takes no options on the command line (it uses the
+dialog's choices: 2,000 quads, adaptive size 50, hard edges kept); it keeps the input, makes a
+mesh, and meshes SubDs first. Curva does the same, with `TargetQuadCount`, `DetectHardEdges` and
+`ConvertToSubD`. On a 40 × 40 sphere Rhino makes 1,750 quads and Curva 1,990; Rhino's adaptive
+size, `TargetEdgeLength`, symmetry and guide curves are still to come.
 
 **SketchUp import options asked for (#432, features):** the owner wants Rhino's "SketchUp Import
 Options", above all faces brought in as joined trimmed planes. Rhino's own Trimmed planes import
