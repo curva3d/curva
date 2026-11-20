@@ -52,6 +52,22 @@ impl QuadRemeshOptions {
     }
 }
 
+/// How much longer than `TargetEdgeLength` Rhino 8's quads come out, measured on a 40 × 40
+/// sphere of radius 5: 1,064, 244 and 59 quads at 0.5, 1 and 2, sides 1.09 to 1.15 times as long.
+pub const RHINO_EDGE_RATIO: f64 = 1.12;
+
+/// A target edge length as the quad count that gives Rhino's quad size over `area`, since
+/// quadrs' own edge length makes quads about 0.85 times as long; a count is kept as it is.
+fn counted(target: QuadTarget, area: f64) -> QuadTarget {
+    match target {
+        QuadTarget::EdgeLength(l) if l > 0.0 && area > 0.0 => {
+            let side = RHINO_EDGE_RATIO * l;
+            QuadTarget::Count((area / (side * side)).round().max(1.0) as usize)
+        }
+        other => other,
+    }
+}
+
 /// Why QuadRemesh could not run. The text is for logs.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QuadRemeshError(pub String);
@@ -97,7 +113,7 @@ impl Mesh {
             settings.crease_angle = options.hard_edges.then_some(HARD_EDGE_ANGLE);
             quadrs::remesh(&input, &settings).map_err(|e| QuadRemeshError(format!("{e:?}")))
         };
-        let result = match options.target {
+        let result = match counted(options.target, self.area()) {
             QuadTarget::EdgeLength(l) => run(quadrs::RemeshTarget::EdgeLength(2.0 * l))?,
             QuadTarget::Count(n) => {
                 // CUSTOM MESH OPERATION: quad-remesh-count
