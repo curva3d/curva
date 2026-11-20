@@ -15,8 +15,9 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 surface, joined into runs between cage points where other than two edges meet. Rhino draws a
 smooth SubD's wireframe this way; `crease_curves` gave only creases and borders, so a smooth
 closed SubD had nothing to draw. Found on the way: subdiv-kernels 0.1.0's own `edge_polylines`
-option loses points (runs of 6 and 3 where 9 are right at three levels), so Curva finds the edges
-from which cage face each refined face comes from instead.
+option loses points (runs of 6 and 3 where 9 are right at three levels), so Curva tells the edges
+apart by which cage face each refined face comes from.
+
 ## 20 November 2026 (later)
 
 **MeshBooleanUnion, MeshBooleanDifference, MeshBooleanIntersection and MeshBooleanSplit (#272
