@@ -17,10 +17,10 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
   following the view; shown flat, its cage's own faces shade flat with all its edges; a click
   on it picks it, as a solid when its cage is closed; and a print shows its lines. Each SubD is
   subdivided as finely as about 50,000 quads allow (a cube's cage four times, a cage of a few
-  thousand faces twice), which takes about 60 ms for a cage of 384 faces. Still to do: in
-  wireframe a smooth SubD with no creases shows nothing, where Rhino draws the cage's edges on
-  the surface; the mesh stream is asked for those lines (`edge_curves`). Faces coloured one by
-  one show the layer colour for now.
+  thousand faces twice), which takes about 60 ms for a cage of 384 faces. In wireframe a
+  smooth SubD also draws its cage's edges on the surface, as Rhino does, using the mesh
+  stream's `edge_curves` (#438); views showing faces leave them out, and creases and borders
+  are drawn once, not twice. Still to do: faces coloured one by one show the layer colour.
 - **Snapping is under 1 ms a frame on the largest test scene** (#130). With a whole large
   scene in view, thousands of snap points were within reach of the cursor, and each was measured
   and sorted; now snapping searches outwards from the cursor and stops as soon as nothing nearer
