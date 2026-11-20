@@ -26,6 +26,7 @@ mod to_nurbs;
 mod to_subd;
 mod transform;
 mod triangulate;
+mod weld_angle;
 
 pub use check::MeshCheck;
 pub use curva_kernel::Point;
