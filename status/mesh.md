@@ -33,6 +33,12 @@ of Quads at 1 subdivision (24), a cylinder and a cone 8 around and 4 up (48 and 
 and a torus 10 by 6 (60). The test holds those counts. Measuring changed Rhino's saved options for
 these commands (a spawned Rhino saves the last values used when it closes); the owner was told.
 
+**QuadRemesh `Symmetry` (#329):** measured in Rhino 8, its `X` mirrors y, `Y` mirrors x and `Z` mirrors
+z, about the middle of the bounding box (not the world origin). Curva cuts the mesh along each
+plane, remeshes one part, puts its border exactly on the plane, mirrors it back and welds the
+seam, so the halves match exactly and the result stays closed (516 quads where Rhino makes 412 at
+500).
+
 **QuadRemesh `TargetEdgeLength` (#329):** measured in Rhino 8 on a 40 × 40 sphere of radius 5: 1,064,
 244 and 59 quads at 0.5, 1 and 2, so its quads come out about 1.12 times the length asked for.
 quadrs' own edge length made them about 0.85 times as long (434 quads at 1), so Curva now turns
@@ -47,6 +53,15 @@ option loses points (runs of 6 and 3 where 9 are right at three levels), so Curv
 apart by which cage face each refined face comes from.
 
 ## 20 November 2026 (later)
+
+**The mesh panel (export-formats spec §2, on features' #387 step):** `panels/mesh.rs` opens when
+`Mesh` or a mesh export asks for it. It has Rhino's presets (Coarse, Default, Smooth), the
+*Fewer polygons ↔ More polygons* slider, the SubD level when SubDs are meshed, and the faces, the
+farthest stray and the size in plain numbers under the slider. Advanced adds the most a facet may
+turn and stand off the surface. OK keeps the settings and answers the step; Cancel ends the command.
+Still to come: the rest of Rhino's detailed controls (they need fields in `MeshSettings`), the
+Preview button and live preview (#407, display), and meshing for the numbers in the background
+(it runs each time the settings change, which is slow on large models).
 
 **MeshBooleanUnion, MeshBooleanDifference, MeshBooleanIntersection and MeshBooleanSplit (#272
 part 2):** commands now, with icons and reference rows, on the manifold-rust booleans of part 1.

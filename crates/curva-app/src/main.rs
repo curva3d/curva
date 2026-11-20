@@ -384,6 +384,7 @@ impl eframe::App for Curva {
         self.serve_agents();
         self.approval_window(ui);
         self.recovery_window(ui);
+        self.mesh_panel(ui.ctx());
         self.sketchup_import_window(ui);
         self.unit_question(ui.ctx());
         self.close_question(ui.ctx());
