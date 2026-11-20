@@ -554,3 +554,33 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod flat_surface_tests {
+    use super::*;
+
+    /// #328: a flat bicubic surface, as ToNURBS makes from a flat part of a SubD, becomes a body
+    /// (it was refused with status 1007).
+    #[test]
+    fn a_flat_bicubic_surface_becomes_a_body() {
+        let knots = vec![0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
+        for tilt in [0.0, 0.5] {
+            let net: Vec<Vec<Point>> = (0..4)
+                .map(|i| {
+                    (0..4)
+                        .map(|j| [f64::from(i), f64::from(j), tilt * f64::from(i)])
+                        .collect()
+                })
+                .collect();
+            let body = NurbsSurface::new([3, 3], knots.clone(), knots.clone(), &net, None)
+                .and_then(|s| s.to_body())
+                .unwrap_or_else(|e| panic!("tilt {tilt}: {e}"));
+            assert_eq!(body.face_count().unwrap(), 1);
+            let side = (1.0 + tilt * tilt).sqrt() * 3.0;
+            assert!(
+                (body.area().unwrap() - 3.0 * side).abs() < 1e-6,
+                "tilt {tilt}"
+            );
+        }
+    }
+}
