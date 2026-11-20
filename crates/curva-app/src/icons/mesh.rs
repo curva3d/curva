@@ -202,6 +202,12 @@ fn subd_primitive(pen: &Pen<'_>, key: &str) -> bool {
             pen.ellipse((7.0, 9.0, 8.0, 4.0));
             &[(2.0, 5.0), (20.0, 5.0), (20.0, 17.0), (2.0, 17.0)]
         }
+        "subddisplaytoggle" => {
+            grid(pen, (2.0, 6.0), (10.0, 14.0), 1);
+            pen.path_in(&[(11.0, 10.0), (13.0, 10.0)], false, pen.accent());
+            pen.ellipse((14.0, 6.0, 7.0, 8.0));
+            &[]
+        }
         "tosubd" => {
             grid(pen, (2.0, 6.0), (10.0, 14.0), 2);
             pen.path_in(&[(11.0, 10.0), (13.0, 10.0)], false, pen.accent());
