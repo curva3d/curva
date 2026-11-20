@@ -34,6 +34,8 @@ pub struct StepDef {
     pub most: usize,
     /// For objects: whether objects chosen at an earlier step are left out.
     pub apart: bool,
+    /// A panel the interface shows for this step, such as the mesh settings (issue #387).
+    pub panel: Option<crate::Panel>,
 }
 
 /// Which sort of objects a step takes.
@@ -46,6 +48,8 @@ pub enum Only {
     Curves,
     /// Surfaces and solids.
     Bodies,
+    /// What can be meshed: surfaces, solids and SubDs.
+    Meshable,
 }
 
 impl StepDef {
@@ -64,6 +68,7 @@ impl StepDef {
             least: 1,
             most: usize::MAX,
             apart: false,
+            panel: None,
         }
     }
 
@@ -195,6 +200,20 @@ impl StepDef {
     #[must_use]
     pub fn apart(mut self) -> Self {
         self.apart = true;
+        self
+    }
+
+    /// Takes only what can be meshed: surfaces, solids and SubDs.
+    #[must_use]
+    pub fn meshable(mut self) -> Self {
+        self.only = Only::Meshable;
+        self
+    }
+
+    /// Shows `panel` in the interface while the step is asked; typing still answers it.
+    #[must_use]
+    pub fn panel(mut self, panel: crate::Panel) -> Self {
+        self.panel = Some(panel);
         self
     }
 

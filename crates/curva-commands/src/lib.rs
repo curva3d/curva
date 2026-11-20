@@ -89,6 +89,22 @@ pub struct Request {
     /// typing (spec `feedback-0.4.2.md` §1). Left out for scripts, agents and the dashed
     /// commands, such as `-Open`, which ask on the command line.
     pub file: Option<FileDialog>,
+    /// For a step the interface answers with one of its panels, such as the mesh settings
+    /// (issue #387). Left out, as `file` is, for scripts, agents and the dashed commands, which
+    /// answer on the command line.
+    pub panel: Option<Panel>,
+    /// Whether the step exists only for its panel: without the panel it is answered with Enter
+    /// at once, so scripts never see it.
+    pub panel_only: bool,
+}
+
+/// A panel of the interface a step can open.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Panel {
+    /// The mesh settings (spec `docs/specs/export-formats.md` §2), shared by `Mesh` and every
+    /// export that meshes. OK keeps the settings with `curva_document::meshing::remember_settings`
+    /// and answers the step with Enter; Cancel ends the command.
+    MeshSettings,
 }
 
 /// A kind of file, as a file dialog lists it: the key of its name in `locales/en.txt`, and its
@@ -151,6 +167,20 @@ impl Request {
             corner: false,
             option_labels: Vec::new(),
             file: None,
+            panel: None,
+            panel_only: false,
+        }
+    }
+
+    /// A step that exists only to show `panel`: Enter answers it, and without the panel (in
+    /// scripts, for agents and in the dashed commands) it is answered at once.
+    #[must_use]
+    pub fn panel_step(key: &'static str, panel: Panel) -> Self {
+        Self {
+            allow_empty: true,
+            panel: Some(panel),
+            panel_only: true,
+            ..Self::new(key, Kind::Choice)
         }
     }
 

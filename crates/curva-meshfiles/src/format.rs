@@ -43,6 +43,7 @@ pub fn stl() -> Format {
         open: Some(|path, shown| open(path, shown, MeshFormat::Stl)),
         import: Some(|doc, path, shown| import(doc, path, shown, MeshFormat::Stl)),
         export: Some(|doc, only, path, shown| export(doc, only, path, shown, MeshFormat::Stl)),
+        meshes: true,
         ..Format::new("files.stl", &["stl"])
     }
 }
@@ -54,6 +55,7 @@ pub fn obj() -> Format {
         open: Some(|path, shown| open(path, shown, MeshFormat::Obj)),
         import: Some(|doc, path, shown| import(doc, path, shown, MeshFormat::Obj)),
         export: Some(|doc, only, path, shown| export(doc, only, path, shown, MeshFormat::Obj)),
+        meshes: true,
         ..Format::new("files.obj", &["obj"])
     }
 }
@@ -65,6 +67,7 @@ pub fn ply() -> Format {
         open: Some(|path, shown| open(path, shown, MeshFormat::Ply)),
         import: Some(|doc, path, shown| import(doc, path, shown, MeshFormat::Ply)),
         export: Some(|doc, only, path, shown| export(doc, only, path, shown, MeshFormat::Ply)),
+        meshes: true,
         ..Format::new("files.ply", &["ply"])
     }
 }
