@@ -1,6 +1,5 @@
 # Files and functions over the size limits on 19 November 2026 (issue #400), allowed until
 # split. An entry may only shrink; remove it once it is within the limit. Never add to it.
-file crates/curva-kernel/src/hidden.rs 816
 fn crates/curva-3dm/src/import/surfaces.rs nurbs_surface 85
 fn crates/curva-app/src/agent.rs look_pictures 84
 fn crates/curva-app/src/benchmark.rs benchmark_house 90
