@@ -98,6 +98,115 @@ fn sub(a: Point, b: Point) -> Point {
     std::array::from_fn(|k| a[k] - b[k])
 }
 
+/// Most points a mesh's wire chain holds, so each chain's box stays small enough for picking
+/// and drawing to pass over chains far from the cursor or the view.
+const CHAIN_POINTS: usize = 256;
+
+/// A mesh's edges, each once, joined end to end into chains of up to [`CHAIN_POINTS`] points:
+/// a scan's millions of edges become thousands of drawn lines rather than millions.
+pub(crate) fn wires(mesh: &curva_mesh::Mesh) -> Vec<curva_kernel::Curve> {
+    let points = mesh.vertices();
+    let mut graph = Graph::of(unique_edges(mesh, points.len()), points.len());
+    // Chains start where an odd number of edges meet first, so fewer end part way.
+    let odd = (0..points.len()).filter(|&v| graph.degree(v) % 2 == 1);
+    let starts: Vec<usize> = odd.chain(0..points.len()).collect();
+    let mut chains = Vec::new();
+    for first in starts {
+        while let Some(chain) = graph.walk(first) {
+            let chain = chain.into_iter().map(|v| points[v]).collect();
+            chains.extend(curva_kernel::Curve::polyline(chain, false));
+        }
+    }
+    chains
+}
+
+/// A mesh's edges and, for each vertex, the edges that meet it, with those already in a chain
+/// marked used.
+struct Graph {
+    edges: Vec<(usize, usize)>,
+    /// The edges meeting vertex `v` are `around[start[v]..start[v + 1]]`.
+    start: Vec<usize>,
+    around: Vec<usize>,
+    /// For each vertex, where in `around` its unused edges may begin.
+    next: Vec<usize>,
+    used: Vec<bool>,
+}
+
+impl Graph {
+    fn of(edges: Vec<(usize, usize)>, count: usize) -> Self {
+        let mut start = vec![0usize; count + 1];
+        for &(a, b) in &edges {
+            start[a + 1] += 1;
+            start[b + 1] += 1;
+        }
+        for v in 0..count {
+            start[v + 1] += start[v];
+        }
+        let mut filled = start.clone();
+        let mut around = vec![0usize; edges.len() * 2];
+        for (e, &(a, b)) in edges.iter().enumerate() {
+            for v in [a, b] {
+                around[filled[v]] = e;
+                filled[v] += 1;
+            }
+        }
+        Self {
+            used: vec![false; edges.len()],
+            next: start.clone(),
+            edges,
+            start,
+            around,
+        }
+    }
+
+    fn degree(&self, v: usize) -> usize {
+        self.start[v + 1] - self.start[v]
+    }
+
+    /// An unused edge at `v`, if one is left.
+    fn unused_at(&mut self, v: usize) -> Option<usize> {
+        while self.next[v] < self.start[v + 1] && self.used[self.around[self.next[v]]] {
+            self.next[v] += 1;
+        }
+        (self.next[v] < self.start[v + 1]).then(|| self.around[self.next[v]])
+    }
+
+    /// The vertices of a chain of unused edges from `first`, marking them used, until it reaches
+    /// a vertex with none left or holds [`CHAIN_POINTS`]; none when `first` has none left.
+    fn walk(&mut self, first: usize) -> Option<Vec<usize>> {
+        self.unused_at(first)?;
+        let mut chain = vec![first];
+        let mut at = first;
+        while chain.len() < CHAIN_POINTS {
+            let Some(e) = self.unused_at(at) else {
+                break;
+            };
+            self.used[e] = true;
+            let (a, b) = self.edges[e];
+            at = if a == at { b } else { a };
+            chain.push(at);
+        }
+        Some(chain)
+    }
+}
+
+/// Each edge of `mesh`'s faces once, as its two vertex numbers, leaving out edges from a
+/// vertex to itself and edges to vertices the mesh does not have.
+fn unique_edges(mesh: &curva_mesh::Mesh, count: usize) -> Vec<(usize, usize)> {
+    let mut seen = std::collections::HashSet::new();
+    let mut edges = Vec::new();
+    for face in mesh.faces() {
+        for (k, &a) in face.iter().enumerate() {
+            let b = face[(k + 1) % face.len()];
+            let (a, b) = (a as usize, b as usize);
+            if a != b && a < count && b < count && seen.insert((a.min(b), a.max(b))) {
+                edges.push((a, b));
+            }
+        }
+    }
+    edges
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -228,12 +337,65 @@ mod tests {
         let camera = StandardView::Top.camera();
         let at = camera.project([200.0, 200.0, 0.0], SIZE).unwrap();
         assert_eq!(outlines.pick(&camera, at, SIZE, 6.0), Some(id));
-        assert_eq!(outlines.kinds, vec![crate::PickKind::Solid; 12]);
+        // Its twelve wires join into a few chains, each picked as part of the solid.
+        assert!(
+            (1..12).contains(&outlines.kinds.len())
+                && outlines
+                    .kinds
+                    .iter()
+                    .all(|kind| *kind == crate::PickKind::Solid)
+        );
         // Twelve wires, all left out where faces show.
         assert!(shaded_object_lines(&outlines, &[]).is_empty());
         assert_eq!(object_lines(&outlines, &[]).len(), 24);
         // Twelve triangles: for pictures written out, and for the window one shared shape.
         assert_eq!(SceneParts::of(&outlines).faces.len(), 36);
         assert_eq!(SceneParts::shared(&outlines).shapes.len(), 1);
+    }
+
+    /// A grid's edges join into chains that hold every edge once, none longer than the cap,
+    /// and far fewer chains than edges.
+    #[test]
+    fn a_meshs_edges_join_into_chains_holding_each_once() {
+        const SIDE: usize = 40;
+        let mut points = Vec::new();
+        for j in 0..=SIDE {
+            for i in 0..=SIDE {
+                points.push([i as f64, j as f64, 0.0]);
+            }
+        }
+        let mut faces = Vec::new();
+        let row = (SIDE + 1) as u32;
+        for j in 0..SIDE {
+            for i in 0..SIDE {
+                let a = j as u32 * row + i as u32;
+                faces.push([a, a + 1, a + row + 1]);
+                faces.push([a, a + row + 1, a + row]);
+            }
+        }
+        let mesh = Mesh::new(points, &faces).unwrap();
+        let chains = wires(&mesh);
+        let key = |p: Point, q: Point| {
+            let (p, q) = ([p[0] as i64, p[1] as i64], [q[0] as i64, q[1] as i64]);
+            if p < q { (p, q) } else { (q, p) }
+        };
+        let mut drawn = Vec::new();
+        for chain in &chains {
+            let curva_kernel::Curve::Polyline { points, closed } = chain else {
+                panic!("a chain is a polyline");
+            };
+            assert!(!closed && points.len() >= 2 && points.len() <= CHAIN_POINTS);
+            drawn.extend(points.windows(2).map(|pair| key(pair[0], pair[1])));
+        }
+        let mut expected: Vec<_> = unique_edges(&mesh, mesh.vertices().len())
+            .into_iter()
+            .map(|(a, b)| key(mesh.vertices()[a], mesh.vertices()[b]))
+            .collect();
+        // Each edge of the grid: across, up and diagonal.
+        assert_eq!(expected.len(), 3 * SIDE * SIDE + 2 * SIDE);
+        drawn.sort_unstable();
+        expected.sort_unstable();
+        assert_eq!(drawn, expected);
+        assert!(chains.len() * 20 < expected.len());
     }
 }

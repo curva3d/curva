@@ -559,7 +559,7 @@ impl Outlines {
         if let (Some(colours), Some(faces)) = (colours, self.faces.last_mut()) {
             faces.colours = Some(std::sync::Arc::new(colours));
         }
-        let lines = curva_document::shape::mesh_edges(mesh)
+        let lines = crate::meshes::wires(mesh)
             .into_iter()
             .map(|line| (line, None))
             .collect();

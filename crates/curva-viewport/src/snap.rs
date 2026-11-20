@@ -296,7 +296,7 @@ fn box_out_of_reach(view: &Projector, bounds: (Point, Point), cursor: [f64; 2]) 
 
 /// Whether a whole box lies more than `reach` pixels from the cursor on screen; never for a box
 /// partly behind the camera.
-fn box_beyond(
+pub(crate) fn box_beyond(
     view: &Projector,
     (low, high): (Point, Point),
     (cursor, reach): ([f64; 2], f64),
@@ -325,10 +325,16 @@ fn box_beyond(
         || cursor[1] > bottom + reach
 }
 
-/// The objects' boxes and the snap places, each in a tree of boxes (#130), so snapping looks only
-/// at what is near the cursor. Made once per model, the first time snapping asks.
+/// The objects' boxes and the snap places, each in a tree of boxes (#130), so picking and
+/// snapping look only at what is near the cursor. Each tree is made once per model, the first
+/// time it is asked for: picking needs only the objects' tree, much smaller than the places'.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct SnapIndex(std::sync::OnceLock<std::sync::Arc<SnapTrees>>);
+pub(crate) struct SnapIndex {
+    /// One item per entry of `Outlines::objects`, by its box.
+    objects: std::sync::OnceLock<std::sync::Arc<BoxTree>>,
+    /// One item per entry of `Outlines::sites`, by its point.
+    sites: std::sync::OnceLock<std::sync::Arc<BoxTree>>,
+}
 
 /// Outlines compare by what they hold; the index is only a quicker way to search it.
 impl PartialEq for SnapIndex {
@@ -337,32 +343,41 @@ impl PartialEq for SnapIndex {
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct SnapTrees {
-    /// One item per entry of `Outlines::objects`, by its box.
-    objects: BoxTree,
-    /// One item per entry of `Outlines::sites`, by its point.
-    sites: BoxTree,
-}
-
 impl Outlines {
-    fn snap_trees(&self) -> &SnapTrees {
-        self.snap_index.0.get_or_init(|| {
+    fn object_tree(&self) -> &BoxTree {
+        self.snap_index.objects.get_or_init(|| {
             // An object without a box is never skipped, as before.
             let everywhere = ([f64::NEG_INFINITY; 3], [f64::INFINITY; 3]);
             let boxes = (0..self.objects.len())
                 .map(|object| self.boxes.get(object).copied().unwrap_or(everywhere))
                 .collect();
+            std::sync::Arc::new(BoxTree::new(boxes))
+        })
+    }
+
+    fn site_tree(&self) -> &BoxTree {
+        self.snap_index.sites.get_or_init(|| {
             let points = self
                 .sites
                 .iter()
                 .map(|site| (site.point, site.point))
                 .collect();
-            std::sync::Arc::new(SnapTrees {
-                objects: BoxTree::new(boxes),
-                sites: BoxTree::new(points),
-            })
+            std::sync::Arc::new(BoxTree::new(points))
         })
+    }
+
+    /// The entries of `objects` whose boxes come within `reach` pixels of the cursor, in their own
+    /// order; the rest cannot be picked or snapped to there.
+    pub(crate) fn objects_near(
+        &self,
+        view: &Projector,
+        (cursor, reach): ([f64; 2], f64),
+    ) -> Vec<usize> {
+        let mut near = self
+            .object_tree()
+            .query(|bounds| !box_beyond(view, bounds, (cursor, reach)));
+        near.sort_unstable();
+        near
     }
 
     /// The segments within `reach` pixels of the cursor, of the objects and of `drawing`.
@@ -376,8 +391,7 @@ impl Outlines {
         // A box inside a box out of reach is out of reach too (`box_out_of_reach` tests the box's
         // projected outline), so the tree skips only what testing each object would skip.
         let near = self
-            .snap_trees()
-            .objects
+            .object_tree()
             .query(|bounds| !box_beyond(view, bounds, (cursor, reach)));
         for object in near {
             if let Some((_, points)) = self.objects.get(object) {
@@ -432,8 +446,7 @@ impl Outlines {
         let seen = |point: Point| !set.visible_only || !self.hidden(camera, size, point);
         // Only places whose point could be within reach, in their own order, as before.
         let places = self
-            .snap_trees()
-            .sites
+            .site_tree()
             .query(|bounds| !box_out_of_reach(&view, bounds, cursor));
         for place in places.iter().filter_map(|&at| self.sites.get(at)) {
             if set.has(place.kind) {
