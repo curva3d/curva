@@ -482,13 +482,17 @@ impl Benchmark {
         gaps.sort_by(f64::total_cmp);
         let middle = gaps[gaps.len() / 2];
         let worst = gaps[gaps.len() * 99 / 100];
-        let snapping = self.snapping.iter().sum::<f64>() / self.snapping.len().max(1) as f64;
+        // Like the frame gaps, leaving out the opening frames: the first snap after a change may
+        // wait for the trees snapping searches (#130), reported on its own.
+        let settled_snaps = self.snapping.get(SETTLE_FRAMES..).unwrap_or_default();
+        let snapping = settled_snaps.iter().sum::<f64>() / settled_snaps.len().max(1) as f64;
+        let first_snap = self.snapping.first().copied().unwrap_or_default();
         // egui counts time from the window opening, so this is how long the scene took to show.
         println!(
             "first frame: {:.1} s after the window opened",
             self.times[0]
         );
-        println!("snapping per frame: {snapping:.2} ms");
+        println!("snapping per frame: {snapping:.2} ms (the first: {first_snap:.1} ms)");
         // Like the frame gaps, leaving out the opening frames, whose first upload of a large
         // scene would otherwise swamp the average.
         let settled = self.work.get(SETTLE_FRAMES..).unwrap_or_default();

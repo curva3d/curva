@@ -234,6 +234,8 @@ impl Curva {
                     } else {
                         theme::current().viewport.ink
                     });
+            // The trees snapping searches, made away from the frame (#130).
+            self.outlines.prepare_snapping();
         }
         if !model_same {
             let parts = curva_viewport::SceneParts::shared(&self.outlines);

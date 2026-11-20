@@ -2,7 +2,6 @@
 # split. An entry may only shrink; remove it once it is within the limit. Never add to it.
 file crates/curva-3dm/src/model.rs 822
 file crates/curva-3dm/src/read/mod.rs 824
-file crates/curva-dxf/src/lib.rs 1354
 file crates/curva-kernel/src/hidden.rs 816
 fn crates/curva-3dm/src/import/surfaces.rs nurbs_surface 85
 fn crates/curva-app/src/agent.rs look_pictures 84
@@ -30,12 +29,6 @@ fn crates/curva-document/src/sheet.rs scale_bar_parts 102
 fn crates/curva-document/src/sheet.rs table_parts 115
 fn crates/curva-dxf/src/annotation.rs hatch_in 85
 fn crates/curva-dxf/src/dims.rs dimension_in 111
-fn crates/curva-dxf/src/lib.rs curve_of 125
-fn crates/curva-dxf/src/lib.rs entities 119
-fn crates/curva-dxf/src/lib.rs entities_for 92
-fn crates/curva-dxf/src/lib.rs export 105
-fn crates/curva-dxf/src/lib.rs import 115
-fn crates/curva-dxf/src/lib.rs shapes 83
 fn crates/curva-kernel/src/assemble.rs merged 81
 fn crates/curva-kernel/src/body.rs edge_curve 89
 fn crates/curva-kernel/src/conic.rs conic_parts 95
@@ -59,4 +52,3 @@ fn crates/curva-viewport/src/gpu/depth.rs write 86
 fn crates/curva-viewport/src/pilot.rs draw_all 101
 fn crates/curva-viewport/src/pilot/scene.rs update 114
 fn crates/curva-viewport/src/print.rs marks_of 89
-fn crates/curva-viewport/src/snap.rs snap_while_drawing 95
