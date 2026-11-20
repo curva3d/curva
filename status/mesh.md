@@ -11,6 +11,14 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 20 November 2026 (later still)
 
+**The SubD tab's first commands: SubDBox, SubDPlane, SubDSphere, SubDCylinder, SubDCone and SubDTorus.**
+They are picked as the mesh primitives are (the same recipes, made generic) and build their cages
+with `curva-mesh`'s SubD primitives. Rhino 8's SubD defaults, measured with Enter at every option,
+are far coarser than its mesh ones: a box of 2 × 2 × 2 (24 cage faces), a plane of 2 × 2, a sphere
+of Quads at 1 subdivision (24), a cylinder and a cone 8 around and 4 up (48 and 40, triangle caps),
+and a torus 10 by 6 (60). The test holds those counts. Measuring changed Rhino's saved options for
+these commands (a spawned Rhino saves the last values used when it closes); the owner was told.
+
 **QuadRemesh `TargetEdgeLength` (#329):** measured in Rhino 8 on a 40 × 40 sphere of radius 5: 1,064,
 244 and 59 quads at 0.5, 1 and 2, so its quads come out about 1.12 times the length asked for.
 quadrs' own edge length made them about 0.85 times as long (434 quads at 1), so Curva now turns
