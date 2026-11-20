@@ -66,6 +66,8 @@ impl Command for Import {
 pub struct Export {
     selected: bool,
     chosen: Option<Vec<u64>>,
+    /// A file to write once the mesh settings are given, for a format that meshes (#387).
+    meshing: Option<PathBuf>,
 }
 
 /// `ExportSelected`.
@@ -81,7 +83,7 @@ impl Command for ExportSelected {
 
 impl Export {
     /// The model, or the chosen objects, written to the file typed.
-    fn write(&self, doc: &mut Document, text: &str) -> Step {
+    fn write(&mut self, doc: &mut Document, text: &str) -> Step {
         let mut path = typed(text);
         // No extension: the first kind `Export` offers, as its dialog does.
         if path.extension().is_none()
@@ -89,6 +91,20 @@ impl Export {
         {
             path.set_extension(extensions[0]);
         }
+        // A format that meshes asks for the mesh settings first, in the interface's panel.
+        if doc.formats().of(&path).is_some_and(|f| f.meshes) {
+            self.meshing = Some(path);
+            return Step::Ask(Request::panel_step(
+                "prompt.export.mesh",
+                crate::Panel::MeshSettings,
+            ));
+        }
+        self.written(doc, &path)
+    }
+
+    /// The model, or the chosen objects, written to `path` by its format.
+    fn written(&self, doc: &Document, path: &Path) -> Step {
+        let path = path.to_path_buf();
         if let Some(export) = doc.formats().of(&path).and_then(|f| f.export) {
             let chosen = self.chosen.as_deref();
             return done(export(doc, chosen, &path, &path.display().to_string()));
@@ -150,6 +166,10 @@ impl Command for Export {
                 model_name(doc),
             )),
             Some(Answer::Path(text)) => self.write(doc, &text),
+            Some(Answer::Empty) if self.meshing.is_some() => match self.meshing.take() {
+                Some(path) => self.written(doc, &path),
+                None => unexpected(),
+            },
             Some(_) => unexpected(),
         }
     }

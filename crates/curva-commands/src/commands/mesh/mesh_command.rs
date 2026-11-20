@@ -1,6 +1,6 @@
 //! Rhino's `Mesh` command: surfaces, polysurfaces, solids and SubDs as new mesh objects, the
 //! originals kept, with the shared mesh settings (spec `export-formats.md` §2) as its options.
-//! The mesh panel shows the same settings; until it is hooked up the options are typed.
+//! In the interface the density step opens the mesh panel (issue #387); elsewhere they are typed.
 
 use super::meshing::mesh_objects;
 use crate::Message;
@@ -30,8 +30,10 @@ impl Recipe for MeshCommand {
         // As Rhino's `-Mesh`: the objects, then the density, Enter keeping the last one; the
         // preview shows the mesh while it is asked.
         vec![
-            StepDef::objects("prompt.mesh.objects"),
-            StepDef::number("prompt.mesh.density").remembered("Density", 0.5),
+            StepDef::objects("prompt.mesh.objects").meshable(),
+            StepDef::number("prompt.mesh.density")
+                .remembered("Density", 0.5)
+                .panel(crate::Panel::MeshSettings),
         ]
     }
 
