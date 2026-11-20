@@ -8,9 +8,10 @@ impl Mesh {
     /// The mesh as a polysurface of one surface per face, as Rhino's MeshToNURB, sewn where faces
     /// meet; a closed mesh gives a solid.
     ///
-    /// Triangles and quads become surfaces bounded by their three or four straight edges (a quad
-    /// gives the bilinear surface through its corners); a flat face of more corners becomes a
-    /// flat trimmed surface, and a bent one an n-sided fill. Like Rhino's, the result is heavy:
+    /// A quad gives the untrimmed bilinear surface through its corners; a triangle, or a flat face
+    /// of more corners, becomes a flat trimmed surface, and a bent face of more corners an n-sided
+    /// fill. Measured in Rhino 8, whose `TrimTriangularFaces` is on at first: quads untrimmed,
+    /// triangles trimmed, the mesh kept. Like Rhino's, the result is heavy:
     /// a surface for every face.
     ///
     /// # Errors
@@ -27,7 +28,7 @@ impl Mesh {
                         end: points[(k + 1) % points.len()],
                     })
                     .collect();
-                if points.len() <= 4 {
+                if points.len() == 4 {
                     Body::from_edges(&edges)
                 } else {
                     Body::planar(&[Curve::Polyline {
@@ -68,6 +69,22 @@ mod tests {
         assert_eq!(body.face_count().unwrap(), 5);
         assert!(!body.is_solid());
         assert_eq!(body.naked_edges().unwrap().len(), 4);
+    }
+
+    #[test]
+    fn a_tetrahedron_becomes_a_solid_of_four_flat_faces_as_in_rhino() {
+        // Measured in Rhino 8: four trimmed three-sided surfaces, a solid of volume 1/6.
+        let points = vec![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ];
+        let faces = [vec![0, 2, 1], vec![0, 1, 3], vec![1, 2, 3], vec![0, 3, 2]];
+        let body = Mesh::new(points, &faces).unwrap().to_nurbs().unwrap();
+        assert_eq!(body.face_count().unwrap(), 4);
+        assert!(body.is_solid());
+        assert!(close(body.volume().unwrap(), 1.0 / 6.0));
     }
 
     #[test]
