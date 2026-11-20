@@ -148,7 +148,9 @@ pub(super) fn mesh_3(pen: &Pen<'_>, key: &str) -> bool {
             );
         }
         key if key.starts_with("meshboolean") => mesh_boolean(pen, key),
-        key if key.starts_with("subd") || key == "tosubd" => return subd_primitive(pen, key),
+        key if key.starts_with("subd") || key == "tosubd" || key == "tonurbs" => {
+            return subd_primitive(pen, key);
+        }
         "quadremesh" => {
             pen.arc((2.0, 2.0, 18.0, 18.0), 0.0, 360.0);
             grid(pen, (5.0, 5.0), (17.0, 17.0), 3);
