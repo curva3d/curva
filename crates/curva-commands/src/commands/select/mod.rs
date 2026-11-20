@@ -74,3 +74,24 @@ pub(crate) static COMMANDS: &[crate::commands::CommandDef] = &[
         sel_block_instance_named::SelBlockInstanceNamed
     ),
 ];
+
+/// The buttons of the Select tab, in order (spec `docs/specs/command-groups.md` §2).
+pub(crate) const TAB: &[&str] = &[
+    "SelAll",
+    "SelNone",
+    "Invert",
+    "SelCrv",
+    "SelLine",
+    "SelPolyline",
+    "SelCircle",
+    "SelArc",
+    "SelClosedCrv",
+    "SelOpenCrv",
+    "SelSrf",
+    "SelSolid",
+    "SelPt",
+    "SelColor",
+    "Hide",
+    "Show",
+    "HideSwap",
+];

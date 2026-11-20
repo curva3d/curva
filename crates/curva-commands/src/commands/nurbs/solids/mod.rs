@@ -62,3 +62,33 @@ pub(crate) static COMMANDS: &[crate::commands::CommandDef] = &[
         boolean_intersection::BooleanIntersection
     ),
 ];
+
+/// The buttons of the Solids tab, in order (spec `docs/specs/command-groups.md` §2).
+pub(crate) const TAB: &[&str] = &[
+    "Box",
+    "Sphere",
+    "Cylinder",
+    "Cone",
+    "TruncatedCone",
+    "Torus",
+    "Tube",
+    "Ellipsoid",
+    "Paraboloid",
+    "Pyramid",
+    "Pipe",
+    "FilletEdge",
+    "ChamferEdge",
+    "Shell",
+    "MergeAllFaces",
+    "Wirecut",
+    "MoveFace",
+    "PushPull",
+    "Cap",
+    "ExtrudeFace",
+    "BooleanUnion",
+    "BooleanDifference",
+    "BooleanIntersection",
+    "BooleanSplit",
+    "EditBoolean",
+    "BreakBoolean",
+];

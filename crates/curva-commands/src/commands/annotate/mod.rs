@@ -68,3 +68,21 @@ pub(crate) static COMMANDS: &[crate::commands::CommandDef] = &[
         styles::DupAnnotationStyle
     ),
 ];
+
+/// The buttons of the Annotate tab, in order (spec `docs/specs/command-groups.md` §2).
+pub(crate) const TAB: &[&str] = &[
+    "Text",
+    "Dim",
+    "DimAligned",
+    "DimRotated",
+    "DimRadius",
+    "DimDiameter",
+    "DimAngle",
+    "DimOrdinate",
+    "Leader",
+    "Dot",
+    "Hatch",
+    "DimCurveLength",
+    "DimArea",
+    "DimVolume",
+];

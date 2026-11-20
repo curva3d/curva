@@ -62,3 +62,27 @@ pub(crate) static COMMANDS: &[crate::commands::CommandDef] = &[
     recipe!("CurvatureGraph", [], true, curvature_graph::CurvatureGraph),
     recipe!("Silhouette", [], true, silhouette::Silhouette),
 ];
+
+/// The buttons of the Analyze tab, in order (spec `docs/specs/command-groups.md` §2).
+pub(crate) const TAB: &[&str] = &[
+    "Distance",
+    "Length",
+    "Area",
+    "Volume",
+    "Angle",
+    "Radius",
+    "EvaluatePt",
+    "What",
+    "BoundingBox",
+    "AreaCentroid",
+    "VolumeCentroid",
+    "ShowEdges",
+    "CurvatureGraph",
+    "Section",
+    "Contour",
+    "Intersect",
+    "Silhouette",
+    "Count",
+    "Audit",
+    "Plan",
+];

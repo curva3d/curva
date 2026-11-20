@@ -1,6 +1,7 @@
 //! The top bar: the command tabs and their buttons, the specialization dial and the File items.
 
 use crate::*;
+use curva_commands::commands::tabs;
 
 /// The top bar's chosen command tab and specialization.
 #[derive(Default)]
@@ -43,212 +44,24 @@ pub(crate) fn shortened_path(path: &str, fits: impl Fn(&str) -> bool) -> String 
     if fits(&short) { short } else { name.to_owned() }
 }
 
-/// The command tabs at the top, each with its most used commands (spec
-/// `docs/specs/ui-floating-panels.md`).
-pub(crate) const COMMAND_TABS: [(&str, &[&str]); 6] = [
-    (
-        "ui.tab.curves",
-        &[
-            "Line",
-            "Polyline",
-            "Curve",
-            "InterpCrv",
-            "Circle",
-            "Arc",
-            "Ellipse",
-            "Rectangle",
-            "Polygon",
-            "Slot",
-            "Helix",
-            "Spiral",
-            "Parabola",
-            "Conic",
-            "TextObject",
-            "Hyperbola",
-            "HandleCurve",
-            "Sketch",
-            "Point",
-            "Points",
-            "Lines",
-            "Offset",
-            "Fillet",
-            "Chamfer",
-            "BlendCrv",
-            "OffsetMultiple",
-            "Extend",
-            "Match",
-            "Fair",
-            "SimplifyCrv",
-            "CurveBoolean",
-            "MakeUniform",
-            "Reparameterize",
-            "Weight",
-        ],
-    ),
-    (
-        "ui.tab.surfaces",
-        &[
-            "PlanarSrf",
-            "Plane",
-            "SrfPt",
-            "ExtrudeCrv",
-            "Revolve",
-            "Loft",
-            "Sweep1",
-            "OffsetSrf",
-            "ExtrudeSrf",
-            "ExtrudeCrvTapered",
-            "ExtrudeCrvAlongCrv",
-            "ExtrudeCrvToPoint",
-            "RailRevolve",
-            "DupEdge",
-            "DupBorder",
-            "ExtractSrf",
-            "EdgeSrf",
-            "NetworkSrf",
-            "Patch",
-            "ExtendSrf",
-            "Untrim",
-            "RebuildUV",
-            "Project",
-            "Pull",
-            "DupFaceBorder",
-            "Sweep2",
-            "BlendSrf",
-            "MatchSrf",
-            "SplitSrf",
-            "ShrinkTrimmedSrf",
-            "ExtractIsocurve",
-            "InterpCrvOnSrf",
-            "OffsetCrvOnSrf",
-            "UnrollSrf",
-            "FilletSrf",
-            "ChamferSrf",
-        ],
-    ),
-    (
-        "ui.tab.solids",
-        &[
-            "Box",
-            "Sphere",
-            "Cylinder",
-            "Cone",
-            "TruncatedCone",
-            "Torus",
-            "Tube",
-            "Ellipsoid",
-            "Paraboloid",
-            "Pyramid",
-            "Pipe",
-            "FilletEdge",
-            "ChamferEdge",
-            "Shell",
-            "MergeAllFaces",
-            "Wirecut",
-            "MoveFace",
-            "PushPull",
-            "Cap",
-            "ExtrudeFace",
-            "Volume",
-        ],
-    ),
-    (
-        "ui.tab.modify",
-        &[
-            "BooleanUnion",
-            "BooleanDifference",
-            "BooleanIntersection",
-            "BooleanSplit",
-            "Trim",
-            "Split",
-            "Join",
-            "Explode",
-            "Move",
-            "Copy",
-            "Rotate",
-            "Scale",
-            "Mirror",
-            "Array",
-            "ArrayLinear",
-            "Align",
-            "Distribute",
-            "Shear",
-            "Twist",
-            "Bend",
-            "Taper",
-            "Flow",
-            "CageEdit",
-            "Group",
-            "Ungroup",
-            "EditBoolean",
-            "BreakBoolean",
-            "Block",
-            "Insert",
-            "BlockManager",
-            "BlockEdit",
-            "ExplodeBlock",
-            "ChangeLayer",
-            "MatchProperties",
-            "Linetype",
-            "PrintWidth",
-            "SetUserText",
-            "GetUserText",
-            "Purge",
-            "LockSwap",
-            "BringToFront",
-            "SendToBack",
-            "Lock",
-            "Unlock",
-        ],
-    ),
-    (
-        "ui.tab.analyze",
-        &[
-            "Distance",
-            "Length",
-            "Area",
-            "Volume",
-            "Angle",
-            "Radius",
-            "EvaluatePt",
-            "What",
-            "BoundingBox",
-            "AreaCentroid",
-            "VolumeCentroid",
-            "ShowEdges",
-            "CurvatureGraph",
-            "Section",
-            "Contour",
-            "Intersect",
-            "Silhouette",
-            "Count",
-            "Audit",
-            "Plan",
-        ],
-    ),
-    (
-        "ui.tab.select",
-        &[
-            "SelAll",
-            "SelNone",
-            "Invert",
-            "SelCrv",
-            "SelLine",
-            "SelPolyline",
-            "SelCircle",
-            "SelArc",
-            "SelClosedCrv",
-            "SelOpenCrv",
-            "SelSrf",
-            "SelSolid",
-            "SelPt",
-            "SelColor",
-            "Hide",
-            "Show",
-            "HideSwap",
-        ],
-    ),
+/// The command tabs at the top, each with its buttons, from the command folders (spec
+/// `docs/specs/command-groups.md` §2): the NURBS tabs, Mesh, then the tabs every kind of
+/// geometry shares. SubD joins after Mesh once its folder has buttons (`tabs::SUBD`).
+pub(crate) const COMMAND_TABS: [(&str, &[&str]); 10] = [
+    ("ui.tab.curves", tabs::CURVES),
+    ("ui.tab.surfaces", tabs::SURFACES),
+    ("ui.tab.solids", tabs::SOLIDS),
+    ("ui.tab.mesh", tabs::MESH),
+    ("ui.tab.edit", tabs::EDIT),
+    ("ui.tab.organise", tabs::ORGANISE),
+    ("ui.tab.annotate", tabs::ANNOTATE),
+    ("ui.tab.layouts", tabs::LAYOUTS),
+    ("ui.tab.analyze", tabs::ANALYZE),
+    ("ui.tab.select", tabs::SELECT),
 ];
+
+/// How many of the tabs are NURBS ones (Curves, Surfaces, Solids), shown under one label.
+const NURBS_TABS: usize = 3;
 
 /// The specializations in the top bar's dial; only Freeform has commands yet.
 pub(crate) const SPECIALIZATIONS: [&str; 4] = [
@@ -278,6 +91,15 @@ impl Curva {
         }
         ui.horizontal(|ui| {
             for (index, (key, _)) in COMMAND_TABS.iter().enumerate() {
+                // The NURBS tabs under a small label, and a divider after them and after Mesh,
+                // before the tabs every kind of geometry shares.
+                if index == 0 {
+                    let group = self.text.render(&Message::new("ui.tab_group.nurbs"));
+                    ui.label(egui::RichText::new(group).small().weak());
+                }
+                if index == NURBS_TABS || index == NURBS_TABS + 1 {
+                    ui.separator();
+                }
                 let label = self.text.render(&Message::new(key));
                 if ui
                     .selectable_label(self.bar.command_tab == index, label)

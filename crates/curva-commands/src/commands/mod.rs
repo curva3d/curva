@@ -73,6 +73,33 @@ pub struct CommandDef {
     pub recipe: bool,
 }
 
+/// The buttons of each command tab, kept by the folder whose commands they are (spec
+/// `docs/specs/command-groups.md` §2).
+pub mod tabs {
+    /// The Curves tab.
+    pub const CURVES: &[&str] = super::nurbs::curves::TAB;
+    /// The Surfaces tab.
+    pub const SURFACES: &[&str] = super::nurbs::surfaces::TAB;
+    /// The Solids tab.
+    pub const SOLIDS: &[&str] = super::nurbs::solids::TAB;
+    /// The Mesh tab.
+    pub const MESH: &[&str] = super::mesh::TAB;
+    /// The Subd tab.
+    pub const SUBD: &[&str] = super::subd::TAB;
+    /// The Edit tab.
+    pub const EDIT: &[&str] = super::edit::TAB;
+    /// The Organise tab.
+    pub const ORGANISE: &[&str] = super::organise::TAB;
+    /// The Annotate tab.
+    pub const ANNOTATE: &[&str] = super::annotate::TAB;
+    /// The Layouts tab.
+    pub const LAYOUTS: &[&str] = super::layouts::TAB;
+    /// The Analyze tab.
+    pub const ANALYZE: &[&str] = super::analyze::TAB;
+    /// The Select tab.
+    pub const SELECT: &[&str] = super::select::TAB;
+}
+
 /// The command list: every command Curva has, in the order of `order.rs`.
 pub struct CommandList(std::sync::LazyLock<Vec<&'static CommandDef>>);
 
@@ -181,6 +208,42 @@ fn run(doc: &mut curva_document::Document, lines: &[&str]) -> crate::Processor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn no_command_has_a_button_in_two_tabs_and_every_mesh_and_subd_command_has_one() {
+        let all = [
+            tabs::CURVES,
+            tabs::SURFACES,
+            tabs::SOLIDS,
+            tabs::MESH,
+            tabs::SUBD,
+            tabs::EDIT,
+            tabs::ORGANISE,
+            tabs::ANNOTATE,
+            tabs::LAYOUTS,
+            tabs::ANALYZE,
+            tabs::SELECT,
+        ];
+        let mut seen = std::collections::BTreeSet::new();
+        for name in all.iter().flat_map(|tab| tab.iter()) {
+            assert_eq!(resolve(name).map(|def| def.name), Some(*name), "{name}");
+            assert!(seen.insert(*name), "{name} has a button in two tabs");
+        }
+        for def in mesh::COMMANDS {
+            assert!(
+                tabs::MESH.contains(&def.name),
+                "{} has no Mesh button",
+                def.name
+            );
+        }
+        for def in subd::COMMANDS {
+            assert!(
+                tabs::SUBD.contains(&def.name),
+                "{} has no SubD button",
+                def.name
+            );
+        }
+    }
 
     #[test]
     fn every_command_in_a_folder_has_one_place_in_the_order() {

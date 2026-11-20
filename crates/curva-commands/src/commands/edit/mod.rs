@@ -82,3 +82,26 @@ pub(crate) static COMMANDS: &[crate::commands::CommandDef] = &[
     listed!("Undo", [], false, false, undo::Undo),
     listed!("Redo", [], false, false, redo::Redo),
 ];
+
+/// The buttons of the Edit tab, in order (spec `docs/specs/command-groups.md` §2).
+pub(crate) const TAB: &[&str] = &[
+    "Trim",
+    "Split",
+    "Join",
+    "Explode",
+    "Move",
+    "Copy",
+    "Rotate",
+    "Scale",
+    "Mirror",
+    "Array",
+    "ArrayLinear",
+    "Align",
+    "Distribute",
+    "Shear",
+    "Twist",
+    "Bend",
+    "Taper",
+    "Flow",
+    "CageEdit",
+];
