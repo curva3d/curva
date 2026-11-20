@@ -19,6 +19,9 @@ pub fn all() -> Arc<Formats> {
     list.add(curva_dxf::format::dwg());
     list.add(curva_skp::format::format());
     list.add(curva_step::format());
+    list.add(curva_meshfiles::format::stl());
+    list.add(curva_meshfiles::format::obj());
+    list.add(curva_meshfiles::format::ply());
     list.add(curva_pdf::format::pdf());
     list.add(curva_pdf::format::svg());
     Arc::new(list)
@@ -48,6 +51,9 @@ mod tests {
                 "files.dwg",
                 "files.skp",
                 "files.step",
+                "files.stl",
+                "files.obj",
+                "files.ply",
                 "files.pdf",
                 "files.svg",
             ]

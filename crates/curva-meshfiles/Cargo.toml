@@ -12,3 +12,8 @@ workspace = true
 
 [dependencies]
 curva-mesh = { path = "../curva-mesh" }
+# To join Curva's list of file formats, and to reach the model's objects and mesh settings.
+curva-document = { path = "../curva-document" }
+
+[dev-dependencies]
+curva-kernel = { path = "../curva-kernel" }

@@ -1924,6 +1924,7 @@ dependencies = [
  "curva-3dm",
  "curva-document",
  "curva-dxf",
+ "curva-meshfiles",
  "curva-pdf",
  "curva-skp",
  "curva-step",
@@ -1971,6 +1972,8 @@ dependencies = [
 name = "curva-meshfiles"
 version = "0.4.3"
 dependencies = [
+ "curva-document",
+ "curva-kernel",
  "curva-mesh",
 ]
 

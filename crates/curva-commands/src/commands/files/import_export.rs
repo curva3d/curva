@@ -3,7 +3,6 @@
 //! `Export`, `ExportSelected`, and the `.3dm`, `.dxf`, `.dwg` and `.skp` side of `Open` and
 //! `SaveAs`.
 
-use super::meshfiles::{MeshFormat, export_mesh_file, import_mesh_file};
 use crate::commands::{ask_objects, unexpected};
 use crate::{
     Answer, CURVA_FILES, Command, DWG_FILES, DXF_FILES, FileFormat, Message, OBJ_FILES, PLY_FILES,
@@ -89,15 +88,6 @@ impl Command for Import {
                 if let Some(import) = doc.formats().of(&path).and_then(|f| f.import) {
                     return done(import(doc, &path, &path.display().to_string()));
                 }
-                if let Some(format) = MeshFormat::of(&path) {
-                    return match import_mesh_file(doc, &path, format) {
-                        Ok(summary) => Step::Done(Some(Message::with(
-                            "done.import",
-                            vec![path.display().to_string(), summary],
-                        ))),
-                        Err(e) => failed(e),
-                    };
-                }
                 // A Curva file comes in the same way as a Rhino file, as plain geometry.
                 done(curva_3dm::format::import_curva(
                     doc,
@@ -157,16 +147,6 @@ impl Export {
                 black: false,
                 to: PrintTo::Svg(path.display().to_string()),
             }));
-        }
-        if let Some(format) = MeshFormat::of(&path) {
-            let chosen = self.chosen.as_deref();
-            return match export_mesh_file(doc, chosen, &path, format) {
-                Ok(summary) => Step::Done(Some(Message::with(
-                    "done.export_cad",
-                    vec![path.display().to_string(), summary],
-                ))),
-                Err(e) => failed(e),
-            };
         }
         Step::Failed(Message::with(
             "error.export_kind",
