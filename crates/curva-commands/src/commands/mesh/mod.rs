@@ -6,6 +6,7 @@ pub(crate) mod faces;
 pub(crate) mod mesh_command;
 pub mod meshing;
 pub(crate) mod primitives;
+pub(crate) mod quad_remesh;
 
 pub(crate) use boolean::{
     MeshBooleanDifference, MeshBooleanIntersection, MeshBooleanSplit, MeshBooleanUnion,
@@ -18,6 +19,7 @@ pub(crate) use faces::{
 };
 pub(crate) use mesh_command::MeshCommand;
 pub(crate) use primitives::{MeshBox, MeshCone, MeshCylinder, MeshPlane, MeshSphere, MeshTorus};
+pub(crate) use quad_remesh::QuadRemesh;
 
 /// This folder's commands, as the command list holds them; `commands/order.rs` keeps their
 /// place in it.
@@ -44,6 +46,7 @@ pub(crate) static COMMANDS: &[crate::commands::CommandDef] = &[
     recipe!("MeshBooleanDifference", [], true, MeshBooleanDifference),
     recipe!("MeshBooleanIntersection", [], true, MeshBooleanIntersection),
     recipe!("MeshBooleanSplit", [], true, MeshBooleanSplit),
+    recipe!("QuadRemesh", [], true, QuadRemesh),
 ];
 
 /// The buttons of the Mesh tab, in order (spec `docs/specs/command-groups.md` §2).
@@ -58,6 +61,7 @@ pub(crate) const TAB: &[&str] = &[
     "ReduceMesh",
     "TriangulateMesh",
     "QuadrangulateMesh",
+    "QuadRemesh",
     "ExtractMeshFaces",
     "MeshBooleanUnion",
     "MeshBooleanDifference",
