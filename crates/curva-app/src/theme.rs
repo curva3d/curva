@@ -118,6 +118,10 @@ pub struct Settings {
     pub undo_max_megabytes: usize,
     /// Whether Curva, run from an AppImage, has offered to add itself to the applications.
     pub desktop_offered: bool,
+    /// The SketchUp import choices last made (issue #432).
+    pub sketchup: curva_document::formats::SketchUpImport,
+    /// Whether those choices are used without showing the SketchUp import dialog.
+    pub sketchup_always: bool,
 }
 
 impl Default for Settings {
@@ -131,6 +135,8 @@ impl Default for Settings {
             undo_min_steps: curva_document::UndoLimits::default().min_steps,
             undo_max_megabytes: curva_document::UndoLimits::default().max_bytes / MEGABYTE,
             desktop_offered: false,
+            sketchup: curva_document::formats::SketchUpImport::default(),
+            sketchup_always: false,
         }
     }
 }

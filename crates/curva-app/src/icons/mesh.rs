@@ -148,6 +148,7 @@ pub(super) fn mesh_3(pen: &Pen<'_>, key: &str) -> bool {
             );
         }
         key if key.starts_with("meshboolean") => mesh_boolean(pen, key),
+        key if key.starts_with("subd") => return subd_primitive(pen, key),
         "quadremesh" => {
             pen.arc((2.0, 2.0, 18.0, 18.0), 0.0, 360.0);
             grid(pen, (5.0, 5.0), (17.0, 17.0), 3);
@@ -158,6 +159,53 @@ pub(super) fn mesh_3(pen: &Pen<'_>, key: &str) -> bool {
             );
         }
         _ => return false,
+    }
+    true
+}
+
+/// The SubD primitives: their smooth outline, with dots for the cage's corner points.
+fn subd_primitive(pen: &Pen<'_>, key: &str) -> bool {
+    let cage: &[(f32, f32)] = match key {
+        "subdbox" => {
+            pen.ellipse((3.0, 6.0, 13.0, 13.0));
+            pen.arc((6.0, 3.0, 13.0, 13.0), -90.0, 180.0);
+            &[
+                (3.0, 6.0),
+                (16.0, 6.0),
+                (16.0, 19.0),
+                (3.0, 19.0),
+                (19.0, 3.0),
+            ]
+        }
+        "subdplane" => {
+            pen.ellipse((3.0, 5.0, 16.0, 12.0));
+            &[(3.0, 5.0), (19.0, 5.0), (19.0, 17.0), (3.0, 17.0)]
+        }
+        "subdsphere" => {
+            pen.ellipse((3.0, 3.0, 16.0, 16.0));
+            &[(3.0, 3.0), (19.0, 3.0), (19.0, 19.0), (3.0, 19.0)]
+        }
+        "subdcylinder" | "subdcone" => {
+            pen.ellipse((4.0, 15.0, 14.0, 5.0));
+            if key == "subdcylinder" {
+                pen.ellipse((4.0, 2.0, 14.0, 5.0));
+                pen.line((4.0, 4.5), (4.0, 17.5));
+                pen.line((18.0, 4.5), (18.0, 17.5));
+            } else {
+                pen.line((11.0, 3.0), (4.0, 17.5));
+                pen.line((11.0, 3.0), (18.0, 17.5));
+            }
+            &[(3.0, 2.0), (19.0, 2.0), (3.0, 20.0), (19.0, 20.0)]
+        }
+        "subdtorus" => {
+            pen.ellipse((2.0, 5.0, 18.0, 12.0));
+            pen.ellipse((7.0, 9.0, 8.0, 4.0));
+            &[(2.0, 5.0), (20.0, 5.0), (20.0, 17.0), (2.0, 17.0)]
+        }
+        _ => return false,
+    };
+    for &(x, y) in cage {
+        pen.dot(x, y);
     }
     true
 }

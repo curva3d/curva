@@ -256,3 +256,28 @@ fn faces_come_in_as_meshes_unless_asked() {
     assert!(bodies.is_empty(), "{summary}");
     assert!(summary.contains("meshes"), "{summary}");
 }
+
+#[test]
+fn the_format_reads_the_choices_kept_in_the_model_open_now() {
+    let file = std::env::temp_dir().join(format!("curva-skp-choices-{}.skp", std::process::id()));
+    std::fs::write(&file, cube_and_holed_square()).unwrap();
+    let open = curva_skp::format::format().open.unwrap();
+    let mut now = curva_document::Document::default();
+    let solids = |doc: &curva_document::Document| {
+        doc.state()
+            .objects
+            .iter()
+            .filter(|o| o.shape.body().is_some_and(curva_kernel::Body::is_solid))
+            .count()
+    };
+    let (meshed, _) = open(&file, "cube", &now).unwrap();
+    assert_eq!(solids(&meshed), 0);
+    curva_document::formats::SketchUpImport {
+        trimmed_planes: true,
+        ..curva_document::formats::SketchUpImport::default()
+    }
+    .remember(&mut now);
+    let (planes, _) = open(&file, "cube", &now).unwrap();
+    assert_eq!(solids(&planes), 1);
+    std::fs::remove_file(&file).ok();
+}

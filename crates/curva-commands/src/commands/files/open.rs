@@ -7,7 +7,10 @@ use std::path::Path;
 
 /// The running command.
 #[derive(Default)]
-pub struct Open;
+pub struct Open {
+    /// A file to read once its format's options are given (issue #432).
+    waiting: Option<String>,
+}
 
 /// A model read from a file, or why it could not be, as the command bar shows it.
 fn opened(doc: &mut Document, read: Result<(Document, Message), String>) -> Step {
@@ -24,20 +27,42 @@ fn opened(doc: &mut Document, read: Result<(Document, Message), String>) -> Step
 fn through_the_list(doc: &mut Document, text: &str) -> Option<Step> {
     let path = Path::new(text.trim().trim_matches('"'));
     let open = doc.formats().of(path).and_then(|f| f.open)?;
-    let read = open(path, text).map(|(model, done)| (model, Message::with(done.key, done.args)));
+    let read =
+        open(path, text, doc).map(|(model, done)| (model, Message::with(done.key, done.args)));
     Some(opened(doc, read))
+}
+
+/// The panel of options the format of the file typed asks before it is read, if any.
+pub(crate) fn options_asked(doc: &Document, text: &str) -> Option<Step> {
+    let path = Path::new(text.trim().trim_matches('"'));
+    let panel = doc.formats().of(path).and_then(|f| f.asks)?;
+    Some(Step::Ask(Request::panel_step(
+        "prompt.open.options",
+        crate::Panel::Format(panel),
+    )))
 }
 
 impl Command for Open {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
-        let Some(Answer::Path(text)) = answer else {
-            return match answer {
-                None => Step::Ask(Request::file_to_open(
+        let text = match answer {
+            None => {
+                return Step::Ask(Request::file_to_open(
                     "prompt.open.path",
                     doc.formats().opening(),
-                )),
-                Some(_) => unexpected(),
-            };
+                ));
+            }
+            Some(Answer::Path(text)) => {
+                if let Some(ask) = options_asked(doc, &text) {
+                    self.waiting = Some(text);
+                    return ask;
+                }
+                text
+            }
+            Some(Answer::Empty) => match self.waiting.take() {
+                Some(text) => text,
+                None => return unexpected(),
+            },
+            Some(_) => return unexpected(),
         };
         if let Some(step) = through_the_list(doc, &text) {
             return step;
