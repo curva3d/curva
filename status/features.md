@@ -16,6 +16,24 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## Features stream — 20 November 2026
+
+- **File format registry built (#391, code health fix 6)**, to the spec the owner approved today
+  (`docs/specs/file-formats.md`, #405, both recommendations). Each format now describes itself once
+  in its own crate and joins one list, gathered by the new crate `curva-formats`. The model carries
+  the list; the file commands ask it and name no format. STEP export moved into its own crate,
+  `curva-step`, and the shared meshing helper into `curva-document` (agreed with the mesh stream).
+  The steps were #417 (pinned dialog lists), #418, #420, #423 and the last one, which takes the
+  dialogs' lists from the registry and adds a check that `curva-commands` and `curva-app` depend on
+  no format crate. Every dialog lists the same types in the same order. **New file formats can now
+  be added** (FBX, USD, SketchUp export): each is one crate that joins the list.
+- **For the owner:** `Import` reads SketchUp files typed in, but its dialog has never offered them.
+  The registry keeps that as it was (`import_listed: false`); listing them is a one-line change if
+  wanted.
+- **Size check at work:** it stopped `Export` and the app's start-up function from growing. `Export`
+  was split, and `Open` shrank, so both left the exceptions list. #422 opened: `commands/mod.rs` is
+  at exactly 800 lines, so its registrations should be split by tab (the mesh stream's warning).
+
 ## Features stream — 19 November 2026
 
 - **Code health review** (`docs/reviews/code-health-2026-11-19.md`, #402) and the owner's
@@ -23,8 +41,6 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
   files over 800 lines and functions over 80 now fail; today's 5 files and 65 functions are in
   `crates/curva-size-check/known.txt`, which may only shrink. #401 (helpers out of
   `commands/mod.rs`) in #410.
-- **File format registry (#391): spec waiting for the owner's approval** (`docs/specs/file-formats.md`,
-  draft PR #405). No new file formats until it is built.
 - **More of the owner's `.3dm` files come in:** surfaces of revolution whose angle ended a rounding
   short (#386, 72 solids); plane faces only a rounding wide (#389, 35 of 37 "status 1007" solids);
   solids where three faces meet at an edge (#403, 4 solids); zero-length lines named as such

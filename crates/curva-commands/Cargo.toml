@@ -12,13 +12,11 @@ workspace = true
 
 [dependencies]
 curva-document = { path = "../curva-document" }
-curva-3dm = { path = "../curva-3dm" }
-curva-dxf = { path = "../curva-dxf" }
-curva-skp = { path = "../curva-skp" }
 curva-kernel = { path = "../curva-kernel" }
 curva-mesh = { path = "../curva-mesh" }
-curva-meshfiles = { path = "../curva-meshfiles" }
 
 [dev-dependencies]
 # The full list of formats, which the interface hands every model, for the commands' tests.
 curva-formats = { path = "../curva-formats" }
+# Some file tests read back what Export wrote.
+curva-3dm = { path = "../curva-3dm" }

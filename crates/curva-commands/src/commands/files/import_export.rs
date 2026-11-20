@@ -4,51 +4,9 @@
 //! `SaveAs`.
 
 use crate::commands::{ask_objects, unexpected};
-use crate::{
-    Answer, CURVA_FILES, Command, DWG_FILES, DXF_FILES, FileFormat, Message, OBJ_FILES, PLY_FILES,
-    PrintJob, PrintTo, RHINO_FILES, Request, SKP_FILES, STEP_FILES, STL_FILES, SVG_FILES, Step,
-    ViewRequest,
-};
+use crate::{Answer, Command, Message, PrintJob, PrintTo, Request, Step, ViewRequest};
 use curva_document::Document;
 use std::path::{Path, PathBuf};
-
-/// What `Open` reads, Curva's own files first.
-pub const READ_FORMATS: &[FileFormat] = &[
-    CURVA_FILES,
-    RHINO_FILES,
-    DXF_FILES,
-    DWG_FILES,
-    SKP_FILES,
-    STL_FILES,
-    OBJ_FILES,
-    PLY_FILES,
-];
-
-/// What `Import` reads.
-pub const IMPORT_FORMATS: &[FileFormat] = &[
-    CURVA_FILES,
-    RHINO_FILES,
-    DXF_FILES,
-    DWG_FILES,
-    STL_FILES,
-    OBJ_FILES,
-    PLY_FILES,
-];
-
-/// What `Save` and `SaveAs` write, Curva's own files first.
-pub const SAVE_FORMATS: &[FileFormat] = &[CURVA_FILES, RHINO_FILES];
-
-/// What `Export` and `ExportSelected` write.
-pub const EXPORT_FORMATS: &[FileFormat] = &[
-    RHINO_FILES,
-    DXF_FILES,
-    DWG_FILES,
-    STEP_FILES,
-    STL_FILES,
-    OBJ_FILES,
-    PLY_FILES,
-    SVG_FILES,
-];
 
 /// The model's file name without its extension, for a save dialog's name field.
 pub fn model_name(doc: &Document) -> Option<String> {
@@ -82,18 +40,20 @@ pub struct Import;
 impl Command for Import {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
         match answer {
-            None => Step::Ask(Request::file_to_open("prompt.import.path", IMPORT_FORMATS)),
+            None => Step::Ask(Request::file_to_open(
+                "prompt.import.path",
+                doc.formats().importing(),
+            )),
             Some(Answer::Path(text)) => {
                 let path = typed(&text);
                 if let Some(import) = doc.formats().of(&path).and_then(|f| f.import) {
                     return done(import(doc, &path, &path.display().to_string()));
                 }
-                // A Curva file comes in the same way as a Rhino file, as plain geometry.
-                done(curva_3dm::format::import_curva(
-                    doc,
-                    &path,
-                    &path.display().to_string(),
-                ))
+                // Anything else is read as Curva's own file, the first on the list.
+                match doc.formats().all().first().and_then(|f| f.import) {
+                    Some(import) => done(import(doc, &path, &path.display().to_string())),
+                    None => failed("not a kind of file Curva can import"),
+                }
             }
             Some(_) => unexpected(),
         }
@@ -123,8 +83,11 @@ impl Export {
     /// The model, or the chosen objects, written to the file typed.
     fn write(&self, doc: &mut Document, text: &str) -> Step {
         let mut path = typed(text);
-        if path.extension().is_none() {
-            path.set_extension("3dm");
+        // No extension: the first kind `Export` offers, as its dialog does.
+        if path.extension().is_none()
+            && let Some((_, extensions)) = doc.formats().exporting().first()
+        {
+            path.set_extension(extensions[0]);
         }
         if let Some(export) = doc.formats().of(&path).and_then(|f| f.export) {
             let chosen = self.chosen.as_deref();
@@ -165,7 +128,7 @@ impl Command for Export {
                 self.chosen = Some(list);
                 Step::Ask(Request::file_to_save(
                     "prompt.export.path",
-                    EXPORT_FORMATS,
+                    doc.formats().exporting(),
                     model_name(doc),
                 ))
             }
@@ -177,13 +140,13 @@ impl Command for Export {
                 self.chosen = Some(chosen);
                 Step::Ask(Request::file_to_save(
                     "prompt.export.path",
-                    EXPORT_FORMATS,
+                    doc.formats().exporting(),
                     model_name(doc),
                 ))
             }
             None => Step::Ask(Request::file_to_save(
                 "prompt.export.path",
-                EXPORT_FORMATS,
+                doc.formats().exporting(),
                 model_name(doc),
             )),
             Some(Answer::Path(text)) => self.write(doc, &text),

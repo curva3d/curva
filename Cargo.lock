@@ -1888,12 +1888,9 @@ version = "0.4.3"
 dependencies = [
  "curva-3dm",
  "curva-document",
- "curva-dxf",
  "curva-formats",
  "curva-kernel",
  "curva-mesh",
- "curva-meshfiles",
- "curva-skp",
 ]
 
 [[package]]

@@ -34,7 +34,7 @@ impl Command for Open {
             return match answer {
                 None => Step::Ask(Request::file_to_open(
                     "prompt.open.path",
-                    crate::commands::import_export::READ_FORMATS,
+                    doc.formats().opening(),
                 )),
                 Some(_) => unexpected(),
             };
