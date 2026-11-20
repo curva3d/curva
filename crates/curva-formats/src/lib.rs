@@ -40,7 +40,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn curva_files_come_first_then_the_others_in_dialog_order() {
+    fn curva_files_come_first_then_rhino() {
         let names: Vec<_> = all().all().iter().map(|f| f.name).collect();
         assert_eq!(
             names,
