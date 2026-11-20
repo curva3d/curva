@@ -11,6 +11,12 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 20 November 2026 (later still)
 
+**QuadRemesh `Symmetry` (#329):** measured in Rhino 8, its `X` mirrors y, `Y` mirrors x and `Z` mirrors
+z, about the middle of the bounding box (not the world origin). Curva cuts the mesh along each
+plane, remeshes one part, puts its border exactly on the plane, mirrors it back and welds the
+seam, so the halves match exactly and the result stays closed (516 quads where Rhino makes 412 at
+500).
+
 **QuadRemesh `TargetEdgeLength` (#329):** measured in Rhino 8 on a 40 × 40 sphere of radius 5: 1,064,
 244 and 59 quads at 0.5, 1 and 2, so its quads come out about 1.12 times the length asked for.
 quadrs' own edge length made them about 0.85 times as long (434 quads at 1), so Curva now turns
