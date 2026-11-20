@@ -1,7 +1,7 @@
 # Spec: one list of file formats (code health fix 6)
 
-**Status:** Draft, for the owner's approval in chat. The owner agreed the direction on
-19 November 2026 (code health review of that day, issue #391).
+**Status:** Approved by the owner on 20 November 2026, with both recommendations in section 7
+(the list kept with the document; STEP in its own crate). Issue #391.
 **Covers:** how Curva's file commands (`Open`, `Import`, `Save`, `SaveAs`, `Export`,
 `ExportSelected`, `Print`) find the formats they read and write. No format gains or loses anything.
 **Rules:** a tidy-up (`AGENTS.md`): every file opens, saves and exports exactly as before, and the
@@ -101,7 +101,7 @@ New formats, new options, or any change to what a format reads or writes. Moving
 reading into its own crate. A list of formats that can be added at run time (plug-ins): the list is
 fixed when Curva is built.
 
-## 7. Choices for the owner
+## 7. The owner's choices (both recommendations approved)
 
 - **Where the list lives while Curva runs.** Recommended: with the document, as above, so every
   command reaches it without changing how the ~250 commands are called. The alternative, handing it
