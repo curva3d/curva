@@ -3,7 +3,7 @@
 //! outlines inside it (its holes) becomes one hatch. `Pattern`, `Scale` and `Rotation` are set
 //! as options here, where Rhino has a dialog; Properties changes them afterwards.
 
-use crate::commands::curves::curve_boolean::regions;
+use crate::commands::nurbs::curves::curve_boolean::regions;
 use crate::commands::{curves_of, unexpected};
 use crate::{Answer, Command, Kind, Message, Request, Step};
 use curva_document::Document;

@@ -14,3 +14,26 @@ pub(crate) use faces::{
 };
 pub(crate) use mesh_command::MeshCommand;
 pub(crate) use primitives::{MeshBox, MeshCone, MeshCylinder, MeshPlane, MeshSphere, MeshTorus};
+
+/// This folder's commands, as the command list holds them; `commands/order.rs` keeps their
+/// place in it.
+pub(crate) static COMMANDS: &[crate::commands::CommandDef] = &[
+    recipe!("Mesh", [], true, MeshCommand),
+    recipe!("MeshBox", [], true, MeshBox),
+    recipe!("MeshPlane", [], true, MeshPlane),
+    recipe!("MeshSphere", [], true, MeshSphere),
+    recipe!("MeshCylinder", [], true, MeshCylinder),
+    recipe!("MeshCone", [], true, MeshCone),
+    recipe!("MeshTorus", [], true, MeshTorus),
+    recipe!("Check", [], true, Check),
+    recipe!("MeshRepair", [], true, MeshRepair),
+    recipe!("UnifyMeshNormals", [], true, UnifyMeshNormals),
+    recipe!("FillMeshHoles", [], true, FillMeshHoles),
+    recipe!("CullDegenerateMeshFaces", [], true, CullDegenerateMeshFaces),
+    recipe!("RebuildMeshNormals", [], true, RebuildMeshNormals),
+    recipe!("ReduceMesh", [], true, ReduceMesh),
+    recipe!("TriangulateMesh", [], true, TriangulateMesh),
+    recipe!("QuadrangulateMesh", [], true, QuadrangulateMesh),
+    recipe!("ExtractMeshFaces", [], true, ExtractMeshFaces),
+    recipe!("MeshToNURB", [], true, MeshToNurb),
+];

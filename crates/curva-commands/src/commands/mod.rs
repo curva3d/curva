@@ -1,82 +1,57 @@
 //! The list of commands, and the steps several of them share. Commands are filed in folders by
-//! the tab a user finds them on, one command (or a small family) per file.
+//! kind of geometry and then by tab (spec `docs/specs/command-groups.md`): `nurbs`, `mesh`,
+//! `subd`, then the tabs every kind shares. Each folder lists its own commands.
+
+macro_rules! listed {
+    ($name:literal, [$($alias:literal),*], $repeat:literal, $undo:literal, $kind:ty) => {
+        $crate::commands::CommandDef {
+            name: $name,
+            aliases: &[$($alias),*],
+            repeatable: $repeat,
+            records_undo: $undo,
+            make: || Box::<$kind>::default(),
+            options: &[],
+            recipe: false,
+        }
+    };
+}
+
+/// Lists a command written as a [`crate::recipe::Recipe`]; how every new command is listed.
+macro_rules! recipe {
+    ($name:literal, [$($alias:literal),*], $repeat:literal, $recipe:ty) => {
+        $crate::commands::CommandDef {
+            name: $name,
+            aliases: &[$($alias),*],
+            repeatable: $repeat,
+            records_undo: true,
+            make: || Box::<crate::recipe::RecipeCommand<$recipe>>::default(),
+            options: <$recipe as crate::recipe::Recipe>::OPTIONS,
+            recipe: true,
+        }
+    };
+}
 
 mod analyze;
 mod annotate;
 mod arguments;
-mod curves;
+mod edit;
 mod files;
 mod layouts;
 pub mod mesh;
-mod modify;
+mod nurbs;
+mod order;
 mod organise;
 mod select;
-mod solids;
+mod subd;
 mod support;
-mod surfaces;
 mod view;
 
 use crate::Command;
-use analyze::{
-    angle, area, area_centroid, audit, bounding_box, contour, count, curvature_graph, dir,
-    distance, draft_analysis, evaluate_pt, intersect, length, plan, radius, section, show_edges,
-    silhouette, volume_centroid, what, zebra,
-};
-use annotate::{
-    arc_length, dimension, dot, hatch, hatch_base, hatch_patterns, leader, measure, ordinate,
-    radial, styles, text,
-};
 use curva_kernel::Point;
-use curves::{
-    arc, blend_crv, chamfer, circle, close_crv, conic, curve, curve_boolean, divide, ellipse,
-    extend, fair, fillet, fillet_corners, handle_curve, helix, hyperbola, interpcrv, line, lines,
-    make_uniform, match_curve, offset, offset_multiple, parabola, point, points, polygon, polyline,
-    rectangle, reparameterize, simplify_crv, sketch, slot, spiral, text_object, tween_curves,
-    weight,
-};
-use files::{import_export, new, open, save, save_as};
-use layouts::{
-    clipping_plane, copy_layout, detail, layout, layouts_panel, make2d, print, revision, scale_bar,
-    section_style, sheet_index, title_block,
-};
-use modify::{
-    align, array, array_crv, array_linear, array_polar, bend, boolean_difference,
-    boolean_intersection, boolean_split, boolean_union, cage_edit, change_degree, copy, delete,
-    distribute, explode, flip, flow, history, insert_knot, join, live, mirror, move_objects,
-    orient, orient3pt, points_off, points_on, project_to_cplane, rebuild, redo,
-    remove_control_point, remove_knot, rotate, rotate3d, scale, scale_nu, scale1d, scale2d, set_pt,
-    shear, smooth, split, taper, trim, twist, undo,
-};
-use organise::{
-    block, block_edit, block_manager, change_layer, draw_order, explode_block,
-    get_document_user_text, get_user_text, group, insert, linetype_command, lock, lock_swap,
-    match_properties, notes, object_colour, print_width_command, purge, rename, replace_block,
-    set_document_user_text, set_user_text, ungroup, unlock, unlock_selected,
-};
-use select::{
-    hide, hide_swap, invert, isolate, sel_all, sel_arc, sel_block_instance_named, sel_body,
-    sel_circle, sel_closed_crv, sel_color, sel_crv, sel_dup, sel_filter, sel_last, sel_layer,
-    sel_line, sel_name, sel_none, sel_open_crv, sel_polyline, sel_prev, sel_pt, show,
-};
-use solids::{
-    box_solid, cap, chamfer_edge, ellipsoid, extrude_face, fillet_edge, merge_all_faces, move_face,
-    paraboloid, pipe, primitives, pyramid, shell, volume, wirecut,
-};
 pub(crate) use support::{
     MOST_PREVIEW_OBJECTS, ask_objects, ask_point, ask_point_or_number, bodies_of, circle_through,
     curve_at, curves_of, cut_by, geometry_failed, ghost_results, ghosts, guide,
     objects_or_selection, plane_normal, unexpected, unexpected_step,
-};
-use surfaces::{
-    blend_srf, dup_border, dup_edge, dup_face_border, edge_srf, extend_srf, extract_isocurve,
-    extract_srf, extrude_crv, extrude_crv_along_crv, extrude_crv_tapered, extrude_crv_to_point,
-    extrude_srf, fillet_srf, interp_crv_on_srf, loft, match_srf, network_srf, offset_crv_on_srf,
-    offset_srf, patch, planar_srf, plane, project, pull, rail_revolve, rebuild_uv, revolve,
-    shrink_trimmed_srf, split_srf, srf_pt, sweep1, sweep2, unroll_srf, untrim,
-};
-use view::{
-    cplane, four_view, front, named_cplane, named_view, perspective, right, set_display_mode, top,
-    view_history, zoom, zoom_extents, zoom_selected,
 };
 
 /// How a command is listed.
@@ -98,573 +73,56 @@ pub struct CommandDef {
     pub recipe: bool,
 }
 
-macro_rules! listed {
-    ($name:literal, [$($alias:literal),*], $repeat:literal, $undo:literal, $kind:ty) => {
-        CommandDef {
-            name: $name,
-            aliases: &[$($alias),*],
-            repeatable: $repeat,
-            records_undo: $undo,
-            make: || Box::<$kind>::default(),
-            options: &[],
-            recipe: false,
-        }
-    };
+/// The command list: every command Curva has, in the order of `order.rs`.
+pub struct CommandList(std::sync::LazyLock<Vec<&'static CommandDef>>);
+
+impl CommandList {
+    /// The commands, in order.
+    pub fn iter(&self) -> std::iter::Copied<std::slice::Iter<'_, &'static CommandDef>> {
+        self.0.iter().copied()
+    }
 }
 
-/// Lists a command written as a [`crate::recipe::Recipe`]; how every new command is listed.
-macro_rules! recipe {
-    ($name:literal, [$($alias:literal),*], $repeat:literal, $recipe:ty) => {
-        CommandDef {
-            name: $name,
-            aliases: &[$($alias),*],
-            repeatable: $repeat,
-            records_undo: true,
-            make: || Box::<crate::recipe::RecipeCommand<$recipe>>::default(),
-            options: <$recipe as crate::recipe::Recipe>::OPTIONS,
-            recipe: true,
-        }
-    };
+impl<'a> IntoIterator for &'a CommandList {
+    type Item = &'static CommandDef;
+    type IntoIter = std::iter::Copied<std::slice::Iter<'a, &'static CommandDef>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
 }
+
+/// Every folder's list of commands.
+const FOLDERS: [&[CommandDef]; 14] = [
+    nurbs::curves::COMMANDS,
+    nurbs::surfaces::COMMANDS,
+    nurbs::solids::COMMANDS,
+    nurbs::points::COMMANDS,
+    mesh::COMMANDS,
+    subd::COMMANDS,
+    edit::COMMANDS,
+    organise::COMMANDS,
+    annotate::COMMANDS,
+    layouts::COMMANDS,
+    analyze::COMMANDS,
+    select::COMMANDS,
+    view::COMMANDS,
+    files::COMMANDS,
+];
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 294] = [
-    recipe!("Line", ["l"], true, line::Line),
-    recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
-    recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
-    recipe!("Circle", ["c", "ci"], true, circle::Circle),
-    recipe!("Move", ["m"], true, move_objects::MoveObjects),
-    recipe!("Copy", ["co", "cp"], true, copy::CopyObjects),
-    recipe!("Rotate", ["ro"], true, rotate::Rotate),
-    recipe!("Scale", ["sc"], true, scale::Scale),
-    recipe!("Mirror", ["mi"], true, mirror::Mirror),
-    recipe!("Array", ["ar"], true, array::Array),
-    listed!("ArrayPolar", ["arp"], true, true, array_polar::ArrayPolar),
-    listed!("ArrayCrv", [], true, true, array_crv::ArrayCrv),
-    recipe!("Point", ["pt"], true, point::PointObject),
-    listed!("Divide", [], true, true, divide::Divide),
-    listed!("Orient", [], true, true, orient::Orient),
-    listed!("Rebuild", [], true, true, rebuild::Rebuild),
-    listed!("PointsOn", [], false, false, points_on::PointsOn),
-    listed!("PointsOff", [], false, false, points_off::PointsOff),
-    listed!(
-        "InsertKnot",
-        ["insertcontrolpoint"],
-        true,
-        true,
-        insert_knot::InsertKnot
-    ),
-    listed!("RemoveKnot", [], true, true, remove_knot::RemoveKnot),
-    listed!(
-        "RemoveControlPoint",
-        [],
-        true,
-        true,
-        remove_control_point::RemoveControlPoint
-    ),
-    listed!("Smooth", [], true, true, smooth::Smooth),
-    listed!("History", [], false, false, history::History),
-    listed!("Flip", [], true, true, flip::Flip),
-    listed!("Dir", [], true, true, dir::Dir),
-    listed!("CloseCrv", [], true, true, close_crv::CloseCrv),
-    listed!("Hide", ["h"], true, true, hide::Hide),
-    listed!("Show", ["unisolate"], true, true, show::Show),
-    listed!("SelAll", ["sa"], false, false, sel_all::SelAll),
-    listed!("SelNone", ["sn"], false, false, sel_none::SelNone),
-    listed!("SelCrv", [], false, false, sel_crv::SelCrv),
-    listed!("SelSrf", [], false, false, sel_body::SelSrf),
-    listed!("SelSolid", [], false, false, sel_body::SelSolid),
-    listed!("SelPt", [], false, false, sel_pt::SelPt),
-    listed!("SelName", [], false, false, sel_name::SelName),
-    listed!("SelLayer", [], false, false, sel_layer::SelLayer),
-    listed!("SelDup", [], false, false, sel_dup::SelDup),
-    listed!("SelLast", [], false, false, sel_last::SelLast),
-    listed!("SelPrev", [], false, false, sel_prev::SelPrev),
-    listed!("SelFilter", [], false, false, sel_filter::SelFilter),
-    listed!(
-        "SelFilterToggle",
-        [],
-        false,
-        false,
-        sel_filter::SelFilterToggle
-    ),
-    listed!("Rename", [], true, true, rename::Rename),
-    listed!("Isolate", [], true, true, isolate::Isolate),
-    listed!(
-        "ZoomSelected",
-        ["zs"],
-        false,
-        false,
-        zoom_selected::ZoomSelected
-    ),
-    listed!(
-        "BoundingBox",
-        ["bb"],
-        true,
-        false,
-        bounding_box::BoundingBox
-    ),
-    listed!("Invert", [], false, false, invert::Invert),
-    listed!("Distance", ["dist"], true, false, distance::Distance),
-    listed!("Length", ["len"], true, false, length::Length),
-    listed!("Area", [], true, false, area::Area),
-    listed!("Volume", [], true, false, volume::Volume),
-    listed!("SetPt", [], true, true, set_pt::SetPt),
-    listed!(
-        "ProjectToCPlane",
-        [],
-        true,
-        true,
-        project_to_cplane::ProjectToCPlane
-    ),
-    recipe!("Join", ["j"], true, join::Join),
-    recipe!("Explode", ["x"], true, explode::Explode),
-    recipe!("Split", [], true, split::Split),
-    recipe!("Trim", ["tr"], true, trim::Trim),
-    recipe!("Offset", [], true, offset::Offset),
-    recipe!("Fillet", [], true, fillet::Fillet),
-    listed!(
-        "FilletCorners",
-        [],
-        true,
-        true,
-        fillet_corners::FilletCorners
-    ),
-    listed!("TweenCurves", [], true, true, tween_curves::TweenCurves),
-    listed!("Orient3Pt", [], true, true, orient3pt::Orient3Pt),
-    recipe!("Chamfer", [], true, chamfer::Chamfer),
-    recipe!("Ellipse", ["el"], true, ellipse::Ellipse),
-    listed!("Rotate3D", [], true, true, rotate3d::Rotate3D),
-    listed!("Scale1D", [], true, true, scale1d::Scale1D),
-    listed!("Scale2D", [], true, true, scale2d::Scale2D),
-    listed!("ScaleNU", [], true, true, scale_nu::ScaleNu),
-    recipe!("Arc", ["a"], true, arc::Arc),
-    recipe!("Rectangle", ["rec"], true, rectangle::Rectangle),
-    recipe!("Box", [], true, box_solid::BoxSolid),
-    recipe!("Sphere", ["sph"], true, primitives::Sphere),
-    recipe!("Cylinder", ["cyl"], true, primitives::Cylinder),
-    recipe!("Cone", [], true, primitives::Cone),
-    recipe!("TruncatedCone", [], true, primitives::TruncatedCone),
-    recipe!("Torus", [], true, primitives::Torus),
-    recipe!("Tube", [], true, primitives::Tube),
-    recipe!("Polygon", [], true, polygon::Polygon),
-    recipe!("Helix", [], true, helix::Helix),
-    recipe!("Spiral", [], true, spiral::Spiral),
-    recipe!("Plane", [], true, plane::Plane),
-    recipe!("SrfPt", [], true, srf_pt::SrfPt),
-    recipe!("ExtrudeSrf", [], true, extrude_srf::ExtrudeSrf),
-    recipe!("ArrayLinear", [], true, array_linear::ArrayLinear),
-    recipe!("Angle", [], true, angle::Angle),
-    recipe!("EvaluatePt", [], true, evaluate_pt::EvaluatePt),
-    recipe!("Radius", [], true, radius::Radius),
-    recipe!("What", [], true, what::What),
-    listed!("SelLine", [], false, false, sel_line::SelLine),
-    listed!("SelPolyline", [], false, false, sel_polyline::SelPolyline),
-    listed!("SelCircle", [], false, false, sel_circle::SelCircle),
-    listed!("SelArc", [], false, false, sel_arc::SelArc),
-    listed!(
-        "SelClosedCrv",
-        [],
-        false,
-        false,
-        sel_closed_crv::SelClosedCrv
-    ),
-    listed!("SelOpenCrv", [], false, false, sel_open_crv::SelOpenCrv),
-    listed!("HideSwap", [], true, true, hide_swap::HideSwap),
-    recipe!("Points", [], true, points::Points),
-    recipe!("Lines", [], true, lines::Lines),
-    recipe!("Slot", [], true, slot::Slot),
-    recipe!("Ellipsoid", [], true, ellipsoid::Ellipsoid),
-    recipe!("BooleanSplit", [], true, boolean_split::BooleanSplit),
-    recipe!("DupEdge", [], true, dup_edge::DupEdge),
-    recipe!("Parabola", [], true, parabola::Parabola),
-    recipe!("Paraboloid", [], true, paraboloid::Paraboloid),
-    recipe!("Align", [], true, align::Align),
-    recipe!("ChangeDegree", [], true, change_degree::ChangeDegree),
-    recipe!("AreaCentroid", [], true, area_centroid::AreaCentroid),
-    recipe!("VolumeCentroid", [], true, volume_centroid::VolumeCentroid),
-    recipe!("HandleCurve", [], true, handle_curve::HandleCurve),
-    recipe!("Sketch", [], true, sketch::Sketch),
-    recipe!("Conic", [], true, conic::Conic),
-    recipe!("Hyperbola", [], true, hyperbola::Hyperbola),
-    recipe!("BlendCrv", ["blend"], true, blend_crv::BlendCrv),
-    recipe!("OffsetMultiple", [], true, offset_multiple::OffsetMultiple),
-    recipe!("DupBorder", [], true, dup_border::DupBorder),
-    recipe!("Extend", ["ex"], true, extend::Extend),
-    recipe!("Fair", [], true, fair::Fair),
-    recipe!("CurveBoolean", [], true, curve_boolean::CurveBoolean),
-    recipe!("Match", ["matchcrv"], true, match_curve::Match),
-    recipe!("SimplifyCrv", [], true, simplify_crv::SimplifyCrv),
-    recipe!("Reparameterize", [], true, reparameterize::Reparameterize),
-    recipe!("MakeUniform", [], true, make_uniform::MakeUniform),
-    recipe!("Weight", [], true, weight::Weight),
-    recipe!(
-        "ExtrudeCrvTapered",
-        [],
-        true,
-        extrude_crv_tapered::ExtrudeCrvTapered
-    ),
-    recipe!(
-        "ExtrudeCrvAlongCrv",
-        [],
-        true,
-        extrude_crv_along_crv::ExtrudeCrvAlongCrv
-    ),
-    recipe!(
-        "ExtrudeCrvToPoint",
-        [],
-        true,
-        extrude_crv_to_point::ExtrudeCrvToPoint
-    ),
-    recipe!("RailRevolve", [], true, rail_revolve::RailRevolve),
-    recipe!("Pyramid", [], true, pyramid::Pyramid),
-    recipe!("ExtractSrf", [], true, extract_srf::ExtractSrf),
-    recipe!("MergeAllFaces", [], true, merge_all_faces::MergeAllFaces),
-    recipe!("Wirecut", [], true, wirecut::Wirecut),
-    recipe!("Distribute", [], true, distribute::Distribute),
-    recipe!("SelColor", [], false, sel_color::SelColor),
-    recipe!("Lock", [], true, lock::Lock),
-    recipe!("Unlock", [], true, unlock::Unlock),
-    recipe!("Group", [], true, group::Group),
-    recipe!("Ungroup", [], true, ungroup::Ungroup),
-    recipe!("ShowEdges", [], true, show_edges::ShowEdges),
-    recipe!("Plan", [], false, plan::Plan),
-    listed!("Zebra", [], false, false, zebra::Zebra),
-    listed!("EditBoolean", [], true, true, live::EditBoolean),
-    listed!("BreakBoolean", [], true, true, live::BreakBoolean),
-    listed!("Block", [], true, true, block::Block),
-    listed!("Insert", [], true, true, insert::Insert),
-    listed!(
-        "BlockManager",
-        [],
-        false,
-        false,
-        block_manager::BlockManager
-    ),
-    listed!("BlockEdit", [], true, true, block_edit::BlockEdit),
-    listed!("ExplodeBlock", [], true, true, explode_block::ExplodeBlock),
-    listed!("ReplaceBlock", [], true, true, replace_block::ReplaceBlock),
-    listed!(
-        "SelBlockInstanceNamed",
-        [],
-        false,
-        false,
-        sel_block_instance_named::SelBlockInstanceNamed
-    ),
-    listed!("Count", [], false, false, count::Count),
-    listed!("ChangeLayer", [], true, true, change_layer::ChangeLayer),
-    listed!(
-        "MatchProperties",
-        ["matchprop"],
-        true,
-        true,
-        match_properties::MatchProperties
-    ),
-    listed!(
-        "Linetype",
-        [],
-        true,
-        true,
-        linetype_command::LinetypeCommand
-    ),
-    listed!(
-        "PrintWidth",
-        [],
-        true,
-        true,
-        print_width_command::PrintWidthCommand
-    ),
-    listed!(
-        "ObjectColour",
-        ["objectcolor"],
-        true,
-        true,
-        object_colour::ObjectColour
-    ),
-    listed!("SetUserText", [], true, true, set_user_text::SetUserText),
-    listed!("GetUserText", [], false, false, get_user_text::GetUserText),
-    listed!(
-        "SetDocumentUserText",
-        [],
-        true,
-        true,
-        set_document_user_text::SetDocumentUserText<false>
-    ),
-    listed!(
-        "SetLayoutUserText",
-        [],
-        true,
-        true,
-        set_document_user_text::SetDocumentUserText<true>
-    ),
-    listed!(
-        "GetDocumentUserText",
-        [],
-        false,
-        false,
-        get_document_user_text::GetDocumentUserText
-    ),
-    listed!("Notes", [], false, true, notes::Notes),
-    listed!("Purge", [], true, true, purge::Purge),
-    listed!("Audit", [], false, false, audit::Audit),
-    listed!("LockSwap", [], true, true, lock_swap::LockSwap),
-    listed!(
-        "UnlockSelected",
-        [],
-        true,
-        true,
-        unlock_selected::UnlockSelected
-    ),
-    listed!("BringToFront", [], true, true, draw_order::DrawOrder<true, true>),
-    listed!("SendToBack", [], true, true, draw_order::DrawOrder<false, true>),
-    listed!("BringForward", [], true, true, draw_order::DrawOrder<true, false>),
-    listed!("SendBackward", [], true, true, draw_order::DrawOrder<false, false>),
-    recipe!("DupFaceBorder", [], true, dup_face_border::DupFaceBorder),
-    listed!("TextObject", [], true, true, text_object::TextObject),
-    listed!(
-        "DraftAnalysis",
-        [],
-        false,
-        false,
-        draft_analysis::DraftAnalysis
-    ),
-    recipe!("EdgeSrf", [], true, edge_srf::EdgeSrf),
-    recipe!("NetworkSrf", [], true, network_srf::NetworkSrf),
-    recipe!("Patch", [], true, patch::Patch),
-    recipe!("ExtendSrf", [], true, extend_srf::ExtendSrf),
-    recipe!("Untrim", [], true, untrim::Untrim),
-    recipe!("Section", [], true, section::Section),
-    recipe!("Contour", [], true, contour::Contour),
-    recipe!("Intersect", [], true, intersect::Intersect),
-    recipe!("Project", [], true, project::Project),
-    recipe!("MoveFace", [], true, move_face::MoveFace<false>),
-    recipe!("PushPull", [], true, move_face::MoveFace<true>),
-    recipe!("Shear", [], true, shear::Shear),
-    recipe!("RebuildUV", [], true, rebuild_uv::RebuildUv),
-    recipe!("CurvatureGraph", [], true, curvature_graph::CurvatureGraph),
-    recipe!("Cap", [], true, cap::Cap),
-    recipe!("Mesh", [], true, mesh::MeshCommand),
-    recipe!("MeshBox", [], true, mesh::MeshBox),
-    recipe!("MeshPlane", [], true, mesh::MeshPlane),
-    recipe!("MeshSphere", [], true, mesh::MeshSphere),
-    recipe!("MeshCylinder", [], true, mesh::MeshCylinder),
-    recipe!("MeshCone", [], true, mesh::MeshCone),
-    recipe!("MeshTorus", [], true, mesh::MeshTorus),
-    recipe!("Check", [], true, mesh::Check),
-    recipe!("MeshRepair", [], true, mesh::MeshRepair),
-    recipe!("UnifyMeshNormals", [], true, mesh::UnifyMeshNormals),
-    recipe!("FillMeshHoles", [], true, mesh::FillMeshHoles),
-    recipe!(
-        "CullDegenerateMeshFaces",
-        [],
-        true,
-        mesh::CullDegenerateMeshFaces
-    ),
-    recipe!("RebuildMeshNormals", [], true, mesh::RebuildMeshNormals),
-    recipe!("ReduceMesh", [], true, mesh::ReduceMesh),
-    recipe!("TriangulateMesh", [], true, mesh::TriangulateMesh),
-    recipe!("QuadrangulateMesh", [], true, mesh::QuadrangulateMesh),
-    recipe!("ExtractMeshFaces", [], true, mesh::ExtractMeshFaces),
-    recipe!("MeshToNURB", [], true, mesh::MeshToNurb),
-    recipe!(
-        "ExtractIsocurve",
-        [],
-        true,
-        extract_isocurve::ExtractIsocurve
-    ),
-    recipe!(
-        "ShrinkTrimmedSrf",
-        [],
-        true,
-        shrink_trimmed_srf::ShrinkTrimmedSrf
-    ),
-    recipe!("BlendSrf", [], true, blend_srf::BlendSrf),
-    recipe!("MatchSrf", [], true, match_srf::MatchSrf),
-    recipe!("Sweep2", [], true, sweep2::Sweep2),
-    recipe!("Twist", [], true, twist::Twist),
-    recipe!("Bend", [], true, bend::Bend),
-    recipe!("Taper", [], true, taper::Taper),
-    recipe!("Flow", [], true, flow::Flow),
-    recipe!("CageEdit", [], true, cage_edit::CageEdit),
-    recipe!("Pull", [], true, pull::Pull),
-    recipe!(
-        "InterpCrvOnSrf",
-        [],
-        true,
-        interp_crv_on_srf::InterpCrvOnSrf
-    ),
-    recipe!(
-        "OffsetCrvOnSrf",
-        [],
-        true,
-        offset_crv_on_srf::OffsetCrvOnSrf
-    ),
-    recipe!("Silhouette", [], true, silhouette::Silhouette),
-    recipe!("UnrollSrf", [], true, unroll_srf::UnrollSrf),
-    recipe!("ExtrudeFace", [], true, extrude_face::ExtrudeFace),
-    recipe!("FilletSrf", [], true, fillet_srf::FilletSrf<false>),
-    recipe!("ChamferSrf", [], true, fillet_srf::FilletSrf<true>),
-    recipe!("SplitSrf", [], true, split_srf::SplitSrf),
-    recipe!("ExtrudeCrv", [], true, extrude_crv::ExtrudeCrv),
-    recipe!("PlanarSrf", [], true, planar_srf::PlanarSrf),
-    recipe!("Revolve", [], true, revolve::Revolve),
-    recipe!("Loft", [], true, loft::Loft),
-    recipe!("Sweep1", [], true, sweep1::Sweep1),
-    recipe!("Pipe", [], true, pipe::Pipe),
-    recipe!("OffsetSrf", [], true, offset_srf::OffsetSrf),
-    recipe!("FilletEdge", [], true, fillet_edge::FilletEdge),
-    recipe!("ChamferEdge", [], true, chamfer_edge::ChamferEdge),
-    recipe!("Shell", [], true, shell::Shell),
-    recipe!("BooleanUnion", [], true, boolean_union::BooleanUnion),
-    recipe!(
-        "BooleanDifference",
-        [],
-        true,
-        boolean_difference::BooleanDifference
-    ),
-    recipe!(
-        "BooleanIntersection",
-        [],
-        true,
-        boolean_intersection::BooleanIntersection
-    ),
-    listed!("Delete", ["del", "erase"], false, true, delete::Delete),
-    listed!("Undo", [], false, false, undo::Undo),
-    listed!("Redo", [], false, false, redo::Redo),
-    listed!("Save", [], false, false, save::Save),
-    listed!("SaveAs", [], false, false, save_as::SaveAs),
-    listed!("Open", [], false, false, open::Open),
-    listed!("Import", [], false, true, import_export::Import),
-    listed!("Export", [], false, false, import_export::Export),
-    listed!(
-        "ExportSelected",
-        [],
-        false,
-        false,
-        import_export::ExportSelected
-    ),
-    listed!("New", [], false, false, new::New),
-    listed!("Layout", [], false, true, layout::Layout),
-    listed!("CopyLayout", [], false, true, copy_layout::CopyLayout),
-    listed!("Layouts", [], false, false, layouts_panel::Layouts),
-    listed!("Detail", [], false, true, detail::Detail),
-    listed!("Print", ["printsheets", "plot"], false, false, print::Print),
-    listed!("ExportPDF", [], false, false, print::ExportPdf),
-    listed!("Make2D", [], false, true, make2d::Make2D),
-    listed!("TitleBlock", [], false, true, title_block::TitleBlock),
-    listed!("ScaleBar", [], true, true, scale_bar::ScaleBar),
-    listed!("SheetIndex", [], false, true, sheet_index::SheetIndex),
-    listed!("Revision", [], false, true, revision::Revision),
-    listed!("Text", [], true, true, text::Text),
-    listed!("Dim", [], true, true, dimension::Dim),
-    listed!("DimAligned", [], true, true, dimension::DimAligned),
-    listed!("DimRotated", [], true, true, dimension::DimRotated),
-    listed!("DimRadius", [], true, true, radial::DimRadius),
-    listed!("DimDiameter", [], true, true, radial::DimDiameter),
-    listed!("DimAngle", [], true, true, radial::DimAngle),
-    listed!("DimOrdinate", [], true, true, ordinate::DimOrdinate),
-    listed!("DimCurveLength", [], true, true, measure::DimCurveLength),
-    listed!("DimArea", [], true, true, measure::DimArea),
-    listed!("DimVolume", [], true, true, measure::DimVolume),
-    recipe!("DimArcLength", [], true, arc_length::DimArcLength),
-    listed!("Leader", [], true, true, leader::Leader),
-    listed!("Dot", [], true, true, dot::Dot),
-    listed!("Hatch", [], true, true, hatch::Hatch),
-    listed!(
-        "SetHatchBasePoint",
-        [],
-        true,
-        true,
-        hatch_base::SetHatchBasePoint
-    ),
-    listed!(
-        "HatchPatterns",
-        [],
-        false,
-        true,
-        hatch_patterns::HatchPatterns
-    ),
-    listed!(
-        "AnnotationStyle",
-        ["dimstyle"],
-        false,
-        false,
-        styles::AnnotationStyle
-    ),
-    listed!(
-        "SetCurrentAnnotationStyle",
-        [],
-        false,
-        true,
-        styles::SetCurrentAnnotationStyle
-    ),
-    listed!(
-        "DupAnnotationStyle",
-        [],
-        false,
-        true,
-        styles::DupAnnotationStyle
-    ),
-    listed!(
-        "ClippingPlane",
-        [],
-        true,
-        true,
-        clipping_plane::ClippingPlane
-    ),
-    listed!(
-        "EnableClippingPlane",
-        [],
-        false,
-        true,
-        clipping_plane::EnableClippingPlane
-    ),
-    listed!(
-        "DisableClippingPlane",
-        [],
-        false,
-        true,
-        clipping_plane::DisableClippingPlane
-    ),
-    recipe!(
-        "SectionStyle",
-        ["sectionhatch"],
-        true,
-        section_style::SectionStyle
-    ),
-    listed!(
-        "ZoomExtents",
-        ["ze", "zea"],
-        false,
-        false,
-        zoom_extents::ZoomExtents
-    ),
-    listed!("4View", [], false, false, four_view::FourView),
-    listed!("UndoView", [], false, false, view_history::UndoView),
-    listed!("RedoView", [], false, false, view_history::RedoView),
-    listed!("Top", [], false, false, top::Top),
-    listed!("Front", [], false, false, front::Front),
-    listed!("Right", [], false, false, right::Right),
-    listed!("Perspective", [], false, false, perspective::Perspective),
-    listed!("CPlane", [], false, false, cplane::SetCPlane),
-    recipe!("Curve", [], true, curve::CurveCommand),
-    listed!("Zoom", [], false, false, zoom::Zoom),
-    listed!("NamedView", ["nv"], false, false, named_view::NamedView),
-    listed!(
-        "NamedCPlane",
-        ["ncp"],
-        false,
-        false,
-        named_cplane::NamedCPlane
-    ),
-    listed!(
-        "SetDisplayMode",
-        [],
-        false,
-        false,
-        set_display_mode::SetDisplayMode
-    ),
-];
+pub static COMMANDS: CommandList = CommandList(std::sync::LazyLock::new(|| {
+    order::ORDER
+        .iter()
+        .map(|name| {
+            FOLDERS
+                .iter()
+                .flat_map(|folder| folder.iter())
+                .find(|def| def.name == *name)
+                .unwrap_or_else(|| panic!("{name} is in order.rs but in no folder's list"))
+        })
+        .collect()
+}));
 
 /// Finds a command by name or alias, ignoring case.
 #[must_use]
@@ -723,6 +181,21 @@ fn run(doc: &mut curva_document::Document, lines: &[&str]) -> crate::Processor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_command_in_a_folder_has_one_place_in_the_order() {
+        let in_folders: usize = FOLDERS.iter().map(|folder| folder.len()).sum();
+        assert_eq!(
+            in_folders,
+            order::ORDER.len(),
+            "a command missing from order.rs"
+        );
+        assert_eq!(COMMANDS.iter().count(), order::ORDER.len());
+        let mut names = order::ORDER.to_vec();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), order::ORDER.len(), "a name twice in order.rs");
+    }
 
     #[test]
     fn a_model_in_feet_reads_and_shows_feet_and_inches() {
