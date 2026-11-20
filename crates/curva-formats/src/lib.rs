@@ -15,6 +15,9 @@ pub fn all() -> Arc<Formats> {
         ..formats::curva()
     });
     list.add(curva_3dm::format::format());
+    list.add(curva_dxf::format::dxf());
+    list.add(curva_dxf::format::dwg());
+    list.add(curva_skp::format::format());
     Arc::new(list)
 }
 
@@ -31,8 +34,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn curva_files_come_first_then_rhino() {
+    fn curva_files_come_first_then_the_others_in_dialog_order() {
         let names: Vec<_> = all().all().iter().map(|f| f.name).collect();
-        assert_eq!(names, ["files.curva", "files.rhino"]);
+        assert_eq!(
+            names,
+            [
+                "files.curva",
+                "files.rhino",
+                "files.dxf",
+                "files.dwg",
+                "files.skp"
+            ]
+        );
     }
 }

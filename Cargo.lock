@@ -1924,6 +1924,8 @@ version = "0.4.3"
 dependencies = [
  "curva-3dm",
  "curva-document",
+ "curva-dxf",
+ "curva-skp",
 ]
 
 [[package]]

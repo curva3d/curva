@@ -11,7 +11,6 @@ use crate::{
     ViewRequest,
 };
 use curva_document::Document;
-use curva_dxf::Format as CadFormat;
 use std::path::{Path, PathBuf};
 
 /// What `Open` reads, Curva's own files first.
@@ -59,26 +58,6 @@ pub fn model_name(doc: &Document) -> Option<String> {
         .map(|stem| stem.to_string_lossy().into_owned())
 }
 
-/// Whether a typed path names a SketchUp `.skp` file.
-pub fn is_skp(path: &Path) -> bool {
-    path.extension()
-        .is_some_and(|e| e.eq_ignore_ascii_case("skp"))
-}
-
-/// A SketchUp file's model, read.
-fn read_skp(path: &Path) -> Result<curva_skp::Model, String> {
-    let data = std::fs::read(path).map_err(|e| e.to_string())?;
-    curva_skp::read(&data)
-}
-
-/// A `.skp` file as a new model, unsaved, named after the file, as `.3dm` files open.
-pub fn open_skp(path: &Path) -> Result<(Document, curva_skp::Report), String> {
-    let (mut doc, report) = curva_skp::open(&read_skp(path)?);
-    let beside = path.with_extension("curva");
-    doc.set_path((!beside.exists()).then_some(beside));
-    Ok((doc, report))
-}
-
 /// A path as typed, without the quotes a pasted one may have.
 fn typed(text: &str) -> PathBuf {
     PathBuf::from(text.trim().trim_matches('"'))
@@ -96,31 +75,6 @@ fn done(result: Result<curva_document::formats::Done, String>) -> Step {
     }
 }
 
-/// A `.dxf` or `.dwg` file as a new model, unsaved, named after the file, as `.3dm` files open.
-pub fn open_cad(path: &Path, format: CadFormat) -> Result<(Document, curva_dxf::Report), String> {
-    let data = std::fs::read(path).map_err(|e| e.to_string())?;
-    let cad = curva_dxf::read(&data, format)?;
-    let mut doc = Document::default();
-    let report = curva_dxf::import(&cad, &mut doc);
-    let beside = path.with_extension("curva");
-    doc.set_path((!beside.exists()).then_some(beside));
-    Ok((doc, report))
-}
-
-/// The model, or the objects in `only`, written to a `.dxf` or `.dwg` file, through a partial
-/// file so a failed write never leaves half a drawing.
-fn write_cad(
-    doc: &Document,
-    only: Option<&[u64]>,
-    path: &Path,
-    format: CadFormat,
-) -> Result<curva_dxf::Report, String> {
-    let (bytes, report) = curva_dxf::export(doc, only, format)?;
-    let partial = path.with_extension("partial");
-    std::fs::write(&partial, bytes).map_err(|e| e.to_string())?;
-    std::fs::rename(&partial, path).map_err(|e| e.to_string())?;
-    Ok(report)
-}
 /// `Import`: a `.3dm`, `.curva`, `.dxf` or `.dwg` file's contents added to the model, its layers
 /// merged by name.
 #[derive(Default)]
@@ -135,39 +89,12 @@ impl Command for Import {
                 if let Some(import) = doc.formats().of(&path).and_then(|f| f.import) {
                     return done(import(doc, &path, &path.display().to_string()));
                 }
-                if is_skp(&path) {
-                    return match read_skp(&path) {
-                        Ok(model) => {
-                            let report = curva_skp::import(&model, doc);
-                            Step::Done(Some(Message::with(
-                                "done.import",
-                                vec![path.display().to_string(), report.summary()],
-                            )))
-                        }
-                        Err(e) => failed(e),
-                    };
-                }
                 if let Some(format) = MeshFormat::of(&path) {
                     return match import_mesh_file(doc, &path, format) {
                         Ok(summary) => Step::Done(Some(Message::with(
                             "done.import",
                             vec![path.display().to_string(), summary],
                         ))),
-                        Err(e) => failed(e),
-                    };
-                }
-                if let Some(format) = CadFormat::of(&path) {
-                    let read = std::fs::read(&path)
-                        .map_err(|e| e.to_string())
-                        .and_then(|data| curva_dxf::read(&data, format));
-                    return match read {
-                        Ok(cad) => {
-                            let report = curva_dxf::import(&cad, doc);
-                            Step::Done(Some(Message::with(
-                                "done.import",
-                                vec![path.display().to_string(), report.summary()],
-                            )))
-                        }
                         Err(e) => failed(e),
                     };
                 }
@@ -251,15 +178,6 @@ impl Export {
                 Ok(summary) => Step::Done(Some(Message::with(
                     "done.export_cad",
                     vec![path.display().to_string(), summary],
-                ))),
-                Err(e) => failed(e),
-            };
-        }
-        if let Some(format) = CadFormat::of(&path) {
-            return match write_cad(doc, self.chosen.as_deref(), &path, format) {
-                Ok(report) => Step::Done(Some(Message::with(
-                    "done.export_cad",
-                    vec![path.display().to_string(), report.summary()],
                 ))),
                 Err(e) => failed(e),
             };

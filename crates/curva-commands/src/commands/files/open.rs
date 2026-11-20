@@ -46,14 +46,6 @@ impl Command for Open {
         let path = Path::new(text.trim().trim_matches('"'));
         let summarised =
             |summary: String| Message::with("done.open_3dm", vec![text.clone(), summary]);
-        if crate::commands::import_export::is_skp(path) {
-            let read = crate::commands::import_export::open_skp(path);
-            return opened(doc, read.map(|(m, r)| (m, summarised(r.summary()))));
-        }
-        if let Some(format) = curva_dxf::Format::of(path) {
-            let read = crate::commands::import_export::open_cad(path, format);
-            return opened(doc, read.map(|(m, r)| (m, summarised(r.summary()))));
-        }
         if let Some(format) = MeshFormat::of(path) {
             let read = open_mesh_file(path, format);
             return opened(doc, read.map(|(m, s)| (m, summarised(s))));

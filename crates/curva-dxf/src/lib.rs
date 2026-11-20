@@ -10,7 +10,10 @@
 mod annotation;
 mod blocks;
 mod dims;
+pub mod format;
 mod layouts;
+
+pub use format::Format;
 
 use acadrust::entities::{
     Arc, Circle, Ellipse, EntityType, Line, LwPolyline, Point, Polyline3D, Spline,
@@ -56,28 +59,6 @@ fn user_text_in(values: &[XDataValue]) -> Vec<(String, String)> {
         }
     }
     out
-}
-
-/// Which of the two files.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Format {
-    /// AutoCAD's text exchange file.
-    Dxf,
-    /// AutoCAD's own drawing file.
-    Dwg,
-}
-
-impl Format {
-    /// The format a file name's extension names, if either.
-    #[must_use]
-    pub fn of(path: &std::path::Path) -> Option<Self> {
-        let extension = path.extension()?.to_str()?.to_ascii_lowercase();
-        match extension.as_str() {
-            "dxf" => Some(Self::Dxf),
-            "dwg" => Some(Self::Dwg),
-            _ => None,
-        }
-    }
 }
 
 /// What a read or write brought across and what it left out, for the command bar.
