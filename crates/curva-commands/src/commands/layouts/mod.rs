@@ -55,3 +55,17 @@ pub(crate) static COMMANDS: &[crate::commands::CommandDef] = &[
         section_style::SectionStyle
     ),
 ];
+
+/// The buttons of the Layouts tab, in order (spec `docs/specs/command-groups.md` §2).
+pub(crate) const TAB: &[&str] = &[
+    "Layout",
+    "Detail",
+    "TitleBlock",
+    "ScaleBar",
+    "SheetIndex",
+    "Revision",
+    "CopyLayout",
+    "Make2D",
+    "Print",
+    "ExportPDF",
+];

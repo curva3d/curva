@@ -37,3 +37,25 @@ pub(crate) static COMMANDS: &[crate::commands::CommandDef] = &[
     recipe!("ExtractMeshFaces", [], true, ExtractMeshFaces),
     recipe!("MeshToNURB", [], true, MeshToNurb),
 ];
+
+/// The buttons of the Mesh tab, in order (spec `docs/specs/command-groups.md` §2).
+pub(crate) const TAB: &[&str] = &[
+    "Mesh",
+    "MeshBox",
+    "MeshSphere",
+    "MeshCylinder",
+    "MeshCone",
+    "MeshTorus",
+    "MeshPlane",
+    "ReduceMesh",
+    "TriangulateMesh",
+    "QuadrangulateMesh",
+    "ExtractMeshFaces",
+    "Check",
+    "MeshRepair",
+    "FillMeshHoles",
+    "UnifyMeshNormals",
+    "RebuildMeshNormals",
+    "CullDegenerateMeshFaces",
+    "MeshToNURB",
+];

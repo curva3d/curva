@@ -114,3 +114,26 @@ pub(crate) static COMMANDS: &[crate::commands::CommandDef] = &[
     listed!("BringForward", [], true, true, draw_order::DrawOrder<true, false>),
     listed!("SendBackward", [], true, true, draw_order::DrawOrder<false, false>),
 ];
+
+/// The buttons of the Organise tab, in order (spec `docs/specs/command-groups.md` §2).
+pub(crate) const TAB: &[&str] = &[
+    "Group",
+    "Ungroup",
+    "Block",
+    "Insert",
+    "BlockManager",
+    "BlockEdit",
+    "ExplodeBlock",
+    "ChangeLayer",
+    "MatchProperties",
+    "Linetype",
+    "PrintWidth",
+    "SetUserText",
+    "GetUserText",
+    "Purge",
+    "Lock",
+    "Unlock",
+    "LockSwap",
+    "BringToFront",
+    "SendToBack",
+];
