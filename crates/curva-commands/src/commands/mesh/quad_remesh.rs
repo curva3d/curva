@@ -13,8 +13,34 @@ use curva_document::meshing::{mesh_of, remembered_settings};
 use curva_mesh::{QuadRemeshOptions, QuadTarget, SubD};
 
 const TARGET: &str = "TargetQuadCount";
+const EDGE_LENGTH: &str = "TargetEdgeLength";
 const HARD_EDGES: &str = "DetectHardEdges";
 const SUBD: &str = "ConvertToSubD";
+const SYMMETRY: &str = "Symmetry";
+
+/// Rhino's symmetry choices, and the coordinates each mirrors, as measured in Rhino 8: its `X`
+/// mirrors y and its `Y` mirrors x, about the middle of the bounding box.
+const MIRRORS: [(&str, [bool; 3]); 8] = [
+    ("None", [false, false, false]),
+    ("X", [false, true, false]),
+    ("Y", [true, false, false]),
+    ("Z", [false, false, true]),
+    ("XY", [true, true, false]),
+    ("XZ", [false, true, true]),
+    ("YZ", [true, false, true]),
+    ("XYZ", [true, true, true]),
+];
+
+/// Quads about `TargetEdgeLength` long when it is set, else about `TargetQuadCount` of them, as
+/// in Rhino.
+fn target(cx: &Context<'_>) -> QuadTarget {
+    let length = cx.number(EDGE_LENGTH);
+    if length > 0.0 {
+        QuadTarget::EdgeLength(length)
+    } else {
+        QuadTarget::Count(cx.number(TARGET).round().max(1.0) as usize)
+    }
+}
 
 /// The recipe.
 #[derive(Default)]
@@ -24,9 +50,16 @@ impl Recipe for QuadRemesh {
     const NAME: &'static str = "quadremesh";
     const OPTIONS: &'static [OptionDef] = &[
         OptionDef::whole(TARGET, 2000, 1, 1_000_000),
+        // 0, as in Rhino, aims at the quad count instead.
+        OptionDef::distance(EDGE_LENGTH, 0.0, true),
         OptionDef::toggle(HARD_EDGES, true),
         OptionDef::toggle(SUBD, false),
+        OptionDef::name(SYMMETRY, "None"),
     ];
+
+    fn choices(&self, _cx: &Context<'_>, option: &str) -> Option<Vec<String>> {
+        (option == SYMMETRY).then(|| MIRRORS.iter().map(|(name, _)| (*name).to_owned()).collect())
+    }
 
     fn steps(&self, _cx: &Context<'_>) -> Vec<StepDef> {
         vec![StepDef::objects("prompt.quadremesh.objects")]
@@ -47,14 +80,19 @@ impl Recipe for QuadRemesh {
             return Err(Message::new("error.quadremesh_nothing"));
         }
         let options = QuadRemeshOptions {
-            target: QuadTarget::Count(cx.number(TARGET).round().max(1.0) as usize),
+            target: target(cx),
             hard_edges: cx.toggle(HARD_EDGES),
             ..QuadRemeshOptions::count(2000)
         };
+        let chosen = cx.name(SYMMETRY);
+        let mirror = MIRRORS
+            .iter()
+            .find(|(name, _)| *name == chosen)
+            .map_or([false; 3], |(_, m)| *m);
         let mut made = Made::default();
         for (id, mesh) in found {
             let quads = mesh
-                .quad_remeshed(&options)
+                .quad_remeshed_mirrored(&options, mirror)
                 .map_err(|e| Message::with("error.geometry", vec![e.to_string()]))?;
             let shape = if cx.toggle(SUBD) {
                 Shape::SubD(SubD::new(quads))
@@ -114,10 +152,34 @@ mod tests {
         assert_eq!(objects.len(), 2);
         assert_eq!(objects[0].shape.mesh().unwrap().face_count(), 1600);
         let quads = objects[1].shape.mesh().unwrap();
-        // Rhino 8 makes 1,750 quads here and Curva 1,990: Rhino's adaptive size (50) makes
-        // fewer where the surface is flat. Within 15 % of Rhino's.
+        // Rhino 8 makes 1,750 quads here (with or without its adaptive size) and Curva 1,990.
+        // Within 15 % of Rhino's.
         let count = quads.face_count();
         assert!((1490..=2010).contains(&count), "{count}");
+        assert!(quads.is_closed());
+    }
+
+    #[test]
+    fn target_edge_length_sets_the_quads_size_as_in_rhino() {
+        let doc = remeshed(&["TargetEdgeLength", "1"]);
+        let count = doc.state().objects[1].shape.mesh().unwrap().face_count();
+        // Rhino 8 makes 244 quads here.
+        assert!((220..=270).contains(&count), "{count}");
+    }
+
+    #[test]
+    fn symmetry_x_mirrors_across_the_middle_as_in_rhino() {
+        // Rhino 8's `X` mirrors y, about the middle of the box.
+        let doc = remeshed(&["Symmetry", "X", "TargetQuadCount", "400"]);
+        let quads = doc.state().objects[1].shape.mesh().unwrap();
+        let points = quads.vertices();
+        for p in points {
+            let image = [p[0], -p[1], p[2]];
+            let found = points
+                .iter()
+                .any(|q| (0..3).all(|i| (q[i] - image[i]).abs() < 1e-9));
+            assert!(found, "{p:?} has no mirror image");
+        }
         assert!(quads.is_closed());
     }
 

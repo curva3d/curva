@@ -22,6 +22,8 @@ pub(crate) struct FileDialogs {
     open: Option<OpenDialog>,
     /// The folder of the last file picked, where the next dialog starts.
     folder: Option<PathBuf>,
+    /// The SketchUp import options dialog, while it is open.
+    pub(crate) sketchup: SketchUpDialog,
 }
 
 impl Curva {

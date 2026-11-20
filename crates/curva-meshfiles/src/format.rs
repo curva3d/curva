@@ -40,7 +40,7 @@ impl MeshFormat {
 #[must_use]
 pub fn stl() -> Format {
     Format {
-        open: Some(|path, shown| open(path, shown, MeshFormat::Stl)),
+        open: Some(|path, shown, _| open(path, shown, MeshFormat::Stl)),
         import: Some(|doc, path, shown| import(doc, path, shown, MeshFormat::Stl)),
         export: Some(|doc, only, path, shown| export(doc, only, path, shown, MeshFormat::Stl)),
         meshes: true,
@@ -52,7 +52,7 @@ pub fn stl() -> Format {
 #[must_use]
 pub fn obj() -> Format {
     Format {
-        open: Some(|path, shown| open(path, shown, MeshFormat::Obj)),
+        open: Some(|path, shown, _| open(path, shown, MeshFormat::Obj)),
         import: Some(|doc, path, shown| import(doc, path, shown, MeshFormat::Obj)),
         export: Some(|doc, only, path, shown| export(doc, only, path, shown, MeshFormat::Obj)),
         meshes: true,
@@ -64,7 +64,7 @@ pub fn obj() -> Format {
 #[must_use]
 pub fn ply() -> Format {
     Format {
-        open: Some(|path, shown| open(path, shown, MeshFormat::Ply)),
+        open: Some(|path, shown, _| open(path, shown, MeshFormat::Ply)),
         import: Some(|doc, path, shown| import(doc, path, shown, MeshFormat::Ply)),
         export: Some(|doc, only, path, shown| export(doc, only, path, shown, MeshFormat::Ply)),
         meshes: true,

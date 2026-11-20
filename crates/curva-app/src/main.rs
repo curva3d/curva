@@ -46,6 +46,7 @@ mod printing;
 mod recovery;
 mod settings;
 mod sheets;
+mod sketchup_import;
 mod text_edit;
 mod theme;
 mod top_bar;
@@ -55,8 +56,8 @@ mod viewports;
 #[allow(clippy::wildcard_imports)]
 use {
     agent::*, assistant_panel::*, benchmark::*, clipping::*, command_line::*, file_dialogs::*,
-    gumball::*, mouse::*, notices::*, panels::frames::*, settings::*, sheets::*, text_edit::*,
-    top_bar::*, viewports::*,
+    gumball::*, mouse::*, notices::*, panels::frames::*, settings::*, sheets::*,
+    sketchup_import::*, text_edit::*, top_bar::*, viewports::*,
 };
 
 use curva_commands::{DisplayMode, Kind, Message, Processor, Translations, ViewName, ViewRequest};
@@ -383,6 +384,8 @@ impl eframe::App for Curva {
         self.serve_agents();
         self.approval_window(ui);
         self.recovery_window(ui);
+        self.mesh_panel(ui.ctx());
+        self.sketchup_import_window(ui);
         self.unit_question(ui.ctx());
         self.close_question(ui.ctx());
         if let Some(autosave) = &mut self.autosave {
