@@ -394,3 +394,39 @@ fn a_live_surface_follows_moved_cage_points_with_the_same_faces() {
     }
     assert_eq!(live.mesh().face_count(), again.face_count());
 }
+
+#[test]
+fn every_cage_edge_comes_out_on_the_smooth_surface() {
+    // A smooth cube: twelve cage edges, each a run of 2³ + 1 points at three levels, meeting
+    // three at each corner, and lying on the surface the viewport draws.
+    let subd = SubD::new(cube());
+    let runs = subd.edge_curves(3).unwrap();
+    assert_eq!(runs.len(), 12);
+    assert!(runs.iter().all(|run| run.len() == 9));
+    let surface = subd.surface(3).unwrap();
+    for point in runs.iter().flatten() {
+        let near = surface
+            .vertices()
+            .iter()
+            .any(|v| (0..3).all(|i| (v[i] - point[i]).abs() < 1e-9));
+        assert!(near, "{point:?} is not a point of the smooth surface");
+    }
+    let mut ends: Vec<[i64; 3]> = runs
+        .iter()
+        .flat_map(|run| [run[0], run[8]])
+        .map(|p| p.map(|x| (x * 1e6).round() as i64))
+        .collect();
+    ends.sort_unstable();
+    ends.dedup();
+    assert_eq!(ends.len(), 8, "the eight corners");
+}
+
+#[test]
+fn a_creased_cubes_edge_curves_are_its_straight_edges() {
+    let subd = SubD::new(cube2());
+    let edges: Vec<[u32; 2]> = subd.edge_uses().into_keys().map(|(a, b)| [a, b]).collect();
+    let runs = subd.with_creases(&edges).edge_curves(3).unwrap();
+    assert_eq!(runs.len(), 12);
+    let total: f64 = runs.iter().map(|c| length(c)).sum();
+    assert!((total - 24.0).abs() < 1e-5, "{total}");
+}

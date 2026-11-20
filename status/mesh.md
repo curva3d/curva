@@ -9,6 +9,15 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## 20 November 2026 (later still)
+
+**`SubD::edge_curves` (asked by display for #324):** every cage edge as it lies on the smooth
+surface, joined into runs between cage points where other than two edges meet. Rhino draws a
+smooth SubD's wireframe this way; `crease_curves` gave only creases and borders, so a smooth
+closed SubD had nothing to draw. Found on the way: subdiv-kernels 0.1.0's own `edge_polylines`
+option loses points (runs of 6 and 3 where 9 are right at three levels), so Curva finds the edges
+from which cage face each refined face comes from instead.
+
 ## 20 November 2026
 
 **#274's commands measured in Rhino 8 (owner: Rhino is the minimum standard).** Rhino's script
