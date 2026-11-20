@@ -1926,6 +1926,7 @@ dependencies = [
  "curva-document",
  "curva-dxf",
  "curva-skp",
+ "curva-step",
 ]
 
 [[package]]
@@ -1993,6 +1994,14 @@ dependencies = [
  "curva-kernel",
  "curva-mesh",
  "openskp",
+]
+
+[[package]]
+name = "curva-step"
+version = "0.4.3"
+dependencies = [
+ "curva-document",
+ "curva-kernel",
 ]
 
 [[package]]

@@ -18,6 +18,7 @@ pub fn all() -> Arc<Formats> {
     list.add(curva_dxf::format::dxf());
     list.add(curva_dxf::format::dwg());
     list.add(curva_skp::format::format());
+    list.add(curva_step::format());
     Arc::new(list)
 }
 
@@ -43,7 +44,8 @@ mod tests {
                 "files.rhino",
                 "files.dxf",
                 "files.dwg",
-                "files.skp"
+                "files.skp",
+                "files.step",
             ]
         );
     }

@@ -171,17 +171,6 @@ impl Export {
                 Err(e) => failed(e),
             };
         }
-        if super::step::is_step(&path) {
-            let schema = curva_kernel::step::StepSchema::default();
-            let chosen = self.chosen.as_deref();
-            return match super::step::write_step_file(doc, chosen, &path, schema) {
-                Ok(summary) => Step::Done(Some(Message::with(
-                    "done.export_cad",
-                    vec![path.display().to_string(), summary],
-                ))),
-                Err(e) => failed(e),
-            };
-        }
         Step::Failed(Message::with(
             "error.export_kind",
             vec![path.display().to_string()],
