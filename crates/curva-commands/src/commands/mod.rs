@@ -128,7 +128,7 @@ macro_rules! recipe {
 }
 
 /// Every command Curva has.
-pub static COMMANDS: [CommandDef; 289] = [
+pub static COMMANDS: [CommandDef; 294] = [
     recipe!("Line", ["l"], true, line::Line),
     recipe!("Polyline", ["pl", "pline"], true, polyline::Polyline),
     recipe!("InterpCrv", ["interpcurve"], true, interpcrv::InterpCrv),
@@ -443,29 +443,29 @@ pub static COMMANDS: [CommandDef; 289] = [
     recipe!("RebuildUV", [], true, rebuild_uv::RebuildUv),
     recipe!("CurvatureGraph", [], true, curvature_graph::CurvatureGraph),
     recipe!("Cap", [], true, cap::Cap),
-    recipe!("Mesh", [], true, mesh::mesh_command::MeshCommand),
-    recipe!("MeshBox", [], true, mesh::primitives::MeshBox),
-    recipe!("MeshPlane", [], true, mesh::primitives::MeshPlane),
-    recipe!("MeshSphere", [], true, mesh::primitives::MeshSphere),
-    recipe!("MeshCylinder", [], true, mesh::primitives::MeshCylinder),
-    recipe!("MeshCone", [], true, mesh::primitives::MeshCone),
-    recipe!("MeshTorus", [], true, mesh::primitives::MeshTorus),
-    recipe!("Check", [], true, mesh::check::Check),
-    recipe!("MeshRepair", [], true, mesh::check::MeshRepair),
-    recipe!("UnifyMeshNormals", [], true, mesh::check::UnifyMeshNormals),
-    recipe!("FillMeshHoles", [], true, mesh::check::FillMeshHoles),
+    recipe!("Mesh", [], true, mesh::MeshCommand),
+    recipe!("MeshBox", [], true, mesh::MeshBox),
+    recipe!("MeshPlane", [], true, mesh::MeshPlane),
+    recipe!("MeshSphere", [], true, mesh::MeshSphere),
+    recipe!("MeshCylinder", [], true, mesh::MeshCylinder),
+    recipe!("MeshCone", [], true, mesh::MeshCone),
+    recipe!("MeshTorus", [], true, mesh::MeshTorus),
+    recipe!("Check", [], true, mesh::Check),
+    recipe!("MeshRepair", [], true, mesh::MeshRepair),
+    recipe!("UnifyMeshNormals", [], true, mesh::UnifyMeshNormals),
+    recipe!("FillMeshHoles", [], true, mesh::FillMeshHoles),
     recipe!(
         "CullDegenerateMeshFaces",
         [],
         true,
-        mesh::check::CullDegenerateMeshFaces
+        mesh::CullDegenerateMeshFaces
     ),
-    recipe!(
-        "RebuildMeshNormals",
-        [],
-        true,
-        mesh::check::RebuildMeshNormals
-    ),
+    recipe!("RebuildMeshNormals", [], true, mesh::RebuildMeshNormals),
+    recipe!("ReduceMesh", [], true, mesh::ReduceMesh),
+    recipe!("TriangulateMesh", [], true, mesh::TriangulateMesh),
+    recipe!("QuadrangulateMesh", [], true, mesh::QuadrangulateMesh),
+    recipe!("ExtractMeshFaces", [], true, mesh::ExtractMeshFaces),
+    recipe!("MeshToNURB", [], true, mesh::MeshToNurb),
     recipe!(
         "ExtractIsocurve",
         [],
@@ -833,7 +833,11 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 85] = [
+    const NOTHING_TO_PREVIEW: [&str; 89] = [
+        "TriangulateMesh",
+        "QuadrangulateMesh",
+        "ExtractMeshFaces",
+        "MeshToNURB",
         "Check",
         "MeshRepair",
         "UnifyMeshNormals",
@@ -922,7 +926,8 @@ mod tests {
     ];
 
     /// Commands whose preview needs its own setup, tested in their own files.
-    const PREVIEW_TESTED_ELSEWHERE: [&str; 77] = [
+    const PREVIEW_TESTED_ELSEWHERE: [&str; 78] = [
+        "ReduceMesh",
         "Mesh",
         "DimCurveLength",
         "DimArea",

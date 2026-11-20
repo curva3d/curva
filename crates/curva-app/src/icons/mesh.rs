@@ -107,6 +107,51 @@ pub(super) fn mesh_2(pen: &Pen<'_>, key: &str) -> bool {
     true
 }
 
+/// Draws the icon `key` if it is one of the commands that change a mesh's faces; returns whether
+/// it was.
+pub(super) fn mesh_3(pen: &Pen<'_>, key: &str) -> bool {
+    match key {
+        "reducemesh" => {
+            grid(pen, (2.0, 6.0), (10.0, 14.0), 4);
+            pen.path_in(&[(11.0, 10.0), (13.0, 10.0)], false, pen.accent());
+            grid(pen, (14.0, 6.0), (20.0, 14.0), 1);
+        }
+        "triangulatemesh" | "quadrangulatemesh" => {
+            grid(pen, (2.0, 2.0), (20.0, 20.0), 2);
+            if key == "triangulatemesh" {
+                pen.line_in((2.0, 11.0), (11.0, 2.0), pen.accent());
+                pen.line_in((11.0, 11.0), (20.0, 2.0), pen.accent());
+                pen.line_in((2.0, 20.0), (11.0, 11.0), pen.accent());
+                pen.line_in((11.0, 20.0), (20.0, 11.0), pen.accent());
+            } else {
+                pen.path_in(
+                    &[(2.0, 2.0), (20.0, 2.0), (20.0, 20.0), (2.0, 20.0)],
+                    true,
+                    pen.accent(),
+                );
+            }
+        }
+        "extractmeshfaces" => {
+            grid(pen, (2.0, 2.0), (14.0, 14.0), 3);
+            pen.path_in(
+                &[(14.0, 14.0), (20.0, 14.0), (20.0, 20.0), (14.0, 20.0)],
+                true,
+                pen.accent(),
+            );
+        }
+        "meshtonurb" => {
+            grid(pen, (2.0, 2.0), (10.0, 20.0), 2);
+            pen.path_in(
+                &[(12.0, 20.0), (14.0, 12.0), (17.0, 6.0), (20.0, 2.0)],
+                false,
+                pen.accent(),
+            );
+        }
+        _ => return false,
+    }
+    true
+}
+
 /// A rectangle from `a` to `b` split into `n` × `n` faces.
 fn grid(pen: &Pen<'_>, a: (f32, f32), b: (f32, f32), n: u32) {
     for k in 0..=n {

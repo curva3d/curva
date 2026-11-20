@@ -466,3 +466,8 @@ Rhino users build title blocks from curves and text with fields, which is what T
 | FillMeshHoles | Meshes | none | every hole closed | done |
 | CullDegenerateMeshFaces | Meshes | none | faces with no area taken out | done |
 | RebuildMeshNormals | Meshes | none | normals worked out again from the faces | done |
+| ReduceMesh | Meshes, then a dialog: reduce to a polygon count or by a percentage (quads count as two), or planar only; locked points; `-ReduceMesh` adds `Accuracy` (1 fast to 10 accurate, the dialog always 10). The result is quadrangulated again | Reduce to, Reduce by percent, Planar only, locked points, Accuracy | the meshes, then the percentage to take away (50 at first, Enter keeps the last); `PolygonCount` above 0 reduces to that many triangles instead; quadric edge collapse (Garland and Heckbert) at its most accurate, borders kept; in place. Planar only, locked points and quadrangulating again afterwards are not here yet; the result is triangles | partly |
+| TriangulateMesh | Meshes | none | every face of four or more corners split into triangles, quads along their shorter diagonal; in place | done |
+| QuadrangulateMesh | Meshes, then a dialog | Planarity (angle), Rectangularity (diagonal ratio, 1 or more) | `Planarity` (2°) `Rectangularity` (1.143, RhinoCommon's suggested 0.875 the other way up); unwelded diagonals are not joined; in place | done |
+| ExtractMeshFaces | Mesh faces | none | the picked faces become a mesh of their own on the same layer; a mesh left with no faces goes | done |
+| MeshToNURB | A mesh | TrimTriangularFaces, UseNgons | one surface per face, sewn into a polysurface (a solid when the mesh is closed); the mesh stays. Triangles are three-sided surfaces; the two options are not here yet | partly |
