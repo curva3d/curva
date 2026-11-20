@@ -430,6 +430,7 @@ Re-check these libraries at each upgrade: they are young and the landscape moves
 | **Archicad, Vectorworks, Revit** | Behaviour targets for Architecture: views, sheets, element relationships. Their smart objects (GDL objects, hybrid symbols, families with detail levels) are the reference for section 5b |
 | **Enscape and similar asset libraries** | Reference for light viewport proxies with heavy render models, and for an online object library |
 | **VisualARQ** and **RSTool** (docs only) | How architectural objects behave on a Rhino-style base: parameters stored on the object, plain-solid conversion, openings held by walls |
+| **SketchUp Live Components** ([help page](https://help.sketchup.com/en/sketchup-live-components); docs only) | The same idea as smart objects, made very easy to use (owner's note, 20 November 2026): pick a component from a library, adjust its sliders and fields in a Configure panel, and the model updates live, with every copy following. The logic is built in a separate tool (Trimble Creator). A reference for how section 5b objects are configured when the Architecture stage starts |
 | **BIMCraft**, **Rustit** (Rust) | References only for the BIM model. Judged too early as bases |
 | **openbim-ifc** (Rust) | Candidate IFC library |
 | **Bonsai**, **FreeCAD** | References for open BIM workflows, and for what to avoid (sequential recompute, workbenches as separate worlds) |
