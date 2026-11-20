@@ -14,6 +14,7 @@ mod mesh;
 mod nurbs;
 mod primitives;
 mod quad_remesh;
+mod quad_symmetry;
 mod reduce;
 mod repair;
 mod settings;
