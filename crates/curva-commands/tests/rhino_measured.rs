@@ -74,7 +74,7 @@ const L: Measured = curve([10.0, 0.0, 0.0], [0.0, 0.0, 0.0], 10.0, false);
 const SQ: Measured = curve([10.0, 10.0, 0.0], [0.0, 0.0, 0.0], 40.0, true);
 
 /// The cases: a name, what the model starts with, what is typed (the command first), and what
-/// Rhino 8 left, measured 21 November 2026.
+/// Rhino 8 left, measured 21 and 22 November 2026.
 fn cases() -> Vec<(&'static str, Start, Vec<&'static str>, Vec<Measured>)> {
     use Start::{Empty, Line, OpenL, Square, TwoBoxes, TwoCircles, TwoLines};
     vec![
@@ -388,6 +388,36 @@ fn cases() -> Vec<(&'static str, Start, Vec<&'static str>, Vec<Measured>)> {
             TwoBoxes,
             vec!["booleanunion"],
             vec![solid([3.0; 3], [0.0; 3], 15.0)],
+        ),
+        (
+            "revolve line",
+            Line,
+            vec!["revolve", "0,-1,0", "10,-1,0", "fullcircle"],
+            vec![surface([10.0, 2.0, 2.0], [0.0, -2.0, -1.0]), L],
+        ),
+        (
+            "revolve square",
+            Square,
+            vec!["revolve", "-5,0,0", "-5,10,0", "fullcircle"],
+            vec![solid([30.0, 10.0, 30.0], [-20.0, 0.0, -15.0], 6283.185), SQ],
+        ),
+        (
+            "planarsrf",
+            Square,
+            vec!["planarsrf"],
+            vec![SQ, surface([10.0, 10.0, 0.0], [0.0; 3])],
+        ),
+        (
+            "pipe",
+            Line,
+            vec!["pipe", "1"],
+            vec![solid([10.0, 2.0, 2.0], [0.0, -1.0, -1.0], 31.416), L],
+        ),
+        (
+            "shear",
+            Square,
+            vec!["shear", "0,0,0", "10,0,0", "45"],
+            vec![curve([10.0, 20.0, 0.0], [0.0; 3], 48.2843, true)],
         ),
         (
             "box diagonal",
