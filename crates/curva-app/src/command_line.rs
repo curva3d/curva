@@ -13,6 +13,17 @@ const COMMAND_KEYS: egui::EventFilter = egui::EventFilter {
     escape: true,
 };
 
+/// Whether the highlighted suggestion is not the one the list last followed, remembering it: the
+/// list scrolls to it only then (#517).
+fn highlight_moved(ui: &egui::Ui, highlight: usize) -> bool {
+    let id = egui::Id::new("command suggestions followed");
+    ui.data_mut(|data| {
+        let before = data.get_temp::<usize>(id);
+        data.insert_temp(id, highlight);
+        before != Some(highlight)
+    })
+}
+
 /// The rows of the log to show, newest last. Always the same number, one line each, so that a
 /// new message never changes the height of the panel and moves the viewport.
 #[cfg(test)]
@@ -134,12 +145,15 @@ impl Curva {
                         .fold(0.0, f32::max);
                     ui.set_min_width(widest + 2.0 * ui.spacing().button_padding.x);
                     let row = ui.spacing().interact_size.y + ui.spacing().item_spacing.y;
+                    // It follows the highlight only when the arrows move it, so the wheel can scroll
+                    // the list freely (#517: it jumped back to the highlight every frame).
+                    let follow = highlight_moved(ui, self.highlight);
                     egui::ScrollArea::vertical()
                         .max_height(row * MOST_MATCH_ROWS)
                         .show(ui, |ui| {
                             for (index, name) in matches.iter().enumerate() {
                                 let shown = ui.selectable_label(index == self.highlight, *name);
-                                if index == self.highlight {
+                                if follow && index == self.highlight {
                                     shown.scroll_to_me(None);
                                 }
                                 if shown.clicked() {
@@ -336,6 +350,19 @@ impl Curva {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_suggestions_follow_the_highlight_only_when_it_moves() {
+        let ctx = egui::Context::default();
+        let mut moved = Vec::new();
+        for highlight in [0, 0, 2, 2] {
+            let output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                moved.push(highlight_moved(ui, highlight));
+            });
+            output.drop_without_applying_deltas();
+        }
+        assert_eq!(moved, [true, false, true, false]);
+    }
 
     #[test]
     fn the_command_line_keeps_the_arrows_tab_and_escape() {
