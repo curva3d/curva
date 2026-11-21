@@ -16,7 +16,7 @@ const COMMAND_KEYS: egui::EventFilter = egui::EventFilter {
 /// Whether the highlighted suggestion is not the one the list last followed, remembering it: the
 /// list scrolls to it only then (#517).
 fn highlight_moved(ui: &egui::Ui, highlight: usize) -> bool {
-    let id = egui::Id::new("command suggestions followed");
+    let id = egui::Id::NULL.with("command suggestions followed");
     ui.data_mut(|data| {
         let before = data.get_temp::<usize>(id);
         data.insert_temp(id, highlight);
