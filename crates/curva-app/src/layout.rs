@@ -610,10 +610,17 @@ impl Layout {
             return corner;
         };
         let right = other.max.x + GAP;
+        let left = other.min.x - GAP - size.x;
         if right + size.x <= window.width() {
             pos2(right, corner.y)
+        } else if left >= 0.0 {
+            pos2(left, corner.y)
+        } else if window.width() - other.max.x >= other.min.x {
+            // No room either side: against the window's edge with more room, overlapping as
+            // little as it can.
+            pos2((window.width() - size.x).max(0.0), corner.y)
         } else {
-            pos2((other.min.x - GAP - size.x).max(0.0), corner.y)
+            pos2(0.0, corner.y)
         }
     }
 
@@ -1095,16 +1102,29 @@ mod tests {
 
     #[test]
     fn a_panel_opened_while_settings_floats_goes_beside_it() {
-        let screen = window(1200.0, 800.0);
         let layout = Layout::default();
         assert!(!layout.is_shown(Piece::Settings) && !layout.is_shown(Piece::Blocks));
+        // With room, beside it.
+        let wide = window(1800.0, 900.0);
         let both = layout
-            .restored(Piece::Settings, screen)
-            .restored(Piece::Blocks, screen);
-        let (arranged, _) = both.arrange(screen);
+            .restored(Piece::Settings, wide)
+            .restored(Piece::Blocks, wide);
+        let (arranged, _) = both.arrange(wide);
         let settings = rect_of(&arranged, Piece::Settings);
         let blocks = rect_of(&arranged, Piece::Blocks);
         assert!(!settings.intersects(blocks), "{settings:?} {blocks:?}");
+        // Without, against the window's edge: never straight on top.
+        let narrow = window(1200.0, 800.0);
+        let both = layout
+            .restored(Piece::Settings, narrow)
+            .restored(Piece::Blocks, narrow);
+        let (arranged, _) = both.arrange(narrow);
+        let settings = rect_of(&arranged, Piece::Settings);
+        let blocks = rect_of(&arranged, Piece::Blocks);
+        assert!(
+            (settings.center().x - blocks.center().x).abs() > 200.0,
+            "{settings:?} {blocks:?}"
+        );
     }
 
     #[test]
