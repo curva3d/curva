@@ -81,11 +81,32 @@ pub(crate) fn lit_panel_frame() -> egui::Frame {
         })
 }
 
+/// The size of the tab at the top centre that turns focus mode on and off.
+const FOCUS_TAB: egui::Vec2 = egui::vec2(44.0, 14.0);
+
+/// A hidden panel's `tab` moved aside if it would lie under the focus tab at the top centre of
+/// `window`, as a wide top panel's does in focus mode (#473), so both can be seen and clicked.
+fn clear_of_focus_tab(tab: egui::Rect, window: egui::Rect) -> egui::Rect {
+    let focus = egui::Rect::from_min_size(
+        egui::pos2(window.center().x - FOCUS_TAB.x / 2.0, window.min.y),
+        FOCUS_TAB,
+    )
+    .expand2(egui::vec2(4.0, 0.0));
+    if tab.intersects(focus) {
+        tab.translate(egui::vec2(focus.max.x - tab.min.x, 0.0))
+    } else {
+        tab
+    }
+}
+
 /// What every panel drawn in one frame shares: the window below the top bar, whether a command
 /// is being typed, the pointer, whether the mouse button is up, the panel a dragged one would
 /// merge into, and the rectangles of the panels not being dragged.
 struct PanelPass<'a> {
     window: egui::Rect,
+    /// The window hidden panels slide to the edges of: the whole window in focus mode, where the
+    /// top bar has slid away too, else the window below the top bar (#473).
+    edges: egui::Rect,
     typing: bool,
     pointer: Option<egui::Pos2>,
     released: bool,
@@ -177,6 +198,11 @@ impl Curva {
             .collect();
         let pass = PanelPass {
             window,
+            edges: if self.frames.focus {
+                full_window
+            } else {
+                window
+            },
             // Typing brings the command line's panel out until the command ends.
             typing: !self.typed.is_empty() || self.processor.is_running(),
             pointer: ctx.pointer_hover_pos(),
@@ -240,7 +266,8 @@ impl Curva {
             || self.frames.revealed == Some(panel)
             || (place.pieces.contains(&layout::Piece::Command) && pass.typing && !place.hidden);
         let edge = self.layout.edge_of(panel, rect, window);
-        let (tab, upright) = layout::edge_tab(rect, edge, window);
+        let (tab, upright) = layout::edge_tab(rect, edge, pass.edges);
+        let tab = clear_of_focus_tab(tab, pass.edges);
         let hovered = pass.pointer.is_some_and(|at| {
             tab.contains(at)
                 || self
@@ -253,7 +280,7 @@ impl Curva {
             rect
         } else {
             let visible = if hovered { layout::PEEK } else { 0.0 };
-            layout::slid(rect, edge, window, visible)
+            layout::slid(rect, edge, pass.edges, visible)
         };
         let id = egui::Id::NULL.with(("panel slide", panel));
         let offset = egui::vec2(
@@ -623,7 +650,7 @@ impl Curva {
     /// The small tab with an arrow at the top centre that turns focus mode on and off. With one
     /// panel brought out of focus mode, it hides that panel again.
     pub(crate) fn focus_tab(&mut self, ctx: &egui::Context, window: egui::Rect) {
-        let size = egui::vec2(44.0, 14.0);
+        let size = FOCUS_TAB;
         let corner = egui::pos2(window.center().x - size.x / 2.0, window.min.y);
         egui::Area::new(egui::Id::NULL.with("focus tab"))
             .fixed_pos(corner)
@@ -725,8 +752,9 @@ impl Curva {
 
 #[cfg(test)]
 mod tests {
-    use super::closes_without_asking;
+    use super::{FOCUS_TAB, clear_of_focus_tab, closes_without_asking};
     use crate::layout::Piece;
+    use crate::{egui, layout};
 
     #[test]
     fn settings_and_command_panels_close_without_asking_the_others_ask() {
@@ -738,5 +766,30 @@ mod tests {
             Piece::Properties
         ]));
         assert!(!closes_without_asking(&[]));
+    }
+
+    /// In focus mode a panel at the top, as the Operations bar is, slides to the top of the whole
+    /// window, as the others slide to theirs, and its tab there moves aside from the focus tab at
+    /// the top centre instead of lying under it (#473).
+    #[test]
+    fn a_top_panel_in_focus_mode_goes_to_the_window_edge_beside_the_focus_tab() {
+        let full = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1600.0, 900.0));
+        let bar = egui::Rect::from_min_max(egui::pos2(24.0, 90.0), egui::pos2(1576.0, 170.0));
+        let hidden = layout::slid(bar, layout::Edge::Top, full, 0.0);
+        assert!(hidden.max.y <= full.min.y + 0.5, "{hidden:?}");
+        let (tab, _) = layout::edge_tab(bar, layout::Edge::Top, full);
+        assert_eq!(tab.min.y, full.min.y);
+        let moved = clear_of_focus_tab(tab, full);
+        let focus = egui::Rect::from_center_size(
+            egui::pos2(full.center().x, full.min.y + FOCUS_TAB.y / 2.0),
+            FOCUS_TAB,
+        );
+        assert!(
+            !moved.intersects(focus) && moved.min.y == tab.min.y,
+            "{moved:?}"
+        );
+        // A tab away from the centre stays where it is.
+        let side = egui::Rect::from_min_size(egui::pos2(100.0, 0.0), egui::vec2(140.0, 22.0));
+        assert_eq!(clear_of_focus_tab(side, full), side);
     }
 }
