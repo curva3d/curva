@@ -62,7 +62,7 @@ fn resize_zones(rect: egui::Rect) -> [(layout::Sides, egui::Rect, egui::CursorIc
 }
 
 /// A gentle pulse along the edges of `rect` being held.
-fn pulse_edges(ui: &egui::Ui, rect: egui::Rect, sides: layout::Sides) {
+pub(super) fn pulse_edges(ui: &egui::Ui, rect: egui::Rect, sides: layout::Sides) {
     let time = ui.input(|input| input.time) as f32;
     let strength = 0.55 + 0.45 * (time * 5.0).sin();
     let stroke = egui::Stroke::new(2.0, theme::ACCENT.gamma_multiply(strength));

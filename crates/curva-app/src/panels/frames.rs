@@ -54,7 +54,7 @@ pub(crate) struct PanelDrag {
 }
 
 /// The frame every panel is drawn in: rounded, edged and shadowed, glass or solid. A panel that
-/// a dragged one would merge into glows inside its edge as well (`glow::edge_glow`).
+/// a dragged one would merge into pulses along its edges, as a resized edge does.
 pub(crate) fn panel_frame() -> egui::Frame {
     egui::Frame::new()
         .fill(theme::current().glass)
@@ -543,14 +543,17 @@ impl Curva {
                     ui.add_space(TITLE_ROW);
                     self.piece_contents(ui, place.showing());
                 });
-                // A dragged panel would merge into this one: it glows inside its edge, most
-                // where the mouse is.
-                if glowing && let Some(pointer) = ui.ctx().pointer_latest_pos() {
-                    ui.painter().add(crate::panels::glow::edge_glow(
-                        rect,
-                        f32::from(PANEL_RADIUS),
-                        pointer,
-                    ));
+                // A dragged panel would merge into this one: its edges pulse, as a resized edge
+                // does (the owner's choice, 22 November 2026: the pulse only, no glow following
+                // the mouse).
+                if glowing {
+                    let all = layout::Sides {
+                        left: true,
+                        right: true,
+                        top: true,
+                        bottom: true,
+                    };
+                    super::resize::pulse_edges(ui, rect, all);
                 }
                 // Added after the contents, so these sit above the panel's own controls.
                 event = self.panel_title(ui, place, rect);
