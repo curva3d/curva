@@ -127,6 +127,24 @@ pub(crate) fn paint_selection_box(
     }
 }
 
+/// The snaps that may catch the pointer for `request`, the points just clicked that it may snap
+/// to, and whether the held points' guidelines may: all of them for a point, but for a height or
+/// distance along a line (#484) only the point snaps on other objects. Near, the points just
+/// clicked (the base's own corners, at height zero) and the guidelines (all on the plane) used to
+/// catch the pointer first, so the height jumped instead of following the mouse.
+fn snaps_for(request: &curva_commands::Request, snaps: SnapSet) -> (SnapSet, &[Point], bool) {
+    if request.along.is_some() {
+        let set = SnapSet {
+            near: false,
+            perpendicular: false,
+            ..snaps
+        };
+        (set, &[], false)
+    } else {
+        (snaps, &request.preview, true)
+    }
+}
+
 /// What decides where a cursor position lands for the point a command asks for.
 pub(crate) struct Aiming<'a> {
     pub(crate) outlines: &'a Outlines,
@@ -163,17 +181,16 @@ pub(crate) fn aim_at(aiming: &Aiming<'_>) -> Option<(Point, Option<SnapHit>)> {
     }
     let base = request.preview.last().copied().or(request.from);
     if !aiming.snaps_off {
+        let (set, drawing, guides) = snaps_for(request, aiming.snaps);
         let set = SnapSet {
             // Only a shaded view hides what is behind faces; ghosted and wireframe show it all.
             visible_only: aiming.display == DisplayMode::Shaded,
-            ..aiming.snaps
+            ..set
         };
-        if let Some(hit) =
-            outlines.snap_while_drawing(camera, screen, size, &set, base, &request.preview)
-        {
+        if let Some(hit) = outlines.snap_while_drawing(camera, screen, size, &set, base, drawing) {
             return Some((hit.point, Some(hit)));
         }
-        if let Some(hit) = outlines.guide_snap(camera, screen, size, &aiming.guides) {
+        if guides && let Some(hit) = outlines.guide_snap(camera, screen, size, &aiming.guides) {
             return Some((hit.point, Some(hit)));
         }
     }
@@ -705,6 +722,29 @@ mod tests {
         }
         assert!(!egui_clicked, "this is the behaviour that lost the points");
         assert_eq!(found, [(start, end)], "both ends of the press are kept");
+    }
+
+    #[test]
+    fn a_height_follows_the_mouse_not_the_corners_just_clicked() {
+        use curva_commands::{Kind, Request};
+        let every = SnapSet {
+            near: true,
+            ..SnapSet::default()
+        };
+        let mut point = Request::new("prompt.box.other", Kind::Point);
+        point.preview = vec![[0.0; 3], [4.0, 3.0, 0.0]];
+        let (set, drawing, guides) = snaps_for(&point, every);
+        assert_eq!(set, every);
+        assert_eq!(drawing.len(), 2);
+        assert!(guides);
+        let mut height = Request::new("prompt.box.height", Kind::Number);
+        height.preview = point.preview.clone();
+        height.along = Some(([4.0, 3.0, 0.0], [0.0, 0.0, 1.0]));
+        let (set, drawing, guides) = snaps_for(&height, every);
+        assert!(!set.near && !set.perpendicular);
+        assert_eq!(set.end, every.end, "other objects' points still snap");
+        assert!(drawing.is_empty());
+        assert!(!guides);
     }
 
     #[test]
