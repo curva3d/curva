@@ -179,15 +179,22 @@ impl Curva {
     /// small white dots, over the smooth surface. A SubD is being edited
     /// while its points are on or a part of it is picked.
     fn paint_cages(&self, ui: &egui::Ui, pane: usize, rect: egui::Rect, size: [f64; 2]) {
-        let mut editing = self.doc.showing_points();
-        editing.extend(self.doc.mesh_part_selection().iter().map(|(id, _)| *id));
-        let cages: Vec<&curva_mesh::Mesh> = self
+        let points_on = self.doc.showing_points();
+        let picked: Vec<u64> = self
+            .doc
+            .mesh_part_selection()
+            .iter()
+            .map(|(id, _)| *id)
+            .collect();
+        // Each SubD being edited, and whether its points are on: then they are drawn as control
+        // points are, to show and pick, and the cage draws only its lines.
+        let cages: Vec<(&curva_mesh::Mesh, bool)> = self
             .doc
             .state()
             .objects
             .iter()
-            .filter(|o| !o.hidden && editing.contains(&o.id))
-            .filter_map(|o| o.shape.subd().map(curva_mesh::SubD::cage))
+            .filter(|o| !o.hidden && (points_on.contains(&o.id) || picked.contains(&o.id)))
+            .filter_map(|o| Some((o.shape.subd()?.cage(), points_on.contains(&o.id))))
             .collect();
         if cages.is_empty() {
             return;
@@ -199,7 +206,7 @@ impl Curva {
             Some(rect.min + egui::vec2(p[0] as f32, p[1] as f32))
         };
         let stroke = egui::Stroke::new(1.0, CONTROL_POLYGON);
-        for cage in cages {
+        for (cage, points_shown) in cages {
             let points: Vec<Option<egui::Pos2>> =
                 cage.vertices().iter().map(|&p| screen(p)).collect();
             for [a, b] in cage.wire_edges() {
@@ -207,7 +214,7 @@ impl Curva {
                     painter.extend(egui::Shape::dotted_line(&[p, q], CONTROL_POLYGON, 4.0, 0.6));
                 }
             }
-            for point in points.into_iter().flatten() {
+            for point in points.into_iter().flatten().filter(|_| !points_shown) {
                 painter.circle(point, 3.0, GRIP_COLOUR, stroke);
             }
         }
