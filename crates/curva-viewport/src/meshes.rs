@@ -345,9 +345,15 @@ mod tests {
                     .iter()
                     .all(|kind| *kind == crate::PickKind::Solid)
         );
-        // Twelve wires, all left out where faces show.
-        assert!(shaded_object_lines(&outlines, &[]).is_empty());
-        assert_eq!(object_lines(&outlines, &[]).len(), 24);
+        // Twelve wires in every view, as Rhino 8 draws a mesh's wires in Wireframe, Shaded and
+        // Ghosted, and in the mesh's own colour where faces show, not dark as a body's edges
+        // are (#472).
+        let (shaded, wireframe) = (
+            shaded_object_lines(&outlines, &[]),
+            object_lines(&outlines, &[]),
+        );
+        assert_eq!((shaded.len(), wireframe.len()), (24, 24));
+        assert!(shaded.iter().all(|v| v.colour == wireframe[0].colour));
         // Twelve triangles: for pictures written out, and for the window one shared shape.
         assert_eq!(SceneParts::of(&outlines).faces.len(), 36);
         assert_eq!(SceneParts::shared(&outlines).shapes.len(), 1);

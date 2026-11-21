@@ -8,6 +8,18 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## 21 November 2026
+
+**Done**
+- **Meshes and SubDs show their wires in shaded views, as in Rhino** (#472). The owner saw
+  meshes drawn with no lines at all. Read from Rhino 8's own settings and checked in pictures,
+  its Wireframe, Shaded and Ghosted modes all draw every edge of a mesh, and every edge of a
+  smooth SubD on its surface, thin and in the object's colour. Curva drew them in wireframe
+  only; now it draws them in all three, in the object's colour. A body's edges and a SubD's
+  creases and borders stay dark where faces show, as before.
+- **The wheel zooms towards the mouse, as in Rhino** (#469, #501): the point under the mouse
+  stays still, not the centre of the view.
+
 ## 20 November 2026
 
 **Done**
