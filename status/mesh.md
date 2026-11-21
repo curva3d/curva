@@ -18,6 +18,11 @@ faces, an open plane or tube 1, a cylinder with triangle caps 49, as in Rhino. A
 gives 1: the kernel cannot make a solid of one face closed both ways. Patches lying flat in one plane still
 cannot be sewn by the kernel (status 1007, reported to features), so the grid tests stay bent.
 
+**Mesh wires for display (#472):** measured in Rhino 8, every mesh wire is drawn (1 px, object colour) in
+Wireframe, Shaded, Ghosted and Technical, none in Rendered and Arctic; naked, crease and non-manifold
+edges are off everywhere. `Mesh::wire_edges()` gives every edge once, joined by position as Rhino
+joins them (an unwelded box of 24 points shows 12 wires, as in Rhino). Display draws them.
+
 **SubD face colours on the smooth surface (for display, #324 follow-up):** `SubD::surface_coloured(levels, fallback)`
 gives each quad of the smooth surface its cage face's colour at every corner (`Attribute::PerCorner`),
 using the library's record of which cage face each quad comes from; a face with no colour takes

@@ -118,6 +118,25 @@ fn dock_preview(
     }
 }
 
+/// Whether a panel made of `pieces` closes at once, without asking: Settings, and the panels a
+/// command opens (Print, Layouts, Blocks, annotation styles, notes), come back by running it
+/// again, so there is nothing to warn about (#483). The others ask, saying where to bring them back.
+fn closes_without_asking(pieces: &[layout::Piece]) -> bool {
+    use layout::Piece;
+    !pieces.is_empty()
+        && pieces.iter().all(|piece| {
+            matches!(
+                piece,
+                Piece::Settings
+                    | Piece::Print
+                    | Piece::Layouts
+                    | Piece::Blocks
+                    | Piece::AnnotationStyles
+                    | Piece::Notes
+            )
+        })
+}
+
 impl Curva {
     /// Lays out and draws the panels, sliding hidden ones to their edges (all of them in focus
     /// mode). Returns the area left for the viewports, and how far they may reach to be seen
@@ -367,7 +386,15 @@ impl Curva {
                 self.layout = self.layout.reordered(panel, from, to);
                 self.save_layout();
             }
-            PanelEvent::Close => self.closing = Some(panel),
+            PanelEvent::Close => {
+                let pieces = self.layout.place(panel).map(|p| p.pieces.clone());
+                if pieces.is_some_and(|pieces| closes_without_asking(&pieces)) {
+                    self.layout = self.layout.closing(panel);
+                    self.save_layout();
+                } else {
+                    self.closing = Some(panel);
+                }
+            }
             PanelEvent::TabChosen(index) => {
                 self.layout = self.layout.with_active(panel, index);
                 self.save_layout();
@@ -678,5 +705,23 @@ impl Curva {
                 self.save_layout();
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::closes_without_asking;
+    use crate::layout::Piece;
+
+    #[test]
+    fn settings_and_command_panels_close_without_asking_the_others_ask() {
+        assert!(closes_without_asking(&[Piece::Settings]));
+        assert!(closes_without_asking(&[Piece::Print, Piece::Layouts]));
+        assert!(!closes_without_asking(&[Piece::Layers]));
+        assert!(!closes_without_asking(&[
+            Piece::Settings,
+            Piece::Properties
+        ]));
+        assert!(!closes_without_asking(&[]));
     }
 }

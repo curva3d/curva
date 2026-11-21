@@ -297,7 +297,14 @@ impl Document {
     /// Replaces this model with `other`, which keeps this one's formats, as `Open` and `New` do.
     pub fn replace_with(&mut self, mut other: Document) {
         other.formats = Arc::clone(&self.formats);
+        other.just_opened = true;
         *self = other;
+    }
+
+    /// Whether the model has just replaced another (see [`Self::replace_with`]), once: asking
+    /// clears it, so the views are fitted to a newly opened model only once (#479).
+    pub fn take_just_opened(&mut self) -> bool {
+        std::mem::take(&mut self.just_opened)
     }
 }
 
