@@ -159,9 +159,8 @@ struct Curva {
     filter_row: bool,
     outlines: Outlines,
     scene: Arc<Vec<curva_viewport::Vertex>>,
-    /// The last solid or surface measured for the properties panel: its id, the body as it
-    /// was, and what it is, which measure, and the value.
-    measured: Option<(u64, curva_kernel::Body, (&'static str, &'static str, f64))>,
+    /// The selected solid or surface measured for the properties panel, on its own thread.
+    measured: panels::measure::Measure,
     drawn: Option<(State, Vec<u64>)>,
     benchmark: Option<Benchmark>,
     /// Keeps a recovery copy of the model; off for benchmarks.
@@ -279,7 +278,7 @@ impl Curva {
             filter_row: false,
             outlines: Outlines::default(),
             scene: Arc::new(Vec::new()),
-            measured: None,
+            measured: panels::measure::Measure::default(),
             drawn: None,
             benchmark: benchmark.map(|scene| Benchmark {
                 select: scene.select,
