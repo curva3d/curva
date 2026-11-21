@@ -61,29 +61,20 @@ fn resize_zones(rect: egui::Rect) -> [(layout::Sides, egui::Rect, egui::CursorIc
     ]
 }
 
-/// A gentle pulse along the edges of `rect` being held.
-fn pulse_edges(ui: &egui::Ui, rect: egui::Rect, sides: layout::Sides) {
-    let time = ui.input(|input| input.time) as f32;
-    let strength = 0.55 + 0.45 * (time * 5.0).sin();
-    let stroke = egui::Stroke::new(2.0, theme::ACCENT.gamma_multiply(strength));
-    let painter = ui.painter();
-    if sides.left {
-        painter.line_segment([rect.left_top(), rect.left_bottom()], stroke);
-    }
-    if sides.right {
-        painter.line_segment([rect.right_top(), rect.right_bottom()], stroke);
-    }
-    if sides.top {
-        painter.line_segment([rect.left_top(), rect.right_top()], stroke);
-    }
-    if sides.bottom {
-        painter.line_segment([rect.left_bottom(), rect.right_bottom()], stroke);
+/// The pulsing glow along the panel at `rect` whose edge the pointer is on, strongest by the
+/// mouse (the owner's choice, 22 November 2026).
+fn glow_edges(ui: &egui::Ui, rect: egui::Rect) {
+    if let Some(pointer) = ui.ctx().pointer_latest_pos() {
+        let time = ui.input(|input| input.time);
+        let radius = f32::from(PANEL_RADIUS);
+        ui.painter()
+            .add(super::glow::resize_glow(rect, radius, pointer, time));
     }
     ui.ctx().request_repaint();
 }
 
 /// The edges and corners a panel can be resized from: near one, the pointer becomes a resize
-/// arrow and the edge pulses gently in the accent. The handles lie just inside the panel, so a drag
+/// arrow and the panel's edge glows in the accent, strongest by the mouse, pulsing gently. The handles lie just inside the panel, so a drag
 /// from one never reaches the viewport behind. Returns the drag, if one is under way.
 pub(crate) fn resize_handles(
     ui: &egui::Ui,
@@ -106,7 +97,7 @@ pub(crate) fn resize_handles(
             )
             .on_hover_cursor(cursor);
         if response.hovered() || response.dragged() {
-            pulse_edges(ui, rect, sides);
+            glow_edges(ui, rect);
         }
         // The whole way since the press, not this frame's step, so the edge stays under the
         // pointer even after the panel stopped at its smallest and the pointer went on (#470).
