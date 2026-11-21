@@ -2,6 +2,7 @@
 
 use crate::*;
 use curva_document::MeshPart;
+use curva_viewport::PartShape;
 
 pub(crate) const POINT_MARKER_SIZE: f32 = 6.0;
 
@@ -83,7 +84,7 @@ impl Curva {
 
     /// The picked parts of meshes and SubD cages (#334, Ctrl+Shift picking): points as dots,
     /// edges drawn thick and faces tinted, in the selection colour, as Rhino highlights them.
-    /// A smooth SubD's parts are shown on its cage for now.
+    /// A smooth SubD's parts are shown on its smooth surface, where Rhino shows them.
     pub(crate) fn paint_picked_parts(
         &self,
         ui: &egui::Ui,
@@ -91,58 +92,76 @@ impl Curva {
         rect: egui::Rect,
         size: [f64; 2],
     ) {
-        let picked = self.doc.mesh_part_selection();
-        if picked.is_empty() {
+        let shapes = self.picked_part_shapes();
+        if shapes.is_empty() {
             return;
         }
         let painter = ui.painter_at(rect);
         let camera = &self.panes[pane].camera;
+        let screen = |p: Point| {
+            let s = camera.project(p, size)?;
+            Some(rect.min + egui::vec2(s[0] as f32, s[1] as f32))
+        };
         let tint = egui::Color32::from_rgba_unmultiplied(255, 220, 60, 90);
         let stroke = egui::Stroke::new(3.0, GRIP_PICKED);
         let mut tinted = egui::Mesh::default();
-        for (id, part) in picked {
-            let Some(mesh) = self
-                .doc
-                .state()
-                .objects
-                .iter()
-                .find(|o| o.id == id)
-                .and_then(|o| match &o.shape {
-                    Shape::Mesh(mesh) => Some(mesh),
-                    Shape::SubD(subd) => Some(subd.cage()),
-                    _ => None,
-                })
-            else {
-                continue;
-            };
-            let Some(corners) = part_corners(mesh, part).and_then(|points| {
-                points
-                    .into_iter()
-                    .map(|p| {
-                        let s = camera.project(p, size)?;
-                        Some(rect.min + egui::vec2(s[0] as f32, s[1] as f32))
-                    })
-                    .collect::<Option<Vec<egui::Pos2>>>()
-            }) else {
-                continue;
-            };
-            match corners.as_slice() {
-                [point] => {
-                    painter.circle_filled(*point, GRIP_SIZE / 2.0, GRIP_PICKED);
-                }
-                [a, b] => {
-                    painter.line_segment([*a, *b], stroke);
-                }
-                _ => {
-                    for k in 1..corners.len().saturating_sub(1) {
-                        let fan = [corners[0], corners[k], corners[k + 1]];
-                        add_tinted_triangle(&mut tinted, &fan, tint);
+        for shape in shapes {
+            match shape {
+                PartShape::Point(p) => {
+                    if let Some(at) = screen(p) {
+                        painter.circle_filled(at, GRIP_SIZE / 2.0, GRIP_PICKED);
                     }
-                    painter.add(egui::Shape::closed_line(corners, stroke));
+                }
+                PartShape::Line(run) => {
+                    let run: Option<Vec<egui::Pos2>> = run.into_iter().map(screen).collect();
+                    if let Some(run) = run {
+                        painter.add(egui::Shape::line(run, stroke));
+                    }
+                }
+                PartShape::Patch(triangles) => {
+                    for triangle in triangles {
+                        let corners: Vec<egui::Pos2> =
+                            triangle.into_iter().filter_map(screen).collect();
+                        add_tinted_triangle(&mut tinted, &corners, tint);
+                    }
                 }
             }
         }
         painter.add(egui::Shape::mesh(tinted));
+    }
+
+    /// Where each picked part of a mesh or SubD lies as it is drawn: a SubD's on its smooth
+    /// surface when it is shown smooth, as Rhino highlights them (`curva_viewport::subd_parts`).
+    fn picked_part_shapes(&self) -> Vec<PartShape> {
+        let picked = self.doc.mesh_part_selection();
+        let mut shapes = Vec::new();
+        for object in &self.doc.state().objects {
+            let parts: Vec<MeshPart> = picked
+                .iter()
+                .filter(|(id, _)| *id == object.id)
+                .map(|(_, part)| *part)
+                .collect();
+            if parts.is_empty() {
+                continue;
+            }
+            match &object.shape {
+                Shape::SubD(subd) => {
+                    shapes.extend(
+                        curva_viewport::subd_parts(subd, &parts)
+                            .into_iter()
+                            .flatten(),
+                    );
+                }
+                Shape::Mesh(mesh) => shapes.extend(
+                    parts
+                        .iter()
+                        .filter_map(|&part| part_corners(mesh, part))
+                        .map(shape_of),
+                ),
+                _ => {}
+            }
+        }
+        shapes
     }
 
     /// The edges of a solid picked for a command, drawn thick in the selection colour.
@@ -304,6 +323,20 @@ impl Curva {
             .map(|(grip, _)| grip)
             .into_iter()
             .collect()
+    }
+}
+
+/// A mesh part's `corners` as the shape it is drawn as: a point, an edge, or a face fanned into
+/// triangles from its first corner.
+fn shape_of(corners: Vec<Point>) -> PartShape {
+    match corners.as_slice() {
+        [point] => PartShape::Point(*point),
+        [_, _] => PartShape::Line(corners),
+        _ => PartShape::Patch(
+            (1..corners.len() - 1)
+                .map(|k| [corners[0], corners[k], corners[k + 1]])
+                .collect(),
+        ),
     }
 }
 
