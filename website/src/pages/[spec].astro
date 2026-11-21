@@ -1,0 +1,9 @@
+---
+import Spec from '../components/Spec.astro';
+import { SLUGS } from '../data/site';
+export function getStaticPaths() {
+	return SLUGS.map((spec) => ({ params: { spec } }));
+}
+const { spec } = Astro.params;
+---
+<Spec lang="en" slug={spec} />
