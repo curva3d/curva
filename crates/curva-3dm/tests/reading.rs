@@ -214,6 +214,75 @@ fn rhinos_hatches_come_in_with_their_patterns() {
 }
 
 #[test]
+fn a_hatch_is_drawn_with_the_files_pattern_even_where_curva_has_one_of_its_name() {
+    use curva_3dm::model::{Geometry, HatchLine};
+    use curva_document::annotation::Annotation;
+    // Rhino 8's Plus, as the owner's files hold it (#477): Curva's own Plus is another shape.
+    let path = format!(
+        "{}/tests/files/v7_rhino_logo_annotations.3dm",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let mut model = curva_3dm::read::read(&std::fs::read(path).unwrap()).unwrap();
+    let used = model
+        .objects
+        .iter()
+        .find_map(|o| match &o.geometry {
+            Geometry::Hatch(h) => usize::try_from(h.pattern).ok(),
+            _ => None,
+        })
+        .unwrap();
+    let plus = &mut model.hatch_patterns[used];
+    plus.name = "Plus".to_owned();
+    plus.solid = false;
+    plus.lines = vec![
+        HatchLine {
+            angle: 0.0,
+            base: [-0.125, 0.0],
+            offset: [0.0, 1.0],
+            dashes: vec![0.25, -0.75],
+        },
+        HatchLine {
+            angle: std::f64::consts::FRAC_PI_2,
+            base: [0.0, -0.125],
+            offset: [0.0, 1.0],
+            dashes: vec![0.25, -0.75, 0.25, -0.75],
+        },
+    ];
+    let (doc, _) = curva_3dm::import::open(&model);
+    let state = doc.state();
+    let hatch = state
+        .objects
+        .iter()
+        .find_map(|o| match &o.shape {
+            Shape::Annotation(Annotation::Hatch(h)) if h.pattern == "Plus" => Some(h.clone()),
+            _ => None,
+        })
+        .unwrap();
+    let drawn = state
+        .patterns()
+        .into_iter()
+        .find(|p| p.name == "Plus")
+        .unwrap();
+    assert_eq!(drawn.lines.len(), 2);
+    let first = &drawn.lines[0];
+    // The file's shape: a quarter of each spacing drawn, no stagger, the scale unchanged.
+    assert!(
+        (first.dashes[0] / first.spacing - 0.25).abs() < 1e-12,
+        "{first:?}"
+    );
+    assert!(first.shift.abs() < 1e-12 && (first.origin[0] / first.spacing + 0.125).abs() < 1e-12);
+    let original = model
+        .objects
+        .iter()
+        .find_map(|o| match &o.geometry {
+            Geometry::Hatch(h) if usize::try_from(h.pattern).ok() == Some(used) => Some(h.scale),
+            _ => None,
+        })
+        .unwrap();
+    assert!((hatch.scale - original).abs() < 1e-12);
+}
+
+#[test]
 fn rhinos_notes_come_in_with_their_words_height_and_alignment() {
     use curva_document::annotation::{Annotation, LINE_SPACING, TextAlign};
     // Made in Rhino 8: "Hall" 3.5 high, left and bottom at (10, 20); "Ground floor / Plan"
