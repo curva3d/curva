@@ -10,8 +10,12 @@
 use crate::{Attribute, Mesh, Point, SubD, VertexTag};
 use std::fmt;
 use std::num::NonZeroU8;
-use subdiv_kernels::topology::Mesh as Cage;
+pub(crate) use subdiv_kernels::topology::Mesh as Cage;
 use subdiv_kernels::{Refiner, Scheme, SchemeOptions, UniformRefine};
+
+/// Patches, the subdivided quads they lie on, and whether each quad comes from a four-sided cage
+/// face.
+pub(crate) type PatchesOnQuads = (Vec<Patch>, Cage, Vec<bool>);
 
 /// Sharpness the library takes as infinite (OpenSubdiv's `SHARPNESS_INFINITE`).
 const INFINITE: f32 = 10.0;
@@ -191,6 +195,12 @@ impl SubD {
     /// When the library refuses the cage.
     // CUSTOM MESH OPERATION: subd-feature-patches
     pub fn bezier_patches(&self, levels: u8) -> Result<Vec<Patch>, SmoothError> {
+        Ok(self.patches_and_quads(levels)?.0)
+    }
+
+    /// [`SubD::bezier_patches`], the subdivided quads they lie on (one patch per quad, in order),
+    /// and for each quad whether it comes from a four-sided cage face.
+    pub(crate) fn patches_and_quads(&self, levels: u8) -> Result<PatchesOnQuads, SmoothError> {
         let (result, centre, refined) = self.refine(levels)?;
         let table = result
             .patch_table()
@@ -258,7 +268,13 @@ impl SubD {
                 });
             }
         }
-        Ok(out)
+        let sides: Vec<usize> = self.cage().faces().map(<[u32]>::len).collect();
+        let from_quads = result
+            .face_root
+            .iter()
+            .map(|&root| sides.get(root as usize) == Some(&4))
+            .collect();
+        Ok((out, result.topology.clone(), from_quads))
     }
 
     /// The cage subdivided `levels` times (1 to [`MAX_LEVELS`]): the control net one level

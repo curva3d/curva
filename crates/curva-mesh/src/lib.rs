@@ -12,6 +12,7 @@ mod join;
 mod measure;
 mod mesh;
 mod nurbs;
+mod pack;
 mod primitives;
 mod quad_remesh;
 mod quad_symmetry;
