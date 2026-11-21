@@ -187,9 +187,12 @@ pub(crate) fn aim_at(aiming: &Aiming<'_>) -> Option<(Point, Option<SnapHit>)> {
     if !aiming.snaps_off {
         let (set, drawing, guides) = snaps_for(request, aiming.snaps);
         let set = SnapSet {
-            // Only shaded and hidden views hide what is behind faces; ghosted and wireframe show
-            // it all.
-            visible_only: matches!(aiming.display, DisplayMode::Shaded | DisplayMode::Hidden),
+            // Shaded, hidden and technical views hide what is behind faces; ghosted and wireframe
+            // show it all.
+            visible_only: !matches!(
+                aiming.display,
+                DisplayMode::Wireframe | DisplayMode::Ghosted
+            ),
             ..set
         };
         if let Some(hit) = outlines.snap_while_drawing(camera, screen, size, &set, base, drawing) {
@@ -908,6 +911,7 @@ mod tests {
             DisplayMode::Shaded,
             DisplayMode::Ghosted,
             DisplayMode::Hidden,
+            DisplayMode::Technical,
         ] {
             let mut doc = Document::default();
             doc.add(Curve::line([0.0; 3], [40.0, 0.0, 0.0]).unwrap());

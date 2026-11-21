@@ -61,6 +61,10 @@ struct Uniforms { matrix: mat4x4<f32>, light: vec4<f32>, pixel: vec4<f32>, clips
 // The Hidden display mode's lines are all in black ink: `inked` turns this on.
 const INKED: bool = false;
 const INK: vec3<f32> = vec3<f32>(0.0, 0.0, 0.0);
+// The Technical display mode's hidden lines are dotted: `dotted` turns this on.
+const DOTTED: bool = false;
+// One dot and one gap, in pixels.
+const DOT_PERIOD: f32 = 6.0;
 // Clipping planes (spec `layouts.md` §3): `pixel.w` of them, each keeping the side where
 // dot(n, p) + d is not above zero.
 fn clipped(p: vec3<f32>) -> bool {
@@ -76,6 +80,8 @@ struct Out {
     @builtin(position) position: vec4<f32>,
     @location(0) colour: vec3<f32>,
     @location(1) world: vec3<f32>,
+    // Where along the line, in pixels, for dotting hidden lines (`dotted`).
+    @location(2) along: f32,
 };
 fn pixels(width: f32) -> f32 {
     return max(select(-width, width * uniforms.pixel.z, width > 0.0), 1.0);
@@ -97,7 +103,7 @@ fn segment(
     var pb = uniforms.matrix * vec4<f32>(b, 1.0);
     // Behind the camera: cut the segment where it crosses the near plane.
     if (pa.z < 0.0 && pb.z < 0.0) {
-        return Out(vec4<f32>(2.0, 2.0, 2.0, 1.0), ca, a);
+        return Out(vec4<f32>(2.0, 2.0, 2.0, 1.0), ca, a, 0.0);
     }
     if (pa.z < 0.0) { pa = mix(pa, pb, pa.z / (pa.z - pb.z)); }
     if (pb.z < 0.0) { pb = mix(pb, pa, pb.z / (pb.z - pa.z)); }
@@ -123,10 +129,13 @@ fn segment(
     }
     let offset = across * side * half + along * (end * 2.0 - 1.0) * half;
     at = vec4<f32>(at.xy + offset * px * at.w, at.zw);
-    return Out(at, colour, world);
+    // Measured along the line from a fixed point on screen, not from the segment's start, so the
+    // dots run on across the short segments of a curve instead of each starting with a dot.
+    return Out(at, colour, world, dot(at.xy / at.w / px, along));
 }
 @fragment fn fragment_main(input: Out) -> @location(0) vec4<f32> {
     if (clipped(input.world)) { discard; }
+    if (DOTTED && fract(input.along / DOT_PERIOD) >= 0.5) { discard; }
     return vec4<f32>(input.colour, 1.0);
 }
 "
@@ -258,4 +267,12 @@ pub(crate) fn paper_faces() -> String {
     let lit = "return vec4<f32>(input.colour * (0.25 + 0.5 * facing + 0.2 * above), 1.0);";
     debug_assert!(FACE_SHADER.contains(lit), "the face shader changed");
     FACE_SHADER.replace(lit, &format!("return vec4<f32>({r:?}, {g:?}, {b:?}, 1.0);"))
+}
+
+/// `shader`, built on the shared line code, drawing dotted, for the Technical display mode's
+/// hidden lines (#164): a dot and a gap every 6 pixels along each segment (`DOT_PERIOD`).
+pub(crate) fn dotted(shader: &str) -> String {
+    let dotted = shader.replace("const DOTTED: bool = false;", "const DOTTED: bool = true;");
+    debug_assert_ne!(dotted, shader, "the shader has no dotted switch");
+    dotted
 }

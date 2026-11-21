@@ -53,6 +53,7 @@ fn centre_brightness(ghosted: bool) -> Option<u8> {
         light: [0.0, 0.0, 1.0],
         ghosted,
         hidden: false,
+        hidden_lines: false,
     };
     let path = std::env::temp_dir().join(format!(
         "curva-ghost-test-{ghosted}-{}.png",
@@ -103,6 +104,7 @@ fn rows_lit(width: f32) -> Option<usize> {
         light: [0.0, 0.0, 1.0],
         ghosted: false,
         hidden: false,
+        hidden_lines: false,
     };
     let path = std::env::temp_dir().join(format!(
         "curva-width-test-{}-{}.png",
@@ -176,6 +178,7 @@ fn mixed_picture() -> Picture {
         light: [0.0, 0.0, 1.0],
         ghosted: false,
         hidden: false,
+        hidden_lines: false,
     }
 }
 
@@ -265,6 +268,7 @@ fn the_selection_table_draws_what_coloured_vertices_drew() {
             light,
             ghosted: false,
             hidden: false,
+            hidden_lines: false,
         };
         let coloured = picture(
             if shaded {
@@ -335,6 +339,7 @@ fn circles_drawn_from_their_axes_look_as_their_segments() {
             light,
             ghosted: false,
             hidden: false,
+            hidden_lines: false,
         };
         let scene = |circles: &[crate::PlacedCircle]| Scene {
             objects: Arc::new(whole.objects.clone()),
@@ -405,6 +410,7 @@ fn a_sphere_is_outlined_at_its_rim_and_clean_inside() {
         light: camera.forward().map(|v| v as f32),
         ghosted: false,
         hidden: false,
+        hidden_lines: false,
     };
     let Ok(pixels) = draw_picture(picture, size, true) else {
         eprintln!("no graphics adapter to draw with, so not checked");
@@ -462,6 +468,7 @@ fn far_from_the_origin_draws_as_at_the_origin() {
             light: camera.forward().map(|v| v as f32),
             ghosted: false,
             hidden: false,
+            hidden_lines: false,
         };
         let scene = Scene {
             objects: Arc::new(parts.objects.clone()),
@@ -518,6 +525,7 @@ fn the_hidden_mode_draws_black_ink_on_white_paper() {
         light: [0.0, 0.0, 1.0],
         ghosted: false,
         hidden: true,
+        hidden_lines: false,
     };
     let pixels = match draw_picture(picture, SIZE, true) {
         Ok(pixels) => pixels,
@@ -551,4 +559,51 @@ fn the_hidden_mode_draws_black_ink_on_white_paper() {
         "hidden line: {:?}",
         at(32, low)
     );
+}
+
+/// The Technical display mode (#164), as Rhino 8 draws it: as Hidden, but a line behind a face
+/// is drawn dotted, black dots with paper between them.
+#[test]
+fn the_technical_mode_dots_the_lines_faces_hide() {
+    let corner = |x: f32, y: f32| MeshVertex {
+        position: [x, y, 0.5],
+        normal: [0.0, 0.0, 1.0],
+        colour: [0.3, 0.5, 0.7],
+        object: NO_OBJECT,
+    };
+    // A line behind the face, across its lower part.
+    let lines = [-0.6_f32, 0.6].map(|x| Vertex {
+        position: [x, -0.4, 0.8],
+        colour: [1.0, 1.0, 1.0],
+        width: -2.0,
+        object: NO_OBJECT,
+    });
+    let picture = Picture {
+        lines: lines.to_vec(),
+        faces: vec![corner(-0.9, -0.9), corner(0.9, -0.9), corner(0.0, 0.9)],
+        matrix: [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        light: [0.0, 0.0, 1.0],
+        hidden: true,
+        hidden_lines: true,
+        ..Picture::default()
+    };
+    let pixels = match draw_picture(picture, SIZE, true) {
+        Ok(pixels) => pixels,
+        Err(error) => {
+            eprintln!("no graphics adapter to draw with, so not checked: {error}");
+            return;
+        }
+    };
+    let width = SIZE[0] as usize;
+    // The line's row, 0.7 of the way down; along the middle stretch of the line.
+    let row = SIZE[1] as usize * 7 / 10;
+    let dark = |x: usize| pixels[(row * width + x) * 4] < 80;
+    let along: Vec<bool> = (20..44).map(dark).collect();
+    assert!(along.iter().any(|&d| d), "no dots: {along:?}");
+    assert!(along.iter().any(|&d| !d), "not dotted: {along:?}");
 }

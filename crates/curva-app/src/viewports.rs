@@ -493,7 +493,10 @@ impl Curva {
     /// wireframe views keep the light wireframe edges.
     fn scene_for(&self, display: DisplayMode) -> Arc<Vec<curva_viewport::Vertex>> {
         Arc::clone(
-            if matches!(display, DisplayMode::Shaded | DisplayMode::Hidden) {
+            if matches!(
+                display,
+                DisplayMode::Shaded | DisplayMode::Hidden | DisplayMode::Technical
+            ) {
                 &self.drawing.shaded_scene
             } else {
                 &self.scene
@@ -663,7 +666,8 @@ impl Curva {
                 light: camera.forward().map(|value| value as f32),
                 shaded: display != DisplayMode::Wireframe,
                 ghosted: display == DisplayMode::Ghosted,
-                hidden: display == DisplayMode::Hidden,
+                hidden: matches!(display, DisplayMode::Hidden | DisplayMode::Technical),
+                hidden_lines: display == DisplayMode::Technical,
                 area: *rect,
                 frame: ui.ctx().cumulative_frame_nr(),
                 background: self.pane_background(*pane).0,
