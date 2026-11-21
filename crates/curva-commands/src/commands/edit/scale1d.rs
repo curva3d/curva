@@ -1,11 +1,11 @@
 //! `Scale1D`: stretches objects in one direction.
 
 use crate::commands::{
-    ask_objects, ask_point, ask_point_or_number, curves_of, ghost_results, guide,
-    objects_or_selection, unexpected,
+    ask_objects, ask_point, ask_point_or_number, bodies_of, curves_of, guide, instances_of,
+    objects_or_selection, opened, result_bodies, unexpected,
 };
 use crate::{Answer, Command, Live, Message, Step};
-use curva_document::Document;
+use curva_document::{Document, Shape};
 use curva_kernel::{Curve, KernelError, Point, dot, sub, unit};
 
 /// Smallest size change treated as real.
@@ -31,11 +31,28 @@ fn stretched(
     origin: Point,
     axis: Point,
     factor: f64,
-) -> Result<Vec<(u64, Curve)>, KernelError> {
-    curves_of(doc, ids)
-        .into_iter()
-        .map(|(id, curve)| Ok((id, curve.stretched(origin, axis, factor)?)))
-        .collect()
+) -> Result<Vec<(u64, Shape)>, KernelError> {
+    let mut made = Vec::new();
+    for (id, curve) in curves_of(doc, ids) {
+        made.push((id, Shape::Curve(curve.stretched(origin, axis, factor)?)));
+    }
+    // Solids and surfaces stretch too, as in Rhino (#507).
+    for (id, body) in bodies_of(doc, ids) {
+        made.push((id, Shape::Body(body.stretched(origin, axis, factor)?)));
+    }
+    // Blocks stretch too, their placement taking the stretch.
+    let stretch = curva_document::blocks::stretched_by(origin, axis, factor);
+    for (id, instance) in instances_of(doc, ids) {
+        let placement = curva_document::blocks::followed_by(&instance.placement, &stretch);
+        made.push((
+            id,
+            Shape::Instance(curva_document::blocks::Instance {
+                placement,
+                ..instance
+            }),
+        ));
+    }
+    Ok(made)
 }
 
 impl Scale1D {
@@ -82,8 +99,8 @@ impl Command for Scale1D {
                 };
                 match stretched(doc, &ids, origin, axis, factor) {
                     Ok(made) => {
-                        for (id, curve) in made {
-                            doc.replace(id, curve);
+                        for (id, shape) in made {
+                            doc.replace_shape(id, shape);
                         }
                         Step::Done(Some(Message::with(
                             "done.scale",
@@ -105,9 +122,23 @@ impl Command for Scale1D {
         if let Some((axis, factor)) = self.plan(origin, cursor)
             && let Ok(made) = stretched(doc, ids, origin, axis, factor)
         {
-            shown.extend(ghost_results(made));
+            let shapes: Vec<Shape> = made.into_iter().map(|(_, shape)| shape).collect();
+            shown.extend(opened(doc, &shapes).iter().flat_map(Shape::outlines));
         }
         shown
+    }
+
+    fn preview_bodies(&self, doc: &Document, live: &Live) -> Vec<curva_kernel::Body> {
+        let (Some(ids), Some(origin), Some(cursor)) = (&self.ids, self.origin, live.cursor) else {
+            return Vec::new();
+        };
+        self.plan(origin, cursor)
+            .and_then(|(axis, factor)| stretched(doc, ids, origin, axis, factor).ok())
+            .map(|made| {
+                let shapes: Vec<Shape> = made.into_iter().map(|(_, shape)| shape).collect();
+                result_bodies(&opened(doc, &shapes))
+            })
+            .unwrap_or_default()
     }
 }
 
@@ -126,6 +157,22 @@ mod tests {
 
     fn ends(doc: &Document) -> Vec<Point> {
         doc.state().objects[0].curve().unwrap().sample().unwrap()
+    }
+
+    #[test]
+    fn a_solid_stretches_too_as_in_rhino() {
+        let mut doc = Document::default();
+        let id = doc.add_body(curva_kernel::Body::cuboid([0.0; 3], [1.0, 1.0, 1.0]).unwrap());
+        doc.select(&[id]);
+        run(&mut doc, &["scale1d", "0,0", "2", "9,0"]);
+        let (low, high) = doc.state().objects[0]
+            .shape
+            .body()
+            .unwrap()
+            .bounds()
+            .unwrap();
+        assert!((high[0] - low[0] - 2.0).abs() < 1e-6, "{low:?} {high:?}");
+        assert!((high[1] - low[1] - 1.0).abs() < 1e-6, "{low:?} {high:?}");
     }
 
     #[test]

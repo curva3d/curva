@@ -1,6 +1,8 @@
 //! `Orient`: moves and turns objects so two reference points land on two target points.
 
-use crate::commands::{ask_objects, ask_point, ghosts, guide, objects_or_selection, unexpected};
+use crate::commands::{
+    ask_objects, ask_point, ghost_bodies, ghosts, guide, objects_or_selection, unexpected,
+};
 use crate::{Answer, Command, Live, Message, Step};
 use curva_document::Document;
 use curva_kernel::{Curve, Point, Similarity, cross, dot, sub, unit};
@@ -92,6 +94,23 @@ impl Command for Orient {
                 }
                 shown
             }
+        }
+    }
+
+    fn preview_bodies(&self, doc: &Document, live: &Live) -> Vec<curva_kernel::Body> {
+        let (Some(ids), Some(cursor)) = (&self.ids, live.cursor) else {
+            return Vec::new();
+        };
+        match self.points.as_slice() {
+            [a, _] => {
+                let by = sub(cursor, *a);
+                ghost_bodies(doc, ids, |body| body.translated(by))
+            }
+            points if points.len() > 2 => change(points, cursor)
+                .map_or_else(Vec::new, |(turn, by)| {
+                    ghost_bodies(doc, ids, |body| body.mapped(&turn).translated(by))
+                }),
+            _ => Vec::new(),
         }
     }
 }

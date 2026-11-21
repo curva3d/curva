@@ -1,6 +1,8 @@
 //! `Rotate3D`: turns objects about a line between two points.
 
-use crate::commands::{ask_objects, ask_point, ghosts, guide, objects_or_selection, unexpected};
+use crate::commands::{
+    ask_objects, ask_point, ghost_bodies, ghosts, guide, objects_or_selection, unexpected,
+};
 use crate::{Answer, Command, Kind, Live, Message, Request, Step};
 use curva_document::Document;
 use curva_kernel::{Curve, Point, Similarity, sub, unit};
@@ -60,6 +62,16 @@ impl Command for Rotate3D {
             (None, _, Some(cursor)) => guide(start, cursor),
             _ => Vec::new(),
         }
+    }
+
+    fn preview_bodies(&self, doc: &Document, live: &Live) -> Vec<curva_kernel::Body> {
+        let (Some(ids), Some(start), Some(axis), Some(degrees)) =
+            (&self.ids, self.start, self.axis, live.number)
+        else {
+            return Vec::new();
+        };
+        let turn = Similarity::rotation(start, axis, degrees.to_radians());
+        ghost_bodies(doc, ids, |body| body.mapped(&turn))
     }
 }
 
