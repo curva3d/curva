@@ -470,8 +470,6 @@ impl Outlines {
             let mut kind = PickKind::Curve;
             // A body's seams, by edge number, which shaded views leave out.
             let mut seam_edges: Vec<usize> = Vec::new();
-            // Whether its lines are a mesh's wires, all left out where faces show.
-            let mut wires = false;
             let pieces: Vec<(Curve, Option<usize>)> = match shape {
                 Shape::Curve(curve) => {
                     if matches!(curve, Curve::Point { .. }) {
@@ -490,10 +488,10 @@ impl Outlines {
                 }
                 // Instances inside definitions are opened before this.
                 Shape::Instance(_) => continue,
-                // A mesh shades from its own triangles, placed already, and draws its wires,
-                // which views showing faces leave out as Rhino does (#267).
+                // A mesh shades from its own triangles, placed already, and draws its wires in
+                // every view, in its own colour, as Rhino 8 does in Wireframe, Shaded and
+                // Ghosted (#472).
                 Shape::Mesh(mesh) => {
-                    wires = true;
                     let (lines, mesh_kind) = outlines.mesh_pieces(object.id, mesh, look);
                     kind = mesh_kind;
                     lines
@@ -512,8 +510,8 @@ impl Outlines {
                     outlines.annotation_lines(state, object, *key, annotation, look, cache)
                 }
             };
-            let on_faces = shape.body().is_some() || shape.subd().is_some() || wires;
-            let seam = |edge: Option<usize>| wires || edge.is_some_and(|e| seam_edges.contains(&e));
+            let on_faces = shape.body().is_some() || shape.subd().is_some();
+            let seam = |edge: Option<usize>| edge.is_some_and(|e| seam_edges.contains(&e));
             // Annotations' letters and marks keep only the points their shape needs.
             let look = Look {
                 coarse: matches!(shape, Shape::Annotation(_)),
@@ -541,9 +539,9 @@ impl Outlines {
         if let (Some(colours), Some(faces)) = (colours, self.faces.last_mut()) {
             faces.colours = Some(std::sync::Arc::new(colours));
         }
-        // Its other cage edges draw only where faces do not show, as a mesh's wires do.
+        // Its other cage edges draw in every view in its own colour, as Rhino 8 draws them (#472).
         let wires = drawing.wires.into_iter().map(|wire| (wire, None)).collect();
-        self.push_pieces(id, wires, look, kind, &|_| true, true);
+        self.push_pieces(id, wires, look, kind, &|_| false, false);
         let lines = drawing.lines.into_iter().map(|line| (line, None)).collect();
         (lines, kind)
     }
