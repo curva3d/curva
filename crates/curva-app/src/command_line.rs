@@ -201,9 +201,9 @@ impl Curva {
         });
     }
 
-    pub(crate) fn command_line(&mut self, ui: &mut egui::Ui) {
-        // The command bar's own lines come first, then the history; together they fill the rows,
-        // the oldest going as new ones come.
+    /// The command bar's own lines first, then the history; together they fill the rows, the
+    /// oldest going as new ones come.
+    fn command_history(&mut self, ui: &mut egui::Ui) {
         let log = self.processor.log().to_vec();
         let (blanks, skip, shown) = history_rows(&log, self.notices.len());
         for _ in 0..blanks {
@@ -213,6 +213,10 @@ impl Curva {
         for row in shown {
             ui.add(egui::Label::new(row.as_str()).truncate());
         }
+    }
+
+    pub(crate) fn command_line(&mut self, ui: &mut egui::Ui) {
+        self.command_history(ui);
         let prompt = self
             .processor
             .prompt()
