@@ -11,6 +11,12 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 22 November 2026
 
+**SubD editing begins: Crease, RemoveCrease, Fill, UnweldEdge and WeldEdge,** on the mesh and SubD part picking (#333). Measured in Rhino 8 with
+RhinoCommon picks: the picked cage edges become creases (their ends darts) or smooth again; only edges count; the
+message counts the SubDs changed. Fill closes the picked edges' holes in Rhino's four patch styles (Automatic gives an
+open box's hole four quads round a middle point, as Rhino). UnweldEdge and WeldEdge cut picked edges open and join them back, as measured. Next: Stitch, Bridge and
+InsertEdge, each measured first (InsertEdge needs interactive picking to measure).
+
 **LiveSurface keeps its edge runs (for display #334):** `LiveSurface::edge_runs()` gives each cage edge as a run of the
 live surface's point numbers, so the edges and creases drawn on a smooth SubD follow a drag through `positions` with
 no refining.
