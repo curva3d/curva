@@ -21,22 +21,49 @@ fn plus(p: Point, direction: Point, amount: f64) -> Point {
     std::array::from_fn(|k| p[k] + direction[k] * amount)
 }
 
-/// The base: its first corner and its width and depth along the plane, if it is not flat.
+/// The base: its first corner and its sides along the plane's X and Y, if it is not flat. The
+/// second answer is the other corner, or a typed length followed by the width (Enter: the length),
+/// as in Rhino.
 fn base(cx: &Context<'_>) -> Option<(Point, [f64; 2])> {
     let first = cx.values.first().and_then(Value::point)?;
-    let other = cx.values.get(1).and_then(Value::point)?;
-    let corner = if cx.mode == Some(CENTER) {
-        std::array::from_fn(|i| 2.0 * first[i] - other[i])
-    } else {
-        first
-    };
     let [x, y] = cx.plane();
-    let across = sub(other, corner);
-    let sides = [dot(across, x), dot(across, y)];
+    let (corner, sides) = match cx.values.get(1)? {
+        Value::Number(length) => {
+            let width = match cx.values.get(2) {
+                Some(Value::Number(width)) => *width,
+                _ => *length,
+            };
+            let corner = if cx.mode == Some(CENTER) {
+                plus(plus(first, x, -length / 2.0), y, -width / 2.0)
+            } else {
+                first
+            };
+            (corner, [*length, width])
+        }
+        other => {
+            let other = other.point()?;
+            let corner = if cx.mode == Some(CENTER) {
+                std::array::from_fn(|i| 2.0 * first[i] - other[i])
+            } else {
+                first
+            };
+            let across = sub(other, corner);
+            (corner, [dot(across, x), dot(across, y)])
+        }
+    };
     sides
         .iter()
         .all(|side| side.abs() >= SMALLEST_SIDE)
         .then_some((corner, sides))
+}
+
+/// Where the height is among the answers: after the other corner, or after the length and width.
+fn height_at(cx: &Context<'_>) -> usize {
+    if matches!(cx.values.get(1), Some(Value::Number(_))) {
+        3
+    } else {
+        2
+    }
 }
 
 fn up(cx: &Context<'_>) -> Point {
@@ -54,13 +81,25 @@ impl Recipe for BoxSolid {
     fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
         let mut steps = vec![StepDef::point("prompt.box.first").offering(&[CENTER])];
         if let Some(first) = cx.values.first().and_then(Value::point) {
+            // The other corner, or a typed length, as in Rhino ("Other corner of base or length").
             steps.push(
-                StepDef::point("prompt.box.other")
+                StepDef::point_or_number("prompt.box.other")
                     .from(first)
                     .offering(&[])
                     .corner(),
             );
-            if let Some(other) = cx.values.get(1).and_then(Value::point) {
+            if let Some(Value::Number(_)) = cx.values.get(1) {
+                // "Width. Press Enter to use length".
+                let [_, y] = cx.plane();
+                steps.push(StepDef::along("prompt.box.width", first, y).optional());
+                if cx.values.len() > 2 {
+                    steps.push(
+                        StepDef::along("prompt.box.height", first, up(cx))
+                            .optional()
+                            .offering(&[BOTH_SIDES]),
+                    );
+                }
+            } else if let Some(other) = cx.values.get(1).and_then(Value::point) {
                 // The height is measured up from the corner just clicked, where the mouse is,
                 // as in Rhino (#484).
                 steps.push(
@@ -77,7 +116,7 @@ impl Recipe for BoxSolid {
         if cx.values.len() >= 2 && base(cx).is_none() {
             return Err(Message::new("error.flat_rectangle"));
         }
-        if let Some(Value::Number(high)) = cx.values.get(2)
+        if let Some(Value::Number(high)) = cx.values.get(height_at(cx))
             && high.abs() < SMALLEST_SIDE
         {
             return Err(Message::new("error.flat_box"));
@@ -90,10 +129,10 @@ impl Recipe for BoxSolid {
             return Ok(Made::default());
         };
         let [x, y] = cx.plane();
-        let high = match cx.values.get(2) {
+        let high = match cx.values.get(height_at(cx)) {
             Some(Value::Number(high)) => *high,
-            // Enter at the height uses the base's width, as in Rhino.
-            Some(Value::Empty) => wide.abs(),
+            // Enter at the height uses the base's width (its side along Y), as in Rhino.
+            Some(Value::Empty) => deep.abs(),
             _ => 0.0,
         };
         if high.abs() < SMALLEST_SIDE {
@@ -218,10 +257,33 @@ mod tests {
         let mut doc = Document::default();
         run(&mut doc, &["box", "0,0", "4,2", "bothsides", ""]);
         let (low, high) = bounds(&doc);
-        // Enter: the height is the width, 4, grown both ways.
+        // Enter: the height is the width, the side along Y (2), grown both ways, as Rhino 8 gives
+        // (measured: corners 0,0 and 4,2 then Enter make 4 x 2 x 2).
         assert!(
-            close(low[2], -4.0) && close(high[2], 4.0),
+            close(low[2], -2.0) && close(high[2], 2.0),
             "{low:?} {high:?}"
         );
+    }
+
+    #[test]
+    fn a_typed_length_then_width_then_height_as_in_rhino() {
+        // Measured in Rhino 8 (#526): 10, Enter, Enter gives 10 x 10 x 10; 10, 4, Enter gives
+        // 10 x 4 x 4; 10, 4, 7 gives 10 x 4 x 7.
+        for (typed, size) in [
+            (&["10", "", ""][..], [10.0, 10.0, 10.0]),
+            (&["10", "4", ""][..], [10.0, 4.0, 4.0]),
+            (&["10", "4", "7"][..], [10.0, 4.0, 7.0]),
+        ] {
+            let mut doc = Document::default();
+            let mut steps = vec!["box", "0,0"];
+            steps.extend_from_slice(typed);
+            run(&mut doc, &steps);
+            let (low, high) = bounds(&doc);
+            let found: Vec<f64> = (0..3).map(|i| high[i] - low[i]).collect();
+            assert!(
+                (0..3).all(|i| close(found[i], size[i])),
+                "{typed:?}: {found:?}"
+            );
+        }
     }
 }
