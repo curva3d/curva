@@ -6,7 +6,6 @@
 use crate::Message;
 use crate::commands::{Change, changed};
 use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef, Value};
-use curva_document::Shape;
 use curva_kernel::{Point, cross, sub};
 
 const VERTICAL: &str = "Vertical";
