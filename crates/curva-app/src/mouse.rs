@@ -255,17 +255,19 @@ pub(crate) fn clipboard_requests(
 
 /// How a click or a box pick in a viewport is read: its view, its corner on screen, its size,
 /// and whether Shift adds to the selection or Ctrl takes away from it.
-struct Picking {
-    camera: Camera,
-    origin: egui::Pos2,
-    size: [f64; 2],
-    shift: bool,
-    remove: bool,
+pub(crate) struct Picking {
+    pub(crate) camera: Camera,
+    pub(crate) origin: egui::Pos2,
+    pub(crate) size: [f64; 2],
+    pub(crate) shift: bool,
+    pub(crate) remove: bool,
+    /// Ctrl and Shift held together: parts of objects are picked, as in Rhino (#485).
+    pub(crate) parts: bool,
 }
 
 impl Picking {
     /// A point on screen in the viewport's own pixels.
-    fn local(&self, position: egui::Pos2) -> [f64; 2] {
+    pub(crate) fn local(&self, position: egui::Pos2) -> [f64; 2] {
         let offset = position - self.origin;
         [f64::from(offset.x), f64::from(offset.y)]
     }
@@ -504,6 +506,7 @@ impl Curva {
             size,
             shift: ui.input(|input| input.modifiers.shift),
             remove: ui.input(|input| input.modifiers.command),
+            parts: ui.input(|input| input.modifiers.shift && input.modifiers.command),
         };
         // Checked once, so the click that ends a command does not also change the selection.
         if self.takes_position() {
@@ -520,19 +523,28 @@ impl Curva {
             }
             return;
         }
+        self.route_picks(&picking, gestures);
+    }
+
+    /// Each click or box to what the moment asks for: parts of objects (Ctrl+Shift, or a command
+    /// asking for mesh parts), faces or edges a command asks for, or else objects.
+    fn route_picks(&mut self, picking: &Picking, gestures: Vec<(egui::Pos2, egui::Pos2)>) {
         let wants = |kind: Kind| {
             self.processor
                 .current_request()
                 .is_some_and(|request| request.kind == kind)
         };
         let (wants_edges, wants_faces) = (wants(Kind::Edges), wants(Kind::Faces));
+        let wants_parts = wants(Kind::MeshParts) || picking.parts;
         for (from, to) in gestures {
-            if wants_faces {
-                self.pick_faces(&picking, from, to);
+            if wants_parts {
+                self.pick_parts(picking, from, to);
+            } else if wants_faces {
+                self.pick_faces(picking, from, to);
             } else if wants_edges {
-                self.pick_edges(&picking, from, to);
+                self.pick_edges(picking, from, to);
             } else {
-                self.pick_objects(&picking, from, to);
+                self.pick_objects(picking, from, to);
             }
         }
     }

@@ -43,6 +43,7 @@ mod layout;
 mod mouse;
 mod notices;
 mod panels;
+mod part_picking;
 mod printing;
 mod recovery;
 mod selection_menu;
