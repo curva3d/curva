@@ -24,6 +24,8 @@ pub(crate) struct PrintPanel {
     page: usize,
     /// The save dialog open for the PDF, and the job waiting for its answer.
     saving: Option<(Receiver<Option<PathBuf>>, PrintJob)>,
+    /// The page preview, built once on another thread and kept while nothing changes.
+    preview: super::print_preview::Preview,
 }
 
 /// The preview's page drawn into `rect`, white paper with its marks; fills show as outlines.

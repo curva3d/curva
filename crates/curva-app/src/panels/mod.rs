@@ -10,6 +10,7 @@ pub(crate) mod layouts;
 pub(crate) mod mesh;
 pub(crate) mod notes;
 pub(crate) mod print;
+pub(crate) mod print_preview;
 pub(crate) mod properties;
 pub(crate) mod resize;
 pub(crate) mod title_row;
