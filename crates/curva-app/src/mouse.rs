@@ -522,6 +522,12 @@ impl Curva {
             }
             return;
         }
+        self.route_picks(&picking, gestures);
+    }
+
+    /// Each click or box to what the moment asks for: parts of objects (Ctrl+Shift, or a command
+    /// asking for mesh parts), faces or edges a command asks for, or else objects.
+    fn route_picks(&mut self, picking: &Picking, gestures: Vec<(egui::Pos2, egui::Pos2)>) {
         let wants = |kind: Kind| {
             self.processor
                 .current_request()
@@ -531,13 +537,13 @@ impl Curva {
         let wants_parts = wants(Kind::MeshParts) || picking.parts;
         for (from, to) in gestures {
             if wants_parts {
-                self.pick_parts(&picking, from, to);
+                self.pick_parts(picking, from, to);
             } else if wants_faces {
-                self.pick_faces(&picking, from, to);
+                self.pick_faces(picking, from, to);
             } else if wants_edges {
-                self.pick_edges(&picking, from, to);
+                self.pick_edges(picking, from, to);
             } else {
-                self.pick_objects(&picking, from, to);
+                self.pick_objects(picking, from, to);
             }
         }
     }
