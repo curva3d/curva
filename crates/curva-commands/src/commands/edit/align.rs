@@ -186,6 +186,18 @@ mod tests {
     }
 
     #[test]
+    fn align_lines_up_bottoms() {
+        let mut doc = Document::default();
+        let a = doc.add(Curve::line([0.0, 0.0, 0.0], [1.0, 0.0, 0.0]).unwrap());
+        let b = doc.add(Curve::line([3.0, 5.0, 0.0], [4.0, 6.0, 0.0]).unwrap());
+        doc.select(&[a, b]);
+        // After the option, Rhino asks for the alignment point; Enter aligns to the selection.
+        run(&mut doc, &["align", "bottom", ""]);
+        let lowest = doc.state().objects[1].curve().unwrap().sample().unwrap()[0][1];
+        assert!(lowest.abs() < 1e-9, "{lowest}");
+    }
+
+    #[test]
     fn each_way_lines_up_as_in_rhino() {
         // Measured in Rhino 8 with _-Align <option> _Enter.
         let rhino: [(&str, [[f64; 4]; 3]); 7] = [
