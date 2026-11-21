@@ -11,6 +11,11 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 21 November 2026
 
+**Mesh wires for display (#472):** measured in Rhino 8, every mesh wire is drawn (1 px, object colour) in
+Wireframe, Shaded, Ghosted and Technical, none in Rendered and Arctic; naked, crease and non-manifold
+edges are off everywhere. `Mesh::wire_edges()` gives every edge once, joined by position as Rhino
+joins them (an unwelded box of 24 points shows 12 wires, as in Rhino). Display draws them.
+
 **SubD face colours on the smooth surface (for display, #324 follow-up):** `SubD::surface_coloured(levels, fallback)`
 gives each quad of the smooth surface its cage face's colour at every corner (`Attribute::PerCorner`),
 using the library's record of which cage face each quad comes from; a face with no colour takes
