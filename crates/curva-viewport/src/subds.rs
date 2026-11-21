@@ -27,11 +27,11 @@ pub(crate) fn levels_for(subd: &SubD) -> u8 {
 pub(crate) struct Drawing {
     /// The mesh it shades with.
     pub(crate) shown: Mesh,
-    /// The lines it draws in every view: its creases and open borders on the smooth surface, or
-    /// shown flat, all its cage's edges.
+    /// Its creases and open borders on the smooth surface, or shown flat, all its cage's edges:
+    /// drawn dark where faces show, as a body's edges are.
     pub(crate) lines: Vec<Curve>,
-    /// The lines drawn only where faces do not show, as Rhino draws a smooth SubD in wireframe:
-    /// its other cage edges on the smooth surface. None shown flat.
+    /// Its other cage edges on the smooth surface, drawn in its own colour in every view, as
+    /// Rhino 8 draws a SubD's edges (#472). None shown flat.
     pub(crate) wires: Vec<Curve>,
     /// Whether `shown` is the cage itself, face for face, so its triangles name cage faces.
     pub(crate) flat: bool,
@@ -353,10 +353,11 @@ mod tests {
         let id = doc.add_shape(curva_document::Shape::SubD(cube()));
         let outlines = Outlines::of(doc.state());
         assert_eq!(SceneParts::shared(&outlines).shapes.len(), 1);
-        // Its cage edges draw in wireframe only, as a mesh's wires do.
+        // Its cage edges draw in every view, in its own colour, as Rhino 8 draws a SubD's edges
+        // in Wireframe, Shaded and Ghosted, and a mesh's wires (#472).
         assert_eq!(outlines.objects.len(), 12);
-        assert!(outlines.seams.iter().all(|seam| *seam));
-        assert!(outlines.on_faces.iter().all(|on| *on));
+        assert!(outlines.seams.iter().all(|seam| !*seam));
+        assert!(outlines.on_faces.iter().all(|on| !*on));
         let (low, high) = cube().bounds().unwrap();
         let mut camera = StandardView::Top.camera();
         camera.frame(low, high);
