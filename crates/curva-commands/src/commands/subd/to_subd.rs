@@ -3,6 +3,10 @@
 //! points become the cage (`UseMesh` ControlPoints), its unwelded edges are not creased
 //! (`MeshCreases` off), an open border is creased with no corners (`MeshCorners` off), and the mesh
 //! stays. A 2 × 2 × 2 box mesh gives a cage of 24 faces and 26 points, welded or not.
+//!
+//! Surfaces and polysurfaces go through `SubD::from_body`, Rhino's fit of a SubD to a surface;
+//! Rhino takes only surfaces and extrusions, and Curva's polysurfaces stand in for its extrusions
+//! (owner's choice, 21 November 2026).
 
 use crate::Message;
 use crate::commands::arguments::objects;
@@ -49,11 +53,12 @@ impl Recipe for ToSubD {
             .iter()
             .filter(|o| ids.contains(&o.id))
         {
-            let Some(mesh) = object.shape.mesh() else {
-                continue;
-            };
-            let subd = SubD::from_mesh(mesh, options)
-                .map_err(|e| Message::with("error.geometry", vec![e.to_string()]))?;
+            let subd = match &object.shape {
+                Shape::Mesh(mesh) => SubD::from_mesh(mesh, options),
+                Shape::Body(body) => SubD::from_body(body),
+                _ => continue,
+            }
+            .map_err(|e| Message::with("error.geometry", vec![e.to_string()]))?;
             made.derived.push(Derived {
                 shape: Shape::SubD(subd),
                 from: object.id,
@@ -61,7 +66,7 @@ impl Recipe for ToSubD {
             });
         }
         if made.derived.is_empty() {
-            return Err(Message::new("error.check_no_meshes"));
+            return Err(Message::new("error.tosubd_none"));
         }
         made.message = Some(Message::with(
             "done.tosubd",
@@ -107,5 +112,29 @@ mod tests {
         let subd = doc.state().objects[1].shape.subd().unwrap();
         assert_eq!(subd.cage().face_count(), 4);
         assert_eq!(subd.creases().count(), 8);
+    }
+}
+
+#[cfg(test)]
+mod surface_tests {
+    use crate::commands::run;
+    use curva_document::{Document, Shape};
+    use curva_kernel::{Body, Curve};
+
+    #[test]
+    fn an_extruded_circle_becomes_rhinos_subd_and_stays() {
+        // Rhino 8's ToSubD on a capped extrusion: 8 sides and two eight-sided caps.
+        let mut doc = Document::default();
+        let circle = Curve::circle([0.0; 3], 2.0).unwrap();
+        let body = Body::extruded(&[circle], [0.0, 0.0, 1.0], 4.0, true).unwrap();
+        let id = doc.add_shape(Shape::Body(body));
+        doc.select(&[id]);
+        run(&mut doc, &["tosubd"]);
+        let objects = &doc.state().objects;
+        assert_eq!(objects.len(), 2);
+        assert!(objects[0].shape.body().is_some(), "the polysurface stays");
+        let subd = objects[1].shape.subd().unwrap();
+        assert_eq!(subd.cage().face_count(), 10);
+        assert_eq!(subd.creases().count(), 16);
     }
 }
