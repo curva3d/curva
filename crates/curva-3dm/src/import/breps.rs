@@ -9,21 +9,17 @@ pub(super) fn brep_body(b: &Brep) -> Result<Body, KernelError> {
     Body::from_foreign_record(&brep_record(b)?)
 }
 
-/// Polysurfaces with more faces than this are read quickly first and healed later (#476): the
-/// healer's time grows faster than the faces, from milliseconds for small ones to 40 s for a
-/// 2 400-face polysurface, while small ones heal quickly enough to wait for, and the few that
-/// read differently without it are small.
-pub(super) const QUICK_FROM_FACES: usize = 200;
-
-/// A large B-rep read quickly, without the engine's healer, and the work that heals it, to run
-/// later; a small one healed now, with nothing to come.
+/// A B-rep read quickly, without the engine's healer, and the work that heals it, to run later
+/// (#476); healed now, with nothing to come, when it cannot be read without healing.
+///
+/// Every polysurface is read this way, not only large ones: in the owner's 483 MB file the
+/// 2 610 solids took 113 s to heal on one core (16.6 s on twelve) and 64 s to read quickly (5.4 s
+/// on twelve), so the file opens faster than in Rhino 8 (7.9 s) and heals in the background.
 pub(super) fn brep_body_quickly(
     b: &Brep,
 ) -> Result<(Body, Option<curva_document::Repair>), KernelError> {
     let record = brep_record(b)?;
-    if b.faces.len() > QUICK_FROM_FACES
-        && let Ok(quick) = Body::from_foreign_record_unhealed(&record)
-    {
+    if let Ok(quick) = Body::from_foreign_record_unhealed(&record) {
         let heal: curva_document::Repair =
             Box::new(move || Body::from_foreign_record(&record).ok());
         return Ok((quick, Some(heal)));

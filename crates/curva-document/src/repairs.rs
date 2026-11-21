@@ -1,4 +1,4 @@
-//! Solids read quickly and healed later (#476): a large file opens with its biggest polysurfaces
+//! Solids read quickly and healed later (#476): a file opens with its polysurfaces
 //! read without the engine's healer, which takes most of the time, and each is healed in the
 //! background and put in its place when ready. Not saved, and not part of undo.
 
@@ -86,13 +86,31 @@ impl Document {
     /// Runs every waiting repair now, on every core, and puts the results in place: for scripts,
     /// agents and tests, which want the healed model at once.
     pub fn repair_all_now(&mut self) {
-        let repairs = self.take_repairs();
+        // One thread a core, each on its own engine and taking the next repair: a file can bring
+        // thousands (#476), and on the shared engine they would wait on one another.
+        let queue = std::sync::Mutex::new(self.take_repairs());
+        let workers = std::thread::available_parallelism().map_or(1, usize::from);
         let healed: Vec<(usize, Option<Body>)> = std::thread::scope(|s| {
-            let handles: Vec<_> = repairs
-                .into_iter()
-                .map(|(faces, repair)| s.spawn(move || (faces, repair())))
+            let handles: Vec<_> = (0..workers)
+                .map(|_| {
+                    s.spawn(|| {
+                        curva_kernel::parallel::on_own_engine(|| {
+                            let mut done = Vec::new();
+                            while let Some((faces, repair)) =
+                                queue.lock().ok().and_then(|mut q| q.pop())
+                            {
+                                done.push((faces, repair()));
+                            }
+                            done
+                        })
+                    })
+                })
                 .collect();
-            handles.into_iter().filter_map(|h| h.join().ok()).collect()
+            handles
+                .into_iter()
+                .filter_map(|h| h.join().ok())
+                .flatten()
+                .collect()
         });
         for (faces, body) in healed {
             if let Some(body) = body {
