@@ -12,6 +12,7 @@ use crate::{Curve, KernelError, Point, Similarity};
 use serde::{Deserialize, Serialize};
 use solidcore_ops::Body as EngineBody;
 use solidcore_record::brep::Brep as Record;
+mod healed;
 mod meshing;
 
 /// The native format in its text form, which a `.curva` file can hold as it is.
@@ -522,21 +523,6 @@ impl Body {
     #[must_use]
     pub fn faces_key(&self) -> usize {
         std::sync::Arc::as_ptr(&self.shared) as usize
-    }
-
-    /// This body with the faces of `made`, a body read in place from the same record, kept where
-    /// this one is placed: how a body read quickly takes its healed form once it is ready (#476).
-    #[must_use]
-    pub fn with_faces_of(&self, made: &Body) -> Body {
-        Body {
-            shared: std::sync::Arc::clone(&made.shared),
-            placement: if made.placement == IN_PLACE {
-                self.placement
-            } else {
-                followed_by(&made.placement, &self.placement)
-            },
-            placed: PlacedRecord::default(),
-        }
     }
 
     /// How many faces, edges and corners it has.
