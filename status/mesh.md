@@ -11,6 +11,10 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 21 November 2026
 
+**MeshBox, SubDBox, MeshPlane and SubDPlane take Box's and Rectangle's steps:** measured in Rhino 8, a typed number at
+the second step is the length, then Width (Enter: the length), then for a box the height, whose Enter takes the
+base's side along Y. The height is measured up from the corner just clicked, as Box. They reuse Box's `base`.
+
 **ToNURBS packs faces as Rhino 8 does (#494):** `PackFaces` (on) joins the patches into one surface per region,
 measured with RhinoCommon: quads join unless a crease, a border or a line running out from a point where
 other than four quads meet comes between them; only quads from four-sided cage faces join. Boxes give 6

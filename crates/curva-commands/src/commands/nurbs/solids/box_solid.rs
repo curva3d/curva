@@ -24,7 +24,7 @@ fn plus(p: Point, direction: Point, amount: f64) -> Point {
 /// The base: its first corner and its sides along the plane's X and Y, if it is not flat. The
 /// second answer is the other corner, or a typed length followed by the width (Enter: the length),
 /// as in Rhino.
-fn base(cx: &Context<'_>) -> Option<(Point, [f64; 2])> {
+pub(crate) fn base(cx: &Context<'_>) -> Option<(Point, [f64; 2])> {
     let first = cx.values.first().and_then(Value::point)?;
     let [x, y] = cx.plane();
     let (corner, sides) = match cx.values.get(1)? {
@@ -58,7 +58,7 @@ fn base(cx: &Context<'_>) -> Option<(Point, [f64; 2])> {
 }
 
 /// Where the height is among the answers: after the other corner, or after the length and width.
-fn height_at(cx: &Context<'_>) -> usize {
+pub(crate) fn height_at(cx: &Context<'_>) -> usize {
     if matches!(cx.values.get(1), Some(Value::Number(_))) {
         3
     } else {
