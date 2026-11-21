@@ -805,6 +805,12 @@ fn layouts_come_back_with_their_details_and_sheet_drawing() {
         },
     ];
     state.next_layout = 2;
+    // Every flat view comes back as itself (#478: Back and Left came in as perspectives).
+    for key in ["Bottom", "Front", "Back", "Right", "Left"] {
+        let mut turned = state.clone();
+        turned.layouts[0].details[0].projection = key.to_owned();
+        assert_eq!(round_trip(&turned).layouts[0].details[0].projection, key);
+    }
     let back = round_trip(&state);
     assert_eq!(back.layouts.len(), 2);
     let plan = &back.layouts[0];

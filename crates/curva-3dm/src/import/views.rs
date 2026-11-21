@@ -127,19 +127,10 @@ pub(super) fn detail_in(
         return Err("a detail without an outline".to_owned());
     };
     let v = &d.view;
-    let length = (v.direction.iter().map(|c| c * c).sum::<f64>())
-        .sqrt()
-        .max(1e-12);
-    let dir: P3 = v.direction.map(|c| c / length);
-    let along = |axis: P3| (0..3).map(|k| dir[k] * axis[k]).sum::<f64>() > 1.0 - 1e-9;
-    let projection = if !v.parallel {
-        "Perspective"
-    } else if along([0.0, 0.0, -1.0]) {
-        "Top"
-    } else if along([0.0, 1.0, 0.0]) {
-        "Front"
-    } else if along([-1.0, 0.0, 0.0]) {
-        "Right"
+    // Any of the six flat views, within a degree (#478: Back and Left elevations, and ones a
+    // hair off square, came in as perspectives).
+    let projection = if v.parallel {
+        curva_document::layouts::flat_view_looking(v.direction).unwrap_or("Perspective")
     } else {
         "Perspective"
     };

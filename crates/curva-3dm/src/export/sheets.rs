@@ -53,15 +53,11 @@ fn detail_camera(
     frame_mm: [f64; 2],
     model_mm: f64,
 ) -> model::View {
-    let (direction, up): (P3, P3) = match detail.projection.as_str() {
-        "Top" => ([0.0, 0.0, -1.0], [0.0, 1.0, 0.0]),
-        "Front" => ([0.0, 1.0, 0.0], [0.0, 0.0, 1.0]),
-        "Right" => ([-1.0, 0.0, 0.0], [0.0, 0.0, 1.0]),
-        _ => {
+    let (direction, up): (P3, P3) = curva_document::layouts::flat_view_axes(&detail.projection)
+        .unwrap_or_else(|| {
             let s = 1.0 / 3f64.sqrt();
             ([-s, s, -s], [0.0, 0.0, 1.0])
-        }
-    };
+        });
     let up = {
         let along: f64 = (0..3).map(|k| up[k] * direction[k]).sum();
         let v: P3 = std::array::from_fn(|k| up[k] - direction[k] * along);
