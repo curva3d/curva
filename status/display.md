@@ -19,6 +19,20 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
   creases and borders stay dark where faces show, as before.
 - **The wheel zooms towards the mouse, as in Rhino** (#469, #501): the point under the mouse
   stays still, not the centre of the view.
+- **The Display panel shows "Perspective" whole, and its edges resize properly** (#470). It
+  opens 250 points wide (180 before), also from a layout saved narrower. Dragging a panel's
+  edge now moves it from where the drag began by the whole way since, so the edge stays under
+  the pointer after the panel stops at its smallest; and the layout is written once when the
+  edge is let go, not on every frame of the drag.
+- **The view picker has the button look of the chosen mock-up** (#471): each view a filled
+  tile, the one shown in the accent, and the button that opens it outlined in the accent.
+- **In focus mode a panel at the top goes to the window's edge, as the others do** (#473). The
+  Operations bar slid only to where the top bar had been, which had slid away itself, so it
+  stayed floating; now hidden panels slide to the edges of the whole window in focus mode, and
+  a top panel's tab moves aside from the focus tab at the top centre.
+- **Picking faces no longer draws long yellow lines across the view** (#522): picked faces are
+  tinted as one mesh, exactly to their corners.
+- **Tidy-up** (#303, #505): the shortcut keys are split into three functions, in their own file.
 
 ## 20 November 2026
 
