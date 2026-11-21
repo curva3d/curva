@@ -182,6 +182,7 @@ ui.properties.none = Nothing selected
 ui.properties.count = {0} selected
 ui.properties.length = Length: {0}
 ui.properties.volume = Volume: {0}
+ui.properties.measuring = Measuring…
 ui.properties.area = Area: {0}
 ui.properties.mixed = Several layers
 ui.properties.layer = Layer
