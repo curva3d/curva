@@ -116,7 +116,11 @@ mod tests {
 
     fn model_with_a_layout() -> (Document, u64) {
         let mut doc = Document::default();
-        let layout = doc.add_layout_sized("Sheet".to_owned(), [297.0, 210.0], curva_document::layouts::PaperUnit::Millimetres);
+        let layout = doc.add_layout_sized(
+            "Sheet".to_owned(),
+            [297.0, 210.0],
+            curva_document::layouts::PaperUnit::Millimetres,
+        );
         let before = doc.state().clone();
         doc.add(Curve::line([0.0; 3], [10.0, 0.0, 0.0]).unwrap());
         doc.record_change(before);
