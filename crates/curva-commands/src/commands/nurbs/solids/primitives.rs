@@ -2,10 +2,13 @@
 //! `Tube`, each on the plane being drawn on, made by spinning or pulling a profile.
 //! (`docs/commands/rhino-parity.md` lists the Rhino options still to come.)
 
+use super::round_ways::{
+    self, Base, FOUR_POINT, THREE_POINT, TWO_POINT, points_taken, sphere_through,
+};
 use crate::Message;
 use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef, Value};
 use curva_document::Shape;
-use curva_kernel::{Body, Curve, KernelError, Point, cross, gap};
+use curva_kernel::{Body, Curve, KernelError, Point, cross};
 use std::f64::consts::TAU;
 
 const DIAMETER: &str = "Diameter";
@@ -71,26 +74,62 @@ fn circle_guide(centre: Point, r: f64, x: Point, y: Point) -> Made {
     }
 }
 
-/// `Sphere`: its centre, then its radius, or the ends of a diameter with `2Point`.
+/// The base circle of a cylinder or cone, the way picked, and the index of the next answer.
+fn round_base(cx: &Context<'_>) -> Option<(Base, usize)> {
+    if let Some(n) = points_taken(cx.mode) {
+        return round_ways::base(cx, cx.mode?).map(|base| (base, n));
+    }
+    let [x, y] = cx.plane();
+    let (centre, size) = (point(cx, 0)?, number(cx, 1)?);
+    let r = radius(cx, size);
+    Some((Base { centre, r, x, y }, 2))
+}
+
+/// The steps to a cylinder's or cone's base, then its height (offering `ending`).
+fn round_steps(
+    cx: &Context<'_>,
+    [centre, size, height]: [&'static str; 3],
+    ending: &[&'static str],
+) -> Vec<StepDef> {
+    let mut steps = match cx.mode.filter(|_| points_taken(cx.mode).is_some()) {
+        Some(mode) => round_ways::point_steps(cx, mode),
+        None => {
+            let mut steps = vec![StepDef::point(centre).offering(&[TWO_POINT, THREE_POINT])];
+            steps.extend(point(cx, 0).map(|c| StepDef::number(size).from(c).offering(&[DIAMETER])));
+            steps
+        }
+    };
+    if let Some((base, _)) = round_base(cx).filter(|(_, next)| cx.values.len() >= *next) {
+        steps.push(StepDef::along(height, base.centre, base.up()).offering(ending));
+    }
+    steps
+}
+
+/// `Sphere`: its centre, then its radius; or the ends of a diameter with `2Point`, three
+/// points on a great circle with `3Point`, or four points on it with `4Point`.
 #[derive(Default)]
 pub struct Sphere;
 
 impl Recipe for Sphere {
     const NAME: &'static str = "sphere";
     const OPTIONS: &'static [OptionDef] = &[
-        OptionDef::mode("2Point"),
+        OptionDef::mode(TWO_POINT),
+        OptionDef::mode(THREE_POINT),
+        OptionDef::mode(FOUR_POINT),
         OptionDef::toggle(DIAMETER, false),
     ];
 
     fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
-        if cx.mode == Some("2Point") {
-            let mut steps = vec![StepDef::point("prompt.sphere.start").offering(&[])];
-            steps.extend(
-                point(cx, 0).map(|a| StepDef::point("prompt.sphere.end").from(a).offering(&[])),
-            );
-            return steps;
+        if let Some(mode) = cx.mode.filter(|_| points_taken(cx.mode).is_some()) {
+            return round_ways::point_steps(cx, mode);
         }
-        let mut steps = vec![StepDef::point("prompt.sphere.centre").offering(&["2Point"])];
+        let first = StepDef::point("prompt.sphere.centre").offering(&[
+            TWO_POINT,
+            THREE_POINT,
+            FOUR_POINT,
+            DIAMETER,
+        ]);
+        let mut steps = vec![first];
         steps.extend(point(cx, 0).map(|c| {
             StepDef::number("prompt.sphere.radius")
                 .from(c)
@@ -100,19 +139,26 @@ impl Recipe for Sphere {
     }
 
     fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
-        let (centre, r) = if cx.mode == Some("2Point") {
-            let (Some(a), Some(b)) = (point(cx, 0), point(cx, 1)) else {
-                return Ok(Made::default());
-            };
-            (
-                std::array::from_fn(|i| (a[i] + b[i]) / 2.0),
-                gap(a, b) / 2.0,
-            )
-        } else {
-            let (Some(c), Some(size)) = (point(cx, 0), number(cx, 1)) else {
-                return Ok(Made::default());
-            };
-            (c, radius(cx, size))
+        let found = match cx.mode {
+            Some(FOUR_POINT) => {
+                let picked = [0, 1, 2, 3].map(|k| point(cx, k));
+                match picked {
+                    [Some(a), Some(b), Some(c), Some(d)] => Some(
+                        sphere_through(a, b, c, d)
+                            .ok_or_else(|| Message::new("error.bad_radius"))?,
+                    ),
+                    _ => None,
+                }
+            }
+            Some(mode @ (TWO_POINT | THREE_POINT)) => {
+                round_ways::base(cx, mode).map(|base| (base.centre, base.r))
+            }
+            _ => point(cx, 0)
+                .zip(number(cx, 1))
+                .map(|(c, size)| (c, radius(cx, size))),
+        };
+        let Some((centre, r)) = found else {
+            return Ok(Made::default());
         };
         if r <= 1e-9 {
             return Err(Message::new("error.bad_radius"));
@@ -123,52 +169,44 @@ impl Recipe for Sphere {
     }
 }
 
-/// `Cylinder`: the centre of its base, its radius, then its height, following the mouse.
-/// `Solid` off leaves the ends open; `BothSides` goes as far each way.
+/// `Cylinder`: its base circle (centre and radius, `2Point` or `3Point`), then its height,
+/// following the mouse. `Solid` off leaves the ends open; `BothSides` goes as far each way.
 #[derive(Default)]
 pub struct Cylinder;
 
 impl Recipe for Cylinder {
     const NAME: &'static str = "cylinder";
     const OPTIONS: &'static [OptionDef] = &[
+        OptionDef::mode(TWO_POINT),
+        OptionDef::mode(THREE_POINT),
         OptionDef::toggle(DIAMETER, false),
         OptionDef::toggle(SOLID, true),
         OptionDef::toggle(BOTH_SIDES, false),
     ];
 
     fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
-        let mut steps = vec![StepDef::point("prompt.cylinder.centre").offering(&[])];
-        if let Some(c) = point(cx, 0) {
-            steps.push(
-                StepDef::number("prompt.cylinder.radius")
-                    .from(c)
-                    .offering(&[DIAMETER]),
-            );
-            if cx.values.len() >= 2 {
-                let (_, _, up) = frame(cx);
-                steps.push(
-                    StepDef::along("prompt.cylinder.height", c, up).offering(&[SOLID, BOTH_SIDES]),
-                );
-            }
-        }
-        steps
+        let prompts = [
+            "prompt.cylinder.centre",
+            "prompt.cylinder.radius",
+            "prompt.cylinder.height",
+        ];
+        round_steps(cx, prompts, &[SOLID, BOTH_SIDES])
     }
 
     fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
-        let (x, y, up) = frame(cx);
-        let (Some(c), Some(size)) = (point(cx, 0), number(cx, 1)) else {
+        let Some((base, next)) = round_base(cx) else {
             return Ok(Made::default());
         };
-        let r = radius(cx, size);
-        let Some(high) = number(cx, 2).filter(|h| h.abs() > 1e-9) else {
-            return Ok(circle_guide(c, r, x, y));
+        let up = base.up();
+        let Some(high) = number(cx, next).filter(|h| h.abs() > 1e-9) else {
+            return Ok(circle_guide(base.centre, base.r, base.x, base.y));
         };
         let (start, length) = if cx.toggle(BOTH_SIDES) {
-            (plus(c, up, -high), 2.0 * high)
+            (plus(base.centre, up, -high), 2.0 * high)
         } else {
-            (c, high)
+            (base.centre, high)
         };
-        let circle = Curve::circle_on(start, r, x, y).map_err(|e| failed(&e))?;
+        let circle = Curve::circle_on(start, base.r, base.x, base.y).map_err(|e| failed(&e))?;
         made(
             Body::extruded(&[circle], up, length, cx.toggle(SOLID)),
             "done.cylinder",
@@ -176,43 +214,37 @@ impl Recipe for Cylinder {
     }
 }
 
-/// `Cone`: the centre of its base, its radius, then the height of its apex.
+/// `Cone`: its base circle (centre and radius, `2Point` or `3Point`), then the height of its
+/// apex.
 #[derive(Default)]
 pub struct Cone;
 
 impl Recipe for Cone {
     const NAME: &'static str = "cone";
-    const OPTIONS: &'static [OptionDef] = &[OptionDef::toggle(DIAMETER, false)];
+    const OPTIONS: &'static [OptionDef] = &[
+        OptionDef::mode(TWO_POINT),
+        OptionDef::mode(THREE_POINT),
+        OptionDef::toggle(DIAMETER, false),
+    ];
 
     fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
-        let mut steps = vec![StepDef::point("prompt.cone.centre").offering(&[])];
-        if let Some(c) = point(cx, 0) {
-            steps.push(
-                StepDef::number("prompt.cone.radius")
-                    .from(c)
-                    .offering(&[DIAMETER]),
-            );
-            if cx.values.len() >= 2 {
-                let (_, _, up) = frame(cx);
-                steps.push(StepDef::along("prompt.cone.apex", c, up).offering(&[]));
-            }
-        }
-        steps
+        let prompts = [
+            "prompt.cone.centre",
+            "prompt.cone.radius",
+            "prompt.cone.apex",
+        ];
+        round_steps(cx, prompts, &[])
     }
 
     fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
-        let (x, y, up) = frame(cx);
-        let (Some(c), Some(size)) = (point(cx, 0), number(cx, 1)) else {
+        let Some((base, next)) = round_base(cx) else {
             return Ok(Made::default());
         };
-        let r = radius(cx, size);
-        let Some(high) = number(cx, 2).filter(|h| h.abs() > 1e-9) else {
-            return Ok(circle_guide(c, r, x, y));
+        let Some(high) = number(cx, next).filter(|h| h.abs() > 1e-9) else {
+            return Ok(circle_guide(base.centre, base.r, base.x, base.y));
         };
-        made(
-            spun(c, x, up, &[(0.0, 0.0), (r, 0.0), (0.0, high)]),
-            "done.cone",
-        )
+        let profile = [(0.0, 0.0), (base.r, 0.0), (0.0, high)];
+        made(spun(base.centre, base.x, base.up(), &profile), "done.cone")
     }
 }
 
@@ -388,5 +420,38 @@ mod tests {
         let mut doc = Document::default();
         run(&mut doc, &["cylinder", "0,0,0", "3", "bothsides", "5"]);
         assert!((volume(&doc) - PI * 9.0 * 10.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn the_other_ways_measure_as_rhino_does() {
+        // Rhino 8's volumes for the same picks (#448).
+        for (lines, expected) in [
+            (
+                vec!["sphere", "3point", "0,0,0", "10,0,0", "5,5,0"],
+                523.599,
+            ),
+            (
+                vec!["sphere", "4point", "0,0,0", "10,0,0", "5,5,0", "5,2,4"],
+                535.918,
+            ),
+            (vec!["cylinder", "2point", "0,0,0", "4,0,0", "5"], 62.832),
+            (
+                vec!["cylinder", "3point", "0,0,0", "4,0,0", "2,2,0", "5"],
+                62.832,
+            ),
+            (vec!["cone", "2point", "0,0,0", "4,0,0", "5"], 20.944),
+            (
+                vec!["cone", "3point", "0,0,0", "4,0,0", "2,2,0", "5"],
+                20.944,
+            ),
+        ] {
+            let mut doc = Document::default();
+            run(&mut doc, &lines);
+            let made = volume(&doc);
+            assert!(
+                (made - expected).abs() < 1e-2,
+                "{lines:?}: {made} against {expected}"
+            );
+        }
     }
 }

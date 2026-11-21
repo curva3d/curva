@@ -168,9 +168,9 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 
 | Command | Rhino's steps | Rhino's options | In Curva | Status |
 |---|---|---|---|---|
-| Sphere | Center; radius | `2Point` `3Point` `Tangent` `AroundCurve` `4Point` `FitPoints` `Diameter` | `2Point` `Diameter` | partly |
-| Cylinder | Base center; radius; end of cylinder | `DirectionConstraint` `Solid` `2Point` `3Point` `Tangent` `FitPoints` `Diameter` `BothSides` | `Diameter` `Solid` `BothSides` | partly |
-| Cone | Base center; radius; end of cone | `DirectionConstraint` `Solid` `2Point` `3Point` `Tangent` `FitPoints` `Diameter` | `Diameter` | partly |
+| Sphere | Center; radius | `2Point` `3Point` `Tangent` `AroundCurve` `4Point` `FitPoints` `Diameter` | `2Point` `3Point` `4Point` `Diameter` | partly |
+| Cylinder | Base center; radius; end of cylinder | `DirectionConstraint` `Solid` `2Point` `3Point` `Tangent` `FitPoints` `Diameter` `BothSides` | `2Point` `3Point` `Diameter` `Solid` `BothSides` | partly |
+| Cone | Base center; radius; end of cone | `DirectionConstraint` `Solid` `2Point` `3Point` `Tangent` `FitPoints` `Diameter` | `2Point` `3Point` `Diameter` | partly |
 | TruncatedCone | Base center; radius; end; top radius | `DirectionConstraint` `Solid` `2Point` `3Point` `Tangent` `FitPoints` | none | partly |
 | Torus | Center; radius; second radius | `Vertical` `2Point` `3Point` `Tangent` `AroundCurve` `Diameter` `FixInnerRadius` | none | partly |
 | Tube | Base center; outer radius; inner radius; end of tube | `DirectionConstraint` `Diameter` `WallThickness` `BothSides` `Cap` | `BothSides` | partly |
