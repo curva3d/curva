@@ -499,7 +499,7 @@ impl Curva {
 
     /// Moves the view: Ctrl + right-drag zooms about where the drag began (dragging up comes
     /// closer), a middle drag or Shift + right-drag pans (a right drag too in a parallel view), a
-    /// right drag orbits, and the wheel zooms.
+    /// right drag orbits, and the wheel zooms towards the mouse.
     fn navigate(&mut self, ui: &egui::Ui, pane: usize, response: &egui::Response, size: [f64; 2]) {
         // Not `drag_delta`: egui holds that back for the first 6 points to tell a click from a
         // drag, and only the left button clicks here. The view must move from the first pixel.
@@ -538,8 +538,18 @@ impl Curva {
         }
         if response.hovered() {
             let scroll = f64::from(ui.input(|input| input.smooth_scroll_delta.y));
+            let mouse = ui.input(|input| input.pointer.hover_pos());
             if scroll != 0.0 {
-                self.panes[pane].camera.zoom((-scroll * 0.002).exp());
+                let camera = &mut self.panes[pane].camera;
+                let factor = (-scroll * 0.002).exp();
+                match mouse {
+                    Some(at) => {
+                        let offset = at - response.rect.min;
+                        let screen = [f64::from(offset.x), f64::from(offset.y)];
+                        camera.zoom_at(factor, screen, size);
+                    }
+                    None => camera.zoom(factor),
+                }
             }
         }
     }
