@@ -346,7 +346,7 @@ fn cases() -> Vec<(&'static str, Start, Vec<&'static str>, Vec<Measured>)> {
 
 fn start(kind: Start) -> Document {
     let mut doc = Document::default();
-    let mut add_all = |doc: &mut Document, shapes: Vec<Shape>| {
+    let add_all = |doc: &mut Document, shapes: Vec<Shape>| {
         let ids: Vec<u64> = shapes.into_iter().map(|s| doc.add_shape(s)).collect();
         doc.select(&ids);
     };
