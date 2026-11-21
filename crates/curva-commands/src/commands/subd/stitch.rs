@@ -1,7 +1,7 @@
 //! Rhino's `Stitch` for SubDs: a first point or run of edges joined onto a second, point to point.
 //! Rhino 8 asks "Select first vertex or set of edges to stitch together ( EdgeLoop )", then the
 //! second set, then where the joined points go: `Average` (Enter), `First` or `Second` (Rhino's
-//! help, 22 November 2026). Curva offers the place while the second set is picked. Two runs of
+//! help, 22 November 2026). Curva asks it after the second set, as Rhino does. Two runs of
 //! edges must have as many points; the second is turned round when its ends lie nearer that way.
 
 use super::parts::{by_object, run};
@@ -64,7 +64,11 @@ impl Recipe for Stitch {
     fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
         let mut steps = vec![StepDef::mesh_parts("prompt.stitch.first")];
         if !cx.values.is_empty() {
-            steps.push(StepDef::mesh_parts("prompt.stitch.second").offering(&[LOCATION]));
+            steps.push(StepDef::mesh_parts("prompt.stitch.second").offering(&[]));
+        }
+        if cx.values.len() >= 2 {
+            // Where the joined points go: Average (Enter), First or Second, as Rhino asks.
+            steps.push(StepDef::choice("prompt.stitch.location", LOCATION, &PLACES));
         }
         steps
     }
@@ -133,6 +137,7 @@ mod tests {
         processor.submit(&mut doc, "stitch");
         processor.submit(&mut doc, "");
         doc.select_mesh_parts(&[(id, MeshPart::Point(b))]);
+        processor.submit(&mut doc, "");
         processor.submit(&mut doc, "");
         let after = subd(&doc, id);
         assert_eq!(

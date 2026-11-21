@@ -4,8 +4,8 @@
 //! Measured in Rhino 8 (RhinoCommon picks, `-Fill`, 22 November 2026): it asks "Select SubD and
 //! mesh boundary edges.", then "Patch style <Automatic> ( Automatic  SingleFace  TriangleFan
 //! Triangulated )"; Automatic closes an open box's square hole of eight edges with four quads
-//! round a new middle point, and the filled border becomes smooth. Curva offers the patch style
-//! while the edges are picked, as there is no step for a choice of words yet.
+//! round a new middle point, and the filled border becomes smooth. Curva asks the patch style
+//! after the edges, as Rhino does.
 
 use crate::Message;
 use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef, Value};
@@ -37,8 +37,14 @@ impl Recipe for Fill {
         (option == PATCH_STYLE).then(|| STYLES.map(str::to_owned).to_vec())
     }
 
-    fn steps(&self, _cx: &Context<'_>) -> Vec<StepDef> {
-        vec![StepDef::mesh_parts("prompt.fill.edges").offering(&[PATCH_STYLE])]
+    fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
+        // The edges, then "Patch style <Automatic> ( Automatic  SingleFace  TriangleFan
+        // Triangulated )", as Rhino 8 asks.
+        let mut steps = vec![StepDef::mesh_parts("prompt.fill.edges").offering(&[])];
+        if !cx.values.is_empty() {
+            steps.push(StepDef::choice("prompt.fill.style", PATCH_STYLE, &STYLES));
+        }
+        steps
     }
 
     fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
@@ -118,12 +124,12 @@ mod tests {
         let mut doc = Document::default();
         let id = doc.add_shape(Shape::Mesh(open));
         doc.select_mesh_parts(&[(id, top[0])]);
-        run(&mut doc, &["fill", ""]);
+        run(&mut doc, &["fill", "", ""]);
         let mesh = |doc: &Document| doc.state().objects[0].shape.mesh().unwrap().clone();
         assert_eq!(mesh(&doc).face_count(), 20, "one edge fills nothing");
         let all: Vec<(u64, MeshPart)> = top.iter().map(|&p| (id, p)).collect();
         doc.select_mesh_parts(&all);
-        run(&mut doc, &["fill", ""]);
+        run(&mut doc, &["fill", "", ""]);
         let filled = mesh(&doc);
         assert_eq!((filled.face_count(), filled.vertex_count()), (24, 34));
         assert!(filled.is_closed());
@@ -163,7 +169,7 @@ mod tests {
         let before = subd(&doc, id);
         assert_eq!(before.cage().face_count(), 20);
         doc.select_mesh_parts(&[(id, a_border_edge(&before))]);
-        run(&mut doc, &["fill", ""]);
+        run(&mut doc, &["fill", "", ""]);
         let after = subd(&doc, id);
         assert_eq!(after.cage().face_count(), 24);
         assert!(after.cage().faces().all(|f| f.len() == 4));
@@ -181,11 +187,10 @@ mod tests {
         let id = open_box(&mut doc);
         let edge = a_border_edge(&subd(&doc, id));
         let mut processor = Processor::default();
-        processor.submit(&mut doc, "fill");
-        processor.submit(&mut doc, "PatchStyle");
-        processor.submit(&mut doc, "SingleFace");
         doc.select_mesh_parts(&[(id, edge)]);
+        processor.submit(&mut doc, "fill");
         processor.submit(&mut doc, "");
+        processor.submit(&mut doc, "SingleFace");
         let after = subd(&doc, id);
         assert_eq!(after.cage().face_count(), 21);
         assert!(after.cage().faces().any(|f| f.len() == 8));
