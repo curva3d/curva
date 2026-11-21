@@ -16,6 +16,24 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## Features stream — 22 November 2026
+
+- **0.4.5 published** (21 November, late) at the owner's request without waiting for 08:00:
+  https://github.com/curva3d/curva/releases/tag/v0.4.5 (notes `docs/releases/v0.4.5.md`, #549). Everything on
+  `main` from all three streams went in; nothing was tried by hand in the running app.
+- **From the owner's first impressions of 0.4.4:** typed sizes hold the preview (#518); Box and
+  Rectangle take a typed length, width and height as measured in Rhino 8 (#533); Align rebuilt to Rhino 8
+  (#535); Offset BothSides and Cap (#532); previews for every kind of object, with Scale1D and Scale2D
+  scaling solids and blocks (#534); the selection report (#540) and selection menu (#545); guideline
+  snapping (#546); Shift for squares (#544); options on their own row (#542); the gumball angle box
+  (#519) and Shift snapping turns to 5° (#531); fast opening of large .3dm files (#525); Curva never
+  looks frozen (#503).
+- **Checked against Rhino 8 itself** (#538): 35 cases run in Rhino through the MCP and in Curva with the
+  same inputs; all match. Rhino remembers options between sessions, so cases set them explicitly.
+- **In progress:** Ctrl+Shift part picking and mesh/SubD parts for commands (#552, #485, #333); Alt-drag
+  copies (#486). Waiting on the owner's description: the gumball stretch on a closed rectangle (#528)
+  and Fillet on a polyline (#516). Plans in PR #492 await the owner's decisions.
+
 ## Features stream — 21 November 2026
 
 - **New logo** (decision 0040, replaces 0022): the C/U curve, amber, tile-free with a floating shadow, in every
