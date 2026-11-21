@@ -14,6 +14,9 @@ pub(crate) struct Frames {
     pub(crate) drawn_panels: Vec<(layout::PanelId, egui::Rect)>,
     /// A panel being moved by its grip.
     pub(crate) panel_drag: Option<PanelDrag>,
+    /// While a panel's edge is held, the arrangement as it was when the drag began, so the
+    /// edge follows the pointer from there and the arrangement is saved once, when let go.
+    pub(crate) resize_from: Option<layout::Layout>,
 }
 
 /// What happened to a panel this frame.
@@ -24,7 +27,7 @@ pub(crate) enum PanelEvent {
     /// Its title began to be dragged, held this far from its corner: one tab's piece, or the
     /// whole panel.
     DragStarted(egui::Vec2, Option<layout::Piece>),
-    /// These sides of it were dragged this far to resize it.
+    /// These sides of it are being dragged to resize it, this far since the drag began.
     Resized(layout::Sides, egui::Vec2),
     /// Reset layout was chosen from its grip's menu.
     Reset,
@@ -183,6 +186,10 @@ impl Curva {
         };
         for (panel, rect) in placed {
             self.one_panel(ctx, panel, rect, &pass);
+        }
+        // A resize is kept once its edge is let go.
+        if pass.released && self.frames.resize_from.take().is_some() {
+            self.save_layout();
         }
         self.focus_tab(ctx, full_window);
         self.version_label(ctx, full_window);
@@ -367,8 +374,11 @@ impl Curva {
                 });
             }
             PanelEvent::Resized(sides, by) => {
-                self.layout = self.layout.resized_from(panel, sides, by, window);
-                self.save_layout();
+                let start = self
+                    .frames
+                    .resize_from
+                    .get_or_insert_with(|| self.layout.clone());
+                self.layout = start.resized_from(panel, sides, by, window);
             }
             PanelEvent::Reset => {
                 self.layout = layout::Layout::default();
