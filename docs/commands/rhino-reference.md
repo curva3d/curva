@@ -172,7 +172,7 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | Cylinder | Base center; radius; end of cylinder | `DirectionConstraint` `Solid` `2Point` `3Point` `Tangent` `FitPoints` `Diameter` `BothSides` | `2Point` `3Point` `Diameter` `Solid` `BothSides` | partly |
 | Cone | Base center; radius; end of cone | `DirectionConstraint` `Solid` `2Point` `3Point` `Tangent` `FitPoints` `Diameter` | `2Point` `3Point` `Diameter` | partly |
 | TruncatedCone | Base center; radius; end; top radius | `DirectionConstraint` `Solid` `2Point` `3Point` `Tangent` `FitPoints` | none | partly |
-| Torus | Center; radius; second radius | `Vertical` `2Point` `3Point` `Tangent` `AroundCurve` `Diameter` `FixInnerRadius` | none | partly |
+| Torus | Center; radius; second radius | `Vertical` `2Point` `3Point` `Tangent` `AroundCurve` `Diameter` `FixInnerRadius` | `2Point` `3Point` `Diameter` (at the first radius; Rhino also has its own at the second) | partly |
 | Tube | Base center; outer radius; inner radius; end of tube | `DirectionConstraint` `Diameter` `WallThickness` `BothSides` `Cap` | `BothSides` | partly |
 | Polygon | Center; corner | `NumSides` `Circumscribed` `Edge` `Star` `Vertical` `AroundCurve` | `NumSides` `Circumscribed` | partly |
 | Helix | Start of axis; end of axis; radius | `Vertical` `AroundCurve` `Turns` `Pitch` `ReverseTwist` `Diameter` | `Turns` | partly |

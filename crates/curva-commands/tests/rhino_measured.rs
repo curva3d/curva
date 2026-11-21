@@ -222,6 +222,18 @@ fn cases() -> Vec<(&'static str, Start, Vec<&'static str>, Vec<Measured>)> {
             vec![solid([24.0, 24.0, 4.0], [-12.0, -12.0, -2.0], 789.568)],
         ),
         (
+            "torus 2point",
+            Empty,
+            vec!["torus", "2point", "0,0,0", "20,0,0", "2"],
+            vec![solid([24.0, 24.0, 4.0], [-2.0, -12.0, -2.0], 789.568)],
+        ),
+        (
+            "torus 3point",
+            Empty,
+            vec!["torus", "3point", "0,0,0", "20,0,0", "10,10,0", "2"],
+            vec![solid([24.0, 24.0, 4.0], [-2.0, -12.0, -2.0], 789.568)],
+        ),
+        (
             "move",
             Line,
             vec!["move", "0,0,0", "5,5,0"],
