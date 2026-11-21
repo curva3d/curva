@@ -16,11 +16,38 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## Features stream — 22 November 2026
+
+- **0.4.5 published** (21 November, late) at the owner's request without waiting for 08:00:
+  https://github.com/curva3d/curva/releases/tag/v0.4.5 (notes `docs/releases/v0.4.5.md`, #549). Everything on
+  `main` from all three streams went in; nothing was tried by hand in the running app.
+- **From the owner's first impressions of 0.4.4:** typed sizes hold the preview (#518); Box and
+  Rectangle take a typed length, width and height as measured in Rhino 8 (#533); Align rebuilt to Rhino 8
+  (#535); Offset BothSides and Cap (#532); previews for every kind of object, with Scale1D and Scale2D
+  scaling solids and blocks (#534); the selection report (#540) and selection menu (#545); guideline
+  snapping (#546); Shift for squares (#544); options on their own row (#542); the gumball angle box
+  (#519) and Shift snapping turns to 5° (#531); fast opening of large .3dm files (#525); Curva never
+  looks frozen (#503).
+- **Checked against Rhino 8 itself** (#538): 35 cases run in Rhino through the MCP and in Curva with the
+  same inputs; all match. Rhino remembers options between sessions, so cases set them explicitly.
+- **In progress:** Ctrl+Shift part picking and mesh/SubD parts for commands (#552, #485, #333); Alt-drag
+  copies (#486). Waiting on the owner's description: the gumball stretch on a closed rectangle (#528)
+  and Fillet on a polyline (#516). Plans in PR #492 await the owner's decisions.
+- **Website redesign** approved by the owner and shipped: black and white, frosted glass, the
+  motto "Every project starts with a curve." The home page is an exploded axonometric stack of
+  the four specializations (mouse up pulls the plates apart, click one to enter); each
+  specialization has its own page whose plates are its strong points (hovering one turns it black,
+  lifts the plates above just enough to read it, and shows its text beside the stack).
+  Download panel picks the visitor's system and the newest release's file. English and
+  European Portuguese. New logo marks, favicons and social image; the docs header uses the new
+  mark too (the docs keep their old colours for now). Mockups:
+  https://claude.ai/artifact/Y3ZzbZDcP7QdiVn1LEH9Xd. The owner will list fixes next.
+
 ## Features stream — 21 November 2026
 
 - **New logo** (decision 0040, replaces 0022): the C/U curve, amber, tile-free with a floating shadow, in every
   icon size in `packaging/icons/` so the next release ships with it. Sources in `docs/design/brand/logo-3d/`.
-  The website keeps the old logo until its redesign (direction A).
+  The website now has the new look too (see 22 November).
 - **Curva 0.4.4 published** at the owner's request ("today at 8am … whatever is ready"): tagged on
   `main` at 08:00, installers for Windows, macOS and Linux out at 08:29
   (https://github.com/curva3d/curva/releases/tag/v0.4.4). Decision 0039 replaces 0038: 0.4.4 ships

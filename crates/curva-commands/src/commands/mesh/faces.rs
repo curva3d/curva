@@ -8,7 +8,7 @@ use crate::Message;
 use crate::commands::arguments::{failed, number};
 use crate::recipe::{Context, Derived, Made, OptionDef, Recipe, StepDef, Value};
 use curva_document::{MeshPart, Shape};
-use curva_mesh::Mesh;
+use curva_mesh::{Mesh, MeshToNurbOptions};
 use std::collections::BTreeMap;
 
 /// QuadrangulateMesh's defaults, measured in Rhino 8: triangles leaning less than 5° apart join,
@@ -178,6 +178,11 @@ pub struct MeshToNurb;
 
 impl Recipe for MeshToNurb {
     const NAME: &'static str = "meshtonurb";
+    // Rhino 8's options, both on at first (measured).
+    const OPTIONS: &'static [OptionDef] = &[
+        OptionDef::toggle("TrimTriangularFaces", true),
+        OptionDef::toggle("UseNgons", true),
+    ];
 
     fn steps(&self, _cx: &Context<'_>) -> Vec<StepDef> {
         vec![StepDef::objects("prompt.meshtonurb.objects")]
@@ -190,7 +195,11 @@ impl Recipe for MeshToNurb {
         }
         let mut made = Made::default();
         for (id, mesh) in found {
-            let body = mesh.to_nurbs().map_err(|e| failed(&e))?;
+            let options = MeshToNurbOptions {
+                trim_triangles: cx.toggle("TrimTriangularFaces"),
+                ngons: cx.toggle("UseNgons"),
+            };
+            let body = mesh.to_nurbs_with(options).map_err(|e| failed(&e))?;
             made.derived.push(Derived {
                 shape: Shape::Body(body),
                 from: id,
@@ -332,6 +341,33 @@ mod tests {
         assert_eq!(doc.state().objects.len(), 2);
         assert_eq!(mesh(&doc, 0).face_count(), 4);
         assert_eq!(mesh(&doc, 1).face_count(), 2);
+    }
+
+    #[test]
+    fn mesh_to_nurb_splits_ngons_when_use_ngons_is_off() {
+        // Rhino 8's UseNgons is on at first: a hexagon gives one surface; off, its triangles.
+        let points = vec![
+            [0.0, 0.0, 0.0],
+            [2.0, 0.0, 0.0],
+            [3.0, 1.0, 0.0],
+            [2.0, 2.0, 0.0],
+            [0.0, 2.0, 0.0],
+            [-1.0, 1.0, 0.0],
+        ];
+        let hexagon = Mesh::new(points, &[vec![0, 1, 2, 3, 4, 5]]).unwrap();
+        let mut doc = doc_with(hexagon.clone());
+        run(&mut doc, &["selall", "meshtonurb"]);
+        let one = doc.state().objects[1].shape.body().unwrap();
+        assert_eq!(one.face_count().unwrap(), 1);
+        let mut doc = Document::default();
+        let id = doc.add_shape(Shape::Mesh(hexagon));
+        let mut processor = crate::Processor::default();
+        processor.submit(&mut doc, "meshtonurb");
+        processor.submit(&mut doc, "UseNgons");
+        doc.select(&[id]);
+        processor.submit(&mut doc, "");
+        let split = doc.state().objects[1].shape.body().unwrap();
+        assert_eq!(split.face_count().unwrap(), 4);
     }
 
     #[test]

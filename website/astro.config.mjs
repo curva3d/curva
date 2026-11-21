@@ -2,7 +2,8 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
-// One site: the home page lives in public/ (index.html, pt/index.html) and the docs under /docs/.
+// One site: the home page and the specialization pages are Astro pages in src/pages/ (English, and
+// Portuguese under /pt/), their words in src/data/site.ts; the docs are Starlight, under /docs/.
 export default defineConfig({
 	site: 'https://curva3d.com',
 	integrations: [
@@ -10,12 +11,15 @@ export default defineConfig({
 			title: 'Curva',
 			description: 'Documentation for Curva, the open-source 3D suite for architects and designers.',
 			logo: {
-				light: './src/assets/curva-lockup-light.svg',
-				dark: './src/assets/curva-lockup-dark.svg',
-				replacesTitle: true,
+				light: './src/assets/curva-mark-black.png',
+				dark: './src/assets/curva-mark-white.png',
+				alt: '',
 			},
-			favicon: '/assets/favicon.svg',
-			head: [{ tag: 'link', attrs: { rel: 'icon', href: '/assets/favicon-32.png', sizes: '32x32', type: 'image/png' } }],
+			favicon: '/assets/favicon-32.png',
+			head: [
+				{ tag: 'link', attrs: { rel: 'icon', href: '/assets/favicon-192.png', sizes: '192x192', type: 'image/png' } },
+				{ tag: 'link', attrs: { rel: 'apple-touch-icon', href: '/assets/apple-touch-icon.png' } },
+			],
 			// English now; Portuguese pages go in src/content/docs/pt/ as they are translated.
 			// Until then the Portuguese side shows the English page with a note.
 			defaultLocale: 'root',

@@ -5,6 +5,7 @@ pub(crate) mod boolean_intersection;
 pub(crate) mod boolean_split;
 pub(crate) mod boolean_union;
 pub(crate) mod box_solid;
+pub(crate) mod box_ways;
 pub(crate) mod cap;
 pub(crate) mod chamfer_edge;
 pub(crate) mod ellipsoid;

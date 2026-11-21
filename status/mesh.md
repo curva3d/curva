@@ -11,6 +11,12 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 21 November 2026
 
+**MeshToNURB's two Rhino options:** `TrimTriangularFaces` and `UseNgons`, both on at first as in Rhino 8. Measured with
+RhinoCommon: with TrimTriangularFaces off a triangle A, B, C becomes the untrimmed bilinear surface on [[A, A], [B, C]] (a
+tetrahedron stays a solid of volume 1/6); with UseNgons off a face of more than four corners is split into its triangles.
+MeshToNURB now matches Rhino; its reference row is done. ToNURBS now also takes meshes (as MeshToNURB) and curves, as
+Rhino 8's does; curves other than smooth ones wait on the kernel (asked of the features stream).
+
 **ToSubD closes its Rhino gaps:** measured with RhinoCommon, Rhino rebuilds each surface as a uniform cubic through
 its Greville points and uses that control net as the cage, keeping an extra ring round each pole. Curva now does the
 same, with no fitting step: a sphere gives Rhino's 32 quads and 16 triangles on 42 points (ring positions match to

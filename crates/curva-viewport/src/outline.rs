@@ -14,7 +14,7 @@
 use egui_wgpu::wgpu;
 
 /// How far back, as a share of the distance, the depth must step to count as an outline.
-const JUMP: f32 = 0.03;
+const JUMP: f32 = 0.01;
 
 const SHADER: &str = "
 @group(0) @binding(0) var depth: texture_depth_2d;

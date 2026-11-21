@@ -341,6 +341,24 @@ fn cases() -> Vec<(&'static str, Start, Vec<&'static str>, Vec<Measured>)> {
             vec!["booleanunion"],
             vec![solid([3.0; 3], [0.0; 3], 15.0)],
         ),
+        (
+            "box diagonal",
+            Empty,
+            vec!["box", "diagonal", "0,0,0", "4,2,3"],
+            vec![solid([4.0, 2.0, 3.0], [0.0; 3], 24.0)],
+        ),
+        (
+            "box 3point",
+            Empty,
+            vec!["box", "3point", "0,0,0", "4,0,0", "4,2,0", "3"],
+            vec![solid([4.0, 2.0, 3.0], [0.0; 3], 24.0)],
+        ),
+        (
+            "box vertical",
+            Empty,
+            vec!["box", "vertical", "0,0,0", "4,0,0", "4,0,2", "3"],
+            vec![solid([4.0, 3.0, 2.0], [0.0, -3.0, 0.0], 24.0)],
+        ),
     ]
 }
 

@@ -488,6 +488,19 @@ impl Curva {
         }
     }
 
+    /// The model's lines a view in `display` draws: dark edges suit solid faces (and Hidden
+    /// draws every line in black ink, from the same lines, seams left out); ghosted and
+    /// wireframe views keep the light wireframe edges.
+    fn scene_for(&self, display: DisplayMode) -> Arc<Vec<curva_viewport::Vertex>> {
+        Arc::clone(
+            if matches!(display, DisplayMode::Shaded | DisplayMode::Hidden) {
+                &self.drawing.shaded_scene
+            } else {
+                &self.scene
+            },
+        )
+    }
+
     pub(crate) fn viewports(&mut self, ui: &mut egui::Ui, area: egui::Rect, reach: egui::Rect) {
         // Picked edges and faces only mean something while a command asks for them.
         let wants = |kind: Kind| {
@@ -638,12 +651,7 @@ impl Curva {
                 } else {
                     Arc::default()
                 },
-                // Dark edges suit solid faces; ghosted views keep the light wireframe edges.
-                scene: Arc::clone(if display == DisplayMode::Shaded {
-                    &self.drawing.shaded_scene
-                } else {
-                    &self.scene
-                }),
+                scene: self.scene_for(display),
                 faces: pane_faces,
                 shapes: Arc::clone(&shapes),
                 circles: Arc::clone(&self.drawing.circles),
@@ -655,6 +663,7 @@ impl Curva {
                 light: camera.forward().map(|value| value as f32),
                 shaded: display != DisplayMode::Wireframe,
                 ghosted: display == DisplayMode::Ghosted,
+                hidden: display == DisplayMode::Hidden,
                 area: *rect,
                 frame: ui.ctx().cumulative_frame_nr(),
                 background: self.pane_background(*pane).0,

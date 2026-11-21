@@ -405,6 +405,9 @@ pub enum DisplayMode {
     Shaded,
     /// Surfaces and solids see-through at half strength, so edges behind them show.
     Ghosted,
+    /// Surfaces flat in paper white hiding what is behind them, and the visible edges, curves and
+    /// outlines in black ink, as Rhino 8's Hidden mode (#164).
+    Hidden,
 }
 
 /// What a preview can follow while a command waits for its next answer.
