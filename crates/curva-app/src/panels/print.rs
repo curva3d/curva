@@ -109,7 +109,13 @@ fn print_choices(ui: &mut egui::Ui, panel: &mut PrintPanel, say: &dyn Fn(&'stati
 
 /// The preview, one ticked layout at a time, with buttons to step through them; drawn in the
 /// paper's own shape, no taller than the preview may be.
-fn page_preview(ui: &mut egui::Ui, doc: &Document, panel: &mut PrintPanel, chosen: &[u64]) {
+fn page_preview(
+    ui: &mut egui::Ui,
+    doc: &Document,
+    panel: &mut PrintPanel,
+    chosen: &[u64],
+    say: &dyn Fn(&'static str) -> String,
+) {
     let count = chosen.len();
     let page_index = panel.page.min(count - 1);
     ui.horizontal(|ui| {
@@ -121,19 +127,24 @@ fn page_preview(ui: &mut egui::Ui, doc: &Document, panel: &mut PrintPanel, chose
             panel.page = (page_index + 1).min(count - 1);
         }
     });
-    let colour = if panel.black {
-        curva_viewport::print::PrintColour::Black
-    } else {
-        curva_viewport::print::PrintColour::Display
-    };
+    let key = super::print_preview::PreviewKey::of(doc, chosen[page_index], panel.black);
     let fields = curva_document::fields::FieldContext::now(doc.path());
-    if let Some(page) = curva_viewport::print::layout_page(doc, chosen[page_index], &fields, colour)
-    {
+    let (page, waiting) = panel.preview.page(doc, &key, fields);
+    if waiting {
+        // Never looks frozen: the page being drawn says so, and the panel checks back.
+        ui.horizontal(|ui| {
+            ui.spinner();
+            ui.weak(say("ui.print.preparing"));
+        });
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(100));
+    }
+    if let Some(page) = page {
         let width = ui.available_width().max(120.0);
         let aspect = (page.size[1] / page.size[0].max(1e-9)) as f32;
         let height = (width * aspect).min(MOST_PREVIEW_HEIGHT);
         let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::hover());
-        paint_page(ui, &page, rect);
+        paint_page(ui, page, rect);
     }
 }
 
@@ -183,7 +194,7 @@ impl Curva {
             )
             .clicked();
         if !chosen.is_empty() {
-            page_preview(ui, &self.doc, panel, &chosen);
+            page_preview(ui, &self.doc, panel, &chosen, &say);
         }
         if go {
             if job.to == PrintTo::Printer {
