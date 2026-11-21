@@ -1,4 +1,5 @@
-//! The glow that marks the panel a dragged panel would merge into (owner, 18 November 2026): in
+//! The glow that marks the panel a dragged panel would merge into (owner, 18 November 2026), and,
+//! pulsing, the edge the pointer is about to resize (owner, 22 November 2026): in
 //! the accent, along the inside of the panel's rounded edge, so it follows its corners and never
 //! spills past them, strongest at the part of the edge nearest the mouse and fading with
 //! distance from it.
@@ -65,12 +66,33 @@ fn strength(at: egui::Pos2, pointer: egui::Pos2) -> f32 {
 
 /// The glow inside the rounded edge of the panel at `rect`, for the mouse at `pointer`.
 pub(crate) fn edge_glow(rect: egui::Rect, radius: f32, pointer: egui::Pos2) -> egui::Shape {
+    glow_at(rect, radius, pointer, 1.0)
+}
+
+/// How strong the resize glow pulses at `time` in seconds: gently between half and full (the
+/// owner's choice, 22 November 2026: a pulsing glow that follows the mouse).
+pub(crate) fn pulse(time: f64) -> f32 {
+    0.55 + 0.45 * ((time * 5.0).sin() as f32)
+}
+
+/// The glow inside the edge of the panel at `rect` that the pointer is about to resize: the same
+/// glow as for merging, strongest by the mouse, pulsing.
+pub(crate) fn resize_glow(
+    rect: egui::Rect,
+    radius: f32,
+    pointer: egui::Pos2,
+    time: f64,
+) -> egui::Shape {
+    glow_at(rect, radius, pointer, pulse(time))
+}
+
+fn glow_at(rect: egui::Rect, radius: f32, pointer: egui::Pos2, power: f32) -> egui::Shape {
     let points = outline(rect, radius);
     let mut mesh = egui::Mesh::default();
     let accent = theme::ACCENT;
     // Three rings of points: the edge, just inside the line, and where the glow has faded.
     for &(at, out) in &points {
-        let s = strength(at, pointer);
+        let s = strength(at, pointer) * power;
         mesh.colored_vertex(at, accent.gamma_multiply(s));
         mesh.colored_vertex(at - out * LINE, accent.gamma_multiply(0.6 * s));
         mesh.colored_vertex(at - out * DEPTH, egui::Color32::TRANSPARENT);
@@ -89,6 +111,16 @@ pub(crate) fn edge_glow(rect: egui::Rect, radius: f32, pointer: egui::Pos2) -> e
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_resize_glow_pulses_between_half_and_full() {
+        let samples: Vec<f32> = (0..200).map(|k| pulse(f64::from(k) * 0.01)).collect();
+        assert!(samples.iter().all(|s| (0.1..=1.0).contains(s)));
+        let (low, high) = samples
+            .iter()
+            .fold((1.0_f32, 0.0_f32), |(l, h), s| (l.min(*s), h.max(*s)));
+        assert!(high - low > 0.5, "it visibly pulses: {low}..{high}");
+    }
 
     #[test]
     fn the_glow_stays_inside_the_rounded_panel_and_is_strongest_by_the_mouse() {
