@@ -658,7 +658,7 @@ mod tests {
     }
 
     #[test]
-    fn a_sphere_comes_out_as_rhinos_does() {
+    fn a_sphere_closes_up_at_its_poles() {
         // Rhino 8 on a 2 m sphere (RhinoCommon, 21 November 2026): 32 quads and 16 triangles on
         // 42 points, nothing creased. Its rings stand at these heights and radii; its poles stay
         // on the sphere.
