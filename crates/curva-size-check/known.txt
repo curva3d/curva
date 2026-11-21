@@ -4,7 +4,7 @@ fn crates/curva-3dm/src/import/surfaces.rs nurbs_surface 85
 fn crates/curva-app/src/agent.rs look_pictures 84
 fn crates/curva-app/src/benchmark.rs benchmark_house 90
 fn crates/curva-app/src/benchmark.rs benchmark_scene 102
-fn crates/curva-app/src/command_line.rs command_line 116
+fn crates/curva-app/src/command_line.rs command_line 103
 fn crates/curva-app/src/icons/selection.rs selection_1 82
 fn crates/curva-app/src/main.rs new 109
 fn crates/curva-app/src/main.rs run 119
