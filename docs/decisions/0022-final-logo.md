@@ -1,6 +1,6 @@
 # 0022: The final logo
 
-**Status:** Decided by the owner in chat · 15 November 2026. Replaces the icon choice of 13 November
+**Status:** Replaced by 0040 (21 November 2026). Decided by the owner in chat · 15 November 2026. Replaces the icon choice of 13 November
 (the Drafting mark, `docs/specs/archive/logo-drafting-refined.md`).
 
 **What was decided.** Curva's logo is a C drawn as an arc in plan and extruded into a solid, in warm

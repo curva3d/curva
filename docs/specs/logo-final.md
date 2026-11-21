@@ -1,6 +1,6 @@
 # Spec: the final logo
 
-**Status:** Approved by the owner in chat · 15 November 2026. Replaces the Drafting icon of 13 November.
+**Status:** Replaced by decision 0040 (21 November 2026), the C/U curve logo; sources in `docs/design/brand/logo-3d/`. Approved by the owner in chat · 15 November 2026. Replaces the Drafting icon of 13 November.
 **Brand guidelines:** the Curva design system on claude.ai (logo construction, colours, type, highlight rules). The owner has the link.
 
 ## 1. What changes
