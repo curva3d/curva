@@ -139,6 +139,8 @@ pub(super) struct ViewScene {
     faces: Option<Arc<Vec<MeshVertex>>>,
     selection: Option<Arc<Vec<u64>>>,
     ghosted: Option<bool>,
+    /// Whether faces are flat paper white, for the Hidden display mode (#164).
+    hidden: Option<bool>,
     parts: HashMap<PartKey, Part>,
     /// This view's material for each colour, so a style change touches only this view.
     materials: HashMap<[u32; 3], Handle<CurvaMaterial>>,
@@ -224,6 +226,7 @@ impl ViewScene {
             faces: None,
             selection: None,
             ghosted: None,
+            hidden: None,
             parts: HashMap::new(),
             shapes: None,
             shape_parts: HashMap::new(),
@@ -321,16 +324,7 @@ impl ViewScene {
             self.mirror_shapes(world, &mut meshes.1, &drawing.shapes);
             self.shapes = Some(Arc::clone(&drawing.shapes));
         }
-        if self.ghosted != Some(drawing.ghosted) {
-            self.ghosted = Some(drawing.ghosted);
-            let materials = self.materials.values().cloned().collect::<Vec<_>>();
-            let mut assets = world.resource_mut::<Assets<CurvaMaterial>>();
-            for handle in materials {
-                if let Some(mut material) = assets.get_mut(&handle) {
-                    set_ghosted(&mut material.base, drawing.ghosted);
-                }
-            }
-        }
+        self.restyle(world, drawing.ghosted, drawing.hidden);
         let clips = Clips::of(&drawing.clips);
         if self.clips != Some(clips) {
             self.clips = Some(clips);
@@ -550,6 +544,27 @@ impl ViewScene {
         self.picked = now;
     }
 
+    /// Turns this view's materials see-through for the Ghosted display mode, or flat paper white
+    /// for the Hidden one (#164), when either changed since the last frame.
+    fn restyle(&mut self, world: &mut World, ghosted: bool, hidden: bool) {
+        if self.ghosted == Some(ghosted) && self.hidden == Some(hidden) {
+            return;
+        }
+        (self.ghosted, self.hidden) = (Some(ghosted), Some(hidden));
+        let materials = self
+            .materials
+            .iter()
+            .map(|(colour, handle)| (*colour, handle.clone()))
+            .collect::<Vec<_>>();
+        let mut assets = world.resource_mut::<Assets<CurvaMaterial>>();
+        for (colour, handle) in materials {
+            if let Some(mut material) = assets.get_mut(&handle) {
+                set_paper(&mut material.base, hidden, colour);
+                set_ghosted(&mut material.base, ghosted);
+            }
+        }
+    }
+
     /// Shows `entity` in `colour`, or the selection colour when `picked`, handing Bevy a material
     /// only when that changes: each one handed makes Bevy redo the part.
     fn show(&mut self, world: &mut World, entity: Entity, colour: [u32; 3], picked: bool) {
@@ -561,8 +576,9 @@ impl ViewScene {
         if self.shown.insert(entity, colour) == Some(colour) {
             return;
         }
-        let (ghosted, shine) = (
+        let (ghosted, paper, shine) = (
             self.ghosted.unwrap_or(false),
+            self.hidden.unwrap_or(false),
             self.look.unwrap_or_default().shine,
         );
         let clips = self.clips.unwrap_or_default();
@@ -581,6 +597,7 @@ impl ViewScene {
                     cull_mode: None,
                     ..default()
                 };
+                set_paper(&mut material, paper, colour);
                 set_ghosted(&mut material, ghosted);
                 set_shine(&mut material, shine);
                 world
@@ -599,6 +616,19 @@ impl ViewScene {
 fn set_shine(material: &mut StandardMaterial, shine: f32) {
     material.perceptual_roughness = 0.9 - 0.8 * shine;
     material.reflectance = 0.2 + 0.6 * shine;
+}
+
+/// Flat paper white and unlit for the Hidden display mode (#164), so a face hides what is behind
+/// it and shows only its edges; otherwise lit, in `colour` (as the material's key holds it).
+fn set_paper(material: &mut StandardMaterial, paper: bool, colour: [u32; 3]) {
+    let alpha = material.base_color.alpha();
+    let [r, g, b] = if paper {
+        crate::PAPER_COLOUR
+    } else {
+        colour.map(f32::from_bits)
+    };
+    material.base_color = Color::srgba(r, g, b, alpha);
+    material.unlit = paper;
 }
 
 fn set_ghosted(material: &mut StandardMaterial, ghosted: bool) {

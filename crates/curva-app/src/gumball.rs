@@ -33,6 +33,17 @@ pub(crate) struct GumballDrag {
     pub(crate) even: bool,
     /// Whether Ctrl is held: with Shift, the circle scales evenly.
     pub(crate) ctrl: bool,
+    /// Whether the drag makes a copy, the original staying put: Alt tapped during the drag
+    /// switches it, as in Rhino (#486).
+    pub(crate) copy: bool,
+    /// Whether Alt was down at the last frame, to see it tapped.
+    pub(crate) alt_was: bool,
+}
+
+/// Whether a drag makes a copy after this frame: Alt going down switches it, as in Rhino, where
+/// tapping Alt during a gumball drag toggles copying (#486).
+fn copy_after(copy: bool, alt_was: bool, alt: bool) -> bool {
+    if alt && !alt_was { !copy } else { copy }
 }
 
 /// What the gumball's extrude circle makes of one object: a curve becomes a surface (a closed
@@ -223,6 +234,9 @@ impl Curva {
                 drag.now = local(now);
                 drag.even = ui.input(|input| input.modifiers.shift);
                 drag.ctrl = ui.input(|input| input.modifiers.command);
+                let alt = ui.input(|input| input.modifiers.alt);
+                drag.copy = copy_after(drag.copy, drag.alt_was, alt);
+                drag.alt_was = alt;
                 self.gumball_state.gumball_drag = Some(drag);
             }
             let released = events.iter().any(|event| {
@@ -270,6 +284,8 @@ impl Curva {
                     now: local(*pos),
                     even: false,
                     ctrl: false,
+                    copy: false,
+                    alt_was: ui.input(|input| input.modifiers.alt),
                 });
                 return true;
             }
@@ -287,6 +303,18 @@ impl Curva {
         let Some(change) = self.gumball_change(drag) else {
             return;
         };
+        if drag.copy {
+            // The drag moves a copy: the selection is copied in place, the copies take the
+            // change, and both are one undo step.
+            let (mark, before) = (self.doc.undo_mark(), self.doc.state().clone());
+            let selection = self.doc.selection();
+            let in_place = curva_kernel::Similarity::scaling([0.0; 3], 1.0);
+            let copies = self.doc.copy_transformed(&selection, &in_place);
+            self.doc.select(&copies);
+            self.apply_gumball(change);
+            self.doc.squash_undo(mark, before);
+            return;
+        }
         self.apply_gumball(change);
     }
 
@@ -578,6 +606,14 @@ fn paint_handle(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tapping_alt_during_a_drag_switches_copying() {
+        assert!(copy_after(false, false, true), "Alt goes down: copy");
+        assert!(copy_after(true, true, true), "held down: still copying");
+        assert!(copy_after(true, false, false), "let go: still copying");
+        assert!(!copy_after(true, false, true), "tapped again: no copy");
+    }
 
     #[test]
     fn the_gumball_extrudes_curves_into_surfaces_and_flat_surfaces_into_solids() {

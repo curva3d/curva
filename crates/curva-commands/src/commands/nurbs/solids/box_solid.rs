@@ -3,6 +3,7 @@
 //! `BothSides` grows the box both ways and Enter uses the base's width. Rhino's `Diagonal`,
 //! `3Point` and `Vertical` ways are still to come (`docs/commands/rhino-reference.md`).
 
+use super::box_ways;
 use crate::Message;
 use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef, Value};
 use curva_document::Shape;
@@ -75,11 +76,22 @@ impl Recipe for BoxSolid {
     const NAME: &'static str = "box";
     const OPTIONS: &'static [OptionDef] = &[
         OptionDef::mode(CENTER),
+        OptionDef::mode(box_ways::DIAGONAL),
+        OptionDef::mode(box_ways::THREE_POINT),
+        OptionDef::mode(box_ways::VERTICAL),
         OptionDef::toggle(BOTH_SIDES, false),
     ];
 
     fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
-        let mut steps = vec![StepDef::point("prompt.box.first").offering(&[CENTER])];
+        if let Some(way) = cx.mode.filter(|m| box_ways::is_way(Some(m))) {
+            return box_ways::steps(cx, way);
+        }
+        let mut steps = vec![StepDef::point("prompt.box.first").offering(&[
+            CENTER,
+            box_ways::DIAGONAL,
+            box_ways::THREE_POINT,
+            box_ways::VERTICAL,
+        ])];
         if let Some(first) = cx.values.first().and_then(Value::point) {
             // The other corner, or a typed length, as in Rhino ("Other corner of base or length").
             steps.push(
@@ -113,6 +125,9 @@ impl Recipe for BoxSolid {
     }
 
     fn check(&self, cx: &Context<'_>) -> Result<(), Message> {
+        if box_ways::is_way(cx.mode) {
+            return Ok(());
+        }
         if cx.values.len() >= 2 && base(cx).is_none() {
             return Err(Message::new("error.flat_rectangle"));
         }
@@ -125,6 +140,9 @@ impl Recipe for BoxSolid {
     }
 
     fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        if let Some(way) = cx.mode.filter(|m| box_ways::is_way(Some(m))) {
+            return made_by_way(cx, way);
+        }
         let Some((corner, [wide, deep])) = base(cx) else {
             return Ok(Made::default());
         };
@@ -164,6 +182,32 @@ impl Recipe for BoxSolid {
             ..Made::default()
         })
     }
+}
+
+/// A box made one of Rhino's other ways (`box_ways`); while it is being placed, the points so far
+/// joined by lines.
+fn made_by_way(cx: &Context<'_>, way: &str) -> Result<Made, Message> {
+    let Some((corner, a, b, size)) = box_ways::placed(cx, way) else {
+        let points: Vec<Point> = cx.values.iter().filter_map(Value::point).collect();
+        let guides = points
+            .windows(2)
+            .filter_map(|pair| Curve::line(pair[0], pair[1]).ok())
+            .collect();
+        return Ok(Made {
+            guides,
+            ..Made::default()
+        });
+    };
+    if size.iter().any(|side| *side < SMALLEST_SIDE) {
+        return Err(Message::new("error.flat_box"));
+    }
+    let body = Body::cuboid_on(corner, a, b, size)
+        .map_err(|e| Message::with("error.geometry", vec![e.to_string()]))?;
+    Ok(Made {
+        add: vec![Shape::Body(body)],
+        message: Some(Message::new("done.box")),
+        ..Made::default()
+    })
 }
 
 #[cfg(test)]

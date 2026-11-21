@@ -13,7 +13,10 @@ mod upload;
 
 pub use drawing::*;
 pub use picture::*;
-use shaders::{FACE_SHADER, GHOST_FACE_SHADER, GRID_SHADER, LINE_SHADER, PICK_ROW, table_wgsl};
+use shaders::{
+    FACE_SHADER, GHOST_FACE_SHADER, GRID_SHADER, LINE_SHADER, PICK_ROW, inked, paper_faces,
+    table_wgsl,
+};
 pub use upload::*;
 
 /// What each view keeps for itself on the graphics card.
@@ -26,6 +29,8 @@ struct ViewSlot {
     scene: Option<Arc<Uploaded<Vertex>>>,
     shaded: bool,
     ghosted: bool,
+    /// The Hidden display mode: faces in paper white, the model's lines in black ink (#164).
+    hidden: bool,
 }
 
 /// The graphics card's side of the viewport.
@@ -38,6 +43,11 @@ pub struct LineRenderer {
     circle_lines: wgpu::RenderPipeline,
     faces: wgpu::RenderPipeline,
     ghost_faces: wgpu::RenderPipeline,
+    /// The Hidden display mode's: the model's lines and circles in black ink, faces in paper
+    /// white (#164).
+    ink_lines: wgpu::RenderPipeline,
+    ink_circle_lines: wgpu::RenderPipeline,
+    paper_faces: wgpu::RenderPipeline,
     slots: Vec<ViewSlot>,
     surfaces: Option<Uploaded<MeshVertex>>,
     /// The whole circles, shared by every view drawing the model's lines.
@@ -151,6 +161,7 @@ impl LineRenderer {
                     scene: None,
                     shaded: false,
                     ghosted: false,
+                    hidden: false,
                 }
             })
             .collect();
@@ -159,18 +170,23 @@ impl LineRenderer {
             bind_group_layouts: &[Some(&layout)],
             immediate_size: 0,
         });
-        let (grid, lines) = Self::line_pipelines(device, format, &pipeline_layout);
+        let (grid, lines, ink_lines) = Self::line_pipelines(device, format, &pipeline_layout);
         let face = |label, shader, see_through| {
             Self::face_pipeline(device, format, &pipeline_layout, label, shader, see_through)
         };
         let faces = face("curva faces", FACE_SHADER, false);
         let ghost_faces = face("curva ghosted faces", GHOST_FACE_SHADER, true);
+        let paper_faces = face("curva paper faces", &paper_faces(), false);
+        let circle = |ink| circles::circle_pipeline(device, format, &pipeline_layout, ink);
         Self {
             grid,
             lines,
-            circle_lines: circles::circle_pipeline(device, format, &pipeline_layout),
+            circle_lines: circle(false),
             faces,
             ghost_faces,
+            ink_lines,
+            ink_circle_lines: circle(true),
+            paper_faces,
             timer: None,
             chunk_bytes: CHUNK_BYTES,
             outliner: crate::outline::Outliner::new(device, format),
@@ -216,12 +232,16 @@ impl LineRenderer {
         })
     }
 
-    /// The grid's pipeline and the model lines' pipeline.
+    /// The grid's pipeline, the model lines' pipeline and the same in black ink (Hidden).
     fn line_pipelines(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         pipeline_layout: &wgpu::PipelineLayout,
-    ) -> (wgpu::RenderPipeline, wgpu::RenderPipeline) {
+    ) -> (
+        wgpu::RenderPipeline,
+        wgpu::RenderPipeline,
+        wgpu::RenderPipeline,
+    ) {
         let grid = pipeline(
             device,
             format,
@@ -239,26 +259,30 @@ impl LineRenderer {
                 per_instance: false,
             },
         );
-        let lines = pipeline(
-            device,
-            format,
-            pipeline_layout,
-            &PipelineParts {
-                label: "curva lines",
-                shader: &format!("{}{LINE_SHADER}", table_wgsl()),
-                stride: SEGMENT_SIZE,
-                attributes: &wgpu::vertex_attr_array![
-                    0 => Float32x3, 1 => Float32x3, 2 => Float32, 6 => Uint32,
-                    3 => Float32x3, 4 => Float32x3, 5 => Float32, 7 => Uint32
-                ],
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                // Pulled a little toward the camera, so a line wins over a face or grid at its own depth.
-                bias: LINE_DEPTH_BIAS,
-                see_through: false,
-                per_instance: true,
-            },
-        );
-        (grid, lines)
+        let segments = |label, shader: &str| {
+            pipeline(
+                device,
+                format,
+                pipeline_layout,
+                &PipelineParts {
+                    label,
+                    shader: &format!("{}{shader}", table_wgsl()),
+                    stride: SEGMENT_SIZE,
+                    attributes: &wgpu::vertex_attr_array![
+                        0 => Float32x3, 1 => Float32x3, 2 => Float32, 6 => Uint32,
+                        3 => Float32x3, 4 => Float32x3, 5 => Float32, 7 => Uint32
+                    ],
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    // Pulled a little toward the camera, so a line wins over a face or grid at its own depth.
+                    bias: LINE_DEPTH_BIAS,
+                    see_through: false,
+                    per_instance: true,
+                },
+            )
+        };
+        let lines = segments("curva lines", LINE_SHADER);
+        let ink_lines = segments("curva inked lines", &inked(LINE_SHADER));
+        (grid, lines, ink_lines)
     }
 
     /// A pipeline shading faces with `shader`, which reads the selection table.
@@ -367,6 +391,7 @@ impl LineRenderer {
         );
         slot.shaded = drawing.shaded;
         slot.ghosted = drawing.ghosted;
+        slot.hidden = drawing.hidden;
         let chunk = self.chunk_bytes;
         if stale(slot.grid.as_ref(), &drawing.grid) {
             slot.grid = Some(upload(
@@ -500,7 +525,22 @@ impl LineRenderer {
             && !slot.ghosted
             && let Some(faces) = faces
         {
-            Self::draw_faces(pass, &self.faces, faces);
+            let pipeline = if slot.hidden {
+                &self.paper_faces
+            } else {
+                &self.faces
+            };
+            Self::draw_faces(pass, pipeline, faces);
+        }
+    }
+
+    /// The colour of the outlines of curved shapes in view `slot` (#182): black ink in the Hidden
+    /// display mode, else the dark of edges on faces.
+    fn outline_colour(&self, slot: usize) -> [f32; 3] {
+        if self.slots.get(slot).is_some_and(|slot| slot.hidden) {
+            crate::INK_COLOUR
+        } else {
+            crate::EDGE_ON_FACES_COLOUR
         }
     }
 
@@ -544,11 +584,18 @@ impl LineRenderer {
         };
         pass.set_bind_group(0, &slot.bind_group, &[]);
         let faces = self.surfaces.as_ref().filter(|faces| faces.count > 0);
+        // The model's own lines go in black ink in the Hidden display mode; previews and markers
+        // (the overlay) keep their colours.
+        let (lines, circle_lines) = if slot.hidden {
+            (&self.ink_lines, &self.ink_circle_lines)
+        } else {
+            (&self.lines, &self.circle_lines)
+        };
         if let Some(scene) = slot.scene.as_deref() {
-            self.draw_segments(pass, scene);
+            Self::draw_segments(pass, lines, scene);
         }
         if let Some(circles) = self.circles.as_ref() {
-            circles::draw_circles(pass, &self.circle_lines, circles);
+            circles::draw_circles(pass, circle_lines, circles);
         }
         // Ghosted faces go over the lines, so lines behind a face show through it, dimmed,
         // while lines on its near side stay in front.
@@ -563,16 +610,20 @@ impl LineRenderer {
             Self::draw_faces(pass, &self.ghost_faces, preview);
         }
         if let Some(overlay) = self.overlay.as_ref() {
-            self.draw_segments(pass, overlay);
+            Self::draw_segments(pass, &self.lines, overlay);
         }
     }
 
-    /// Draws lines as quads, one instance a segment, block by block.
-    fn draw_segments(&self, pass: &mut wgpu::RenderPass<'_>, lines: &Uploaded<Vertex>) {
+    /// Draws lines as quads with `pipeline`, one instance a segment, block by block.
+    fn draw_segments(
+        pass: &mut wgpu::RenderPass<'_>,
+        pipeline: &wgpu::RenderPipeline,
+        lines: &Uploaded<Vertex>,
+    ) {
         if lines.count < 2 {
             return;
         }
-        pass.set_pipeline(&self.lines);
+        pass.set_pipeline(pipeline);
         for (buffer, count) in &lines.chunks {
             pass.set_vertex_buffer(0, buffer.slice(..));
             pass.draw(0..SEGMENT_CORNERS, 0..count / 2);

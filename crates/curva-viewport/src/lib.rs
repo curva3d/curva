@@ -58,6 +58,10 @@ pub(crate) const SELECTED_COLOUR: [f32; 3] = PREVIEW_COLOUR;
 const LOCKED_COLOUR: [f32; 3] = [0.45, 0.45, 0.48];
 /// Edges of surfaces and solids in shaded views.
 pub(crate) const EDGE_ON_FACES_COLOUR: [f32; 3] = [0.08, 0.08, 0.1];
+/// The Hidden display mode (#164), as Rhino 8 draws it: surfaces flat in paper white, hiding
+/// what is behind them, and every line and outline in black ink.
+pub const PAPER_COLOUR: [f32; 3] = [1.0, 1.0, 1.0];
+pub(crate) const INK_COLOUR: [f32; 3] = [0.0, 0.0, 0.0];
 /// The colour every preview is drawn in: the accent orange, `#e0782f` (decision 0016).
 pub const PREVIEW_COLOUR: [f32; 3] = [0.878, 0.471, 0.184];
 const X_AXIS_COLOUR: [f32; 3] = [0.85, 0.3, 0.3];

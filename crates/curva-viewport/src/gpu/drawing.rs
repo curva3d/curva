@@ -43,6 +43,10 @@ pub struct Drawing {
     pub shaded: bool,
     /// Whether shaded faces are see-through, for the Ghosted display mode.
     pub ghosted: bool,
+    /// The Hidden display mode (#164), as Rhino 8 draws it: faces flat in paper white
+    /// ([`crate::PAPER_COLOUR`]), hiding what is behind them, and the model's lines and the
+    /// outlines of curved shapes in black ink. Needs `shaded`; the background is the caller's.
+    pub hidden: bool,
     /// Where the view is in the window, in points.
     pub area: epaint::Rect,
     /// The window's frame number, so the first view drawn in a frame clears the scene texture.
@@ -313,7 +317,7 @@ fn lines_on_bevy(
             colour,
             depth,
             area,
-            crate::EDGE_ON_FACES_COLOUR,
+            renderer.outline_colour(drawing.slot),
         );
     }
     // The benchmark's card timer times Curva's lines; Bevy's own time joins it in step 5.

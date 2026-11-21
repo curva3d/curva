@@ -1,4 +1,5 @@
-//! `SetDisplayMode`: draws the last-used viewport in wireframe, shaded or ghosted, as in Rhino.
+//! `SetDisplayMode`: draws the last-used viewport in wireframe, shaded, ghosted or hidden, as in
+//! Rhino.
 
 use crate::commands::unexpected;
 use crate::{Answer, Command, DisplayMode, Kind, Request, Step, ViewRequest};
@@ -7,6 +8,7 @@ use curva_document::Document;
 const WIREFRAME: &str = "Wireframe";
 const SHADED: &str = "Shaded";
 const GHOSTED: &str = "Ghosted";
+const HIDDEN: &str = "Hidden";
 
 /// The running command.
 #[derive(Default)]
@@ -17,13 +19,14 @@ impl Command for SetDisplayMode {
         let mode = match answer {
             None => {
                 return Step::Ask(Request {
-                    options: vec![WIREFRAME, SHADED, GHOSTED],
+                    options: vec![WIREFRAME, SHADED, GHOSTED, HIDDEN],
                     ..Request::new("prompt.setdisplaymode.mode", Kind::Choice)
                 });
             }
             Some(Answer::Option(WIREFRAME)) => DisplayMode::Wireframe,
             Some(Answer::Option(SHADED)) => DisplayMode::Shaded,
             Some(Answer::Option(GHOSTED)) => DisplayMode::Ghosted,
+            Some(Answer::Option(HIDDEN)) => DisplayMode::Hidden,
             Some(_) => return unexpected(),
         };
         Step::View(ViewRequest::Display(mode))
@@ -55,6 +58,16 @@ mod tests {
         assert_eq!(
             processor.take_view_request(),
             Some(ViewRequest::Display(DisplayMode::Ghosted))
+        );
+    }
+
+    #[test]
+    fn hidden_is_a_choice() {
+        let mut doc = Document::default();
+        let mut processor = run(&mut doc, &["setdisplaymode", "h"]);
+        assert_eq!(
+            processor.take_view_request(),
+            Some(ViewRequest::Display(DisplayMode::Hidden))
         );
     }
 }
