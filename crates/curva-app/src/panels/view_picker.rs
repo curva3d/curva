@@ -17,7 +17,7 @@ const BOX: [[Option<StandardView>; 3]; 3] = [
 ];
 
 /// The size of a view in the unfolded box, in points.
-const CELL: egui::Vec2 = egui::vec2(58.0, 26.0);
+const CELL: egui::Vec2 = egui::vec2(58.0, 30.0);
 
 /// What the picker asks for: a view, or a new lens for the view shown.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -36,9 +36,12 @@ impl Curva {
             .named
             .clone()
             .unwrap_or_else(|| self.text.render(&Message::new(view_label(current))));
+        // A button with the accent's outline, as in the chosen mock-up, so it reads as one (#471).
         let button = ui.add_sized(
             [ui.available_width(), 22.0],
-            egui::Button::new(format!("{title} ▾")),
+            egui::Button::new(format!("{title} ▾"))
+                .fill(theme::ACCENT.gamma_multiply(0.16))
+                .stroke(egui::Stroke::new(1.0, theme::ACCENT.gamma_multiply(0.55))),
         );
         let mut picked = None;
         egui::Popup::menu(&button)
@@ -70,12 +73,21 @@ impl Curva {
                 .small()
                 .weak(),
         );
+        // Each view a filled tile, the one shown in the accent, as in the chosen mock-up (#471).
         let mut view_button = |ui: &mut egui::Ui, view: StandardView, size: egui::Vec2| {
             let name = self.text.render(&Message::new(view_label(view)));
-            if ui
-                .add(egui::Button::selectable(view == current, name).min_size(size))
-                .clicked()
-            {
+            let theme = theme::current();
+            let (fill, colour) = if view == current {
+                (theme::ACCENT, egui::Color32::WHITE)
+            } else {
+                (theme.control, theme.text)
+            };
+            let tile = egui::Button::new(egui::RichText::new(name).color(colour))
+                .fill(fill)
+                .stroke(egui::Stroke::NONE)
+                .corner_radius(6)
+                .min_size(size);
+            if ui.add(tile).clicked() {
                 picked = Some(Picked::View(view));
             }
         };

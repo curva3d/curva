@@ -66,6 +66,7 @@ impl Curva {
         let painter = ui.painter_at(rect);
         let camera = &self.panes[pane].camera;
         let tint = egui::Color32::from_rgba_unmultiplied(255, 220, 60, 90);
+        let mut mesh = egui::Mesh::default();
         for pick in picked {
             for triangle in self.outlines.face_triangles(pick) {
                 let corners: Vec<egui::Pos2> = triangle
@@ -73,15 +74,10 @@ impl Curva {
                     .filter_map(|p| camera.project(*p, size))
                     .map(|p| rect.min + egui::vec2(p[0] as f32, p[1] as f32))
                     .collect();
-                if corners.len() == 3 {
-                    painter.add(egui::Shape::convex_polygon(
-                        corners,
-                        tint,
-                        egui::Stroke::NONE,
-                    ));
-                }
+                add_tinted_triangle(&mut mesh, &corners, tint);
             }
         }
+        painter.add(egui::Shape::mesh(mesh));
     }
 
     /// The edges of a solid picked for a command, drawn thick in the selection colour.
@@ -196,5 +192,44 @@ impl Curva {
             .map(|(grip, _)| grip)
             .into_iter()
             .collect()
+    }
+}
+
+/// Adds one triangle at `corners` (three of them, on screen) to `mesh`, filled with `tint`
+/// exactly to its corners. Painted as a mesh rather than a polygon, so egui does not soften its
+/// edges: on the thin triangles of a curved face that softening reached far past the corners,
+/// as long lines across the view.
+fn add_tinted_triangle(mesh: &mut egui::Mesh, corners: &[egui::Pos2], tint: egui::Color32) {
+    if corners.len() != 3 {
+        return;
+    }
+    let first = mesh.vertices.len() as u32;
+    for &at in corners {
+        mesh.colored_vertex(at, tint);
+    }
+    mesh.add_triangle(first, first + 1, first + 2);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A thin triangle, as a curved face is cut into, fills only between its corners, with
+    /// nothing reaching past them; a corner off screen leaves the triangle out.
+    #[test]
+    fn a_picked_face_is_tinted_only_between_its_corners() {
+        let tint = egui::Color32::from_rgba_unmultiplied(255, 220, 60, 90);
+        let sliver = [
+            egui::pos2(100.0, 100.0),
+            egui::pos2(600.0, 100.2),
+            egui::pos2(100.0, 100.4),
+        ];
+        let mut mesh = egui::Mesh::default();
+        add_tinted_triangle(&mut mesh, &sliver, tint);
+        add_tinted_triangle(&mut mesh, &sliver[..2], tint);
+        assert_eq!((mesh.vertices.len(), mesh.indices.len()), (3, 3));
+        let around = egui::Rect::from_points(&sliver);
+        assert!(mesh.vertices.iter().all(|v| around.contains(v.pos)));
+        assert!(mesh.vertices.iter().all(|v| v.color == tint));
     }
 }

@@ -247,7 +247,7 @@ impl Default for Layout {
                         y: GAP + 104.0 + GAP,
                     },
                     Align::Fill,
-                    [180.0, 64.0],
+                    [DISPLAY_WIDTH, 64.0],
                 ),
             ],
             closed: vec![
@@ -272,6 +272,10 @@ pub const COMMAND_WIDTH: f32 = 720.0;
 /// The width of the Layers and Properties column in the standard layout, which the agent panel
 /// below it shares so their edges line up (spec `feedback-0.4.2.md` §5).
 pub const SIDE_WIDTH: f32 = 260.0;
+
+/// The narrowest the Display panel opens at: its two halves, the display mode and the view,
+/// each wide enough for the longest name, "Perspective" and its arrow (#470).
+pub const DISPLAY_WIDTH: f32 = 250.0;
 
 impl Layout {
     /// The place of a panel.
@@ -538,6 +542,12 @@ impl Layout {
                     ..place.clone()
                 }),
                 None => self.closed.push(piece),
+            }
+        }
+        // A Display panel saved narrower than its names need opens wide enough for them (#470).
+        for place in &mut self.places {
+            if place.pieces == [Piece::Display] {
+                place.size[0] = place.size[0].max(DISPLAY_WIDTH);
             }
         }
         self
@@ -1157,5 +1167,25 @@ mod tests {
         old.places.retain(|p| p.pieces != [Piece::Display]);
         old.closed.clear();
         assert!(old.completed().is_complete());
+    }
+
+    /// The Display panel opens wide enough for "Perspective" and its arrow, even from a file
+    /// saved when it was narrower; a wider one keeps its width (#470).
+    #[test]
+    fn the_display_panel_is_wide_enough_for_its_names() {
+        let width = |layout: &Layout| {
+            let place = layout.places.iter().find(|p| p.pieces == [Piece::Display]);
+            place.unwrap().size[0]
+        };
+        assert_eq!(width(&Layout::default()), DISPLAY_WIDTH);
+        let mut old = Layout::default();
+        for wide in [180.0, 320.0] {
+            for place in &mut old.places {
+                if place.pieces == [Piece::Display] {
+                    place.size[0] = wide;
+                }
+            }
+            assert_eq!(width(&old.clone().completed()), DISPLAY_WIDTH.max(wide));
+        }
     }
 }

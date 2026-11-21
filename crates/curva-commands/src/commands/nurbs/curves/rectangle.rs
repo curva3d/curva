@@ -46,6 +46,19 @@ fn point(cx: &Context<'_>, index: usize) -> Option<Point> {
 
 fn ring(cx: &Context<'_>) -> Option<Vec<Point>> {
     let [x, y] = cx.plane();
+    // A typed length, then the width (Enter: the length), as in Rhino (#526).
+    if let (Some(a), Some(Value::Number(length))) = (point(cx, 0), cx.values.get(1)) {
+        let width = match cx.values.get(2) {
+            Some(Value::Number(width)) => *width,
+            _ => *length,
+        };
+        let first = if cx.mode == Some(CENTER) {
+            plus(plus(a, x, -length / 2.0), y, -width / 2.0)
+        } else {
+            a
+        };
+        return corners(first, plus(plus(first, x, *length), y, width), x, y);
+    }
     let (a, b) = (point(cx, 0)?, point(cx, 1)?);
     match cx.mode {
         Some(THREE_POINT) => from_side(a, b, point(cx, 2)?, [x, y]),
@@ -70,13 +83,20 @@ impl Recipe for Rectangle {
             } else {
                 "prompt.rectangle.other"
             };
-            let step = StepDef::point(other).from(a).offering(&[]);
-            // Two opposite corners show width × depth; 3Point's side does not.
+            // Two opposite corners show width × depth; 3Point's side does not. The other corner
+            // also takes a typed length, then asks for the width, as in Rhino.
             steps.push(if cx.mode == Some(THREE_POINT) {
-                step
+                StepDef::point(other).from(a).offering(&[])
             } else {
-                step.corner()
+                StepDef::point_or_number(other)
+                    .from(a)
+                    .offering(&[])
+                    .corner()
             });
+            if cx.mode != Some(THREE_POINT) && matches!(cx.values.get(1), Some(Value::Number(_))) {
+                let [_, y] = cx.plane();
+                steps.push(StepDef::along("prompt.rectangle.width", a, y).optional());
+            }
             if cx.mode == Some(THREE_POINT)
                 && let Some(b) = point(cx, 1)
             {
@@ -91,7 +111,12 @@ impl Recipe for Rectangle {
     }
 
     fn check(&self, cx: &Context<'_>) -> Result<(), Message> {
-        let complete = if cx.mode == Some(THREE_POINT) { 3 } else { 2 };
+        let typed_length = matches!(cx.values.get(1), Some(Value::Number(_)));
+        let complete = if cx.mode == Some(THREE_POINT) || typed_length {
+            3
+        } else {
+            2
+        };
         if cx.values.len() >= complete && ring(cx).is_none() {
             return Err(Message::new("error.flat_rectangle"));
         }
@@ -135,6 +160,17 @@ mod tests {
         assert_eq!(points.len(), 5);
         assert_eq!(points[0], points[4]);
         assert_eq!(points[2], [4.0, 5.0, 0.0]);
+    }
+
+    #[test]
+    fn a_typed_length_then_a_width_as_in_rhino() {
+        // Measured in Rhino 8 (#526): 10, Enter gives 10 x 10; 10, 3 gives 10 x 3.
+        for (typed, [wide, high]) in [("", [10.0, 10.0]), ("3", [10.0, 3.0])] {
+            let mut doc = Document::default();
+            run(&mut doc, &["rectangle", "0,0", "10", typed]);
+            let points = doc.state().objects[0].curve().unwrap().sample().unwrap();
+            assert_eq!(points[2], [wide, high, 0.0], "10 then {typed:?}");
+        }
     }
 
     #[test]
