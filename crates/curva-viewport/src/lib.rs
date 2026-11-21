@@ -18,6 +18,7 @@ pub mod print;
 mod simplify;
 mod snap;
 mod styles;
+mod subd_live;
 mod subd_parts;
 mod subds;
 mod timer;
