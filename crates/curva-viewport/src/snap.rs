@@ -1290,7 +1290,7 @@ mod tests {
         assert!(hit.point[1].abs() < 1e-6, "{:?}", hit.point);
         assert!((hit.point[0] - 7.0).abs() < 0.5, "{:?}", hit.point);
         // Far from every guideline, nothing.
-        let away = camera.project([7.0, 3.0, 0.0], SIZE).unwrap();
+        let away = camera.project([20.0, 8.0, 0.0], SIZE).unwrap();
         assert!(shapes.guide_snap(&camera, away, SIZE, &guides).is_none());
     }
 
