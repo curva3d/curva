@@ -518,6 +518,7 @@ pub struct LiveSurface {
     result: subdiv_kernels::RefinementResult,
     limit: subdiv_kernels::LimitStencils,
     faces: Mesh,
+    runs: std::collections::BTreeMap<(u32, u32), Vec<u32>>,
 }
 
 impl LiveSurface {
@@ -528,6 +529,7 @@ impl LiveSurface {
     pub fn new(subd: &SubD, levels: u8) -> Result<Self, SmoothError> {
         let faces = subd.surface(levels)?;
         let (result, _, _) = subd.refine(levels)?;
+        let runs = subd.edge_index_runs(&result);
         let limit = result
             .limit_stencils()
             .map_err(|e| SmoothError(e.to_string()))?;
@@ -535,7 +537,16 @@ impl LiveSurface {
             result,
             limit,
             faces,
+            runs,
         })
+    }
+
+    /// Each cage edge as a run of [`LiveSurface::mesh`]'s points, by number, keyed by its two cage
+    /// points (the lower first) and running from the lower: with [`LiveSurface::positions`], the
+    /// edges and creases drawn on the surface follow a drag without refining again.
+    #[must_use]
+    pub fn edge_runs(&self) -> &std::collections::BTreeMap<(u32, u32), Vec<u32>> {
+        &self.runs
     }
 
     /// The surface's faces, the same for every set of positions.
