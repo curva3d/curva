@@ -6,9 +6,10 @@
 
 use crate::Message;
 use crate::commands::arguments::{number, point};
+use crate::commands::nurbs::solids::box_solid::{base, height_at};
 use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef, Value};
 use curva_document::Shape;
-use curva_kernel::{Curve, Point, cross, dot, sub};
+use curva_kernel::{Curve, Point, cross};
 use curva_mesh::{Frame, Mesh, SmoothError, SphereStyle, SubD};
 
 const SMALLEST: f64 = 1e-9;
@@ -101,26 +102,16 @@ fn circle_guide(cx: &Context<'_>, centre: Point, r: f64) -> Made {
     }
 }
 
-/// A rectangle from two picked corners on the plane, or from its centre and a corner with
-/// `Center`: its first corner and its width and depth, if it is not flat.
+/// A rectangle as `Rectangle` and `Box` take it: two corners on the plane, its centre and a corner
+/// with `Center`, or a typed length and then the width (Enter: the length). Its first corner and
+/// its sides along the plane's X and Y, if it is not flat.
 fn rectangle(cx: &Context<'_>) -> Option<(Point, [f64; 2])> {
-    let first = point(cx, 0)?;
-    let other = point(cx, 1)?;
-    let corner = if cx.mode == Some(CENTER) {
-        std::array::from_fn(|i| 2.0 * first[i] - other[i])
-    } else {
-        first
-    };
-    let [x, y] = cx.plane();
-    let across = sub(other, corner);
-    let sides = [dot(across, x), dot(across, y)];
-    sides
-        .iter()
-        .all(|side| side.abs() >= SMALLEST)
-        .then_some((corner, sides))
+    base(cx)
 }
 
-/// The two corner steps of a rectangle, offering `first` at the first and `second` at the second.
+/// The corner steps of a rectangle, offering `first` at the first step and `second` after it:
+/// the first corner, then the other corner or a typed length, then after a length the width, as
+/// Rhino 8's `MeshPlane` and `MeshBox` ask (measured 21 November 2026).
 fn rectangle_steps(
     cx: &Context<'_>,
     first: &'static [&'static str],
@@ -129,16 +120,33 @@ fn rectangle_steps(
     let mut steps = vec![StepDef::point("prompt.box.first").offering(first)];
     if let Some(start) = point(cx, 0) {
         steps.push(
-            StepDef::point("prompt.box.other")
+            StepDef::point_or_number("prompt.box.other")
                 .from(start)
                 .offering(second)
                 .corner(),
         );
+        if matches!(cx.values.get(1), Some(Value::Number(_))) {
+            let [_, y] = cx.plane();
+            steps.push(
+                StepDef::along("prompt.box.width", start, y)
+                    .optional()
+                    .offering(second),
+            );
+        }
     }
     steps
 }
 
-/// `MeshBox`: a box's base as `Box` takes it, then its height (Enter: the base's width).
+/// Where a box's height starts: the corner just clicked, where the mouse is, or the first corner
+/// after a typed length and width, as `Box`. `None` until the base is complete.
+fn height_from(cx: &Context<'_>) -> Option<Point> {
+    match cx.values.get(1)? {
+        Value::Number(_) => cx.values.get(2).and(point(cx, 0)),
+        other => other.point(),
+    }
+}
+
+/// `MeshBox`: a box's base as `Box` takes it, then its height (Enter: the base's side along Y).
 #[derive(Default)]
 pub struct Boxed<const SUBD: bool>;
 
@@ -160,10 +168,10 @@ impl<const SUBD: bool> Recipe for Boxed<SUBD> {
     fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
         const COUNTS: &[&str] = &["XCount", "YCount", "ZCount"];
         let mut steps = rectangle_steps(cx, &[CENTER, "XCount", "YCount", "ZCount"], COUNTS);
-        if let (Some(start), true) = (point(cx, 0), cx.values.len() >= 2) {
+        if let Some(from) = height_from(cx) {
             let [x, y] = cx.plane();
             steps.push(
-                StepDef::along("prompt.box.height", start, cross(x, y))
+                StepDef::along("prompt.box.height", from, cross(x, y))
                     .optional()
                     .offering(&[BOTH_SIDES, "XCount", "YCount", "ZCount"]),
             );
@@ -182,10 +190,10 @@ impl<const SUBD: bool> Recipe for Boxed<SUBD> {
         let Some((corner, [wide, deep])) = rectangle(cx) else {
             return Ok(Made::default());
         };
-        let high = match cx.values.get(2) {
+        let high = match cx.values.get(height_at(cx)) {
             Some(Value::Number(high)) => *high,
-            // Enter uses the base's width, as in Rhino.
-            Some(Value::Empty) => wide.abs(),
+            // Enter uses the base's side along Y, as Rhino 8's `Box` and `MeshBox`.
+            Some(Value::Empty) => deep.abs(),
             _ => 0.0,
         };
         let frame = frame_at(cx, corner);
@@ -657,10 +665,60 @@ mod tests {
         assert!((mesh.volume().unwrap() - 480.0).abs() < 1e-9);
         let both = made(&["meshbox", "0,0", "10,8", "BothSides", "6"]);
         assert!((both.volume().unwrap() - 960.0).abs() < 1e-9);
+        // Enter at the height uses the side along Y, as Rhino 8's `MeshBox` and `Box` (measured
+        // 21 November 2026: 0,0 then 4,3 then Enter gives a height of 3).
         let enter = made(&["meshbox", "0,0", "10,8", ""]);
-        assert!((enter.volume().unwrap() - 800.0).abs() < 1e-9);
+        assert!((enter.volume().unwrap() - 640.0).abs() < 1e-9);
         let backwards = made(&["meshbox", "10,8", "0,0", "-6"]);
         assert!((backwards.volume().unwrap() - 480.0).abs() < 1e-9);
+    }
+
+    /// Size along the plane's X, Y and up, from the mesh's points.
+    fn size(mesh: &Mesh) -> [f64; 3] {
+        let (mut low, mut high) = ([f64::MAX; 3], [f64::MIN; 3]);
+        for p in mesh.vertices() {
+            for k in 0..3 {
+                low[k] = low[k].min(p[k]);
+                high[k] = high[k].max(p[k]);
+            }
+        }
+        std::array::from_fn(|k| high[k] - low[k])
+    }
+
+    #[test]
+    fn a_typed_length_then_width_as_rhino_asks() {
+        // Rhino 8 (21 November 2026): MeshBox and SubDBox with 5, then 3, then Enter give 5 × 3 × 3;
+        // 5 then Enter twice give 5 × 5 × 5. MeshPlane and SubDPlane: 5 then 3 give 5 × 3, and
+        // 5 then Enter give 5 × 5, as Rectangle.
+        let cases: [(&[&str], [f64; 3]); 6] = [
+            (&["meshbox", "0,0", "5", "3", ""], [5.0, 3.0, 3.0]),
+            (&["meshbox", "0,0", "5", "", ""], [5.0, 5.0, 5.0]),
+            (&["meshbox", "0,0", "5", "3", "2"], [5.0, 3.0, 2.0]),
+            (
+                &["meshbox", "Center", "0,0", "4", "2", "1"],
+                [4.0, 2.0, 1.0],
+            ),
+            (&["meshplane", "0,0", "5", "3"], [5.0, 3.0, 0.0]),
+            (&["meshplane", "0,0", "5", ""], [5.0, 5.0, 0.0]),
+        ];
+        for (steps, want) in cases {
+            let got = size(&made(steps));
+            assert!(
+                (0..3).all(|k| (got[k] - want[k]).abs() < 1e-9),
+                "{steps:?}: {got:?}"
+            );
+        }
+        let mut doc = Document::default();
+        run(&mut doc, &["subdbox", "0,0", "5", "3", ""]);
+        let subd = doc
+            .state()
+            .objects
+            .last()
+            .expect("made")
+            .shape
+            .subd()
+            .cloned();
+        assert!(subd.is_some(), "SubDBox takes a typed length too");
     }
 
     #[test]

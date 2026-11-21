@@ -26,6 +26,12 @@ pub struct Processor {
     last_point: Option<Point>,
     /// A distance or angle typed for the next point, until it is placed.
     lock: Lock,
+    /// A distance or angle being typed in the command line for the current point, held before
+    /// Enter as it will be after (#510); and a number being typed for a size.
+    pending: Lock,
+    pending_number: Option<f64>,
+    /// Whether a click just used what was being typed, so the interface clears it.
+    typed_used: bool,
     log: Vec<String>,
     text: Translations,
     view_requests: std::collections::VecDeque<ViewRequest>,
@@ -33,6 +39,8 @@ pub struct Processor {
     dialogs: bool,
     /// The running command's long work on its own thread, while it lasts (#480).
     working: Option<Working>,
+    /// Solids read quickly being healed in the background, as they come (#476).
+    repairing: Vec<crate::repairing::Repairing>,
 }
 
 impl Default for Processor {
@@ -42,11 +50,15 @@ impl Default for Processor {
             last: None,
             last_point: None,
             lock: Lock::default(),
+            pending: Lock::default(),
+            pending_number: None,
+            typed_used: false,
             log: Vec::new(),
             text: Translations::english(),
             view_requests: std::collections::VecDeque::new(),
             dialogs: false,
             working: None,
+            repairing: Vec::new(),
         }
     }
 }
@@ -231,10 +243,52 @@ impl Processor {
         }
     }
 
-    /// The distance or angle typed for the next point, if any.
+    /// The distance or angle held for the next point: entered, or being typed (#510).
     #[must_use]
     pub fn lock(&self) -> Lock {
-        self.lock
+        Lock {
+            distance: self.pending.distance.or(self.lock.distance),
+            angle: self.pending.angle.or(self.lock.angle),
+        }
+    }
+
+    /// What is typed in the command line now, called each frame by the interface: a distance or
+    /// angle for a point measured from a base, or a number for a size, holds the preview at once
+    /// and a click uses it, as long as it stays typed (#510, the owner's rule for every command).
+    pub fn set_typed(&mut self, doc: &Document, typed: &str) {
+        self.pending = Lock::default();
+        self.pending_number = None;
+        let Some(request) = self.request() else {
+            return;
+        };
+        let unit = doc.state().unit;
+        match request.kind {
+            Kind::Point if request.base().is_some() => {
+                self.pending = match parse_lock(typed, unit) {
+                    Some(TypedLock::Distance(d)) => Lock {
+                        distance: Some(d),
+                        angle: None,
+                    },
+                    Some(TypedLock::Angle(a)) => Lock {
+                        distance: None,
+                        angle: Some(a),
+                    },
+                    Some(TypedLock::Both(d, a)) => Lock {
+                        distance: Some(d),
+                        angle: Some(a),
+                    },
+                    None => Lock::default(),
+                };
+            }
+            Kind::Number | Kind::PointOrNumber => self.pending_number = parse_length(typed, unit),
+            _ => {}
+        }
+    }
+
+    /// Whether a click just used what was being typed; asking clears it, so the interface clears
+    /// the command line once.
+    pub fn take_typed_used(&mut self) -> bool {
+        std::mem::take(&mut self.typed_used)
     }
 
     /// Where the pointer at `cursor` lands for the current step, with any typed distance or angle
@@ -242,8 +296,8 @@ impl Processor {
     #[must_use]
     pub fn constrained(&self, doc: &Document, cursor: Point) -> Point {
         match self.request().and_then(Request::base) {
-            Some(base) if self.lock.is_set() && self.takes_point() => {
-                self.lock.apply(base, cursor, doc.work_plane())
+            Some(base) if self.lock().is_set() && self.takes_point() => {
+                self.lock().apply(base, cursor, doc.work_plane())
             }
             _ => cursor,
         }
@@ -478,6 +532,14 @@ impl Processor {
         let Some(request) = self.request().cloned() else {
             return;
         };
+        // A number being typed for a size is what a click gives, not where the pointer is (#510).
+        if matches!(request.kind, Kind::Number | Kind::PointOrNumber)
+            && let Some(number) = self.pending_number.take()
+        {
+            self.typed_used = true;
+            self.advance(doc, Some(Answer::Number(number)));
+            return;
+        }
         if request.kind == Kind::Number
             && let Some(value) = request.along_value(at)
         {
@@ -487,6 +549,10 @@ impl Processor {
         match (request.kind, request.from) {
             (Kind::Point, _) => {
                 let at = self.constrained(doc, at);
+                if self.pending.is_set() {
+                    self.pending = Lock::default();
+                    self.typed_used = true;
+                }
                 self.advance(doc, Some(Answer::Point(at)));
             }
             (Kind::PointOrNumber | Kind::PickPart, _) => {
@@ -552,6 +618,13 @@ impl Processor {
     /// Carries on once the running command's long work is done, called each frame by the
     /// interface; returns whether work is still going, so the interface keeps checking back.
     pub fn poll(&mut self, doc: &mut Document) -> bool {
+        self.collect_repairs(doc);
+        let working = self.poll_working(doc);
+        working || !self.repairing.is_empty()
+    }
+
+    /// Carries on once the running command's long work is done; whether it is still going.
+    fn poll_working(&mut self, doc: &mut Document) -> bool {
         let Some(working) = &self.working else {
             return false;
         };
@@ -565,6 +638,37 @@ impl Processor {
         };
         self.take_step(doc, step);
         self.working.is_some()
+    }
+
+    /// Starts healing the solids the model was read with quickly (#476): in the background with
+    /// the interface, at once for scripts and agents, which want the healed model straight away.
+    fn start_repairs(&mut self, doc: &mut Document) {
+        if !doc.has_repairs() {
+            return;
+        }
+        if self.dialogs {
+            self.repairing
+                .push(crate::repairing::Repairing::start(doc.take_repairs()));
+        } else {
+            doc.repair_all_now();
+        }
+    }
+
+    /// Puts the solids healed so far in their places, dropping repairs that are done.
+    fn collect_repairs(&mut self, doc: &mut Document) {
+        self.repairing
+            .retain_mut(|repairing| repairing.collect(doc));
+    }
+
+    /// Stops all background work: the running command's, and healing solids, which keep the
+    /// shapes they were read with. For the command bar's Stop button.
+    pub fn stop_background(&mut self, doc: &mut Document) {
+        for repairing in self.repairing.drain(..) {
+            repairing.stop();
+        }
+        if self.working.is_some() {
+            self.cancel(doc);
+        }
     }
 
     /// What the command does with its next `step`.
@@ -615,6 +719,8 @@ impl Processor {
                 if doc.take_just_opened() {
                     self.view_requests.push_back(ViewRequest::ZoomExtents);
                 }
+                // Solids the file was read with quickly are healed in the background (#476).
+                self.start_repairs(doc);
             }
             Step::View(request) => {
                 self.active = None;
@@ -781,6 +887,51 @@ mod tests {
     fn line_end(doc: &Document) -> Point {
         let points = doc.state().objects[0].curve().unwrap().sample().unwrap();
         points[points.len() - 1]
+    }
+
+    #[test]
+    fn typed_locks_are_read_before_enter_too() {
+        // A distance being typed holds the preview and the click at once (#510): the mouse only
+        // gives the direction.
+        let mut doc = Document::default();
+        let mut processor = Processor::default();
+        processor.submit(&mut doc, "line");
+        processor.submit(&mut doc, "0,0");
+        processor.set_typed(&doc, "5");
+        let held = processor.constrained(&doc, [1.0, 1.0, 0.0]);
+        let length = (held[0] * held[0] + held[1] * held[1]).sqrt();
+        assert!((length - 5.0).abs() < 1e-9, "{held:?}");
+        processor.click(&mut doc, [1.0, 1.0, 0.0]);
+        assert!(
+            processor.take_typed_used(),
+            "the command line is cleared once"
+        );
+        let curve = doc.state().objects[0].curve().unwrap();
+        assert!((curve.length().unwrap() - 5.0).abs() < 1e-9);
+        // Deleted from the command line, the mouse decides again.
+        processor.submit(&mut doc, "line");
+        processor.submit(&mut doc, "0,0");
+        processor.set_typed(&doc, "5");
+        processor.set_typed(&doc, "");
+        assert_eq!(
+            processor.constrained(&doc, [1.0, 1.0, 0.0]),
+            [1.0, 1.0, 0.0]
+        );
+        // A size along a line takes the number typed, wherever the pointer is.
+        let mut doc = Document::default();
+        let mut processor = Processor::default();
+        for typed in ["box", "0,0", "2,2"] {
+            processor.submit(&mut doc, typed);
+        }
+        processor.set_typed(&doc, "3");
+        processor.click(&mut doc, [9.0, 9.0, 40.0]);
+        let (low, high) = doc.state().objects[0]
+            .shape
+            .body()
+            .unwrap()
+            .bounds()
+            .unwrap();
+        assert!((high[2] - low[2] - 3.0).abs() < 1e-6, "{low:?} {high:?}");
     }
 
     #[test]

@@ -133,7 +133,7 @@ pub fn open(model: &Model) -> (Document, Report) {
         9 => Unit::Feet,
         _ => Unit::Millimetres,
     };
-    bring_in(model, &mut state, &mut report);
+    let repairs = bring_in(model, &mut state, &mut report);
     if state.layers.is_empty() {
         state.layers = State::default().layers;
         state.next_layer = State::default().next_layer;
@@ -141,6 +141,9 @@ pub fn open(model: &Model) -> (Document, Report) {
     state.current_layer = state.layers[0].id;
     let mut doc = Document::default();
     doc.restore(state);
+    for (quick, repair) in repairs {
+        doc.queue_repair(&quick, repair);
+    }
     add_views_and_planes(model, &mut doc, &mut report);
     (doc, report)
 }
@@ -150,8 +153,11 @@ pub fn open(model: &Model) -> (Document, Report) {
 pub fn import(model: &Model, doc: &mut Document) -> Report {
     let mut report = Report::default();
     let mut state = doc.state().clone();
-    bring_in(model, &mut state, &mut report);
+    let repairs = bring_in(model, &mut state, &mut report);
     doc.restore(state);
+    for (quick, repair) in repairs {
+        doc.queue_repair(&quick, repair);
+    }
     add_views_and_planes(model, doc, &mut report);
     report
 }

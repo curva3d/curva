@@ -11,6 +11,18 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 21 November 2026
 
+**MeshBox, SubDBox, MeshPlane and SubDPlane take Box's and Rectangle's steps:** measured in Rhino 8, a typed number at
+the second step is the length, then Width (Enter: the length), then for a box the height, whose Enter takes the
+base's side along Y. The height is measured up from the corner just clicked, as Box. They reuse Box's `base`.
+
+**ToSubD for surfaces and polysurfaces (owner's choice: extrusions too):** `SubD::from_body` fits a SubD as
+Rhino 8's ToSubD does (measured with RhinoCommon): one point per control point, curved faces fitted
+through the surface at the Greville points, flat straight-sided faces on their corners, borders creased.
+Rhino refuses polysurfaces but takes extrusions; Curva has no extrusions, so a prism creases its cap rims
+as Rhino's extrusions do and other polysurfaces their sharp edges. A capped extruded circle, an open tube
+and a flat square match Rhino's counts and sizes within 0.2 %. Not yet: trimmed curved faces, holed
+flat faces, and Rhino's 48-face sphere (Curva gives 32).
+
 **ToNURBS packs faces as Rhino 8 does (#494):** `PackFaces` (on) joins the patches into one surface per region,
 measured with RhinoCommon: quads join unless a crease, a border or a line running out from a point where
 other than four quads meet comes between them; only quads from four-sided cage faces join. Boxes give 6

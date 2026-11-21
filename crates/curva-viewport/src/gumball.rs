@@ -336,10 +336,12 @@ impl Gumball {
         from: [f64; 2],
         to: [f64; 2],
     ) -> Option<GumballChange> {
-        self.change_with(camera, size, handle, from, to, false)
+        self.change_with(camera, size, handle, from, to, false, None)
     }
 
-    /// As [`Self::change`]; with `even`, a scale square scales evenly, as Shift does in Rhino.
+    /// As [`Self::change`]; with `even`, a scale square scales evenly, as Shift does in Rhino;
+    /// with `turn_step`, a turn snaps to whole steps of that many degrees (Shift, #529).
+    #[allow(clippy::too_many_arguments)]
     #[must_use]
     pub fn change_with(
         &self,
@@ -349,6 +351,7 @@ impl Gumball {
         from: [f64; 2],
         to: [f64; 2],
         even: bool,
+        turn_step: Option<f64>,
     ) -> Option<GumballChange> {
         let at = camera.project(self.centre, size)?;
         // How far a drag goes along an axis, in model units.
@@ -372,7 +375,7 @@ impl Gumball {
                 axis: AXES[index],
                 distance: along_axis(index)?,
             }),
-            Handle::Turn(index) => Some(self.turn_change(camera, at, index, [from, to])),
+            Handle::Turn(index) => Some(self.turn_change(camera, at, index, [from, to], turn_step)),
             Handle::Scale(index) => self.scale_change(camera, size, at, index, [from, to], even),
             Handle::Plane(_) | Handle::Centre => {
                 let index = match handle {
@@ -399,6 +402,7 @@ impl Gumball {
         at: [f64; 2],
         index: usize,
         [from, to]: [[f64; 2]; 2],
+        step: Option<f64>,
     ) -> GumballChange {
         let angle_at = |p: [f64; 2]| (p[1] - at[1]).atan2(p[0] - at[0]);
         // Screen Y points down, so an increasing screen angle looks clockwise.
@@ -410,6 +414,8 @@ impl Gumball {
         } else {
             -looks_counterclockwise
         };
+        // With a step in degrees (Shift held), the angle snaps to whole steps (#529).
+        let angle = step.map_or(angle, |degrees| snapped(angle, degrees));
         GumballChange::Turn(Similarity::rotation(self.centre, axis, angle))
     }
 
@@ -497,9 +503,26 @@ impl Gumball {
     }
 }
 
+/// `angle` in radians snapped to the nearest whole step of `degrees`.
+fn snapped(angle: f64, degrees: f64) -> f64 {
+    let step = degrees.to_radians();
+    if step <= 0.0 {
+        return angle;
+    }
+    (angle / step).round() * step
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_turn_snaps_to_whole_steps_of_five_degrees() {
+        let near = |degrees: f64| super::snapped(degrees.to_radians(), 5.0).to_degrees();
+        assert!((near(12.4) - 10.0).abs() < 1e-9);
+        assert!((near(12.6) - 15.0).abs() < 1e-9);
+        assert!((near(-33.0) + 35.0).abs() < 1e-9);
+    }
     use crate::StandardView;
     use curva_kernel::gap;
 

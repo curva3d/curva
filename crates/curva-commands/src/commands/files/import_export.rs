@@ -91,7 +91,10 @@ impl Import {
             let result = import(&mut copy, &path, &path.display().to_string());
             let finish: Finish = Box::new(move |doc: &mut Document| {
                 if result.is_ok() {
+                    let mut copy = copy;
                     doc.restore(copy.state().clone());
+                    // Solids read quickly are healed in the model they came into (#476).
+                    doc.queue_repairs(copy.take_repairs());
                     for view in copy.views() {
                         if doc.saved_view(&view.name).is_none() {
                             doc.save_view(view.clone());

@@ -108,8 +108,13 @@ pub(crate) fn resize_handles(
         if response.hovered() || response.dragged() {
             pulse_edges(ui, rect, sides);
         }
-        if response.dragged() {
-            event = Some(PanelEvent::Resized(sides, response.drag_delta()));
+        // The whole way since the press, not this frame's step, so the edge stays under the
+        // pointer even after the panel stopped at its smallest and the pointer went on (#470).
+        let since = ui.input(|input| input.pointer.press_origin());
+        if response.dragged()
+            && let (Some(now), Some(from)) = (response.interact_pointer_pos(), since)
+        {
+            event = Some(PanelEvent::Resized(sides, now - from));
         }
     }
     event
