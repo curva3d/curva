@@ -595,7 +595,7 @@ mod tests {
         let icon = window_icon().expect("the icon reads");
         assert_eq!((icon.width, icon.height), (256, 256));
         assert_eq!(icon.rgba.len(), 256 * 256 * 4);
-        // The corner is outside the rounded square; the middle is inside it.
+        // The corner is outside the mark; the middle is on it, where the tube crosses.
         assert_eq!(icon.rgba[3], 0);
         let middle = (128 * 256 + 128) * 4;
         assert_eq!(icon.rgba[middle + 3], 255);

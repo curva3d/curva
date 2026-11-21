@@ -18,6 +18,9 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## Features stream — 21 November 2026
 
+- **New logo** (decision 0040, replaces 0022): the C/U curve, amber, tile-free with a floating shadow, in every
+  icon size in `packaging/icons/` so the next release ships with it. Sources in `docs/design/brand/logo-3d/`.
+  The website keeps the old logo until its redesign (direction A).
 - **Curva 0.4.4 published** at the owner's request ("today at 8am … whatever is ready"): tagged on
   `main` at 08:00, installers for Windows, macOS and Linux out at 08:29
   (https://github.com/curva3d/curva/releases/tag/v0.4.4). Decision 0039 replaces 0038: 0.4.4 ships
