@@ -1,0 +1,36 @@
+---
+// The home page: the four specializations as an exploded stack of plates.
+import Page from './Page.astro';
+import { WORDS, SLUGS, href, type Lang } from '../data/site';
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const w = WORDS[lang];
+---
+<Page lang={lang} kind="home" title={w.title} description={w.description} hint={w.hintHome}>
+	<Fragment slot="left">
+		<h1 class="motto">{w.motto}</h1>
+		<p class="intro">{w.intro}</p>
+	</Fragment>
+	<div class="persp" slot="stack"><div class="stack">
+		{SLUGS.map((s, i) => (
+			<a class="plate glass" href={href(lang, s)} data-plate={i}>
+				<span class="tag mono">0{i + 1} · {w.specs[s].status}</span>
+				<span class="name">{w.specs[s].name}</span>
+				<span class="more">
+					<strong>{w.specs[s].line}</strong>
+					<ul>{w.specs[s].bullets.map((b) => <li>{b}</li>)}</ul>
+				</span>
+			</a>
+		))}
+	</div></div>
+	<div class="info glass" slot="info" aria-hidden="true">
+		{SLUGS.map((s, i) => (
+			<div class:list={['info-item', { on: i === 0 }]} data-info={i}>
+				<span class="mono">{w.specs[s].status}</span>
+				<span class="info-name">{w.specs[s].name}</span>
+				<strong class="info-line">{w.specs[s].line}</strong>
+				<ul>{w.specs[s].bullets.map((b) => <li>{b}</li>)}</ul>
+			</div>
+		))}
+	</div>
+</Page>

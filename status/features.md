@@ -33,12 +33,21 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 - **In progress:** Ctrl+Shift part picking and mesh/SubD parts for commands (#552, #485, #333); Alt-drag
   copies (#486). Waiting on the owner's description: the gumball stretch on a closed rectangle (#528)
   and Fillet on a polyline (#516). Plans in PR #492 await the owner's decisions.
+- **Website redesign** approved by the owner and shipped: black and white, frosted glass, the
+  motto "Every project starts with a curve." The home page is an exploded axonometric stack of
+  the four specializations (mouse up pulls the plates apart, click one to enter); each
+  specialization has its own page whose plates are its strong points (hovering one turns it black,
+  lifts the plates above just enough to read it, and shows its text beside the stack).
+  Download panel picks the visitor's system and the newest release's file. English and
+  European Portuguese. New logo marks, favicons and social image; the docs header uses the new
+  mark too (the docs keep their old colours for now). Mockups:
+  https://claude.ai/artifact/Y3ZzbZDcP7QdiVn1LEH9Xd. The owner will list fixes next.
 
 ## Features stream — 21 November 2026
 
 - **New logo** (decision 0040, replaces 0022): the C/U curve, amber, tile-free with a floating shadow, in every
   icon size in `packaging/icons/` so the next release ships with it. Sources in `docs/design/brand/logo-3d/`.
-  The website keeps the old logo until its redesign (direction A).
+  The website now has the new look too (see 22 November).
 - **Curva 0.4.4 published** at the owner's request ("today at 8am … whatever is ready"): tagged on
   `main` at 08:00, installers for Windows, macOS and Linux out at 08:29
   (https://github.com/curva3d/curva/releases/tag/v0.4.4). Decision 0039 replaces 0038: 0.4.4 ships

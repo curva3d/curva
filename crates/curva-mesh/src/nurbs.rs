@@ -1,10 +1,95 @@
 //! MeshToNURB: each mesh face as a NURBS surface, the surfaces sewn into one polysurface, through
 //! Curva's kernel (spec `docs/specs/mesh-and-subd.md` §3.3).
 
-use crate::Mesh;
-use curva_kernel::{Body, Curve, KernelError};
+use crate::{Mesh, Point};
+use curva_kernel::{Body, Curve, KernelError, NurbsSurface};
+
+/// How `MeshToNURB` treats triangles and faces of more than four corners: Rhino 8's
+/// `TrimTriangularFaces` and `UseNgons`, both on at first (measured).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MeshToNurbOptions {
+    /// A triangle as a flat trimmed surface; off, as an untrimmed bilinear surface with one side
+    /// shrunk to its first corner.
+    pub trim_triangles: bool,
+    /// A face of more than four corners as one surface; off, as its triangles.
+    pub ngons: bool,
+}
+
+impl Default for MeshToNurbOptions {
+    fn default() -> Self {
+        Self {
+            trim_triangles: true,
+            ngons: true,
+        }
+    }
+}
+
+/// One face's surface: a quad's bilinear surface, a triangle's (trimmed or shrunk), or a larger
+/// face's flat trimmed surface or n-sided fill.
+fn face_body(points: &[Point], trim_triangles: bool) -> Result<Body, KernelError> {
+    let edges: Vec<Curve> = (0..points.len())
+        .map(|k| Curve::Line {
+            start: points[k],
+            end: points[(k + 1) % points.len()],
+        })
+        .collect();
+    match points.len() {
+        4 => Body::from_edges(&edges),
+        3 if !trim_triangles => {
+            // Rhino 8 (RhinoCommon, 21 November 2026): a triangle A, B, C becomes the bilinear
+            // surface on [[A, A], [B, C]].
+            let [a, b, c] = [points[0], points[1], points[2]];
+            let knots = vec![0.0, 0.0, 1.0, 1.0];
+            NurbsSurface::new(
+                [1, 1],
+                knots.clone(),
+                knots,
+                &[vec![a, a], vec![b, c]],
+                None,
+            )?
+            .to_body()
+        }
+        _ => Body::planar(&[Curve::Polyline {
+            points: points.to_vec(),
+            closed: true,
+        }])
+        .or_else(|_| Body::from_edges(&edges)),
+    }
+}
 
 impl Mesh {
+    /// The mesh as a polysurface with Rhino's `MeshToNURB` options (see [`MeshToNurbOptions`]);
+    /// [`Mesh::to_nurbs`] uses their defaults.
+    ///
+    /// # Errors
+    /// When the kernel cannot make a face's surface or sew them.
+    pub fn to_nurbs_with(&self, options: MeshToNurbOptions) -> Result<Body, KernelError> {
+        let at = |v: u32| self.vertices()[v as usize];
+        let mut parts = Vec::new();
+        for face in self.faces() {
+            let points: Vec<Point> = face.iter().map(|&v| at(v)).collect();
+            if points.len() > 4 && !options.ngons {
+                // Its triangles, split as TriangulateMesh splits faces.
+                let one = Mesh::new(
+                    points.clone(),
+                    &[(0..face.len() as u32).collect::<Vec<_>>()],
+                )
+                .map_err(|e| KernelError(e.to_string()))?;
+                let (split, _) = one.triangulated();
+                for triangle in split.faces() {
+                    let corners: Vec<Point> = triangle
+                        .iter()
+                        .map(|&v| split.vertices()[v as usize])
+                        .collect();
+                    parts.push(face_body(&corners, options.trim_triangles)?);
+                }
+            } else {
+                parts.push(face_body(&points, options.trim_triangles)?);
+            }
+        }
+        Body::assembled(&parts)
+    }
+
     /// The mesh as a polysurface of one surface per face, as Rhino's MeshToNURB, sewn where faces
     /// meet; a closed mesh gives a solid.
     ///
@@ -17,29 +102,7 @@ impl Mesh {
     /// # Errors
     /// When the kernel cannot make a face's surface or sew them.
     pub fn to_nurbs(&self) -> Result<Body, KernelError> {
-        let at = |v: u32| self.vertices()[v as usize];
-        let parts = self
-            .faces()
-            .map(|face| {
-                let points: Vec<_> = face.iter().map(|&v| at(v)).collect();
-                let edges: Vec<Curve> = (0..points.len())
-                    .map(|k| Curve::Line {
-                        start: points[k],
-                        end: points[(k + 1) % points.len()],
-                    })
-                    .collect();
-                if points.len() == 4 {
-                    Body::from_edges(&edges)
-                } else {
-                    Body::planar(&[Curve::Polyline {
-                        points: points.clone(),
-                        closed: true,
-                    }])
-                    .or_else(|_| Body::from_edges(&edges))
-                }
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        Body::assembled(&parts)
+        self.to_nurbs_with(MeshToNurbOptions::default())
     }
 }
 
@@ -85,6 +148,57 @@ mod tests {
         assert_eq!(body.face_count().unwrap(), 4);
         assert!(body.is_solid());
         assert!(close(body.volume().unwrap(), 1.0 / 6.0));
+    }
+
+    fn tetrahedron() -> Mesh {
+        let points = vec![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ];
+        let faces = [vec![0, 2, 1], vec![0, 1, 3], vec![1, 2, 3], vec![0, 3, 2]];
+        Mesh::new(points, &faces).unwrap()
+    }
+
+    #[test]
+    fn untrimmed_triangles_shrink_one_side_as_in_rhino() {
+        // Rhino 8 with TrimTriangularFaces off (RhinoCommon, 21 November 2026): the tetrahedron
+        // is still a solid of four faces and volume 1/6, each an untrimmed surface on
+        // [[A, A], [B, C]].
+        let options = MeshToNurbOptions {
+            trim_triangles: false,
+            ngons: true,
+        };
+        let body = tetrahedron().to_nurbs_with(options).unwrap();
+        assert_eq!(body.face_count().unwrap(), 4);
+        assert!(body.is_solid());
+        assert!(close(body.volume().unwrap(), 1.0 / 6.0));
+    }
+
+    #[test]
+    fn a_face_of_six_corners_is_one_surface_unless_ngons_are_off() {
+        // Rhino 8's UseNgons, on at first (measured): a flat hexagon of area 6 gives one trimmed
+        // surface; off, its triangles.
+        let points = vec![
+            [0.0, 0.0, 0.0],
+            [2.0, 0.0, 0.0],
+            [3.0, 1.0, 0.0],
+            [2.0, 2.0, 0.0],
+            [0.0, 2.0, 0.0],
+            [-1.0, 1.0, 0.0],
+        ];
+        let hexagon = Mesh::new(points, &[vec![0, 1, 2, 3, 4, 5]]).unwrap();
+        let one = hexagon.to_nurbs().unwrap();
+        assert_eq!(one.face_count().unwrap(), 1);
+        assert!(close(one.area().unwrap(), 6.0));
+        let options = MeshToNurbOptions {
+            trim_triangles: true,
+            ngons: false,
+        };
+        let split = hexagon.to_nurbs_with(options).unwrap();
+        assert_eq!(split.face_count().unwrap(), 4);
+        assert!(close(split.area().unwrap(), 6.0));
     }
 
     #[test]
