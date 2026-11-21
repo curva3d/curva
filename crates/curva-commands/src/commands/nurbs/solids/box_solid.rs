@@ -60,9 +60,11 @@ impl Recipe for BoxSolid {
                     .offering(&[])
                     .corner(),
             );
-            if cx.values.len() >= 2 {
+            if let Some(other) = cx.values.get(1).and_then(Value::point) {
+                // The height is measured up from the corner just clicked, where the mouse is,
+                // as in Rhino (#484).
                 steps.push(
-                    StepDef::along("prompt.box.height", first, up(cx))
+                    StepDef::along("prompt.box.height", other, up(cx))
                         .optional()
                         .offering(&[BOTH_SIDES]),
                 );
@@ -155,6 +157,16 @@ mod tests {
         assert!(close(low[2], 0.0) && close(high[2], 5.0));
         processor.submit(&mut doc, "undo");
         assert!(doc.state().objects.is_empty());
+    }
+
+    #[test]
+    fn the_height_is_measured_up_from_the_corner_just_clicked() {
+        let mut doc = Document::default();
+        let processor = run(&mut doc, &["box", "0,0", "10,20"]);
+        let request = processor.current_request().unwrap();
+        let (origin, up) = request.along.unwrap();
+        assert!(close(origin[0], 10.0) && close(origin[1], 20.0) && close(origin[2], 0.0));
+        assert!(close(up[2], 1.0));
     }
 
     #[test]
