@@ -116,10 +116,11 @@ pub(super) fn add_views_and_planes(model: &Model, doc: &mut Document, report: &m
 
 /// A detail from a file: its outline as a curve on the sheet (in millimetres), and what it shows:
 /// its standard view by the way it looks (else a perspective), the point it looks at, and its
-/// scale (Rhino keeps model length per page length).
+/// scale (Rhino keeps page units per model unit; Curva, millimetres per millimetre).
 pub(super) fn detail_in(
     d: &model::Detail,
     page_mm: f64,
+    file_mm: f64,
     model_scale: f64,
 ) -> Result<(Curve, curva_document::layouts::Detail), String> {
     let outline = curve(&model::Curve::Nurbs(d.boundary.clone())).map_err(|e| e.0)?;
@@ -127,19 +128,10 @@ pub(super) fn detail_in(
         return Err("a detail without an outline".to_owned());
     };
     let v = &d.view;
-    let length = (v.direction.iter().map(|c| c * c).sum::<f64>())
-        .sqrt()
-        .max(1e-12);
-    let dir: P3 = v.direction.map(|c| c / length);
-    let along = |axis: P3| (0..3).map(|k| dir[k] * axis[k]).sum::<f64>() > 1.0 - 1e-9;
-    let projection = if !v.parallel {
-        "Perspective"
-    } else if along([0.0, 0.0, -1.0]) {
-        "Top"
-    } else if along([0.0, 1.0, 0.0]) {
-        "Front"
-    } else if along([-1.0, 0.0, 0.0]) {
-        "Right"
+    // Any of the six flat views, within a degree (#478: Back and Left elevations, and ones a
+    // hair off square, came in as perspectives).
+    let projection = if v.parallel {
+        curva_document::layouts::flat_view_looking(v.direction).unwrap_or("Perspective")
     } else {
         "Perspective"
     };
@@ -156,7 +148,9 @@ pub(super) fn detail_in(
             projection: projection.to_owned(),
             target,
             distance: gap,
-            scale: (v.parallel && d.ratio > 0.0).then(|| 1.0 / d.ratio),
+            // Rhino keeps page units per model unit (#478: it was taken the other way up, so a
+            // 1:100 detail came in at 100:1).
+            scale: (v.parallel && d.ratio > 0.0).then(|| d.ratio * page_mm / file_mm),
             display: model::display_mode_name(d.display).map_or_else(
                 || {
                     if projection == "Perspective" {

@@ -11,6 +11,8 @@ use crate::{Answer, Command, Kind, Live, Message, Request, Step};
 use curva_document::{Document, Shape};
 use curva_kernel::{Curve, Point};
 
+#[cfg(test)]
+mod choice_tests;
 mod options;
 mod run;
 mod steps;
