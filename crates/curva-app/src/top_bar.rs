@@ -75,6 +75,29 @@ pub(crate) const SPECIALIZATIONS: [&str; 4] = [
 /// The width of the specializations dial in the top bar, in points.
 pub(crate) const DIAL_WIDTH: f32 = 440.0;
 
+/// Space either side of a name inside its part of the specialization pill, in points.
+const PILL_PAD_X: f32 = 12.0;
+/// Space above and below a name inside the pill, in points.
+const PILL_PAD_Y: f32 = 4.0;
+/// The gap between the pill's edge and its parts, in points.
+const PILL_INSET: f32 = 3.0;
+
+/// The left and right edges of each part of the specialization pill, for names `widths` wide,
+/// side by side and centred on `centre`.
+fn pill_segments(widths: &[f32], centre: f32) -> Vec<(f32, f32)> {
+    let total: f32 = widths.iter().map(|w| w + 2.0 * PILL_PAD_X).sum();
+    let mut left = centre - total / 2.0;
+    widths
+        .iter()
+        .map(|w| {
+            let right = left + w + 2.0 * PILL_PAD_X;
+            let segment = (left, right);
+            left = right;
+            segment
+        })
+        .collect()
+}
+
 /// The height of the top bar, in points.
 pub(crate) const TOP_BAR_HEIGHT: f32 = 36.0;
 
@@ -289,8 +312,8 @@ impl Curva {
         }
     }
 
-    /// The specializations as a dial that loops: the selected one in the centre, its neighbours
-    /// either side and fading. Clicking a neighbour or scrolling over the dial turns it.
+    /// The specializations side by side in one pill, the selected one lit (the owner's choice E,
+    /// 21 November 2026, #481). Clicking one, or scrolling over the pill, chooses it.
     pub(crate) fn specialization_dial(&mut self, ui: &mut egui::Ui, rect: egui::Rect) {
         let count = SPECIALIZATIONS.len();
         let response = ui.interact(rect, ui.scope_id().with("dial"), egui::Sense::click());
@@ -302,48 +325,58 @@ impl Curva {
                     (self.bar.specialization + if scroll < 0.0 { 1 } else { count - 1 }) % count;
             }
         }
-        let spacing = rect.width() / 3.0;
-        for offset in [-1_i32, 0, 1] {
-            let index = (self.bar.specialization as i32 + offset).rem_euclid(count as i32) as usize;
-            let centre = egui::pos2(rect.center().x + spacing * offset as f32, rect.center().y);
-            let fade = match offset.abs() {
-                0 => 1.0,
-                1 => 0.55,
-                _ => 0.22,
-            };
-            let colour = if offset == 0 {
+        let font = egui::FontId::new(13.0, egui::FontFamily::Name("Bold".into()));
+        let galleys: Vec<_> = SPECIALIZATIONS
+            .iter()
+            .map(|key| {
+                let name = self.text.render(&Message::new(key));
+                ui.painter()
+                    .layout_no_wrap(name, font.clone(), egui::Color32::PLACEHOLDER)
+            })
+            .collect();
+        let widths: Vec<f32> = galleys.iter().map(|g| g.size().x).collect();
+        let segments = pill_segments(&widths, rect.center().x);
+        let height = galleys.first().map_or(16.0, |g| g.size().y) + 2.0 * PILL_PAD_Y;
+        let row = |(left, right): (f32, f32)| {
+            egui::Rect::from_min_max(
+                egui::pos2(left, rect.center().y - height / 2.0),
+                egui::pos2(right, rect.center().y + height / 2.0),
+            )
+        };
+        let (Some(first), Some(last)) = (segments.first(), segments.last()) else {
+            return;
+        };
+        let pill = row((first.0, last.1)).expand(PILL_INSET);
+        let painter = ui.painter();
+        painter.rect_filled(pill, 9.0, theme::current().window);
+        for (index, (segment, galley)) in segments.iter().zip(galleys).enumerate() {
+            let cell = row(*segment);
+            let chosen = index == self.bar.specialization;
+            let hit = ui.interact(
+                cell,
+                ui.scope_id().with(("specialization", index)),
+                egui::Sense::click(),
+            );
+            if chosen {
+                painter.rect_filled(cell, 7.0, theme::ACCENT.gamma_multiply(0.22));
+                painter.rect_stroke(
+                    cell,
+                    7.0,
+                    egui::Stroke::new(1.0, theme::ACCENT),
+                    egui::StrokeKind::Inside,
+                );
+            } else if hit.hovered() {
+                painter.rect_filled(cell, 7.0, theme::current().panel);
+            }
+            let colour = if chosen {
                 theme::current().text
             } else {
-                theme::current().quiet.gamma_multiply(fade)
+                theme::current().quiet
             };
-            let name = self.text.render(&Message::new(SPECIALIZATIONS[index]));
-            let galley = ui.painter().layout_no_wrap(
-                name,
-                egui::FontId::new(14.0, egui::FontFamily::Name("Bold".into())),
-                colour,
-            );
-            let at = centre - galley.size() / 2.0;
-            let hit = egui::Rect::from_min_size(at, galley.size()).expand(4.0);
-            ui.painter().galley(at, galley, colour);
-            if offset != 0
-                && ui
-                    .interact(
-                        hit,
-                        ui.scope_id().with(("dial item", offset)),
-                        egui::Sense::click(),
-                    )
-                    .clicked()
-            {
+            let at = cell.center() - galley.size() / 2.0;
+            painter.galley(at, galley, colour);
+            if hit.clicked() {
                 self.bar.specialization = index;
-            }
-            if offset == 0 {
-                ui.painter().line_segment(
-                    [
-                        egui::pos2(hit.min.x + 4.0, hit.max.y),
-                        egui::pos2(hit.max.x - 4.0, hit.max.y),
-                    ],
-                    egui::Stroke::new(2.0, theme::ACCENT),
-                );
             }
         }
     }
@@ -514,6 +547,22 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn the_specialization_pill_sits_its_names_side_by_side_centred() {
+        let segments = pill_segments(&[60.0, 90.0, 70.0, 56.0], 500.0);
+        assert_eq!(segments.len(), 4);
+        for pair in segments.windows(2) {
+            assert!((pair[0].1 - pair[1].0).abs() < 1e-4, "touching, in order");
+        }
+        let (left, right) = (segments[0].0, segments[3].1);
+        assert!(((left + right) / 2.0 - 500.0).abs() < 1e-4, "centred");
+        assert!((segments[1].1 - segments[1].0 - (90.0 + 2.0 * PILL_PAD_X)).abs() < 1e-4);
+        assert!(
+            right - left + 2.0 * PILL_INSET < DIAL_WIDTH,
+            "fits the space the dial had"
+        );
+    }
 
     #[test]
     fn every_command_button_names_a_command_and_each_tab_has_some() {
