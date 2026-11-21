@@ -3,7 +3,7 @@
 //! `docs/specs/command-groups.md`). A new command goes in its folder's list and here.
 
 /// Every command's name, in the list's order.
-pub(super) const ORDER: [&str; 308] = [
+pub(super) const ORDER: [&str; 313] = [
     "Line",
     "Polyline",
     "InterpCrv",
@@ -205,6 +205,11 @@ pub(super) const ORDER: [&str; 308] = [
     "ToSubD",
     "SubDDisplayToggle",
     "ToNURBS",
+    "Crease",
+    "RemoveCrease",
+    "Fill",
+    "UnweldEdge",
+    "WeldEdge",
     "Check",
     "MeshRepair",
     "UnifyMeshNormals",
