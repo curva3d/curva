@@ -284,6 +284,30 @@ impl Curva {
     }
 
     /// Carries out the changes of view commands asked for, oldest first.
+    /// Saves the last-used viewport's camera under `name`.
+    fn save_view_as(&mut self, name: String) {
+        let pane = &self.panes[self.active];
+        let view = pane.camera.saved(name.clone(), pane.view);
+        self.doc.save_view(view);
+        let said = self
+            .text
+            .render(&Message::with("done.namedview.save", vec![name]));
+        self.processor.note(said);
+    }
+
+    /// Each viewport takes the view the file just opened was saved with for it, as Rhino shows a
+    /// file as it was left; the others stay fitted to the model (#479).
+    fn show_opened_views(&mut self) {
+        let opened = self.doc.take_opened_views();
+        let keys = self.panes.each_ref().map(|pane| pane.view.key());
+        let found = curva_document::views_for_viewports(&opened, &keys);
+        for (pane, saved) in self.panes.iter_mut().zip(found) {
+            if let Some(saved) = saved {
+                pane.camera = Camera::from_saved(saved);
+            }
+        }
+    }
+
     pub(crate) fn apply_view_request(&mut self) {
         while let Some(request) = self.processor.take_view_request() {
             self.apply_view(request);
@@ -306,15 +330,7 @@ impl Curva {
             ViewRequest::ZoomTarget(at) => {
                 self.panes[self.active].camera.target = at;
             }
-            ViewRequest::SaveView(name) => {
-                let pane = &self.panes[self.active];
-                let view = pane.camera.saved(name.clone(), pane.view);
-                self.doc.save_view(view);
-                let said = self
-                    .text
-                    .render(&Message::with("done.namedview.save", vec![name]));
-                self.processor.note(said);
-            }
+            ViewRequest::SaveView(name) => self.save_view_as(name),
             ViewRequest::SaveCPlane(name) => {
                 let plane = self.panes[self.active].plane;
                 self.doc.save_cplane(curva_document::SavedCPlane {
@@ -346,18 +362,7 @@ impl Curva {
                     self.frame_all(low, high);
                 }
             }
-            ViewRequest::OpenedViews => {
-                // Each viewport takes the view the file was saved with for it, as Rhino shows a
-                // file as it was left; the others stay fitted to the model.
-                let opened = self.doc.take_opened_views();
-                let keys = self.panes.each_ref().map(|pane| pane.view.key());
-                let found = curva_document::views_for_viewports(&opened, &keys);
-                for (pane, saved) in self.panes.iter_mut().zip(found) {
-                    if let Some(saved) = saved {
-                        pane.camera = Camera::from_saved(saved);
-                    }
-                }
-            }
+            ViewRequest::OpenedViews => self.show_opened_views(),
             ViewRequest::ZoomSelected => {
                 self.refresh_scene();
                 if let Some((low, high)) = self.outlines.bounds_of(&self.doc.selection()) {
