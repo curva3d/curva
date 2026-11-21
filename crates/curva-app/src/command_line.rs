@@ -13,6 +13,17 @@ const COMMAND_KEYS: egui::EventFilter = egui::EventFilter {
     escape: true,
 };
 
+/// Whether the highlighted suggestion is not the one the list last followed, remembering it: the
+/// list scrolls to it only then (#517).
+fn highlight_moved(ui: &egui::Ui, highlight: usize) -> bool {
+    let id = egui::Id::NULL.with("command suggestions followed");
+    ui.data_mut(|data| {
+        let before = data.get_temp::<usize>(id);
+        data.insert_temp(id, highlight);
+        before != Some(highlight)
+    })
+}
+
 /// Whether a text box other than the command line has the keyboard, such as the gumball's angle box:
 /// the command line then leaves it there rather than taking it back each frame (#511). A box that
 /// closes loses the keyboard with it, and the command line takes it back.
@@ -156,12 +167,15 @@ impl Curva {
                         .fold(0.0, f32::max);
                     ui.set_min_width(widest + 2.0 * ui.spacing().button_padding.x);
                     let row = ui.spacing().interact_size.y + ui.spacing().item_spacing.y;
+                    // It follows the highlight only when the arrows move it, so the wheel can scroll
+                    // the list freely (#517: it jumped back to the highlight every frame).
+                    let follow = highlight_moved(ui, self.highlight);
                     egui::ScrollArea::vertical()
                         .max_height(row * MOST_MATCH_ROWS)
                         .show(ui, |ui| {
                             for (index, name) in matches.iter().enumerate() {
                                 let shown = ui.selectable_label(index == self.highlight, *name);
-                                if index == self.highlight {
+                                if follow && index == self.highlight {
                                     shown.scroll_to_me(None);
                                 }
                                 if shown.clicked() {
@@ -227,7 +241,9 @@ impl Curva {
     /// oldest going as new ones come.
     fn command_history(&mut self, ui: &mut egui::Ui) {
         let log = self.processor.log().to_vec();
-        let (blanks, skip, shown) = history_rows(&log, self.notices.len());
+        // The options' own row takes one of the rows, so the bar keeps its height (#515).
+        let options_row = usize::from(!self.processor.options().is_empty());
+        let (blanks, skip, shown) = history_rows(&log, self.notices.len() + options_row);
         for _ in 0..blanks {
             ui.label(" ");
         }
@@ -245,6 +261,28 @@ impl Curva {
             && !another_text_box_has_keys(ctx, command_line)
     }
 
+    /// The current step's options as a row of buttons above the prompt, wrapping onto more lines
+    /// when they do not fit (#515); a button answers as typing its name would. Returns the one
+    /// clicked.
+    fn option_row(&self, ui: &mut egui::Ui) -> Option<&'static str> {
+        let options = self.processor.options();
+        if options.is_empty() {
+            return None;
+        }
+        let mut clicked = None;
+        ui.horizontal_wrapped(|ui| {
+            for (name, label) in options {
+                let chip = egui::Button::new(egui::RichText::new(label).color(theme::ACCENT))
+                    .small()
+                    .frame(true);
+                if ui.add(chip).on_hover_text(name).clicked() {
+                    clicked = Some(name);
+                }
+            }
+        });
+        clicked
+    }
+
     pub(crate) fn command_line(&mut self, ui: &mut egui::Ui) {
         self.command_history(ui);
         let prompt = self
@@ -253,26 +291,13 @@ impl Curva {
             .unwrap_or_else(|| self.text.render(&Message::new("ui.command")));
         // These keys must be taken before the text box, which would otherwise act on them.
         let filled = self.completion_keys(ui);
-        let mut clicked_option = None;
         let mut submit = false;
         let mut clicked = None;
         let mut changed = false;
+        // The options on a row of their own, wrapping, so they never crowd the prompt (#515).
+        let clicked_option = self.option_row(ui);
         ui.horizontal(|ui| {
-            // The question, then its options as buttons, which answer as typing them would.
-            if let Some(question) = self.processor.question() {
-                ui.label(question);
-                for (name, label) in self.processor.options() {
-                    let chip = egui::Button::new(egui::RichText::new(label).color(theme::ACCENT))
-                        .small()
-                        .frame(true);
-                    if ui.add(chip).on_hover_text(name).clicked() {
-                        clicked_option = Some(name);
-                    }
-                }
-                ui.label(":");
-            } else {
-                ui.label(format!("{prompt}:"));
-            }
+            ui.label(format!("{}:", self.processor.question().unwrap_or(prompt)));
             let output = egui::TextEdit::singleline(&mut self.typed)
                 .event_filter(COMMAND_KEYS)
                 .desired_width(f32::INFINITY)
@@ -366,6 +391,19 @@ impl Curva {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_suggestions_follow_the_highlight_only_when_it_moves() {
+        let ctx = egui::Context::default();
+        let mut moved = Vec::new();
+        for highlight in [0, 0, 2, 2] {
+            let output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                moved.push(highlight_moved(ui, highlight));
+            });
+            output.drop_without_applying_deltas();
+        }
+        assert_eq!(moved, [true, false, true, false]);
+    }
 
     #[test]
     fn another_text_box_keeps_the_keyboard_once_it_has_it() {

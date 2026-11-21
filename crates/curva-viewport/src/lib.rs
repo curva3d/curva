@@ -186,6 +186,19 @@ mod tests {
     }
 
     #[test]
+    fn a_click_over_several_objects_finds_them_all_nearest_first() {
+        let mut doc = Document::default();
+        let near = doc.add(Curve::line([-20.0, 0.0, 0.0], [20.0, 0.0, 0.0]).unwrap());
+        let far = doc.add(Curve::line([-20.0, 0.2, 0.0], [20.0, 0.2, 0.0]).unwrap());
+        let outlines = Outlines::of(doc.state());
+        let camera = Camera::default();
+        let at = camera.project([5.0, 0.0, 0.0], SIZE).unwrap();
+        assert_eq!(outlines.pick_all(&camera, at, SIZE, 6.0), vec![near, far]);
+        let away = camera.project([5.0, 30.0, 0.0], SIZE).unwrap();
+        assert!(outlines.pick_all(&camera, away, SIZE, 6.0).is_empty());
+    }
+
+    #[test]
     fn a_pick_finds_the_exact_point_on_the_curve() {
         let (outlines, _, _) = scene();
         let camera = Camera::default();

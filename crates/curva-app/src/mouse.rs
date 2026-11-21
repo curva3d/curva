@@ -12,6 +12,8 @@ pub(crate) struct MouseState {
     pub(crate) held: Vec<Point>,
     /// The snap point the pointer rests on, since when, and whether resting there has acted.
     pub(crate) resting: Option<(Point, f64, bool)>,
+    /// Rhino's selection menu, while a click over several objects asks which one (#530).
+    pub(crate) choosing: Option<crate::selection_menu::Choosing>,
 }
 
 /// Finds left-button clicks and drags from the raw mouse events.
@@ -156,6 +158,8 @@ pub(crate) struct Aiming<'a> {
     pub(crate) guides: curva_viewport::Guides,
     pub(crate) ortho: bool,
     pub(crate) grid_snap: bool,
+    /// Shift held on a two-corner step: the corners make a square.
+    pub(crate) square: bool,
     /// Alt held: no object snaps for the moment.
     pub(crate) snaps_off: bool,
     pub(crate) screen: [f64; 2],
@@ -201,10 +205,25 @@ pub(crate) fn aim_at(aiming: &Aiming<'_>) -> Option<(Point, Option<SnapHit>)> {
             .map(|at| (at, None));
     }
     let cursor = camera.plane_point(screen, size, plane)?;
+    let at = constrained(plane, cursor, base, aiming.ortho, aiming.grid_snap);
     Some((
-        constrained(plane, cursor, base, aiming.ortho, aiming.grid_snap),
+        match base.filter(|_| aiming.square) {
+            Some(base) => squared(plane, base, at),
+            None => at,
+        },
         None,
     ))
+}
+
+/// The opposite corner from `base` moved to make a square on `plane`: both sides as long as the
+/// longer one, each keeping its direction (#524).
+fn squared(plane: &CPlane, base: Point, at: Point) -> Point {
+    let off: Point = std::array::from_fn(|i| at[i] - base[i]);
+    let along = |axis: Point| (0..3).map(|i| off[i] * axis[i]).sum::<f64>();
+    let (dx, dy) = (along(plane.x), along(plane.y));
+    let side = dx.abs().max(dy.abs());
+    let (sx, sy) = (side.copysign(dx), side.copysign(dy));
+    std::array::from_fn(|i| base[i] + plane.x[i] * sx + plane.y[i] * sy)
 }
 
 /// The window's Copy, Cut and Paste events that are Curva's to act on, taken out of `events`:
@@ -373,7 +392,10 @@ impl Curva {
             display: view.display,
             snaps: self.snaps,
             guides: self.guides(pane, shift),
-            ortho: self.ortho != shift,
+            // On a rectangle's or box's opposite corner Shift makes it square (#524), where
+            // Ortho would only flatten it; elsewhere Shift is Ortho for the moment, as in Rhino.
+            ortho: self.ortho != (shift && !request.corner),
+            square: shift && request.corner,
             grid_snap: self.grid_snap,
             snaps_off: alt,
             screen,
@@ -606,6 +628,11 @@ impl Curva {
     /// A click or a box from `from` to `to` picks control points if it hits any, and objects
     /// otherwise; picking one member of a group picks the whole group, as in Rhino.
     fn pick_objects(&mut self, p: &Picking, from: egui::Pos2, to: egui::Pos2) {
+        // A click away from an open selection menu closes it, keeping the selection as it was.
+        if let Some(choosing) = self.mouse.choosing.take() {
+            self.doc.select(&choosing.before);
+            return;
+        }
         let boxed = is_box_drag(from, to);
         let grips = self.grips_hit(&p.camera, (p.local(from), p.local(to)), boxed, p.size);
         if !grips.is_empty() {
@@ -621,14 +648,27 @@ impl Curva {
             self.outlines
                 .in_box(&p.camera, p.local(from), p.local(to), p.size)
         } else {
-            let hit = self
+            let under = self
                 .outlines
-                .pick(&p.camera, p.local(from), p.size, PICK_REACH);
-            hit.into_iter().collect()
+                .pick_all(&p.camera, p.local(from), p.size, PICK_REACH);
+            // Several objects under the pointer: ask which one, as Rhino does (#530).
+            if under.len() > 1 {
+                self.open_selection_menu(from, under, (p.shift, p.remove));
+                return;
+            }
+            under
         };
         let hits = self.doc.with_groups(&hits);
-        let chosen = combined_selection(self.doc.selection(), hits, p.shift, p.remove);
+        let before = self.doc.selection();
+        let chosen = combined_selection(before.clone(), hits, p.shift, p.remove);
         self.doc.select(&chosen);
+        // What was picked, as Rhino says it: "1 open curve added to selection." (#520)
+        let said = curva_commands::selection_report::selection_change(
+            &self.doc, &before, &chosen, &self.text,
+        );
+        if let Some(line) = said {
+            self.processor.note(line);
+        }
     }
 
     pub(crate) fn paint_snap_marker(
@@ -689,6 +729,24 @@ impl Curva {
 mod tests {
     use super::*;
     use eframe::egui::{Event, Modifiers, PointerButton, Pos2, RawInput, Sense, pos2, vec2};
+
+    #[test]
+    fn shift_on_an_opposite_corner_makes_a_square() {
+        let plane = CPlane {
+            origin: [0.0; 3],
+            x: [1.0, 0.0, 0.0],
+            y: [0.0, 1.0, 0.0],
+            normal: [0.0, 0.0, 1.0],
+        };
+        assert_eq!(
+            squared(&plane, [1.0, 1.0, 0.0], [5.0, 3.0, 0.0]),
+            [5.0, 5.0, 0.0]
+        );
+        assert_eq!(
+            squared(&plane, [0.0; 3], [-2.0, 6.0, 0.0]),
+            [-6.0, 6.0, 0.0]
+        );
+    }
 
     fn button(pos: Pos2, pressed: bool) -> Event {
         Event::PointerButton {
@@ -877,6 +935,7 @@ mod tests {
                     guides: curva_viewport::Guides::default(),
                     ortho: false,
                     grid_snap: false,
+                    square: false,
                     snaps_off: false,
                     screen: [screen[0] + 3.0, screen[1] - 2.0],
                     size,
@@ -900,6 +959,7 @@ mod tests {
                 guides: curva_viewport::Guides::default(),
                 ortho: false,
                 grid_snap: false,
+                square: false,
                 snaps_off: false,
                 screen: end,
                 size,
