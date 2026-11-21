@@ -21,6 +21,8 @@ fn another_text_box_has_keys(ctx: &egui::Context, command_line: egui::Id) -> boo
         && ctx
             .memory(|m| m.focused())
             .is_some_and(|f| f != command_line)
+}
+
 /// Whether Tab runs SubDDisplayToggle, as in Rhino 8: only with nothing typed and no command
 /// running, as Tab completes a command name being typed and has its own meaning inside a command.
 fn tab_toggles_subds(typed: &str, running: bool) -> bool {
@@ -383,6 +385,10 @@ mod tests {
         assert!(
             !another_text_box_has_keys(&ctx, boxed.unwrap()),
             "not when it is the command line"
+        );
+    }
+
+    #[test]
     fn tab_toggles_subds_only_when_idle_with_nothing_typed() {
         assert!(tab_toggles_subds("", false));
         assert!(!tab_toggles_subds("li", false), "completes the name");
