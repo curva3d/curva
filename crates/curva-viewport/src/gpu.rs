@@ -14,10 +14,30 @@ mod upload;
 pub use drawing::*;
 pub use picture::*;
 use shaders::{
-    FACE_SHADER, GHOST_FACE_SHADER, GRID_SHADER, LINE_SHADER, PICK_ROW, inked, paper_faces,
+    FACE_SHADER, GHOST_FACE_SHADER, GRID_SHADER, LINE_SHADER, PICK_ROW, dotted, inked, paper_faces,
     table_wgsl,
 };
 pub use upload::*;
+
+/// How the model's lines are drawn: in their own colours, in black ink (the Hidden and
+/// Technical display modes, #164), or dotted in ink where faces hide them (Technical).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Ink {
+    Own,
+    Visible,
+    Hidden,
+}
+
+impl Ink {
+    /// The line or circle `shader` as this way of drawing needs it.
+    pub(crate) fn shader(self, shader: &str) -> String {
+        match self {
+            Self::Own => shader.to_owned(),
+            Self::Visible => inked(shader),
+            Self::Hidden => dotted(&inked(shader)),
+        }
+    }
+}
 
 /// What each view keeps for itself on the graphics card.
 struct ViewSlot {
@@ -31,6 +51,8 @@ struct ViewSlot {
     ghosted: bool,
     /// The Hidden display mode: faces in paper white, the model's lines in black ink (#164).
     hidden: bool,
+    /// The Technical display mode's addition: lines behind faces drawn dotted (#164).
+    hidden_lines: bool,
 }
 
 /// The graphics card's side of the viewport.
@@ -38,15 +60,13 @@ pub struct LineRenderer {
     /// Hands Bevy's depth to Curva's lines, for views Bevy draws; made when first needed.
     pub(crate) handover: Option<depth::Handover>,
     grid: wgpu::RenderPipeline,
-    lines: wgpu::RenderPipeline,
-    /// Draws whole circles from their centre and axes (#153).
-    circle_lines: wgpu::RenderPipeline,
+    /// The model's lines, and whole circles drawn from their centre and axes (#153), each in
+    /// their own colours, in ink and dotted behind faces, in [`Ink`] order (#164).
+    lines: [wgpu::RenderPipeline; 3],
+    circle_lines: [wgpu::RenderPipeline; 3],
     faces: wgpu::RenderPipeline,
     ghost_faces: wgpu::RenderPipeline,
-    /// The Hidden display mode's: the model's lines and circles in black ink, faces in paper
-    /// white (#164).
-    ink_lines: wgpu::RenderPipeline,
-    ink_circle_lines: wgpu::RenderPipeline,
+    /// The Hidden and Technical display modes' faces, in paper white (#164).
     paper_faces: wgpu::RenderPipeline,
     slots: Vec<ViewSlot>,
     surfaces: Option<Uploaded<MeshVertex>>,
@@ -78,6 +98,9 @@ struct PipelineParts<'a> {
     bias: wgpu::DepthBiasState,
     /// See-through: blended over what is already drawn, and not hiding what comes after.
     see_through: bool,
+    /// Drawn only where something nearer is already drawn, writing no depth: hidden lines, for
+    /// the Technical display mode (#164).
+    behind: bool,
     /// Whether the buffer is read once per instance (a segment) rather than per vertex.
     per_instance: bool,
 }
@@ -127,8 +150,12 @@ fn pipeline(
         },
         depth_stencil: Some(wgpu::DepthStencilState {
             format: DEPTH_FORMAT,
-            depth_write_enabled: Some(!parts.see_through),
-            depth_compare: Some(wgpu::CompareFunction::LessEqual),
+            depth_write_enabled: Some(!parts.see_through && !parts.behind),
+            depth_compare: Some(if parts.behind {
+                wgpu::CompareFunction::Greater
+            } else {
+                wgpu::CompareFunction::LessEqual
+            }),
             stencil: wgpu::StencilState::default(),
             bias: parts.bias,
         }),
@@ -162,6 +189,7 @@ impl LineRenderer {
                     shaded: false,
                     ghosted: false,
                     hidden: false,
+                    hidden_lines: false,
                 }
             })
             .collect();
@@ -170,7 +198,7 @@ impl LineRenderer {
             bind_group_layouts: &[Some(&layout)],
             immediate_size: 0,
         });
-        let (grid, lines, ink_lines) = Self::line_pipelines(device, format, &pipeline_layout);
+        let (grid, lines) = Self::line_pipelines(device, format, &pipeline_layout);
         let face = |label, shader, see_through| {
             Self::face_pipeline(device, format, &pipeline_layout, label, shader, see_through)
         };
@@ -181,11 +209,9 @@ impl LineRenderer {
         Self {
             grid,
             lines,
-            circle_lines: circle(false),
+            circle_lines: [Ink::Own, Ink::Visible, Ink::Hidden].map(circle),
             faces,
             ghost_faces,
-            ink_lines,
-            ink_circle_lines: circle(true),
             paper_faces,
             timer: None,
             chunk_bytes: CHUNK_BYTES,
@@ -232,16 +258,13 @@ impl LineRenderer {
         })
     }
 
-    /// The grid's pipeline, the model lines' pipeline and the same in black ink (Hidden).
+    /// The grid's pipeline, and the model lines' in their own colours, in ink (Hidden and
+    /// Technical) and dotted in ink where faces hide them (Technical's hidden lines).
     fn line_pipelines(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         pipeline_layout: &wgpu::PipelineLayout,
-    ) -> (
-        wgpu::RenderPipeline,
-        wgpu::RenderPipeline,
-        wgpu::RenderPipeline,
-    ) {
+    ) -> (wgpu::RenderPipeline, [wgpu::RenderPipeline; 3]) {
         let grid = pipeline(
             device,
             format,
@@ -257,16 +280,17 @@ impl LineRenderer {
                 // strength changes nothing else.
                 see_through: true,
                 per_instance: false,
+                behind: false,
             },
         );
-        let segments = |label, shader: &str| {
+        let segments = |label, ink: Ink| {
             pipeline(
                 device,
                 format,
                 pipeline_layout,
                 &PipelineParts {
                     label,
-                    shader: &format!("{}{shader}", table_wgsl()),
+                    shader: &format!("{}{}", table_wgsl(), ink.shader(LINE_SHADER)),
                     stride: SEGMENT_SIZE,
                     attributes: &wgpu::vertex_attr_array![
                         0 => Float32x3, 1 => Float32x3, 2 => Float32, 6 => Uint32,
@@ -277,12 +301,16 @@ impl LineRenderer {
                     bias: LINE_DEPTH_BIAS,
                     see_through: false,
                     per_instance: true,
+                    behind: ink == Ink::Hidden,
                 },
             )
         };
-        let lines = segments("curva lines", LINE_SHADER);
-        let ink_lines = segments("curva inked lines", &inked(LINE_SHADER));
-        (grid, lines, ink_lines)
+        let lines = [
+            segments("curva lines", Ink::Own),
+            segments("curva inked lines", Ink::Visible),
+            segments("curva hidden lines", Ink::Hidden),
+        ];
+        (grid, lines)
     }
 
     /// A pipeline shading faces with `shader`, which reads the selection table.
@@ -310,6 +338,7 @@ impl LineRenderer {
                 bias: FACE_DEPTH_BIAS,
                 see_through,
                 per_instance: false,
+                behind: false,
             },
         )
     }
@@ -392,6 +421,7 @@ impl LineRenderer {
         slot.shaded = drawing.shaded;
         slot.ghosted = drawing.ghosted;
         slot.hidden = drawing.hidden;
+        slot.hidden_lines = drawing.hidden_lines;
         let chunk = self.chunk_bytes;
         if stale(slot.grid.as_ref(), &drawing.grid) {
             slot.grid = Some(upload(
@@ -584,18 +614,20 @@ impl LineRenderer {
         };
         pass.set_bind_group(0, &slot.bind_group, &[]);
         let faces = self.surfaces.as_ref().filter(|faces| faces.count > 0);
-        // The model's own lines go in black ink in the Hidden display mode; previews and markers
-        // (the overlay) keep their colours.
-        let (lines, circle_lines) = if slot.hidden {
-            (&self.ink_lines, &self.ink_circle_lines)
-        } else {
-            (&self.lines, &self.circle_lines)
-        };
-        if let Some(scene) = slot.scene.as_deref() {
-            Self::draw_segments(pass, lines, scene);
+        // The model's own lines go in black ink in the Hidden and Technical display modes, and
+        // Technical draws them dotted where faces hide them; previews and markers (the overlay)
+        // keep their colours.
+        let mut inks = vec![if slot.hidden { Ink::Visible } else { Ink::Own }];
+        if slot.hidden_lines {
+            inks.push(Ink::Hidden);
         }
-        if let Some(circles) = self.circles.as_ref() {
-            circles::draw_circles(pass, circle_lines, circles);
+        for ink in inks {
+            if let Some(scene) = slot.scene.as_deref() {
+                Self::draw_segments(pass, &self.lines[ink as usize], scene);
+            }
+            if let Some(circles) = self.circles.as_ref() {
+                circles::draw_circles(pass, &self.circle_lines[ink as usize], circles);
+            }
         }
         // Ghosted faces go over the lines, so lines behind a face show through it, dimmed,
         // while lines on its near side stay in front.
@@ -610,7 +642,7 @@ impl LineRenderer {
             Self::draw_faces(pass, &self.ghost_faces, preview);
         }
         if let Some(overlay) = self.overlay.as_ref() {
-            Self::draw_segments(pass, &self.lines, overlay);
+            Self::draw_segments(pass, &self.lines[Ink::Own as usize], overlay);
         }
     }
 

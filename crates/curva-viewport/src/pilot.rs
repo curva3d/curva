@@ -444,6 +444,7 @@ fn picture_drawing(
         shaded: true,
         ghosted: picture.ghosted,
         hidden: picture.hidden,
+        hidden_lines: picture.hidden_lines,
         area: epaint::Rect::from_min_size(
             epaint::Pos2::ZERO,
             epaint::vec2(size[0] as f32, size[1] as f32),
@@ -595,6 +596,7 @@ mod tests {
             shaded: true,
             ghosted: false,
             hidden: false,
+            hidden_lines: false,
             area: epaint::Rect::from_min_size(
                 epaint::Pos2::ZERO,
                 epaint::vec2(SIZE[0] as f32, SIZE[1] as f32),
