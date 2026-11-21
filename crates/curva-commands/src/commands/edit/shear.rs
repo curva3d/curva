@@ -6,8 +6,8 @@ use crate::recipe::{Context, Made, Recipe, StepDef};
 use curva_kernel::{Point, cross, dot, sub, unit};
 
 /// `Shear`: slants objects: an origin, a reference point setting the slant's direction, then
-/// the angle. Points move along the reference direction in proportion to how far they are from
-/// the line through the origin along it, in the construction plane.
+/// the angle. As in Rhino 8 (measured): points move square to the reference direction, in the
+/// construction plane, in proportion to how far along it they are from the origin.
 #[derive(Default)]
 pub struct Shear;
 
@@ -21,21 +21,21 @@ impl Shear {
         let r = unit(sub(reference, origin))?;
         let p = unit(cross(normal, r))?;
         let k = angle_degrees.to_radians().tan();
-        // x' = x + k ((x - o) · p) r: each axis's image, then the move.
+        // x' = x + k ((x - o) · r) p: each axis's image, then the move.
         let image = |axis: usize| -> [f64; 4] {
             let mut row = [0.0; 4];
             row[axis] = 1.0;
             for j in 0..3 {
-                row[j] += k * p[axis] * r[j];
+                row[j] += k * r[axis] * p[j];
             }
             row
         };
-        let shift = -k * dot(origin, p);
+        let shift = -k * dot(origin, r);
         Some([
             image(0),
             image(1),
             image(2),
-            [shift * r[0], shift * r[1], shift * r[2], 1.0],
+            [shift * p[0], shift * p[1], shift * p[2], 1.0],
         ])
     }
 }

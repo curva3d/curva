@@ -252,6 +252,9 @@ pub struct MeshCache {
     /// The model as last drawn, without its objects: what blocks draw from besides themselves,
     /// so unchanged instances are not drawn again while it stays the same.
     pub(crate) context: Option<State>,
+    /// Each smooth SubD's live surface, so dragging its cage points redraws it with no
+    /// subdivision (#334).
+    pub(crate) live: std::collections::HashMap<u64, Option<crate::subd_live::Held>>,
 }
 
 impl MeshCache {
@@ -314,6 +317,7 @@ impl MeshCache {
             };
             present.contains(&id)
         });
+        self.live.retain(|id, _| present.contains(id));
         let wanted: Vec<(u64, &curva_kernel::Body)> = state
             .objects
             .iter()
@@ -499,7 +503,7 @@ impl Outlines {
                 // A SubD shades from its smooth surface, or its cage shown flat, and draws its
                 // creases and borders, or its cage's edges, as a body draws its edges (#324).
                 Shape::SubD(subd) => {
-                    let (lines, subd_kind) = outlines.subd_pieces(object.id, subd, look);
+                    let (lines, subd_kind) = outlines.subd_pieces(object.id, subd, look, cache);
                     kind = subd_kind;
                     lines
                 }
@@ -524,13 +528,22 @@ impl Outlines {
 
     /// A SubD's faces as [`crate::subds::drawing`] gives them, placed already, and its lines as
     /// pieces, with its kind: a solid when its cage is closed (#324).
-    fn subd_pieces(&mut self, id: u64, subd: &curva_mesh::SubD, look: Look) -> (Pieces, PickKind) {
+    fn subd_pieces(
+        &mut self,
+        id: u64,
+        subd: &curva_mesh::SubD,
+        look: Look,
+        cache: &mut MeshCache,
+    ) -> (Pieces, PickKind) {
         let kind = if subd.cage().is_closed() {
             PickKind::Solid
         } else {
             PickKind::Surface
         };
-        let drawing = crate::subds::drawing(subd, look.colour);
+        // Drawn from its live surface when it has one, so a drag needs no subdivision (#334).
+        let held = cache.live.entry(id).or_default();
+        let drawing = crate::subd_live::live_drawing(subd, held)
+            .unwrap_or_else(|| crate::subds::drawing(subd, look.colour));
         // Shown smooth, the surface carries its faces' colours; shown flat, they are given here.
         let (drawn, given) = crate::meshes::body_mesh(&drawing.shown);
         let colours =

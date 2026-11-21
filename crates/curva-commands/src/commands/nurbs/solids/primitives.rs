@@ -85,21 +85,29 @@ fn round_base(cx: &Context<'_>) -> Option<(Base, usize)> {
     Some((Base { centre, r, x, y }, 2))
 }
 
+/// The steps to a round base: its centre and radius, or its points the `2Point` or `3Point` way.
+fn base_steps(cx: &Context<'_>, centre: &'static str, size: &'static str) -> Vec<StepDef> {
+    if let Some(mode) = cx.mode.filter(|_| points_taken(cx.mode).is_some()) {
+        return round_ways::point_steps(cx, mode);
+    }
+    let mut steps = vec![StepDef::point(centre).offering(&[TWO_POINT, THREE_POINT])];
+    steps.extend(point(cx, 0).map(|c| StepDef::number(size).from(c).offering(&[DIAMETER])));
+    steps
+}
+
+/// The base once it is all in, and the index of the next answer.
+fn whole_base(cx: &Context<'_>) -> Option<(Base, usize)> {
+    round_base(cx).filter(|(_, next)| cx.values.len() >= *next)
+}
+
 /// The steps to a cylinder's or cone's base, then its height (offering `ending`).
 fn round_steps(
     cx: &Context<'_>,
     [centre, size, height]: [&'static str; 3],
     ending: &[&'static str],
 ) -> Vec<StepDef> {
-    let mut steps = match cx.mode.filter(|_| points_taken(cx.mode).is_some()) {
-        Some(mode) => round_ways::point_steps(cx, mode),
-        None => {
-            let mut steps = vec![StepDef::point(centre).offering(&[TWO_POINT, THREE_POINT])];
-            steps.extend(point(cx, 0).map(|c| StepDef::number(size).from(c).offering(&[DIAMETER])));
-            steps
-        }
-    };
-    if let Some((base, _)) = round_base(cx).filter(|(_, next)| cx.values.len() >= *next) {
+    let mut steps = base_steps(cx, centre, size);
+    if let Some((base, _)) = whole_base(cx) {
         steps.push(StepDef::along(height, base.centre, base.up()).offering(ending));
     }
     steps
@@ -288,38 +296,48 @@ impl Recipe for TruncatedCone {
     }
 }
 
-/// `Torus`: its centre, the radius to the middle of the tube, then the tube's radius.
+/// `Torus`: the circle through the middle of its tube (centre and radius, `2Point` or
+/// `3Point`), then the tube's radius.
 #[derive(Default)]
 pub struct Torus;
 
 impl Recipe for Torus {
     const NAME: &'static str = "torus";
+    const OPTIONS: &'static [OptionDef] = &[
+        OptionDef::mode(TWO_POINT),
+        OptionDef::mode(THREE_POINT),
+        OptionDef::toggle(DIAMETER, false),
+    ];
 
     fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
-        let mut steps = vec![StepDef::point("prompt.torus.centre")];
-        if let Some(c) = point(cx, 0) {
-            steps.push(StepDef::number("prompt.torus.radius").from(c));
-            if let Some(r) = number(cx, 1) {
-                let (x, _, _) = frame(cx);
-                steps.push(StepDef::number("prompt.torus.second").from(plus(c, x, r)));
-            }
+        let mut steps = base_steps(cx, "prompt.torus.centre", "prompt.torus.radius");
+        if let Some((base, _)) = whole_base(cx) {
+            let on_ring = plus(base.centre, base.x, base.r);
+            steps.push(
+                StepDef::number("prompt.torus.second")
+                    .from(on_ring)
+                    .offering(&[]),
+            );
         }
         steps
     }
 
     fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
-        let (x, y, up) = frame(cx);
-        let (Some(c), Some(r)) = (point(cx, 0), number(cx, 1)) else {
+        let Some((base, next)) = round_base(cx) else {
             return Ok(Made::default());
         };
-        let Some(tube) = number(cx, 2) else {
-            return Ok(circle_guide(c, r, x, y));
+        let Some(tube) = number(cx, next) else {
+            return Ok(circle_guide(base.centre, base.r, base.x, base.y));
         };
-        if tube <= 1e-9 || tube >= r {
+        if tube <= 1e-9 || tube >= base.r {
             return Err(Message::new("error.torus"));
         }
-        let ring = Curve::circle_on(plus(c, x, r), tube, x, up).map_err(|e| failed(&e))?;
-        made(Body::revolved(&[ring], c, up, TAU, true), "done.torus")
+        let (up, ring_at) = (base.up(), plus(base.centre, base.x, base.r));
+        let ring = Curve::circle_on(ring_at, tube, base.x, up).map_err(|e| failed(&e))?;
+        made(
+            Body::revolved(&[ring], base.centre, up, TAU, true),
+            "done.torus",
+        )
     }
 }
 
@@ -440,6 +458,12 @@ mod tests {
                 62.832,
             ),
             (vec!["cone", "2point", "0,0,0", "4,0,0", "5"], 20.944),
+            (vec!["torus", "2point", "0,0,0", "20,0,0", "2"], 789.568),
+            (
+                vec!["torus", "3point", "0,0,0", "20,0,0", "10,10,0", "2"],
+                789.568,
+            ),
+            (vec!["torus", "0,0,0", "diameter", "20", "2"], 789.568),
             (
                 vec!["cone", "3point", "0,0,0", "4,0,0", "2,2,0", "5"],
                 20.944,
