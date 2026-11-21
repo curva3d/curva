@@ -11,7 +11,17 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 ## 22 November 2026
 
 **Done**
-- **Technical display mode, as in Rhino** (#164, second half). As Hidden, with the lines
+- **Picked parts of meshes and SubDs show, and a SubD's cage while it is edited** (#334,
+  first part; #563 and this). Points, edges and faces picked with Ctrl+Shift were invisible;
+  now they are drawn in the selection colour, as Rhino highlights them: points as dots, edges
+  thick, faces tinted. On a SubD shown smooth they lie on the smooth surface (a point at its
+  limit point, an edge along its run, a face as its patch), from the mesh stream's
+  `edges_on_surface`, `limit_points` and `surface_with_faces` (#566); shown flat, on the cage.
+  They are kept between frames, so a still highlight costs nothing. A SubD with its points on
+  or a part picked shows its cage as thin dotted lines, as Rhino 8 does; with its points on,
+  the cage's points are drawn and picked as control points (#564). Still to do: live redraw
+  while dragging cage points (measure first).
+- **Technical display mode, as in Rhino** (#164, second half; #562). As Hidden, with the lines
   faces hide drawn dotted, black dots on the white, as Rhino 8's Technical mode shows them. In
   the same places as Hidden. Not yet: the hidden parts of curved shapes' outlines (Rhino dots
   those too), which the depth picture cannot find; they need outlines worked out from the
