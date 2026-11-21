@@ -1,4 +1,3 @@
-//! Agents connected over MCP: keeping the link, answering requests, asking the user to approve
 //! actions, and the pictures of the model an agent can ask for.
 
 use crate::*;
@@ -49,6 +48,7 @@ pub(crate) fn picture_of(
         matrix: camera.matrix(aspect),
         light: camera.forward().map(|value| value as f32),
         ghosted,
+        hidden: false,
     };
     (picture, camera)
 }
@@ -86,12 +86,18 @@ const PICTURE_BACKGROUND: egui::Color32 = egui::Color32::from_rgb(28, 31, 36);
 /// Saves `picture`, seen by `camera`, as a PNG file at `path`, drawn as the window draws a view:
 /// Bevy's surfaces with Curva's lines on them. The selection is in the picture's colours.
 fn save_bevy_view(picture: Picture, camera: &Camera, path: &std::path::Path) -> Result<(), String> {
+    // The Hidden display mode draws on white paper, as its faces are (#164).
+    let background = if picture.hidden {
+        egui::Color32::WHITE
+    } else {
+        PICTURE_BACKGROUND
+    };
     let pixels = curva_viewport::bevy_picture(
         picture,
         Vec::new(),
         *camera,
         curva_viewport::Look::default(),
-        PICTURE_BACKGROUND,
+        background,
         PICTURE_SIZE,
     )?;
     curva_viewport::save_png(path, PICTURE_SIZE, &pixels)
@@ -112,16 +118,17 @@ pub(crate) fn picture(
         benchmark_scene(&mut doc, scene)?;
     }
     let mut processor = Processor::default();
-    // A `SetDisplayMode Ghosted` in the script makes the picture ghosted.
-    let mut ghosted = false;
+    // A `SetDisplayMode Ghosted` (or `Hidden`) in the script makes the picture ghosted (or hidden).
+    let mut mode = DisplayMode::Shaded;
     for line in script.split(';') {
         processor.submit(&mut doc, line);
         while let Some(request) = processor.take_view_request() {
-            if let ViewRequest::Display(mode) = request {
-                ghosted = mode == DisplayMode::Ghosted;
+            if let ViewRequest::Display(asked) = request {
+                mode = asked;
             }
         }
     }
+    let ghosted = mode == DisplayMode::Ghosted;
     let outlines = Outlines::of(doc.state());
     let mut camera = view.map_or_else(Camera::default, StandardView::camera);
     if let Some((low, high)) = outlines.bounds() {
@@ -150,7 +157,7 @@ pub(crate) fn picture(
             faces: parts.faces,
             matrix: camera.matrix(aspect),
             light: camera.forward().map(|value| value as f32),
-            ghosted: false,
+            ..Picture::default()
         };
         curva_viewport::save_styled_picture(
             numbered,
@@ -161,7 +168,12 @@ pub(crate) fn picture(
         )?;
     } else {
         let (picture, camera) = picture_of(&doc, &outlines, &camera, aspect, ghosted);
-        save_bevy_view(picture, &camera, std::path::Path::new(path))?;
+        let hidden = mode == DisplayMode::Hidden;
+        save_bevy_view(
+            Picture { hidden, ..picture },
+            &camera,
+            std::path::Path::new(path),
+        )?;
     }
     for line in processor.log() {
         println!("{line}");
@@ -352,7 +364,7 @@ pub(crate) fn look_pictures(out: &std::path::Path) -> Result<(), String> {
                 faces: parts.faces.clone(),
                 matrix: camera.matrix(aspect),
                 light: camera.forward().map(|value| value as f32),
-                ghosted: false,
+                ..Picture::default()
             };
             let ms = curva_viewport::save_bevy_picture(
                 picture,

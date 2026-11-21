@@ -5,6 +5,7 @@ import bevy_pbr::render::{
     forward_io::{VertexOutput, FragmentOutput},
     pbr_fragment::pbr_input_from_standard_material,
     pbr_functions::{alpha_discard, apply_pbr_lighting, main_pass_post_lighting_processing},
+    pbr_types::STANDARD_MATERIAL_FLAGS_UNLIT_BIT,
 };
 
 struct Clips {
@@ -30,7 +31,13 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
         pbr_input.material.base_color,
     );
     var out: FragmentOutput;
-    out.color = apply_pbr_lighting(pbr_input);
+    // An unlit material (the Hidden display mode's paper, #164) keeps its own colour, as in
+    // Bevy's `pbr.wesl`.
+    if ((pbr_input.material.flags & STANDARD_MATERIAL_FLAGS_UNLIT_BIT) != 0u) {
+        out.color = pbr_input.material.base_color;
+    } else {
+        out.color = apply_pbr_lighting(pbr_input);
+    }
     out.color = main_pass_post_lighting_processing(pbr_input, out.color);
     return out;
 }

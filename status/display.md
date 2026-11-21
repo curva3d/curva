@@ -8,6 +8,19 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## 22 November 2026
+
+**Done**
+- **Hidden display mode, as in Rhino** (#164, first half; Technical follows). Surfaces are flat
+  white paper on a white background, hiding what is behind them, and every visible edge, curve
+  and outline of a curved shape is drawn in black ink, as Rhino 8's Hidden mode looks (measured
+  there on a box, cylinder and sphere). It is in the Display panel's list and in
+  `SetDisplayMode`, works in detail views on sheets (`Hidden` as a detail's display), and
+  snapping in it finds only what is in sight, as in Shaded. Previews, the selection and snap
+  markers keep their colours. Outlines of curved shapes are now found from smaller depth steps
+  (1% of the distance instead of 3%), so thin posts and tree trunks standing on a floor keep
+  their outlines all the way down; shaded views look the same.
+
 ## 21 November 2026
 
 **Done**

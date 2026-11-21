@@ -52,6 +52,7 @@ fn centre_brightness(ghosted: bool) -> Option<u8> {
         matrix: identity,
         light: [0.0, 0.0, 1.0],
         ghosted,
+        hidden: false,
     };
     let path = std::env::temp_dir().join(format!(
         "curva-ghost-test-{ghosted}-{}.png",
@@ -101,6 +102,7 @@ fn rows_lit(width: f32) -> Option<usize> {
         matrix: identity,
         light: [0.0, 0.0, 1.0],
         ghosted: false,
+        hidden: false,
     };
     let path = std::env::temp_dir().join(format!(
         "curva-width-test-{}-{}.png",
@@ -173,6 +175,7 @@ fn mixed_picture() -> Picture {
         ],
         light: [0.0, 0.0, 1.0],
         ghosted: false,
+        hidden: false,
     }
 }
 
@@ -261,6 +264,7 @@ fn the_selection_table_draws_what_coloured_vertices_drew() {
             matrix,
             light,
             ghosted: false,
+            hidden: false,
         };
         let coloured = picture(
             if shaded {
@@ -330,6 +334,7 @@ fn circles_drawn_from_their_axes_look_as_their_segments() {
             matrix,
             light,
             ghosted: false,
+            hidden: false,
         };
         let scene = |circles: &[crate::PlacedCircle]| Scene {
             objects: Arc::new(whole.objects.clone()),
@@ -399,6 +404,7 @@ fn a_sphere_is_outlined_at_its_rim_and_clean_inside() {
         matrix: camera.matrix(1.0),
         light: camera.forward().map(|v| v as f32),
         ghosted: false,
+        hidden: false,
     };
     let Ok(pixels) = draw_picture(picture, size, true) else {
         eprintln!("no graphics adapter to draw with, so not checked");
@@ -455,6 +461,7 @@ fn far_from_the_origin_draws_as_at_the_origin() {
             matrix: camera.matrix(1.0),
             light: camera.forward().map(|v| v as f32),
             ghosted: false,
+            hidden: false,
         };
         let scene = Scene {
             objects: Arc::new(parts.objects.clone()),
@@ -475,4 +482,73 @@ fn far_from_the_origin_draws_as_at_the_origin() {
         .filter(|(a, b)| a != b)
         .count();
     assert!(differing <= 8, "{differing} pixels differ");
+}
+
+/// The Hidden display mode (#164), as Rhino 8 draws it: white paper, a face flat in the same
+/// white hiding the line behind it, and the line in front in black ink though it was given in
+/// red.
+#[test]
+fn the_hidden_mode_draws_black_ink_on_white_paper() {
+    let corner = |x: f32, y: f32| MeshVertex {
+        position: [x, y, 0.5],
+        normal: [0.0, 0.0, 1.0],
+        colour: [0.3, 0.5, 0.7],
+        object: NO_OBJECT,
+    };
+    let segment = |y: f32, depth: f32, colour: [f32; 3]| {
+        [-0.6, 0.6].map(|x| Vertex {
+            position: [x, y, depth],
+            colour,
+            width: -2.0,
+            object: NO_OBJECT,
+        })
+    };
+    // In front of the face across the middle, and behind it lower down.
+    let mut lines = segment(0.0, 0.2, [1.0, 0.0, 0.0]).to_vec();
+    lines.extend(segment(-0.4, 0.8, [1.0, 1.0, 1.0]));
+    let picture = Picture {
+        lines,
+        faces: vec![corner(-0.9, -0.9), corner(0.9, -0.9), corner(0.0, 0.9)],
+        matrix: [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        light: [0.0, 0.0, 1.0],
+        ghosted: false,
+        hidden: true,
+    };
+    let pixels = match draw_picture(picture, SIZE, true) {
+        Ok(pixels) => pixels,
+        Err(error) => {
+            eprintln!("no graphics adapter to draw with, so not checked: {error}");
+            return;
+        }
+    };
+    let width = SIZE[0] as usize;
+    // Rows from the top: clip-space y = 0 is the middle row, y = -0.4 is 0.7 of the way down.
+    let at = |x: usize, y: usize| {
+        let i = (y * width + x) * 4;
+        [pixels[i], pixels[i + 1], pixels[i + 2]]
+    };
+    let (middle, low) = (SIZE[1] as usize / 2, SIZE[1] as usize * 7 / 10);
+    assert!(at(2, 2).iter().all(|&c| c > 245), "paper: {:?}", at(2, 2));
+    assert!(
+        at(32, middle).iter().all(|&c| c < 40),
+        "ink: {:?}",
+        at(32, middle)
+    );
+    // On the face, away from the lines: white too, so faces and paper meet with no step.
+    assert!(
+        at(32, middle + 6).iter().all(|&c| c > 245),
+        "face: {:?}",
+        at(32, middle + 6)
+    );
+    // The line behind the face is hidden by it.
+    assert!(
+        at(32, low).iter().all(|&c| c > 245),
+        "hidden line: {:?}",
+        at(32, low)
+    );
 }

@@ -58,6 +58,9 @@ macro_rules! segment_wgsl {
         "
 struct Uniforms { matrix: mat4x4<f32>, light: vec4<f32>, pixel: vec4<f32>, clips: array<vec4<f32>, 4> };
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
+// The Hidden display mode's lines are all in black ink: `inked` turns this on.
+const INKED: bool = false;
+const INK: vec3<f32> = vec3<f32>(0.0, 0.0, 0.0);
 // Clipping planes (spec `layouts.md` §3): `pixel.w` of them, each keeping the side where
 // dot(n, p) + d is not above zero.
 fn clipped(p: vec3<f32>) -> bool {
@@ -83,10 +86,11 @@ fn segment(
     b: vec3<f32>, given_cb: vec3<f32>, given_wb: f32,
     object: u32,
 ) -> Out {
-    // A selected object draws in the selection colour and a pixel wider (`line_width`).
+    // A selected object draws in the selection colour and a pixel wider (`line_width`); in
+    // the Hidden display mode every other line is in black ink (`inked`).
     let chosen = picked(object);
-    let ca = select(given_ca, SELECTED, chosen);
-    let cb = select(given_cb, SELECTED, chosen);
+    let ca = select(select(given_ca, INK, INKED), SELECTED, chosen);
+    let cb = select(select(given_cb, INK, INKED), SELECTED, chosen);
     let wa = widened(given_wa, chosen);
     let wb = widened(given_wb, chosen);
     var pa = uniforms.matrix * vec4<f32>(a, 1.0);
@@ -237,3 +241,21 @@ struct Out {
     // Alpha 0.5: a ghosted face covers half of what is behind it.
     return vec4<f32>(input.colour * (0.25 + 0.5 * facing + 0.2 * above), 0.5);
 }";
+
+/// `shader` (one built on the shared line code: [`LINE_SHADER`], [`CIRCLE_SHADER`]) drawing every
+/// line not selected in black ink, for the model's lines in the Hidden display mode (#164).
+/// Previews and markers keep their own colours, drawn with the plain shader.
+pub(crate) fn inked(shader: &str) -> String {
+    let inked = shader.replace("const INKED: bool = false;", "const INKED: bool = true;");
+    debug_assert_ne!(inked, shader, "the shader has no ink switch");
+    inked
+}
+
+/// [`FACE_SHADER`] filling surfaces flat in paper white, unlit, for the Hidden display mode:
+/// they hide what is behind them and show nothing of themselves but their edges (#164).
+pub(crate) fn paper_faces() -> String {
+    let [r, g, b] = crate::PAPER_COLOUR;
+    let lit = "return vec4<f32>(input.colour * (0.25 + 0.5 * facing + 0.2 * above), 1.0);";
+    debug_assert!(FACE_SHADER.contains(lit), "the face shader changed");
+    FACE_SHADER.replace(lit, &format!("return vec4<f32>({r:?}, {g:?}, {b:?}, 1.0);"))
+}

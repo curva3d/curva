@@ -721,6 +721,7 @@ mod tests {
             matrix: camera.matrix(1.0),
             light: camera.forward().map(|v| v as f32),
             ghosted: false,
+            hidden: false,
         };
         let size = [64, 64];
         let Ok(pixels) = draw_architectural(picture, [0.0, 0.0, 1.0, -50.0], size) else {
