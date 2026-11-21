@@ -21,6 +21,10 @@ fn another_text_box_has_keys(ctx: &egui::Context, command_line: egui::Id) -> boo
         && ctx
             .memory(|m| m.focused())
             .is_some_and(|f| f != command_line)
+/// Whether Tab runs SubDDisplayToggle, as in Rhino 8: only with nothing typed and no command
+/// running, as Tab completes a command name being typed and has its own meaning inside a command.
+fn tab_toggles_subds(typed: &str, running: bool) -> bool {
+    typed.trim().is_empty() && !running
 }
 
 /// The rows of the log to show, newest last. Always the same number, one line each, so that a
@@ -84,6 +88,12 @@ impl Curva {
         }
         if up {
             self.highlight = (self.highlight + matches.len() - 1) % matches.len();
+        }
+        // With nothing typed and no command running, Tab switches every SubD between smooth and
+        // flat, as in Rhino 8 (SubDDisplayToggle); inside a command it keeps its own meaning.
+        if tab && tab_toggles_subds(&self.typed, self.processor.is_running()) {
+            self.run_from_button("subddisplaytoggle");
+            return false;
         }
         if tab && let Some(name) = matches.get(self.highlight) {
             (*name).clone_into(&mut self.typed);
@@ -373,6 +383,12 @@ mod tests {
         assert!(
             !another_text_box_has_keys(&ctx, boxed.unwrap()),
             "not when it is the command line"
+    fn tab_toggles_subds_only_when_idle_with_nothing_typed() {
+        assert!(tab_toggles_subds("", false));
+        assert!(!tab_toggles_subds("li", false), "completes the name");
+        assert!(
+            !tab_toggles_subds("", true),
+            "keeps its meaning in a command"
         );
     }
 
