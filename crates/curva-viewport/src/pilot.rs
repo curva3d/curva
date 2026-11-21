@@ -443,6 +443,7 @@ fn picture_drawing(
         clips: Vec::new(),
         shaded: true,
         ghosted: picture.ghosted,
+        hidden: picture.hidden,
         area: epaint::Rect::from_min_size(
             epaint::Pos2::ZERO,
             epaint::vec2(size[0] as f32, size[1] as f32),
@@ -593,6 +594,7 @@ mod tests {
             clips: Vec::new(),
             shaded: true,
             ghosted: false,
+            hidden: false,
             area: epaint::Rect::from_min_size(
                 epaint::Pos2::ZERO,
                 epaint::vec2(SIZE[0] as f32, SIZE[1] as f32),

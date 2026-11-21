@@ -6,7 +6,9 @@ use std::sync::Arc;
 
 use super::{CHUNK_BYTES, DEPTH_FORMAT, Drawing, LineRenderer, PICTURE_BACKGROUND, PIXELS_PER_MM};
 
-/// What a picture shows: lines, and faces to shade.
+/// What a picture shows: lines, and faces to shade. The default shows nothing, neither ghosted
+/// nor hidden, with an all-zero camera, so it is for filling in with `..Default::default()`.
+#[derive(Default)]
 pub struct Picture {
     /// Lines, as for [`Drawing::scene`].
     pub lines: Vec<Vertex>,
@@ -18,6 +20,8 @@ pub struct Picture {
     pub light: [f32; 3],
     /// Whether faces are see-through, as in the Ghosted display mode.
     pub ghosted: bool,
+    /// The Hidden display mode, as for [`Drawing::hidden`]; the picture's paper is white.
+    pub hidden: bool,
 }
 
 /// Draws a picture into a PNG file without opening a window, so results can be checked by eye.
@@ -195,6 +199,7 @@ fn picture_drawing(picture: Picture, scene: &Scene) -> Drawing {
         light: picture.light,
         shaded,
         ghosted: picture.ghosted,
+        hidden: picture.hidden,
         area: epaint::Rect::NOTHING,
         frame: 0,
         background: epaint::Color32::BLACK,
@@ -221,7 +226,15 @@ fn draw_picture_passes(
                 depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(PICTURE_BACKGROUND),
+                    // The Hidden display mode draws on white paper.
+                    load: wgpu::LoadOp::Clear(
+                        if renderer.slots.first().is_some_and(|s| s.hidden) {
+                            let [r, g, b] = crate::PAPER_COLOUR.map(f64::from);
+                            wgpu::Color { r, g, b, a: 1.0 }
+                        } else {
+                            PICTURE_BACKGROUND
+                        },
+                    ),
                     store: wgpu::StoreOp::Store,
                 },
             })],
@@ -247,7 +260,7 @@ fn draw_picture_passes(
             view,
             depth_view,
             [0.0, 0.0, width as f32, height as f32],
-            crate::EDGE_ON_FACES_COLOUR,
+            renderer.outline_colour(0),
         );
     }
     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {

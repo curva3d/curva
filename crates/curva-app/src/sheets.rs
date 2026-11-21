@@ -189,8 +189,7 @@ impl Curva {
                 }
                 None => camera.show_exactly(detail.target, detail.distance / 2.0),
             }
-            let shaded = detail.display != "Wireframe";
-            let ghosted = detail.display == "Ghosted";
+            let (shaded, ghosted) = (detail.display != "Wireframe", detail.display == "Ghosted");
             let model = self.model_scene(&detail.hidden_layers);
             let scene = Arc::clone(if shaded && !ghosted {
                 &model.shaded_scene
@@ -222,6 +221,7 @@ impl Curva {
                 light: camera.forward().map(|value| value as f32),
                 shaded,
                 ghosted,
+                hidden: detail.display == "Hidden",
                 area: shown,
                 frame: ui.ctx().cumulative_frame_nr(),
                 background: PAPER,
@@ -429,6 +429,12 @@ impl Curva {
     pub(crate) fn pane_background(&self, pane: usize) -> (egui::Color32, egui::Color32) {
         if self.shows_sheet(pane) {
             (PAPER, PAPER)
+        } else if self.panes[pane].display == DisplayMode::Hidden {
+            // Pure white, as Rhino 8's Hidden mode and as its faces (`PAPER_COLOUR`), so they
+            // meet the background with no step (#164).
+            let [r, g, b] = curva_viewport::PAPER_COLOUR.map(|c| (c * 255.0).round() as u8);
+            let paper = egui::Color32::from_rgb(r, g, b);
+            (paper, paper)
         } else {
             (theme::current().window, theme::current().window_low)
         }
