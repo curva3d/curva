@@ -4,6 +4,8 @@
 mod crease;
 mod display_toggle;
 mod fill;
+mod parts;
+mod stitch;
 mod to_nurbs;
 mod to_subd;
 mod weld;
@@ -14,6 +16,7 @@ use crate::commands::mesh::primitives::{
 use crease::{Crease, RemoveCrease};
 use display_toggle::SubDDisplayToggle;
 use fill::Fill;
+use stitch::Stitch;
 use to_nurbs::ToNurbs;
 use to_subd::ToSubD;
 use weld::{UnweldEdge, WeldEdge};
@@ -35,6 +38,7 @@ pub(crate) static COMMANDS: &[crate::commands::CommandDef] = &[
     recipe!("Fill", [], true, Fill),
     recipe!("UnweldEdge", [], true, UnweldEdge),
     recipe!("WeldEdge", [], true, WeldEdge),
+    recipe!("Stitch", [], true, Stitch),
 ];
 
 /// The buttons of the SubD tab, in order (spec `docs/specs/command-groups.md` §2).
@@ -53,4 +57,5 @@ pub(crate) const TAB: &[&str] = &[
     "Fill",
     "UnweldEdge",
     "WeldEdge",
+    "Stitch",
 ];
