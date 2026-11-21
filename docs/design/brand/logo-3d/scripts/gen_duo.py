@@ -1,7 +1,7 @@
 import numpy as np, gen_tube2d as tb
 from PIL import Image, ImageDraw, ImageFont
 # reuse render() but replace shading with a two-colour, light-driven blend
-def render(az,el,cl,cs,w_world=16,flow=0.35,S=1024,pad=0.1,tile=None,lightdir=(-0.6,-0.7),out=512):
+def render(az,el,cl,cs,w_world=16,flow=0.35,S=1024,pad=0.1,tile=None,lightdir=(-0.6,-0.7),out=512,con=0,sheen=0.0,mid=None):
     b=tb.b; g2=tb.g2
     XY,D,span=b.view(az,el); n=len(XY)
     rr=w_world/span/2; ext=(XY.max(0)-XY.min(0))+2*rr; c=(XY.max(0)+XY.min(0))/2
@@ -22,8 +22,13 @@ def render(az,el,cl,cs,w_world=16,flow=0.35,S=1024,pad=0.1,tile=None,lightdir=(-
     lam=lam*lam*(3-2*lam)
     tt=t[I.clip(0)]; tt=0.5-0.5*np.cos(np.pi*tt)            # smooth run along the loop
     wgt=np.clip((1-flow)*lam+flow*tt,0,1)[...,None]
+    for _ in range(con): wgt=wgt*wgt*(3-2*wgt)          # steeper light/shadow transition
     A,B=tb.hx(cs),tb.hx(cl)
-    col=A+(B-A)*wgt
+    if mid is None: col=A+(B-A)*wgt
+    else:
+        M=tb.hx(mid); w=wgt[...,0:1]
+        col=np.where(w<0.5, A+(M-A)*(w*2), M+(B-M)*((w-0.5)*2))
+    if sheen: col=col+(255-col)*(sheen*np.clip((lam-0.82)/0.18,0,1)**2)[...,None]
     img=np.zeros((S,S,4)); img[...,:3]=col; img[...,3]=hit*255
     im=Image.fromarray(img.clip(0,255).astype(np.uint8),"RGBA").resize((out,out),Image.LANCZOS)
     if tile:

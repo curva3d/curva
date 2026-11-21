@@ -11,6 +11,18 @@ axonometric view, coloured with one two-tone gradient.
 
 Current pick: **R4** view (turn −70°, tilt 35°), corners filleted at radius **15**, tube 20 wide.
 
+The app icon has **no tile**: the mark floats with a soft drop shadow. Three versions
+(`renders/set/`, made by `scripts/gen_trio.py`):
+
+| Version | Use | Colours |
+|---|---|---|
+| Amber | Main icon | light side #F6C35B, shadow side #E0603F |
+| Black | On light backgrounds | #A3A19A → #3A3936 → #0E0E0D, with sheen |
+| White | On dark backgrounds | #FFFFFF → #E9E7E0 → #8E8C84, with sheen |
+
+Each comes as the bare mark (`*-mark.png`) and as floating icons from 1024 down to 16 px
+(`*-icon-<size>.png`). `board.png` shows them on light and dark, in the dock, as lockups and at small sizes.
+
 ## Files
 
 `rhino/` holds the owner's Rhino models, in the order they were made:
@@ -28,6 +40,8 @@ Current pick: **R4** view (turn −70°, tilt 35°), corners filleted at radius 
 - `gen_fillet.py` reads the sharp curve and fillets its corners in 3D.
 - `gen_duo.py` draws the tube: per-pixel depth, two-colour shading (lit side / shadow side) plus a
   colour run along the loop.
+- `gen_trio.py` makes the amber / black / white set in `renders/set/`.
+- `gen_graphite.py` holds the floating-icon and dock helpers.
 - `gen_final.py` makes the colourways, tiles, flat one-colour versions, lockups and small sizes into
   `renders/`.
 - `gen_base.py`, `gen_2d.py`, `gen_tube2d.py`, `sdf.py` are helpers from earlier rounds that the
