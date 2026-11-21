@@ -46,6 +46,7 @@ mod printing;
 mod recovery;
 mod settings;
 mod sheets;
+mod shortcuts;
 mod sketchup_import;
 mod text_edit;
 mod theme;
