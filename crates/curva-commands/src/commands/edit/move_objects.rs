@@ -6,7 +6,6 @@
 use crate::Message;
 use crate::commands::{Change, changed};
 use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef, Value};
-use curva_document::Shape;
 use curva_kernel::{Point, cross, sub};
 
 const VERTICAL: &str = "Vertical";
@@ -79,13 +78,10 @@ impl Recipe for MoveObjects {
             let grips = cx.doc.grip_selection();
             let moved = cx
                 .doc
-                .grips_changed(&grips, |p| std::array::from_fn(|i| p[i] + by[i]))
+                .grips_reshaped(&grips, |p| std::array::from_fn(|i| p[i] + by[i]))
                 .map_err(|e| Message::with("error.geometry", vec![e.to_string()]))?;
             return Ok(Made {
-                replace: moved
-                    .into_iter()
-                    .map(|(id, c)| (id, Shape::Curve(c)))
-                    .collect(),
+                replace: moved,
                 guides,
                 message: Some(Message::with(
                     "done.move_points",
