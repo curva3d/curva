@@ -45,6 +45,7 @@ mod notices;
 mod panels;
 mod printing;
 mod recovery;
+mod selection_menu;
 mod settings;
 mod sheets;
 mod shortcuts;
@@ -389,6 +390,7 @@ impl eframe::App for Curva {
         self.sketchup_import_window(ui);
         self.unit_question(ui.ctx());
         self.close_question(ui.ctx());
+        self.selection_menu(ui.ctx());
         if let Some(autosave) = &mut self.autosave {
             autosave.tick(&self.doc, std::time::Instant::now());
         }
