@@ -8,6 +8,8 @@
 //!
 //! Rhino remembers each command's options between runs and sessions, so a case that depends on
 //! an option sets it explicitly in Rhino (`_Solid=_Yes`) rather than trusting its current value.
+//! Only objects that can be seen are compared: Curva's live booleans keep their inputs inside the
+//! result, hidden, where Rhino deletes them; both show one solid.
 
 use curva_commands::Processor;
 use curva_document::{Document, Shape};
@@ -22,6 +24,9 @@ enum Start {
     Line,
     Square,
     OpenL,
+    TwoLines,
+    TwoCircles,
+    TwoBoxes,
 }
 
 /// One object as Rhino measured it: its extent's size and lowest corner, and its length and
@@ -71,7 +76,7 @@ const SQ: Measured = curve([10.0, 10.0, 0.0], [0.0, 0.0, 0.0], 40.0, true);
 /// The cases: a name, what the model starts with, what is typed (the command first), and what
 /// Rhino 8 left, measured 21 November 2026.
 fn cases() -> Vec<(&'static str, Start, Vec<&'static str>, Vec<Measured>)> {
-    use Start::{Empty, Line, OpenL, Square};
+    use Start::{Empty, Line, OpenL, Square, TwoBoxes, TwoCircles, TwoLines};
     vec![
         (
             "line",
@@ -298,6 +303,45 @@ fn cases() -> Vec<(&'static str, Start, Vec<&'static str>, Vec<Measured>)> {
             vec![curve([10.0, 5.0, 0.0], [0.0; 3], 15.708, false)],
         ),
         (
+            "join",
+            TwoLines,
+            vec!["join"],
+            vec![curve([10.0, 10.0, 0.0], [0.0; 3], 20.0, false)],
+        ),
+        (
+            "explode",
+            OpenL,
+            vec!["explode"],
+            vec![L, curve([0.0, 10.0, 0.0], [10.0, 0.0, 0.0], 10.0, false)],
+        ),
+        (
+            "arraypolar",
+            Line,
+            vec!["arraypolar", "0,0,0", "4", "360"],
+            vec![
+                curve([10.0, 0.0, 0.0], [-10.0, 0.0, 0.0], 10.0, false),
+                curve([0.0, 10.0, 0.0], [0.0, -10.0, 0.0], 10.0, false),
+                curve([0.0, 10.0, 0.0], [0.0; 3], 10.0, false),
+                L,
+            ],
+        ),
+        (
+            "loft",
+            TwoCircles,
+            vec!["loft"],
+            vec![
+                curve([10.0, 10.0, 0.0], [-5.0, -5.0, 0.0], 31.4159, true),
+                surface([10.0, 10.0, 10.0], [-5.0, -5.0, 0.0]),
+                curve([6.0, 6.0, 0.0], [-3.0, -3.0, 10.0], 18.8496, true),
+            ],
+        ),
+        (
+            "booleanunion",
+            TwoBoxes,
+            vec!["booleanunion"],
+            vec![solid([3.0; 3], [0.0; 3], 15.0)],
+        ),
+        (
             "box diagonal",
             Empty,
             vec!["box", "diagonal", "0,0,0", "4,2,3"],
@@ -320,8 +364,45 @@ fn cases() -> Vec<(&'static str, Start, Vec<&'static str>, Vec<Measured>)> {
 
 fn start(kind: Start) -> Document {
     let mut doc = Document::default();
+    let add_all = |doc: &mut Document, shapes: Vec<Shape>| {
+        let ids: Vec<u64> = shapes.into_iter().map(|s| doc.add_shape(s)).collect();
+        doc.select(&ids);
+    };
+    match kind {
+        Start::TwoLines => {
+            add_all(
+                &mut doc,
+                vec![
+                    Shape::Curve(Curve::line([0.0; 3], [10.0, 0.0, 0.0]).unwrap()),
+                    Shape::Curve(Curve::line([10.0, 0.0, 0.0], [10.0, 10.0, 0.0]).unwrap()),
+                ],
+            );
+            return doc;
+        }
+        Start::TwoCircles => {
+            add_all(
+                &mut doc,
+                vec![
+                    Shape::Curve(Curve::circle([0.0; 3], 5.0).unwrap()),
+                    Shape::Curve(Curve::circle([0.0, 0.0, 10.0], 3.0).unwrap()),
+                ],
+            );
+            return doc;
+        }
+        Start::TwoBoxes => {
+            add_all(
+                &mut doc,
+                vec![
+                    Shape::Body(curva_kernel::Body::cuboid([0.0; 3], [2.0; 3]).unwrap()),
+                    Shape::Body(curva_kernel::Body::cuboid([1.0; 3], [2.0; 3]).unwrap()),
+                ],
+            );
+            return doc;
+        }
+        _ => {}
+    }
     let shape = match kind {
-        Start::Empty => return doc,
+        Start::Empty | Start::TwoLines | Start::TwoCircles | Start::TwoBoxes => return doc,
         Start::Line => Curve::line([0.0; 3], [10.0, 0.0, 0.0]),
         Start::Square => Curve::polyline(
             vec![
@@ -346,6 +427,8 @@ fn measured(doc: &Document) -> Vec<Measured> {
         .state()
         .objects
         .iter()
+        // What can be seen, as Rhino's objects are: a live boolean's inputs stay inside it, hidden.
+        .filter(|object| !object.hidden)
         .filter_map(|object| {
             let (lo, hi) = object.shape.bounds()?;
             let mut m = surface(std::array::from_fn(|i| hi[i] - lo[i]), lo);
