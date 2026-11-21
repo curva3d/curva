@@ -6,6 +6,33 @@ use super::*;
 /// A B-rep as a Curva body: the file's own topology turned into the engine's record, which the
 /// engine checks and heals.
 pub(super) fn brep_body(b: &Brep) -> Result<Body, KernelError> {
+    Body::from_foreign_record(&brep_record(b)?)
+}
+
+/// Polysurfaces with more faces than this are read quickly first and healed later (#476): the
+/// healer's time grows faster than the faces, from milliseconds for small ones to 40 s for a
+/// 2 400-face polysurface, while small ones heal quickly enough to wait for, and the few that
+/// read differently without it are small.
+pub(super) const QUICK_FROM_FACES: usize = 200;
+
+/// A large B-rep read quickly, without the engine's healer, and the work that heals it, to run
+/// later; a small one healed now, with nothing to come.
+pub(super) fn brep_body_quickly(
+    b: &Brep,
+) -> Result<(Body, Option<curva_document::Repair>), KernelError> {
+    let record = brep_record(b)?;
+    if b.faces.len() > QUICK_FROM_FACES
+        && let Ok(quick) = Body::from_foreign_record_unhealed(&record)
+    {
+        let heal: curva_document::Repair =
+            Box::new(move || Body::from_foreign_record(&record).ok());
+        return Ok((quick, Some(heal)));
+    }
+    Body::from_foreign_record(&record).map(|body| (body, None))
+}
+
+/// The file's B-rep as the engine's record.
+fn brep_record(b: &Brep) -> Result<Record, KernelError> {
     let mut surfaces = Vec::with_capacity(b.surfaces.len());
     for s in &b.surfaces {
         surfaces.push(match s {
@@ -17,7 +44,7 @@ pub(super) fn brep_body(b: &Brep) -> Result<Body, KernelError> {
     let edges = edges_in(b)?;
     let faces = faces_in(b, &surfaces, &edges)?;
     let (shells, regions) = shells_in(b, &faces, edges.len())?;
-    let record = Record {
+    Ok(Record {
         version: curva_kernel::record::VERSION,
         tolerance: BREP_TOLERANCE,
         regions,
@@ -31,8 +58,7 @@ pub(super) fn brep_body(b: &Brep) -> Result<Body, KernelError> {
         faces,
         edges,
         vertices,
-    };
-    Body::from_foreign_record(&record)
+    })
 }
 
 /// The least tolerance a B-rep's vertices and edges are taken at.

@@ -69,7 +69,8 @@ way about its axis) and every other sizing step use it.
 - **Ghosted previews in orange.** Every step that can show a result does: curves as orange lines, surfaces
   and solids as see-through orange faces with their edges, like Serpentine3D's. Fillets, chamfers, shells,
   booleans and extrusions show the solid they will make, not lines. The objects being changed are drawn
-  faded meanwhile.
+  faded meanwhile. Every kind of object shows (owner's rule, 21 November 2026, #507): a block being
+  copied or moved shows the curves and solids it draws, a mesh its edges, a SubD its cage.
 - **A dimension next to the cursor.** Each `point`, `distance`, `along` and `angle` step names what it
   measures (distance from the base, radius, length, height, angle), and the value shows in a small tag
   beside the cursor, in the model's units: `25.736 mm` or `30°`.

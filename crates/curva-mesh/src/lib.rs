@@ -22,6 +22,7 @@ mod settings;
 mod smooth;
 mod subd;
 mod subd_edit;
+mod subd_from_body;
 mod subd_primitives;
 mod to_nurbs;
 mod to_subd;

@@ -66,6 +66,21 @@ pub fn moved_by(by: Point) -> Placement {
     m
 }
 
+/// A placement that stretches by `factor` along `axis` (of length 1) from `origin`, as Scale1D
+/// does: what lies on the plane through `origin` across `axis` stays put.
+#[must_use]
+pub fn stretched_by(origin: Point, axis: Point, factor: f64) -> Placement {
+    let mut m = PLACED_AS_IS;
+    for (i, row) in m.iter_mut().take(3).enumerate() {
+        for (j, cell) in row.iter_mut().take(3).enumerate() {
+            *cell += (factor - 1.0) * axis[i] * axis[j];
+        }
+    }
+    let shift = (1.0 - factor) * (0..3).map(|k| origin[k] * axis[k]).sum::<f64>();
+    m[3] = [shift * axis[0], shift * axis[1], shift * axis[2], 1.0];
+    m
+}
+
 /// A placement from a turn, mirror or resize.
 #[must_use]
 pub fn of_similarity(change: &Similarity) -> Placement {
