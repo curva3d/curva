@@ -16,6 +16,21 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## Features stream — 21 November 2026
+
+- **Curva 0.4.4 published** at the owner's request ("today at 8am … whatever is ready"): tagged on
+  `main` at 08:00, installers for Windows, macOS and Linux out at 08:29
+  (https://github.com/curva3d/curva/releases/tag/v0.4.4). Decision 0039 replaces 0038: 0.4.4 ships
+  what was ready, and the rest moves to 0.4.5. Notes in `docs/releases/v0.4.4.md` (#466). Smooth
+  SubD face colours (#467, another stream) merged after the notes and ships too, unmentioned.
+- **Not checked by hand in the running app before release** (snapping, options panels, the new
+  tabs): only the automated checks on the three systems.
+- **SubD tab shown** (#464) now that SubD has commands; **owner's .3dm files**: capped elliptical
+  tubes now come in as solids (#454); left are one hatch with a real gap in its boundary and two
+  objects with a sliver face (#457).
+- **Tidy-ups:** fields (#459), object descriptions and title block (#460), hidden lines' flat
+  geometry (#463), the top bar's file label (#465). No file is over 800 lines now.
+
 ## Features stream — 20 November 2026
 
 - **File format registry built (#391, code health fix 6)**, to the spec the owner approved today
