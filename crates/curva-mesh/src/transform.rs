@@ -101,6 +101,20 @@ impl Mesh {
         }
     }
 
+    /// The mesh with some points moved, by number, to new places, keeping its faces, normals,
+    /// texture and colours: what dragging picked points does. Numbers the mesh does not have are
+    /// left out; a point named twice takes its last place.
+    #[must_use]
+    pub fn with_points_moved(&self, moves: &[(u32, Point)]) -> Self {
+        let mut vertices = self.vertices().to_vec();
+        for &(v, p) in moves {
+            if let Some(slot) = vertices.get_mut(v as usize) {
+                *slot = p;
+            }
+        }
+        self.with_vertices(vertices, self.normals().clone())
+    }
+
     /// Faces reversed without turning normals round: after a mirror they already face outwards.
     fn flipped_keeping_normals(&self) -> Self {
         let flipped = self.flipped();
