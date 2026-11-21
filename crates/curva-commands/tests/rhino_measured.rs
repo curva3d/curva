@@ -420,6 +420,36 @@ fn cases() -> Vec<(&'static str, Start, Vec<&'static str>, Vec<Measured>)> {
             vec![curve([10.0, 20.0, 0.0], [0.0; 3], 48.2843, true)],
         ),
         (
+            "arc startpoint",
+            Empty,
+            vec!["arc", "startpoint", "0,0,0", "10,0,0", "5,5,0"],
+            vec![curve([10.0, 5.0, 0.0], [0.0; 3], 15.708, false)],
+        ),
+        (
+            "ellipse diameter",
+            Empty,
+            vec!["ellipse", "diameter", "0,0,0", "10,0,0", "5,3,0"],
+            vec![curve([10.0, 6.0, 0.0], [0.0, -3.0, 0.0], 25.527, true)],
+        ),
+        (
+            "polygon 6 inscribed",
+            Empty,
+            vec!["polygon", "numsides", "6", "0,0,0", "5,0,0"],
+            vec![curve([10.0, 8.6603, 0.0], [-5.0, -4.3301, 0.0], 30.0, true)],
+        ),
+        (
+            "polygon 6 circumscribed",
+            Empty,
+            vec!["polygon", "numsides", "6", "circumscribed", "0,0,0", "5,0,0"],
+            vec![curve([10.0, 11.547, 0.0], [-5.0, -5.7735, 0.0], 34.641, true)],
+        ),
+        (
+            "extrudecrvtapered",
+            Square,
+            vec!["extrudecrvtapered", "5"],
+            vec![SQ, solid([10.0, 10.0, 5.0], [0.0; 3], 457.531)],
+        ),
+        (
             "box diagonal",
             Empty,
             vec!["box", "diagonal", "0,0,0", "4,2,3"],
