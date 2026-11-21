@@ -5,12 +5,14 @@ pub mod commands;
 mod processor;
 pub mod recipe;
 mod text;
+mod working;
 
 use curva_document::Document;
 use curva_kernel::{Curve, Point};
 
 pub use processor::Processor;
 pub use text::Translations;
+pub use working::{Finish, Working};
 
 /// Wording to show, by its key in the translation file.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -308,6 +310,8 @@ pub enum Step {
     Failed(Message),
     /// It finished by asking the interface to change a view.
     View(ViewRequest),
+    /// It is working on its own thread; its next step comes when the work is done (#480).
+    Working(Working),
 }
 
 /// A named view a command can ask for.

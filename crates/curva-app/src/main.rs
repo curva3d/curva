@@ -31,6 +31,7 @@ mod assistant;
 mod assistant_panel;
 mod benchmark;
 mod clipping;
+mod command_jobs;
 mod command_line;
 mod desktop;
 mod dots;
@@ -46,6 +47,7 @@ mod printing;
 mod recovery;
 mod settings;
 mod sheets;
+mod shortcuts;
 mod sketchup_import;
 mod text_edit;
 mod theme;
@@ -389,6 +391,12 @@ impl eframe::App for Curva {
         self.close_question(ui.ctx());
         if let Some(autosave) = &mut self.autosave {
             autosave.tick(&self.doc, std::time::Instant::now());
+        }
+        // A command working on its own thread carries on once its work is done; meanwhile the
+        // frames keep coming so the command bar's progress moves (#480).
+        if self.processor.poll(&mut self.doc) || !curva_document::progress::running().is_empty() {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(100));
         }
         self.apply_view_request();
         egui::CentralPanel::default()

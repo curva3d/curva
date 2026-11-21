@@ -102,17 +102,35 @@ fn solids_ahead(model: &Model) -> Ahead {
         .filter(|(_, o)| matches!(o.geometry, Geometry::Brep(_) | Geometry::Extrusion(_)))
         .map(|(i, o)| (i, &o.geometry))
         .collect();
+    // The command bar counts them as they are built (#480); a stop asked for skips the rest.
+    let job = curva_document::progress::current();
+    if let Some(job) = &job {
+        job.step("job.step.solids", Vec::new(), solids.len());
+    }
     let built = curva_kernel::parallel::each_in_parallel(solids.len(), |k| {
-        Ok(match solids[k].1 {
+        if job
+            .as_ref()
+            .is_some_and(curva_document::progress::Job::stopping)
+        {
+            return Ok((Err(KernelError("stopped".to_owned())), None));
+        }
+        let solid = match solids[k].1 {
             Geometry::Brep(b) => match super::breps::brep_body_quickly(b) {
                 Ok((body, repair)) => (Ok(body), repair),
                 Err(e) => (Err(e), None),
             },
             Geometry::Extrusion(e) => (super::breps::extrusion_body(e), None),
             _ => (Err(KernelError("not a solid".to_owned())), None),
-        })
+        };
+        if let Some(job) = &job {
+            job.one_done();
+        }
+        Ok(solid)
     })
     .unwrap_or_default();
+    if let Some(job) = &job {
+        job.step("job.step.objects", Vec::new(), 0);
+    }
     let mut ahead: Vec<Option<Result<Body, KernelError>>> =
         model.objects.iter().map(|_| None).collect();
     let mut repairs = Vec::new();
