@@ -1,7 +1,7 @@
 //! `ArrayPolar`: copies objects around a centre, on the plane being drawn on.
 
 use crate::commands::{
-    ask_objects, ask_point, ghosts, objects_or_selection, plane_normal, unexpected,
+    ask_objects, ask_point, ghost_bodies, ghosts, objects_or_selection, plane_normal, unexpected,
 };
 use crate::{Answer, Command, Kind, Live, Message, Request, Step};
 use curva_document::Document;
@@ -84,19 +84,41 @@ impl Command for ArrayPolar {
     }
 
     fn preview(&self, doc: &Document, live: &Live) -> Vec<Curve> {
-        let (Some(ids), Some(centre)) = (&self.ids, self.centre) else {
+        let Some((ids, turns)) = self.previewed(doc, live) else {
             return Vec::new();
+        };
+        turns
+            .flat_map(|turn| ghosts(doc, ids, |curve| curve.mapped(&turn)))
+            .collect()
+    }
+
+    fn preview_bodies(&self, doc: &Document, live: &Live) -> Vec<curva_kernel::Body> {
+        let Some((ids, turns)) = self.previewed(doc, live) else {
+            return Vec::new();
+        };
+        turns
+            .flat_map(|turn| ghost_bodies(doc, ids, |body| body.mapped(&turn)))
+            .collect()
+    }
+}
+
+impl ArrayPolar {
+    /// The objects arrayed and the turns of the copies the preview shows, if it shows any.
+    fn previewed(
+        &self,
+        doc: &Document,
+        live: &Live,
+    ) -> Option<(&[u64], impl Iterator<Item = Similarity>)> {
+        let (Some(ids), Some(centre)) = (&self.ids, self.centre) else {
+            return None;
         };
         let (items, fill) = match self.items {
             Some(items) => (Some(items), live.number.unwrap_or(FULL_TURN)),
             None => (live.number.and_then(valid_items), FULL_TURN),
         };
-        let Some(items) = items.filter(|_| fill != 0.0 && fill.abs() <= FULL_TURN) else {
-            return Vec::new();
-        };
-        turns(centre, plane_normal(doc), items.min(MOST_PREVIEWED), fill)
-            .flat_map(|turn| ghosts(doc, ids, |curve| curve.mapped(&turn)))
-            .collect()
+        let items = items.filter(|_| fill != 0.0 && fill.abs() <= FULL_TURN)?;
+        let turns = turns(centre, plane_normal(doc), items.min(MOST_PREVIEWED), fill);
+        Some((ids.as_slice(), turns))
     }
 }
 

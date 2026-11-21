@@ -50,8 +50,9 @@ use crate::Command;
 use curva_kernel::Point;
 pub(crate) use support::{
     MOST_PREVIEW_OBJECTS, ask_objects, ask_point, ask_point_or_number, bodies_of, circle_through,
-    curve_at, curves_of, cut_by, geometry_failed, ghost_results, ghosts, guide,
-    objects_or_selection, plane_normal, unexpected, unexpected_step,
+    curve_at, curves_of, cut_by, geometry_failed, ghost_bodies, ghost_results, ghosts, guide,
+    instances_of, objects_or_selection, opened, plane_normal, result_bodies, unexpected,
+    unexpected_step,
 };
 
 /// How a command is listed.
@@ -720,6 +721,84 @@ mod tests {
                     "{} {option}: {said:?}",
                     def.name
                 );
+            }
+        }
+    }
+
+    /// The commands that move, copy or reshape objects already in the model, with the steps that
+    /// reach the first step at which the objects move with the pointer (or with a typed value, where
+    /// the step takes one: Rotate3D's angle).
+    const TRANSFORM_STEPS: [(&str, &[&str]); 13] = [
+        ("Move", &["0,0"]),
+        ("Copy", &["0,0"]),
+        ("Rotate", &["0,0", "5,0"]),
+        ("Scale", &["0,0", "5,0"]),
+        ("Mirror", &["0,0"]),
+        ("ArrayLinear", &["4", "0,0"]),
+        ("ArrayPolar", &["0,0", "4"]),
+        ("Array", &["3", "1", "1"]),
+        ("Rotate3D", &["0,0,0", "0,0,5"]),
+        ("Scale1D", &["0,0", "2"]),
+        ("Scale2D", &["0,0", "5,0"]),
+        ("Orient", &["0,0", "1,0"]),
+        ("Orient3Pt", &["0,0", "2,0", "0,2", "5,0,0", "5,2,0"]),
+    ];
+
+    /// One object of each kind the model holds, chosen for a transform: what each should show
+    /// while it moves (#507, the owner's rule: every command shows a preview, whatever it acts on).
+    fn one_of_each_kind() -> Vec<(&'static str, curva_document::Document, bool)> {
+        use curva_document::{Document, Shape};
+        let cube = || curva_kernel::Body::cuboid([1.0, 1.0, 0.0], [2.0, 2.0, 2.0]).unwrap();
+        let frame = curva_mesh::Frame::world();
+        let mut kinds = Vec::new();
+        let mut solid = Document::default();
+        let id = solid.add_body(cube());
+        solid.select(&[id]);
+        kinds.push(("a solid", solid, true));
+        let mut block = Document::default();
+        let inside = block.add_body(cube());
+        let (_, id) = block.define_block("Block".to_owned(), [0.0; 3], &[inside]);
+        block.select(&[id]);
+        kinds.push(("a block", block, true));
+        let mut mesh = Document::default();
+        let id = mesh.add_shape(Shape::Mesh(curva_mesh::Mesh::mesh_box(
+            &frame,
+            [2.0; 3],
+            [1, 1, 1],
+        )));
+        mesh.select(&[id]);
+        kinds.push(("a mesh", mesh, false));
+        let mut subd = Document::default();
+        let id = subd.add_shape(Shape::SubD(curva_mesh::SubD::subd_box(
+            &frame,
+            [2.0; 3],
+            [1, 1, 1],
+        )));
+        subd.select(&[id]);
+        kinds.push(("a SubD", subd, false));
+        kinds
+    }
+
+    #[test]
+    fn every_transform_previews_every_kind_of_object() {
+        for (kind, start, solid) in one_of_each_kind() {
+            for (name, steps) in TRANSFORM_STEPS {
+                let mut doc = curva_document::Document::default();
+                doc.restore(start.state().clone());
+                doc.select(&start.selection());
+                let mut processor = crate::Processor::default();
+                processor.submit(&mut doc, name);
+                for step in steps {
+                    processor.submit(&mut doc, step);
+                }
+                let at = Some([3.0, 7.0, 0.0]);
+                let typed = if name == "Rotate3D" { "30" } else { "" };
+                let lines = processor.preview(&doc, at, typed);
+                assert!(!lines.is_empty(), "{name} shows nothing of {kind}");
+                if solid {
+                    let bodies = processor.preview_bodies(&doc, at, typed);
+                    assert!(!bodies.is_empty(), "{name} shows no faces of {kind}");
+                }
             }
         }
     }

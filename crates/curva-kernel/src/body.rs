@@ -12,6 +12,7 @@ use crate::{Curve, KernelError, Point, Similarity};
 use serde::{Deserialize, Serialize};
 use solidcore_ops::Body as EngineBody;
 use solidcore_record::brep::Brep as Record;
+mod healed;
 mod meshing;
 
 /// The native format in its text form, which a `.curva` file can hold as it is.
@@ -791,6 +792,21 @@ mod tests {
 
     fn close(a: f64, b: f64) -> bool {
         (a - b).abs() <= 1e-6 * b.abs().max(1.0)
+    }
+
+    #[test]
+    fn faces_read_again_stay_where_the_quick_reading_was_placed() {
+        let quick = Body::cuboid([0.0; 3], [1.0, 1.0, 1.0])
+            .unwrap()
+            .translated([10.0, 0.0, 0.0]);
+        let healed = Body::cuboid([0.0; 3], [1.0, 1.0, 1.0]).unwrap();
+        let swapped = quick.with_faces_of(&healed);
+        assert_eq!(swapped.faces_key(), healed.faces_key());
+        let (low, high) = swapped.bounds().unwrap();
+        assert!(
+            close(low[0], 10.0) && close(high[0], 11.0),
+            "{low:?} {high:?}"
+        );
     }
 
     #[test]

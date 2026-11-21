@@ -151,6 +151,19 @@ impl Body {
         Self::made(&body)
     }
 
+    /// As [`Self::from_foreign_record`] without the healer, for a quick first reading of a large
+    /// body whose healed form follows later (#476): the healer takes most of the time a large
+    /// file takes to open (40 s for a 2 400-face polysurface, against 0.1 s without it), while
+    /// the body read without it has the same faces, edges and points.
+    pub fn from_foreign_record_unhealed(record: &Record) -> Result<Self, KernelError> {
+        let canonical = record
+            .canonical()
+            .map_err(|e| KernelError(format!("a B-rep Curva cannot read: {e}")))?;
+        let (body, _) = EngineBody::from_record(&canonical.brep, true)
+            .map_err(|e| failed("reading a B-rep", e))?;
+        Self::made(&body)
+    }
+
     /// The body as the engine's portable record, for writing it in another format.
     pub fn portable_record(&self) -> Result<Record, KernelError> {
         self.record()

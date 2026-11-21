@@ -120,6 +120,17 @@ impl SubD {
     /// When the library refuses the cage, or the targets are not one per cage point.
     // CUSTOM MESH OPERATION: subd-limit-fit
     pub fn fitted(self, targets: &[Point]) -> Result<Self, SmoothError> {
+        let keep = vec![false; targets.len()];
+        self.fitted_keeping(targets, &keep)
+    }
+
+    /// [`SubD::fitted`], with the points marked in `keep` left where they are (Rhino's ToSubD leaves
+    /// the points of flat, straight-sided faces on their corners).
+    pub(crate) fn fitted_keeping(
+        self,
+        targets: &[Point],
+        keep: &[bool],
+    ) -> Result<Self, SmoothError> {
         let cage = self.cage();
         if targets.len() != cage.vertex_count() {
             return Err(SmoothError(
@@ -163,6 +174,9 @@ impl SubD {
             let on_surface = limit.position.interpolate(&result.interpolate(&points));
             let mut worst: f64 = 0.0;
             for (v, p) in points.iter_mut().enumerate() {
+                if keep.get(v) == Some(&true) {
+                    continue;
+                }
                 let miss: Point = std::array::from_fn(|i| goal[v][i] - on_surface[row[v]][i]);
                 worst = miss.iter().fold(worst, |w, m| w.max(m.abs()));
                 for i in 0..3 {
