@@ -1,8 +1,9 @@
 //! `Open`: replaces the model with one from a file, Curva's own or another program's.
 
 use crate::commands::unexpected;
-use crate::{Answer, Command, Message, Request, Step};
+use crate::{Answer, Command, Finish, Message, Request, Step, Working};
 use curva_document::Document;
+use curva_document::progress::Job;
 use std::path::Path;
 
 /// The running command.
@@ -24,12 +25,23 @@ fn opened(doc: &mut Document, read: Result<(Document, Message), String>) -> Step
 }
 
 /// A file read by a format on the model's list of formats, if one reads it.
+/// The file is read on its own thread, so the interface keeps answering and the command bar shows
+/// how far along it is (#480); the model is replaced once it has been read.
 fn through_the_list(doc: &mut Document, text: &str) -> Option<Step> {
-    let path = Path::new(text.trim().trim_matches('"'));
-    let open = doc.formats().of(path).and_then(|f| f.open)?;
-    let read =
-        open(path, text, doc).map(|(model, done)| (model, Message::with(done.key, done.args)));
-    Some(opened(doc, read))
+    let path = Path::new(text.trim().trim_matches('"')).to_path_buf();
+    let open = doc.formats().of(&path).and_then(|f| f.open)?;
+    let from = doc.settings_copy();
+    let shown = text.to_owned();
+    let name = path
+        .file_name()
+        .map_or_else(|| shown.clone(), |n| n.to_string_lossy().into_owned());
+    let job = Job::start("job.open", vec![name]);
+    Some(Step::Working(Working::spawn(job, move || {
+        let read = open(&path, &shown, &from)
+            .map(|(model, done)| (model, Message::with(done.key, done.args)));
+        let finish: Finish = Box::new(move |doc: &mut Document| opened(doc, read));
+        finish
+    })))
 }
 
 /// The panel of options the format of the file typed asks before it is read, if any.

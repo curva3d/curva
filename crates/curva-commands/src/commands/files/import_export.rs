@@ -4,8 +4,11 @@
 //! `SaveAs`.
 
 use crate::commands::{ask_objects, unexpected};
-use crate::{Answer, Command, Message, PrintJob, PrintTo, Request, Step, ViewRequest};
+use crate::{
+    Answer, Command, Finish, Message, PrintJob, PrintTo, Request, Step, ViewRequest, Working,
+};
 use curva_document::Document;
+use curva_document::progress::Job;
 use std::path::{Path, PathBuf};
 
 /// The model's file name without its extension, for a save dialog's name field.
@@ -67,14 +70,43 @@ impl Import {
     /// The file typed, read into the model by its format, or as Curva's own file.
     fn read(doc: &mut Document, text: &str) -> Step {
         let path = typed(text);
-        if let Some(import) = doc.formats().of(&path).and_then(|f| f.import) {
-            return done(import(doc, &path, &path.display().to_string()));
-        }
         // Anything else is read as Curva's own file, the first on the list.
-        match doc.formats().all().first().and_then(|f| f.import) {
-            Some(import) => done(import(doc, &path, &path.display().to_string())),
-            None => failed("not a kind of file Curva can import"),
-        }
+        let import = doc
+            .formats()
+            .of(&path)
+            .and_then(|f| f.import)
+            .or_else(|| doc.formats().all().first().and_then(|f| f.import));
+        let Some(import) = import else {
+            return failed("not a kind of file Curva can import");
+        };
+        // Read into a copy of the model on its own thread, so the interface keeps answering and
+        // shows how far along it is (#480); the copy's model and views then become the model's.
+        let mut copy = doc.settings_copy();
+        copy.restore(doc.state().clone());
+        let name = path
+            .file_name()
+            .map_or_else(|| text.to_owned(), |n| n.to_string_lossy().into_owned());
+        let job = Job::start("job.import", vec![name]);
+        Step::Working(Working::spawn(job, move || {
+            let result = import(&mut copy, &path, &path.display().to_string());
+            let finish: Finish = Box::new(move |doc: &mut Document| {
+                if result.is_ok() {
+                    doc.restore(copy.state().clone());
+                    for view in copy.views() {
+                        if doc.saved_view(&view.name).is_none() {
+                            doc.save_view(view.clone());
+                        }
+                    }
+                    for plane in copy.cplanes() {
+                        if doc.saved_cplane(&plane.name).is_none() {
+                            doc.save_cplane(plane.clone());
+                        }
+                    }
+                }
+                done(result)
+            });
+            finish
+        }))
     }
 }
 
