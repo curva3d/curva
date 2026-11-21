@@ -639,8 +639,16 @@ impl Curva {
             under
         };
         let hits = self.doc.with_groups(&hits);
-        let chosen = combined_selection(self.doc.selection(), hits, p.shift, p.remove);
+        let before = self.doc.selection();
+        let chosen = combined_selection(before.clone(), hits, p.shift, p.remove);
         self.doc.select(&chosen);
+        // What was picked, as Rhino says it: "1 open curve added to selection." (#520)
+        let said = curva_commands::selection_report::selection_change(
+            &self.doc, &before, &chosen, &self.text,
+        );
+        if let Some(line) = said {
+            self.processor.note(line);
+        }
     }
 
     pub(crate) fn paint_snap_marker(
