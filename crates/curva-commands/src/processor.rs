@@ -610,6 +610,11 @@ impl Processor {
                 if let Some(message) = message {
                     self.say(&message);
                 }
+                // A model just opened shows whole in every viewport, rather than wherever the
+                // views were looking in the model before it (#479).
+                if doc.take_just_opened() {
+                    self.view_requests.push_back(ViewRequest::ZoomExtents);
+                }
             }
             Step::View(request) => {
                 self.active = None;

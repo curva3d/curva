@@ -111,6 +111,25 @@ mod tests {
     }
 
     #[test]
+    fn an_opened_model_is_shown_whole_once() {
+        let folder = std::env::temp_dir().join(format!("curva-open-fit-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let typed = folder.join("model.curva").display().to_string();
+        let mut doc = Document::default();
+        let mut processor = run(&mut doc, &["line", "0,0", "5,5", "save", &typed]);
+        while processor.take_view_request().is_some() {}
+        let mut other = Document::default();
+        let mut processor = run(&mut other, &["open", &typed]);
+        assert_eq!(
+            processor.take_view_request(),
+            Some(crate::ViewRequest::ZoomExtents)
+        );
+        assert_eq!(processor.take_view_request(), None);
+        assert!(!other.take_just_opened(), "fitted once only");
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
     fn a_missing_file_leaves_the_model_alone() {
         let mut doc = Document::default();
         let processor = run(

@@ -2,6 +2,17 @@
 
 use crate::*;
 
+/// The keys the command line keeps for itself while it has the keyboard (#487): the arrows choose
+/// among completions and move the cursor, and Tab completes. Without this the up and down arrows
+/// moved the keyboard to the snaps bar below, and the next Enter ticked a snap instead of running
+/// the command.
+const COMMAND_KEYS: egui::EventFilter = egui::EventFilter {
+    tab: true,
+    horizontal_arrows: true,
+    vertical_arrows: true,
+    escape: true,
+};
+
 /// The rows of the log to show, newest last. Always the same number, one line each, so that a
 /// new message never changes the height of the panel and moves the viewport.
 #[cfg(test)]
@@ -190,9 +201,9 @@ impl Curva {
         });
     }
 
-    pub(crate) fn command_line(&mut self, ui: &mut egui::Ui) {
-        // The command bar's own lines come first, then the history; together they fill the rows,
-        // the oldest going as new ones come.
+    /// The command bar's own lines first, then the history; together they fill the rows, the
+    /// oldest going as new ones come.
+    fn command_history(&mut self, ui: &mut egui::Ui) {
         let log = self.processor.log().to_vec();
         let (blanks, skip, shown) = history_rows(&log, self.notices.len());
         for _ in 0..blanks {
@@ -202,6 +213,10 @@ impl Curva {
         for row in shown {
             ui.add(egui::Label::new(row.as_str()).truncate());
         }
+    }
+
+    pub(crate) fn command_line(&mut self, ui: &mut egui::Ui) {
+        self.command_history(ui);
         let prompt = self
             .processor
             .prompt()
@@ -229,6 +244,7 @@ impl Curva {
                 ui.label(format!("{prompt}:"));
             }
             let output = egui::TextEdit::singleline(&mut self.typed)
+                .event_filter(COMMAND_KEYS)
                 .desired_width(f32::INFINITY)
                 .show(ui);
             self.command_field = Some(output.response.id);
@@ -320,6 +336,27 @@ impl Curva {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_command_line_keeps_the_arrows_tab_and_escape() {
+        for key in [
+            egui::Key::ArrowUp,
+            egui::Key::ArrowDown,
+            egui::Key::ArrowLeft,
+            egui::Key::ArrowRight,
+            egui::Key::Tab,
+            egui::Key::Escape,
+        ] {
+            let event = egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            };
+            assert!(COMMAND_KEYS.matches(&event), "{key:?}");
+        }
+    }
 
     fn messages(count: usize) -> Vec<String> {
         (0..count).map(|index| format!("message {index}")).collect()
