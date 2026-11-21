@@ -34,23 +34,18 @@ pub(super) fn hatch_in(
         None => ("Solid".to_owned(), 1.0),
         Some(file) if file.solid => ("Solid".to_owned(), 1.0),
         Some(file) => {
-            let own = state
-                .patterns()
-                .into_iter()
-                .find(|q| q.name.eq_ignore_ascii_case(&file.name));
-            match own {
-                // The same pattern: its scale from the line spacing written against Curva's.
-                Some(own) => {
-                    let ratio = match (file.lines.first(), own.lines.first()) {
-                        (Some(line), Some(mine)) if mine.spacing.abs() > 1e-12 => {
-                            line.offset[1].abs() * file_mm / mine.spacing.abs()
-                        }
-                        _ => 1.0,
-                    };
-                    (own.name, h.scale * ratio)
-                }
+            // The file's own pattern, as Rhino draws it, even where Curva has one of the same
+            // name: Rhino's Plus, Grid and the rest differ from Curva's own (#477). A pattern
+            // the model already holds, from this file or before it, is kept, as Rhino keeps it.
+            let held = state
+                .hatch_patterns
+                .iter()
+                .find(|q| q.name.eq_ignore_ascii_case(&file.name))
+                .map(|q| q.name.clone());
+            match held {
+                Some(name) => (name, h.scale),
                 None => {
-                    // A pattern of the file's own, kept in millimetres.
+                    // Kept in millimetres.
                     let made = curva_document::hatch::Pattern {
                         name: file.name.clone(),
                         description: file.description.clone(),
