@@ -11,6 +11,10 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 22 November 2026
 
+**Fill takes mesh holes too:** a mesh hole whose open edges are all picked is closed in the same patch styles, as a
+joined but unwelded piece, as Rhino 8 does (an open box's top: 24 quads on 34 points; one edge alone fills nothing).
+SubD and mesh Fill now share one patch function.
+
 **SubD editing begins: Crease, RemoveCrease, Fill, UnweldEdge and WeldEdge,** on the mesh and SubD part picking (#333). Measured in Rhino 8 with
 RhinoCommon picks: the picked cage edges become creases (their ends darts) or smooth again; only edges count; the
 message counts the SubDs changed. Fill closes the picked edges' holes in Rhino's four patch styles (Automatic gives an

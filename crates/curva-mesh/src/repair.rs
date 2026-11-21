@@ -243,6 +243,40 @@ impl Mesh {
     // CUSTOM MESH OPERATION: fill-holes
     #[must_use]
     pub fn with_holes_filled(&self) -> (Self, usize) {
+        let loops = self.hole_corner_loops();
+
+        let mut faces: Vec<Vec<NewCorner>> = (0..self.face_count())
+            .map(|f| self.corners_of(&self.face_range(f).collect::<Vec<_>>(), false))
+            .collect();
+        let mut filled = 0;
+        for ring in loops.iter().filter(|r| r.len() >= 3) {
+            let points: Vec<Point> = ring
+                .iter()
+                .map(|c| self.vertices()[c.vertex as usize])
+                .collect();
+            for triangle in ear_clip(&points) {
+                faces.push(
+                    triangle
+                        .iter()
+                        .map(|&k| NewCorner {
+                            vertex: ring[k].vertex,
+                            from: ring[k].from,
+                            flip: false,
+                        })
+                        .collect(),
+                );
+            }
+            filled += 1;
+        }
+        if filled == 0 {
+            return (self.clone(), 0);
+        }
+        (self.rebuilt(&self.all_vertices(), &faces), filled)
+    }
+
+    /// Each hole as a loop of corners running the way a face across it must: a loop of open edges,
+    /// one that touches itself at a point split in two.
+    fn hole_corner_loops(&self) -> Vec<Vec<HoleCorner>> {
         let topology = Topology::of(self);
         let mut naked: Vec<EdgeUse> = topology
             .edges
@@ -302,34 +336,16 @@ impl Mesh {
                 loops.extend(simple_loops(ring));
             }
         }
+        loops
+    }
 
-        let mut faces: Vec<Vec<NewCorner>> = (0..self.face_count())
-            .map(|f| self.corners_of(&self.face_range(f).collect::<Vec<_>>(), false))
-            .collect();
-        let mut filled = 0;
-        for ring in loops.iter().filter(|r| r.len() >= 3) {
-            let points: Vec<Point> = ring
-                .iter()
-                .map(|c| self.vertices()[c.vertex as usize])
-                .collect();
-            for triangle in ear_clip(&points) {
-                faces.push(
-                    triangle
-                        .iter()
-                        .map(|&k| NewCorner {
-                            vertex: ring[k].vertex,
-                            from: ring[k].from,
-                            flip: false,
-                        })
-                        .collect(),
-                );
-            }
-            filled += 1;
-        }
-        if filled == 0 {
-            return (self.clone(), 0);
-        }
-        (self.rebuilt(&self.all_vertices(), &faces), filled)
+    /// [`Mesh::hole_corner_loops`] as each corner's place (points at one place count as one) and
+    /// point.
+    pub(crate) fn hole_loops(&self) -> Vec<Vec<(u32, u32)>> {
+        self.hole_corner_loops()
+            .into_iter()
+            .map(|ring| ring.iter().map(|c| (c.place, c.vertex)).collect())
+            .collect()
     }
 
     pub(crate) fn all_vertices(&self) -> Vec<u32> {

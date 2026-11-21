@@ -143,39 +143,17 @@ impl SubD {
         let mut rings = faces_of(cage);
         let mut old_faces: Vec<Option<usize>> = (0..rings.len()).map(Some).collect();
         for hole in holes {
-            let n = hole.len();
-            match style {
-                FillStyle::SingleFace => rings.push(hole.clone()),
-                FillStyle::Triangulated => {
-                    // The hole as one face, split as TriangulateMesh splits faces.
-                    let around: Vec<Point> = hole.iter().map(|&v| points[v as usize]).collect();
-                    let one = Mesh::new(around, &[(0..index(n)).collect::<Vec<_>>()])?;
-                    let (split, _) = one.triangulated();
-                    rings.extend(
-                        split
-                            .faces()
-                            .map(|t| t.iter().map(|&k| hole[k as usize]).collect()),
-                    );
-                }
-                FillStyle::TriangleFan | FillStyle::Automatic => {
-                    let around: Vec<Point> = hole.iter().map(|&v| points[v as usize]).collect();
-                    let centre = index(points.len());
-                    points.push(midpoint(&around));
-                    let step = if style == FillStyle::Automatic { 2 } else { 1 };
-                    let mut k = 0;
-                    while k < n {
-                        let take = if k + step < n || n % step == 0 {
-                            step
-                        } else {
-                            1
-                        };
-                        let mut face = vec![centre];
-                        face.extend((0..=take).map(|s| hole[(k + s) % n]));
-                        rings.push(face);
-                        k += take;
-                    }
-                }
+            let around: Vec<Point> = hole.iter().map(|&v| points[v as usize]).collect();
+            let (faces, middle) = crate::fill::patch(&around, style)?;
+            let centre = index(points.len());
+            if let Some(p) = middle {
+                points.push(p);
             }
+            rings.extend(faces.into_iter().map(|face| {
+                face.into_iter()
+                    .map(|k| hole.get(k as usize).copied().unwrap_or(centre))
+                    .collect::<Vec<u32>>()
+            }));
             old_faces.resize(rings.len(), None);
         }
         let number: Vec<Option<u32>> = (0..cage.vertex_count()).map(|v| Some(index(v))).collect();
