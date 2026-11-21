@@ -38,6 +38,9 @@ pub struct Model {
     /// The model's standard views by name (Top, Front, Right, Perspective) and viewport id, as
     /// clipping planes name the views they cut.
     pub model_views: Vec<(String, Uuid)>,
+    /// The cameras of the model's views as the file was saved, named as the views are, so an
+    /// opened file shows what it showed in Rhino (#479).
+    pub model_cameras: Vec<View>,
     /// The unit layouts are drawn in, as openNURBS numbers units; the model's when the file
     /// does not say.
     pub page_unit: Option<u32>,

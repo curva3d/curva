@@ -177,3 +177,14 @@ pub(super) fn clipping_rectangle(c: &model::ClippingPlane) -> Result<Curve, Kern
     let [[x0, x1], [y0, y1]] = c.extents;
     Curve::polyline(vec![at(x0, y0), at(x1, y0), at(x1, y1), at(x0, y1)], true)
 }
+
+/// The model's views as the file was saved, as Curva's saved views named as Rhino's viewports
+/// are (Top, Front, Right, Perspective and any others), for an opened file to show (#479).
+pub(super) fn opened_views(model: &Model, unit: Unit) -> Vec<SavedView> {
+    let scale = millimetres_per(model.unit).unwrap_or(1.0) / unit.millimetres();
+    model
+        .model_cameras
+        .iter()
+        .filter_map(|v| saved_view(v, scale))
+        .collect()
+}

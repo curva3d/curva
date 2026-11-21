@@ -346,6 +346,18 @@ impl Curva {
                     self.frame_all(low, high);
                 }
             }
+            ViewRequest::OpenedViews => {
+                // Each viewport takes the view the file was saved with for it, as Rhino shows a
+                // file as it was left; the others stay fitted to the model.
+                let opened = self.doc.take_opened_views();
+                let keys = self.panes.each_ref().map(|pane| pane.view.key());
+                let found = curva_document::views_for_viewports(&opened, &keys);
+                for (pane, saved) in self.panes.iter_mut().zip(found) {
+                    if let Some(saved) = saved {
+                        pane.camera = Camera::from_saved(saved);
+                    }
+                }
+            }
             ViewRequest::ZoomSelected => {
                 self.refresh_scene();
                 if let Some((low, high)) = self.outlines.bounds_of(&self.doc.selection()) {

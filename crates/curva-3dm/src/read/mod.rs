@@ -307,6 +307,9 @@ fn settings(table: &mut Reader<'_>, model: &mut Model) -> Result<()> {
                 if let Ok(views) = model_views(&mut chunk.body.clone()) {
                     model.model_views = views;
                 }
+                if let Ok(cameras) = model_cameras(&mut chunk.body.clone()) {
+                    model.model_cameras = cameras;
+                }
                 if let Ok(found) = pages(&mut chunk.body) {
                     model.pages = found;
                 }

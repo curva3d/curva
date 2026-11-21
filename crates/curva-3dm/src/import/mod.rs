@@ -145,6 +145,8 @@ pub fn open(model: &Model) -> (Document, Report) {
         doc.queue_repair(&quick, repair);
     }
     add_views_and_planes(model, &mut doc, &mut report);
+    let opened = opened_views(model, doc.state().unit);
+    doc.set_opened_views(opened);
     (doc, report)
 }
 

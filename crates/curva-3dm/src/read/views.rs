@@ -202,6 +202,41 @@ pub(super) fn model_views(r: &mut Reader<'_>) -> Result<Vec<(String, Uuid)>> {
     Ok(out)
 }
 
+/// The cameras of the model's views in the settings' view list (those not pages or nested in
+/// one), each named as its view is.
+pub(super) fn model_cameras(r: &mut Reader<'_>) -> Result<Vec<View>> {
+    let count = list_count(r)?;
+    let mut out = Vec::new();
+    for _ in 0..count {
+        let record = r.expect(tcode::VIEW_RECORD)?;
+        let model_view = model_views_kind(&mut record.body.clone())? == 0;
+        if let (true, Ok((view, _))) = (model_view, view_with_attributes(&mut record.body.clone()))
+        {
+            out.push(view);
+        }
+    }
+    Ok(out)
+}
+
+/// A view record's kind (openNURBS' view type: 0 for a model view, else a page or nested one).
+fn model_views_kind(r: &mut Reader<'_>) -> Result<i32> {
+    let mut kind = 0;
+    while !r.is_done() {
+        let mut part = r.chunk()?;
+        match part.tcode {
+            tcode::ENDOFTABLE => break,
+            tcode::VIEW_ATTRIBUTES => {
+                let (_, minor) = part.body.chunk_version()?;
+                if minor >= 1 {
+                    kind = part.body.i32()?;
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(kind)
+}
+
 /// The layouts among the views of the settings' view list: views of openNURBS' page type
 /// (`ON_3dmView` with `ON::page_view_type`), with their viewport id, name and paper size.
 pub(super) fn pages(r: &mut Reader<'_>) -> Result<Vec<Page>> {

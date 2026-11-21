@@ -715,9 +715,13 @@ impl Processor {
                     self.say(&message);
                 }
                 // A model just opened shows whole in every viewport, rather than wherever the
-                // views were looking in the model before it (#479).
+                // views were looking in the model before it; then each viewport the file saved a
+                // view for shows that view, as Rhino does (#479).
                 if doc.take_just_opened() {
                     self.view_requests.push_back(ViewRequest::ZoomExtents);
+                    if doc.has_opened_views() {
+                        self.view_requests.push_back(ViewRequest::OpenedViews);
+                    }
                 }
                 // Solids the file was read with quickly are healed in the background (#476).
                 self.start_repairs(doc);

@@ -726,3 +726,20 @@ fn damaged_files_are_refused_or_read_but_never_crash() {
         }
     }
 }
+
+#[test]
+fn an_opened_file_brings_the_views_it_was_saved_with() {
+    // Saved by Rhino 8 with its four viewports (#479), Top renamed "Top - Floor 1" by a named
+    // view: each comes in with its name and the way it looks.
+    let (mut doc, _) = open("v8_layout.3dm");
+    let views = doc.take_opened_views();
+    let names: Vec<&str> = views.iter().map(|v| v.name.as_str()).collect();
+    for name in ["Top - Floor 1", "Front", "Right", "Perspective"] {
+        assert!(names.contains(&name), "{names:?}");
+    }
+    let top = views.iter().find(|v| v.name == "Top - Floor 1").unwrap();
+    assert!(top.parallel && top.kind == "Top", "{top:?}");
+    let perspective = views.iter().find(|v| v.name == "Perspective").unwrap();
+    assert!(!perspective.parallel);
+    assert!(doc.take_opened_views().is_empty(), "taken once");
+}
