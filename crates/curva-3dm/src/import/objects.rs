@@ -422,7 +422,7 @@ fn detail_object_in(
     d: &model::Detail,
     space: Option<u64>,
 ) {
-    match (space, detail_in(d, look.page_mm, look.scale)) {
+    match (space, detail_in(d, look.page_mm, look.file_mm, look.scale)) {
         (Some(layout), Ok((frame, mut detail))) => {
             let id = state.next_id;
             state.next_id += 1;

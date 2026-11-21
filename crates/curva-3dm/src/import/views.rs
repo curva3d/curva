@@ -116,10 +116,11 @@ pub(super) fn add_views_and_planes(model: &Model, doc: &mut Document, report: &m
 
 /// A detail from a file: its outline as a curve on the sheet (in millimetres), and what it shows:
 /// its standard view by the way it looks (else a perspective), the point it looks at, and its
-/// scale (Rhino keeps model length per page length).
+/// scale (Rhino keeps page units per model unit; Curva, millimetres per millimetre).
 pub(super) fn detail_in(
     d: &model::Detail,
     page_mm: f64,
+    file_mm: f64,
     model_scale: f64,
 ) -> Result<(Curve, curva_document::layouts::Detail), String> {
     let outline = curve(&model::Curve::Nurbs(d.boundary.clone())).map_err(|e| e.0)?;
@@ -147,7 +148,9 @@ pub(super) fn detail_in(
             projection: projection.to_owned(),
             target,
             distance: gap,
-            scale: (v.parallel && d.ratio > 0.0).then(|| 1.0 / d.ratio),
+            // Rhino keeps page units per model unit (#478: it was taken the other way up, so a
+            // 1:100 detail came in at 100:1).
+            scale: (v.parallel && d.ratio > 0.0).then(|| d.ratio * page_mm / file_mm),
             display: model::display_mode_name(d.display).map_or_else(
                 || {
                     if projection == "Perspective" {

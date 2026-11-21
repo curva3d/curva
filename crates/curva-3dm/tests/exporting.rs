@@ -811,6 +811,24 @@ fn layouts_come_back_with_their_details_and_sheet_drawing() {
         turned.layouts[0].details[0].projection = key.to_owned();
         assert_eq!(round_trip(&turned).layouts[0].details[0].projection, key);
     }
+    // Rhino keeps page units per model unit (#478): 1:50 is 0.02 in millimetres, 20 in metres.
+    let ratio_written = |state: &State| {
+        let (model, _) = curva_3dm::export::export(state, None);
+        model
+            .objects
+            .iter()
+            .find_map(|o| match &o.geometry {
+                curva_3dm::model::Geometry::Detail(d) => Some(d.ratio),
+                _ => None,
+            })
+            .unwrap()
+    };
+    assert!((ratio_written(&state) - 0.02).abs() < 1e-12);
+    let mut metres = state.clone();
+    metres.unit = curva_document::Unit::Metres;
+    assert!((ratio_written(&metres) - 20.0).abs() < 1e-9);
+    let scale_back = round_trip(&metres).layouts[0].details[0].scale.unwrap();
+    assert!((scale_back - 0.02).abs() < 1e-12, "{scale_back}");
     let back = round_trip(&state);
     assert_eq!(back.layouts.len(), 2);
     let plan = &back.layouts[0];

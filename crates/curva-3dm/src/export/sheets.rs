@@ -40,7 +40,8 @@ pub(super) fn sheet_geometry(
         id: details.get(&detail.frame).copied().unwrap_or(Uuid::NIL),
         view: detail_camera(detail, [high[0] - low[0], high[1] - low[1]], model_mm),
         boundary,
-        ratio: detail.scale.map_or(0.0, |s| 1.0 / s),
+        // Page units (millimetres) per model unit, as Rhino keeps it.
+        ratio: detail.scale.map_or(0.0, |s| s * model_mm),
         display: model::display_mode_id(&detail.display),
         locked: detail.locked,
     }))
