@@ -368,7 +368,7 @@ mod tests {
             });
             output.drop_without_applying_deltas();
         }
-        let command_line = egui::Id::new("command line");
+        let command_line = egui::Id::NULL.with("command line");
         assert!(another_text_box_has_keys(&ctx, command_line));
         assert!(
             !another_text_box_has_keys(&ctx, boxed.unwrap()),
