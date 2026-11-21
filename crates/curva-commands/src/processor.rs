@@ -1,7 +1,9 @@
 //! Runs commands: turns typed text and clicks into answers, and makes each command one undo step.
 
 use crate::commands::{CommandDef, autofilled, completions, resolve};
-use crate::{Answer, Command, Kind, Live, Lock, Message, Request, Step, Translations, ViewRequest};
+use crate::{
+    Answer, Command, Kind, Live, Lock, Message, Request, Step, Translations, ViewRequest, Working,
+};
 use curva_document::units::parse_length;
 use curva_document::{Document, State, Unit};
 use curva_kernel::{Curve, Point, cross};
@@ -29,6 +31,8 @@ pub struct Processor {
     view_requests: std::collections::VecDeque<ViewRequest>,
     /// Whether the interface shows file dialogs; off for scripts and agents.
     dialogs: bool,
+    /// The running command's long work on its own thread, while it lasts (#480).
+    working: Option<Working>,
 }
 
 impl Default for Processor {
@@ -42,6 +46,7 @@ impl Default for Processor {
             text: Translations::english(),
             view_requests: std::collections::VecDeque::new(),
             dialogs: false,
+            working: None,
         }
     }
 }
@@ -309,6 +314,11 @@ impl Processor {
 
     /// Handles a line from the command line, including Enter on an empty line.
     pub fn submit(&mut self, doc: &mut Document, typed: &str) {
+        if self.working.is_some() {
+            // While a command works on its own thread, typing waits; Escape stops the work.
+            self.say(&Message::new("note.still_working"));
+            return;
+        }
         let typed = typed.trim();
         if self.active.is_some() {
             self.answer_typed(doc, typed);
@@ -462,6 +472,9 @@ impl Processor {
 
     /// Handles a click at a model position. Ignored when the current step takes no position.
     pub fn click(&mut self, doc: &mut Document, at: Point) {
+        if self.working.is_some() {
+            return;
+        }
         let Some(request) = self.request().cloned() else {
             return;
         };
@@ -498,6 +511,10 @@ impl Processor {
 
     /// Stops the running command and discards what it changed.
     pub fn cancel(&mut self, doc: &mut Document) {
+        // Work on its own thread is asked to stop, and what it would have done is dropped.
+        if let Some(working) = self.working.take() {
+            working.job.stop();
+        }
         if let Some(active) = self.active.take() {
             if active.def.records_undo {
                 if active.command.keeps_on_cancel() && doc.state() != &active.before {
@@ -522,7 +539,55 @@ impl Processor {
         let Some(active) = self.active.as_mut() else {
             return;
         };
-        match active.command.step(doc, answer) {
+        let step = active.command.step(doc, answer);
+        self.take_step(doc, step);
+    }
+
+    /// The running command's long work, if it has some going on its own thread (#480).
+    #[must_use]
+    pub fn working(&self) -> Option<&Working> {
+        self.working.as_ref()
+    }
+
+    /// Carries on once the running command's long work is done, called each frame by the
+    /// interface; returns whether work is still going, so the interface keeps checking back.
+    pub fn poll(&mut self, doc: &mut Document) -> bool {
+        let Some(working) = &self.working else {
+            return false;
+        };
+        let Some(finished) = working.try_finish() else {
+            return true;
+        };
+        self.working = None;
+        let step = match finished {
+            Ok(finish) => finish(doc),
+            Err(()) => Step::Failed(Message::new("error.work_failed")),
+        };
+        self.take_step(doc, step);
+        self.working.is_some()
+    }
+
+    /// What the command does with its next `step`.
+    fn take_step(&mut self, doc: &mut Document, step: Step) {
+        let Some(active) = self.active.as_mut() else {
+            return;
+        };
+        match step {
+            Step::Working(working) => {
+                if self.dialogs {
+                    // The interface checks back each frame (`poll`) and shows the job; the old
+                    // question is done with.
+                    active.request = None;
+                    self.working = Some(working);
+                } else {
+                    // Scripts and agents have no frames: they wait for it.
+                    let step = match working.wait() {
+                        Ok(finish) => finish(doc),
+                        Err(()) => Step::Failed(Message::new("error.work_failed")),
+                    };
+                    self.take_step(doc, step);
+                }
+            }
             Step::Ask(mut request) => {
                 if !self.dialogs || active.typed {
                     request.file = None;

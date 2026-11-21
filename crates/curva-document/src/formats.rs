@@ -294,6 +294,19 @@ impl Document {
         self.formats = formats;
     }
 
+    /// An empty model with this one's formats and remembered settings, for reading a file on
+    /// another thread (#480): a format's options, such as SketchUp's, are read from it.
+    #[must_use]
+    pub fn settings_copy(&self) -> Document {
+        Document {
+            formats: Arc::clone(&self.formats),
+            remembered: self.remembered.clone(),
+            remembered_text: self.remembered_text.clone(),
+            undo_limits: self.undo_limits,
+            ..Document::default()
+        }
+    }
+
     /// Replaces this model with `other`, which keeps this one's formats, as `Open` and `New` do.
     pub fn replace_with(&mut self, mut other: Document) {
         other.formats = Arc::clone(&self.formats);

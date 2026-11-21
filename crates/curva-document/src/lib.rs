@@ -28,6 +28,7 @@ pub mod hatch;
 pub mod layouts;
 pub mod meshing;
 mod organise;
+pub mod progress;
 pub mod section;
 pub mod shape;
 pub mod sheet;
