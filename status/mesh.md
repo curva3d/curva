@@ -17,6 +17,12 @@ message counts the SubDs changed. Fill closes the picked edges' holes in Rhino's
 open box's hole four quads round a middle point, as Rhino). UnweldEdge and WeldEdge cut picked edges open and join them back, as measured. Next: Stitch, Bridge and
 InsertEdge, each measured first (InsertEdge needs interactive picking to measure).
 
+**SubD parts on the smooth surface, and moving points by number (for display #334 and features' PointsOn):**
+`SubD::edges_on_surface` (every cage edge's run on the limit surface, one refinement for all), `edge_on_surface`,
+`limit_points` and `surface_with_faces`; `Mesh::with_points_moved` and `SubD::with_cage_points_moved` keep everything but
+the moved points. The library's own edge runs are incomplete past one level, so runs follow the fine edges between each
+cage point's fine copy.
+
 ## 21 November 2026
 
 **MeshToNURB's two Rhino options:** `TrimTriangularFaces` and `UseNgons`, both on at first as in Rhino 8. Measured with

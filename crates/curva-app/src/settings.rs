@@ -362,6 +362,7 @@ impl Curva {
             DisplayMode::Shaded => "ui.display.shaded",
             DisplayMode::Ghosted => "ui.display.ghosted",
             DisplayMode::Hidden => "ui.display.hidden",
+            DisplayMode::Technical => "ui.display.technical",
         };
         let title = self.text.render(&Message::new(label(current)));
         let mut chosen = None;
@@ -377,6 +378,7 @@ impl Curva {
                         DisplayMode::Shaded,
                         DisplayMode::Ghosted,
                         DisplayMode::Hidden,
+                        DisplayMode::Technical,
                     ] {
                         let name = self.text.render(&Message::new(label(mode)));
                         if ui.selectable_label(mode == current, name).clicked() {

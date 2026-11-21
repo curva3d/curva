@@ -408,6 +408,8 @@ pub enum DisplayMode {
     /// Surfaces flat in paper white hiding what is behind them, and the visible edges, curves and
     /// outlines in black ink, as Rhino 8's Hidden mode (#164).
     Hidden,
+    /// As Hidden, with the lines faces hide drawn dotted, as Rhino 8's Technical mode (#164).
+    Technical,
 }
 
 /// What a preview can follow while a command waits for its next answer.

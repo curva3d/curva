@@ -259,6 +259,17 @@ impl SubD {
         }
     }
 
+    /// The SubD with some cage points moved, by number, to new places, keeping its creases,
+    /// sharpness, tags and face colours ([`Mesh::with_points_moved`] on the cage): what dragging
+    /// picked cage points does, as Rhino moves a SubD's control points.
+    #[must_use]
+    pub fn with_cage_points_moved(&self, moves: &[(u32, Point)]) -> Self {
+        Self {
+            cage: self.cage.with_points_moved(moves),
+            ..self.clone()
+        }
+    }
+
     /// Sets an edge's sharpness, keeping the list sorted (a smooth edge is left out).
     fn set_sharpness(&mut self, (a, b): (u32, u32), s: Sharpness) {
         let key = [a.min(b), a.max(b)];

@@ -49,6 +49,7 @@ pub(crate) fn picture_of(
         light: camera.forward().map(|value| value as f32),
         ghosted,
         hidden: false,
+        hidden_lines: false,
     };
     (picture, camera)
 }
@@ -86,7 +87,7 @@ const PICTURE_BACKGROUND: egui::Color32 = egui::Color32::from_rgb(28, 31, 36);
 /// Saves `picture`, seen by `camera`, as a PNG file at `path`, drawn as the window draws a view:
 /// Bevy's surfaces with Curva's lines on them. The selection is in the picture's colours.
 fn save_bevy_view(picture: Picture, camera: &Camera, path: &std::path::Path) -> Result<(), String> {
-    // The Hidden display mode draws on white paper, as its faces are (#164).
+    // The Hidden and Technical display modes draw on white paper, as their faces are (#164).
     let background = if picture.hidden {
         egui::Color32::WHITE
     } else {
@@ -168,9 +169,14 @@ pub(crate) fn picture(
         )?;
     } else {
         let (picture, camera) = picture_of(&doc, &outlines, &camera, aspect, ghosted);
-        let hidden = mode == DisplayMode::Hidden;
+        let hidden = matches!(mode, DisplayMode::Hidden | DisplayMode::Technical);
+        let hidden_lines = mode == DisplayMode::Technical;
         save_bevy_view(
-            Picture { hidden, ..picture },
+            Picture {
+                hidden,
+                hidden_lines,
+                ..picture
+            },
             &camera,
             std::path::Path::new(path),
         )?;

@@ -22,6 +22,8 @@ pub struct Picture {
     pub ghosted: bool,
     /// The Hidden display mode, as for [`Drawing::hidden`]; the picture's paper is white.
     pub hidden: bool,
+    /// The Technical display mode's dotted hidden lines, as for [`Drawing::hidden_lines`].
+    pub hidden_lines: bool,
 }
 
 /// Draws a picture into a PNG file without opening a window, so results can be checked by eye.
@@ -200,6 +202,7 @@ fn picture_drawing(picture: Picture, scene: &Scene) -> Drawing {
         shaded,
         ghosted: picture.ghosted,
         hidden: picture.hidden,
+        hidden_lines: picture.hidden_lines,
         area: epaint::Rect::NOTHING,
         frame: 0,
         background: epaint::Color32::BLACK,
