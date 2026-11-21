@@ -10,36 +10,49 @@ use std::sync::Arc;
 /// stays.
 pub type Repair = Box<dyn FnOnce() -> Option<Body> + Send>;
 
-/// The repairs waiting, each with the faces it heals ([`Body::faces_key`]).
+/// The repairs waiting, each with the faces it heals ([`Body::faces_key`]). Behind a lock, so the
+/// model can still be read from many threads at once, as Make2D does.
 #[derive(Default)]
-pub struct Repairs(Vec<(usize, Repair)>);
+pub struct Repairs(std::sync::Mutex<Vec<(usize, Repair)>>);
+
+impl Repairs {
+    fn waiting(&mut self) -> &mut Vec<(usize, Repair)> {
+        self.0
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
 
 impl std::fmt::Debug for Repairs {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Repairs({})", self.0.len())
+        let count = self.0.lock().map_or(0, |waiting| waiting.len());
+        write!(f, "Repairs({count})")
     }
 }
 
 impl Document {
     /// Queues `repair`, which heals `quick` and every copy sharing its faces.
     pub fn queue_repair(&mut self, quick: &Body, repair: Repair) {
-        self.repairs.0.push((quick.faces_key(), repair));
+        self.repairs.waiting().push((quick.faces_key(), repair));
     }
 
     /// Queues repairs taken from another model, such as a copy a file was imported into.
     pub fn queue_repairs(&mut self, repairs: Vec<(usize, Repair)>) {
-        self.repairs.0.extend(repairs);
+        self.repairs.waiting().extend(repairs);
     }
 
     /// The repairs waiting, taken to be run; each gives the faces it heals.
     pub fn take_repairs(&mut self) -> Vec<(usize, Repair)> {
-        std::mem::take(&mut self.repairs.0)
+        std::mem::take(self.repairs.waiting())
     }
 
     /// Whether repairs are waiting.
     #[must_use]
     pub fn has_repairs(&self) -> bool {
-        !self.repairs.0.is_empty()
+        self.repairs
+            .0
+            .lock()
+            .is_ok_and(|waiting| !waiting.is_empty())
     }
 
     /// Puts `healed` in place of every body whose faces are `faces` (a quick reading), in the
