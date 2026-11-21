@@ -11,6 +11,10 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 22 November 2026
 
+**LiveSurface keeps its edge runs (for display #334):** `LiveSurface::edge_runs()` gives each cage edge as a run of the
+live surface's point numbers, so the edges and creases drawn on a smooth SubD follow a drag through `positions` with
+no refining.
+
 **SubD parts on the smooth surface, and moving points by number (for display #334 and features' PointsOn):**
 `SubD::edges_on_surface` (every cage edge's run on the limit surface, one refinement for all), `edge_on_surface`,
 `limit_points` and `surface_with_faces`; `Mesh::with_points_moved` and `SubD::with_cage_points_moved` keep everything but

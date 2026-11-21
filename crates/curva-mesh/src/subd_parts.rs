@@ -46,25 +46,34 @@ impl SubD {
     ) -> Result<BTreeMap<(u32, u32), Vec<Point>>, SmoothError> {
         let (result, centre, refined) = self.refine(levels)?;
         let on = on_surface(&result, centre, &refined)?;
-        // The library numbers each level's points from the level before's last, so cage point
-        // `v` is fine point `fine - cage + v`. An edge is the shortest way between its ends along
-        // the fine edges lying on cage edges: any other way crosses two cage edges or more.
+        Ok(self
+            .edge_index_runs(&result)
+            .into_iter()
+            .map(|(edge, run)| (edge, run.iter().map(|&v| on[v as usize]).collect()))
+            .collect())
+    }
+
+    /// Each cage edge's run of refined points, by number, keyed and running as
+    /// [`SubD::edges_on_surface`]. The library numbers each level's points from the level
+    /// before's last, so cage point `v` is fine point `fine - cage + v`; an edge is the shortest
+    /// way between its ends along the fine edges lying on cage edges, as any other way crosses two
+    /// cage edges or more.
+    pub(crate) fn edge_index_runs(
+        &self,
+        result: &subdiv_kernels::RefinementResult,
+    ) -> BTreeMap<(u32, u32), Vec<u32>> {
         let cage = u32::try_from(self.cage().vertex_count()).unwrap_or(u32::MAX);
-        let fine = u32::try_from(refined.len()).unwrap_or(u32::MAX);
+        let fine = result.topology.vertex_count;
         let first = fine.saturating_sub(cage);
         let mut next: HashMap<u32, Vec<u32>> = HashMap::new();
-        for [a, b] in cage_edge_lines(&result) {
+        for [a, b] in cage_edge_lines(result) {
             next.entry(a).or_default().push(b);
             next.entry(b).or_default().push(a);
         }
-        Ok(self
-            .edge_uses()
+        self.edge_uses()
             .into_keys()
-            .map(|(a, b)| {
-                let run = path(&next, first + a, first + b);
-                ((a, b), run.iter().map(|&v| on[v as usize]).collect())
-            })
-            .collect())
+            .map(|(a, b)| ((a, b), path(&next, first + a, first + b)))
+            .collect()
     }
 
     /// One cage edge, from `a` to `b`, as it lies on the smooth surface ([`SubD::edges_on_surface`]
@@ -170,6 +179,23 @@ mod tests {
         assert!(moved.sharpness(a, b).is_crease());
         // The cage's corners are the same, so a drawing can keep its triangle layout.
         assert_eq!(moved.cage().corners(), subd.cage().corners());
+    }
+
+    #[test]
+    fn live_edge_runs_follow_a_drag_as_the_edges_do() {
+        let subd = cube();
+        let live = crate::LiveSurface::new(&subd, 2).unwrap();
+        let dragged = subd.with_cage_points_moved(&[(0, [-1.0, -1.0, -1.0])]);
+        let (points, _) = live.positions(dragged.cage().vertices());
+        let fresh = dragged.edges_on_surface(2).unwrap();
+        assert_eq!(live.edge_runs().len(), fresh.len());
+        for (edge, run) in live.edge_runs() {
+            let want = &fresh[edge];
+            assert_eq!(run.len(), want.len());
+            for (&v, &p) in run.iter().zip(want) {
+                assert!(gap(points[v as usize], p) < 1e-9);
+            }
+        }
     }
 
     #[test]
