@@ -9,6 +9,14 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## 22 November 2026
+
+**SubD parts on the smooth surface, and moving points by number (for display #334 and features' PointsOn):**
+`SubD::edges_on_surface` (every cage edge's run on the limit surface, one refinement for all), `edge_on_surface`,
+`limit_points` and `surface_with_faces`; `Mesh::with_points_moved` and `SubD::with_cage_points_moved` keep everything but
+the moved points. The library's own edge runs are incomplete past one level, so runs follow the fine edges between each
+cage point's fine copy.
+
 ## 21 November 2026
 
 **MeshToNURB's two Rhino options:** `TrimTriangularFaces` and `UseNgons`, both on at first as in Rhino 8. Measured with
