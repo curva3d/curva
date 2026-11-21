@@ -51,7 +51,8 @@ use curva_kernel::Point;
 pub(crate) use support::{
     MOST_PREVIEW_OBJECTS, ask_objects, ask_point, ask_point_or_number, bodies_of, circle_through,
     curve_at, curves_of, cut_by, geometry_failed, ghost_bodies, ghost_results, ghosts, guide,
-    objects_or_selection, plane_normal, result_bodies, unexpected, unexpected_step,
+    instances_of, objects_or_selection, opened, plane_normal, result_bodies, unexpected,
+    unexpected_step,
 };
 
 /// How a command is listed.

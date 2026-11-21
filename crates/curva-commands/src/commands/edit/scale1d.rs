@@ -1,8 +1,8 @@
 //! `Scale1D`: stretches objects in one direction.
 
 use crate::commands::{
-    ask_objects, ask_point, ask_point_or_number, bodies_of, curves_of, guide, objects_or_selection,
-    result_bodies, unexpected,
+    ask_objects, ask_point, ask_point_or_number, bodies_of, curves_of, guide, instances_of,
+    objects_or_selection, opened, result_bodies, unexpected,
 };
 use crate::{Answer, Command, Live, Message, Step};
 use curva_document::{Document, Shape};
@@ -39,6 +39,18 @@ fn stretched(
     // Solids and surfaces stretch too, as in Rhino (#507).
     for (id, body) in bodies_of(doc, ids) {
         made.push((id, Shape::Body(body.stretched(origin, axis, factor)?)));
+    }
+    // Blocks stretch too, their placement taking the stretch.
+    let stretch = curva_document::blocks::stretched_by(origin, axis, factor);
+    for (id, instance) in instances_of(doc, ids) {
+        let placement = curva_document::blocks::followed_by(&instance.placement, &stretch);
+        made.push((
+            id,
+            Shape::Instance(curva_document::blocks::Instance {
+                placement,
+                ..instance
+            }),
+        ));
     }
     Ok(made)
 }
@@ -110,7 +122,8 @@ impl Command for Scale1D {
         if let Some((axis, factor)) = self.plan(origin, cursor)
             && let Ok(made) = stretched(doc, ids, origin, axis, factor)
         {
-            shown.extend(made.iter().flat_map(|(_, shape)| shape.outlines()));
+            let shapes: Vec<Shape> = made.into_iter().map(|(_, shape)| shape).collect();
+            shown.extend(opened(doc, &shapes).iter().flat_map(Shape::outlines));
         }
         shown
     }
@@ -123,7 +136,7 @@ impl Command for Scale1D {
             .and_then(|(axis, factor)| stretched(doc, ids, origin, axis, factor).ok())
             .map(|made| {
                 let shapes: Vec<Shape> = made.into_iter().map(|(_, shape)| shape).collect();
-                result_bodies(&shapes)
+                result_bodies(&opened(doc, &shapes))
             })
             .unwrap_or_default()
     }

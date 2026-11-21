@@ -130,6 +130,41 @@ pub(crate) fn ghost_bodies(
         .collect()
 }
 
+/// Shapes for a preview with block instances opened into the shapes they draw (#507).
+pub(crate) fn opened(
+    doc: &curva_document::Document,
+    shapes: &[curva_document::Shape],
+) -> Vec<curva_document::Shape> {
+    let mut out = Vec::new();
+    for shape in shapes {
+        match shape {
+            curva_document::Shape::Instance(instance) => out.extend(
+                doc.instance_shapes(instance)
+                    .into_iter()
+                    .map(|(shape, _)| shape),
+            ),
+            shape => out.push(shape.clone()),
+        }
+    }
+    out
+}
+
+/// Block instances among chosen objects, with their ids.
+pub(crate) fn instances_of(
+    doc: &curva_document::Document,
+    ids: &[u64],
+) -> Vec<(u64, curva_document::blocks::Instance)> {
+    doc.state()
+        .objects
+        .iter()
+        .filter(|object| ids.contains(&object.id))
+        .filter_map(|object| match &object.shape {
+            curva_document::Shape::Instance(instance) => Some((object.id, instance.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
 /// The surfaces and solids among shapes a command would make, for the preview's faces.
 pub(crate) fn result_bodies(made: &[curva_document::Shape]) -> Vec<curva_kernel::Body> {
     made.iter()
