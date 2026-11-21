@@ -440,8 +440,20 @@ fn cases() -> Vec<(&'static str, Start, Vec<&'static str>, Vec<Measured>)> {
         (
             "polygon 6 circumscribed",
             Empty,
-            vec!["polygon", "numsides", "6", "circumscribed", "0,0,0", "5,0,0"],
-            vec![curve([10.0, 11.547, 0.0], [-5.0, -5.7735, 0.0], 34.641, true)],
+            vec![
+                "polygon",
+                "numsides",
+                "6",
+                "circumscribed",
+                "0,0,0",
+                "5,0,0",
+            ],
+            vec![curve(
+                [10.0, 11.547, 0.0],
+                [-5.0, -5.7735, 0.0],
+                34.641,
+                true,
+            )],
         ),
         (
             "extrudecrvtapered",
