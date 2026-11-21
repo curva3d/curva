@@ -353,8 +353,10 @@ fn rhinos_linear_dimensions_come_in_measuring_the_same() {
 
 #[test]
 fn rhinos_layouts_come_in_with_their_details_and_sheet_drawing() {
-    // Made in Rhino 8: an A3 layout "Plan" with a 1:50 top detail from (20, 20) to (220, 170)
-    // looking at (5000, 0), and a rectangle drawn on the sheet; a 10 m line in the model.
+    // Made in Rhino 8: an A3 layout "Plan" with a top detail from (20, 20) to (220, 170) looking
+    // at (5000, 0), and a rectangle drawn on the sheet; a 10 m line in the model. Its scale is
+    // 50:1, not the 1:50 first written here: Rhino 8 shows 4 mm of model across its 200 mm frame
+    // and gives a page-to-model ratio of 50 (#478).
     let (doc, report) = open("v8_layout.3dm");
     let state = doc.state();
     assert_eq!(state.layouts.len(), 1, "{}", report.summary());
@@ -364,7 +366,7 @@ fn rhinos_layouts_come_in_with_their_details_and_sheet_drawing() {
     assert_eq!(sheet.details.len(), 1);
     let detail = &sheet.details[0];
     assert_eq!(detail.projection, "Top");
-    assert!((detail.scale.unwrap() - 0.02).abs() < 1e-12);
+    assert!((detail.scale.unwrap() - 50.0).abs() < 1e-9);
     assert!((detail.target[0] - 5000.0).abs() < 1e-6);
     let frame = state.objects.iter().find(|o| o.id == detail.frame).unwrap();
     assert_eq!(frame.space, Some(sheet.id));

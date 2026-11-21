@@ -406,11 +406,11 @@ impl Curva {
             frame_paper_height * paper_mm / scale / model_mm
         });
         let per_point = model_height / f64::from(shown.height().max(1.0));
-        let (across, up) = match detail.projection.as_str() {
-            "Front" => ([1.0, 0.0, 0.0], [0.0, 0.0, 1.0]),
-            "Right" => ([0.0, 1.0, 0.0], [0.0, 0.0, 1.0]),
-            _ => ([1.0, 0.0, 0.0], [0.0, 1.0, 0.0]),
-        };
+        // Across the sheet is the way it looks crossed with up, as for a camera.
+        let (across, up) = curva_document::layouts::flat_view_axes(&detail.projection)
+            .map_or(([1.0, 0.0, 0.0], [0.0, 1.0, 0.0]), |(way, up)| {
+                (curva_kernel::cross(way, up), up)
+            });
         let (dx, dy) = (f64::from(delta.x), f64::from(delta.y));
         self.doc.change_detail(frame, |d| {
             if pans {

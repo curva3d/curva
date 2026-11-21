@@ -2,6 +2,7 @@
 //! name and a paper size; objects drawn on it carry its id as their space.
 
 use crate::{Document, Object};
+use curva_kernel::Point;
 use serde::{Deserialize, Serialize};
 
 /// The unit a sheet is measured in.
@@ -81,6 +82,42 @@ pub struct Detail {
     /// Layers hidden in this detail only.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hidden_layers: Vec<u64>,
+}
+
+/// The flat standard views a detail can show, by key, each with the way it looks and the
+/// direction up on the sheet, as Rhino's are.
+pub const FLAT_VIEWS: [(&str, Point, Point); 6] = [
+    ("Top", [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]),
+    ("Bottom", [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]),
+    ("Front", [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]),
+    ("Back", [0.0, -1.0, 0.0], [0.0, 0.0, 1.0]),
+    ("Right", [-1.0, 0.0, 0.0], [0.0, 0.0, 1.0]),
+    ("Left", [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]),
+];
+
+/// The flat standard view looking along `looking` (any length), within a degree of it, as the
+/// owner's files have elevations a few hundredths of a degree off square (#478); `None` for any
+/// other way.
+#[must_use]
+pub fn flat_view_looking(looking: Point) -> Option<&'static str> {
+    let length = looking.iter().map(|c| c * c).sum::<f64>().sqrt();
+    if length < 1e-12 {
+        return None;
+    }
+    let near = 1f64.to_radians().cos();
+    FLAT_VIEWS
+        .iter()
+        .find(|(_, way, _)| (0..3).map(|k| way[k] * looking[k]).sum::<f64>() / length > near)
+        .map(|(key, _, _)| *key)
+}
+
+/// The way a flat standard view looks and the direction up on the sheet, by its key.
+#[must_use]
+pub fn flat_view_axes(key: &str) -> Option<(Point, Point)> {
+    FLAT_VIEWS
+        .iter()
+        .find(|(name, _, _)| *name == key)
+        .map(|(_, way, up)| (*way, *up))
 }
 
 /// A typed detail scale as paper length per model length: `1:50`, `2:1`, `1/4" = 1'-0"` or
@@ -476,5 +513,24 @@ mod tests {
         doc.delete_layout(sheet);
         assert_eq!(doc.layouts().len(), 1);
         assert_eq!(count(&doc, sheet), 0);
+    }
+}
+
+#[cfg(test)]
+mod flat_view_tests {
+    use super::*;
+
+    #[test]
+    fn a_way_of_looking_finds_its_flat_view_within_a_degree() {
+        // From the owner's files (#478): a Back elevation, a Left one, and one a hair off square.
+        assert_eq!(flat_view_looking([0.0, -1.0, 0.0]), Some("Back"));
+        assert_eq!(flat_view_looking([2.0, 0.0, 0.0]), Some("Left"));
+        assert_eq!(flat_view_looking([-0.0003, 1.0, 0.0]), Some("Front"));
+        assert_eq!(flat_view_looking([0.0, 0.0, 1.0]), Some("Bottom"));
+        assert_eq!(flat_view_looking([1.0, 1.0, -1.0]), None);
+        for (key, way, up) in FLAT_VIEWS {
+            assert_eq!(flat_view_axes(key), Some((way, up)));
+            assert_eq!(flat_view_looking(way), Some(key));
+        }
     }
 }

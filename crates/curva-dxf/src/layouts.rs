@@ -100,12 +100,11 @@ fn rename_first(cad: &mut CadDocument, name: &str) -> bool {
 }
 
 /// The view direction (from the target towards the camera) of a detail's standard view.
+/// A DXF viewport's view direction: from the target towards the eye, against the way it looks.
 fn direction_of(projection: &str) -> P {
-    match projection {
-        "Top" => [0.0, 0.0, 1.0],
-        "Front" => [0.0, -1.0, 0.0],
-        "Right" => [1.0, 0.0, 0.0],
-        _ => {
+    match curva_document::layouts::flat_view_axes(projection) {
+        Some((looking, _)) => looking.map(|c| -c),
+        None => {
             let s = 1.0 / 3f64.sqrt();
             [s, -s, s]
         }
@@ -155,17 +154,11 @@ pub(crate) fn viewport_in(v: &Viewport, model_mm: f64) -> Option<(Curve, Detail)
     )
     .ok()?;
     let dir = unit(p3(&v.view_direction)).unwrap_or([0.0, 0.0, 1.0]);
-    let along = |axis: P| (0..3).map(|k| dir[k] * axis[k]).sum::<f64>() > 1.0 - 1e-9;
+    // The view direction points at the eye: the way it looks is against it.
     let projection = if v.status.perspective {
         "Perspective"
-    } else if along([0.0, 0.0, 1.0]) {
-        "Top"
-    } else if along([0.0, -1.0, 0.0]) {
-        "Front"
-    } else if along([1.0, 0.0, 0.0]) {
-        "Right"
     } else {
-        "Perspective"
+        curva_document::layouts::flat_view_looking(dir.map(|c| -c)).unwrap_or("Perspective")
     };
     let parallel = projection != "Perspective";
     Some((
