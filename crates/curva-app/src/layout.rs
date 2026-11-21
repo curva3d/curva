@@ -274,8 +274,8 @@ pub const COMMAND_WIDTH: f32 = 720.0;
 pub const SIDE_WIDTH: f32 = 260.0;
 
 /// The narrowest the Display panel opens at: its two halves, the display mode and the view,
-/// each wide enough for the longest name, "Perspective" and its arrow (#470).
-pub const DISPLAY_WIDTH: f32 = 250.0;
+/// each wide enough for the longest name, "View: Perspective" and its arrow (#470, #471).
+pub const DISPLAY_WIDTH: f32 = 290.0;
 
 impl Layout {
     /// The place of a panel.

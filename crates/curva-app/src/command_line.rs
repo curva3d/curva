@@ -227,7 +227,9 @@ impl Curva {
     /// oldest going as new ones come.
     fn command_history(&mut self, ui: &mut egui::Ui) {
         let log = self.processor.log().to_vec();
-        let (blanks, skip, shown) = history_rows(&log, self.notices.len());
+        // The options' own row takes one of the rows, so the bar keeps its height (#515).
+        let options_row = usize::from(!self.processor.options().is_empty());
+        let (blanks, skip, shown) = history_rows(&log, self.notices.len() + options_row);
         for _ in 0..blanks {
             ui.label(" ");
         }
@@ -245,6 +247,28 @@ impl Curva {
             && !another_text_box_has_keys(ctx, command_line)
     }
 
+    /// The current step's options as a row of buttons above the prompt, wrapping onto more lines
+    /// when they do not fit (#515); a button answers as typing its name would. Returns the one
+    /// clicked.
+    fn option_row(&self, ui: &mut egui::Ui) -> Option<&'static str> {
+        let options = self.processor.options();
+        if options.is_empty() {
+            return None;
+        }
+        let mut clicked = None;
+        ui.horizontal_wrapped(|ui| {
+            for (name, label) in options {
+                let chip = egui::Button::new(egui::RichText::new(label).color(theme::ACCENT))
+                    .small()
+                    .frame(true);
+                if ui.add(chip).on_hover_text(name).clicked() {
+                    clicked = Some(name);
+                }
+            }
+        });
+        clicked
+    }
+
     pub(crate) fn command_line(&mut self, ui: &mut egui::Ui) {
         self.command_history(ui);
         let prompt = self
@@ -253,26 +277,13 @@ impl Curva {
             .unwrap_or_else(|| self.text.render(&Message::new("ui.command")));
         // These keys must be taken before the text box, which would otherwise act on them.
         let filled = self.completion_keys(ui);
-        let mut clicked_option = None;
         let mut submit = false;
         let mut clicked = None;
         let mut changed = false;
+        // The options on a row of their own, wrapping, so they never crowd the prompt (#515).
+        let clicked_option = self.option_row(ui);
         ui.horizontal(|ui| {
-            // The question, then its options as buttons, which answer as typing them would.
-            if let Some(question) = self.processor.question() {
-                ui.label(question);
-                for (name, label) in self.processor.options() {
-                    let chip = egui::Button::new(egui::RichText::new(label).color(theme::ACCENT))
-                        .small()
-                        .frame(true);
-                    if ui.add(chip).on_hover_text(name).clicked() {
-                        clicked_option = Some(name);
-                    }
-                }
-                ui.label(":");
-            } else {
-                ui.label(format!("{prompt}:"));
-            }
+            ui.label(format!("{}:", self.processor.question().unwrap_or(prompt)));
             let output = egui::TextEdit::singleline(&mut self.typed)
                 .event_filter(COMMAND_KEYS)
                 .desired_width(f32::INFINITY)
