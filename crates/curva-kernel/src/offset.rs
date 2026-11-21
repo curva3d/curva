@@ -218,11 +218,14 @@ impl Curve {
         let path = self.sample()?;
         let along = unit(sub(path[1], path[0])).ok_or_else(too_far)?;
         let left = cross(normal, along);
-        let start = [
+        let between = [
             (path[0][0] + path[1][0]) / 2.0,
             (path[0][1] + path[1][1]) / 2.0,
             (path[0][2] + path[1][2]) / 2.0,
         ];
+        // The marker starts on the curve itself: between two samples of a curved one is off it,
+        // inside an arc by more than the marker, so both sides came out inside (#513).
+        let start = self.closest_point(between)?;
         self.offset(normal, distance, plus(start, left, side * SIDE_MARKER))
     }
 }
@@ -357,6 +360,31 @@ pub fn fillet_lines(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_arc_offsets_to_each_side() {
+        let arc = Curve::arc(
+            [0.0; 3],
+            [0.0, 50.0, 0.0],
+            [0.0, -50.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+        )
+        .unwrap();
+        let radius = |c: &Curve| {
+            let p = c.sample().unwrap()[0];
+            (p[0] * p[0] + p[1] * p[1]).sqrt()
+        };
+        let normal = [0.0, 0.0, 1.0];
+        let one = arc.offset_on_side(normal, 10.0, 1.0).unwrap();
+        let other = arc.offset_on_side(normal, 10.0, -1.0).unwrap();
+        let mut radii = [radius(&one), radius(&other)];
+        radii.sort_by(f64::total_cmp);
+        assert!(
+            (radii[0] - 40.0).abs() < 1e-6 && (radii[1] - 60.0).abs() < 1e-6,
+            "{radii:?}"
+        );
+    }
 
     const X: Point = [1.0, 0.0, 0.0];
     const Y: Point = [0.0, 1.0, 0.0];
