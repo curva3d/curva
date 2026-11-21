@@ -25,6 +25,10 @@ pub fn format() -> Format {
 /// # Errors
 /// When the file cannot be read or is not a `.3dm` file.
 pub fn open_file(path: &Path) -> Result<(Document, Report), String> {
+    let job = curva_document::progress::current();
+    if let Some(job) = &job {
+        job.step("job.step.reading", Vec::new(), 0);
+    }
     let data = std::fs::read(path).map_err(|e| e.to_string())?;
     let model = crate::read::read(&data).map_err(|e| e.to_string())?;
     let (mut doc, report) = crate::import::open(&model);

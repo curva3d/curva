@@ -11,6 +11,13 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 21 November 2026
 
+**ToNURBS packs faces as Rhino 8 does (#494):** `PackFaces` (on) joins the patches into one surface per region,
+measured with RhinoCommon: quads join unless a crease, a border or a line running out from a point where
+other than four quads meet comes between them; only quads from four-sided cage faces join. Boxes give 6
+faces, an open plane or tube 1, a cylinder with triangle caps 49, as in Rhino. A torus gives 2 where Rhino
+gives 1: the kernel cannot make a solid of one face closed both ways. Patches lying flat in one plane still
+cannot be sewn by the kernel (status 1007, reported to features), so the grid tests stay bent.
+
 **Mesh wires for display (#472):** measured in Rhino 8, every mesh wire is drawn (1 px, object colour) in
 Wireframe, Shaded, Ghosted and Technical, none in Rendered and Arctic; naked, crease and non-manifold
 edges are off everywhere. `Mesh::wire_edges()` gives every edge once, joined by position as Rhino

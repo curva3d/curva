@@ -137,6 +137,12 @@ least as tidy as you found it.
   objects already in the model is also listed in `TRANSFORM_STEPS`, which checks it previews a
   solid, a block, a mesh and a SubD.
 
+- **A typed size holds** (owner's rule, 21 November 2026, #510): a distance, angle or size typed in the
+  command line holds the preview, and so the geometry made, from the moment it is typed and for as long as
+  it stays there; the mouse then only gives the direction, and a click places it at that size. Deleting it
+  gives the mouse back. The framework does this for every command (`Processor::set_typed`); no command
+  works around it.
+
 ## Writing or completing a command (owner's decision, 12 November 2026)
 
 Every command is written on the command framework (`docs/specs/command-framework.md`), and matches Rhino.
