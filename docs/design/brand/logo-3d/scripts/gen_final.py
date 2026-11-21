@@ -1,7 +1,7 @@
 import numpy as np
 import gen_fillet as gf, gen_duo as d
 from PIL import Image, ImageDraw, ImageFont
-gf.setQ(gf.fillet3(gf.C,25))
+gf.setQ(gf.fillet3(gf.C,15))
 AZ,EL,W=-70,35,20
 import pathlib; OUT=str(pathlib.Path(__file__).resolve().parent.parent/'renders')
 PAL=[("Orange / sand",dict(cl="#FBD9A6",cs="#E0782F")),

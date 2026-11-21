@@ -9,7 +9,7 @@ One closed curve inside a 50 × 50 × 50 cube. Seen from the front it reads as a
 seen from the top it reads as a **U** (cUrva). The logo shows the curve as a soft, thick tube in an
 axonometric view, coloured with one two-tone gradient.
 
-Current pick: **R4** view (turn −70°, tilt 35°), corners filleted at radius **25**, tube 20 wide.
+Current pick: **R4** view (turn −70°, tilt 35°), corners filleted at radius **15**, tube 20 wide.
 
 ## Files
 
@@ -33,7 +33,7 @@ Current pick: **R4** view (turn −70°, tilt 35°), corners filleted at radius 
 - `gen_base.py`, `gen_2d.py`, `gen_tube2d.py`, `sdf.py` are helpers from earlier rounds that the
   others import.
 
-`renders/` holds the latest outputs (`board.png` is the overview).
+`renders/` holds the latest outputs (`board.png` is the overview, `compare.png` compares fillet 25, 20 and 15, `axo.png` shows isometric, dimetric and planometric).
 
 ## Open points
 
