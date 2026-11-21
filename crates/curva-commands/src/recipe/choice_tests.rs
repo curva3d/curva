@@ -15,14 +15,14 @@ impl Recipe for Styled {
 
     fn steps(&self, _cx: &Context<'_>) -> Vec<StepDef> {
         vec![
-            StepDef::point("prompt.point"),
-            StepDef::choice("prompt.style", STYLE, &STYLES),
+            StepDef::point("prompt.sphere.centre"),
+            StepDef::choice("prompt.option.name", STYLE, &STYLES),
         ]
     }
 
     fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
         Ok(Made {
-            message: Some(Message::with("done.style", vec![cx.name(STYLE)])),
+            message: Some(Message::with("done.sphere", vec![cx.name(STYLE)])),
             ..Made::default()
         })
     }
