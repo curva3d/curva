@@ -4,6 +4,7 @@
 pub mod commands;
 mod processor;
 pub mod recipe;
+mod repairing;
 mod text;
 mod working;
 
