@@ -19,8 +19,14 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
   `edges_on_surface`, `limit_points` and `surface_with_faces` (#566); shown flat, on the cage.
   They are kept between frames, so a still highlight costs nothing. A SubD with its points on
   or a part picked shows its cage as thin dotted lines, as Rhino 8 does; with its points on,
-  the cage's points are drawn and picked as control points (#564). Still to do: live redraw
-  while dragging cage points (measure first).
+  the cage's points are drawn and picked as control points (#564).
+- **Dragging a SubD's cage points redraws it with no subdivision** (#334, item 4). Each smooth
+  SubD keeps the mesh stream's `LiveSurface` (#566, #569): the subdivision's layout and weights
+  are found once for the cage's shape, and every new set of cage points only re-applies the
+  weights, for the surface and for the cage edges and creases on it. A new shape, new creases
+  or a new level make it again; a SubD with face colours or shown flat draws as before. Even an
+  ordinary change now subdivides once instead of three times (surface, edges, creases). Not yet
+  timed in a release build.
 - **Technical display mode, as in Rhino** (#164, second half; #562). As Hidden, with the lines
   faces hide drawn dotted, black dots on the white, as Rhino 8's Technical mode shows them. In
   the same places as Hidden. Not yet: the hidden parts of curved shapes' outlines (Rhino dots
