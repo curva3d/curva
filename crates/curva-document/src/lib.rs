@@ -201,6 +201,9 @@ pub struct Document {
     /// The file formats the file commands offer (spec `file-formats.md`). Not saved, and not part
     /// of undo; a model that replaces this one keeps them.
     formats: std::sync::Arc<formats::Formats>,
+    /// Whether this model has just replaced another, as Open does, and the views have not yet been
+    /// fitted to it (#479). Not saved, and not part of undo.
+    just_opened: bool,
 }
 
 impl Document {
