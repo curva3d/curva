@@ -1,8 +1,8 @@
 //! Rhino's `ToNURBS` for SubDs (spec `docs/specs/mesh-and-subd.md` §3.3), on `curva-mesh`'s
 //! `SubD::to_nurbs`. Measured in Rhino 8's `-ToNURBS` with Enter at every option: the SubD stays,
 //! and a closed SubD becomes a closed polysurface (a 4 m cube's cage of one face a side holds
-//! 20.963 m³; of 2 × 2 a side, 50.3587 m³). Rhino packs the patches into larger surfaces (6 faces
-//! for either cube); Curva keeps one patch per quad for now.
+//! 20.963 m³; of 2 × 2 a side, 50.3587 m³). `PackFaces` (on) joins the patches into larger faces as
+//! Rhino does: 6 for either cube.
 
 use crate::Message;
 use crate::commands::arguments::objects;
@@ -10,6 +10,7 @@ use crate::recipe::{Context, Derived, Made, OptionDef, Recipe, StepDef};
 use curva_document::Shape;
 
 const DELETE_INPUT: &str = "DeleteInput";
+const PACK_FACES: &str = "PackFaces";
 
 /// The recipe.
 #[derive(Default)]
@@ -17,7 +18,10 @@ pub struct ToNurbs;
 
 impl Recipe for ToNurbs {
     const NAME: &'static str = "tonurbs";
-    const OPTIONS: &'static [OptionDef] = &[OptionDef::toggle(DELETE_INPUT, false)];
+    const OPTIONS: &'static [OptionDef] = &[
+        OptionDef::toggle(DELETE_INPUT, false),
+        OptionDef::toggle(PACK_FACES, true),
+    ];
 
     fn steps(&self, _cx: &Context<'_>) -> Vec<StepDef> {
         vec![StepDef::objects("prompt.tonurbs.objects")]
@@ -37,7 +41,7 @@ impl Recipe for ToNurbs {
                 continue;
             };
             let (body, _) = subd
-                .to_nurbs(1)
+                .to_nurbs(1, cx.toggle(PACK_FACES))
                 .map_err(|e| Message::with("error.geometry", vec![e.to_string()]))?;
             made.derived.push(Derived {
                 shape: Shape::Body(body),
@@ -87,6 +91,8 @@ mod tests {
             let body = objects[1].shape.body().expect("a polysurface");
             let volume = body.volume().unwrap();
             assert!((volume / rhino - 1.0).abs() < 0.001, "{counts}: {volume}");
+            // PackFaces is on, as in Rhino: either cube comes out as 6 faces.
+            assert_eq!(body.face_count().unwrap(), 6, "{counts}");
         }
     }
 }

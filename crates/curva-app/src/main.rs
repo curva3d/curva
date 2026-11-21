@@ -398,10 +398,15 @@ impl eframe::App for Curva {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(100));
         }
+        // What is typed holds the preview and the next click, as long as it stays typed (#510).
+        self.processor.set_typed(&self.doc, &self.typed);
         self.apply_view_request();
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(theme::current().window))
             .show(ui, |ui| self.viewports(ui, free, reach));
+        if self.processor.take_typed_used() {
+            self.typed.clear();
+        }
         if let Some(benchmark) = &mut self.benchmark {
             self.panes[PERSPECTIVE].camera.orbit(BENCHMARK_DRAG, 0.0);
             // Snapping is measured with every snap on, the slowest case.
