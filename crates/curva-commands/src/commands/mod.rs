@@ -358,7 +358,7 @@ mod tests {
         ("Offset", &[]),
         ("ArrayPolar", &["0,0", "4"]),
         ("Ellipse", &["0,0", "5,0"]),
-        ("Rotate3D", &["0,0,0"]),
+        ("Rotate3D", &["0,0,0", "0,0,5"]),
         ("Scale1D", &["0,0", "2"]),
         ("Scale2D", &["0,0", "5,0"]),
         ("ScaleNU", &["0,0"]),
@@ -725,7 +725,8 @@ mod tests {
     }
 
     /// The commands that move, copy or reshape objects already in the model, with the steps that
-    /// reach their first point that follows the pointer.
+    /// reach the first step at which the objects move with the pointer (or with a typed value, where
+    /// the step takes one: Rotate3D's angle).
     const TRANSFORM_STEPS: [(&str, &[&str]); 13] = [
         ("Move", &["0,0"]),
         ("Copy", &["0,0"]),
@@ -790,10 +791,11 @@ mod tests {
                     processor.submit(&mut doc, step);
                 }
                 let at = Some([3.0, 7.0, 0.0]);
-                let lines = processor.preview(&doc, at, "");
+                let typed = if name == "Rotate3D" { "30" } else { "" };
+                let lines = processor.preview(&doc, at, typed);
                 assert!(!lines.is_empty(), "{name} shows nothing of {kind}");
                 if solid {
-                    let bodies = processor.preview_bodies(&doc, at, "");
+                    let bodies = processor.preview_bodies(&doc, at, typed);
                     assert!(!bodies.is_empty(), "{name} shows no faces of {kind}");
                 }
             }
