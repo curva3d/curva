@@ -200,7 +200,7 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | DupEdge | Select edges | none | none | done |
 | Parabola | Focus or vertex; direction; end | `Vertex` `Marks` `FocusMarks` `HalfParabola` | none | partly |
 | Paraboloid | Focus or vertex; direction; end | `Vertex` `MarkFocus` `Solid` | none | partly |
-| Align | Select objects; how | `Bottom` `HorizontalCenter` `Left` `Right` `Top` `VerticalCenter` `ToPoint` `ToLine` | `Bottom` `Top` `Left` `Right` `HorizontalCenter` `VerticalCenter` | partly |
+| Align | Select objects; alignment option; alignment point (Enter: auto align) | `Bottom` `Concentric` `HorizCenter` `Left` `Right` `Top` `VertCenter` (measured in Rhino 8) | `Bottom` `Concentric` `HorizCenter` `Left` `Right` `Top` `VertCenter` | done |
 | ChangeDegree | Select curves; new degree | `Deformable` | `Degree` `Deformable` | partly |
 | AreaCentroid | Select surfaces or closed curves | none | none | partly |
 | VolumeCentroid | Select solids | none | none | done |

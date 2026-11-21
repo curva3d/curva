@@ -1,41 +1,80 @@
-//! The `Align` command.
+//! `Align`, as in Rhino 8 (measured, #527): objects lined up on the plane being drawn on. After the
+//! objects, choose how: `Bottom`, `Top`, `Left`, `Right`, `HorizCenter` (centres on one horizontal
+//! line), `VertCenter` (centres on one vertical line) or `Concentric` (both). Then the alignment
+//! point; Enter aligns to the selection itself: its lowest bottom, highest top, leftmost left,
+//! rightmost right, or the middle of all of them together.
 
 use crate::Message;
 use crate::commands::Change;
 use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef, Value};
-use curva_document::Shape;
+use curva_document::{Document, Object, Shape};
 use curva_kernel::{Point, dot};
 
-fn bounds_of(shape: &Shape) -> Option<(Point, Point)> {
-    shape.bounds()
-}
-
-/// Which value of an extent along an axis to line up: its start, its end, or its middle.
-type Extent = fn((f64, f64)) -> f64;
-
-const ALIGNS: [&str; 6] = [
+/// Rhino's ways of aligning, by the names Rhino takes.
+const ALIGNS: [&str; 7] = [
     "Bottom",
-    "Top",
+    "Concentric",
+    "HorizCenter",
     "Left",
     "Right",
-    "HorizontalCenter",
-    "VerticalCenter",
+    "Top",
+    "VertCenter",
 ];
 
-/// `Align`: lines objects up on the plane being drawn on: their bottoms, tops, left or right
-/// sides, or centres, on those of all of them.
+/// `Align`.
 #[derive(Default)]
 pub struct Align;
+
+/// An object's extent, a block's from what it draws.
+fn bounds_of(doc: &Document, object: &Object) -> Option<(Point, Point)> {
+    let Shape::Instance(instance) = &object.shape else {
+        return object.shape.bounds();
+    };
+    doc.instance_shapes(instance)
+        .iter()
+        .filter_map(|(shape, _)| shape.bounds())
+        .reduce(|(lo, hi), (a, b)| {
+            (
+                std::array::from_fn(|i| lo[i].min(a[i])),
+                std::array::from_fn(|i| hi[i].max(b[i])),
+            )
+        })
+}
+
+/// What a way of aligning lines up along the plane's X and along its Y: for each, which end of
+/// the extent (-1 the low end, 0 the middle, 1 the high end), or `None` when it leaves that way
+/// alone.
+fn lines_up(how: &str) -> [Option<i8>; 2] {
+    match how {
+        "Left" => [Some(-1), None],
+        "Right" => [Some(1), None],
+        "Bottom" => [None, Some(-1)],
+        "Top" => [None, Some(1)],
+        "HorizCenter" => [None, Some(0)],
+        "VertCenter" => [Some(0), None],
+        _ => [Some(0), Some(0)],
+    }
+}
+
+/// The value of an extent `(lo, hi)` at `end`.
+fn at_end((lo, hi): (f64, f64), end: i8) -> f64 {
+    match end {
+        -1 => lo,
+        1 => hi,
+        _ => f64::midpoint(lo, hi),
+    }
+}
 
 impl Recipe for Align {
     const NAME: &'static str = "align";
     const OPTIONS: &'static [OptionDef] = &[
-        OptionDef::finish("Bottom"),
-        OptionDef::finish("Top"),
-        OptionDef::finish("Left"),
-        OptionDef::finish("Right"),
-        OptionDef::finish("HorizontalCenter"),
-        OptionDef::finish("VerticalCenter"),
+        OptionDef::mode("Bottom"),
+        OptionDef::mode("Concentric"),
+        OptionDef::mode("HorizCenter"),
+        OptionDef::mode("Left"),
+        OptionDef::mode("Right"),
+        OptionDef::mode("Top"),
+        OptionDef::mode("VertCenter"),
     ];
 
     fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
@@ -45,9 +84,23 @@ impl Recipe for Align {
                 .offering(&[]),
         ];
         if !cx.values.is_empty() {
-            steps.push(StepDef::point("prompt.align.how").offering(&ALIGNS));
+            steps.push(if cx.mode.is_some() {
+                // "Alignment point. Press Enter to auto align".
+                StepDef::point("prompt.align.point")
+                    .optional()
+                    .offering(&ALIGNS)
+            } else {
+                StepDef::point("prompt.align.how").offering(&ALIGNS)
+            });
         }
         steps
+    }
+
+    fn check(&self, cx: &Context<'_>) -> Result<(), Message> {
+        if cx.values.len() > 1 && cx.mode.is_none() {
+            return Err(Message::new("error.align_choose"));
+        }
+        Ok(())
     }
 
     fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
@@ -61,30 +114,40 @@ impl Recipe for Align {
             .objects
             .iter()
             .filter(|o| ids.contains(&o.id))
-            .filter_map(|o| Some((o.id, bounds_of(&o.shape)?)))
+            .filter_map(|o| Some((o.id, bounds_of(cx.doc, o)?)))
             .collect();
-        // Each object's extent along the plane's X or Y, and the target on all of them.
         let along = |axis: Point, (lo, hi): (Point, Point)| {
             let (a, b) = (dot(lo, axis), dot(hi, axis));
             (a.min(b), a.max(b))
         };
-        let (axis, pick): (Point, Extent) = match how {
-            "Bottom" => (y, |(lo, _)| lo),
-            "Top" => (y, |(_, hi)| hi),
-            "Left" => (x, |(lo, _)| lo),
-            "Right" => (x, |(_, hi)| hi),
-            "HorizontalCenter" => (x, |(lo, hi)| (lo + hi) / 2.0),
-            _ => (y, |(lo, hi)| (lo + hi) / 2.0),
-        };
-        let values: Vec<f64> = objects.iter().map(|(_, b)| pick(along(axis, *b))).collect();
-        let target = match how {
-            "Top" | "Right" => values.iter().copied().fold(f64::MIN, f64::max),
-            "Bottom" | "Left" => values.iter().copied().fold(f64::MAX, f64::min),
-            _ => values.iter().sum::<f64>() / values.len().max(1) as f64,
-        };
+        let point = cx.values.get(1).and_then(Value::point);
+        let mut moves: Vec<Point> = vec![[0.0; 3]; objects.len()];
+        for (axis, end) in [x, y].into_iter().zip(lines_up(how)) {
+            let Some(end) = end else {
+                continue;
+            };
+            let extents: Vec<(f64, f64)> = objects.iter().map(|(_, b)| along(axis, *b)).collect();
+            // The alignment point's, or the selection's own: all extents together.
+            let target = point.map_or_else(
+                || {
+                    let all = extents
+                        .iter()
+                        .fold((f64::MAX, f64::MIN), |(lo, hi), (a, b)| {
+                            (lo.min(*a), hi.max(*b))
+                        });
+                    at_end(all, end)
+                },
+                |p| dot(p, axis),
+            );
+            for (moved, extent) in moves.iter_mut().zip(&extents) {
+                let by = target - at_end(*extent, end);
+                for (k, m) in moved.iter_mut().enumerate() {
+                    *m += axis[k] * by;
+                }
+            }
+        }
         let mut made = Made::default();
-        for ((id, _), value) in objects.iter().zip(values) {
-            let by = axis.map(|v| v * (target - value));
+        for ((id, _), by) in objects.iter().zip(moves) {
             let part =
                 crate::commands::changed(cx, &[*id], &[Change::Move(by)], false, |_, _| None);
             made.replace.extend(part.replace);
@@ -103,14 +166,97 @@ mod tests {
     use curva_document::Document;
     use curva_kernel::Curve;
 
-    #[test]
-    fn align_lines_up_bottoms() {
+    /// Rhino 8's measured case: lines (0,0)–(4,0) and (1,5)–(3,5) and a circle of radius 2 at
+    /// (10,3), aligned with Enter; each object's extent afterwards as (min x, min y, max x, max y).
+    fn aligned(how: &str, point: &str) -> Vec<[f64; 4]> {
         let mut doc = Document::default();
-        let a = doc.add(Curve::line([0.0, 0.0, 0.0], [1.0, 0.0, 0.0]).unwrap());
-        let b = doc.add(Curve::line([3.0, 5.0, 0.0], [4.0, 6.0, 0.0]).unwrap());
-        doc.select(&[a, b]);
-        run(&mut doc, &["align", "bottom"]);
-        let lowest = doc.state().objects[1].curve().unwrap().sample().unwrap()[0][1];
-        assert!(lowest.abs() < 1e-9, "{lowest}");
+        let a = doc.add(Curve::line([0.0; 3], [4.0, 0.0, 0.0]).unwrap());
+        let b = doc.add(Curve::line([1.0, 5.0, 0.0], [3.0, 5.0, 0.0]).unwrap());
+        let c = doc.add(Curve::circle([10.0, 3.0, 0.0], 2.0).unwrap());
+        doc.select(&[a, b, c]);
+        run(&mut doc, &["align", how, point]);
+        doc.state()
+            .objects
+            .iter()
+            .map(|o| {
+                let (lo, hi) = o.shape.bounds().unwrap();
+                [lo[0], lo[1], hi[0], hi[1]].map(|v| (v * 1000.0).round() / 1000.0)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn each_way_lines_up_as_in_rhino() {
+        // Measured in Rhino 8 with _-Align <option> _Enter.
+        let rhino: [(&str, [[f64; 4]; 3]); 7] = [
+            (
+                "left",
+                [
+                    [0.0, 0.0, 4.0, 0.0],
+                    [0.0, 5.0, 2.0, 5.0],
+                    [0.0, 1.0, 4.0, 5.0],
+                ],
+            ),
+            (
+                "right",
+                [
+                    [8.0, 0.0, 12.0, 0.0],
+                    [10.0, 5.0, 12.0, 5.0],
+                    [8.0, 1.0, 12.0, 5.0],
+                ],
+            ),
+            (
+                "top",
+                [
+                    [0.0, 5.0, 4.0, 5.0],
+                    [1.0, 5.0, 3.0, 5.0],
+                    [8.0, 1.0, 12.0, 5.0],
+                ],
+            ),
+            (
+                "bottom",
+                [
+                    [0.0, 0.0, 4.0, 0.0],
+                    [1.0, 0.0, 3.0, 0.0],
+                    [8.0, 0.0, 12.0, 4.0],
+                ],
+            ),
+            (
+                "horizcenter",
+                [
+                    [0.0, 2.5, 4.0, 2.5],
+                    [1.0, 2.5, 3.0, 2.5],
+                    [8.0, 0.5, 12.0, 4.5],
+                ],
+            ),
+            (
+                "vertcenter",
+                [
+                    [4.0, 0.0, 8.0, 0.0],
+                    [5.0, 5.0, 7.0, 5.0],
+                    [4.0, 1.0, 8.0, 5.0],
+                ],
+            ),
+            (
+                "concentric",
+                [
+                    [4.0, 2.5, 8.0, 2.5],
+                    [5.0, 2.5, 7.0, 2.5],
+                    [4.0, 0.5, 8.0, 4.5],
+                ],
+            ),
+        ];
+        for (how, expected) in rhino {
+            assert_eq!(aligned(how, ""), expected, "{how}");
+        }
+    }
+
+    #[test]
+    fn an_alignment_point_sets_the_line() {
+        let found = aligned("left", "20,0");
+        assert!(
+            found.iter().all(|e| (e[0] - 20.0).abs() < 1e-9),
+            "{found:?}"
+        );
     }
 }
