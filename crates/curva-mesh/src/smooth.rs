@@ -88,7 +88,7 @@ impl SubD {
 
     /// The cage subdivided `levels` times (1 to [`MAX_LEVELS`]) by Catmull–Clark, as its quads,
     /// and the refinement it came from. Each refined face remembers its cage face.
-    fn refine(
+    pub(crate) fn refine(
         &self,
         levels: u8,
     ) -> Result<(subdiv_kernels::RefinementResult, Point, Vec<Point>), SmoothError> {
@@ -338,7 +338,7 @@ impl SubD {
     }
 
     /// The smooth surface, and for each of its quads the cage face it lies in.
-    fn surface_and_roots(&self, levels: u8) -> Result<(Mesh, Vec<u32>), SmoothError> {
+    pub(crate) fn surface_and_roots(&self, levels: u8) -> Result<(Mesh, Vec<u32>), SmoothError> {
         let (result, centre, refined) = self.refine(levels)?;
         let limit = result
             .limit_stencils()
@@ -418,7 +418,7 @@ impl SubD {
 }
 
 /// The refined points moved onto the limit surface, in world coordinates.
-fn on_surface(
+pub(crate) fn on_surface(
     result: &subdiv_kernels::RefinementResult,
     centre: Point,
     refined: &[Point],
@@ -437,7 +437,7 @@ fn on_surface(
 /// The refined edges lying along cage edges: those between faces that come from different cage
 /// faces, and those on the open border (one face). Every other refined edge lies inside one cage
 /// face.
-fn cage_edge_lines(result: &subdiv_kernels::RefinementResult) -> Vec<[u32; 2]> {
+pub(crate) fn cage_edge_lines(result: &subdiv_kernels::RefinementResult) -> Vec<[u32; 2]> {
     let topology = &result.topology;
     let mut roots: std::collections::BTreeMap<(u32, u32), Vec<u32>> =
         std::collections::BTreeMap::new();
