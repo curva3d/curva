@@ -94,6 +94,15 @@ impl<R: Recipe> RecipeCommand<R> {
                 doc.select(&[]);
             }
         }
+        if let Some((option, words)) = step.choice {
+            let shown = self.context(doc, &self.values).name(option);
+            return Step::Ask(Request {
+                prompt: Message::with(step.prompt, vec![shown]),
+                allow_empty: true,
+                options: words.to_vec(),
+                ..Request::new(step.prompt, Kind::Choice)
+            });
+        }
         let (options, option_labels) = self.offered(doc, &step);
         let preview = step.from.into_iter().collect();
         // A step whose typed number sets an option takes numbers as well as positions.
@@ -334,6 +343,17 @@ impl<R: Recipe> Command for RecipeCommand<R> {
             && !matches!(crate::commands::curve_at(doc, at, ON_CURVE), Ok(Some(_)))
         {
             return self.ask(doc);
+        }
+        // A word picked at a choice step sets its name option and answers the step.
+        if let Some(Answer::Option(word)) = &answer
+            && let Some((option, words)) = self
+                .steps(doc)
+                .get(self.values.len())
+                .and_then(|step| step.choice)
+            && words.contains(word)
+        {
+            doc.remember_text(&key(R::NAME, option), word);
+            return self.step(doc, Some(Answer::Empty));
         }
         let value = match answer {
             None => return self.ask(doc),
