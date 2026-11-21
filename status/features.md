@@ -16,6 +16,25 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## Features stream — 22 November 2026 (later)
+
+- **Rhino parity:** part picking with Ctrl+Shift (#552), Alt-drag copies (#555), dragging picked mesh
+  points and SubD cage points (#567), Box Diagonal/3Point/Vertical (#558), Sphere 3Point/4Point and
+  Cylinder/Cone 2Point/3Point (#570), Torus 2Point/3Point/Diameter (#572; Rhino's second Diameter at
+  the tube radius still to come, as options are one per name), and `StepDef::choice` for a choice of
+  words at a prompt of its own, asked for by the mesh stream for Fill and Stitch (#574).
+- **Checked against Rhino 8:** the comparison test grew to 61 cases (#554, #573, #578). Batch 3 found
+  Shear sliding points along its reference where Rhino slides them square to it; fixed (#573).
+- **The owner's files** (measured in Rhino 8 on them):
+  - Hatches drew Curva's own pattern wherever the file's had its name (Plus, Single, Grid...), and
+    Rhino's are other shapes; the file's pattern is now used (#576, #477). Dots are still left out.
+  - Layout details came in at the inverse of their scale (a 1:100 detail at 100:1): Rhino keeps page
+    units per model unit. A test file thought to be 1:50 is 50:1 in Rhino, which hid it. Back, Left and
+    Bottom views and ones a hair off square came in as perspectives (9 of 53 in one file). Both fixed
+    (#577, #478). Rotated plans, perspective lenses and per-detail clipping are still to compare.
+  - An opened `.3dm` shows the views it was saved with (#580 in review, #479 step 2).
+- Not tried by hand in the running app this session.
+
 ## Features stream — 22 November 2026
 
 - **0.4.5 published** (21 November, late) at the owner's request without waiting for 08:00:
