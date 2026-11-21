@@ -776,12 +776,23 @@ impl Outlines {
                 candidates.push((SnapKind::Mid, along(*a, *b, 0.5)));
             }
         }
-        candidates
-            .into_iter()
-            .filter_map(|(kind, point)| Some((gap(point)?, kind, point)))
-            .filter(|(distance, ..)| *distance <= SNAP_REACH)
-            .min_by(|a, b| a.0.total_cmp(&b.0))
-            .map(|(_, kind, point)| SnapHit { kind, point })
+        let nearest = |list: Vec<(SnapKind, Point)>| {
+            list.into_iter()
+                .filter_map(|(kind, point)| Some((gap(point)?, kind, point)))
+                .filter(|(distance, ..)| *distance <= SNAP_REACH)
+                .min_by(|a, b| a.0.total_cmp(&b.0))
+                .map(|(_, kind, point)| SnapHit { kind, point })
+        };
+        // Where lines cross comes first; otherwise the pointer runs along the nearest guideline,
+        // as Rhino's SmartTrack does (#512: it only ever snapped where lines crossed).
+        nearest(candidates).or_else(|| {
+            let on_lines = lines
+                .iter()
+                .filter_map(|(p, d)| camera.line_point(cursor, size, *p, *d))
+                .map(|point| (SnapKind::Near, point))
+                .collect();
+            nearest(on_lines)
+        })
     }
 }
 
@@ -1259,6 +1270,28 @@ mod tests {
             constrained(&CPlane::WORLD_XY, ground, Some([0.0; 3]), false, false),
             ground
         );
+    }
+
+    #[test]
+    fn the_pointer_runs_along_a_guideline_away_from_any_crossing() {
+        let shapes = outlines(Vec::new());
+        let mut guides = Guides {
+            held: Vec::new(),
+            axes: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            diagonals: true,
+        };
+        guides.toggle([0.0; 3]);
+        let camera = Camera::default();
+        // A few pixels off the horizontal guideline through the held point, far along it.
+        let at = camera.project([7.0, 0.0, 0.0], SIZE).unwrap();
+        let hit = shapes
+            .guide_snap(&camera, [at[0], at[1] - 3.0], SIZE, &guides)
+            .expect("snaps onto the guideline");
+        assert!(hit.point[1].abs() < 1e-6, "{:?}", hit.point);
+        assert!((hit.point[0] - 7.0).abs() < 0.5, "{:?}", hit.point);
+        // Far from every guideline, nothing.
+        let away = camera.project([7.0, 3.0, 0.0], SIZE).unwrap();
+        assert!(shapes.guide_snap(&camera, away, SIZE, &guides).is_none());
     }
 
     #[test]
