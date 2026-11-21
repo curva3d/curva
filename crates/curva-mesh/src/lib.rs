@@ -7,6 +7,7 @@
 pub mod boolean;
 mod check;
 mod convert;
+mod fill;
 mod from_body;
 mod join;
 mod measure;
