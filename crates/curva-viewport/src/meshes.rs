@@ -190,16 +190,30 @@ impl Graph {
     }
 }
 
-/// Each edge of `mesh`'s faces once, as its two vertex numbers, leaving out edges from a
-/// vertex to itself and edges to vertices the mesh does not have.
+/// Each edge of `mesh` once, as its two vertex numbers, an edge where the mesh is unwelded
+/// counted once by where its points are, as Rhino 8 draws it: the edges of
+/// [`curva_mesh::Mesh::wire_edges`] (#493), kept in the faces' order so they join into long
+/// chains, and leaving out edges to vertices the mesh does not have.
 fn unique_edges(mesh: &curva_mesh::Mesh, count: usize) -> Vec<(usize, usize)> {
+    let points = mesh.vertices();
+    let mut first = std::collections::HashMap::with_capacity(points.len());
+    let place: Vec<usize> = (0..points.len())
+        .map(|v| {
+            *first
+                .entry(points[v].map(|c| (c + 0.0).to_bits()))
+                .or_insert(v)
+        })
+        .collect();
     let mut seen = std::collections::HashSet::new();
     let mut edges = Vec::new();
     for face in mesh.faces() {
         for (k, &a) in face.iter().enumerate() {
-            let b = face[(k + 1) % face.len()];
-            let (a, b) = (a as usize, b as usize);
-            if a != b && a < count && b < count && seen.insert((a.min(b), a.max(b))) {
+            let (a, b) = (a as usize, face[(k + 1) % face.len()] as usize);
+            if a >= count || b >= count {
+                continue;
+            }
+            let (a, b) = (place[a], place[b]);
+            if a != b && seen.insert((a.min(b), a.max(b))) {
                 edges.push((a, b));
             }
         }
@@ -403,5 +417,43 @@ mod tests {
         expected.sort_unstable();
         assert_eq!(drawn, expected);
         assert!(chains.len() * 20 < expected.len());
+    }
+
+    /// A box whose six sides each keep their own four points draws twelve wires, each edge once,
+    /// as Rhino 8 draws an unwelded box (#472).
+    #[test]
+    fn an_unwelded_box_draws_each_edge_once() {
+        let corner = |i: usize| [(i & 1) as f64, ((i >> 1) & 1) as f64, ((i >> 2) & 1) as f64];
+        let sides = [
+            [0, 2, 3, 1],
+            [4, 5, 7, 6],
+            [0, 1, 5, 4],
+            [2, 6, 7, 3],
+            [0, 4, 6, 2],
+            [1, 3, 7, 5],
+        ];
+        let mut points = Vec::new();
+        let mut faces = Vec::new();
+        for side in sides {
+            let first = points.len() as u32;
+            points.extend(side.iter().map(|&i| corner(i)));
+            faces.push([first, first + 1, first + 2, first + 3]);
+        }
+        let mesh = Mesh::new(points, &faces).unwrap();
+        let drawn: usize = wires(&mesh)
+            .iter()
+            .map(|chain| match chain {
+                curva_kernel::Curve::Polyline { points, .. } => points.len() - 1,
+                _ => panic!("a chain is a polyline"),
+            })
+            .sum();
+        assert_eq!(drawn, 12);
+        // The same edges the mesh stream's `wire_edges` gives, only in the faces' order.
+        let mut edges: Vec<[u32; 2]> = unique_edges(&mesh, mesh.vertices().len())
+            .into_iter()
+            .map(|(a, b)| [a.min(b) as u32, a.max(b) as u32])
+            .collect();
+        edges.sort_unstable();
+        assert_eq!(edges, mesh.wire_edges());
     }
 }
