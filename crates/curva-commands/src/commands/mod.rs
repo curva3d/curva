@@ -376,8 +376,9 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 102] = [
+    const NOTHING_TO_PREVIEW: [&str; 103] = [
         "ToNURBS",
+        "Stitch",
         "UnweldEdge",
         "WeldEdge",
         "Fill",
