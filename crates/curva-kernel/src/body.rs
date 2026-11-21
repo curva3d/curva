@@ -524,6 +524,21 @@ impl Body {
         std::sync::Arc::as_ptr(&self.shared) as usize
     }
 
+    /// This body with the faces of `made`, a body read in place from the same record, kept where
+    /// this one is placed: how a body read quickly takes its healed form once it is ready (#476).
+    #[must_use]
+    pub fn with_faces_of(&self, made: &Body) -> Body {
+        Body {
+            shared: std::sync::Arc::clone(&made.shared),
+            placement: if made.placement == IN_PLACE {
+                self.placement
+            } else {
+                followed_by(&made.placement, &self.placement)
+            },
+            placed: PlacedRecord::default(),
+        }
+    }
+
     /// How many faces, edges and corners it has.
     pub fn counts(&self) -> Result<[usize; 3], KernelError> {
         self.shared
@@ -791,6 +806,21 @@ mod tests {
 
     fn close(a: f64, b: f64) -> bool {
         (a - b).abs() <= 1e-6 * b.abs().max(1.0)
+    }
+
+    #[test]
+    fn faces_read_again_stay_where_the_quick_reading_was_placed() {
+        let quick = Body::cuboid([0.0; 3], [1.0, 1.0, 1.0])
+            .unwrap()
+            .translated([10.0, 0.0, 0.0]);
+        let healed = Body::cuboid([0.0; 3], [1.0, 1.0, 1.0]).unwrap();
+        let swapped = quick.with_faces_of(&healed);
+        assert_eq!(swapped.faces_key(), healed.faces_key());
+        let (low, high) = swapped.bounds().unwrap();
+        assert!(
+            close(low[0], 10.0) && close(high[0], 11.0),
+            "{low:?} {high:?}"
+        );
     }
 
     #[test]

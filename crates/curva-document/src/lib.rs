@@ -28,6 +28,7 @@ pub mod hatch;
 pub mod layouts;
 pub mod meshing;
 mod organise;
+mod repairs;
 pub mod section;
 pub mod shape;
 pub mod sheet;
@@ -45,6 +46,7 @@ mod state;
 pub use layers::*;
 pub use linetype::*;
 pub use object::*;
+pub use repairs::Repair;
 pub use state::*;
 
 /// Marks files of this early format, so a later Curva can recognise and convert them.
@@ -201,6 +203,8 @@ pub struct Document {
     /// The file formats the file commands offer (spec `file-formats.md`). Not saved, and not part
     /// of undo; a model that replaces this one keeps them.
     formats: std::sync::Arc<formats::Formats>,
+    /// Solids read quickly, waiting to be healed (#476). Not saved, and not part of undo.
+    repairs: repairs::Repairs,
     /// Whether this model has just replaced another, as Open does, and the views have not yet been
     /// fitted to it (#479). Not saved, and not part of undo.
     just_opened: bool,

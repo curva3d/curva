@@ -65,21 +65,36 @@ struct Arrivals {
     object_numbers: BTreeMap<Uuid, u64>,
 }
 
-pub(super) fn bring_in(model: &Model, state: &mut State, report: &mut Report) {
+pub(super) fn bring_in(
+    model: &Model,
+    state: &mut State,
+    report: &mut Report,
+) -> Vec<(Body, curva_document::Repair)> {
     let look = lookups(model, state, report);
     let mut came = Arrivals::default();
-    for (object, solid) in model.objects.iter().zip(solids_ahead(model)) {
+    let (ahead, repairs) = solids_ahead(model);
+    for (object, solid) in model.objects.iter().zip(ahead) {
         object_in(model, state, report, &look, &mut came, object, solid);
     }
     object_numbers_in_fields(state, &came.object_numbers);
     clipping_planes_in(model, state, &look, &came);
     detail_layers_in(model, state, &look, &came);
     blocks_in(model, state, report, &look, came.definitions);
+    repairs
 }
 
+/// The solids of the file as they will come in, ahead, with the polysurfaces read quickly and
+/// what heals them later.
+type Ahead = (
+    Vec<Option<Result<Body, KernelError>>>,
+    Vec<(Body, curva_document::Repair)>,
+);
+
 /// Each object's solid, for the polysurfaces and extrusions, built on every core at once: building
-/// them is most of the time a big file takes to open (#317). `None` for the other objects.
-fn solids_ahead(model: &Model) -> Vec<Option<Result<Body, KernelError>>> {
+/// them is most of the time a big file takes to open (#317). `None` for the other objects. The
+/// largest polysurfaces are read quickly, without the engine's healer, and come with the work
+/// that heals them, for the model to do in the background (#476).
+fn solids_ahead(model: &Model) -> Ahead {
     let solids: Vec<(usize, &Geometry)> = model
         .objects
         .iter()
@@ -89,18 +104,25 @@ fn solids_ahead(model: &Model) -> Vec<Option<Result<Body, KernelError>>> {
         .collect();
     let built = curva_kernel::parallel::each_in_parallel(solids.len(), |k| {
         Ok(match solids[k].1 {
-            Geometry::Brep(b) => super::breps::brep_body(b),
-            Geometry::Extrusion(e) => super::breps::extrusion_body(e),
-            _ => Err(KernelError("not a solid".to_owned())),
+            Geometry::Brep(b) => match super::breps::brep_body_quickly(b) {
+                Ok((body, repair)) => (Ok(body), repair),
+                Err(e) => (Err(e), None),
+            },
+            Geometry::Extrusion(e) => (super::breps::extrusion_body(e), None),
+            _ => (Err(KernelError("not a solid".to_owned())), None),
         })
     })
     .unwrap_or_default();
     let mut ahead: Vec<Option<Result<Body, KernelError>>> =
         model.objects.iter().map(|_| None).collect();
-    for ((i, _), solid) in solids.iter().zip(built) {
+    let mut repairs = Vec::new();
+    for ((i, _), (solid, repair)) in solids.iter().zip(built) {
+        if let (Ok(body), Some(repair)) = (&solid, repair) {
+            repairs.push((body.clone(), repair));
+        }
         ahead[*i] = Some(solid);
     }
-    ahead
+    (ahead, repairs)
 }
 
 /// The file's tables into Curva's model, as the objects will name them: the unit, document
