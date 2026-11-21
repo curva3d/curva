@@ -320,6 +320,17 @@ impl Mesh {
         self.edge_uses().len()
     }
 
+    /// Every edge once, an edge shared by faces that meet at the same points counted once even
+    /// where the mesh is unwelded: the wires Rhino 8 draws over a mesh in its Wireframe, Shaded,
+    /// Ghosted and Technical views (measured: `ShowMeshWires` on there, off in Rendered and
+    /// Arctic). Sorted, each edge from its lower point.
+    #[must_use]
+    pub fn wire_edges(&self) -> Vec<[u32; 2]> {
+        let mut edges: Vec<[u32; 2]> = self.edge_uses().into_keys().map(|(a, b)| [a, b]).collect();
+        edges.sort_unstable();
+        edges
+    }
+
     /// The edges used by only one face: the mesh's open borders.
     #[must_use]
     pub fn naked_edges(&self) -> Vec<[u32; 2]> {
@@ -516,6 +527,24 @@ pub(crate) mod tests {
         assert!(cube.is_closed());
         assert!(cube.naked_edges().is_empty());
         assert_eq!(cube.face(1), &[4, 5, 6, 7]);
+    }
+
+    #[test]
+    fn a_box_shows_twelve_wires_welded_or_not_as_in_rhino() {
+        // Measured in Rhino 8: a box mesh of 24 unwelded points has 12 topology edges, as does
+        // the welded box; those are the wires it draws.
+        let cube = cube();
+        assert_eq!(cube.wire_edges().len(), 12);
+        let mut points = Vec::new();
+        let mut faces = Vec::new();
+        for face in cube.faces() {
+            let first = u32::try_from(points.len()).unwrap();
+            points.extend(face.iter().map(|&v| cube.vertices()[v as usize]));
+            faces.push((first..first + 4).collect::<Vec<u32>>());
+        }
+        let unwelded = Mesh::new(points, &faces).unwrap();
+        assert_eq!(unwelded.vertex_count(), 24);
+        assert_eq!(unwelded.wire_edges().len(), 12);
     }
 
     #[test]

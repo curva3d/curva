@@ -435,6 +435,17 @@ impl Camera {
             std::array::from_fn(|axis| about[axis] + (target[axis] - about[axis]) * applied);
     }
 
+    /// Moves closer (factor below 1) or further away, keeping what is under the screen position
+    /// `screen` in place, as the mouse wheel does in Rhino. The point kept is on the line of sight
+    /// through `screen`, as deep as the view's target, so it exists wherever the mouse is.
+    pub fn zoom_at(&mut self, factor: f64, screen: [f64; 2], size: [f64; 2]) {
+        let (start, direction) = self.ray(screen, size);
+        let forward = self.forward();
+        let t = dot(sub(self.target, start), forward) / dot(direction, forward);
+        let about = std::array::from_fn(|axis| start[axis] + direction[axis] * t);
+        self.zoom_about(factor, about);
+    }
+
     /// Aims the view so a box of points fits.
     pub fn frame(&mut self, low: Point, high: Point) {
         for axis in 0..3 {
@@ -755,5 +766,26 @@ mod tests {
         camera.zoom_about(0.5, about);
         let after = camera.project(about, size).unwrap();
         assert!((after[0] - before[0]).abs() < 1e-6 && (after[1] - before[1]).abs() < 1e-6);
+    }
+
+    /// The wheel zooms towards the mouse, as in Rhino: the point under the mouse, as deep as the
+    /// view's target, stays where it is on screen, in perspective and flat views alike.
+    #[test]
+    fn the_wheel_keeps_the_point_under_the_mouse_in_place() {
+        let size = [800.0, 600.0];
+        for start in [Camera::default(), StandardView::Top.camera()] {
+            for (screen, factor) in [([600.0, 150.0], 0.8), ([90.0, 520.0], 1.25)] {
+                let mut camera = start;
+                let (eye, direction) = camera.ray(screen, size);
+                let forward = camera.forward();
+                let t = dot(sub(camera.target, eye), forward) / dot(direction, forward);
+                let under = std::array::from_fn(|k| eye[k] + direction[k] * t);
+                camera.zoom_at(factor, screen, size);
+                let after = camera.project(under, size).unwrap();
+                assert!((after[0] - screen[0]).abs() < 1e-6, "{after:?} {screen:?}");
+                assert!((after[1] - screen[1]).abs() < 1e-6, "{after:?} {screen:?}");
+                assert_eq!(camera.distance < start.distance, factor < 1.0);
+            }
+        }
     }
 }

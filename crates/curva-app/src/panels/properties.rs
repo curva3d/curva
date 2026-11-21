@@ -390,43 +390,39 @@ impl Curva {
     /// Whether the body of object `id` is a solid or a surface, its volume or area, and, when
     /// it is live, how many objects it is made from.
     fn body_properties(&mut self, ui: &mut egui::Ui, id: u64) {
-        let Some(object) = self.doc.state().objects.iter().find(|o| o.id == id) else {
+        let Some(object) = self
+            .doc
+            .state()
+            .objects
+            .iter()
+            .find(|o| o.id == id)
+            .cloned()
+        else {
             return;
         };
-        let Shape::Body(body) = &object.shape else {
+        // Measuring a large body takes a while, so it is done once per change, on its own thread;
+        // meanwhile the panel says so and keeps answering (#475).
+        let Some((kind, key, value)) = self.measured.reading(&object) else {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.weak(self.text.render(&Message::new("ui.properties.measuring")));
+            });
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(100));
             return;
         };
-        // Measuring a curved solid takes a moment, so it is done once per change.
-        let fresh = self
-            .measured
-            .as_ref()
-            .is_some_and(|(id, held, _)| *id == object.id && held == body);
-        if !fresh {
-            let volume = body.volume().ok().filter(|v| *v > 0.0);
-            let reading = match volume {
-                Some(volume) => ("ui.kind.solid", "ui.properties.volume", volume),
-                None => (
-                    "ui.kind.surface",
-                    "ui.properties.area",
-                    body.area().unwrap_or(0.0),
-                ),
-            };
-            self.measured = Some((object.id, body.clone(), reading));
+        ui.label(self.text.render(&Message::new(kind)));
+        if object.live.is_some() {
+            let inputs = self.doc.inputs_of(object.id).len();
+            ui.label(self.text.render(&Message::with(
+                "ui.properties.live",
+                vec![inputs.to_string()],
+            )));
         }
-        if let Some((_, _, (kind, key, value))) = &self.measured {
-            ui.label(self.text.render(&Message::new(kind)));
-            if object.live.is_some() {
-                let inputs = self.doc.inputs_of(object.id).len();
-                ui.label(self.text.render(&Message::with(
-                    "ui.properties.live",
-                    vec![inputs.to_string()],
-                )));
-            }
-            ui.label(
-                self.text
-                    .render(&Message::with(key, vec![format!("{value:.3}")])),
-            );
-        }
+        ui.label(
+            self.text
+                .render(&Message::with(key, vec![format!("{value:.3}")])),
+        );
     }
 
     /// The selected objects' layer, or "mixed", to move them to another.
