@@ -94,6 +94,15 @@ impl<R: Recipe> RecipeCommand<R> {
                 doc.select(&[]);
             }
         }
+        if let Some((option, words)) = step.choice {
+            let shown = self.context(doc, &self.values).name(option);
+            return Step::Ask(Request {
+                prompt: Message::with(step.prompt, vec![shown]),
+                allow_empty: true,
+                options: words.to_vec(),
+                ..Request::new(step.prompt, Kind::Choice)
+            });
+        }
         let (options, option_labels) = self.offered(doc, &step);
         let preview = step.from.into_iter().collect();
         // A step whose typed number sets an option takes numbers as well as positions.
@@ -261,6 +270,37 @@ impl<R: Recipe> RecipeCommand<R> {
         added
     }
 
+    /// Answers taken before the step's own: a number that sets an option, a pick that missed, and a word at a choice step.
+    fn answered_early(&mut self, doc: &mut Document, answer: &Option<Answer>) -> Option<Step> {
+        if let Some(Answer::Number(value)) = *answer
+            && let Some(name) = self
+                .steps(doc)
+                .get(self.values.len())
+                .and_then(|step| step.sets)
+        {
+            return Some(self.set_option(doc, name, value));
+        }
+        // A pick must land on a curve; a click on nothing asks again.
+        if let Some(Answer::Point(at)) = *answer
+            && self.steps(doc).get(self.values.len()).map(|s| s.kind) == Some(Kind::PickPart)
+            && !matches!(crate::commands::curve_at(doc, at, ON_CURVE), Ok(Some(_)))
+        {
+            return Some(self.ask(doc));
+        }
+        // A word picked at a choice step sets its name option and answers the step.
+        if let Some(Answer::Option(word)) = answer
+            && let Some((option, words)) = self
+                .steps(doc)
+                .get(self.values.len())
+                .and_then(|step| step.choice)
+            && words.contains(word)
+        {
+            doc.remember_text(&key(R::NAME, option), word);
+            return Some(self.step(doc, Some(Answer::Empty)));
+        }
+        None
+    }
+
     fn choose_option(&mut self, doc: &mut Document, name: &'static str) -> Step {
         match R::OPTIONS.iter().find(|o| o.name == name).map(|o| o.kind) {
             Some(OptionKind::Toggle(_)) => {
@@ -320,20 +360,8 @@ impl<R: Recipe> Command for RecipeCommand<R> {
                 _ => self.ask(doc),
             };
         }
-        if let Some(Answer::Number(value)) = answer
-            && let Some(name) = self
-                .steps(doc)
-                .get(self.values.len())
-                .and_then(|step| step.sets)
-        {
-            return self.set_option(doc, name, value);
-        }
-        // A pick must land on a curve; a click on nothing asks again.
-        if let Some(Answer::Point(at)) = answer
-            && self.steps(doc).get(self.values.len()).map(|s| s.kind) == Some(Kind::PickPart)
-            && !matches!(crate::commands::curve_at(doc, at, ON_CURVE), Ok(Some(_)))
-        {
-            return self.ask(doc);
+        if let Some(step) = self.answered_early(doc, &answer) {
+            return step;
         }
         let value = match answer {
             None => return self.ask(doc),

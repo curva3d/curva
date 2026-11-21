@@ -36,6 +36,9 @@ pub struct StepDef {
     pub apart: bool,
     /// A panel the interface shows for this step, such as the mesh settings (issue #387).
     pub panel: Option<crate::Panel>,
+    /// For a choice of words: the name option it sets and the words it offers, as Rhino asks
+    /// Fill's "Patch style" at a prompt of its own.
+    pub choice: Option<(&'static str, &'static [&'static str])>,
 }
 
 /// Which sort of objects a step takes.
@@ -69,6 +72,23 @@ impl StepDef {
             most: usize::MAX,
             apart: false,
             panel: None,
+            choice: None,
+        }
+    }
+
+    /// Asks for one of `words`, which then becomes the name `option`'s value; Enter keeps the
+    /// value shown, as Rhino asks "Patch style <Automatic> ( Automatic  SingleFace ... )". The
+    /// prompt gets the value as `{0}`.
+    #[must_use]
+    pub fn choice(
+        prompt: &'static str,
+        option: &'static str,
+        words: &'static [&'static str],
+    ) -> Self {
+        Self {
+            optional: true,
+            choice: Some((option, words)),
+            ..Self::new(prompt, Kind::Choice)
         }
     }
 
