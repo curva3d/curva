@@ -72,6 +72,38 @@ mod tests {
     use curva_document::Document;
     use curva_kernel::Curve;
 
+    #[test]
+    fn two_segments_of_a_drawn_polyline_and_of_a_rectangle_are_filleted() {
+        for drawn in [
+            &["polyline", "0,0", "10,0", "10,10", ""][..],
+            &["rectangle", "0,0", "10,10"][..],
+        ] {
+            let mut doc = Document::default();
+            let mut processor = Processor::default();
+            for typed in drawn {
+                processor.submit(&mut doc, typed);
+            }
+            for typed in ["fillet", "2"] {
+                processor.submit(&mut doc, typed);
+            }
+            processor.click(&mut doc, [5.0, 0.0, 0.0]);
+            processor.click(&mut doc, [10.0, 5.0, 0.0]);
+            let lengths: Vec<f64> = doc
+                .state()
+                .objects
+                .iter()
+                .map(|o| o.curve().unwrap().length().unwrap())
+                .collect();
+            let corner = 2.0 * 2.0 - std::f64::consts::PI;
+            let expected = if drawn[0] == "polyline" { 20.0 } else { 40.0 } - corner;
+            assert_eq!(lengths.len(), 1, "{drawn:?}: one curve, {lengths:?}");
+            assert!(
+                (lengths[0] - expected).abs() < 1e-6,
+                "{drawn:?}: {lengths:?}"
+            );
+        }
+    }
+
     fn start() -> (Document, Processor) {
         let mut doc = Document::default();
         doc.add(Curve::line([0.0; 3], [10.0, 0.0, 0.0]).unwrap());
