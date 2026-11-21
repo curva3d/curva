@@ -747,6 +747,10 @@ mod tests {
             if asked.is_some() {
                 processor.submit(&mut doc, "");
             }
+            // With the interface the file is read on its own thread (#480): wait for it.
+            while processor.poll(&mut doc) {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
             (asked, doc.remembered("chosen"), processor.is_running())
         };
         let panel = crate::Panel::Format(FormatPanel::SketchUpImport);
