@@ -1,6 +1,7 @@
 //! Painting and picking control points, and the picked edges and faces of bodies.
 
 use crate::*;
+use curva_document::MeshPart;
 
 pub(crate) const POINT_MARKER_SIZE: f32 = 6.0;
 
@@ -80,6 +81,70 @@ impl Curva {
         painter.add(egui::Shape::mesh(mesh));
     }
 
+    /// The picked parts of meshes and SubD cages (#334, Ctrl+Shift picking): points as dots,
+    /// edges drawn thick and faces tinted, in the selection colour, as Rhino highlights them.
+    /// A smooth SubD's parts are shown on its cage for now.
+    pub(crate) fn paint_picked_parts(
+        &self,
+        ui: &egui::Ui,
+        pane: usize,
+        rect: egui::Rect,
+        size: [f64; 2],
+    ) {
+        let picked = self.doc.mesh_part_selection();
+        if picked.is_empty() {
+            return;
+        }
+        let painter = ui.painter_at(rect);
+        let camera = &self.panes[pane].camera;
+        let tint = egui::Color32::from_rgba_unmultiplied(255, 220, 60, 90);
+        let stroke = egui::Stroke::new(3.0, GRIP_PICKED);
+        let mut tinted = egui::Mesh::default();
+        for (id, part) in picked {
+            let Some(mesh) = self
+                .doc
+                .state()
+                .objects
+                .iter()
+                .find(|o| o.id == id)
+                .and_then(|o| match &o.shape {
+                    Shape::Mesh(mesh) => Some(mesh),
+                    Shape::SubD(subd) => Some(subd.cage()),
+                    _ => None,
+                })
+            else {
+                continue;
+            };
+            let Some(corners) = part_corners(mesh, part).and_then(|points| {
+                points
+                    .into_iter()
+                    .map(|p| {
+                        let s = camera.project(p, size)?;
+                        Some(rect.min + egui::vec2(s[0] as f32, s[1] as f32))
+                    })
+                    .collect::<Option<Vec<egui::Pos2>>>()
+            }) else {
+                continue;
+            };
+            match corners.as_slice() {
+                [point] => {
+                    painter.circle_filled(*point, GRIP_SIZE / 2.0, GRIP_PICKED);
+                }
+                [a, b] => {
+                    painter.line_segment([*a, *b], stroke);
+                }
+                _ => {
+                    for k in 1..corners.len().saturating_sub(1) {
+                        let fan = [corners[0], corners[k], corners[k + 1]];
+                        add_tinted_triangle(&mut tinted, &fan, tint);
+                    }
+                    painter.add(egui::Shape::closed_line(corners, stroke));
+                }
+            }
+        }
+        painter.add(egui::Shape::mesh(tinted));
+    }
+
     /// The edges of a solid picked for a command, drawn thick in the selection colour.
     pub(crate) fn paint_picked_edges(
         &self,
@@ -109,9 +174,49 @@ impl Curva {
         }
     }
 
+    /// The cage of each SubD being edited, as Rhino 8 shows it (#334): its edges as thin dotted
+    /// lines, in the control polygon's grey so they show on any background, and its points as
+    /// small white dots, over the smooth surface. A SubD is being edited
+    /// while its points are on or a part of it is picked.
+    fn paint_cages(&self, ui: &egui::Ui, pane: usize, rect: egui::Rect, size: [f64; 2]) {
+        let mut editing = self.doc.showing_points();
+        editing.extend(self.doc.mesh_part_selection().iter().map(|(id, _)| *id));
+        let cages: Vec<&curva_mesh::Mesh> = self
+            .doc
+            .state()
+            .objects
+            .iter()
+            .filter(|o| !o.hidden && editing.contains(&o.id))
+            .filter_map(|o| o.shape.subd().map(curva_mesh::SubD::cage))
+            .collect();
+        if cages.is_empty() {
+            return;
+        }
+        let painter = ui.painter_at(rect);
+        let camera = &self.panes[pane].camera;
+        let screen = |at: Point| {
+            let p = camera.project(at, size)?;
+            Some(rect.min + egui::vec2(p[0] as f32, p[1] as f32))
+        };
+        let stroke = egui::Stroke::new(1.0, CONTROL_POLYGON);
+        for cage in cages {
+            let points: Vec<Option<egui::Pos2>> =
+                cage.vertices().iter().map(|&p| screen(p)).collect();
+            for [a, b] in cage.wire_edges() {
+                if let (Some(p), Some(q)) = (points[a as usize], points[b as usize]) {
+                    painter.extend(egui::Shape::dotted_line(&[p, q], CONTROL_POLYGON, 4.0, 0.6));
+                }
+            }
+            for point in points.into_iter().flatten() {
+                painter.circle(point, 3.0, GRIP_COLOUR, stroke);
+            }
+        }
+    }
+
     /// Control points on show: the lines between a smooth curve's points, then the points,
     /// picked ones in yellow.
     pub(crate) fn paint_grips(&self, ui: &egui::Ui, pane: usize, rect: egui::Rect, size: [f64; 2]) {
+        self.paint_cages(ui, pane, rect, size);
         let shown = self.doc.shown_grips();
         if shown.is_empty() {
             return;
@@ -195,6 +300,22 @@ impl Curva {
     }
 }
 
+/// Where a picked `part` of `mesh` is: a point's position, an edge's two ends, or a face's
+/// corners in order; `None` when the mesh has no such part.
+fn part_corners(mesh: &curva_mesh::Mesh, part: MeshPart) -> Option<Vec<Point>> {
+    let point = |i: u32| mesh.vertices().get(i as usize).copied();
+    match part {
+        MeshPart::Point(i) => Some(vec![point(i)?]),
+        MeshPart::Edge(a, b) => Some(vec![point(a)?, point(b)?]),
+        MeshPart::Face(f) => {
+            if f as usize >= mesh.face_count() {
+                return None;
+            }
+            mesh.face(f as usize).iter().map(|&i| point(i)).collect()
+        }
+    }
+}
+
 /// Adds one triangle at `corners` (three of them, on screen) to `mesh`, filled with `tint`
 /// exactly to its corners. Painted as a mesh rather than a polygon, so egui does not soften its
 /// edges: on the thin triangles of a curved face that softening reached far past the corners,
@@ -231,5 +352,35 @@ mod tests {
         let around = egui::Rect::from_points(&sliver);
         assert!(mesh.vertices.iter().all(|v| around.contains(v.pos)));
         assert!(mesh.vertices.iter().all(|v| v.color == tint));
+    }
+
+    /// A picked point is its position, an edge its two ends and a face its corners in order,
+    /// for highlighting; a part the mesh lacks is nothing (#334).
+    #[test]
+    fn picked_mesh_parts_are_found_where_they_are() {
+        let square = curva_mesh::Mesh::new(
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+            ],
+            &[[0, 1, 2, 3]],
+        )
+        .unwrap();
+        assert_eq!(
+            part_corners(&square, MeshPart::Point(2)),
+            Some(vec![[1.0, 1.0, 0.0]])
+        );
+        assert_eq!(
+            part_corners(&square, MeshPart::edge(3, 0)),
+            Some(vec![[0.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+        );
+        assert_eq!(
+            part_corners(&square, MeshPart::Face(0)).map(|c| c.len()),
+            Some(4)
+        );
+        assert_eq!(part_corners(&square, MeshPart::Point(9)), None);
+        assert_eq!(part_corners(&square, MeshPart::Face(1)), None);
     }
 }

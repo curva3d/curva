@@ -678,6 +678,7 @@ impl Curva {
             self.paint_grips(ui, *pane, *rect, size);
             self.paint_picked_edges(ui, *pane, *rect, size);
             self.paint_picked_faces(ui, *pane, *rect, size);
+            self.paint_picked_parts(ui, *pane, *rect, size);
             self.paint_gumball(ui, *pane, *rect, size);
             self.paint_guides(ui, *pane, *rect, size);
             self.paint_dots(ui, *pane, *rect, size);
