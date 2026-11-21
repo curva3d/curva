@@ -99,7 +99,7 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | Sweep1 | Rail; cross sections in order; sweep options | `ChainEdges` `Point` `FrameStyle` `Closed` `GlobalShapeBlending` `UntrimmedMiters` `RefitRail` `AlignCrossSections` | none | partly |
 | Pipe | Select a curve; start radius; end radius; more radii; Enter | `ChainEdges` `Multiple` `Diameter` `Thick` `Cap` `FitRail` `ShapeBlending` `WallThickness` | `Cap` `Thick` `Diameter` | partly |
 | OffsetSrf | Select a surface or solid; distance | `Distance` `Corner` `ThroughPoint` `FlipAll` `Solid` `Loose` `Tolerance` `BothSides` `DeleteInput` | `Solid` `DeleteInput` | partly |
-| Box | First corner of base; other corner or length; height, Enter uses the width | `Diagonal` `Cube` `3Point` `EdgeMidpoint` `Vertical` `Center` `BothSides` | `Center` `BothSides` | partly |
+| Box | First corner of base; other corner or length; height, Enter uses the width | `Diagonal` `Cube` `3Point` `EdgeMidpoint` `Vertical` `Center` `BothSides` | `Center` `Diagonal` `3Point` `Vertical` `BothSides` | partly |
 | BooleanUnion | Select objects; Enter | `DeleteInput` `MergeCoplanarFaces` | `DeleteInput` | partly |
 | BooleanDifference | Objects to subtract from; Enter; objects to subtract with; Enter | `DeleteInput` `DeleteCutters` | `DeleteInput` | partly |
 | BooleanIntersection | First set; Enter; second set; Enter | `DeleteInput` | `DeleteInput` | done |
