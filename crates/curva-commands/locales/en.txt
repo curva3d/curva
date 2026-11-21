@@ -1201,3 +1201,5 @@ job.step.solids = Building solids
 job.step.objects = Bringing in objects
 ui.job.stop = Stop
 ui.job.esc = Esc stops
+job.repair = Healing solids
+job.step.repair = Healing the solids read quickly

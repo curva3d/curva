@@ -33,6 +33,8 @@ pub struct Processor {
     dialogs: bool,
     /// The running command's long work on its own thread, while it lasts (#480).
     working: Option<Working>,
+    /// Solids read quickly being healed in the background, as they come (#476).
+    repairing: Vec<crate::repairing::Repairing>,
 }
 
 impl Default for Processor {
@@ -47,6 +49,7 @@ impl Default for Processor {
             view_requests: std::collections::VecDeque::new(),
             dialogs: false,
             working: None,
+            repairing: Vec::new(),
         }
     }
 }
@@ -552,6 +555,13 @@ impl Processor {
     /// Carries on once the running command's long work is done, called each frame by the
     /// interface; returns whether work is still going, so the interface keeps checking back.
     pub fn poll(&mut self, doc: &mut Document) -> bool {
+        self.collect_repairs(doc);
+        let working = self.poll_working(doc);
+        working || !self.repairing.is_empty()
+    }
+
+    /// Carries on once the running command's long work is done; whether it is still going.
+    fn poll_working(&mut self, doc: &mut Document) -> bool {
         let Some(working) = &self.working else {
             return false;
         };
@@ -565,6 +575,37 @@ impl Processor {
         };
         self.take_step(doc, step);
         self.working.is_some()
+    }
+
+    /// Starts healing the solids the model was read with quickly (#476): in the background with
+    /// the interface, at once for scripts and agents, which want the healed model straight away.
+    fn start_repairs(&mut self, doc: &mut Document) {
+        if !doc.has_repairs() {
+            return;
+        }
+        if self.dialogs {
+            self.repairing
+                .push(crate::repairing::Repairing::start(doc.take_repairs()));
+        } else {
+            doc.repair_all_now();
+        }
+    }
+
+    /// Puts the solids healed so far in their places, dropping repairs that are done.
+    fn collect_repairs(&mut self, doc: &mut Document) {
+        self.repairing
+            .retain_mut(|repairing| repairing.collect(doc));
+    }
+
+    /// Stops all background work: the running command's, and healing solids, which keep the
+    /// shapes they were read with. For the command bar's Stop button.
+    pub fn stop_background(&mut self, doc: &mut Document) {
+        for repairing in self.repairing.drain(..) {
+            repairing.stop();
+        }
+        if self.working.is_some() {
+            self.cancel(doc);
+        }
     }
 
     /// What the command does with its next `step`.
@@ -615,6 +656,8 @@ impl Processor {
                 if doc.take_just_opened() {
                     self.view_requests.push_back(ViewRequest::ZoomExtents);
                 }
+                // Solids the file was read with quickly are healed in the background (#476).
+                self.start_repairs(doc);
             }
             Step::View(request) => {
                 self.active = None;

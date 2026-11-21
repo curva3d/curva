@@ -551,7 +551,7 @@ impl Curva {
                     .show(ui, |ui| self.command_line(ui));
                 // Long jobs over the bar: a progress line and a chip that can stop them (#480).
                 if self.command_jobs(ui, bar) {
-                    self.processor.cancel(&mut self.doc);
+                    self.processor.stop_background(&mut self.doc);
                 }
             }
             layout::Piece::Agent => {
