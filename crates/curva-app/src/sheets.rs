@@ -41,6 +41,18 @@ pub(crate) struct ModelScene {
     made: bool,
 }
 
+impl ModelScene {
+    /// The model's lines a detail draws: with dark edges over `solid` faces (seams left out, as
+    /// the Hidden and Technical modes draw them too), else the light wireframe ones.
+    fn lines(&self, solid: bool) -> Arc<Vec<curva_viewport::Vertex>> {
+        Arc::clone(if solid {
+            &self.shaded_scene
+        } else {
+            &self.scene
+        })
+    }
+}
+
 /// Which sheet, if any, the viewport area shows.
 #[derive(Default)]
 pub(crate) struct Sheets {
@@ -191,11 +203,7 @@ impl Curva {
             }
             let (shaded, ghosted) = (detail.display != "Wireframe", detail.display == "Ghosted");
             let model = self.model_scene(&detail.hidden_layers);
-            let scene = Arc::clone(if shaded && !ghosted {
-                &model.shaded_scene
-            } else {
-                &model.scene
-            });
+            let scene = model.lines(shaded && !ghosted);
             let model_faces = Arc::clone(&model.faces);
             let origin = model.origin;
             // The camera measured as the model's positions are, from its middle (#225).
@@ -221,7 +229,8 @@ impl Curva {
                 light: camera.forward().map(|value| value as f32),
                 shaded,
                 ghosted,
-                hidden: detail.display == "Hidden",
+                hidden: matches!(detail.display.as_str(), "Hidden" | "Technical"),
+                hidden_lines: detail.display == "Technical",
                 area: shown,
                 frame: ui.ctx().cumulative_frame_nr(),
                 background: PAPER,
@@ -429,7 +438,10 @@ impl Curva {
     pub(crate) fn pane_background(&self, pane: usize) -> (egui::Color32, egui::Color32) {
         if self.shows_sheet(pane) {
             (PAPER, PAPER)
-        } else if self.panes[pane].display == DisplayMode::Hidden {
+        } else if matches!(
+            self.panes[pane].display,
+            DisplayMode::Hidden | DisplayMode::Technical
+        ) {
             // Pure white, as Rhino 8's Hidden mode and as its faces (`PAPER_COLOUR`), so they
             // meet the background with no step (#164).
             let [r, g, b] = curva_viewport::PAPER_COLOUR.map(|c| (c * 255.0).round() as u8);

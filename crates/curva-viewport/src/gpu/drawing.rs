@@ -47,6 +47,9 @@ pub struct Drawing {
     /// ([`crate::PAPER_COLOUR`]), hiding what is behind them, and the model's lines and the
     /// outlines of curved shapes in black ink. Needs `shaded`; the background is the caller's.
     pub hidden: bool,
+    /// With `hidden`, the Technical display mode (#164), as Rhino 8 draws it: the lines faces
+    /// hide are drawn as well, dotted.
+    pub hidden_lines: bool,
     /// Where the view is in the window, in points.
     pub area: epaint::Rect,
     /// The window's frame number, so the first view drawn in a frame clears the scene texture.

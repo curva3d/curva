@@ -11,7 +11,12 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 ## 22 November 2026
 
 **Done**
-- **Hidden display mode, as in Rhino** (#164, first half; Technical follows). Surfaces are flat
+- **Technical display mode, as in Rhino** (#164, second half). As Hidden, with the lines
+  faces hide drawn dotted, black dots on the white, as Rhino 8's Technical mode shows them. In
+  the same places as Hidden. Not yet: the hidden parts of curved shapes' outlines (Rhino dots
+  those too), which the depth picture cannot find; they need outlines worked out from the
+  shapes themselves.
+- **Hidden display mode, as in Rhino** (#164, first half; #560). Surfaces are flat
   white paper on a white background, hiding what is behind them, and every visible edge, curve
   and outline of a curved shape is drawn in black ink, as Rhino 8's Hidden mode looks (measured
   there on a box, cylinder and sphere). It is in the Display panel's list and in

@@ -2,8 +2,8 @@
 
 use egui_wgpu::wgpu;
 
-use super::shaders::{CIRCLE_SHADER, inked, table_wgsl};
-use super::{LINE_DEPTH_BIAS, PipelineParts, SEGMENT_CORNERS, Uploaded, pipeline};
+use super::shaders::{CIRCLE_SHADER, table_wgsl};
+use super::{Ink, LINE_DEPTH_BIAS, PipelineParts, SEGMENT_CORNERS, Uploaded, pipeline};
 use crate::{CIRCLE_SEGMENTS, PlacedCircle};
 
 /// The bytes of one [`PlacedCircle`] on the graphics card.
@@ -25,32 +25,28 @@ pub(crate) fn circle_bytes(circles: &[PlacedCircle]) -> Vec<u8> {
     bytes
 }
 
-/// The pipeline drawing circles, as the model lines' pipeline draws segments; `ink` draws them in
-/// black ink, for the Hidden display mode (`inked`).
+/// The pipeline drawing circles, as the model lines' pipeline draws segments, in their own
+/// colours or in ink as `ink` says (the Hidden and Technical display modes, #164).
 pub(crate) fn circle_pipeline(
     device: &wgpu::Device,
     format: wgpu::TextureFormat,
     pipeline_layout: &wgpu::PipelineLayout,
-    ink: bool,
+    ink: Ink,
 ) -> wgpu::RenderPipeline {
-    let shader = if ink {
-        inked(CIRCLE_SHADER)
-    } else {
-        CIRCLE_SHADER.to_owned()
-    };
     pipeline(
         device,
         format,
         pipeline_layout,
         &PipelineParts {
-            label: if ink {
-                "curva inked circles"
-            } else {
-                "curva circles"
+            label: match ink {
+                Ink::Own => "curva circles",
+                Ink::Visible => "curva inked circles",
+                Ink::Hidden => "curva hidden circles",
             },
             shader: &format!(
-                "{}const CIRCLE_SEGMENTS: u32 = {CIRCLE_SEGMENTS}u;\n{shader}",
-                table_wgsl()
+                "{}const CIRCLE_SEGMENTS: u32 = {CIRCLE_SEGMENTS}u;\n{}",
+                table_wgsl(),
+                ink.shader(CIRCLE_SHADER)
             ),
             stride: CIRCLE_SIZE,
             attributes: &wgpu::vertex_attr_array![
@@ -61,6 +57,7 @@ pub(crate) fn circle_pipeline(
             bias: LINE_DEPTH_BIAS,
             see_through: false,
             per_instance: true,
+            behind: ink == Ink::Hidden,
         },
     )
 }
