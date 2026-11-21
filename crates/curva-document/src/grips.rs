@@ -1,4 +1,4 @@
-//! Control points shown on curves and picked for editing. Which curves show them, and which
+//! Control points shown on curves, and the points of meshes and SubD cages, picked for editing. Which curves show them, and which
 //! points are picked, is not saved and not part of undo; moving points is.
 
 use crate::Document;
@@ -9,6 +9,17 @@ use std::collections::BTreeSet;
 /// [`Curve::control_points`].
 pub type Grip = (u64, usize);
 
+/// The points an object shows with PointsOn: a curve's control points, a mesh's points, a SubD's
+/// cage points (#563); none for other objects.
+fn points_of(shape: &crate::Shape) -> Vec<Point> {
+    match shape {
+        crate::Shape::Curve(curve) => curve.control_points().unwrap_or_default(),
+        crate::Shape::Mesh(mesh) => mesh.vertices().to_vec(),
+        crate::Shape::SubD(subd) => subd.cage().vertices().to_vec(),
+        _ => Vec::new(),
+    }
+}
+
 impl Document {
     /// Shows the control points of these objects, leaving out those that have none.
     /// Returns how many objects now show them.
@@ -17,9 +28,7 @@ impl Document {
             .state
             .objects
             .iter()
-            .filter(|o| {
-                ids.contains(&o.id) && o.curve().is_some_and(|c| c.control_points().is_ok())
-            })
+            .filter(|o| ids.contains(&o.id) && !points_of(&o.shape).is_empty())
             .map(|o| o.id)
             .collect();
         self.showing_points.extend(editable.iter().copied());
@@ -46,9 +55,7 @@ impl Document {
             .iter()
             .filter(|o| !o.hidden && self.showing_points.contains(&o.id))
             .flat_map(|o| {
-                o.curve()
-                    .and_then(|c| c.control_points().ok())
-                    .unwrap_or_default()
+                points_of(&o.shape)
                     .into_iter()
                     .enumerate()
                     .map(move |(index, at)| ((o.id, index), at))
@@ -178,6 +185,24 @@ impl Document {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_subd_shows_its_cage_points_and_a_mesh_its_points() {
+        let mut doc = Document::default();
+        let frame = curva_mesh::Frame::world();
+        let subd = curva_mesh::SubD::subd_box(&frame, [2.0; 3], [1, 1, 1]);
+        let cage = subd.cage().vertices().len();
+        let a = doc.add_shape(crate::Shape::SubD(subd));
+        let mesh = curva_mesh::Mesh::mesh_box(&frame, [2.0; 3], [1, 1, 1]);
+        let points = mesh.vertices().len();
+        let b = doc.add_shape(crate::Shape::Mesh(mesh));
+        assert_eq!(doc.points_on(&[a, b]), 2);
+        let shown = doc.shown_grips();
+        assert_eq!(shown.iter().filter(|((id, _), _)| *id == a).count(), cage);
+        assert_eq!(shown.iter().filter(|((id, _), _)| *id == b).count(), points);
+        doc.select_grips(&[(a, 0)]);
+        assert_eq!(doc.grip_selection(), vec![(a, 0)]);
+    }
 
     fn square() -> Curve {
         Curve::polyline(
