@@ -2,7 +2,7 @@
 
 use egui_wgpu::wgpu;
 
-use super::shaders::{CIRCLE_SHADER, table_wgsl};
+use super::shaders::{CIRCLE_SHADER, inked, table_wgsl};
 use super::{LINE_DEPTH_BIAS, PipelineParts, SEGMENT_CORNERS, Uploaded, pipeline};
 use crate::{CIRCLE_SEGMENTS, PlacedCircle};
 
@@ -25,20 +25,31 @@ pub(crate) fn circle_bytes(circles: &[PlacedCircle]) -> Vec<u8> {
     bytes
 }
 
-/// The pipeline drawing circles, as the model lines' pipeline draws segments.
+/// The pipeline drawing circles, as the model lines' pipeline draws segments; `ink` draws them in
+/// black ink, for the Hidden display mode (`inked`).
 pub(crate) fn circle_pipeline(
     device: &wgpu::Device,
     format: wgpu::TextureFormat,
     pipeline_layout: &wgpu::PipelineLayout,
+    ink: bool,
 ) -> wgpu::RenderPipeline {
+    let shader = if ink {
+        inked(CIRCLE_SHADER)
+    } else {
+        CIRCLE_SHADER.to_owned()
+    };
     pipeline(
         device,
         format,
         pipeline_layout,
         &PipelineParts {
-            label: "curva circles",
+            label: if ink {
+                "curva inked circles"
+            } else {
+                "curva circles"
+            },
             shader: &format!(
-                "{}const CIRCLE_SEGMENTS: u32 = {CIRCLE_SEGMENTS}u;\n{CIRCLE_SHADER}",
+                "{}const CIRCLE_SEGMENTS: u32 = {CIRCLE_SEGMENTS}u;\n{shader}",
                 table_wgsl()
             ),
             stride: CIRCLE_SIZE,
