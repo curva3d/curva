@@ -18,6 +18,7 @@ pub(crate) mod paraboloid;
 pub(crate) mod pipe;
 pub(crate) mod primitives;
 pub(crate) mod pyramid;
+pub(crate) mod round_ways;
 pub(crate) mod shell;
 pub(crate) mod volume;
 pub(crate) mod wirecut;

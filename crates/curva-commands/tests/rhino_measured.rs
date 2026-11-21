@@ -180,6 +180,42 @@ fn cases() -> Vec<(&'static str, Start, Vec<&'static str>, Vec<Measured>)> {
             vec![solid([4.0, 4.0, 5.0], [-2.0, -2.0, 0.0], 20.944)],
         ),
         (
+            "sphere 3point",
+            Empty,
+            vec!["sphere", "3point", "0,0,0", "10,0,0", "5,5,0"],
+            vec![solid([10.0; 3], [0.0, -5.0, -5.0], 523.599)],
+        ),
+        (
+            "sphere 4point",
+            Empty,
+            vec!["sphere", "4point", "0,0,0", "10,0,0", "5,5,0", "5,2,4"],
+            vec![solid([10.0778; 3], [-0.0389, -5.0389, -5.6639], 535.918)],
+        ),
+        (
+            "cylinder 2point",
+            Empty,
+            vec!["cylinder", "2point", "0,0,0", "4,0,0", "5"],
+            vec![solid([4.0, 4.0, 5.0], [0.0, -2.0, 0.0], 62.832)],
+        ),
+        (
+            "cylinder 3point",
+            Empty,
+            vec!["cylinder", "3point", "0,0,0", "4,0,0", "2,2,0", "5"],
+            vec![solid([4.0, 4.0, 5.0], [0.0, -2.0, 0.0], 62.832)],
+        ),
+        (
+            "cone 2point",
+            Empty,
+            vec!["cone", "2point", "0,0,0", "4,0,0", "5"],
+            vec![solid([4.0, 4.0, 5.0], [0.0, -2.0, 0.0], 20.944)],
+        ),
+        (
+            "cone 3point",
+            Empty,
+            vec!["cone", "3point", "0,0,0", "4,0,0", "2,2,0", "5"],
+            vec![solid([4.0, 4.0, 5.0], [0.0, -2.0, 0.0], 20.944)],
+        ),
+        (
             "torus",
             Empty,
             vec!["torus", "0,0,0", "10", "2"],
