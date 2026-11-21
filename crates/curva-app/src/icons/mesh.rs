@@ -289,6 +289,11 @@ fn grid(pen: &Pen<'_>, a: (f32, f32), b: (f32, f32), n: u32) {
 /// colour.
 fn subd_edit(pen: &Pen<'_>, key: &str) {
     match key {
+        "stitch" => {
+            // Two points of a cage pulled into one.
+            grid(pen, (2.0, 2.0), (20.0, 20.0), 2);
+            pen.path_in(&[(2.0, 20.0), (11.0, 14.0), (20.0, 20.0)], false, pen.accent());
+        }
         "crease" => {
             // A cage with one edge made sharp.
             grid(pen, (2.0, 2.0), (20.0, 20.0), 2);
