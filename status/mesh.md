@@ -11,6 +11,9 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 22 November 2026
 
+**Fill and Stitch ask as Rhino does:** with the features stream's choice step (#574), Fill asks "Patch style <Automatic>"
+and Stitch "Stitch location <Average>" after the picks, Enter keeping the one shown. Fill's reference row is done.
+
 **Fill takes mesh holes too:** a mesh hole whose open edges are all picked is closed in the same patch styles, as a
 joined but unwelded piece, as Rhino 8 does (an open box's top: 24 quads on 34 points; one edge alone fills nothing).
 SubD and mesh Fill now share one patch function.
