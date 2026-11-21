@@ -264,6 +264,53 @@ impl Outlines {
         })
     }
 
+    /// Every object a click at `screen` could pick, nearest first: those whose lines come within
+    /// `reach`, then the surface or solid whose face is under the pointer if none does. Where
+    /// several are there, the interface asks which one, as Rhino's selection menu does (#530).
+    #[must_use]
+    pub fn pick_all(
+        &self,
+        camera: &Camera,
+        screen: [f64; 2],
+        size: [f64; 2],
+        reach: f64,
+    ) -> Vec<u64> {
+        let view = camera.projector(size);
+        let mut found: Vec<(f64, u64)> = Vec::new();
+        for index in self.objects_near(&view, (screen, reach)) {
+            if !self.is_selectable(index) {
+                continue;
+            }
+            let (id, points) = &self.objects[index];
+            let projected: Vec<Option<[f64; 2]>> =
+                points.iter().map(|p| view.project(*p)).collect();
+            let mut nearest = f64::INFINITY;
+            if let [Some(only)] = projected.as_slice() {
+                nearest = (only[0] - screen[0]).hypot(only[1] - screen[1]);
+            }
+            for pair in projected.windows(2) {
+                if let [Some(a), Some(b)] = pair {
+                    nearest = nearest.min(to_segment(screen, *a, *b));
+                }
+            }
+            if nearest <= reach {
+                match found.iter_mut().find(|(_, other)| other == id) {
+                    Some(held) => held.0 = held.0.min(nearest),
+                    None => found.push((nearest, *id)),
+                }
+            }
+        }
+        found.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut ids: Vec<u64> = found.into_iter().map(|(_, id)| id).collect();
+        if ids.is_empty()
+            && let Some((id, _)) = self.pick_face(camera, screen, size)
+            && self.can_pick(id)
+        {
+            ids.push(id);
+        }
+        ids
+    }
+
     /// Whether the object `id` can be picked: not on a locked layer, and of a kind the
     /// selection filter lets through. An object drawn by its faces alone, such as a smooth SubD
     /// without creases, is judged by its faces (#324).

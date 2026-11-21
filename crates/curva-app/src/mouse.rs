@@ -12,6 +12,8 @@ pub(crate) struct MouseState {
     pub(crate) held: Vec<Point>,
     /// The snap point the pointer rests on, since when, and whether resting there has acted.
     pub(crate) resting: Option<(Point, f64, bool)>,
+    /// Rhino's selection menu, while a click over several objects asks which one (#530).
+    pub(crate) choosing: Option<crate::selection_menu::Choosing>,
 }
 
 /// Finds left-button clicks and drags from the raw mouse events.
@@ -606,6 +608,11 @@ impl Curva {
     /// A click or a box from `from` to `to` picks control points if it hits any, and objects
     /// otherwise; picking one member of a group picks the whole group, as in Rhino.
     fn pick_objects(&mut self, p: &Picking, from: egui::Pos2, to: egui::Pos2) {
+        // A click away from an open selection menu closes it, keeping the selection as it was.
+        if let Some(choosing) = self.mouse.choosing.take() {
+            self.doc.select(&choosing.before);
+            return;
+        }
         let boxed = is_box_drag(from, to);
         let grips = self.grips_hit(&p.camera, (p.local(from), p.local(to)), boxed, p.size);
         if !grips.is_empty() {
@@ -621,10 +628,15 @@ impl Curva {
             self.outlines
                 .in_box(&p.camera, p.local(from), p.local(to), p.size)
         } else {
-            let hit = self
+            let under = self
                 .outlines
-                .pick(&p.camera, p.local(from), p.size, PICK_REACH);
-            hit.into_iter().collect()
+                .pick_all(&p.camera, p.local(from), p.size, PICK_REACH);
+            // Several objects under the pointer: ask which one, as Rhino does (#530).
+            if under.len() > 1 {
+                self.open_selection_menu(from, under, (p.shift, p.remove));
+                return;
+            }
+            under
         };
         let hits = self.doc.with_groups(&hits);
         let chosen = combined_selection(self.doc.selection(), hits, p.shift, p.remove);
