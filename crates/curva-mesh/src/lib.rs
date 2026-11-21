@@ -34,6 +34,7 @@ pub use check::MeshCheck;
 pub use curva_kernel::Point;
 pub use from_body::density_tolerances;
 pub use mesh::{Attribute, Mesh, MeshError};
+pub use nurbs::MeshToNurbOptions;
 pub use primitives::{Frame, SphereStyle};
 pub use quad_remesh::{HARD_EDGE_ANGLE, QuadRemeshError, QuadRemeshOptions, QuadTarget};
 pub use settings::{DEFAULT_SUBD_LEVEL, MOST_SUBD_LEVEL, MeshPreset, MeshSettings};

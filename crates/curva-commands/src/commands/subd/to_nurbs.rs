@@ -1,13 +1,15 @@
-//! Rhino's `ToNURBS` for SubDs (spec `docs/specs/mesh-and-subd.md` §3.3), on `curva-mesh`'s
-//! `SubD::to_nurbs`. Measured in Rhino 8's `-ToNURBS` with Enter at every option: the SubD stays,
+//! Rhino's `ToNURBS` for SubDs, meshes and curves (spec `docs/specs/mesh-and-subd.md` §3.3), on
+//! `curva-mesh`'s `SubD::to_nurbs`. Measured in Rhino 8's `-ToNURBS` with Enter at every option: the SubD stays,
 //! and a closed SubD becomes a closed polysurface (a 4 m cube's cage of one face a side holds
 //! 20.963 m³; of 2 × 2 a side, 50.3587 m³). `PackFaces` (on) joins the patches into larger faces as
-//! Rhino does: 6 for either cube.
+//! Rhino does: 6 for either cube. Meshes become one surface per face, as MeshToNURB makes
+//! them (Rhino 8: a 2 × 2 × 2 box mesh gives a solid of 24 faces), and curves NURBS curves.
 
 use crate::Message;
 use crate::commands::arguments::objects;
 use crate::recipe::{Context, Derived, Made, OptionDef, Recipe, StepDef};
 use curva_document::Shape;
+use curva_kernel::Curve;
 
 const DELETE_INPUT: &str = "DeleteInput";
 const PACK_FACES: &str = "PackFaces";
@@ -15,6 +17,25 @@ const PACK_FACES: &str = "PackFaces";
 /// The recipe.
 #[derive(Default)]
 pub struct ToNurbs;
+
+/// One object as NURBS, as Rhino's ToNURBS turns it: a SubD's smooth surface, a mesh's faces (as
+/// MeshToNURB's defaults, one surface per face), a curve as one NURBS curve. `None` for objects
+/// it leaves alone, and for curves the kernel cannot turn into NURBS yet.
+fn converted(shape: &Shape, pack: bool) -> Option<Result<Shape, Message>> {
+    let failed = |e: String| Message::with("error.geometry", vec![e]);
+    match shape {
+        Shape::SubD(subd) => Some(
+            subd.to_nurbs(1, pack)
+                .map(|(body, _)| Shape::Body(body))
+                .map_err(|e| failed(e.to_string())),
+        ),
+        Shape::Mesh(mesh) => Some(mesh.to_nurbs().map(Shape::Body).map_err(|e| failed(e.0))),
+        Shape::Curve(curve) if !matches!(curve, Curve::Point { .. } | Curve::Nurbs { .. }) => {
+            curve.to_nurbs().ok().map(|c| Ok(Shape::Curve(c)))
+        }
+        _ => None,
+    }
+}
 
 impl Recipe for ToNurbs {
     const NAME: &'static str = "tonurbs";
@@ -37,14 +58,11 @@ impl Recipe for ToNurbs {
             .iter()
             .filter(|o| ids.contains(&o.id))
         {
-            let Some(subd) = object.shape.subd() else {
+            let Some(shape) = converted(&object.shape, cx.toggle(PACK_FACES)) else {
                 continue;
             };
-            let (body, _) = subd
-                .to_nurbs(1, cx.toggle(PACK_FACES))
-                .map_err(|e| Message::with("error.geometry", vec![e.to_string()]))?;
             made.derived.push(Derived {
-                shape: Shape::Body(body),
+                shape: shape?,
                 from: object.id,
                 history: None,
             });
@@ -67,7 +85,47 @@ impl Recipe for ToNurbs {
 mod tests {
     use crate::commands::run;
     use curva_document::{Document, Shape};
-    use curva_mesh::{Frame, SubD};
+    use curva_kernel::Curve;
+    use curva_mesh::{Frame, Mesh, SubD};
+
+    #[test]
+    fn meshes_and_curves_become_nurbs_and_stay() {
+        // Rhino 8's ToNURBS with Enter (21 November 2026): a 2 × 2 × 2 box mesh becomes a solid of
+        // 24 faces holding 8 m³, and a curve becomes a NURBS curve; the originals stay.
+        let mut doc = Document::default();
+        let mesh = doc.add_shape(Shape::Mesh(Mesh::mesh_box(
+            &Frame::world(),
+            [2.0; 3],
+            [2, 2, 2],
+        )));
+        let curve = Curve::interpolated(
+            vec![
+                [0.0, 5.0, 0.0],
+                [1.0, 6.0, 0.0],
+                [2.0, 5.0, 0.0],
+                [3.0, 6.0, 0.0],
+            ],
+            false,
+        )
+        .unwrap();
+        let curve = doc.add_shape(Shape::Curve(curve));
+        doc.select(&[mesh, curve]);
+        run(&mut doc, &["tonurbs"]);
+        let objects = &doc.state().objects;
+        assert_eq!(objects.len(), 4, "the originals stay");
+        let body = objects
+            .iter()
+            .find_map(|o| o.shape.body())
+            .expect("a polysurface");
+        assert_eq!(body.face_count().unwrap(), 24);
+        assert!(body.is_solid());
+        assert!((body.volume().unwrap() - 8.0).abs() < 1e-6);
+        assert!(
+            objects
+                .iter()
+                .any(|o| matches!(&o.shape, Shape::Curve(Curve::Nurbs { .. })))
+        );
+    }
 
     fn converted(counts: u32) -> Document {
         let mut doc = Document::default();
