@@ -147,6 +147,41 @@ pub(super) fn mesh_3(pen: &Pen<'_>, key: &str) -> bool {
                 pen.accent(),
             );
         }
+        "crease" => {
+            // A cage with one edge made sharp.
+            grid(pen, (2.0, 2.0), (20.0, 20.0), 2);
+            pen.path_in(&[(11.0, 2.0), (11.0, 20.0)], false, pen.accent());
+        }
+        "fill" => {
+            // A cage with its hole closed by new faces.
+            grid(pen, (2.0, 2.0), (20.0, 20.0), 2);
+            pen.path_in(
+                &[(6.0, 6.0), (16.0, 6.0), (16.0, 16.0), (6.0, 16.0)],
+                true,
+                pen.accent(),
+            );
+        }
+        "unweldedge" => {
+            // A cage cut open along its middle edge.
+            grid(pen, (2.0, 2.0), (20.0, 20.0), 2);
+            pen.path_in(&[(10.0, 2.0), (10.0, 20.0)], false, pen.accent());
+            pen.path_in(&[(12.0, 2.0), (12.0, 20.0)], false, pen.accent());
+        }
+        "weldedge" => {
+            // Two cage halves joined along their middle edge.
+            grid(pen, (2.0, 2.0), (20.0, 20.0), 2);
+            pen.path_in(&[(11.0, 2.0), (11.0, 20.0)], false, pen.accent());
+            pen.path_in(&[(8.0, 11.0), (14.0, 11.0)], false, pen.accent());
+        }
+        "removecrease" => {
+            // A cage whose middle edge is smoothed into a curve.
+            grid(pen, (2.0, 2.0), (20.0, 20.0), 2);
+            pen.path_in(
+                &[(11.0, 2.0), (14.0, 8.0), (14.0, 14.0), (11.0, 20.0)],
+                false,
+                pen.accent(),
+            );
+        }
         key if key.starts_with("meshboolean") => mesh_boolean(pen, key),
         key if key.starts_with("subd") || key == "tosubd" || key == "tonurbs" => {
             return subd_primitive(pen, key);
