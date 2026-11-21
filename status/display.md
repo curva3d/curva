@@ -20,12 +20,17 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 - **The wheel zooms towards the mouse, as in Rhino** (#469, #501): the point under the mouse
   stays still, not the centre of the view.
 - **The Display panel shows "Perspective" whole, and its edges resize properly** (#470). It
-  opens 250 points wide (180 before), also from a layout saved narrower. Dragging a panel's
+  opens wider (now 290 points; 180 before), also from a layout saved narrower. Dragging a panel's
   edge now moves it from where the drag began by the whole way since, so the edge stays under
   the pointer after the panel stops at its smallest; and the layout is written once when the
   edge is let go, not on every frame of the drag.
-- **The view picker has the button look of the chosen mock-up** (#471): each view a filled
-  tile, the one shown in the accent, and the button that opens it outlined in the accent.
+- **The view picker says and shows where each view looks from** (#471, the owner's choice of
+  option 2 from a mock-up). Each view is a filled tile with a small line drawing of a house
+  seen from its side (the plan from Top, the gable from Front and Back, only Front with a door,
+  the long side from Left and Right, only the edges in sight in the two perspectives), the view
+  shown in the accent. The caption reads "Look at the model from", the button "View: Top", and
+  resting on a view says what it looks at ("Top: looking down, at the plan"). The Display panel
+  now opens 290 points wide so the longer button fits.
 - **In focus mode a panel at the top goes to the window's edge, as the others do** (#473). The
   Operations bar slid only to where the top bar had been, which had slid away itself, so it
   stayed floating; now hidden panels slide to the edges of the whole window in focus mode, and
