@@ -108,6 +108,43 @@ impl Document {
             .collect()
     }
 
+    /// Every object with picked points as it would be with each passed through `change`: curves by
+    /// their control points, meshes by their points and SubDs by their cage points (#563).
+    pub fn grips_reshaped(
+        &self,
+        grips: &[Grip],
+        change: impl Fn(Point) -> Point,
+    ) -> Result<Vec<(u64, crate::Shape)>, KernelError> {
+        let mut made: Vec<(u64, crate::Shape)> = self
+            .grips_changed(grips, &change)?
+            .into_iter()
+            .map(|(id, curve)| (id, crate::Shape::Curve(curve)))
+            .collect();
+        for (id, indices) in Self::by_owner(grips) {
+            let Some(object) = self.state.objects.iter().find(|o| o.id == id) else {
+                continue;
+            };
+            let moved = |points: &[Point]| -> Vec<(u32, Point)> {
+                indices
+                    .iter()
+                    .filter_map(|&i| Some((u32::try_from(i).ok()?, change(*points.get(i)?))))
+                    .collect()
+            };
+            match &object.shape {
+                crate::Shape::Mesh(mesh) => made.push((
+                    id,
+                    crate::Shape::Mesh(mesh.with_points_moved(&moved(mesh.vertices()))),
+                )),
+                crate::Shape::SubD(subd) => made.push((
+                    id,
+                    crate::Shape::SubD(subd.with_cage_points_moved(&moved(subd.cage().vertices()))),
+                )),
+                _ => {}
+            }
+        }
+        Ok(made)
+    }
+
     /// The control points of each object among `grips`, by object.
     fn by_owner(grips: &[Grip]) -> Vec<(u64, Vec<usize>)> {
         let mut owners: Vec<(u64, Vec<usize>)> = Vec::new();
@@ -185,6 +222,50 @@ impl Document {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn picked_cage_and_mesh_points_move_and_nothing_else() {
+        let mut doc = Document::default();
+        let frame = curva_mesh::Frame::world();
+        let a = doc.add_shape(crate::Shape::SubD(curva_mesh::SubD::subd_box(
+            &frame,
+            [2.0; 3],
+            [1, 1, 1],
+        )));
+        let b = doc.add_shape(crate::Shape::Mesh(curva_mesh::Mesh::mesh_box(
+            &frame,
+            [2.0; 3],
+            [1, 1, 1],
+        )));
+        doc.points_on(&[a, b]);
+        let made = doc
+            .grips_reshaped(&[(a, 0), (b, 1)], |p| [p[0], p[1], p[2] + 5.0])
+            .unwrap();
+        assert_eq!(made.len(), 2);
+        for (id, shape) in made {
+            let (points, moved) = match &shape {
+                crate::Shape::SubD(subd) => (subd.cage().vertices().to_vec(), 0),
+                crate::Shape::Mesh(mesh) => (mesh.vertices().to_vec(), 1),
+                _ => panic!("unexpected shape"),
+            };
+            let before = match &doc
+                .state()
+                .objects
+                .iter()
+                .find(|o| o.id == id)
+                .unwrap()
+                .shape
+            {
+                crate::Shape::SubD(subd) => subd.cage().vertices().to_vec(),
+                crate::Shape::Mesh(mesh) => mesh.vertices().to_vec(),
+                _ => unreachable!(),
+            };
+            for (k, (p, q)) in points.iter().zip(&before).enumerate() {
+                let lift = if k == moved { 5.0 } else { 0.0 };
+                assert!((p[2] - q[2] - lift).abs() < 1e-12, "point {k} of {id}");
+            }
+        }
+    }
 
     #[test]
     fn a_subd_shows_its_cage_points_and_a_mesh_its_points() {

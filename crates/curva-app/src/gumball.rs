@@ -323,10 +323,10 @@ impl Curva {
         let before = self.doc.state().clone();
         let grips = self.doc.grip_selection();
         if !grips.is_empty() {
-            match self.doc.grips_changed(&grips, |p| change.moved_point(p)) {
+            match self.doc.grips_reshaped(&grips, |p| change.moved_point(p)) {
                 Ok(made) => {
-                    for (id, curve) in made {
-                        self.doc.replace(id, curve);
+                    for (id, shape) in made {
+                        self.doc.replace_shape(id, shape);
                     }
                     self.doc.refresh_history();
                     self.doc.record_change(before);
@@ -477,8 +477,12 @@ impl Curva {
         if !grips.is_empty() {
             return self
                 .doc
-                .grips_changed(&grips, |p| change.moved_point(p))
-                .map(|made| made.into_iter().map(|(_, curve)| curve).collect())
+                .grips_reshaped(&grips, |p| change.moved_point(p))
+                .map(|made| {
+                    made.iter()
+                        .flat_map(|(_, shape)| shape.outlines())
+                        .collect()
+                })
                 .unwrap_or_default();
         }
         let selection = self.doc.selection();
