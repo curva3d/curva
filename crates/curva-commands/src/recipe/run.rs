@@ -427,7 +427,7 @@ impl<R: Recipe> Command for RecipeCommand<R> {
             return Vec::new();
         };
         let mut shown = made.guides.clone();
-        for shape in made.shapes() {
+        for shape in &shown_shapes(&made, doc) {
             match shape {
                 // Annotation previews as it will be drawn, with its style's arrows and text,
                 // rather than as the bare lines between its points.
@@ -445,10 +445,29 @@ impl<R: Recipe> Command for RecipeCommand<R> {
         let Some(made) = self.preview_made(doc, live) else {
             return Vec::new();
         };
-        made.shapes()
+        shown_shapes(&made, doc)
+            .iter()
             .filter_map(|shape| shape.body().cloned())
             .collect()
     }
+}
+
+/// What a preview shows of `made`: its shapes, with block instances opened into the shapes they
+/// draw, placed, so a block being copied, moved or placed shows too (#507: instances showed
+/// nothing, as their lines live in their definition).
+fn shown_shapes(made: &Made, doc: &Document) -> Vec<Shape> {
+    let mut shown = Vec::new();
+    for shape in made.shapes() {
+        match shape {
+            Shape::Instance(instance) => shown.extend(
+                doc.instance_shapes(instance)
+                    .into_iter()
+                    .map(|(shape, _)| shape),
+            ),
+            shape => shown.push(shape.clone()),
+        }
+    }
+    shown
 }
 
 impl<R: Recipe> RecipeCommand<R> {

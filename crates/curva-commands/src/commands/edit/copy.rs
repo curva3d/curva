@@ -106,6 +106,31 @@ mod tests {
     }
 
     #[test]
+    fn a_solid_being_copied_shows_where_the_copy_goes() {
+        let mut doc = Document::default();
+        let id = doc.add_body(curva_kernel::Body::cuboid([0.0; 3], [1.0, 1.0, 1.0]).unwrap());
+        doc.select(&[id]);
+        let processor = run(&mut doc, &["copy", "0,0"]);
+        let bodies = processor.preview_bodies(&doc, Some([5.0, 0.0, 0.0]), "");
+        assert_eq!(bodies.len(), 1, "the copy follows the pointer");
+        let (low, _) = bodies[0].bounds().unwrap();
+        assert!((low[0] - 5.0).abs() < 1e-9, "{low:?}");
+    }
+
+    #[test]
+    fn a_block_being_copied_shows_its_lines_and_solids() {
+        let mut doc = Document::default();
+        let line = doc.add(Curve::line([0.0; 3], [1.0, 0.0, 0.0]).unwrap());
+        let cube = doc.add_body(curva_kernel::Body::cuboid([0.0; 3], [1.0, 1.0, 1.0]).unwrap());
+        let (_, instance) = doc.define_block("Chair".to_owned(), [0.0; 3], &[line, cube]);
+        doc.select(&[instance]);
+        let processor = run(&mut doc, &["copy", "0,0"]);
+        let at = Some([5.0, 0.0, 0.0]);
+        assert_eq!(processor.preview_bodies(&doc, at, "").len(), 1, "its solid");
+        assert!(processor.preview(&doc, at, "").len() > 1, "its lines");
+    }
+
+    #[test]
     fn undo_removes_all_the_copies_at_once() {
         let mut doc = one_selected_line();
         let before = doc.state().clone();

@@ -1,11 +1,11 @@
 //! `Scale2D`: resizes objects evenly across the plane being drawn on, but not out of it.
 
 use crate::commands::{
-    ask_objects, ask_point, ask_point_or_number, curves_of, ghost_results, guide,
-    objects_or_selection, unexpected,
+    ask_objects, ask_point, ask_point_or_number, bodies_of, curves_of, guide, objects_or_selection,
+    result_bodies, unexpected,
 };
 use crate::{Answer, Command, Live, Message, Step};
-use curva_document::Document;
+use curva_document::{Document, Shape};
 use curva_kernel::{Curve, KernelError, Point, dot, sub};
 
 /// Smallest size change treated as real.
@@ -29,19 +29,23 @@ fn scaled(
     ids: &[u64],
     origin: Point,
     factor: f64,
-) -> Result<Vec<(u64, Curve)>, KernelError> {
+) -> Result<Vec<(u64, Shape)>, KernelError> {
     let [x, y] = doc.work_plane();
-    curves_of(doc, ids)
-        .into_iter()
-        .map(|(id, curve)| {
-            Ok((
-                id,
-                curve
-                    .stretched(origin, x, factor)?
-                    .stretched(origin, y, factor)?,
-            ))
-        })
-        .collect()
+    let mut made = Vec::new();
+    for (id, curve) in curves_of(doc, ids) {
+        let curve = curve
+            .stretched(origin, x, factor)?
+            .stretched(origin, y, factor)?;
+        made.push((id, Shape::Curve(curve)));
+    }
+    // Solids and surfaces scale too, as in Rhino (#507).
+    for (id, body) in bodies_of(doc, ids) {
+        let body = body
+            .stretched(origin, x, factor)?
+            .stretched(origin, y, factor)?;
+        made.push((id, Shape::Body(body)));
+    }
+    Ok(made)
 }
 
 fn finish(doc: &mut Document, ids: &[u64], origin: Point, factor: f64) -> Step {
@@ -50,8 +54,8 @@ fn finish(doc: &mut Document, ids: &[u64], origin: Point, factor: f64) -> Step {
     }
     match scaled(doc, ids, origin, factor) {
         Ok(made) => {
-            for (id, curve) in made {
-                doc.replace(id, curve);
+            for (id, shape) in made {
+                doc.replace_shape(id, shape);
             }
             Step::Done(Some(Message::with(
                 "done.scale",
@@ -105,9 +109,28 @@ impl Command for Scale2D {
             .filter(|f| f.is_finite() && *f >= SMALLEST_FACTOR)
             .and_then(|f| scaled(doc, ids, origin, f).ok())
         {
-            shown.extend(ghost_results(made));
+            shown.extend(made.iter().flat_map(|(_, shape)| shape.outlines()));
         }
         shown
+    }
+
+    fn preview_bodies(&self, doc: &Document, live: &Live) -> Vec<curva_kernel::Body> {
+        let (Some(ids), Some(origin)) = (&self.ids, self.origin) else {
+            return Vec::new();
+        };
+        let factor = match (self.first, live.number, live.cursor) {
+            (None, Some(typed), _) => Some(typed),
+            (Some(first), _, Some(cursor)) => Some(reach(origin, cursor) / reach(origin, first)),
+            _ => None,
+        };
+        factor
+            .filter(|f| f.is_finite() && *f >= SMALLEST_FACTOR)
+            .and_then(|f| scaled(doc, ids, origin, f).ok())
+            .map(|made| {
+                let shapes: Vec<Shape> = made.into_iter().map(|(_, shape)| shape).collect();
+                result_bodies(&shapes)
+            })
+            .unwrap_or_default()
     }
 }
 
@@ -116,6 +139,22 @@ mod tests {
     use crate::commands::run;
     use curva_document::Document;
     use curva_kernel::Curve;
+
+    #[test]
+    fn a_solid_scales_across_the_plane_too_as_in_rhino() {
+        let mut doc = Document::default();
+        let id = doc.add_body(curva_kernel::Body::cuboid([0.0; 3], [1.0, 1.0, 1.0]).unwrap());
+        doc.select(&[id]);
+        run(&mut doc, &["scale2d", "0,0", "2"]);
+        let (low, high) = doc.state().objects[0]
+            .shape
+            .body()
+            .unwrap()
+            .bounds()
+            .unwrap();
+        assert!((high[0] - low[0] - 2.0).abs() < 1e-6, "{low:?} {high:?}");
+        assert!((high[2] - low[2] - 1.0).abs() < 1e-6, "height stays");
+    }
 
     #[test]
     fn it_scales_across_the_plane_and_leaves_height_alone() {

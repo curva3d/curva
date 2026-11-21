@@ -80,20 +80,61 @@ pub(crate) fn guide(a: Point, b: Point) -> Vec<curva_kernel::Curve> {
     curva_kernel::Curve::line(a, b).into_iter().collect()
 }
 
-/// How chosen objects would look after a change, for a preview.
+/// The shapes chosen objects draw, blocks opened into theirs, for a preview (#507).
+fn chosen_shapes(doc: &curva_document::Document, ids: &[u64]) -> Vec<curva_document::Shape> {
+    let chosen: std::collections::HashSet<u64> = ids.iter().copied().collect();
+    let mut shapes = Vec::new();
+    for object in doc
+        .state()
+        .objects
+        .iter()
+        .filter(|object| chosen.contains(&object.id))
+        .take(MOST_PREVIEW_OBJECTS)
+    {
+        match &object.shape {
+            curva_document::Shape::Instance(instance) => shapes.extend(
+                doc.instance_shapes(instance)
+                    .into_iter()
+                    .map(|(shape, _)| shape),
+            ),
+            shape => shapes.push(shape.clone()),
+        }
+    }
+    shapes
+}
+
+/// How chosen objects would look after a change, for a preview: their lines, blocks included.
 pub(crate) fn ghosts(
     doc: &curva_document::Document,
     ids: &[u64],
     change: impl Fn(&curva_kernel::Curve) -> curva_kernel::Curve,
 ) -> Vec<curva_kernel::Curve> {
-    let chosen: std::collections::HashSet<u64> = ids.iter().copied().collect();
-    doc.state()
-        .objects
+    chosen_shapes(doc, ids)
         .iter()
-        .filter(|object| chosen.contains(&object.id))
-        .take(MOST_PREVIEW_OBJECTS)
-        .flat_map(|object| object.shape.outlines())
+        .flat_map(curva_document::Shape::outlines)
         .map(|curve| change(&curve))
+        .collect()
+}
+
+/// The surfaces and solids of chosen objects after `change`, for the preview's faces (#507: a
+/// solid being arrayed or turned showed only its edges).
+pub(crate) fn ghost_bodies(
+    doc: &curva_document::Document,
+    ids: &[u64],
+    change: impl Fn(&curva_kernel::Body) -> curva_kernel::Body,
+) -> Vec<curva_kernel::Body> {
+    chosen_shapes(doc, ids)
+        .iter()
+        .filter_map(curva_document::Shape::body)
+        .map(change)
+        .collect()
+}
+
+/// The surfaces and solids among shapes a command would make, for the preview's faces.
+pub(crate) fn result_bodies(made: &[curva_document::Shape]) -> Vec<curva_kernel::Body> {
+    made.iter()
+        .filter_map(curva_document::Shape::body)
+        .cloned()
         .collect()
 }
 

@@ -128,8 +128,14 @@ least as tidy as you found it.
 - **All previews look the same.** A command returns the curves to preview from
   `Command::preview`, and the viewport draws every one of them the same way, with
   `curva_viewport::ghost_lines`. No command chooses its own colour or line style, or draws for itself. Point previews are the same colour, drawn as markers because they have no lines.
+- **Whatever it acts on** (owner's rule, 21 November 2026): every command that creates, moves,
+  copies or edits geometry previews every kind of object it can act on: curves, surfaces, solids
+  (faces as well as edges), meshes, SubDs, annotation and blocks. A preview that shows a curve but
+  nothing for a solid or a block breaks the rule. This holds for every command, now and later.
 - **The rule is tested.** A new command that changes geometry must be listed in `PREVIEW_STEPS` in
-  `crates/curva-commands/src/commands/mod.rs`, or the tests fail.
+  `crates/curva-commands/src/commands/mod.rs`, or the tests fail; one that moves, copies or reshapes
+  objects already in the model is also listed in `TRANSFORM_STEPS`, which checks it previews a
+  solid, a block, a mesh and a SubD.
 
 ## Writing or completing a command (owner's decision, 12 November 2026)
 
