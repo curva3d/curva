@@ -291,7 +291,25 @@ impl Curva {
             let undo = input.consume_shortcut(&shortcut(Modifiers::COMMAND, Key::Z));
             (redo, undo, view_ahead, view_back)
         });
-        // The File tab's keys, also taken before the command line sees them.
+        self.file_keys(ctx);
+        self.clipboard_keys(ctx);
+        if view_back || view_ahead {
+            self.panes[self.active].step_view(view_ahead);
+        }
+        if undo || redo {
+            // A command in progress is ended first, as its changes are not yet a step.
+            if self.processor.is_running() {
+                self.processor.cancel(&mut self.doc);
+            }
+            self.processor
+                .submit(&mut self.doc, if redo { "redo" } else { "undo" });
+        }
+    }
+
+    /// The File tab's keys, also taken before the command line sees them.
+    fn file_keys(&mut self, ctx: &egui::Context) {
+        use egui::{Key, KeyboardShortcut, Modifiers};
+        let shortcut = |modifiers, key| KeyboardShortcut::new(modifiers, key);
         let file_command = ctx.input_mut(|input| {
             if input.consume_shortcut(&shortcut(Modifiers::COMMAND | Modifiers::SHIFT, Key::S)) {
                 Some("SaveAs")
@@ -308,10 +326,15 @@ impl Curva {
         if let Some(name) = file_command {
             self.run_from_button(name);
         }
-        // The clipboard keys every program has, on the selected objects. The window turns them
-        // into egui's Copy, Cut and Paste events rather than key presses, so those are taken here,
-        // before the command line could; a paste is the objects' only while the system clipboard
-        // still holds the mark their copy put there.
+    }
+
+    /// The clipboard keys every program has, on the selected objects. The window turns them
+    /// into egui's Copy, Cut and Paste events rather than key presses, so those are taken here,
+    /// before the command line could; a paste is the objects' only while the system clipboard
+    /// still holds the mark their copy put there.
+    fn clipboard_keys(&mut self, ctx: &egui::Context) {
+        use egui::{Key, KeyboardShortcut, Modifiers};
+        let shortcut = |modifiers, key| KeyboardShortcut::new(modifiers, key);
         let anything_selected = !self.doc.selection().is_empty();
         let (copy, cut, paste, all) = ctx.input_mut(|input| {
             let (mut copy, mut cut, mut paste) = (
@@ -350,17 +373,6 @@ impl Curva {
         }
         if all {
             self.run_from_button("selall");
-        }
-        if view_back || view_ahead {
-            self.panes[self.active].step_view(view_ahead);
-        }
-        if undo || redo {
-            // A command in progress is ended first, as its changes are not yet a step.
-            if self.processor.is_running() {
-                self.processor.cancel(&mut self.doc);
-            }
-            self.processor
-                .submit(&mut self.doc, if redo { "redo" } else { "undo" });
         }
     }
 
