@@ -159,7 +159,7 @@ pub(crate) fn instances_of(
         .iter()
         .filter(|object| ids.contains(&object.id))
         .filter_map(|object| match &object.shape {
-            curva_document::Shape::Instance(instance) => Some((object.id, instance.clone())),
+            curva_document::Shape::Instance(instance) => Some((object.id, *instance)),
             _ => None,
         })
         .collect()
