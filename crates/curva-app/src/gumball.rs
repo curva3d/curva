@@ -132,8 +132,11 @@ impl Curva {
             other => other,
         };
         let even_scale = drag.even && drag.ctrl;
-        let change =
-            gumball.change_with(camera, drag.size, handle, drag.from, drag.now, even_scale)?;
+        // Shift snaps a turn to every 5 degrees (#529).
+        let turn_step = drag.even.then_some(5.0);
+        let change = gumball.change_with(
+            camera, drag.size, handle, drag.from, drag.now, even_scale, turn_step,
+        )?;
         // Object snaps apply to the point dragged: the centre lines up with the snapped point
         // along the axis, or moves to it in the plane, as in Rhino. Alt turns them off.
         let alt = self.alt_held;
