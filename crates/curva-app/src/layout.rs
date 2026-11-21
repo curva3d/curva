@@ -571,7 +571,8 @@ impl Layout {
             .map_or_else(
                 || {
                     let size = FLOATING_STANDARD;
-                    let corner = window.center() - size / 2.0 - window.min.to_vec2();
+                    let centred = window.center() - size / 2.0 - window.min.to_vec2();
+                    let corner = self.beside_floating(centred, size, window);
                     Place::new(
                         vec![piece],
                         Dock::Floating {
@@ -590,6 +591,37 @@ impl Layout {
             );
         layout.places.push(place);
         layout
+    }
+
+    /// Where a new floating panel of `size` goes: at `corner` (from the window's top left) if no
+    /// floating panel is there, otherwise beside the one it would cover, to its right if that fits
+    /// in `window`, else to its left (#482: a panel opened from Settings landed on top of it).
+    fn beside_floating(&self, corner: Pos2, size: Vec2, window: Rect) -> Pos2 {
+        const GAP: f32 = 12.0;
+        let wanted = Rect::from_min_size(corner, size);
+        let covered = self.places.iter().find_map(|place| match place.dock {
+            Dock::Floating { x, y } => {
+                let rect = Rect::from_min_size(pos2(x, y), vec2(place.size[0], place.size[1]));
+                rect.intersects(wanted).then_some(rect)
+            }
+            _ => None,
+        });
+        let Some(other) = covered else {
+            return corner;
+        };
+        let right = other.max.x + GAP;
+        let left = other.min.x - GAP - size.x;
+        if right + size.x <= window.width() {
+            pos2(right, corner.y)
+        } else if left >= 0.0 {
+            pos2(left, corner.y)
+        } else if window.width() - other.max.x >= other.min.x {
+            // No room either side: against the window's edge with more room, overlapping as
+            // little as it can.
+            pos2((window.width() - size.x).max(0.0), corner.y)
+        } else {
+            pos2(0.0, corner.y)
+        }
     }
 
     /// The arrangement with tab `from` of `panel` moved to position `to`.
@@ -1066,6 +1098,33 @@ mod tests {
         );
         assert_eq!(rect(&pulled).width(), before.width() + 40.0);
         assert_eq!(rect(&pulled).min.y, before.min.y);
+    }
+
+    #[test]
+    fn a_panel_opened_while_settings_floats_goes_beside_it() {
+        let layout = Layout::default();
+        assert!(!layout.is_shown(Piece::Settings) && !layout.is_shown(Piece::Blocks));
+        // With room, beside it.
+        let wide = window(1800.0, 900.0);
+        let both = layout
+            .restored(Piece::Settings, wide)
+            .restored(Piece::Blocks, wide);
+        let (arranged, _) = both.arrange(wide);
+        let settings = rect_of(&arranged, Piece::Settings);
+        let blocks = rect_of(&arranged, Piece::Blocks);
+        assert!(!settings.intersects(blocks), "{settings:?} {blocks:?}");
+        // Without, against the window's edge: never straight on top.
+        let narrow = window(1200.0, 800.0);
+        let both = layout
+            .restored(Piece::Settings, narrow)
+            .restored(Piece::Blocks, narrow);
+        let (arranged, _) = both.arrange(narrow);
+        let settings = rect_of(&arranged, Piece::Settings);
+        let blocks = rect_of(&arranged, Piece::Blocks);
+        assert!(
+            (settings.center().x - blocks.center().x).abs() > 200.0,
+            "{settings:?} {blocks:?}"
+        );
     }
 
     #[test]
