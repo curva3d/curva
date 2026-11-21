@@ -11,6 +11,12 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 21 November 2026
 
+**ToSubD closes its Rhino gaps:** measured with RhinoCommon, Rhino rebuilds each surface as a uniform cubic through
+its Greville points and uses that control net as the cage, keeping an extra ring round each pole. Curva now does the
+same, with no fitting step: a sphere gives Rhino's 32 quads and 16 triangles on 42 points (ring positions match to
+1e-4), a box creases only its top and bottom (8 edges), and trimmed or holed faces are taken whole, as Rhino ignores
+trims. Not yet: boxes drawn on planes other than Top, cones, and holed extrusions.
+
 **MeshBox, SubDBox, MeshPlane and SubDPlane take Box's and Rectangle's steps:** measured in Rhino 8, a typed number at
 the second step is the length, then Width (Enter: the length), then for a box the height, whose Enter takes the
 base's side along Y. The height is measured up from the corner just clicked, as Box. They reuse Box's `base`.
