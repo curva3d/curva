@@ -13,6 +13,16 @@ const COMMAND_KEYS: egui::EventFilter = egui::EventFilter {
     escape: true,
 };
 
+/// Whether a text box other than the command line has the keyboard, such as the gumball's angle box:
+/// the command line then leaves it there rather than taking it back each frame (#511). A box that
+/// closes loses the keyboard with it, and the command line takes it back.
+fn another_text_box_has_keys(ctx: &egui::Context, command_line: egui::Id) -> bool {
+    ctx.text_edit_focused()
+        && ctx
+            .memory(|m| m.focused())
+            .is_some_and(|f| f != command_line)
+}
+
 /// The rows of the log to show, newest last. Always the same number, one line each, so that a
 /// new message never changes the height of the panel and moves the viewport.
 #[cfg(test)]
@@ -215,6 +225,14 @@ impl Curva {
         }
     }
 
+    /// Whether the command line takes the keyboard back this frame: not while a layer is being
+    /// named, the gumball's value box is open, or another text box has it (#511).
+    fn command_line_takes_keys(&self, ctx: &egui::Context, command_line: egui::Id) -> bool {
+        !self.naming_layer
+            && self.gumball_state.gumball_typing.is_none()
+            && !another_text_box_has_keys(ctx, command_line)
+    }
+
     pub(crate) fn command_line(&mut self, ui: &mut egui::Ui) {
         self.command_history(ui);
         let prompt = self
@@ -248,7 +266,7 @@ impl Curva {
                 .desired_width(f32::INFINITY)
                 .show(ui);
             self.command_field = Some(output.response.id);
-            if !self.naming_layer {
+            if self.command_line_takes_keys(ui.ctx(), output.response.id) {
                 output.response.request_focus();
             }
             changed = output.response.changed();
@@ -336,6 +354,27 @@ impl Curva {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn another_text_box_keeps_the_keyboard_once_it_has_it() {
+        let ctx = egui::Context::default();
+        let mut angle = String::new();
+        let mut boxed = None;
+        for _ in 0..2 {
+            let output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                let field = ui.add(egui::TextEdit::singleline(&mut angle));
+                field.request_focus();
+                boxed = Some(field.id);
+            });
+            output.drop_without_applying_deltas();
+        }
+        let command_line = egui::Id::new("command line");
+        assert!(another_text_box_has_keys(&ctx, command_line));
+        assert!(
+            !another_text_box_has_keys(&ctx, boxed.unwrap()),
+            "not when it is the command line"
+        );
+    }
 
     #[test]
     fn the_command_line_keeps_the_arrows_tab_and_escape() {
