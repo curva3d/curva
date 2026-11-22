@@ -191,8 +191,8 @@ impl Pilot {
                 view.placed = None;
                 view.lit = None;
             }
-            // The Clay display mode lights its view by the sun, with shadows (#551).
-            let lit = if drawing.sketch {
+            // The Massing display mode lights its view by the sun, with shadows (#551).
+            let lit = if drawing.massing {
                 Look {
                     lighting: Lighting::Sunlit,
                     ..self.look
@@ -423,7 +423,7 @@ fn picture_drawing(
     picture: crate::Picture,
     objects: Vec<u64>,
     camera: crate::Camera,
-    background: epaint::Color32,
+    background: (epaint::Color32, epaint::Color32),
     size: [u32; 2],
 ) -> Drawing {
     Drawing {
@@ -444,15 +444,14 @@ fn picture_drawing(
         ghosted: picture.ghosted,
         hidden: picture.hidden,
         hidden_lines: picture.hidden_lines,
-        sketch: picture.sketch,
-        ground: picture.ground,
+        massing: picture.massing,
         area: epaint::Rect::from_min_size(
             epaint::Pos2::ZERO,
             epaint::vec2(size[0] as f32, size[1] as f32),
         ),
         frame: 0,
-        background,
-        background_low: background,
+        background: background.0,
+        background_low: background.1,
         camera,
     }
 }
@@ -480,7 +479,7 @@ fn light_view(
 }
 
 /// Draws `picture` as a view Bevy draws, through the window's own path: Bevy's surfaces in
-/// `look` on `background`, with Curva's lines, outlines and previews on them, seen by `camera`
+/// `look` on `background` (its top and bottom colours), with Curva's lines, outlines and previews on them, seen by `camera`
 /// (`picture.matrix` made from it), its faces numbered by `objects` as [`crate::SceneParts`]
 /// numbers them (empty when the selection is in the colours). Returns the picture, `size` pixels,
 /// four bytes each, row by row. Pictures for agents and `curva --picture`.
@@ -489,7 +488,7 @@ pub fn bevy_picture(
     objects: Vec<u64>,
     camera: crate::Camera,
     look: Look,
-    background: epaint::Color32,
+    background: (epaint::Color32, epaint::Color32),
     size: [u32; 2],
 ) -> Result<Vec<u8>, String> {
     let mut drawing = picture_drawing(picture, objects, camera, background, size);
@@ -513,7 +512,7 @@ pub fn save_bevy_picture(
     size: [u32; 2],
     path: &std::path::Path,
 ) -> Result<f64, String> {
-    let mut drawing = picture_drawing(picture, objects, camera, background, size);
+    let mut drawing = picture_drawing(picture, objects, camera, (background, background), size);
     let (pixels, mut times) = with_pictures(|pictures| {
         if let Some(pilot) = pictures.resources.get_mut::<Pilot>() {
             pilot.look = look;
@@ -620,8 +619,7 @@ mod tests {
             ghosted: false,
             hidden: false,
             hidden_lines: false,
-            sketch: false,
-            ground: 0.0,
+            massing: false,
             area: epaint::Rect::from_min_size(
                 epaint::Pos2::ZERO,
                 epaint::vec2(SIZE[0] as f32, SIZE[1] as f32),
