@@ -147,7 +147,7 @@ pub(super) fn mesh_3(pen: &Pen<'_>, key: &str) -> bool {
                 pen.accent(),
             );
         }
-        "crease" | "removecrease" | "fill" | "unweldedge" | "weldedge" | "stitch" => {
+        "crease" | "removecrease" | "fill" | "unweldedge" | "weldedge" | "stitch" | "bridge" => {
             subd_edit(pen, key);
         }
         key if key.starts_with("meshboolean") => mesh_boolean(pen, key),
@@ -289,6 +289,13 @@ fn grid(pen: &Pen<'_>, a: (f32, f32), b: (f32, f32), n: u32) {
 /// colour.
 fn subd_edit(pen: &Pen<'_>, key: &str) {
     match key {
+        "bridge" => {
+            // Two cage strips joined by a row of faces.
+            grid(pen, (2.0, 2.0), (20.0, 7.0), 2);
+            grid(pen, (2.0, 15.0), (20.0, 20.0), 2);
+            pen.path_in(&[(2.0, 7.0), (2.0, 15.0)], false, pen.accent());
+            pen.path_in(&[(20.0, 7.0), (20.0, 15.0)], false, pen.accent());
+        }
         "stitch" => {
             // Two points of a cage pulled into one.
             grid(pen, (2.0, 2.0), (20.0, 20.0), 2);

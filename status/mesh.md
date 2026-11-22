@@ -11,6 +11,11 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 22 November 2026
 
+**Bridge, as Rhino 8 measured:** two runs of open SubD border edges joined by rows of quads, with Rhino's Segments (1),
+Join (Yes) and Crease (No). Two strips bridged with Enter become one SubD of 6 quads on their 12 points, the bridge
+smooth and the 10 outer border edges creased, as in Rhino. `SubD::joined` puts two SubDs in one first. Straightness
+and picking faces are not here yet.
+
 **Measured in Rhino 8 with the screen (owner's permission; settings backed up and restored):**
 - ReduceMesh PlanarOnly is an action at "Choose mesh reduction option ( NewFaceCount=… ReductionPercentage=0 PlanarOnly
   Accuracy=10 LockMeshPoints )": a 10 m box of 10 × 10 faces a side, 1,200 triangles, goes to 344, joined back as 118
