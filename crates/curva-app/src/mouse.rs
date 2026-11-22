@@ -512,9 +512,7 @@ impl Curva {
             size,
             shift: ui.input(|input| input.modifiers.shift),
             remove: ui.input(|input| input.modifiers.command),
-            // Ctrl+Shift, or the selection filter's Sub-objects, picks parts of objects.
-            parts: ui.input(|input| input.modifiers.shift && input.modifiers.command)
-                || (self.pick_filter.sub_objects && !self.pick_filter.disable),
+            parts: self.picks_parts(ui),
         };
         // Checked once, so the click that ends a command does not also change the selection.
         if self.takes_position() {
@@ -691,11 +689,8 @@ impl Curva {
             return;
         }
         let boxed = is_box_drag(from, to);
-        let grips = if self.pick_filter.allows_control_points() {
-            self.grips_hit(&p.camera, (p.local(from), p.local(to)), boxed, p.size)
-        } else {
-            Vec::new()
-        };
+        let mut grips = self.grips_hit(&p.camera, (p.local(from), p.local(to)), boxed, p.size);
+        grips.retain(|_| self.pick_filter.allows_control_points());
         if !grips.is_empty() {
             // A control point was hit, so the points picked change and the objects do not.
             let picked = combined_selection(self.doc.grip_selection(), grips, p.shift, p.remove);

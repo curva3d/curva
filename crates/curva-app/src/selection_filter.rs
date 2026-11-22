@@ -135,6 +135,13 @@ pub(crate) fn kind_of(shape: &curva_document::Shape) -> Kind {
 }
 
 impl Curva {
+    /// Whether a click picks parts of objects: with Ctrl+Shift held, or with the filter's
+    /// Sub-objects on.
+    pub(crate) fn picks_parts(&self, ui: &egui::Ui) -> bool {
+        ui.input(|input| input.modifiers.shift && input.modifiers.command)
+            || (self.pick_filter.sub_objects && !self.pick_filter.disable)
+    }
+
     /// `ids` with the objects the filter leaves out taken away.
     pub(crate) fn filtered_picks(&self, ids: Vec<u64>) -> Vec<u64> {
         let filter = self.pick_filter;
