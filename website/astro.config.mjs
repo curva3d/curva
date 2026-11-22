@@ -15,9 +15,9 @@ export default defineConfig({
 				dark: './src/assets/curva-mark-white.png',
 				alt: '',
 			},
-			favicon: '/assets/favicon-32.png',
+			favicon: '/assets/favicon.svg',
 			head: [
-				{ tag: 'link', attrs: { rel: 'icon', href: '/assets/favicon-192.png', sizes: '192x192', type: 'image/png' } },
+				{ tag: 'link', attrs: { rel: 'icon', href: '/assets/favicon-32.png', sizes: '32x32', type: 'image/png' } },
 				{ tag: 'link', attrs: { rel: 'apple-touch-icon', href: '/assets/apple-touch-icon.png' } },
 			],
 			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/curva3d/curva' }],
