@@ -1,7 +1,7 @@
-// The words on the home page and the four specialization pages, in English and European Portuguese.
-// Change a text in one language, change it in the other.
+// The words on the home page and the four specialization pages. English only for now; to add a
+// language, add it to Lang, give it a block in WORDS and pages under src/pages/<lang>/.
 
-export type Lang = 'en' | 'pt';
+export type Lang = 'en';
 export const SLUGS = ['freeform', 'architecture', 'urban', 'analysis'] as const;
 export type Slug = (typeof SLUGS)[number];
 
@@ -29,6 +29,13 @@ export interface Words {
 	latest: string;
 	free: string;
 	system: string;
+	explore: string; // {name}
+	others: string;
+	theme: string;
+	dark: string;
+	light: string;
+	foot: string;
+	releases: string;
 	notes: { mac: string; win: string; linux: string };
 	specs: Record<Slug, Spec>;
 }
@@ -44,8 +51,8 @@ export const WORDS: Record<Lang, Words> = {
 		home: 'Curva, home',
 		motto: 'Every project starts with a curve.',
 		intro: 'Four specializations, stacked on one model. Freeform is the base; the others build on it.',
-		hintHome: 'Exploded axonometric · Move up to pull it apart · Click a plate to enter',
-		hintSpec: '{n} plates · Move up to pull them apart · Hover one to read it',
+		hintHome: 'Exploded axonometric · Move up to pull it apart · Click a plate to read on',
+		hintSpec: '{n} plates · Move up to pull them apart · Click one to read on',
 		back: '← Back to the stack',
 		notYet: 'Not in Curva yet',
 		plate: 'Plate',
@@ -56,6 +63,13 @@ export const WORDS: Record<Lang, Words> = {
 		latest: 'Latest release on GitHub',
 		free: 'Free',
 		system: 'System',
+		explore: 'Explore {name} →',
+		others: 'The specializations',
+		theme: 'Switch between light and dark',
+		dark: 'Dark',
+		light: 'Light',
+		foot: 'Free and open source, under the GPL-3.0 licence.',
+		releases: 'All releases',
 		notes: { mac: 'Apple silicon', win: '64-bit installer', linux: '64-bit AppImage' },
 		specs: {
 			freeform: {
@@ -117,92 +131,9 @@ export const WORDS: Record<Lang, Words> = {
 			},
 		},
 	},
-	pt: {
-		htmlLang: 'pt-PT',
-		title: 'Curva · 3D de código aberto para arquitetos e designers',
-		description:
-			'O Curva é um programa de 3D de código aberto para arquitetos e designers: modelação livre com objetos que se lembram de como foram feitos, e plantas, cortes e folhas gerados em direto a partir do modelo.',
-		ogDescription: 'Todos os projetos começam com uma curva. 3D de código aberto para arquitetos e designers.',
-		skip: 'Saltar para o conteúdo',
-		home: 'Curva, início',
-		motto: 'Todos os projetos começam com uma curva.',
-		intro: 'Quatro especializações, empilhadas sobre um só modelo. O Freeform é a base; as outras assentam nele.',
-		hintHome: 'Axonometria explodida · Suba o rato para a separar · Clique numa placa para entrar',
-		hintSpec: '{n} placas · Suba o rato para as separar · Passe por uma para a ler',
-		back: '← Voltar à pilha',
-		notYet: 'Ainda não está no Curva',
-		plate: 'Placa',
-		shot: 'Captura de ecrã em breve',
-		docs: 'Documentação',
-		download: 'Descarregar',
-		downloadFor: 'Descarregar para {os}',
-		latest: 'Versão mais recente no GitHub',
-		free: 'Gratuito',
-		system: 'Sistema',
-		notes: { mac: 'Apple silicon', win: 'Instalador de 64 bits', linux: 'AppImage de 64 bits' },
-		specs: {
-			freeform: {
-				name: 'Freeform',
-				status: 'Já disponível',
-				live: true,
-				line: 'Modele qualquer coisa.',
-				lede: 'Modelação ao nível do Rhino como base de tudo. Curvas, superfícies, sólidos, malhas e SubD, com os comandos e os hábitos que já tem.',
-				bullets: ['Curvas, superfícies, sólidos, malha e SubD', 'Os nomes de comandos, o gumball e os snaps do Rhino', 'Histórico que fica: edite a curva, o loft acompanha'],
-				points: [
-					{ short: 'Modele como já faz', title: 'Modele como já faz', text: 'Curvas, superfícies, sólidos e booleanas, com os nomes de comandos, a linha de comandos, o gumball e os snaps do Rhino. Se conhece o Rhino, sabe onde as coisas estão.' },
-					{ short: 'Histórico que fica', title: 'Histórico que fica', text: 'Um loft lembra-se das suas curvas; um sólido lembra-se do seu perfil. Edite a origem e o resultado acompanha. Converta qualquer objeto em geometria simples quando quiser esculpir livremente.' },
-					{ short: 'Malha e SubD', title: 'Malha e SubD', text: 'Primitivas de malha, booleanas e reparação, QuadRemesh, e primitivas SubD com vincos. Converta entre malha, SubD e NURBS.' },
-					{ short: 'Do modelo à folha', title: 'Do modelo à folha', text: 'Layouts com vistas de detalhe, Make2D, cotas, texto e tramas. Imprima, ou exporte PDF, DXF e SVG.' },
-					{ short: 'Os seus ficheiros abrem', title: 'Os seus ficheiros abrem', text: 'Lê e escreve .3dm do Rhino, importa SketchUp, exporta STEP. IFC, glTF e USD estão previstos.' },
-				],
-			},
-			architecture: {
-				name: 'Arquitetura',
-				status: 'A seguir',
-				live: false,
-				line: 'Edifícios que se desenham sozinhos.',
-				lede: 'Paredes, lajes, portas e janelas que sabem o que são. Desenhe em planta e o modelo acompanha; altere o modelo e todas as plantas, cortes e alçados se atualizam.',
-				bullets: ['Paredes, lajes, portas, janelas, coberturas, escadas', 'Objetos inteligentes com os seus símbolos de planta', 'Plantas, cortes e alçados em direto'],
-				points: [
-					{ short: 'Elementos com tipos', title: 'Elementos de construção com tipos', text: 'Pisos, paredes, lajes, vãos, portas, janelas, coberturas e escadas. Uma janela conhece a sua parede; uma parede conhece o seu piso.' },
-					{ short: 'Objetos que se desenham', title: 'Objetos que se desenham sozinhos', text: 'Uma porta mostra a folha e o arco de abertura em planta, o modelo real em alçado e um símbolo mais simples a 1:200. Um só conjunto de parâmetros comanda tudo.' },
-					{ short: 'Plantas e cortes em direto', title: 'Plantas, cortes e alçados em direto', text: 'Corte uma vez. O poché, as linhas ocultas e as espessuras de linha vêm do modelo e mantêm-se atuais, em folhas prontas a imprimir.' },
-					{ short: 'Planta rápida de desenhar', title: 'Desenhar em planta, depressa', text: 'Esboce paredes e divisões em 2D, com um grafismo limpo de origem. A planta não é um desenho à parte: é o modelo.' },
-					{ short: 'IFC e uma biblioteca', title: 'IFC e uma biblioteca incluída', text: 'Troque ficheiros com outras ferramentas BIM através de IFC. Estilos de parede e de porta, janelas, árvores e pessoas vêm incluídos.' },
-				],
-			},
-			urban: {
-				name: 'Urbano',
-				status: 'Previsto',
-				live: false,
-				line: 'Teste um quarteirão antes do almoço.',
-				lede: 'Volumetria por regras, em locais reais. Defina lotes, afastamentos, cérceas e densidade, e veja os números mudar enquanto mexe nas coisas.',
-				bullets: ['Volumetria a partir de lotes, afastamentos e cérceas', 'Importação de OpenStreetMap, terreno e SIG', 'Quadros de áreas e densidade, em direto'],
-				points: [
-					{ short: 'Volumetria por regras', title: 'Volumetria por regras', text: 'Lotes, afastamentos, cérceas e índices de construção geram os volumes. Mude uma regra e o quarteirão refaz-se.' },
-					{ short: 'Contexto real', title: 'Contexto real', text: 'Traga dados do OpenStreetMap, do terreno e de SIG, para que os estudos assentem no local verdadeiro.' },
-					{ short: 'Números ao lado do modelo', title: 'Números ao lado do modelo', text: 'Os quadros de áreas e densidade atualizam-se com a volumetria: área bruta de construção, implantação, número de pisos.' },
-					{ short: 'Programação visual', title: 'Programação visual', text: 'Construa as suas próprias regras ligando nós, partilhados por todas as especializações.' },
-				],
-			},
-			analysis: {
-				name: 'Análise',
-				status: 'Mais tarde',
-				live: false,
-				line: 'Faça perguntas ao modelo.',
-				lede: 'Primeiro sol e sombra, depois vento e vistas. Faça estudos no modelo que está a desenhar, sem o exportar para lado nenhum.',
-				bullets: ['Estudos de sol e sombra', 'Estudos de vento e de vistas mais tarde', 'Corre sobre o modelo em direto'],
-				points: [
-					{ short: 'Sol e sombra', title: 'Sol e sombra', text: 'Sombras ao longo do dia e do ano, e horas de sol em fachadas e espaços abertos.' },
-					{ short: 'Vento e vistas, mais tarde', title: 'Vento e vistas, mais tarde', text: 'Outros estudos seguem-se quando o sol e a sombra estiverem sólidos.' },
-					{ short: 'Sobre o modelo em direto', title: 'Sobre o modelo em direto', text: 'Como a análise lê os mesmos objetos com que desenha, um estudo atualiza-se quando o projeto muda.' },
-				],
-			},
-		},
-	},
 };
 
 /** The address of a page: '' is the home page. */
-export function href(lang: Lang, slug: Slug | '' = ''): string {
-	return (lang === 'pt' ? '/pt/' : '/') + (slug ? slug + '/' : '');
+export function href(_lang: Lang, slug: Slug | '' = ''): string {
+	return '/' + (slug ? slug + '/' : '');
 }

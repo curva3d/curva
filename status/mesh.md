@@ -16,6 +16,21 @@ Join (Yes) and Crease (No). Two strips bridged with Enter become one SubD of 6 q
 smooth and the 10 outer border edges creased, as in Rhino. `SubD::joined` puts two SubDs in one first. Straightness
 and picking faces are not here yet.
 
+**Measured in Rhino 8 with the screen (owner's permission; settings backed up and restored):**
+- ReduceMesh PlanarOnly is an action at "Choose mesh reduction option ( NewFaceCount=… ReductionPercentage=0 PlanarOnly
+  Accuracy=10 LockMeshPoints )": a 10 m box of 10 × 10 faces a side, 1,200 triangles, goes to 344, joined back as 118
+  quads and 108 triangles on 174 points, closed at 1,000 m³. Its stopping rule is not the fewest faces, so it is not built
+  until it can be matched.
+- InsertEdge asks "Select edge from loop ( Type=Loop  Mode=Full )", "Press Enter when done", then "Edge positioning. Select
+  point or give amount ( BothSides=No  OffsetMode=Absolute )". A click picks one edge; Full runs it on through points where
+  four edges meet, to the next point where they do not. On a 4 m SubD box of 2 × 2 a side, the corner edge (204, 0, 0) to
+  (204, 0, 4) and 0.5 give a run at x = 203.5 across the front: 3 new points, the 2 faces it crosses split, the faces at
+  its ends five-sided (26 faces, 29 points). curva-mesh has the ring cut, not this, so InsertEdge needs new geometry.
+- Bridge asks "Select first set of edges or faces to bridge ( EdgeLoop )", the second set, then "Bridge options ( Segments=1
+  Join=Yes  Crease=No  Straightness=1 )". Two open 4 × 2 m strips 4 m apart, top edges bridged with Enter, become one SubD
+  (the second object goes) of 6 quads on their 12 points, the bridge smooth, the 10 outer border edges creased.
+  curva-mesh's bridge works within one SubD; Join needs the two cages joined first.
+
 **ToNURBS converts curves as Rhino 8 does:** with the kernel now converting lines, circles, arcs and joined curves
 (features #589), ToNURBS gives Rhino's forms, tested against the counts measured in Rhino 8.
 

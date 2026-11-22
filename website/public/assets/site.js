@@ -8,21 +8,34 @@
   var items = Array.prototype.slice.call(document.querySelectorAll("[data-info]"));
   var scene = document.querySelector(".scene");
 
-  // The stack is drawn 560 x 700 and scaled to the room it has.
+  // Light and dark: the button in the top bar (theme.js does the work).
+  var tbtn = document.querySelector("[data-theme-toggle]");
+  if (tbtn && window.curvaTheme) tbtn.addEventListener("click", window.curvaTheme.toggle);
+
+  // The stack is drawn 560 x 700 and scaled to the room it has: the width of its column, and
+  // never taller than the window.
   function fit() {
     if (!scene) return;
-    var wide = window.matchMedia("(min-width: 1100px) and (min-height: 820px)").matches;
-    var k;
-    if (wide) {
-      var r = scene.getBoundingClientRect();
-      k = Math.min(r.width / 560, r.height / 700);
-    } else {
-      k = Math.min(1, (scene.parentElement.getBoundingClientRect().width) / 560);
-    }
-    root.style.setProperty("--k", Math.max(0.4, Math.min(1.3, k)).toFixed(3));
+    var w = scene.getBoundingClientRect().width;
+    var top = document.querySelector(".top");
+    var room = window.innerHeight - (top ? top.offsetHeight : 0) - 40;
+    var k = Math.min(w / 560, room / 700, 1.3);
+    root.style.setProperty("--k", Math.max(0.45, k).toFixed(3));
   }
   fit();
   window.addEventListener("resize", fit);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+
+  // Sections fade up as they scroll into view.
+  var bands = Array.prototype.slice.call(document.querySelectorAll(".band"));
+  if ("IntersectionObserver" in window) {
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } });
+    }, { rootMargin: "0px 0px -10% 0px" });
+    bands.forEach(function (b) { io.observe(b); });
+  } else {
+    bands.forEach(function (b) { b.classList.add("in"); });
+  }
 
   // Moving the mouse up pulls the plates apart; down packs them together.
   var max = isSpec ? Math.round(430 / Math.max(1, plates.length - 1)) : 150;

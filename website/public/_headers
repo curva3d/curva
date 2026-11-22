@@ -7,8 +7,6 @@
 # The home and specialization pages load nothing from elsewhere but GitHub's release information.
 /
   Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src https://api.github.com; frame-ancestors 'none'; base-uri 'self'
-/pt/
-  Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src https://api.github.com; frame-ancestors 'none'; base-uri 'self'
 /freeform/
   Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src https://api.github.com; frame-ancestors 'none'; base-uri 'self'
 /architecture/
@@ -16,14 +14,6 @@
 /urban/
   Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src https://api.github.com; frame-ancestors 'none'; base-uri 'self'
 /analysis/
-  Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src https://api.github.com; frame-ancestors 'none'; base-uri 'self'
-/pt/freeform/
-  Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src https://api.github.com; frame-ancestors 'none'; base-uri 'self'
-/pt/architecture/
-  Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src https://api.github.com; frame-ancestors 'none'; base-uri 'self'
-/pt/urban/
-  Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src https://api.github.com; frame-ancestors 'none'; base-uri 'self'
-/pt/analysis/
   Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src https://api.github.com; frame-ancestors 'none'; base-uri 'self'
 
 /assets/*

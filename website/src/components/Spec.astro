@@ -1,5 +1,5 @@
 ---
-// One specialization: its strong points as an exploded stack of plates.
+// One specialization: its strong points as an exploded stack of plates, then a section for each.
 import Page from './Page.astro';
 import { WORDS, SLUGS, href, type Lang, type Slug } from '../data/site';
 interface Props { lang: Lang; slug: Slug }
@@ -11,32 +11,18 @@ const hint = `0${n} ${s.name} · ` + w.hintSpec.replace('{n}', String(s.points.l
 ---
 <Page lang={lang} slug={slug} kind="spec" title={`${s.name} · Curva`} description={s.lede} hint={hint}>
 	<Fragment slot="left">
-		<div class="left-top">
-			<a class="back mono" href={href(lang)}>{w.back}</a>
-			<p class:list={['status', 'mono', { live: s.live }]}>{s.status}{!s.live && ` · ${w.notYet}`}</p>
-			<h1 class:list={['spec-name', { long: s.name.length > 8 }]}>{s.name}</h1>
-			<p class="spec-line">{s.line}</p>
-			<p class="lede">{s.lede}</p>
-		</div>
-		<nav class="switch" aria-label="Specializations">
-			{SLUGS.map((o, i) => (
-				<a href={href(lang, o)} aria-current={o === slug ? 'page' : undefined}>
-					<span>0{i + 1} {w.specs[o].name}</span>
-					<span class="mono">{w.specs[o].status}</span>
-				</a>
-			))}
-		</nav>
+		<a class="back mono" href={href(lang)}>{w.back}</a>
+		<p class:list={['status', 'mono', { live: s.live }]}>{s.status}{!s.live && ` · ${w.notYet}`}</p>
+		<h1 class:list={['spec-name', { long: s.name.length > 8 }]}>{s.name}</h1>
+		<p class="spec-line">{s.line}</p>
+		<p class="lede">{s.lede}</p>
 	</Fragment>
 	<div class="persp" slot="stack"><div class="stack">
 		{s.points.map((p, i) => (
-			<div class="plate glass" tabindex="0" data-plate={i}>
+			<a class="plate glass" href={`#p${i + 1}`} data-plate={i}>
 				<span class="tag mono">{n}.{i + 1}</span>
 				<span class="name">{p.short}</span>
-				<span class="more">
-					<strong>{p.title}</strong>
-					<span>{p.text}</span>
-				</span>
-			</div>
+			</a>
 		))}
 	</div></div>
 	<div class="info glass" slot="info" aria-hidden="true">
@@ -47,6 +33,28 @@ const hint = `0${n} ${s.name} · ` + w.hintSpec.replace('{n}', String(s.points.l
 				<span class="info-text">{p.text}</span>
 			</div>
 		))}
-		<div class="shot mono">{w.shot}</div>
 	</div>
+	<Fragment slot="sections">
+		{s.points.map((p, i) => (
+			<section class="band" id={`p${i + 1}`}>
+				<div class="band-text">
+					<p class="mono">{w.plate} {n}.{i + 1}</p>
+					<h2 class="point">{p.title}</h2>
+					<p class="band-body">{p.text}</p>
+				</div>
+				<div class="shot mono">{w.shot}</div>
+			</section>
+		))}
+		<section class="band others">
+			<h2 class="point">{w.others}</h2>
+			<nav class="switch" aria-label={w.others}>
+				{SLUGS.map((o, i) => (
+					<a href={href(lang, o)} aria-current={o === slug ? 'page' : undefined}>
+						<span>0{i + 1} {w.specs[o].name}</span>
+						<span class="mono">{w.specs[o].status}</span>
+					</a>
+				))}
+			</nav>
+		</section>
+	</Fragment>
 </Page>
