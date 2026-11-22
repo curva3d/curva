@@ -264,3 +264,19 @@ fn a_cut_right_across_a_grid_splits_it_and_keeps_its_creases() {
     assert_eq!(welded.cage().vertex_count(), 9);
     assert_eq!(welded.creases().count(), 8 + 1);
 }
+
+#[test]
+fn joining_keeps_each_subds_creases_and_corners() {
+    let a = SubD::new(cube()).with_creases(&[[0, 1]]).with_corners(&[2]);
+    let b = SubD::new(cube()).with_creases(&[[4, 5]]);
+    let joined = a.joined(&b).unwrap();
+    assert_eq!(joined.cage().vertex_count(), 16);
+    assert_eq!(joined.cage().face_count(), 12);
+    assert!(joined.sharpness(0, 1).is_crease());
+    assert!(
+        joined.sharpness(12, 13).is_crease(),
+        "b's crease, numbered after a's points"
+    );
+    assert_eq!(joined.vertex_tag(2), VertexTag::Corner);
+    assert_eq!(joined.creases().count(), 2);
+}

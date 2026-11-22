@@ -11,6 +11,11 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 22 November 2026
 
+**Bridge, as Rhino 8 measured:** two runs of open SubD border edges joined by rows of quads, with Rhino's Segments (1),
+Join (Yes) and Crease (No). Two strips bridged with Enter become one SubD of 6 quads on their 12 points, the bridge
+smooth and the 10 outer border edges creased, as in Rhino. `SubD::joined` puts two SubDs in one first. Straightness
+and picking faces are not here yet.
+
 **ToNURBS converts curves as Rhino 8 does:** with the kernel now converting lines, circles, arcs and joined curves
 (features #589), ToNURBS gives Rhino's forms, tested against the counts measured in Rhino 8.
 
