@@ -125,24 +125,7 @@ pub(crate) fn benchmark_scene(doc: &mut Document, scene: BenchmarkScene) -> Resu
     }
     let splines = grid(scene.splines, BENCHMARK_SPACING);
     for index in 0..scene.splines {
-        let [x, y, z] = splines(index);
-        // A wave through five points, so it is cut by the spline rule, not the circle rule.
-        let points = (0..5)
-            .map(|k: u8| {
-                let t = f64::from(k) / 4.0;
-                let wave = if k.is_multiple_of(2) {
-                    0.0
-                } else {
-                    BENCHMARK_RADIUS
-                };
-                [
-                    x - BENCHMARK_RADIUS + 2.0 * BENCHMARK_RADIUS * t,
-                    y + wave,
-                    z,
-                ]
-            })
-            .collect();
-        doc.add(Curve::interpolated(points, false).map_err(text)?);
+        doc.add(Curve::interpolated(benchmark_wave(splines(index)), false).map_err(text)?);
     }
     let solids = grid(scene.solids, BENCHMARK_SPACING);
     // With `shapes` set, solids are copies of that many different shapes, moved: copies share
@@ -168,24 +151,64 @@ pub(crate) fn benchmark_scene(doc: &mut Document, scene: BenchmarkScene) -> Resu
     if scene.building {
         benchmark_building(doc)?;
     }
-    let mut tree_triangles = 0;
-    if scene.trees > 0 {
-        let trees = grid(scene.trees, BENCHMARK_TREE_SPACING);
-        let tree = benchmark_tree()?;
-        for body in &tree {
-            tree_triangles += body.mesh().map_err(text)?.triangles.len();
-        }
-        let ids = tree
-            .into_iter()
-            .map(|body| doc.add_body(body))
-            .collect::<Vec<_>>();
-        let (definition, first) = doc.define_block("tree".to_owned(), [0.0; 3], &ids);
-        doc.remove(&[first]);
-        for index in 0..scene.trees {
-            doc.insert_block(definition, curva_document::blocks::moved_by(trees(index)));
-        }
+    let trees = grid(scene.trees, BENCHMARK_TREE_SPACING);
+    let tree_triangles = add_benchmark_trees(doc, scene.trees, trees)?;
+    Ok(scene_summary(&scene, tree_triangles, started.elapsed()))
+}
+
+/// A wave through five points around `at`, so it is cut by the spline rule, not the circle rule.
+fn benchmark_wave([x, y, z]: Point) -> Vec<Point> {
+    (0..5)
+        .map(|k: u8| {
+            let t = f64::from(k) / 4.0;
+            let wave = if k.is_multiple_of(2) {
+                0.0
+            } else {
+                BENCHMARK_RADIUS
+            };
+            [
+                x - BENCHMARK_RADIUS + 2.0 * BENCHMARK_RADIUS * t,
+                y + wave,
+                z,
+            ]
+        })
+        .collect()
+}
+
+/// `count` instances of a tree block, the `index`th at `place(index)`; the tree's triangles.
+fn add_benchmark_trees(
+    doc: &mut Document,
+    count: usize,
+    place: impl Fn(usize) -> Point,
+) -> Result<usize, String> {
+    if count == 0 {
+        return Ok(0);
     }
-    Ok(format!(
+    let text = |error: curva_kernel::KernelError| error.to_string();
+    let tree = benchmark_tree()?;
+    let mut tree_triangles = 0;
+    for body in &tree {
+        tree_triangles += body.mesh().map_err(text)?.triangles.len();
+    }
+    let ids = tree
+        .into_iter()
+        .map(|body| doc.add_body(body))
+        .collect::<Vec<_>>();
+    let (definition, first) = doc.define_block("tree".to_owned(), [0.0; 3], &ids);
+    doc.remove(&[first]);
+    for index in 0..count {
+        doc.insert_block(definition, curva_document::blocks::moved_by(place(index)));
+    }
+    Ok(tree_triangles)
+}
+
+/// A line saying what `scene` holds and how long it took to build, for the report.
+fn scene_summary(
+    scene: &BenchmarkScene,
+    tree_triangles: usize,
+    took: std::time::Duration,
+) -> String {
+    format!(
         "scene: {} circles, {} splines, {} solids ({}), {} trees of {tree_triangles} triangles, \
          moved by {:?} mm, built in {:.1} s",
         scene.curves,
@@ -197,8 +220,8 @@ pub(crate) fn benchmark_scene(doc: &mut Document, scene: BenchmarkScene) -> Resu
         },
         scene.trees,
         scene.offset,
-        started.elapsed().as_secs_f64(),
-    ))
+        took.as_secs_f64(),
+    )
 }
 
 /// A small house for cut drawings (spec `views-and-styles.md` §5), in millimetres: a ground
@@ -275,6 +298,12 @@ fn benchmark_house(doc: &mut Document) -> Result<(), String> {
     }
     // Ground around, lower than the floor.
     add([-3000.0, -3000.0, -700.0], [18000.0, 14000.0, 400.0])?;
+    add_house_trees(doc)
+}
+
+/// Three trees around the house, instances of one block: a trunk and a round crown.
+fn add_house_trees(doc: &mut Document) -> Result<(), String> {
+    let text = |error: curva_kernel::KernelError| error.to_string();
     let trunk = curva_kernel::Body::extruded(
         &[Curve::circle([0.0; 3], 180.0).map_err(text)?],
         [0.0, 0.0, 1.0],
