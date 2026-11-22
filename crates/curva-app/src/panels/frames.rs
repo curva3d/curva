@@ -536,25 +536,32 @@ impl Curva {
                         ),
                     ));
                 }
-                frame.show(ui, |ui| {
-                    let inner = size - egui::Vec2::splat(2.0 * PANEL_MARGIN);
-                    ui.set_min_size(inner);
-                    ui.set_max_size(inner);
-                    ui.add_space(TITLE_ROW);
-                    self.piece_contents(ui, place.showing());
-                });
+                // Where the panel is drawn: its place, or wider when what it holds will not fit
+                // (the Display panel's view field), so the glow and the resize edges follow the
+                // edge that shows rather than cutting through the panel (owner, 22 November 2026).
+                let shown = frame
+                    .show(ui, |ui| {
+                        let inner = size - egui::Vec2::splat(2.0 * PANEL_MARGIN);
+                        ui.set_min_size(inner);
+                        ui.set_max_size(inner);
+                        ui.add_space(TITLE_ROW);
+                        self.piece_contents(ui, place.showing());
+                    })
+                    .response
+                    .rect
+                    .union(rect);
                 // A dragged panel would merge into this one: it glows inside its edge, most
                 // where the mouse is.
                 if glowing && let Some(pointer) = ui.ctx().pointer_latest_pos() {
                     ui.painter().add(crate::panels::glow::edge_glow(
-                        rect,
+                        shown,
                         f32::from(PANEL_RADIUS),
                         pointer,
                     ));
                 }
                 // Added after the contents, so these sit above the panel's own controls.
                 event = self.panel_title(ui, place, rect);
-                if let Some(resize) = resize_handles(ui, place, rect) {
+                if let Some(resize) = resize_handles(ui, place, shown) {
                     event = resize;
                 }
             });
