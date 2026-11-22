@@ -71,3 +71,66 @@ fn a_word_picked_answers_the_step_and_is_remembered() {
     let step = again.step(&mut doc, Some(Answer::Point([0.0; 3])));
     assert_eq!(asked(&step).prompt.args, vec!["SingleFace".to_owned()]);
 }
+
+/// A count remembered for each style, starting at 2 for Quad and 1 for Triangle, as Rhino's
+/// MeshSphere keeps `Subdivisions`.
+#[derive(Default)]
+struct PerStyle;
+
+const KINDS: [&str; 2] = ["Quad", "Triangle"];
+
+impl Recipe for PerStyle {
+    const NAME: &'static str = "perstyletest";
+    const OPTIONS: &'static [OptionDef] = &[
+        OptionDef::name("Kind", "Quad"),
+        OptionDef::whole("Count", 5, 1, 10).per("Kind", &[("Quad", 2.0), ("Triangle", 1.0)]),
+    ];
+
+    fn choices(&self, _cx: &Context<'_>, option: &str) -> Option<Vec<String>> {
+        (option == "Kind").then(|| KINDS.map(str::to_owned).to_vec())
+    }
+
+    fn steps(&self, _cx: &Context<'_>) -> Vec<StepDef> {
+        vec![StepDef::point("prompt.sphere.centre")]
+    }
+
+    fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
+        Ok(Made {
+            message: Some(Message::with(
+                "done.sphere",
+                vec![cx.name("Kind"), cx.number("Count").to_string()],
+            )),
+            ..Made::default()
+        })
+    }
+}
+
+fn count_after(doc: &mut Document, typed: &[Answer]) -> String {
+    let mut command = RecipeCommand::<PerStyle>::default();
+    command.step(doc, None);
+    for answer in typed {
+        command.step(doc, Some(answer.clone()));
+    }
+    finished_with(&command.step(doc, Some(Answer::Point([0.0; 3]))))
+}
+
+#[test]
+fn a_count_is_remembered_for_each_style_from_its_own_start() {
+    let mut doc = Document::default();
+    assert_eq!(count_after(&mut doc, &[]), "Quad,2");
+    let triangle = [Answer::Option("Kind"), Answer::Path("Triangle".to_owned())];
+    assert_eq!(count_after(&mut doc, &triangle), "Triangle,1");
+    let seven = [Answer::Option("Count"), Answer::Number(7.0)];
+    assert_eq!(count_after(&mut doc, &seven), "Triangle,7");
+    let quad = [Answer::Option("Kind"), Answer::Path("Quad".to_owned())];
+    assert_eq!(
+        count_after(&mut doc, &quad),
+        "Quad,2",
+        "Quad's own, untouched"
+    );
+    assert_eq!(
+        count_after(&mut doc, &triangle),
+        "Triangle,7",
+        "Triangle's remembered"
+    );
+}

@@ -177,7 +177,8 @@ impl<R: Recipe> RecipeCommand<R> {
         if let Some(message) = option.refuses(value) {
             return Step::Failed(message);
         }
-        doc.remember(&key(R::NAME, name), value);
+        let memory = self.context(doc, &self.values).memory_key(option);
+        doc.remember(&memory, value);
         self.ask(doc)
     }
 
