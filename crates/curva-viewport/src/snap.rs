@@ -33,6 +33,10 @@ pub enum SnapKind {
     Perpendicular,
     /// The closest point on a curve.
     Near,
+    /// A point along a guideline from a held point, away from any crossing, as Rhino's
+    /// SmartTrack runs the pointer along its tracking line (#512, #547). Shown by the guideline
+    /// itself, with no name.
+    Track,
 }
 
 /// Which object snaps are on.
@@ -80,6 +84,8 @@ impl SnapSet {
             SnapKind::Intersection => self.intersection,
             SnapKind::Perpendicular => self.perpendicular,
             SnapKind::Near => self.near,
+            // Guidelines come from held points, which are on whenever there are any.
+            SnapKind::Track => true,
         }
     }
 }
@@ -789,7 +795,7 @@ impl Outlines {
             let on_lines = lines
                 .iter()
                 .filter_map(|(p, d)| camera.line_point(cursor, size, *p, *d))
-                .map(|point| (SnapKind::Near, point))
+                .map(|point| (SnapKind::Track, point))
                 .collect();
             nearest(on_lines)
         })
@@ -1287,6 +1293,11 @@ mod tests {
         let hit = shapes
             .guide_snap(&camera, [at[0], at[1] - 3.0], SIZE, &guides)
             .expect("snaps onto the guideline");
+        assert_eq!(
+            hit.kind,
+            SnapKind::Track,
+            "shown by the guideline, not as Near"
+        );
         assert!(hit.point[1].abs() < 1e-6, "{:?}", hit.point);
         assert!((hit.point[0] - 7.0).abs() < 0.5, "{:?}", hit.point);
         // Far from every guideline, nothing.
