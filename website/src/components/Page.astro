@@ -8,6 +8,11 @@ const { lang, slug = '', kind, title, description, hint } = Astro.props;
 const w = WORDS[lang];
 const site = 'https://curva3d.com';
 const releases = 'https://github.com/curva3d/curva/releases';
+// Browsers keep /assets/ files for a day. Each address carries a stamp of the file's content, so a
+// page never loads an older copy of its styles or scripts than the one it was built with.
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+const stamp = (f: string) => `/assets/${f}?v=` + createHash('sha256').update(readFileSync(`public/assets/${f}`)).digest('hex').slice(0, 10);
 ---
 <!doctype html>
 <html lang={w.htmlLang}>
@@ -32,8 +37,8 @@ const releases = 'https://github.com/curva3d/curva/releases';
 <meta name="twitter:card" content="summary_large_image">
 <link rel="preload" href="/assets/fonts/inter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/assets/fonts/inter-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/assets/site.css">
-<script is:inline src="/assets/theme.js"></script>
+<link rel="stylesheet" href={stamp('site.css')}>
+<script is:inline src={stamp('theme.js')}></script>
 </head>
 <body class={kind}>
 <a class="skip" href="#main">{w.skip}</a>
@@ -83,6 +88,6 @@ const releases = 'https://github.com/curva3d/curva/releases';
 		<a href={releases}>{w.releases}</a>
 	</nav>
 </footer>
-<script is:inline src="/assets/site.js" defer></script>
+<script is:inline src={stamp('site.js')} defer></script>
 </body>
 </html>
