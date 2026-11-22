@@ -265,7 +265,8 @@ impl Curve {
         })
     }
 
-    /// The same shape as an exact NURBS curve, for the smooth kinds that can be cut.
+    /// The same shape as an exact NURBS curve: lines, polylines, circles, arcs and compound
+    /// curves as Rhino 8's ToNURBS makes them (#550); a point is refused.
     pub fn to_nurbs(&self) -> Result<Self, KernelError> {
         match self {
             Self::Nurbs { .. } => Ok(self.clone()),
@@ -273,9 +274,7 @@ impl Curve {
                 let engine = spline_data(points, *closed)?;
                 curve_from_engine(&engine)
             }
-            _ => Err(KernelError(
-                "only smooth curves can be turned into NURBS for now".to_owned(),
-            )),
+            _ => self.kinds_to_nurbs(),
         }
     }
 
