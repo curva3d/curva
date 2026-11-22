@@ -15,6 +15,9 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 border; two neighbouring quads on a box side become one six-sided face (23 faces on 26 points), "Changed 1 objects.".
 `SubD::with_faces_merged` in curva-mesh.
 
+**Stitch across two SubDs:** sets on two different SubDs now join them into one first, as Rhino does, instead of being
+refused.
+
 **InsertEdge Type=Ring, as Rhino 8 measured:** the corner edge of the measured box and 0.5 cut the ring of 8 faces round
 it at z = 0.5 (32 quads on 34 points), with only OffsetMode offered; Curva now does the same with its ring cut. Mode=Range
 takes only the edges between two picked ones (the measured box's two middle front edges: 26 faces on 29 points, as
