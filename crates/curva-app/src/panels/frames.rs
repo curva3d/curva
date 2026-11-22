@@ -11,6 +11,8 @@ pub(crate) struct Frames {
     /// How tall the command bar's contents are with the panel's margins: it is made this tall
     /// when it is on its own, so no room is left below its snaps.
     pub(crate) command_fit: f32,
+    /// The Layers panel's own state: the layer picked in it, the search and the filters.
+    pub(crate) layers_ui: super::layer_tools::LayersUi,
     /// In focus mode, the one panel brought back out by clicking its strip.
     pub(crate) revealed: Option<layout::PanelId>,
     /// Where each panel was last drawn, for hovering over a hidden one.

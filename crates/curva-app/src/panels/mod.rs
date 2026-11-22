@@ -5,6 +5,7 @@ pub(crate) mod blocks;
 pub(crate) mod frames;
 pub(crate) mod glow;
 pub(crate) mod layer_table;
+pub(crate) mod layer_tools;
 pub(crate) mod layers;
 pub(crate) mod layouts;
 pub(crate) mod measure;

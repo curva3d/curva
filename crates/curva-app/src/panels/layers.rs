@@ -157,38 +157,13 @@ impl Curva {
         chosen
     }
 
+    /// The Layers panel: Rhino's toolbar and search on top, then the table of layers.
     pub(crate) fn layers_panel(&mut self, ui: &mut egui::Ui) {
         let layers = self.doc.layers().to_vec();
         let current = self.doc.current_layer();
+        self.layer_toolbar(ui);
         // The panel scrolls both ways (`panel_area`), so wide columns can be reached.
         self.layer_table(ui, &layers, current);
-        let number = layers.iter().map(|layer| layer.id).max().unwrap_or(0) + 1;
-        let name = self.text.render(&Message::with(
-            "ui.layer.new_name",
-            vec![number.to_string()],
-        ));
-        ui.horizontal(|ui| {
-            if ui
-                .button(self.text.render(&Message::new("ui.layer.new")))
-                .clicked()
-            {
-                let name = name.clone();
-                self.undoable(|doc| {
-                    doc.add_layer(name);
-                });
-            }
-            // Rhino's New Sublayer: under the current layer, which opens to show it.
-            if ui
-                .button(self.text.render(&Message::new("ui.layer.new_sublayer")))
-                .clicked()
-            {
-                let name = name.clone();
-                self.undoable(|doc| {
-                    doc.add_sublayer(current, name);
-                    doc.set_layer_collapsed(current, false);
-                });
-            }
-        });
     }
 }
 
