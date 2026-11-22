@@ -29,3 +29,8 @@ branch `brand-logo-3d-sources`.
 
 **Revisit if** the icon is hard to recognise at small sizes or on a platform that puts non-square
 icons on a plate, or when the owner decides whether orange stays in the logo for good.
+
+**Changed for 0.1.6 (owner's request in chat, 22 November 2026):** the app icon is the **black**
+mark (black and white, lit by the light alone) instead of the amber one, made from
+`renders/set/black-mark.png` the same way (no tile, a soft shadow). The amber, black and white marks
+all stay part of the logo.
