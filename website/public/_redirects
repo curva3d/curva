@@ -1,0 +1,3 @@
+# Portuguese is paused; its old addresses go to the English pages.
+/pt /  301
+/pt/* /:splat 301
