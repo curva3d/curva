@@ -131,6 +131,24 @@ h1, h2, p { margin: 0; }
   .plate.glass:not(:hover):not(:focus-visible) { background: var(--plate-solid); }
 }
 
+/* The line drawing on each home plate (src/data/motifs.ts): large, faint and slow, behind the name. */
+.motif { left: 34px; top: 34px; width: 312px; height: 312px; opacity: .2; transition: opacity .3s; position:absolute;pointer-events:none;fill:none;stroke:currentColor;stroke-width:1.1;stroke-linecap:round;stroke-linejoin:round;overflow:visible}
+.motif .thin{stroke-width:1;stroke-dasharray:3 4;opacity:.7}
+.motif .d{stroke-dasharray:1;stroke-dashoffset:0}
+.motif .leaf,.motif .sun,.motif .shade{transform-box:view-box}
+.motif .leaf{transform-origin:84px 164px}.motif .sun{transform-origin:100px 150px}.motif .shade{transform-origin:100px 150px}
+@keyframes mdraw{0%{stroke-dashoffset:1;opacity:1}32%{stroke-dashoffset:0}88%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:0;opacity:0}}
+@keyframes mpop{0%,20%{opacity:0}34%,88%{opacity:1}100%{opacity:0}}
+@keyframes mleaf{0%,12%{transform:rotate(0deg)}60%,100%{transform:rotate(-90deg)}}
+@keyframes msun{0%{transform:rotate(-70deg)}100%{transform:rotate(70deg)}}
+@keyframes mshade{0%{transform:scaleX(1.5)}50%{transform:scaleX(.15)}50.01%{transform:scaleX(-.15)}100%{transform:scaleX(-1.5)}}
+.plate:hover .motif, .plate:focus-visible .motif { opacity: .5; }
+.motif .d{animation:mdraw 12s cubic-bezier(.6,0,.2,1) infinite}
+.motif .d2{animation-delay:.35s}.motif .d3{animation-delay:.7s}.motif .d4{animation-delay:1.05s}.motif .d5{animation-delay:1.4s}.motif .d6{animation-delay:1.75s}
+.motif .pt{animation:mpop 12s ease infinite}.motif .p2{animation-delay:.25s}.motif .p3{animation-delay:.5s}.motif .p4{animation-delay:.75s}
+.motif .leaf{animation:mleaf 6.0s ease-in-out infinite alternate}
+.motif .sun{animation:msun 12s ease-in-out infinite alternate}.motif .shade{animation:mshade 12s ease-in-out infinite alternate}
+
 /* The panel that shows the plate under the mouse. Only where there is a mouse and room for it;
    the sections further down carry the same words for everyone. */
 .info { display: none; border-radius: 28px; padding: 26px; flex-direction: column; gap: 12px; }

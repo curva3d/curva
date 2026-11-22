@@ -26,6 +26,11 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 - **Light and dark:** follows the system, with a button in the top bar; the choice is shared with
   the docs (same `starlight-theme` storage key). `public/assets/theme.js`.
 - **Portuguese removed for now** (pages, docs locale); `public/_redirects` sends `/pt/...` to English.
+- **Cache fix:** the pages' style and script addresses carry a content hash, after returning
+  visitors got new pages with yesterday's cached stylesheet.
+- **Line drawings on the home plates** (owner picked treatment C from the canvas mockups: large,
+  faint, slow): `src/data/motifs.ts`. The specialization pages' plates have none yet.
+- **Favicon** is now the black mark, or the white one when the browser is dark (`favicon.svg`).
 
 ## Features stream — 22 November 2026 (later)
 
