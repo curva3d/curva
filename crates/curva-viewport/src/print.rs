@@ -79,9 +79,14 @@ fn marks_of(
     colour_mode: PrintColour,
     marks: &mut Vec<Mark>,
 ) {
-    let colour = colour_mode.ink(layer.map_or(crate::CURVE_COLOUR, |l| l.colour));
+    // Its own colour or its layer's, and its linetype, the document's own included (#170).
+    let colour = colour_mode.ink(if object.colour.is_some() || layer.is_some() {
+        state.object_colour(object)
+    } else {
+        crate::CURVE_COLOUR
+    });
     let width = object.print_width.resolved(layer).unwrap_or(0.0);
-    let dashes = object.linetype.resolved(layer).pattern().to_vec();
+    let dashes = state.object_pattern(object).to_vec();
     let shapes: Vec<Shape> = match &object.shape {
         Shape::Instance(instance) => state
             .instance_shapes(instance)
