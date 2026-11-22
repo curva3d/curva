@@ -2,7 +2,7 @@
 // One specialization: its strong points as an exploded stack of plates, then a section for each.
 import Page from './Page.astro';
 import { WORDS, SLUGS, href, type Lang, type Slug } from '../data/site';
-import { POINT_MOTIFS } from '../data/motifs';
+import { POINT_MOTIFS, fig } from '../data/motifs';
 interface Props { lang: Lang; slug: Slug }
 const { lang, slug } = Astro.props;
 const w = WORDS[lang];
@@ -44,7 +44,7 @@ const hint = `0${n} ${s.name} · ` + w.hintSpec.replace('{n}', String(s.points.l
 					<h2 class="point">{p.title}</h2>
 					<p class="band-body">{p.text}</p>
 				</div>
-				<div class="shot mono">{w.shot}</div>
+				<div class="figure glass"><Fragment set:html={fig(POINT_MOTIFS[slug][i])} /></div>
 			</section>
 		))}
 		<section class="band others">

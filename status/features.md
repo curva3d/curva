@@ -23,6 +23,8 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
   "Views" and "Carbon"; Urban's "Visual scripting" plate removed. New headlines and paragraphs for
   most plates; every headline and sentence ends with a full stop.
 - **Panel** on the right lines up with the top of the page title and keeps one height.
+- **Section frames** (the empty "Screenshot to come" boxes) now show the plate's drawing, large and at
+  full strength, until real screenshots exist (owner-approved).
 - **Visual scripting shelved** (owner): `docs/architecture.md` (shared core, Urban row, M5) and the
   Rhino migration page updated. Urban is now parametric massing and streets; Analysis adds views and
   carbon.

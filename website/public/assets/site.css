@@ -247,6 +247,11 @@ h1, h2, p { margin: 0; }
               linear-gradient(to bottom right, transparent calc(50% - .5px), var(--hair) 50%, transparent calc(50% + .5px)),
               var(--shot);
 }
+/* The frame beside each section: the plate's drawing, large and at full strength. */
+.figure { aspect-ratio: 16 / 10; border-radius: 20px; display: grid; place-items: center; overflow: hidden; --face: #f6f6f6; }
+[data-theme="dark"] .figure { --face: #1a1a1a; }
+.figure .motif { position: static; width: min(58%, 340px); height: auto; aspect-ratio: 1; opacity: 1; stroke-width: 1.3; }
+.figure .motif .wall path, .figure .motif .grow path, .figure .motif .curA path { stroke-width: 1.6; }
 .switch { display: flex; flex-direction: column; border-bottom: 1.5px solid var(--ink); width: 100%; }
 .switch a { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 0; border-top: 1.5px solid var(--ink); font-size: 20px; transition: padding .25s; }
 .switch a:hover { padding-left: 10px; }

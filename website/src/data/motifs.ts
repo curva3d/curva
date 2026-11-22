@@ -65,3 +65,9 @@ export const POINT_MOTIFS: Record<Slug, string[]> = {
 		`<svg class="motif" viewBox="0 0 200 200" aria-hidden="true"><path pathLength="1" class="d" d="M100 44 L158 72 L100 100 L42 72 Z M42 72 V130 L100 158 V100 M158 72 V130 L100 158"/><path pathLength="1" class="d d2" d="M22 150 A84 84 0 0 1 60 34 M48 30 L61 34 L56 47"/><path pathLength="1" class="d d3" d="M178 54 A84 84 0 0 1 140 168 M152 172 L139 168 L144 155"/></svg>`,
 	],
 };
+
+/** The same drawing, for the large frame in a plate's section further down the page: its mask ids
+ *  get their own names so they don't clash with the plate's copy. */
+export function fig(svg: string): string {
+	return svg.replace(/id="([\w-]+)"/g, 'id="$1-fig"').replace(/url\(#([\w-]+)\)/g, 'url(#$1-fig)');
+}
