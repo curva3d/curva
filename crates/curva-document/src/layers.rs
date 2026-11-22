@@ -310,6 +310,56 @@ impl Document {
         }
     }
 
+    /// Rhino's Copy Objects to Layer: copies of `objects` on `layer`, each with all it had but
+    /// its id (and not live, as its inputs stay with the original). Returns the copies' ids.
+    pub fn copy_to_layer(&mut self, objects: &[u64], layer: u64) -> Vec<u64> {
+        if self.state.layers.iter().all(|l| l.id != layer) {
+            return Vec::new();
+        }
+        let originals: Vec<Object> = self
+            .state
+            .objects
+            .iter()
+            .filter(|o| objects.contains(&o.id) && o.input_of.is_none())
+            .map(|o| (**o).clone())
+            .collect();
+        let mut copies = Vec::new();
+        for mut copy in originals {
+            copy.id = self.state.next_id;
+            self.state.next_id += 1;
+            copy.layer = layer;
+            copy.live = None;
+            copies.push(copy.id);
+            self.state.objects.push(std::sync::Arc::new(copy));
+        }
+        copies
+    }
+
+    /// Rhino's Move Up and Move Down in the Layers panel: `id` changes places with the layer just
+    /// before or after it under the same parent. Returns whether it moved.
+    pub fn move_layer(&mut self, id: u64, up: bool) -> bool {
+        let layers = &mut self.state.layers;
+        let Some(at) = layers.iter().position(|l| l.id == id) else {
+            return false;
+        };
+        let parent = layers[at].parent;
+        let sibling = if up {
+            layers[..at].iter().rposition(|l| l.parent == parent)
+        } else {
+            layers[at + 1..]
+                .iter()
+                .position(|l| l.parent == parent)
+                .map(|k| at + 1 + k)
+        };
+        match sibling {
+            Some(other) => {
+                layers.swap(at, other);
+                true
+            }
+            None => false,
+        }
+    }
+
     /// Deletes a layer and its sublayers, as Rhino does. Returns `false`, changing nothing, when
     /// any of them is current or has objects on it.
     pub fn delete_layer(&mut self, id: u64) -> bool {
@@ -527,5 +577,45 @@ mod tests {
         let hidden = doc.layer_at_path("Make2D::Hidden::Curves");
         assert_ne!(hidden, curves);
         assert_eq!(doc.layers().len(), 1 + 5);
+    }
+
+    #[test]
+    fn layers_move_among_their_siblings_and_objects_copy_to_a_layer() {
+        // Rhino's Move Up, Move Down and Copy Objects to Layer.
+        let mut doc = Document::default();
+        let walls = doc.add_layer("Walls".to_owned());
+        let doors = doc.add_sublayer(walls, "Doors".to_owned());
+        let roof = doc.add_layer("Roof".to_owned());
+        let order = |doc: &Document| doc.layers().iter().map(|l| l.id).collect::<Vec<_>>();
+        let before = order(&doc);
+        assert!(
+            doc.move_layer(roof, true),
+            "Roof passes Walls, skipping Doors under it"
+        );
+        let after = order(&doc);
+        let (r, w) = (
+            after.iter().position(|&i| i == roof).unwrap(),
+            after.iter().position(|&i| i == walls).unwrap(),
+        );
+        assert!(r < w);
+        assert!(
+            !doc.move_layer(doors, true),
+            "Doors is the only layer under Walls"
+        );
+        assert!(doc.move_layer(roof, false));
+        assert_eq!(order(&doc), before);
+        let line = doc.add(curva_kernel::Curve::line([0.0; 3], [1.0, 0.0, 0.0]).unwrap());
+        let copies = doc.copy_to_layer(&[line], roof);
+        assert_eq!(copies.len(), 1);
+        assert_eq!(doc.layer_of(copies[0]), Some(roof));
+        assert_ne!(
+            doc.layer_of(line),
+            Some(roof),
+            "the original stays where it was"
+        );
+        assert!(
+            doc.copy_to_layer(&[line], 9_999).is_empty(),
+            "no such layer"
+        );
     }
 }

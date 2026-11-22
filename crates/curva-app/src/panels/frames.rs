@@ -8,6 +8,8 @@ use crate::*;
 pub(crate) struct Frames {
     /// Focus mode: the panels slid out of view.
     pub(crate) focus: bool,
+    /// The Layers panel's own state: the layer picked in it, the search and the filters.
+    pub(crate) layers_ui: super::layer_tools::LayersUi,
     /// In focus mode, the one panel brought back out by clicking its strip.
     pub(crate) revealed: Option<layout::PanelId>,
     /// Where each panel was last drawn, for hovering over a hidden one.
