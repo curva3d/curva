@@ -11,6 +11,11 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 22 November 2026
 
+**InsertEdge, as Rhino 8 measured (Type=Loop, Mode=Full):** a picked edge runs on through points where four edges meet;
+new edges go beside it at the amount along each crossing edge (Absolute or Proportional, on one side or BothSides), the
+faces beyond its ends taking its end points. The measured box gives Rhino's 26 faces on 29 points. `SubD::edge_run` and
+`SubD::with_edges_inserted` in curva-mesh. Type=Ring and Mode=Range are not here yet.
+
 **Bridge, as Rhino 8 measured:** two runs of open SubD border edges joined by rows of quads, with Rhino's Segments (1),
 Join (Yes) and Crease (No). Two strips bridged with Enter become one SubD of 6 quads on their 12 points, the bridge
 smooth and the 10 outer border edges creased, as in Rhino. `SubD::joined` puts two SubDs in one first. Straightness
