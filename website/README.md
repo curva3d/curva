@@ -4,16 +4,15 @@ The public website, with the home page and the documentation as one site, built 
 
 | Path | What |
 |---|---|
-| `src/pages/`, `src/components/` | The home page and one page per specialization (Freeform, Architecture, Urban, Analysis), in English and, under `/pt/`, European Portuguese. Each is an exploded axonometric stack of glass plates. |
-| `src/data/site.ts` | Every word on those pages, in both languages. Change a text in one language, change the other. |
-| `public/assets/` | Their CSS and script (`site.css`, `site.js`: no inline code, for the Content-Security-Policy), the logo marks, icons, the social image, Inter and JetBrains Mono (licences in `fonts/`). |
+| `src/pages/`, `src/components/` | The home page and one page per specialization (Freeform, Architecture, Urban, Analysis). Each opens with an exploded axonometric stack of glass plates and scrolls on to a section per plate. English only for now; `public/_redirects` sends the old `/pt/` addresses to English. |
+| `src/data/site.ts` | Every word on those pages. |
+| `public/assets/` | Their CSS and script (`site.css`, `site.js`, and `theme.js` for light and dark: no inline code, for the Content-Security-Policy), the logo marks, icons, the social image, Inter and JetBrains Mono (licences in `fonts/`). |
 | `src/content/docs/docs/` | The documentation, one Markdown (`.md` / `.mdx`) file per page, served under `/docs/`. |
-| `src/content/docs/pt/docs/` | Portuguese translations, added page by page. Until a page is translated, the Portuguese side shows the English one with a note. |
 | `src/styles/curva.css` | Starlight in Curva's colours and type, from the brand guidelines. |
 | `astro.config.mjs` | The sidebar, languages, logo and links. A new page goes into `sidebar` there. |
 | `public/_headers` | Security and caching headers for Cloudflare Pages. |
 
-Writing pages: plain language, short sentences, the user's words, as in the brand guidelines' voice. Describe the latest release, and say when something changes in the next one. When you change a page's words in one language, change the other. A new page outside the docs also needs its Content-Security-Policy line in `public/_headers`.
+Writing pages: plain language, short sentences, the user's words, as in the brand guidelines' voice. Describe the latest release, and say when something changes in the next one. A new page outside the docs also needs its Content-Security-Policy line in `public/_headers`.
 
 ## Working on it
 

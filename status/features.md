@@ -16,6 +16,17 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## Features stream — 22 November 2026 (website, second pass)
+
+- **Website now scrolls.** Each page opens with its stack, then has a section per plate below it
+  (home: one per specialization, with a link to its page; specialization pages: one per strong
+  point). Clicking a plate jumps to its section. The top bar stays in view.
+- **Any window shape:** one column on phones, words beside the stack on squarish and upright
+  windows, three columns on wide ones; the stack scales to its column and the window height.
+- **Light and dark:** follows the system, with a button in the top bar; the choice is shared with
+  the docs (same `starlight-theme` storage key). `public/assets/theme.js`.
+- **Portuguese removed for now** (pages, docs locale); `public/_redirects` sends `/pt/...` to English.
+
 ## Features stream — 22 November 2026 (later)
 
 - **Rhino parity:** part picking with Ctrl+Shift (#552), Alt-drag copies (#555), dragging picked mesh

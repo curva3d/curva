@@ -1,12 +1,12 @@
 ---
-// The frame every home-side page shares: head, top bar, the three columns and the download panel.
+// The frame every home-side page shares: head, top bar, the opening screen with the stack and the
+// download panel, then the scrolling sections and the footer.
 // Nothing inline: the pages are served with a strict Content-Security-Policy (public/_headers).
 import { WORDS, href, type Lang, type Slug } from '../data/site';
 interface Props { lang: Lang; slug?: Slug | ''; kind: 'home' | 'spec'; title: string; description: string; hint: string }
 const { lang, slug = '', kind, title, description, hint } = Astro.props;
 const w = WORDS[lang];
 const site = 'https://curva3d.com';
-const other: Lang = lang === 'en' ? 'pt' : 'en';
 const releases = 'https://github.com/curva3d/curva/releases';
 ---
 <!doctype html>
@@ -17,37 +17,41 @@ const releases = 'https://github.com/curva3d/curva/releases';
 <title>{title}</title>
 <meta name="description" content={description}>
 <link rel="canonical" href={site + href(lang, slug)}>
-<link rel="alternate" hreflang="en" href={site + href('en', slug)}>
-<link rel="alternate" hreflang="pt" href={site + href('pt', slug)}>
-<link rel="alternate" hreflang="x-default" href={site + href('en', slug)}>
 <link rel="icon" href="/assets/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="icon" href="/assets/favicon-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
-<meta name="theme-color" content="#efefef">
+<meta name="theme-color" content="#efefef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b0b0b" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
 <meta property="og:type" content="website">
 <meta property="og:url" content={site + href(lang, slug)}>
 <meta property="og:title" content={title}>
 <meta property="og:description" content={kind === 'home' ? w.ogDescription : description}>
 <meta property="og:image" content={site + '/assets/og.png'}>
-<meta property="og:locale" content={lang === 'pt' ? 'pt_PT' : 'en_GB'}>
+<meta property="og:locale" content="en_GB">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="preload" href="/assets/fonts/inter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/assets/fonts/inter-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/assets/site.css">
+<script is:inline src="/assets/theme.js"></script>
 </head>
 <body class={kind}>
 <a class="skip" href="#main">{w.skip}</a>
-<div class="page">
-	<header class="top">
-		<a class="brand" href={href(lang)} aria-label={w.home}><img src="/assets/curva-mark-black.png" alt="" width="30" height="30">Curva</a>
-		<p class="hint mono">{hint}</p>
-		<nav class="nav mono" aria-label="Main">
-			<a href="/docs/">{w.docs}</a>
-			<a href="https://github.com/curva3d/curva">GitHub</a>
-			<a href={href(other, slug)} lang={other} hreflang={other}>{other.toUpperCase()}</a>
-		</nav>
-	</header>
-	<main id="main" class="stage">
+<header class="top">
+	<a class="brand" href={href(lang)} aria-label={w.home}>
+		<img class="mark-light" src="/assets/curva-mark-black.png" alt="" width="30" height="30">
+		<img class="mark-dark" src="/assets/curva-mark-white.png" alt="" width="30" height="30">Curva</a>
+	<p class="hint mono">{hint}</p>
+	<nav class="nav mono" aria-label="Main">
+		<a href="/docs/">{w.docs}</a>
+		<a href="https://github.com/curva3d/curva">GitHub</a>
+		<button type="button" class="theme mono" data-theme-toggle aria-label={w.theme}>
+			<span class="theme-dot" aria-hidden="true"></span><span class="to-dark">{w.dark}</span><span class="to-light">{w.light}</span>
+		</button>
+	</nav>
+</header>
+<main id="main">
+	<section class="hero">
 		<div class="left"><slot name="left" /></div>
 		<div class="scene"><div class="scene-box"><slot name="stack" /></div></div>
 		<div class="right">
@@ -67,8 +71,18 @@ const releases = 'https://github.com/curva3d/curva/releases';
 				</div>
 			</div>
 		</div>
-	</main>
-</div>
+	</section>
+	<div class="bands"><slot name="sections" /></div>
+</main>
+<footer class="foot">
+	<span class="foot-brand">Curva</span>
+	<span>{w.foot}</span>
+	<nav class="mono" aria-label="Footer">
+		<a href="/docs/">{w.docs}</a>
+		<a href="https://github.com/curva3d/curva">GitHub</a>
+		<a href={releases}>{w.releases}</a>
+	</nav>
+</footer>
 <script is:inline src="/assets/site.js" defer></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 ---
-// The home page: the four specializations as an exploded stack of plates.
+// The home page: the four specializations as an exploded stack of plates, then a section for each.
 import Page from './Page.astro';
 import { WORDS, SLUGS, href, type Lang } from '../data/site';
 interface Props { lang: Lang }
@@ -13,13 +13,9 @@ const w = WORDS[lang];
 	</Fragment>
 	<div class="persp" slot="stack"><div class="stack">
 		{SLUGS.map((s, i) => (
-			<a class="plate glass" href={href(lang, s)} data-plate={i}>
+			<a class="plate glass" href={`#${s}`} data-plate={i}>
 				<span class="tag mono">0{i + 1} · {w.specs[s].status}</span>
 				<span class="name">{w.specs[s].name}</span>
-				<span class="more">
-					<strong>{w.specs[s].line}</strong>
-					<ul>{w.specs[s].bullets.map((b) => <li>{b}</li>)}</ul>
-				</span>
 			</a>
 		))}
 	</div></div>
@@ -33,4 +29,19 @@ const w = WORDS[lang];
 			</div>
 		))}
 	</div>
+	<Fragment slot="sections">
+		{SLUGS.map((s, i) => (
+			<section class="band" id={s}>
+				<div class="band-text">
+					<p class:list={['status', 'mono', { live: w.specs[s].live }]}>0{i + 1} · {w.specs[s].status}</p>
+					<h2>{w.specs[s].name}</h2>
+					<p class="band-line">{w.specs[s].line}</p>
+					<p class="band-body">{w.specs[s].lede}</p>
+					<ul>{w.specs[s].bullets.map((b) => <li>{b}</li>)}</ul>
+					<a class="go" href={href(lang, s)}>{w.explore.replace('{name}', w.specs[s].name)}</a>
+				</div>
+				<div class="shot mono">{w.shot}</div>
+			</section>
+		))}
+	</Fragment>
 </Page>
