@@ -357,8 +357,34 @@ impl Curva {
                 let (id, dimension) = (object.id, dimension.clone());
                 self.dimension_properties(ui, id, &dimension);
             }
-            // What a mesh or SubD shows here comes with its commands (#270 part 2).
-            Shape::Mesh(_) | Shape::SubD(_) => {}
+            // As `What` describes them (#414): closed or open, and how many points and faces.
+            Shape::Mesh(mesh) => {
+                let kind = if mesh.is_closed() {
+                    "ui.properties.mesh_closed"
+                } else {
+                    "ui.properties.mesh_open"
+                };
+                let counts = vec![
+                    mesh.vertices().len().to_string(),
+                    mesh.faces().count().to_string(),
+                ];
+                ui.label(self.text.render(&Message::new(kind)));
+                ui.label(
+                    self.text
+                        .render(&Message::with("ui.properties.mesh_counts", counts)),
+                );
+            }
+            Shape::SubD(subd) => {
+                let counts = vec![
+                    subd.cage().vertices().len().to_string(),
+                    subd.cage().faces().count().to_string(),
+                ];
+                ui.label(self.text.render(&Message::new("ui.properties.subd")));
+                ui.label(
+                    self.text
+                        .render(&Message::with("ui.properties.subd_counts", counts)),
+                );
+            }
             Shape::Instance(instance) => {
                 let name = self
                     .doc
