@@ -2,6 +2,7 @@
 // The home page: the four specializations as an exploded stack of plates, then a section for each.
 import Page from './Page.astro';
 import { WORDS, SLUGS, href, type Lang } from '../data/site';
+import { MOTIFS } from '../data/motifs';
 interface Props { lang: Lang }
 const { lang } = Astro.props;
 const w = WORDS[lang];
@@ -16,6 +17,7 @@ const w = WORDS[lang];
 			<a class="plate glass" href={`#${s}`} data-plate={i}>
 				<span class="tag mono">0{i + 1} · {w.specs[s].status}</span>
 				<span class="name">{w.specs[s].name}</span>
+				<Fragment set:html={MOTIFS[s]} />
 			</a>
 		))}
 	</div></div>

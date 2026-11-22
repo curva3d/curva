@@ -1,9 +1,11 @@
 //! SubD commands (the mesh stream's folder, `AGENTS.md`; spec `docs/specs/command-groups.md`).
 //! The SubD primitives share their picking with the mesh primitives (`commands/mesh/primitives.rs`).
 
+mod bridge;
 mod crease;
 mod display_toggle;
 mod fill;
+mod insert_edge;
 mod parts;
 mod stitch;
 mod to_nurbs;
@@ -13,9 +15,11 @@ mod weld;
 use crate::commands::mesh::primitives::{
     SubDBox, SubDCone, SubDCylinder, SubDPlane, SubDSphere, SubDTorus,
 };
+use bridge::Bridge;
 use crease::{Crease, RemoveCrease};
 use display_toggle::SubDDisplayToggle;
 use fill::Fill;
+use insert_edge::InsertEdge;
 use stitch::Stitch;
 use to_nurbs::ToNurbs;
 use to_subd::ToSubD;
@@ -39,6 +43,8 @@ pub(crate) static COMMANDS: &[crate::commands::CommandDef] = &[
     recipe!("UnweldEdge", [], true, UnweldEdge),
     recipe!("WeldEdge", [], true, WeldEdge),
     recipe!("Stitch", [], true, Stitch),
+    recipe!("Bridge", [], true, Bridge),
+    recipe!("InsertEdge", [], true, InsertEdge),
 ];
 
 /// The buttons of the SubD tab, in order (spec `docs/specs/command-groups.md` §2).
@@ -58,4 +64,6 @@ pub(crate) const TAB: &[&str] = &[
     "UnweldEdge",
     "WeldEdge",
     "Stitch",
+    "Bridge",
+    "InsertEdge",
 ];

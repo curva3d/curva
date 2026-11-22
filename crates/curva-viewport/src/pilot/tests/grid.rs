@@ -1,7 +1,7 @@
 //! The grid on views Bevy draws (#344).
 
 use super::{BACKGROUND, SIZE, drawing, one_at_a_time};
-use crate::palette::{Palette, grid_lines_in};
+use crate::palette::{GridLook, Palette, grid_lines_in};
 use crate::{MeshVertex, StandardView};
 use std::sync::Arc;
 
@@ -29,7 +29,7 @@ fn the_grid_shows_where_bevy_drew_nothing() {
     let mut view = drawing(StandardView::Top, half);
     view.grid = Arc::new(grid_lines_in(
         &StandardView::Top.plane(),
-        &Palette::LIGHT,
+        &GridLook::new(Palette::LIGHT),
         [0.0; 3],
     ));
     let Ok(pixels) = super::super::with_pictures(|pictures| {

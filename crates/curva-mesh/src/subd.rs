@@ -8,7 +8,7 @@
 //! colours, when given, are one per face (a face may have none, as in Rhino). The smooth surface
 //! itself is never stored: it is worked out by subdiv-kernels (`smooth.rs`).
 
-use crate::{Mesh, Point};
+use crate::{Mesh, MeshError, Point};
 use curva_kernel::Similarity;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -268,6 +268,45 @@ impl SubD {
             cage: self.cage.with_points_moved(moves),
             ..self.clone()
         }
+    }
+
+    /// This SubD and `other` as one, nothing welded: `other`'s points numbered after this one's,
+    /// each keeping its creases, sharpness, corners and face colours, as Rhino joins SubDs (Bridge
+    /// with `Join` joins the two it bridges first).
+    ///
+    /// # Errors
+    /// When there are so many points that they cannot be numbered.
+    pub fn joined(&self, other: &Self) -> Result<Self, MeshError> {
+        let cage = Mesh::joined(&[&self.cage, &other.cage])?;
+        let start = u32::try_from(self.cage.vertex_count()).unwrap_or(u32::MAX);
+        let mut sharp = self.sharp.clone();
+        sharp.extend(
+            other
+                .sharp
+                .iter()
+                .map(|&([a, b], s)| ([a + start, b + start], s)),
+        );
+        sharp.sort_by_key(|e| e.0);
+        let mut corners = self.corners.clone();
+        corners.extend(other.corners.iter().map(|&v| v + start));
+        let colours = match (&self.colours, &other.colours) {
+            (None, None) => None,
+            (mine, theirs) => {
+                let pad = |c: &Option<Vec<Option<[f32; 3]>>>, n: usize| {
+                    c.clone().unwrap_or_else(|| vec![None; n])
+                };
+                let mut all = pad(mine, self.cage.face_count());
+                all.extend(pad(theirs, other.cage.face_count()));
+                Some(all)
+            }
+        };
+        Ok(Self {
+            cage,
+            sharp,
+            corners,
+            colours,
+            display: self.display,
+        })
     }
 
     /// Sets an edge's sharpness, keeping the list sorted (a smooth edge is left out).

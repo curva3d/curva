@@ -14,6 +14,9 @@ pub(crate) struct MouseState {
     pub(crate) resting: Option<(Point, f64, bool)>,
     /// Rhino's selection menu, while a click over several objects asks which one (#530).
     pub(crate) choosing: Option<crate::selection_menu::Choosing>,
+    /// The objects whose edges or faces are picked, each with the copy of it they were picked
+    /// on: when one changes, its numbered edges and faces may no longer be the same ones.
+    pub(crate) parts_on: Vec<(u64, curva_kernel::Body)>,
 }
 
 /// Finds left-button clicks and drags from the raw mouse events.
@@ -623,6 +626,41 @@ impl Curva {
         };
         let picked = combined_selection(self.doc.face_selection(), hits, p.shift, p.remove);
         self.doc.select_faces(&picked);
+        self.remember_parts_picked();
+    }
+
+    /// Lets everything go: objects, control points, and picked edges, faces and mesh parts.
+    pub(crate) fn select_nothing(&mut self) {
+        self.doc.select(&[]);
+        self.doc.select_grips(&[]);
+        self.doc.select_edges(&[]);
+        self.doc.select_faces(&[]);
+        self.doc.select_mesh_parts(&[]);
+    }
+
+    /// Notes which body each picked edge and face belongs to (see [`MouseState::parts_on`]).
+    pub(crate) fn remember_parts_picked(&mut self) {
+        let ids: Vec<u64> = self
+            .doc
+            .edge_selection()
+            .iter()
+            .chain(self.doc.face_selection().iter())
+            .map(|(id, _)| *id)
+            .collect();
+        self.mouse.parts_on = self
+            .doc
+            .state()
+            .objects
+            .iter()
+            .filter(|o| ids.contains(&o.id))
+            .filter_map(|o| o.shape.body().map(|b| (o.id, b.clone())))
+            .collect();
+    }
+
+    /// Whether an object whose edges or faces are picked has changed since (or is gone), so the
+    /// numbers picked may now name other edges and faces.
+    pub(crate) fn picked_parts_stale(&self) -> bool {
+        crate::part_picking::changed_since(&self.mouse.parts_on, &self.doc.state().objects)
     }
 
     /// A command is asking for edges, so a click or a box from `from` to `to` picks edges, not
@@ -639,6 +677,7 @@ impl Curva {
         };
         let picked = combined_selection(self.doc.edge_selection(), hits, p.shift, p.remove);
         self.doc.select_edges(&picked);
+        self.remember_parts_picked();
     }
 
     /// A click or a box from `from` to `to` picks control points if it hits any, and objects
@@ -658,7 +697,11 @@ impl Curva {
             return;
         }
         if !p.shift && !p.remove {
+            // A plain pick starts afresh: picked points and parts of objects let go, as in Rhino.
             self.doc.select_grips(&[]);
+            self.doc.select_edges(&[]);
+            self.doc.select_faces(&[]);
+            self.doc.select_mesh_parts(&[]);
         }
         let hits = if boxed {
             self.outlines
@@ -931,7 +974,7 @@ mod tests {
             DisplayMode::Ghosted,
             DisplayMode::Hidden,
             DisplayMode::Technical,
-            DisplayMode::Clay,
+            DisplayMode::Massing,
         ] {
             let mut doc = Document::default();
             doc.add(Curve::line([0.0; 3], [40.0, 0.0, 0.0]).unwrap());

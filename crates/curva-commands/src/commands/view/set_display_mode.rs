@@ -1,5 +1,5 @@
 //! `SetDisplayMode`: draws the last-used viewport in wireframe, shaded, ghosted, hidden or
-//! technical, as in Rhino, or clay, a look like SketchUp's.
+//! technical, as in Rhino, or massing, a white study model.
 
 use crate::commands::unexpected;
 use crate::{Answer, Command, DisplayMode, Kind, Request, Step, ViewRequest};
@@ -10,7 +10,7 @@ const SHADED: &str = "Shaded";
 const GHOSTED: &str = "Ghosted";
 const HIDDEN: &str = "Hidden";
 const TECHNICAL: &str = "Technical";
-const CLAY: &str = "Clay";
+const MASSING: &str = "Massing";
 
 /// The running command.
 #[derive(Default)]
@@ -21,7 +21,7 @@ impl Command for SetDisplayMode {
         let mode = match answer {
             None => {
                 return Step::Ask(Request {
-                    options: vec![WIREFRAME, SHADED, GHOSTED, HIDDEN, TECHNICAL, CLAY],
+                    options: vec![WIREFRAME, SHADED, GHOSTED, HIDDEN, TECHNICAL, MASSING],
                     ..Request::new("prompt.setdisplaymode.mode", Kind::Choice)
                 });
             }
@@ -30,7 +30,7 @@ impl Command for SetDisplayMode {
             Some(Answer::Option(GHOSTED)) => DisplayMode::Ghosted,
             Some(Answer::Option(HIDDEN)) => DisplayMode::Hidden,
             Some(Answer::Option(TECHNICAL)) => DisplayMode::Technical,
-            Some(Answer::Option(CLAY)) => DisplayMode::Clay,
+            Some(Answer::Option(MASSING)) => DisplayMode::Massing,
             Some(_) => return unexpected(),
         };
         Step::View(ViewRequest::Display(mode))
@@ -85,13 +85,14 @@ mod tests {
         );
     }
 
+    // Massing was first called Clay; the test keeps its first name.
     #[test]
     fn clay_is_a_choice() {
         let mut doc = Document::default();
-        let mut processor = run(&mut doc, &["setdisplaymode", "c"]);
+        let mut processor = run(&mut doc, &["setdisplaymode", "m"]);
         assert_eq!(
             processor.take_view_request(),
-            Some(ViewRequest::Display(DisplayMode::Clay))
+            Some(ViewRequest::Display(DisplayMode::Massing))
         );
     }
 }

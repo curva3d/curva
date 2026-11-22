@@ -257,6 +257,7 @@ impl Curva {
         if unit != self.doc.state().unit {
             self.settings_ui.unit_asked = Some(unit);
         }
+        self.grid_colour_settings(ui);
         if self.settings != before {
             self.settings_saved();
         }
@@ -357,15 +358,7 @@ impl Curva {
     /// that opens the list of modes.
     pub(crate) fn display_piece(&mut self, ui: &mut egui::Ui) {
         let current = self.panes[self.active].display;
-        let label = |mode: DisplayMode| match mode {
-            DisplayMode::Wireframe => "ui.display.wireframe",
-            DisplayMode::Shaded => "ui.display.shaded",
-            DisplayMode::Ghosted => "ui.display.ghosted",
-            DisplayMode::Hidden => "ui.display.hidden",
-            DisplayMode::Technical => "ui.display.technical",
-            DisplayMode::Clay => "ui.display.clay",
-        };
-        let title = self.text.render(&Message::new(label(current)));
+        let title = self.text.render(&Message::new(mode_key(current)));
         let mut chosen = None;
         // The display mode and, beside it, the view (`panels::view_picker`).
         let half = ((ui.available_width() - ui.spacing().item_spacing.x) / 2.0).max(60.0);
@@ -374,15 +367,8 @@ impl Curva {
                 .selected_text(title)
                 .width(half)
                 .show_ui(ui, |ui| {
-                    for mode in [
-                        DisplayMode::Wireframe,
-                        DisplayMode::Shaded,
-                        DisplayMode::Ghosted,
-                        DisplayMode::Hidden,
-                        DisplayMode::Technical,
-                        DisplayMode::Clay,
-                    ] {
-                        let name = self.text.render(&Message::new(label(mode)));
+                    for mode in DISPLAY_MODES {
+                        let name = self.text.render(&Message::new(mode_key(mode)));
                         if ui.selectable_label(mode == current, name).clicked() {
                             chosen = Some(mode);
                         }

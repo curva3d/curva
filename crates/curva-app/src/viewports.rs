@@ -40,6 +40,8 @@ pub(crate) struct Pane {
     pub(crate) grid: Arc<Vec<curva_viewport::Vertex>>,
     /// What the grid's positions are measured from: the scene's origin when it was made (#225).
     pub(crate) grid_origin: Point,
+    /// How the grid is drawn: its colours for the display mode, and its spacing for the unit.
+    pub(crate) grid_look: curva_viewport::GridLook,
     pub(crate) gestures: LeftGestures,
     /// The saved view it shows, whose name becomes its title.
     pub(crate) named: Option<String>,
@@ -56,11 +58,15 @@ pub(crate) struct Pane {
 impl Pane {
     pub(crate) fn set_plane(&mut self, plane: CPlane) {
         self.plane = plane;
-        self.grid = Arc::new(grid_lines_in(
-            &plane,
-            &theme::current().viewport,
-            self.grid_origin,
-        ));
+        self.grid = Arc::new(grid_lines_in(&plane, &self.grid_look, self.grid_origin));
+    }
+
+    /// Draws the grid in `look` from now on, made afresh if it changed.
+    pub(crate) fn restyle_grid(&mut self, look: curva_viewport::GridLook) {
+        if look != self.grid_look {
+            self.grid_look = look;
+            self.set_plane(self.plane);
+        }
     }
 
     /// Keeps the view history: once the camera has moved and stands still again, the view it
@@ -92,6 +98,7 @@ impl Pane {
     }
 
     pub(crate) fn new(view: StandardView) -> Self {
+        let look = curva_viewport::GridLook::new(theme::current().viewport);
         Self {
             view,
             views_back: Vec::new(),
@@ -99,12 +106,9 @@ impl Pane {
             settled: view.camera(),
             camera: view.camera(),
             plane: view.plane(),
-            grid: Arc::new(grid_lines_in(
-                &view.plane(),
-                &theme::current().viewport,
-                [0.0; 3],
-            )),
+            grid: Arc::new(grid_lines_in(&view.plane(), &look, [0.0; 3])),
             grid_origin: [0.0; 3],
+            grid_look: look,
             gestures: LeftGestures::default(),
             named: None,
             // As in Rhino, the perspective view starts shaded and the flat views in wireframe.
@@ -515,7 +519,7 @@ impl Curva {
                 DisplayMode::Shaded
                     | DisplayMode::Hidden
                     | DisplayMode::Technical
-                    | DisplayMode::Clay
+                    | DisplayMode::Massing
             ) {
                 &self.drawing.shaded_scene
             } else {
@@ -525,17 +529,15 @@ impl Curva {
     }
 
     pub(crate) fn viewports(&mut self, ui: &mut egui::Ui, area: egui::Rect, reach: egui::Rect) {
-        // Picked edges and faces only mean something while a command asks for them.
-        let wants = |kind: Kind| {
-            self.processor
-                .current_request()
-                .is_some_and(|request| request.kind == kind)
-        };
-        if !wants(Kind::Edges) && !self.doc.edge_selection().is_empty() {
+        // Picked edges and faces stay picked, as Ctrl+Shift picks them for the gumball and the
+        // commands that follow (they were cleared every frame no command asked for them, so a
+        // Ctrl+Shift pick on a solid vanished at once). They go when the object they belong to
+        // changes, as its numbered edges and faces may then be other ones.
+        let picked = !self.doc.edge_selection().is_empty() || !self.doc.face_selection().is_empty();
+        if picked && self.picked_parts_stale() {
             self.doc.select_edges(&[]);
-        }
-        if !wants(Kind::Faces) && !self.doc.face_selection().is_empty() {
             self.doc.select_faces(&[]);
+            self.mouse.parts_on.clear();
         }
         let mut shown = Vec::new();
         self.pane_areas = [None; VIEW_SLOTS];
@@ -658,6 +660,8 @@ impl Curva {
                     origin,
                 )
             };
+            let look = self.grid_look(*pane);
+            self.panes[*pane].restyle_grid(look);
             if self.panes[*pane].grid_origin != origin {
                 let pane = &mut self.panes[*pane];
                 pane.grid_origin = origin;
@@ -688,8 +692,7 @@ impl Curva {
                 ghosted: display == DisplayMode::Ghosted,
                 hidden: matches!(display, DisplayMode::Hidden | DisplayMode::Technical),
                 hidden_lines: display == DisplayMode::Technical,
-                sketch: display == DisplayMode::Clay,
-                ground: -origin[2] as f32,
+                massing: display == DisplayMode::Massing,
                 area: *rect,
                 frame: ui.ctx().cumulative_frame_nr(),
                 background: self.pane_background(*pane).0,
@@ -789,7 +792,7 @@ mod tests {
         assert_eq!(pane.plane, raised);
         assert_eq!(
             pane.grid.len(),
-            grid_lines_in(&raised, &theme::current().viewport, [0.0; 3]).len()
+            grid_lines_in(&raised, &pane.grid_look, [0.0; 3]).len()
         );
         assert!(pane.grid.iter().all(|v| v.position[2] == 5.0));
         pane.set_plane(pane.view.plane());
