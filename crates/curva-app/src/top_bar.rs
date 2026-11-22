@@ -14,6 +14,12 @@ pub(crate) struct TopBar {
     pub(crate) mark: Option<egui::TextureHandle>,
     /// When the file's path was last copied by clicking it, for its glow and note.
     pub(crate) copied_at: Option<f64>,
+    /// The tab last used in each of [`TAB_GROUPS`], opened again when that group is chosen.
+    pub(crate) last_tab: [usize; 4],
+    /// When the group last changed, for the tabs' fade.
+    pub(crate) group_changed_at: f64,
+    /// How wide the groups' row is, so the title row's grip starts after it.
+    pub(crate) groups_width: f32,
 }
 
 /// How long the glow and the note show after the path is copied, in seconds.
@@ -55,14 +61,32 @@ pub(crate) const COMMAND_TABS: [(&str, &[&str]); 11] = [
     ("ui.tab.subd", tabs::SUBD),
     ("ui.tab.edit", tabs::EDIT),
     ("ui.tab.organise", tabs::ORGANISE),
+    ("ui.tab.select", tabs::SELECT),
+    ("ui.tab.analyze", tabs::ANALYZE),
     ("ui.tab.annotate", tabs::ANNOTATE),
     ("ui.tab.layouts", tabs::LAYOUTS),
-    ("ui.tab.analyze", tabs::ANALYZE),
-    ("ui.tab.select", tabs::SELECT),
 ];
 
-/// How many of the tabs are NURBS ones (Curves, Surfaces, Solids), shown under one label.
-const NURBS_TABS: usize = 3;
+/// The groups of command tabs, each a run of [`COMMAND_TABS`] (owner, 22 November 2026): NURBS
+/// (Curves, Surfaces, Solids), Polygon (Mesh, SubD), Modify (Edit, Organise, Select, Analyze)
+/// and Publisher (Annotate, Layouts).
+pub(crate) const TAB_GROUPS: [(&str, std::ops::Range<usize>); 4] = [
+    ("ui.tab_group.nurbs", 0..3),
+    ("ui.tab_group.polygon", 3..5),
+    ("ui.tab_group.modify", 5..9),
+    ("ui.tab_group.publisher", 9..11),
+];
+
+/// How long the tabs and buttons take to fade in when the group changes, in seconds.
+const GROUP_FADE: f64 = 0.18;
+
+/// The group a command tab belongs to.
+pub(crate) fn group_of(tab: usize) -> usize {
+    TAB_GROUPS
+        .iter()
+        .position(|(_, tabs)| tabs.contains(&tab))
+        .unwrap_or(0)
+}
 
 /// The specializations in the top bar's dial; only Freeform has commands yet.
 pub(crate) const SPECIALIZATIONS: [&str; 4] = [
@@ -105,47 +129,95 @@ pub(crate) const TOP_BAR_HEIGHT: f32 = 36.0;
 pub(crate) const COMMAND_BUTTON: f32 = 30.0;
 
 impl Curva {
-    /// The command buttons, in tabs. A button runs its command as typing it would, ending any
-    /// command already running, as a Rhino toolbar button does.
+    /// The command tabs, as the owner chose (option E, 22 November 2026): the groups (NURBS,
+    /// Polygon, Modify, Publisher) in a row across the top, in the title row's place, with an
+    /// underline that slides to the one chosen; its tabs below, fading in when the group changes;
+    /// then the chosen tab's buttons. Each group keeps the tab last used in it.
     pub(crate) fn command_tabs(&mut self, ui: &mut egui::Ui) {
         // Only Freeform has commands yet; the other specializations say when they come.
         if self.bar.specialization != 0 {
             ui.label(self.text.render(&Message::new("ui.specialization.later")));
             return;
         }
-        ui.horizontal(|ui| {
-            for (index, (key, _)) in COMMAND_TABS.iter().enumerate() {
-                // The NURBS tabs under a small label, a divider after them, and one after Mesh and
-                // SubD, before the tabs every kind of geometry shares.
-                if index == 0 {
-                    let group = self.text.render(&Message::new("ui.tab_group.nurbs"));
-                    ui.label(egui::RichText::new(group).small().weak());
-                }
-                if index == NURBS_TABS || index == NURBS_TABS + 2 {
-                    ui.separator();
-                }
-                let label = self.text.render(&Message::new(key));
-                if ui
-                    .selectable_label(self.bar.command_tab == index, label)
-                    .clicked()
-                {
-                    self.bar.command_tab = index;
-                }
-            }
-        });
-        let mut chosen = None;
-        egui::ScrollArea::horizontal().show(ui, |ui| {
+        let tab = self.bar.command_tab.min(COMMAND_TABS.len() - 1);
+        let group = group_of(tab);
+        self.tab_groups_row(ui, group);
+        // The tabs and buttons fade in when the group changes, while the groups stay put.
+        let now = ui.input(|input| input.time);
+        let shown = ((now - self.bar.group_changed_at) / GROUP_FADE).clamp(0.0, 1.0) as f32;
+        if shown < 1.0 {
+            ui.ctx().request_repaint();
+        }
+        ui.scope(|ui| {
+            ui.multiply_opacity(shown);
             ui.horizontal(|ui| {
-                for name in COMMAND_TABS[self.bar.command_tab.min(COMMAND_TABS.len() - 1)].1 {
-                    if command_button(ui, name).clicked() {
-                        chosen = Some(*name);
+                for index in TAB_GROUPS[group].1.clone() {
+                    let label = self.text.render(&Message::new(COMMAND_TABS[index].0));
+                    if ui.selectable_label(tab == index, label).clicked() {
+                        self.bar.command_tab = index;
                     }
                 }
             });
+            let mut chosen = None;
+            egui::ScrollArea::horizontal().show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    for name in COMMAND_TABS[tab].1 {
+                        if command_button(ui, name).clicked() {
+                            chosen = Some(*name);
+                        }
+                    }
+                });
+            });
+            if let Some(name) = chosen {
+                self.run_from_button(name);
+            }
         });
-        if let Some(name) = chosen {
-            self.run_from_button(name);
+    }
+
+    /// The groups' row, with the chosen one marked by a sliding underline; a click on another
+    /// opens the tab last used in it. Notes how wide the row is, for the title row's grip.
+    fn tab_groups_row(&mut self, ui: &mut egui::Ui, group: usize) {
+        let row = ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 16.0;
+            let mut chosen_rect = None;
+            for (index, (key, _)) in TAB_GROUPS.iter().enumerate() {
+                let name = self.text.render(&Message::new(key));
+                let text = egui::RichText::new(name).small();
+                let text = if index == group {
+                    text.strong()
+                } else {
+                    text.weak()
+                };
+                let response = ui.add(egui::Label::new(text).sense(egui::Sense::click()));
+                if index == group {
+                    chosen_rect = Some(response.rect);
+                }
+                if response.clicked() && index != group {
+                    self.bar.last_tab[group] = self.bar.command_tab;
+                    let last = self.bar.last_tab[index];
+                    self.bar.command_tab = if TAB_GROUPS[index].1.contains(&last) {
+                        last
+                    } else {
+                        TAB_GROUPS[index].1.start
+                    };
+                    self.bar.group_changed_at = ui.input(|input| input.time);
+                }
+            }
+            chosen_rect
+        });
+        if let Some(chosen) = row.inner {
+            // The underline glides to the chosen group.
+            let ctx = ui.ctx();
+            let id = ui.scope_id().with("group underline");
+            let left = ctx.animate_value_with_time(id.with("left"), chosen.min.x, 0.25);
+            let width = ctx.animate_value_with_time(id.with("width"), chosen.width(), 0.25);
+            let y = chosen.max.y + 1.0;
+            ui.painter().line_segment(
+                [egui::pos2(left, y), egui::pos2(left + width, y)],
+                egui::Stroke::new(2.0, theme::ACCENT),
+            );
         }
+        self.bar.groups_width = row.response.rect.width();
     }
 
     /// The top bar, named Curva: always there and fixed (only focus mode hides it). The file's
@@ -562,6 +634,21 @@ mod tests {
             right - left + 2.0 * PILL_INSET < DIAL_WIDTH,
             "fits the space the dial had"
         );
+    }
+
+    #[test]
+    fn the_groups_hold_every_tab_once_in_order() {
+        // NURBS, Polygon, Modify and Publisher, one after the other, with nothing left out.
+        let mut next = 0;
+        for (key, tabs) in TAB_GROUPS {
+            assert_eq!(tabs.start, next, "{key} starts where the last ended");
+            assert!(!tabs.is_empty(), "{key} has tabs");
+            next = tabs.end;
+        }
+        assert_eq!(next, COMMAND_TABS.len());
+        assert_eq!(COMMAND_TABS[4].0, "ui.tab.subd");
+        assert_eq!(group_of(4), 1, "SubD is a Polygon tab");
+        assert_eq!(group_of(10), 3, "Layouts is a Publisher tab");
     }
 
     #[test]

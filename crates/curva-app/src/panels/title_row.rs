@@ -106,9 +106,13 @@ impl Curva {
             egui::vec2(rect.width() - 2.0 * PANEL_MARGIN, TITLE_ROW),
         );
         let font = egui::FontId::proportional(TITLE_FONT);
+        // The command tabs alone show their groups here instead of a title (option E), so the
+        // grip that moves the panel starts after the groups, leaving them their clicks.
+        let tabs_alone = place.is_command_tabs_alone();
         let galleys: Vec<_> = place
             .pieces
             .iter()
+            .filter(|_| !tabs_alone)
             .map(|piece| {
                 ui.painter().layout_no_wrap(
                     self.text.render(&Message::new(piece.name_key())),
@@ -117,7 +121,18 @@ impl Curva {
                 )
             })
             .collect();
-        if let Some(grabbed) = self.title_grip(ui, row, rect) {
+        let grip = if tabs_alone {
+            egui::Rect::from_min_max(
+                egui::pos2(
+                    (row.min.x + self.bar.groups_width + 12.0).min(row.max.x),
+                    row.min.y,
+                ),
+                row.max,
+            )
+        } else {
+            row
+        };
+        if let Some(grabbed) = self.title_grip(ui, grip, rect) {
             event = grabbed;
         }
         let spacing = 18.0;

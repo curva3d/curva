@@ -540,7 +540,10 @@ impl Curva {
                     let inner = size - egui::Vec2::splat(2.0 * PANEL_MARGIN);
                     ui.set_min_size(inner);
                     ui.set_max_size(inner);
-                    ui.add_space(TITLE_ROW);
+                    // The command tabs' groups sit in the title row's place (option E).
+                    if !place.is_command_tabs_alone() {
+                        ui.add_space(TITLE_ROW);
+                    }
                     self.piece_contents(ui, place.showing());
                 });
                 // A dragged panel would merge into this one: it glows inside its edge, most
