@@ -11,6 +11,15 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 ## 22 November 2026
 
 **Done**
+- **A less dense grid, and a grid colour for each display mode** (owner, testing 0.1.6, 22
+  November 2026: "make the grid less dense, it looks ugly"; "each view mode can have a different
+  color for the grid in the settings"). The grid now follows the model's unit as Rhino 8's
+  "Large Objects" templates do (measured): in millimetres a line every 10 mm and a major one
+  every 100 mm (was every 1 mm); metres and feet every unit, major every 10; inches every inch,
+  major every foot. Settings → General → "Grid colour in each display mode" holds a colour for
+  each mode (major lines in it, minor ones halfway to the background), with Standard to go back.
+  By default Hidden, Technical and Massing now draw the grid as faint dark lines over their own
+  light backgrounds, no longer the dark theme's. Grid snap stays at 1 unit.
 - **Smooth lines, curves, edges of solids and outlines** (owner, 22 November 2026: "why do lines
   always have a jagged look?"). Planned in `display-pipeline.md` §2.5 but never built, so every
   slanting or curved line was a staircase of solid pixels. Each line now fades out over its

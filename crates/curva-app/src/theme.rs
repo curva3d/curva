@@ -108,6 +108,8 @@ pub struct Settings {
     pub glass: bool,
     /// Whether the grid shows.
     pub grid: bool,
+    /// The grid's colour chosen for each display mode.
+    pub grid_colours: crate::grid::GridColours,
     /// Whether Curva looks for a newer release on GitHub when it opens.
     pub check_updates: bool,
     /// The AI Assistant's connection.
@@ -130,6 +132,7 @@ impl Default for Settings {
             theme: ThemeChoice::System,
             glass: true,
             grid: true,
+            grid_colours: crate::grid::GridColours::default(),
             check_updates: true,
             assistant: crate::assistant::Connection::default(),
             undo_min_steps: curva_document::UndoLimits::default().min_steps,
