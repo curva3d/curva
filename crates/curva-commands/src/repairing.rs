@@ -28,21 +28,24 @@ impl Repairing {
             .max(1);
         for _ in 0..workers {
             let (queue, send, job) = (Arc::clone(&queue), send.clone(), job.clone());
+            // Each on an engine of its own: on the shared one they wait on one another (#476).
             std::thread::spawn(move || {
-                loop {
-                    if job.stopping() {
-                        return;
+                curva_kernel::parallel::on_own_engine(|| {
+                    loop {
+                        if job.stopping() {
+                            return;
+                        }
+                        let next = queue.lock().ok().and_then(|mut q| q.pop());
+                        let Some((faces, repair)) = next else {
+                            return;
+                        };
+                        let body = repair();
+                        job.one_done();
+                        if send.send((faces, body)).is_err() {
+                            return;
+                        }
                     }
-                    let next = queue.lock().ok().and_then(|mut q| q.pop());
-                    let Some((faces, repair)) = next else {
-                        return;
-                    };
-                    let body = repair();
-                    job.one_done();
-                    if send.send((faces, body)).is_err() {
-                        return;
-                    }
-                }
+                });
             });
         }
         Self { job, healed }

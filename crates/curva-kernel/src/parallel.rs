@@ -4,6 +4,12 @@
 
 use crate::KernelError;
 
+/// Runs `work` on an engine of this thread's own, so threads doing engine work side by side do
+/// not wait on one another, as healing a file's solids does (#476).
+pub fn on_own_engine<T>(work: impl FnOnce() -> T) -> T {
+    solidcore_ops::session::with_own_kernel(work)
+}
+
 /// `work` for each of `0..count`, on every core, the answers in order. Fewer than two items, or
 /// one core, run here.
 ///
@@ -21,15 +27,23 @@ pub fn each_in_parallel<T: Send>(
         return (0..count).map(work).collect();
     }
     let work = &work;
+    // Each thread takes the next item when it is free, so a run of slow items does not leave the
+    // other threads waiting, as fixed shares did (#476).
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let next = &next;
     let shares: Vec<Vec<(usize, Result<T, KernelError>)>> = std::thread::scope(|scope| {
         let running: Vec<_> = (0..threads)
-            .map(|first| {
+            .map(|_| {
                 scope.spawn(move || {
                     solidcore_ops::session::with_own_kernel(|| {
-                        (first..count)
-                            .step_by(threads)
-                            .map(|i| (i, work(i)))
-                            .collect()
+                        let mut mine = Vec::new();
+                        loop {
+                            let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            if i >= count {
+                                break mine;
+                            }
+                            mine.push((i, work(i)));
+                        }
                     })
                 })
             })
