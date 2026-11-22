@@ -156,6 +156,8 @@ impl Curva {
                 TextStyle::Monospace,
                 FontId::new(13.0, FontFamily::Monospace),
             );
+            // The kit's spacing, row height and corners, after the theme's colours.
+            ui_kit::apply(style);
         });
         for pane in &mut self.panes {
             let plane = pane.plane;
@@ -232,18 +234,15 @@ impl Curva {
             length_display_choice(ui, &mut display, &say);
         }
         let display_changed = display != self.doc.state().length_display;
-        ui.checkbox(&mut settings.grid, say("ui.settings.grid"));
-        ui.checkbox(&mut settings.check_updates, say("ui.settings.updates"));
+        ui_kit::toggle(ui, &mut settings.grid, say("ui.settings.grid"));
+        ui_kit::toggle(ui, &mut settings.check_updates, say("ui.settings.updates"));
         let mut desktop_change = None;
         // From an AppImage, a place in the desktop's applications can be added or removed.
         if desktop::appimage().is_some()
             && let Some(data) = desktop::data_home()
         {
             let mut listed = desktop::added(&data);
-            if ui
-                .checkbox(&mut listed, say("ui.settings.in_applications"))
-                .changed()
-            {
+            if ui_kit::toggle(ui, &mut listed, say("ui.settings.in_applications")).changed() {
                 desktop_change = Some(listed);
             }
         }
@@ -284,7 +283,7 @@ impl Curva {
         for piece in layout::Piece::ALL {
             let mut shown = self.layout.is_shown(piece);
             let name = self.text.render(&Message::new(piece.name_key()));
-            if ui.checkbox(&mut shown, name).changed() {
+            if ui_kit::toggle(ui, &mut shown, name).changed() {
                 self.layout = if shown {
                     self.layout.restored(piece, window)
                 } else {

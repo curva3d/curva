@@ -140,7 +140,7 @@ impl Curva {
                 );
             }
             ui.label(numbers_text);
-            ui.checkbox(&mut advanced, say("ui.mesh.advanced"));
+            ui_kit::toggle(ui, &mut advanced, say("ui.mesh.advanced"));
             if advanced {
                 advanced_fields(ui, &mut settings, unit, &say);
             }
@@ -201,7 +201,7 @@ fn advanced_fields(
     let limit = |ui: &mut egui::Ui, value: &mut Option<f64>, key, start, suffix: String| {
         ui.horizontal(|ui| {
             let mut on = value.is_some();
-            ui.checkbox(&mut on, say(key));
+            ui_kit::toggle(ui, &mut on, say(key));
             match (on, value.as_mut()) {
                 (true, Some(v)) => {
                     ui.add(

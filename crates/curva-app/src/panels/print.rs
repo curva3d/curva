@@ -85,7 +85,7 @@ fn paint_page(ui: &egui::Ui, page: &Page, rect: egui::Rect) {
 fn layout_ticks(ui: &mut egui::Ui, chosen: &mut Vec<u64>, layouts: &[(u64, String)]) {
     for (id, name) in layouts {
         let mut ticked = chosen.contains(id);
-        if ui.checkbox(&mut ticked, name).changed() {
+        if ui_kit::toggle(ui, &mut ticked, name).changed() {
             if ticked {
                 chosen.push(*id);
                 let order: Vec<u64> = layouts.iter().map(|(l, _)| *l).collect();

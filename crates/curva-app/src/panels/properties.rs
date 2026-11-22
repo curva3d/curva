@@ -88,7 +88,7 @@ impl Curva {
         let say = |key: &'static str| self.text.render(&Message::new(key));
         ui.label(egui::RichText::new(say("ui.clipping")).strong());
         let mut changed = plane.clone();
-        ui.checkbox(&mut changed.flipped, say("ui.clipping.flipped"));
+        ui_kit::toggle(ui, &mut changed.flipped, say("ui.clipping.flipped"));
         ui.horizontal(|ui| {
             ui.label(say("ui.clipping.fill"));
             let mut filled = matches!(changed.section, SectionFill::Solid(_));
@@ -114,7 +114,7 @@ impl Curva {
                 let name = self.text.render(&Message::new(view_label(pane.view)));
                 let view = ClipView::Viewport(slot);
                 let mut on = changed.views.contains(&view);
-                if ui.checkbox(&mut on, name).changed() {
+                if ui_kit::toggle(ui, &mut on, name).changed() {
                     changed.views.retain(|v| *v != view);
                     if on {
                         changed.views.push(view);
@@ -144,7 +144,7 @@ impl Curva {
                 .desired_rows(2)
                 .desired_width(f32::INFINITY),
         );
-        ui.checkbox(&mut changed.landing, say("ui.leader.landing"));
+        ui_kit::toggle(ui, &mut changed.landing, say("ui.leader.landing"));
         if changed != *leader && !changed.content.trim().is_empty() {
             self.undoable(|doc| {
                 doc.replace_shape(id, Shape::Annotation(Annotation::Leader(changed)));

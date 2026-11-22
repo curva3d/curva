@@ -54,6 +54,7 @@ mod sketchup_import;
 mod text_edit;
 mod theme;
 mod top_bar;
+mod ui_kit;
 mod updates;
 mod viewports;
 
@@ -99,11 +100,11 @@ const LOG_LINES: usize = 3;
 /// Rows the list of matching commands shows before it scrolls.
 const MOST_MATCH_ROWS: f32 = 10.0;
 const PANEL_RADIUS: u8 = 12;
-const PANEL_MARGIN: f32 = 8.0;
+const PANEL_MARGIN: f32 = ui_kit::PAD;
 /// The height of a panel's title row, holding its name or tabs.
-const TITLE_ROW: f32 = 20.0;
+const TITLE_ROW: f32 = ui_kit::TITLE_ROW;
 /// The size of panel titles, the same on every panel.
-const TITLE_FONT: f32 = 13.0;
+const TITLE_FONT: f32 = ui_kit::TITLE_FONT;
 /// How near a panel's edge, in points, the pointer turns into a resize arrow.
 const RESIZE_REACH: f32 = 6.0;
 /// Room left around a panel for its shadow, beyond which nothing it holds is drawn.
