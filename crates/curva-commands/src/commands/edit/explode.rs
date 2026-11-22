@@ -1,4 +1,5 @@
-//! `Explode`, as in Rhino: breaks joined curves and polylines back into separate curves.
+//! `Explode`, as in Rhino: breaks joined curves and polylines back into separate curves, and a
+//! mesh into its pieces that share no point (#414).
 
 use crate::Message;
 use crate::recipe::{Context, Derived, Made, Recipe, StepDef, Value};
@@ -45,6 +46,20 @@ impl Recipe for Explode {
                             history: None,
                         });
                     }
+                }
+                continue;
+            }
+            // A mesh comes apart into its pieces that share no point; one of a single piece
+            // stays as it is, as in Rhino (#414).
+            if let Shape::Mesh(mesh) = &object.shape {
+                let pieces = mesh.pieces();
+                if pieces.len() > 1 {
+                    made.remove.push(object.id);
+                    made.derived.extend(pieces.into_iter().map(|piece| Derived {
+                        shape: Shape::Mesh(piece),
+                        from: object.id,
+                        history: None,
+                    }));
                 }
                 continue;
             }
