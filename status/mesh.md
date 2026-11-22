@@ -11,6 +11,9 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 22 November 2026
 
+**ToNURBS converts curves as Rhino 8 does:** with the kernel now converting lines, circles, arcs and joined curves
+(features #589), ToNURBS gives Rhino's forms, tested against the counts measured in Rhino 8.
+
 **MeshSphere's styles as Rhino 8 names them:** measured in its prompt, the styles are UV, Triangle and Quad, Quad starts
 at 2 subdivisions and Triangle at 1, and the prompt shows faces up and around for UV and subdivisions for the others.
 Curva now names and offers them so, with Subdivisions remembered per style (features #585), and the ToNURBS tests are

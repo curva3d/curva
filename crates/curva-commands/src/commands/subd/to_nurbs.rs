@@ -127,6 +127,38 @@ mod tests {
         );
     }
 
+    #[test]
+    fn curves_become_rhinos_nurbs_curves() {
+        // Rhino 8's ToNURBS with Enter (21 November 2026): a line becomes degree 1 with 2 points,
+        // a circle degree 2 with 9, and a line joined to a half circle one degree-2 curve of 7.
+        let line = Curve::line([0.0, 8.0, 0.0], [3.0, 8.0, 0.0]).unwrap();
+        let circle = Curve::circle([10.0, 0.0, 0.0], 1.0).unwrap();
+        let joined = Curve::compound(vec![
+            Curve::line([0.0, 5.0, 0.0], [2.0, 5.0, 0.0]).unwrap(),
+            Curve::arc(
+                [3.0, 5.0, 0.0],
+                [2.0, 5.0, 0.0],
+                [4.0, 5.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, -1.0, 0.0],
+            )
+            .unwrap(),
+        ])
+        .unwrap();
+        for (curve, want) in [(line, (1, 2)), (circle, (2, 9)), (joined, (2, 7))] {
+            let mut doc = Document::default();
+            let id = doc.add_shape(Shape::Curve(curve));
+            doc.select(&[id]);
+            run(&mut doc, &["tonurbs"]);
+            let objects = &doc.state().objects;
+            assert_eq!(objects.len(), 2, "the curve stays");
+            let Shape::Curve(Curve::Nurbs { degree, points, .. }) = &objects[1].shape else {
+                panic!("a NURBS curve");
+            };
+            assert_eq!((*degree, points.len()), want);
+        }
+    }
+
     fn converted(counts: u32) -> Document {
         let mut doc = Document::default();
         let id = doc.add_shape(Shape::SubD(SubD::subd_box(
