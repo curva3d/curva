@@ -722,6 +722,10 @@ impl Curva {
             SnapKind::Center => {
                 painter.circle_stroke(centre, half, stroke);
             }
+            // Along a guideline: a small dot on it, the guideline itself saying where (#547).
+            SnapKind::Track => {
+                painter.circle_filled(centre, 3.0, theme::ACCENT);
+            }
             _ => {
                 painter.rect_stroke(
                     egui::Rect::from_center_size(centre, egui::Vec2::splat(SNAP_MARKER_SIZE)),
@@ -731,13 +735,16 @@ impl Curva {
                 );
             }
         }
-        painter.text(
-            centre + egui::vec2(SNAP_MARKER_SIZE, -SNAP_MARKER_SIZE),
-            egui::Align2::LEFT_BOTTOM,
-            self.text.render(&Message::new(snap_label(hit.kind))),
-            egui::TextStyle::Body.resolve(ui.style()),
-            theme::ACCENT,
-        );
+        let label = snap_label(hit.kind);
+        if !label.is_empty() {
+            painter.text(
+                centre + egui::vec2(SNAP_MARKER_SIZE, -SNAP_MARKER_SIZE),
+                egui::Align2::LEFT_BOTTOM,
+                self.text.render(&Message::new(label)),
+                egui::TextStyle::Body.resolve(ui.style()),
+                theme::ACCENT,
+            );
+        }
     }
 }
 
