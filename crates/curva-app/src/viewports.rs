@@ -525,17 +525,15 @@ impl Curva {
     }
 
     pub(crate) fn viewports(&mut self, ui: &mut egui::Ui, area: egui::Rect, reach: egui::Rect) {
-        // Picked edges and faces only mean something while a command asks for them.
-        let wants = |kind: Kind| {
-            self.processor
-                .current_request()
-                .is_some_and(|request| request.kind == kind)
-        };
-        if !wants(Kind::Edges) && !self.doc.edge_selection().is_empty() {
+        // Picked edges and faces stay picked, as Ctrl+Shift picks them for the gumball and the
+        // commands that follow (they were cleared every frame no command asked for them, so a
+        // Ctrl+Shift pick on a solid vanished at once). They go when the object they belong to
+        // changes, as its numbered edges and faces may then be other ones.
+        let picked = !self.doc.edge_selection().is_empty() || !self.doc.face_selection().is_empty();
+        if picked && self.picked_parts_stale() {
             self.doc.select_edges(&[]);
-        }
-        if !wants(Kind::Faces) && !self.doc.face_selection().is_empty() {
             self.doc.select_faces(&[]);
+            self.mouse.parts_on.clear();
         }
         let mut shown = Vec::new();
         self.pane_areas = [None; VIEW_SLOTS];

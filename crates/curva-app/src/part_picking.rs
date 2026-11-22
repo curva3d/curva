@@ -184,6 +184,7 @@ impl crate::Curva {
         self.doc.select_mesh_parts(&parts);
         self.doc.select_edges(&edges);
         self.doc.select_faces(&faces);
+        self.remember_parts_picked();
     }
 
     fn parts_under(
@@ -237,6 +238,22 @@ impl crate::Curva {
         }
         picked
     }
+}
+
+/// Whether any object in `picked_on` (its id and the body its parts were picked on) is gone
+/// or holds another body since, so its numbered edges and faces may name others.
+pub(crate) fn changed_since(
+    picked_on: &[(u64, curva_kernel::Body)],
+    objects: &[std::sync::Arc<curva_document::Object>],
+) -> bool {
+    // The body held here keeps its faces in memory, so another body cannot take their place.
+    picked_on.iter().any(|(id, body)| {
+        objects
+            .iter()
+            .find(|o| o.id == *id)
+            .and_then(|o| o.shape.body())
+            .is_none_or(|now| now.faces_key() != body.faces_key())
+    })
 }
 
 #[cfg(test)]
@@ -303,5 +320,30 @@ mod tests {
         let crossing = parts_in_box(&meshes, &project, ([-1.0, -1.0], [11.0, 1.0]), true);
         assert!(crossing.contains(&(7, MeshPart::Face(0))));
         assert!(crossing.contains(&(7, MeshPart::Edge(1, 2))));
+    }
+
+    #[test]
+    fn picked_parts_hold_until_their_object_changes() {
+        // Ctrl+Shift picks on a solid stay picked; they go only once the solid itself changes,
+        // as its numbered faces may then be others.
+        let mut doc = curva_document::Document::default();
+        let id = doc.add_body(curva_kernel::Body::cuboid([0.0; 3], [1.0; 3]).unwrap());
+        let body = |doc: &curva_document::Document| {
+            let o = doc.state().objects.iter().find(|o| o.id == id).unwrap();
+            o.shape.body().unwrap().clone()
+        };
+        let picked_on = vec![(id, body(&doc))];
+        assert!(!changed_since(&picked_on, &doc.state().objects));
+        doc.select(&[id]);
+        assert!(
+            !changed_since(&picked_on, &doc.state().objects),
+            "selecting is no change"
+        );
+        let moved = curva_kernel::Body::cuboid([2.0; 3], [1.0; 3]).unwrap();
+        doc.replace_shape(id, curva_document::Shape::Body(moved));
+        assert!(changed_since(&picked_on, &doc.state().objects));
+        let held = picked_on[0].1.clone();
+        doc.remove(&[id]);
+        assert!(changed_since(&[(id, held)], &doc.state().objects), "gone");
     }
 }
