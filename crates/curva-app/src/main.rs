@@ -36,6 +36,7 @@ mod command_line;
 mod desktop;
 mod dots;
 mod file_dialogs;
+mod grid;
 mod grips;
 mod gumball;
 mod icons;
@@ -61,7 +62,7 @@ mod viewports;
 #[allow(clippy::wildcard_imports)]
 use {
     agent::*, assistant_panel::*, benchmark::*, clipping::*, command_line::*, file_dialogs::*,
-    gumball::*, mouse::*, notices::*, panels::frames::*, settings::*, sheets::*,
+    grid::*, gumball::*, mouse::*, notices::*, panels::frames::*, settings::*, sheets::*,
     sketchup_import::*, text_edit::*, top_bar::*, viewports::*,
 };
 
