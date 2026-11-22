@@ -16,6 +16,18 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## Features stream — 22 November 2026 (docs and GitHub)
+
+- **Docs brought up to 0.1.5:** the Operations panel and its tabs, the specializations shown side by
+  side, other file formats (DWG, DXF, SketchUp, STEP, meshes, PDF, SVG), meshes and SubD, the system
+  save window; the stale roadmap link now points to the specialization pages and
+  `docs/architecture.md`.
+- **README** matches the website: motto, the four specializations with their status, 0.1.5 status,
+  and a logo that switches to the white mark on GitHub's dark theme.
+- **Open for the owner:** the app's specialization switch says **Publisher** (decision 0017) where
+  the website and roadmap say **Urban**; the docs follow the app until the owner chooses. The repo's
+  About description and website link can only be set by the owner.
+
 ## Features stream — 22 November 2026 (website, third pass)
 
 - **Plate drawings on the specialization pages** (`POINT_MOTIFS` in `website/src/data/motifs.ts`), one per
