@@ -81,7 +81,14 @@ li::before { content: "— "; }
 .plate .name { font-size: 58px; line-height: 54px; font-weight: 700; letter-spacing: -.06em; }
 .spec .plate .name { font-size: 44px; line-height: 44px; letter-spacing: -.055em; }
 /* The plates above the one under the mouse rise just enough to show its words. */
-.spec .plate:hover ~ .plate, .spec .plate:focus-visible ~ .plate { --lift: max(0px, calc(105px - var(--gap))); }
+.plate:hover ~ .plate, .plate:focus-visible ~ .plate { --lift: max(0px, calc(var(--need) - var(--gap))); }
+.home { --need: 125px; }
+.spec { --need: 105px; }
+/* Firefox draws no blur on anything tilted in 3D, so the plates would turn clear and show the ones
+   behind sharply. There they get a near-opaque frosted white instead (the -moz- test is true only in Firefox). */
+@supports (-moz-appearance: none) {
+  .plate.glass:not(:hover):not(:focus-visible) { background: linear-gradient(160deg, rgba(252,252,252,.94), rgba(244,244,244,.9)); }
+}
 /* The full text of each plate, for screen readers; the panel on the right shows it on screen. */
 .plate .more { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
