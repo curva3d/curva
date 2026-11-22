@@ -61,30 +61,91 @@ impl Palette {
     };
 }
 
-/// How far the grid reaches each way from the plane's origin, in units.
+/// How far the grid reaches each way from the plane's origin, in lines.
 pub(crate) const GRID_REACH: i32 = 100;
-/// Every how many minor lines a major one comes.
-pub(crate) const MAJOR_EVERY: i32 = 10;
 
-/// The grid and axes of a plane as line segments, as Serpentine3D draws them: a minor line every
-/// unit and a major one every 10, out to 100 each way, with softened axes; measured from
-/// `origin`, as the scene they are drawn with ([`crate::SceneParts::origin`]).
+/// How a grid is drawn: in which colours, and how far apart its lines are.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GridLook {
+    /// Its colours and the axes'.
+    pub palette: Palette,
+    /// Units between two lines.
+    pub spacing: f64,
+    /// Every how many lines a major one comes.
+    pub major_every: i32,
+}
+
+impl GridLook {
+    /// A line every unit and a major one every 10, in `palette`.
+    #[must_use]
+    pub const fn new(palette: Palette) -> Self {
+        Self {
+            palette,
+            spacing: 1.0,
+            major_every: 10,
+        }
+    }
+
+    /// The same grid with its lines `spacing` units apart and a major one every `major_every`.
+    #[must_use]
+    pub const fn spaced(self, spacing: f64, major_every: i32) -> Self {
+        Self {
+            spacing,
+            major_every,
+            ..self
+        }
+    }
+}
+
+impl Palette {
+    /// The light theme's grid and axes laid over `background` instead of its own, for a light
+    /// background of a display mode's own: white paper, or the Massing sky.
+    #[must_use]
+    pub const fn light_over(background: [f32; 3]) -> Self {
+        Self {
+            background,
+            minor: over(background, [0.0; 3], 0.07),
+            major: over(background, [0.0; 3], 0.15),
+            x_axis: over(background, [0.80, 0.25, 0.22], 0.6),
+            y_axis: over(background, [0.25, 0.62, 0.30], 0.6),
+            ink: Self::LIGHT.ink,
+        }
+    }
+
+    /// The same palette with its major grid lines in `colour` and its minor ones halfway between
+    /// that and `background`, for a grid colour the user chose.
+    #[must_use]
+    pub const fn with_grid(self, colour: [f32; 3], background: [f32; 3]) -> Self {
+        Self {
+            major: colour,
+            minor: over(background, colour, 0.5),
+            ..self
+        }
+    }
+}
+
+/// The grid and axes of a plane as line segments, as Serpentine3D draws them: lines
+/// `look.spacing` apart with a major one every `look.major_every`, 100 lines out each way, with
+/// softened axes; measured from `origin`, as the scene they are drawn with
+/// ([`crate::SceneParts::origin`]).
 #[must_use]
-pub fn grid_lines_in(plane: &CPlane, palette: &Palette, origin: Point) -> Vec<Vertex> {
+pub fn grid_lines_in(plane: &CPlane, look: &GridLook, origin: Point) -> Vec<Vertex> {
     let on_plane = |u: f64, v: f64| {
         let along = |axis: usize| plane.origin[axis] + plane.x[axis] * u + plane.y[axis] * v;
         crate::narrow_from([along(0), along(1), along(2)], origin)
     };
+    let palette = &look.palette;
+    let every = look.major_every.max(1);
     let mut out = Vec::new();
-    let reach = f64::from(GRID_REACH);
+    let reach = f64::from(GRID_REACH) * look.spacing;
     // Minor lines first, so the major ones draw over them where they meet.
     for major in [false, true] {
         for step in -GRID_REACH..=GRID_REACH {
-            if step == 0 || (step % MAJOR_EVERY == 0) != major {
+            if step == 0 || (step % every == 0) != major {
                 continue;
             }
             let colour = if major { palette.major } else { palette.minor };
-            let at = f64::from(step);
+            let at = f64::from(step) * look.spacing;
             grid_segment(&mut out, on_plane(at, -reach), on_plane(at, reach), colour);
             grid_segment(&mut out, on_plane(-reach, at), on_plane(reach, at), colour);
         }
@@ -128,3 +189,33 @@ impl Outlines {
 
 /// The standard layer colour, which objects take until their layer is given another.
 pub const STANDARD_INK: [f32; 3] = curva_document::STANDARD_COLOUR;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_spaced_grid_puts_its_lines_on_the_spacing_and_its_majors_where_asked() {
+        let look = GridLook::new(Palette::DARK).spaced(10.0, 10);
+        let lines = grid_lines_in(&CPlane::WORLD_XY, &look, [0.0; 3]);
+        assert!(!lines.is_empty());
+        for vertex in &lines {
+            let [x, y, _] = vertex.position;
+            assert!(x.abs() <= 1000.0 + 1e-3 && y.abs() <= 1000.0 + 1e-3);
+            let on_line = |v: f32| (v / 10.0 - (v / 10.0).round()).abs() < 1e-4;
+            assert!(on_line(x) || on_line(y), "{x}, {y} off the spacing");
+            if vertex.colour == Palette::DARK.major {
+                let on_major = |v: f32| (v / 100.0 - (v / 100.0).round()).abs() < 1e-4;
+                assert!(on_major(x) || on_major(y));
+            }
+        }
+    }
+
+    #[test]
+    fn a_chosen_grid_colour_makes_the_major_lines_and_softer_minor_ones() {
+        let palette = Palette::DARK.with_grid([1.0, 0.0, 0.0], [0.0; 3]);
+        assert_eq!(palette.major, [1.0, 0.0, 0.0]);
+        assert_eq!(palette.minor, [0.5, 0.0, 0.0]);
+        assert_eq!(palette.x_axis, Palette::DARK.x_axis);
+    }
+}

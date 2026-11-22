@@ -40,6 +40,8 @@ pub(crate) struct Pane {
     pub(crate) grid: Arc<Vec<curva_viewport::Vertex>>,
     /// What the grid's positions are measured from: the scene's origin when it was made (#225).
     pub(crate) grid_origin: Point,
+    /// How the grid is drawn: its colours for the display mode, and its spacing for the unit.
+    pub(crate) grid_look: curva_viewport::GridLook,
     pub(crate) gestures: LeftGestures,
     /// The saved view it shows, whose name becomes its title.
     pub(crate) named: Option<String>,
@@ -56,11 +58,15 @@ pub(crate) struct Pane {
 impl Pane {
     pub(crate) fn set_plane(&mut self, plane: CPlane) {
         self.plane = plane;
-        self.grid = Arc::new(grid_lines_in(
-            &plane,
-            &theme::current().viewport,
-            self.grid_origin,
-        ));
+        self.grid = Arc::new(grid_lines_in(&plane, &self.grid_look, self.grid_origin));
+    }
+
+    /// Draws the grid in `look` from now on, made afresh if it changed.
+    pub(crate) fn restyle_grid(&mut self, look: curva_viewport::GridLook) {
+        if look != self.grid_look {
+            self.grid_look = look;
+            self.set_plane(self.plane);
+        }
     }
 
     /// Keeps the view history: once the camera has moved and stands still again, the view it
@@ -92,6 +98,7 @@ impl Pane {
     }
 
     pub(crate) fn new(view: StandardView) -> Self {
+        let look = curva_viewport::GridLook::new(theme::current().viewport);
         Self {
             view,
             views_back: Vec::new(),
@@ -99,12 +106,9 @@ impl Pane {
             settled: view.camera(),
             camera: view.camera(),
             plane: view.plane(),
-            grid: Arc::new(grid_lines_in(
-                &view.plane(),
-                &theme::current().viewport,
-                [0.0; 3],
-            )),
+            grid: Arc::new(grid_lines_in(&view.plane(), &look, [0.0; 3])),
             grid_origin: [0.0; 3],
+            grid_look: look,
             gestures: LeftGestures::default(),
             named: None,
             // As in Rhino, the perspective view starts shaded and the flat views in wireframe.
@@ -656,6 +660,8 @@ impl Curva {
                     origin,
                 )
             };
+            let look = self.grid_look(*pane);
+            self.panes[*pane].restyle_grid(look);
             if self.panes[*pane].grid_origin != origin {
                 let pane = &mut self.panes[*pane];
                 pane.grid_origin = origin;
@@ -786,7 +792,7 @@ mod tests {
         assert_eq!(pane.plane, raised);
         assert_eq!(
             pane.grid.len(),
-            grid_lines_in(&raised, &theme::current().viewport, [0.0; 3]).len()
+            grid_lines_in(&raised, &pane.grid_look, [0.0; 3]).len()
         );
         assert!(pane.grid.iter().all(|v| v.position[2] == 5.0));
         pane.set_plane(pane.view.plane());

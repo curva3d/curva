@@ -16,6 +16,22 @@ pub(crate) const MASSING_SKY: (egui::Color32, egui::Color32) = (
 );
 pub(crate) const PAPER_INK: [f32; 3] = [0.12, 0.12, 0.14];
 
+/// A display mode's background, shading from the first colour at the top to the second at the
+/// bottom: white paper in Hidden and Technical, the sky in Massing, else the theme's.
+pub(crate) fn mode_background(mode: DisplayMode) -> (egui::Color32, egui::Color32) {
+    match mode {
+        DisplayMode::Hidden | DisplayMode::Technical => {
+            // Pure white, as Rhino 8's Hidden mode and as its faces (`PAPER_COLOUR`), so they
+            // meet the background with no step (#164).
+            let [r, g, b] = curva_viewport::PAPER_COLOUR.map(|c| (c * 255.0).round() as u8);
+            let paper = egui::Color32::from_rgb(r, g, b);
+            (paper, paper)
+        }
+        DisplayMode::Massing => MASSING_SKY,
+        _ => (theme::current().window, theme::current().window_low),
+    }
+}
+
 /// A layout open in the viewport area.
 pub(crate) struct OpenSheet {
     /// The layout shown.
@@ -446,19 +462,8 @@ impl Curva {
     pub(crate) fn pane_background(&self, pane: usize) -> (egui::Color32, egui::Color32) {
         if self.shows_sheet(pane) {
             (PAPER, PAPER)
-        } else if matches!(
-            self.panes[pane].display,
-            DisplayMode::Hidden | DisplayMode::Technical
-        ) {
-            // Pure white, as Rhino 8's Hidden mode and as its faces (`PAPER_COLOUR`), so they
-            // meet the background with no step (#164).
-            let [r, g, b] = curva_viewport::PAPER_COLOUR.map(|c| (c * 255.0).round() as u8);
-            let paper = egui::Color32::from_rgb(r, g, b);
-            (paper, paper)
-        } else if self.panes[pane].display == DisplayMode::Massing {
-            MASSING_SKY
         } else {
-            (theme::current().window, theme::current().window_low)
+            mode_background(self.panes[pane].display)
         }
     }
 
