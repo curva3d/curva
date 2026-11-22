@@ -17,6 +17,9 @@ use egui_wgpu::wgpu;
 const JUMP: f32 = 0.01;
 
 const SHADER: &str = "
+// How much ink a pixel beside the outline takes: on one side of it, and in the notch of a step.
+const EDGE_SIDE: f32 = 0.2;
+const EDGE_NOTCH: f32 = 0.55;
 @group(0) @binding(0) var depth: texture_depth_2d;
 struct Look { colour: vec4<f32> };
 @group(0) @binding(1) var<uniform> look: Look;
@@ -48,20 +51,32 @@ fn jumps(before: f32, a: f32, b: f32) -> bool {
     return past > 4.0 * abs(slope) && past > JUMP * near;
 }
 
-@fragment fn fragment_main(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
-    let p = vec2<i32>(at.xy);
+// Whether the outline covers pixel `p`, `thick` or not.
+fn outline_at(p: vec2<i32>, thick: bool) -> bool {
     // Only on objects: the background is never outlined, the object beside it is.
-    if (depth_at(p) >= 1.0) { discard; }
+    if (depth_at(p) >= 1.0) { return false; }
     // Written out with no loops, and ending in a return: DirectX 12's older shader compiler
     // (FXC) refuses to unroll a loop that leaves early, and does not count `discard` as leaving
     // the function. Curva must run there (Windows CI caught both).
-    // An alpha over one asks for thick outlines, three pixels wide: the Clay display mode's
+    return near_step(p, vec2<i32>(1, 0), thick) || near_step(p, vec2<i32>(-1, 0), thick)
+        || near_step(p, vec2<i32>(0, 1), thick) || near_step(p, vec2<i32>(0, -1), thick);
+}
+
+@fragment fn fragment_main(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
+    let p = vec2<i32>(at.xy);
+    // An alpha over one asks for thick outlines, three pixels wide: the Massing display mode's
     // profiles (#551).
     let thick = look.colour.a > 1.5;
-    let outline = near_step(p, vec2<i32>(1, 0), thick) || near_step(p, vec2<i32>(-1, 0), thick)
-        || near_step(p, vec2<i32>(0, 1), thick) || near_step(p, vec2<i32>(0, -1), thick);
-    if (!outline) { discard; }
-    return vec4<f32>(look.colour.rgb, 1.0);
+    if (outline_at(p, thick)) { return vec4<f32>(look.colour.rgb, 1.0); }
+    // Smooth edges (spec `display-pipeline.md` §2.5): a pixel beside the outline takes a little
+    // of its ink, and more in the notch of a step, where it touches the outline on two sides, so
+    // a slanting or round outline reads as a smooth line rather than a staircase.
+    let touching = u32(outline_at(p + vec2<i32>(1, 0), thick))
+        + u32(outline_at(p - vec2<i32>(1, 0), thick))
+        + u32(outline_at(p + vec2<i32>(0, 1), thick))
+        + u32(outline_at(p - vec2<i32>(0, 1), thick));
+    if (touching == 0u) { discard; }
+    return vec4<f32>(look.colour.rgb, select(EDGE_SIDE, EDGE_NOTCH, touching > 1u));
 }
 
 // Whether a step back lies within two pixels of `p` in direction `step` (three when `thick`):
@@ -135,7 +150,7 @@ impl Outliner {
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format,
-                    blend: None,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
             }),

@@ -376,8 +376,9 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 103] = [
+    const NOTHING_TO_PREVIEW: [&str; 104] = [
         "ToNURBS",
+        "Bridge",
         "Stitch",
         "UnweldEdge",
         "WeldEdge",
@@ -483,7 +484,8 @@ mod tests {
     ];
 
     /// Commands whose preview needs its own setup, tested in their own files.
-    const PREVIEW_TESTED_ELSEWHERE: [&str; 78] = [
+    const PREVIEW_TESTED_ELSEWHERE: [&str; 79] = [
+        "InsertEdge",
         "ReduceMesh",
         "Mesh",
         "DimCurveLength",

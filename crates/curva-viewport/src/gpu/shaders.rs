@@ -82,6 +82,10 @@ struct Out {
     @location(1) world: vec3<f32>,
     // Where along the line, in pixels, for dotting hidden lines (`dotted`).
     @location(2) along: f32,
+    // How far across the line from its middle, in pixels, and half its solid width: its outer
+    // half pixel fades out, so its edges are smooth rather than stepped.
+    @location(3) @interpolate(linear) across: f32,
+    @location(4) @interpolate(linear) half: f32,
 };
 fn pixels(width: f32) -> f32 {
     return max(select(-width, width * uniforms.pixel.z, width > 0.0), 1.0);
@@ -103,7 +107,7 @@ fn segment(
     var pb = uniforms.matrix * vec4<f32>(b, 1.0);
     // Behind the camera: cut the segment where it crosses the near plane.
     if (pa.z < 0.0 && pb.z < 0.0) {
-        return Out(vec4<f32>(2.0, 2.0, 2.0, 1.0), ca, a, 0.0);
+        return Out(vec4<f32>(2.0, 2.0, 2.0, 1.0), ca, a, 0.0, 0.0, 0.0);
     }
     if (pa.z < 0.0) { pa = mix(pa, pb, pa.z / (pa.z - pb.z)); }
     if (pb.z < 0.0) { pb = mix(pb, pa, pb.z / (pb.z - pa.z)); }
@@ -127,16 +131,20 @@ fn segment(
         world = b;
         half = pixels(wb) * 0.5;
     }
-    let offset = across * side * half + along * (end * 2.0 - 1.0) * half;
+    // Half a pixel wider each side than the line, for its edge to fade out in.
+    let edge = half + 0.5;
+    let offset = across * side * edge + along * (end * 2.0 - 1.0) * half;
     at = vec4<f32>(at.xy + offset * px * at.w, at.zw);
     // Measured along the line from a fixed point on screen, not from the segment's start, so the
     // dots run on across the short segments of a curve instead of each starting with a dot.
-    return Out(at, colour, world, dot(at.xy / at.w / px, along));
+    return Out(at, colour, world, dot(at.xy / at.w / px, along), side * edge, half);
 }
 @fragment fn fragment_main(input: Out) -> @location(0) vec4<f32> {
     if (clipped(input.world)) { discard; }
     if (DOTTED && fract(input.along / DOT_PERIOD) >= 0.5) { discard; }
-    return vec4<f32>(input.colour, 1.0);
+    let cover = clamp(input.half + 0.5 - abs(input.across), 0.0, 1.0);
+    if (cover <= 0.0) { discard; }
+    return vec4<f32>(input.colour, cover);
 }
 "
     };
@@ -277,7 +285,7 @@ pub(crate) fn dotted(shader: &str) -> String {
     dotted
 }
 
-/// [`FACE_SHADER`] lighting every surface as white, whatever its own colour, for the Clay
+/// [`FACE_SHADER`] lighting every surface as white, whatever its own colour, for the Massing
 /// display mode (#551): white faces, gently shaded so their sides read apart.
 pub(crate) fn white_faces() -> String {
     let own = "input.colour * (0.25";

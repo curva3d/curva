@@ -11,6 +11,20 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 ## 22 November 2026
 
 **Done**
+- **Smooth lines, curves, edges of solids and outlines** (owner, 22 November 2026: "why do lines
+  always have a jagged look?"). Planned in `display-pipeline.md` §2.5 but never built, so every
+  slanting or curved line was a staircase of solid pixels. Each line now fades out over its
+  outer half pixel; outlines of round shapes, found from the depth picture, give the pixels
+  beside them a little ink, more in the notch of each step. Costs about 0.05 ms a frame (1.95 to
+  2.00 ms, building scene in a release build). Not yet smoothed: the grid's thin lines.
+- **Clay renamed Massing, and its ground plane replaced by a plain background** (owner, 22
+  November 2026). The grey ground was a 3D plane that disappeared when looking from below the
+  model, and no other mode has one: every display mode draws a simple two-colour gradient behind
+  the model, as the approved styles plan's Background layer says (`views-and-styles.md` §2.1).
+  Massing's now shades from light blue at the top to grey at the bottom; shadows fall on the
+  model itself. `SetDisplayMode` option `Massing` (typed `m`).
+- **Next (owner, 22 November 2026):** the speed steps 4 and 5 of `display-on-bevy.md`, before
+  customisable styles (step 6).
 - **Clay display mode, a look like SketchUp's** (#551, the owner's direction: white surfaces,
   black outlines thicker than inner lines, simple shadows, a light blue sky and a grey ground;
   plain, with no sketchy edges). Faces are white and lit by the sun, casting shadows on a grey

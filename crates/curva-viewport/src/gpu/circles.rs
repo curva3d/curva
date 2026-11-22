@@ -57,6 +57,7 @@ pub(crate) fn circle_pipeline(
             bias: LINE_DEPTH_BIAS,
             see_through: false,
             per_instance: true,
+            smooth: true,
             behind: ink == Ink::Hidden,
         },
     )
