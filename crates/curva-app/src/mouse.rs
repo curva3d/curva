@@ -512,7 +512,9 @@ impl Curva {
             size,
             shift: ui.input(|input| input.modifiers.shift),
             remove: ui.input(|input| input.modifiers.command),
-            parts: ui.input(|input| input.modifiers.shift && input.modifiers.command),
+            // Ctrl+Shift, or the selection filter's Sub-objects, picks parts of objects.
+            parts: ui.input(|input| input.modifiers.shift && input.modifiers.command)
+                || (self.pick_filter.sub_objects && !self.pick_filter.disable),
         };
         // Checked once, so the click that ends a command does not also change the selection.
         if self.takes_position() {
@@ -689,7 +691,11 @@ impl Curva {
             return;
         }
         let boxed = is_box_drag(from, to);
-        let grips = self.grips_hit(&p.camera, (p.local(from), p.local(to)), boxed, p.size);
+        let grips = if self.pick_filter.allows_control_points() {
+            self.grips_hit(&p.camera, (p.local(from), p.local(to)), boxed, p.size)
+        } else {
+            Vec::new()
+        };
         if !grips.is_empty() {
             // A control point was hit, so the points picked change and the objects do not.
             let picked = combined_selection(self.doc.grip_selection(), grips, p.shift, p.remove);
@@ -707,9 +713,12 @@ impl Curva {
             self.outlines
                 .in_box(&p.camera, p.local(from), p.local(to), p.size)
         } else {
-            let under = self
-                .outlines
-                .pick_all(&p.camera, p.local(from), p.size, PICK_REACH);
+            let under = self.filtered_picks(self.outlines.pick_all(
+                &p.camera,
+                p.local(from),
+                p.size,
+                PICK_REACH,
+            ));
             // Several objects under the pointer: ask which one, as Rhino does (#530).
             if under.len() > 1 {
                 self.open_selection_menu(from, under, (p.shift, p.remove));
@@ -717,7 +726,7 @@ impl Curva {
             }
             under
         };
-        let hits = self.doc.with_groups(&hits);
+        let hits = self.doc.with_groups(&self.filtered_picks(hits));
         let before = self.doc.selection();
         let chosen = combined_selection(before.clone(), hits, p.shift, p.remove);
         self.doc.select(&chosen);
