@@ -118,6 +118,7 @@ impl Pilot {
             ..default()
         });
         clip::install(&mut app);
+        one_thread(&mut app);
         app.finish();
         app.cleanup();
         Self {
@@ -207,15 +208,7 @@ impl Pilot {
                 world.entity_mut(view.camera).insert(look(&lens, size));
             }
             light_view(world, view, lit, &skies);
-            let background = drawing.background;
-            let colour = Color::srgb_u8(background.r(), background.g(), background.b());
-            if let Some(mut camera) = world.get_mut::<Camera>(view.camera)
-                && (!matches!(camera.clear_color, ClearColorConfig::Custom(c) if c == colour)
-                    || !camera.is_active)
-            {
-                camera.clear_color = ClearColorConfig::Custom(colour);
-                camera.is_active = true;
-            }
+            show_on(world, view.camera, drawing.background);
         }
         // Only this frame's views are drawn.
         for (slot, view) in &self.views {
@@ -227,30 +220,48 @@ impl Pilot {
             }
         }
         apps.update();
-        // A new picture reaches the card during the first update and is drawn in the next.
+        // A new view's picture reaches the card during the first update, and its faces' pipelines
+        // are ready from the third: on one thread (`one_thread`), Bevy readies them in an order
+        // that takes one update more than on many.
         if fresh {
             apps.update();
+            apps.update();
         }
-        let main = apps.main.world();
-        let render = apps
-            .sub_apps
-            .get(&RenderApp.intern())
-            .map(bevy::app::SubApp::world);
-        let images = render.and_then(|render| render.get_resource::<RenderAssets<GpuImage>>());
         views
             .iter()
-            .map(|(drawing, _)| {
-                let view = self.views.get(&drawing.slot)?;
-                let colour = images?.get(&view.target)?.texture.clone();
-                // The depth Bevy drew this view with, in its render world.
-                let depth = main
-                    .get::<RenderEntity>(view.camera)
-                    .and_then(|entity| render?.get::<ViewDepthStencilTexture>(entity.id()))
-                    .map(|depth| (**depth.texture()).clone());
-                Some(((*colour).clone(), depth))
-            })
+            .map(|(drawing, _)| picture_of(&apps, self.views.get(&drawing.slot)?))
             .collect()
     }
+}
+
+/// Has `camera` draw this frame, on `background`.
+fn show_on(world: &mut World, camera: Entity, background: epaint::Color32) {
+    let colour = Color::srgb_u8(background.r(), background.g(), background.b());
+    if let Some(mut camera) = world.get_mut::<Camera>(camera)
+        && (!matches!(camera.clear_color, ClearColorConfig::Custom(c) if c == colour)
+            || !camera.is_active)
+    {
+        camera.clear_color = ClearColorConfig::Custom(colour);
+        camera.is_active = true;
+    }
+}
+
+/// The picture Bevy drew of `view`, and the depth it drew it with, from its render world; `None`
+/// while it has not made it yet.
+fn picture_of(apps: &SubApps, view: &PilotView) -> Option<(wgpu::Texture, Option<wgpu::Texture>)> {
+    let render = apps
+        .sub_apps
+        .get(&RenderApp.intern())
+        .map(bevy::app::SubApp::world);
+    let images = render.and_then(|render| render.get_resource::<RenderAssets<GpuImage>>());
+    let colour = images?.get(&view.target)?.texture.clone();
+    let depth = apps
+        .main
+        .world()
+        .get::<RenderEntity>(view.camera)
+        .and_then(|entity| render?.get::<ViewDepthStencilTexture>(entity.id()))
+        .map(|depth| (**depth.texture()).clone());
+    Some(((*colour).clone(), depth))
 }
 
 /// A view Bevy drew this frame: its picture, and its depth (four samples per pixel, reversed:
@@ -288,9 +299,35 @@ fn make_camera(
             Tonemapping::None,
             DebandDither::Disabled,
             layer,
+            // Curva lights its views with sun-like lights only, which reach everywhere: sorting
+            // lights into Bevy's thousands of regions of the view found nothing (0.04 ms a frame).
+            bevy::light::cluster::ClusterConfig::Single,
         ))
         .id();
     (camera, target)
+}
+
+/// Runs Bevy's schedules on this thread alone, each system after the other. Handing systems out
+/// to other threads cost more than it saved: about 0.25 ms of the 3 ms a frame on an empty scene,
+/// 0.2 ms of 4 ms on *Medium* (22 November 2026, `docs/performance.md`). Systems that split their
+/// own work across threads still do.
+fn one_thread(app: &mut App) {
+    use bevy::ecs::schedule::{ScheduleLabel, SingleThreadedExecutor};
+    for label in [
+        First.intern(),
+        PreUpdate.intern(),
+        Update.intern(),
+        PostUpdate.intern(),
+        Last.intern(),
+    ] {
+        app.edit_schedule(label, |schedule| {
+            schedule.set_executor(SingleThreadedExecutor::new());
+        });
+    }
+    app.sub_app_mut(RenderApp)
+        .edit_schedule(bevy::render::Render, |schedule| {
+            schedule.set_executor(SingleThreadedExecutor::new());
+        });
 }
 
 /// Curva's camera as Bevy's: the same eye, direction, lens and depth range.
@@ -643,6 +680,48 @@ mod tests {
         let pixels = crate::gpu::read_texture(device, queue, &texture, SIZE);
         let at = ((SIZE[1] / 2 * SIZE[0] + SIZE[0] / 2) * 4) as usize;
         pixels[at..at + 4].try_into().unwrap()
+    }
+
+    /// In a view already drawn, new faces, a new shape and a new look show on the very next
+    /// picture: the window draws only when something changes, so a change Bevy readied an update
+    /// late would not show until the next one.
+    #[test]
+    fn a_change_shows_on_the_next_picture() {
+        let _turn = one_at_a_time();
+        let Some((mut pilot, device, queue)) = pilot() else {
+            return;
+        };
+        let background = [200, 120, 40, 255];
+        let mut view = drawing(StandardView::Top, Vec::new());
+        for _ in 0..3 {
+            middle(&mut pilot, &device, &queue, &view);
+        }
+        view.faces = Arc::new(square([0.0, 0.0, 1.0], [0.2, 0.6, 0.3]));
+        let shown = middle(&mut pilot, &device, &queue, &view);
+        assert_ne!(shown, background, "new faces show at once");
+        view.faces = Arc::default();
+        middle(&mut pilot, &device, &queue, &view);
+        let slab = curva_kernel::Body::cuboid([-5.0e4, -5.0e4, -1.0], [1.0e5, 1.0e5, 2.0]).unwrap();
+        view.shapes = Arc::new(vec![crate::PlacedShape {
+            object: 0,
+            colour: [0.6; 3],
+            mesh: slab.shared_mesh().unwrap(),
+            placement: slab.placement(),
+            colours: None,
+        }]);
+        let shown = middle(&mut pilot, &device, &queue, &view);
+        assert_ne!(shown, background, "a new shape shows at once");
+        // Massing lights by the sun with shadows; Ghosted draws see-through.
+        for massing in [true, false] {
+            view.massing = massing;
+            view.ghosted = !massing;
+            let first = middle(&mut pilot, &device, &queue, &view);
+            for _ in 0..3 {
+                middle(&mut pilot, &device, &queue, &view);
+            }
+            let settled = middle(&mut pilot, &device, &queue, &view);
+            assert_eq!(first, settled, "a new look shows at once");
+        }
     }
 
     /// Copies of one solid are drawn from one Bevy mesh, each at its placement (#153): the copy
