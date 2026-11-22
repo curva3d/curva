@@ -171,7 +171,7 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
   as it looks. Each object's points are also held once instead of twice. Peak memory in use went
   from 2.1–2.4 GB to 1.3–1.5 GB, peak reserved from 3.8 to 2.8 GB; frames are no slower
   (`docs/performance.md`). All existing picking and snapping tests pass unchanged.
-- **The perspective view uses Rhino's standard lens** (owner, testing 0.4.3: the 3D view's camera
+- **The perspective view uses Rhino's standard lens** (owner, testing 0.1.3: the 3D view's camera
   looked different from Rhino's). Its lens was a 40° field of view, wider than Rhino's 50 mm on
   35 mm film (about 27° from top to bottom), so models looked more stretched toward the edges. Now
   50 mm, in Curva's lines and Bevy's surfaces alike; the starting view stands farther back (228
