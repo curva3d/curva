@@ -208,15 +208,7 @@ impl Pilot {
                 world.entity_mut(view.camera).insert(look(&lens, size));
             }
             light_view(world, view, lit, &skies);
-            let background = drawing.background;
-            let colour = Color::srgb_u8(background.r(), background.g(), background.b());
-            if let Some(mut camera) = world.get_mut::<Camera>(view.camera)
-                && (!matches!(camera.clear_color, ClearColorConfig::Custom(c) if c == colour)
-                    || !camera.is_active)
-            {
-                camera.clear_color = ClearColorConfig::Custom(colour);
-                camera.is_active = true;
-            }
+            show_on(world, view.camera, drawing.background);
         }
         // Only this frame's views are drawn.
         for (slot, view) in &self.views {
@@ -235,26 +227,41 @@ impl Pilot {
             apps.update();
             apps.update();
         }
-        let main = apps.main.world();
-        let render = apps
-            .sub_apps
-            .get(&RenderApp.intern())
-            .map(bevy::app::SubApp::world);
-        let images = render.and_then(|render| render.get_resource::<RenderAssets<GpuImage>>());
         views
             .iter()
-            .map(|(drawing, _)| {
-                let view = self.views.get(&drawing.slot)?;
-                let colour = images?.get(&view.target)?.texture.clone();
-                // The depth Bevy drew this view with, in its render world.
-                let depth = main
-                    .get::<RenderEntity>(view.camera)
-                    .and_then(|entity| render?.get::<ViewDepthStencilTexture>(entity.id()))
-                    .map(|depth| (**depth.texture()).clone());
-                Some(((*colour).clone(), depth))
-            })
+            .map(|(drawing, _)| picture_of(&apps, self.views.get(&drawing.slot)?))
             .collect()
     }
+}
+
+/// Has `camera` draw this frame, on `background`.
+fn show_on(world: &mut World, camera: Entity, background: epaint::Color32) {
+    let colour = Color::srgb_u8(background.r(), background.g(), background.b());
+    if let Some(mut camera) = world.get_mut::<Camera>(camera)
+        && (!matches!(camera.clear_color, ClearColorConfig::Custom(c) if c == colour)
+            || !camera.is_active)
+    {
+        camera.clear_color = ClearColorConfig::Custom(colour);
+        camera.is_active = true;
+    }
+}
+
+/// The picture Bevy drew of `view`, and the depth it drew it with, from its render world; `None`
+/// while it has not made it yet.
+fn picture_of(apps: &SubApps, view: &PilotView) -> Option<(wgpu::Texture, Option<wgpu::Texture>)> {
+    let render = apps
+        .sub_apps
+        .get(&RenderApp.intern())
+        .map(bevy::app::SubApp::world);
+    let images = render.and_then(|render| render.get_resource::<RenderAssets<GpuImage>>());
+    let colour = images?.get(&view.target)?.texture.clone();
+    let depth = apps
+        .main
+        .world()
+        .get::<RenderEntity>(view.camera)
+        .and_then(|entity| render?.get::<ViewDepthStencilTexture>(entity.id()))
+        .map(|depth| (**depth.texture()).clone());
+    Some(((*colour).clone(), depth))
 }
 
 /// A view Bevy drew this frame: its picture, and its depth (four samples per pixel, reversed:
