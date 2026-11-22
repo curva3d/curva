@@ -220,20 +220,35 @@ impl Context<'_> {
         {
             return value;
         }
-        match self.options.iter().find(|o| o.name == name).map(|o| o.kind) {
-            Some(OptionKind::Number(default)) => self
-                .doc
-                .remembered(&key(self.command, name))
-                .unwrap_or(default),
-            Some(OptionKind::Whole { default, .. }) => self
-                .doc
-                .remembered(&key(self.command, name))
-                .unwrap_or(f64::from(default)),
-            Some(OptionKind::Distance { default, .. }) => self
-                .doc
-                .remembered(&key(self.command, name))
-                .unwrap_or(default),
-            _ => 0.0,
+        let Some(option) = self.options.iter().find(|o| o.name == name) else {
+            return 0.0;
+        };
+        let default = match option.kind {
+            OptionKind::Number(default) | OptionKind::Distance { default, .. } => default,
+            OptionKind::Whole { default, .. } => f64::from(default),
+            _ => return 0.0,
+        };
+        // Remembered for each value of another option, each with its own start, if it says so.
+        let starting = option.per.map_or(default, |per| {
+            let by = self.name(per.by);
+            per.starting
+                .iter()
+                .find(|(value, _)| value.eq_ignore_ascii_case(&by))
+                .map_or(default, |(_, start)| *start)
+        });
+        self.doc
+            .remembered(&self.memory_key(option))
+            .unwrap_or(starting)
+    }
+
+    /// The key a number option's value is remembered under: the command's and the option's
+    /// names, and the other option's value when it is remembered for each of them.
+    pub(super) fn memory_key(&self, option: &OptionDef) -> String {
+        match option.per {
+            Some(per) => {
+                format!("{}.{}", key(self.command, option.name), self.name(per.by)).to_lowercase()
+            }
+            None => key(self.command, option.name),
         }
     }
 

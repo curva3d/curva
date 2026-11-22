@@ -162,7 +162,7 @@ impl Pilot {
         let skies = self
             .skies
             .get_or_insert_with(|| scene::skies(&mut world.resource_mut::<Assets<Image>>()));
-        let sky = skies[usize::from(self.look.lighting == Lighting::Sunlit)].clone();
+        let skies = skies.clone();
         let mut fresh = false;
         for (drawing, size) in views {
             let size = size.map(|side| side.max(1));
@@ -191,23 +191,22 @@ impl Pilot {
                 view.placed = None;
                 view.lit = None;
             }
-            view.scene
-                .update(world, &mut self.meshes, drawing, self.look);
+            // The Clay display mode lights its view by the sun, with shadows (#551).
+            let lit = if drawing.sketch {
+                Look {
+                    lighting: Lighting::Sunlit,
+                    ..self.look
+                }
+            } else {
+                self.look
+            };
+            view.scene.update(world, &mut self.meshes, drawing, lit);
             let lens = drawing.camera.lens();
             if view.placed != Some((lens, size)) {
                 view.placed = Some((lens, size));
                 world.entity_mut(view.camera).insert(look(&lens, size));
             }
-            if view.lit != Some(self.look) {
-                view.lit = Some(self.look);
-                world.entity_mut(view.camera).insert((
-                    AmbientLight {
-                        brightness: scene::ambient(self.look),
-                        ..default()
-                    },
-                    sky.clone(),
-                ));
-            }
+            light_view(world, view, lit, &skies);
             let background = drawing.background;
             let colour = Color::srgb_u8(background.r(), background.g(), background.b());
             if let Some(mut camera) = world.get_mut::<Camera>(view.camera)
@@ -445,6 +444,8 @@ fn picture_drawing(
         ghosted: picture.ghosted,
         hidden: picture.hidden,
         hidden_lines: picture.hidden_lines,
+        sketch: picture.sketch,
+        ground: picture.ground,
         area: epaint::Rect::from_min_size(
             epaint::Pos2::ZERO,
             epaint::vec2(size[0] as f32, size[1] as f32),
@@ -454,6 +455,28 @@ fn picture_drawing(
         background_low: background,
         camera,
     }
+}
+
+/// Lights `view` as `look` says, with its sky from `skies` (Studio's, then Sunlit's), when that
+/// changed since it was last lit.
+fn light_view(
+    world: &mut World,
+    view: &mut PilotView,
+    look: Look,
+    skies: &[EnvironmentMapLight; 2],
+) {
+    if view.lit == Some(look) {
+        return;
+    }
+    view.lit = Some(look);
+    let sky = skies[usize::from(look.lighting == Lighting::Sunlit)].clone();
+    world.entity_mut(view.camera).insert((
+        AmbientLight {
+            brightness: scene::ambient(look),
+            ..default()
+        },
+        sky,
+    ));
 }
 
 /// Draws `picture` as a view Bevy draws, through the window's own path: Bevy's surfaces in
@@ -597,6 +620,8 @@ mod tests {
             ghosted: false,
             hidden: false,
             hidden_lines: false,
+            sketch: false,
+            ground: 0.0,
             area: epaint::Rect::from_min_size(
                 epaint::Pos2::ZERO,
                 epaint::vec2(SIZE[0] as f32, SIZE[1] as f32),

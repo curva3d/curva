@@ -924,6 +924,7 @@ mod tests {
             DisplayMode::Ghosted,
             DisplayMode::Hidden,
             DisplayMode::Technical,
+            DisplayMode::Clay,
         ] {
             let mut doc = Document::default();
             doc.add(Curve::line([0.0; 3], [40.0, 0.0, 0.0]).unwrap());

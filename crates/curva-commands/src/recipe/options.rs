@@ -48,15 +48,40 @@ pub struct OptionDef {
     pub name: &'static str,
     /// What it holds.
     pub kind: OptionKind,
+    /// For a number remembered for each value of a name option, as Rhino's MeshSphere keeps
+    /// one `Subdivisions` for each style: that option, and the starting value for each of its
+    /// values (the kind's own default for any other).
+    pub per: Option<Per>,
+}
+
+/// A number option remembered for each value of a name option (see [`OptionDef::per`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Per {
+    /// The name option whose value it is remembered for.
+    pub by: &'static str,
+    /// The starting value for each of that option's values.
+    pub starting: &'static [(&'static str, f64)],
 }
 
 impl OptionDef {
+    /// The same number option, remembered for each value of the name option `by`, starting at
+    /// the value `starting` gives for it, as Rhino's MeshSphere keeps `Subdivisions` per style
+    /// (Quad 2, Triangle 1).
+    #[must_use]
+    pub const fn per(self, by: &'static str, starting: &'static [(&'static str, f64)]) -> Self {
+        Self {
+            per: Some(Per { by, starting }),
+            ..self
+        }
+    }
+
     /// A yes-or-no option.
     #[must_use]
     pub const fn toggle(name: &'static str, default: bool) -> Self {
         Self {
             name,
             kind: OptionKind::Toggle(default),
+            per: None,
         }
     }
 
@@ -66,6 +91,7 @@ impl OptionDef {
         Self {
             name,
             kind: OptionKind::Number(default),
+            per: None,
         }
     }
 
@@ -75,6 +101,7 @@ impl OptionDef {
         Self {
             name,
             kind: OptionKind::Distance { default, zero },
+            per: None,
         }
     }
 
@@ -107,6 +134,7 @@ impl OptionDef {
         Self {
             name,
             kind: OptionKind::Whole { default, low, high },
+            per: None,
         }
     }
 
@@ -116,6 +144,7 @@ impl OptionDef {
         Self {
             name,
             kind: OptionKind::Mode,
+            per: None,
         }
     }
 
@@ -125,6 +154,7 @@ impl OptionDef {
         Self {
             name,
             kind: OptionKind::Finish,
+            per: None,
         }
     }
 
@@ -134,6 +164,7 @@ impl OptionDef {
         Self {
             name,
             kind: OptionKind::Name(default),
+            per: None,
         }
     }
 
@@ -143,6 +174,7 @@ impl OptionDef {
         Self {
             name: "Undo",
             kind: OptionKind::Undo,
+            per: None,
         }
     }
 }

@@ -413,6 +413,9 @@ pub enum DisplayMode {
     Hidden,
     /// As Hidden, with the lines faces hide drawn dotted, as Rhino 8's Technical mode (#164).
     Technical,
+    /// Clay, a look like SketchUp's (#551): white faces lit by the sun, casting shadows on a grey
+    /// ground under a light blue sky, thin black edges and thick black outlines.
+    Clay,
 }
 
 /// What a preview can follow while a command waits for its next answer.

@@ -55,20 +55,25 @@ fn jumps(before: f32, a: f32, b: f32) -> bool {
     // Written out with no loops, and ending in a return: DirectX 12's older shader compiler
     // (FXC) refuses to unroll a loop that leaves early, and does not count `discard` as leaving
     // the function. Curva must run there (Windows CI caught both).
-    let outline = near_step(p, vec2<i32>(1, 0)) || near_step(p, vec2<i32>(-1, 0))
-        || near_step(p, vec2<i32>(0, 1)) || near_step(p, vec2<i32>(0, -1));
+    // An alpha over one asks for thick outlines, three pixels wide: the Clay display mode's
+    // profiles (#551).
+    let thick = look.colour.a > 1.5;
+    let outline = near_step(p, vec2<i32>(1, 0), thick) || near_step(p, vec2<i32>(-1, 0), thick)
+        || near_step(p, vec2<i32>(0, 1), thick) || near_step(p, vec2<i32>(0, -1), thick);
     if (!outline) { discard; }
-    return look.colour;
+    return vec4<f32>(look.colour.rgb, 1.0);
 }
 
-// Whether a step back lies within two pixels of `p` in direction `step`: between `p` and the next
+// Whether a step back lies within two pixels of `p` in direction `step` (three when `thick`):
+// between `p` and the next
 // pixel, or between the next and the one after.
-fn near_step(p: vec2<i32>, step: vec2<i32>) -> bool {
+fn near_step(p: vec2<i32>, step: vec2<i32>, thick: bool) -> bool {
     let before = depth_at(p - step);
     let here = depth_at(p);
     let next = depth_at(p + step);
     let after = depth_at(p + step * 2);
-    return jumps(before, here, next) || jumps(here, next, after);
+    let further = depth_at(p + step * 3);
+    return jumps(before, here, next) || jumps(here, next, after) || (thick && jumps(next, after, further));
 }";
 
 /// Draws outlines from a view's depth picture onto its colour picture.
@@ -153,7 +158,8 @@ impl Outliner {
         }
     }
 
-    /// Draws the outlines found in `depth` onto `colour`, in `ink`, within the view's area
+    /// Draws the outlines found in `depth` onto `colour`, in `ink`, three pixels wide if `thick`
+    /// (else two), within the view's area
     /// `[x, y, width, height]` in pixels.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn draw(
@@ -164,11 +170,11 @@ impl Outliner {
         colour: &wgpu::TextureView,
         depth: &wgpu::TextureView,
         area: [f32; 4],
-        ink: [f32; 3],
+        (ink, thick): ([f32; 3], bool),
     ) {
         let bytes: Vec<u8> = ink
             .iter()
-            .chain(&[1.0])
+            .chain(&[if thick { 2.0 } else { 1.0 }])
             .flat_map(|value| value.to_le_bytes())
             .collect();
         queue.write_buffer(&self.look, 0, &bytes);

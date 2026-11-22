@@ -276,3 +276,11 @@ pub(crate) fn dotted(shader: &str) -> String {
     debug_assert_ne!(dotted, shader, "the shader has no dotted switch");
     dotted
 }
+
+/// [`FACE_SHADER`] lighting every surface as white, whatever its own colour, for the Clay
+/// display mode (#551): white faces, gently shaded so their sides read apart.
+pub(crate) fn white_faces() -> String {
+    let own = "input.colour * (0.25";
+    debug_assert!(FACE_SHADER.contains(own), "the face shader changed");
+    FACE_SHADER.replace(own, "vec3<f32>(1.0, 1.0, 1.0) * (0.25")
+}

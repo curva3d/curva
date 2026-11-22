@@ -363,6 +363,7 @@ ui.display.shaded = Shaded
 ui.display.ghosted = Ghosted
 ui.display.hidden = Hidden
 ui.display.technical = Technical
+ui.display.clay = Clay
 ui.analysis.set-aside = Zebra and Draft angle are set aside while the display moves to Bevy; they will come back.
 prompt.extrudecrv.objects = Select curves to extrude, then press Enter
 prompt.extrudecrv.distance = Extrusion distance <{0}>
