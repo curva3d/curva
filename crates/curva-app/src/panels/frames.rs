@@ -162,6 +162,24 @@ fn closes_without_asking(pieces: &[layout::Piece]) -> bool {
 }
 
 impl Curva {
+    /// Makes the command tabs, docked at the top or bottom on their own, exactly as tall as what
+    /// they hold, as measured when last drawn (owner, 22 November 2026: no room to spare below
+    /// the buttons). Not while a panel is being dragged or resized.
+    fn fit_command_tabs(&mut self) {
+        let fit = self.bar.tabs_fit;
+        if fit <= 0.0 || self.frames.panel_drag.is_some() {
+            return;
+        }
+        if let Some(place) = self.layout.places.iter_mut().find(|p| {
+            p.is_command_tabs_alone()
+                && !p.hidden
+                && matches!(p.dock, layout::Dock::Top | layout::Dock::Bottom)
+        }) && (place.size[1] - fit).abs() > 0.5
+        {
+            place.size[1] = fit;
+        }
+    }
+
     /// Lays out and draws the panels, sliding hidden ones to their edges (all of them in focus
     /// mode). Returns the area left for the viewports, and how far they may reach to be seen
     /// through glass panels.
@@ -177,6 +195,7 @@ impl Curva {
         self.window_rect = window;
         let full_window = window;
         let window = self.top_bar_slot(ctx, window);
+        self.fit_command_tabs();
         let (placed, free) = self.layout.arrange(window);
         // While a panel is dragged over another, that one lights up to show they would merge.
         let merge_into = self.frames.panel_drag.and_then(|drag| {

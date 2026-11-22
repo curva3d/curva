@@ -20,6 +20,9 @@ pub(crate) struct TopBar {
     pub(crate) group_changed_at: f64,
     /// How wide the groups' row is, so the title row's grip starts after it.
     pub(crate) groups_width: f32,
+    /// How tall the command tabs' contents are with the panel's margins: the panel is made this
+    /// tall when it holds them alone, so no room is wasted below the buttons.
+    pub(crate) tabs_fit: f32,
 }
 
 /// How long the glow and the note show after the path is copied, in seconds.
@@ -76,6 +79,61 @@ pub(crate) const TAB_GROUPS: [(&str, std::ops::Range<usize>); 4] = [
     ("ui.tab_group.modify", 5..9),
     ("ui.tab_group.publisher", 9..11),
 ];
+
+/// The buttons of one tab in a row that scrolls sideways when the bar is narrower than they are:
+/// a thin bar under them in the panel's own quiet colour (not over them), and the row fading out
+/// at an edge where more buttons wait (owner, 22 November 2026). Returns the command clicked.
+fn command_buttons_row(ui: &mut egui::Ui, names: &[&'static str]) -> Option<&'static str> {
+    let mut chosen = None;
+    let quiet = theme::current().quiet;
+    let style = ui.style_mut();
+    style.spacing.scroll = egui::style::ScrollStyle {
+        bar_width: 3.0,
+        handle_min_length: 24.0,
+        bar_inner_margin: 3.0,
+        bar_outer_margin: 0.0,
+        floating: false,
+        ..egui::style::ScrollStyle::solid()
+    };
+    for widget in [
+        &mut style.visuals.widgets.inactive,
+        &mut style.visuals.widgets.hovered,
+        &mut style.visuals.widgets.active,
+    ] {
+        widget.bg_fill = quiet.gamma_multiply(0.6);
+    }
+    style.visuals.extreme_bg_color = egui::Color32::TRANSPARENT;
+    let out = egui::ScrollArea::horizontal().show(ui, |ui| {
+        ui.horizontal(|ui| {
+            for name in names {
+                if command_button(ui, name).clicked() {
+                    chosen = Some(*name);
+                }
+            }
+        });
+    });
+    // Fades at the edges where buttons are scrolled out of sight.
+    let (seen, offset, full) = (out.inner_rect, out.state.clamped_offset().x, out.content_size.x);
+    let panel = theme::current().panel;
+    let fade = |ui: &egui::Ui, x0: f32, x1: f32| {
+        let mut mesh = egui::Mesh::default();
+        let (top, bottom) = (seen.min.y, seen.max.y);
+        for (x, colour) in [(x0, panel), (x1, egui::Color32::TRANSPARENT)] {
+            mesh.colored_vertex(egui::pos2(x, top), colour);
+            mesh.colored_vertex(egui::pos2(x, bottom), colour);
+        }
+        mesh.add_triangle(0, 1, 2);
+        mesh.add_triangle(1, 2, 3);
+        ui.painter().add(egui::Shape::mesh(mesh));
+    };
+    if offset > 1.0 {
+        fade(ui, seen.min.x, seen.min.x + 28.0);
+    }
+    if offset + seen.width() < full - 1.0 {
+        fade(ui, seen.max.x, seen.max.x - 28.0);
+    }
+    chosen
+}
 
 /// How long the tabs and buttons take to fade in when the group changes, in seconds.
 const GROUP_FADE: f64 = 0.18;
@@ -158,20 +216,13 @@ impl Curva {
                     }
                 }
             });
-            let mut chosen = None;
-            egui::ScrollArea::horizontal().show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    for name in COMMAND_TABS[tab].1 {
-                        if command_button(ui, name).clicked() {
-                            chosen = Some(*name);
-                        }
-                    }
-                });
-            });
+            let chosen = command_buttons_row(ui, COMMAND_TABS[tab].1);
             if let Some(name) = chosen {
                 self.run_from_button(name);
             }
         });
+        // The panel is made exactly this tall, so nothing is left empty below the buttons.
+        self.bar.tabs_fit = ui.min_rect().height() + 2.0 * PANEL_MARGIN;
     }
 
     /// The groups' row, with the chosen one marked by a sliding underline; a click on another
@@ -188,7 +239,13 @@ impl Curva {
                 } else {
                     text.weak()
                 };
-                let response = ui.add(egui::Label::new(text).sense(egui::Sense::click()));
+                let response = ui
+                    .add(
+                        egui::Label::new(text)
+                            .selectable(false)
+                            .sense(egui::Sense::click()),
+                    )
+                    .on_hover_cursor(egui::CursorIcon::PointingHand);
                 if index == group {
                     chosen_rect = Some(response.rect);
                 }
