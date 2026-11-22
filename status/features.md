@@ -61,6 +61,9 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
   European Portuguese. New logo marks, favicons and social image; the docs header uses the new
   mark too (the docs keep their old colours for now). Mockups:
   https://claude.ai/artifact/Y3ZzbZDcP7QdiVn1LEH9Xd. The owner will list fixes next.
+- **Website fixes:** the home stack now lifts the plates above the hovered one too, like the
+  specialization pages. Firefox draws no blur on 3D-tilted elements, so its plates were clear glass
+  showing the plates behind; it now gets a near-opaque frosted white instead.
 
 ## Features stream — 21 November 2026
 
