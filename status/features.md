@@ -16,6 +16,17 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## Features stream — 22 November 2026 (website, third pass)
+
+- **Plate drawings on the specialization pages** (`POINT_MOTIFS` in `website/src/data/motifs.ts`), one per
+  strong point, approved by the owner on the canvas. New plates: Urban "Street sections", Analysis
+  "Views" and "Carbon"; Urban's "Visual scripting" plate removed. New headlines and paragraphs for
+  most plates; every headline and sentence ends with a full stop.
+- **Panel** on the right lines up with the top of the page title and keeps one height.
+- **Visual scripting shelved** (owner): `docs/architecture.md` (shared core, Urban row, M5) and the
+  Rhino migration page updated. Urban is now parametric massing and streets; Analysis adds views and
+  carbon.
+
 ## Features stream — 22 November 2026 (website, second pass)
 
 - **Website now scrolls.** Each page opens with its stack, then has a section per plate below it
