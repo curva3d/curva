@@ -356,10 +356,7 @@ impl Curva {
         if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
             // With nothing running and nothing typed, Escape clears the selection.
             if !self.processor.is_running() && self.typed.is_empty() {
-                self.doc.select(&[]);
-                self.doc.select_grips(&[]);
-                self.doc.select_edges(&[]);
-                self.doc.select_faces(&[]);
+                self.select_nothing();
             }
             self.typed.clear();
             self.highlight = 0;
