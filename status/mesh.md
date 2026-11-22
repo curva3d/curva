@@ -13,7 +13,8 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 **InsertEdge Type=Ring, as Rhino 8 measured:** the corner edge of the measured box and 0.5 cut the ring of 8 faces round
 it at z = 0.5 (32 quads on 34 points), with only OffsetMode offered; Curva now does the same with its ring cut. Mode=Range
-is still to come.
+takes only the edges between two picked ones (the measured box's two middle front edges: 26 faces on 29 points, as
+Rhino). A typed amount goes on one fixed side; Rhino follows the mouse, which recipes cannot see yet.
 
 **InsertEdge, as Rhino 8 measured (Type=Loop, Mode=Full):** a picked edge runs on through points where four edges meet;
 new edges go beside it at the amount along each crossing edge (Absolute or Proportional, on one side or BothSides), the

@@ -4,8 +4,8 @@
 //! ( BothSides=No  OffsetMode=Absolute )"; a click picks one edge, which runs on through points
 //! where four edges meet; the new run goes beside it at the amount along each crossing edge. A
 //! clicked point picks the side nearer to it and the distance from the edge; a typed amount goes
-//! on the side Rhino put it in the measured case. Rhino's `Type=Ring` and `Mode=Range` are not
-//! here yet.
+//! on one fixed side (Rhino follows the mouse, which recipes do not see yet). `Type=Ring` cuts the
+//! ring of faces across the edge; `Mode=Range` takes the edges between two picked ones.
 
 use super::parts::{by_object, edges};
 use crate::Message;
@@ -18,6 +18,8 @@ const OFFSET_MODE: &str = "OffsetMode";
 const MODES: [&str; 2] = ["Absolute", "Proportional"];
 const TYPE: &str = "Type";
 const TYPES: [&str; 2] = ["Loop", "Ring"];
+const MODE: &str = "Mode";
+const RANGES: [&str; 2] = ["Full", "Range"];
 
 /// The side a typed amount goes on: the one that puts the run on the front of Rhino's box, as
 /// Rhino did (see `curva_mesh::insert_edge`'s tests).
@@ -86,11 +88,13 @@ fn ring_share(subd: &SubD, [a, b]: [u32; 2], answer: &Value, proportional: bool)
     Some(share.clamp(0.0, 1.0))
 }
 
-/// One picked edge's new edges, as `Type` and the options say.
+/// One picked edge's new edges, as `Type` and the options say; `range` is the run `Mode=Range`
+/// picked, else the edge's whole run is used.
 fn insert_one(
     cx: &Context<'_>,
     subd: &SubD,
     edge: [u32; 2],
+    range: Option<&[u32]>,
     answer: &Value,
 ) -> Result<Option<SubD>, Message> {
     let failed = |e: curva_mesh::MeshError| Message::with("error.geometry", vec![e.to_string()]);
@@ -124,7 +128,8 @@ fn insert_one(
     } else {
         InsertAmount::Absolute(size)
     };
-    subd.with_edges_inserted(edge, amount, side)
+    let run = range.map_or_else(|| subd.edge_run(edge), <[u32]>::to_vec);
+    subd.with_edges_inserted_on(&run, amount, side)
         .map(Some)
         .map_err(failed)
 }
@@ -134,6 +139,7 @@ impl Recipe for InsertEdge {
     // Rhino 8's options and their starting values, measured.
     const OPTIONS: &'static [OptionDef] = &[
         OptionDef::name(TYPE, "Loop"),
+        OptionDef::name(MODE, "Full"),
         OptionDef::toggle(BOTH_SIDES, false),
         OptionDef::name(OFFSET_MODE, "Absolute"),
     ];
@@ -142,12 +148,14 @@ impl Recipe for InsertEdge {
         match option {
             OFFSET_MODE => Some(MODES.map(str::to_owned).to_vec()),
             TYPE => Some(TYPES.map(str::to_owned).to_vec()),
+            MODE => Some(RANGES.map(str::to_owned).to_vec()),
             _ => None,
         }
     }
 
     fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
-        let mut steps = vec![StepDef::mesh_parts("prompt.insertedge.edges").offering(&[TYPE])];
+        let mut steps =
+            vec![StepDef::mesh_parts("prompt.insertedge.edges").offering(&[TYPE, MODE])];
         if !cx.values.is_empty() {
             // Rhino offers BothSides only for a loop.
             let offered: &'static [&'static str] = if cx.name(TYPE) == "Ring" {
@@ -176,9 +184,21 @@ impl Recipe for InsertEdge {
             else {
                 continue;
             };
-            for edge in edges(&parts) {
-                if let Some(changed) = insert_one(cx, &subd, edge, answer)? {
+            let picked = edges(&parts);
+            let ranged = cx.name(MODE) == "Range" && cx.name(TYPE) == "Loop";
+            if let ([first, .., last], true) = (&picked[..], ranged) {
+                // Mode=Range: the edges from the first picked to the last along their loop.
+                let range = subd
+                    .edge_range(*first, *last)
+                    .ok_or_else(|| Message::new("error.insertedge_range"))?;
+                if let Some(changed) = insert_one(cx, &subd, *first, Some(&range), answer)? {
                     subd = changed;
+                }
+            } else {
+                for edge in picked {
+                    if let Some(changed) = insert_one(cx, &subd, edge, None, answer)? {
+                        subd = changed;
+                    }
                 }
             }
             made.replace.push((id, Shape::SubD(subd)));
@@ -219,6 +239,53 @@ mod tests {
             (26, 29)
         );
         assert!(out.cage().vertices().contains(&[203.5, 0.0, 2.0]));
+    }
+
+    #[test]
+    fn a_range_inserts_beside_just_its_edges_as_rhino_did() {
+        // Rhino 8 with Mode=Range: the lower and upper middle edges of the measured box's front
+        // and 0.5 give a run beside just them at x = 202.5: 26 faces on 29 points. Rhino puts a
+        // typed amount on the side the mouse is on, which Curva does not know yet, so a typed
+        // 0.5 is checked for its counts and a click 0.5 to the right for Rhino's exact result.
+        let ranged = |amount: &str| {
+            let frame = Frame {
+                origin: [200.0, 0.0, 0.0],
+                ..Frame::world()
+            };
+            let mut doc = Document::default();
+            let subd = SubD::subd_box(&frame, [4.0; 3], [2, 2, 2]);
+            let at = |p: [f64; 3]| {
+                let k = subd.cage().vertices().iter().position(|&q| q == p).unwrap();
+                u32::try_from(k).unwrap()
+            };
+            let low = MeshPart::edge(at([202.0, 0.0, 0.0]), at([202.0, 0.0, 2.0]));
+            let high = MeshPart::edge(at([202.0, 0.0, 2.0]), at([202.0, 0.0, 4.0]));
+            let id = doc.add_shape(Shape::SubD(subd));
+            doc.select_mesh_parts(&[(id, low), (id, high)]);
+            let mut processor = crate::Processor::default();
+            for word in ["insertedge", "Mode", "Range", "", amount] {
+                processor.submit(&mut doc, word);
+            }
+            doc.state().objects[0].shape.subd().unwrap().clone()
+        };
+        for amount in ["0.5", "202.5,0,1"] {
+            let out = ranged(amount);
+            assert_eq!(
+                (out.cage().face_count(), out.cage().vertex_count()),
+                (26, 29),
+                "{amount}"
+            );
+            let new = &out.cage().vertices()[26..];
+            let x = new[0][0];
+            assert!(new.iter().all(|p| (p[0] - x).abs() < 1e-12), "{new:?}");
+            assert!(
+                (x - 202.0).abs() - 0.5 < 1e-12,
+                "half a metre to one side: {x}"
+            );
+            if amount.contains(',') {
+                assert!((x - 202.5).abs() < 1e-12, "the clicked side, as Rhino: {x}");
+            }
+        }
     }
 
     #[test]
