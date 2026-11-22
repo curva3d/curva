@@ -517,6 +517,37 @@ release build, RTX 3060, peak memory as Windows reports it, two runs each:
 About 1 GB less. Frames did not get slower: moving corners into place costs nothing that shows
 here. (The memory-limit work for the graphics card, spec step 13, is separate.)
 
+## Bevy's fixed cost per frame (23 November 2026, display-on-Bevy step 5)
+
+Where an empty scene's 3 ms of work a frame goes, timed inside Bevy's update (release build,
+RTX 3060, Vulkan, one view): Bevy's main step 0.29 ms, handing the scene to its drawing step 0.14
+ms, its drawing step 1.23 ms; the rest (about 1.4 ms) is Curva's own window, panels and lines.
+Inside the drawing step: preparing the frame's buffers and lights 0.42 ms, recording the passes
+0.13 ms, and handing the recorded frame to the graphics card's queue 0.36 ms, almost all of it
+the graphics driver's (Vulkan; DirectX 12 was much slower, 4.6 ms a frame in all).
+
+Two changes, measured with the old and new builds run in turn (median of five runs; three on
+*Large*), while other builds were running on the machine:
+
+- **Bevy's schedules run on one thread:** handing each system to another thread and waiting for
+  it cost more than the systems themselves. Systems that split their own work across threads
+  still do. A new view's first picture then needs one more update (three, not two), as Bevy
+  readies its pipelines in another order; changes to a view already drawn still show on the next
+  picture (a new test checks faces, a shape and a new look).
+- **One light cluster per view:** Curva lights with sun-like lights only, which reach everywhere,
+  so sorting lights into Bevy's thousands of regions of the view found nothing. Turning clusters
+  off altogether stops Bevy drawing the view, so one cluster it is.
+
+| Work per frame | Before | After |
+|---|---|---|
+| Empty scene | 3.38 ms | 2.82 ms |
+| *Medium* | 4.00 ms | 3.73 ms |
+| *Large* | 7.00 ms | 6.87 ms |
+
+*Large*'s frames stay at the screen's own rate (16.2 ms). What is left of Bevy's cost is mostly
+the graphics driver taking the frame and Bevy preparing buffers it sends each frame; trimming
+those would mean changing Bevy itself.
+
 ## Real project files (19 November 2026)
 
 The owner's own project files, kept on the owner's machine and not named here. `curva

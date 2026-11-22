@@ -8,6 +8,20 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## 23 November 2026
+
+**Done**
+- **Step 5, Bevy's fixed cost per frame: part done** (`docs/performance.md`, "Bevy's fixed cost
+  per frame"). Measured where an empty scene's 3 ms a frame goes: Bevy's drawing step 1.23 ms, of
+  which 0.36 ms is the graphics driver taking the frame; Curva's own window, panels and lines
+  about 1.4 ms. Bevy's schedules now run on one thread, and each view uses one light cluster:
+  empty scene 3.38 to 2.82 ms a frame, *Medium* 4.00 to 3.73 ms, *Large* 7.00 to 6.87 ms. The
+  earlier one-thread attempt broke agent pictures because a new view's first picture needs one
+  more update on one thread; it now gets it. A new test checks that changes to a view already
+  drawn (new faces, a new shape, a new look) still show on the very next picture.
+- **Next:** what is left of Bevy's cost is the driver and Bevy's per-frame buffers; Curva's own
+  1.4 ms (window, panels, lines) is the larger part now. Then step 6, customisable styles.
+
 ## 22 November 2026
 
 **Done**
