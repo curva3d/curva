@@ -667,6 +667,13 @@ fn the_clay_mode_draws_white_faces_and_black_lines() {
     };
     let middle = SIZE[1] as usize / 2;
     let face = at(32, middle + 6);
-    assert!(face[0] > 150 && face[0] == face[1] && face[1] == face[2], "face: {face:?}");
-    assert!(at(32, middle).iter().all(|&c| c < 40), "ink: {:?}", at(32, middle));
+    assert!(
+        face[0] > 150 && face[0] == face[1] && face[1] == face[2],
+        "face: {face:?}"
+    );
+    assert!(
+        at(32, middle).iter().all(|&c| c < 40),
+        "ink: {:?}",
+        at(32, middle)
+    );
 }
