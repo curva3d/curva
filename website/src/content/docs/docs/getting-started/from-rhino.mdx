@@ -21,7 +21,7 @@ Curva's Freeform modelling follows Rhino on purpose: the same command names, the
 
 ## Rhino files
 
-Curva reads and writes Rhino's `.3dm` format directly, with `Import` and `Export`.
+Curva reads and writes Rhino's `.3dm` format directly, with `Open`, `Import` and `Export`.
 
 - **Reads** files from Rhino 5 to Rhino 8. **Writes** Rhino 7 files, which Rhino 7 and 8 open.
 - **Comes across:** units and tolerance, layers (with colour, visibility, lock, print width and nesting), points, curves, NURBS surfaces, polysurfaces and solids, object names and colours, print widths, user text, groups, hidden and locked objects, and blocks.
@@ -29,6 +29,16 @@ Curva reads and writes Rhino's `.3dm` format directly, with `Import` and `Export
 - **Curva's live booleans** are written as plain solids, since Rhino has no equivalent.
 
 Curva's own format is `.curva`. Use it for your work, and `.3dm` to exchange with Rhino users.
+
+## Other files
+
+| Format | Open and import | Export |
+|---|---|---|
+| AutoCAD `.dwg` and `.dxf` | Yes | Yes |
+| SketchUp `.skp` | Yes, with Rhino 8's import options | |
+| STEP `.step` | | Surfaces, polysurfaces and solids |
+| Meshes: `.stl`, `.obj`, `.ply` | Yes | Yes, with the mesh settings panel |
+| PDF and SVG | | Layouts, as drawings |
 
 ## What's different
 
@@ -38,11 +48,15 @@ Curva's own format is `.curva`. Use it for your work, and `.3dm` to exchange wit
 
 ### Panels instead of toolbars
 
-Curva has no toolbars. Commands are in the **Commands** panel, as tabs of buttons, and everything else is a panel too: Layers, Properties, Display, the command bar. Panels float over the model, dock to edges and merge as tabs. See [The interface](/docs/getting-started/interface/).
+Curva has no toolbars. Commands are in the **Operations** panel, as tabs of buttons, and everything else is a panel too: Layers, Properties, Display, the command bar. Panels float over the model, dock to edges and merge as tabs. See [The interface](/docs/getting-started/interface/).
 
 ### Specializations
 
-The dial in the top bar switches the interface between kinds of work: Freeform today, with Architecture and others to come. Objects stay the same whichever one you're in, so a freeform roof and an architectural wall can live in the same file and react to each other.
+The top bar switches the interface between kinds of work: Freeform today, with Architecture and others to come. Objects stay the same whichever one you're in, so a freeform roof and an architectural wall can live in the same file and react to each other.
+
+### Meshes and SubD
+
+Meshes and SubD sit beside NURBS, on their own tabs. Mesh primitives, mesh booleans, repair, `ReduceMesh` and `QuadRemesh`; SubD primitives with creases, editing the cage with the surface following, `ToSubD` and `ToNURBS`. They follow Rhino 8's commands and defaults.
 
 ### Display modes
 
@@ -60,7 +74,7 @@ Curva is an early preview. These are planned, not missing by accident.
 
 - **Some options.** Many commands have only some of Rhino's options so far. The [Rhino parity list](https://github.com/curva3d/curva/blob/main/docs/commands/rhino-parity.md) shows every Rhino modelling command with its status in Curva.
 - **Commands the geometry engine can't do yet.** A few Rhino commands wait on Curva's geometry engine. They're marked *blocked* in the parity list.
-- **Layouts, dimensions and drawings.** Coming in 0.1.3: layouts, detail views, Make2D, dimensions, hatches, and PDF, DXF and DWG export.
-- **Meshes and SubD** come after the Architecture specialization.
+- **The Layouts and Views panels** and a reorganised print panel are still to come. Layouts, detail views, Make2D, dimensions, hatches and printing are all there.
+- **Shortcut and mouse profiles** are planned, so you can bring your own.
 - **Rendering** will go through Blender's Cycles.
 - **Grasshopper-style visual scripting** is shelved for now. It will come much later.

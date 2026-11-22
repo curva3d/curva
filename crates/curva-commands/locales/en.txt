@@ -1240,7 +1240,6 @@ prompt.stitch.first = Select first vertex or set of edges to stitch together
 prompt.stitch.second = Select second vertex or set of edges to stitch together, then press Enter
 prompt.stitch.location = Stitch location <{0}>
 error.stitch_sets = Pick one vertex, or one run of edges, in each set, with as many points in both.
-error.stitch_one_subd = Pick both sets on the same SubD.
 prompt.bridge.first = Select first set of edges to bridge, then press Enter
 prompt.bridge.second = Select second set of edges to bridge, then press Enter
 error.bridge_sets = Pick one run of open border edges on a SubD in each set.
@@ -1249,6 +1248,9 @@ prompt.insertedge.edges = Select edge from loop, then press Enter
 prompt.insertedge.position = Edge positioning. Select point or give amount
 error.insertedge_none = Select edges of SubDs, beside quads.
 error.insertedge_range = With Mode=Range, pick two edges on one loop.
+prompt.mergefaces.faces = Select SubD faces to merge, then press Enter
+error.mergefaces_none = Select SubD faces that touch along edges.
+done.mergefaces = Changed {0} objects.
 job.open = Opening {0}
 job.import = Importing {0}
 job.step.reading = Reading the file

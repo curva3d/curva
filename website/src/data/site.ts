@@ -84,7 +84,7 @@ export const WORDS: Record<Lang, Words> = {
 					{ short: 'A model that remembers', title: 'A 3D model with memory and constraints.', text: 'Objects remember how they were made: parameters, relationships, constraints and live booleans. Edit a curve and the loft follows. Bake to plain geometry whenever you want to sculpt freely.' },
 					{ short: 'NURBS, mesh and SubD', title: 'A full 3D suite for NURBS, meshes and SubD.', text: 'Mesh primitives, booleans and repair, QuadRemesh, and SubD primitives with creases. Convert between mesh, SubD and NURBS.' },
 					{ short: 'Model to sheet', title: 'From model to sheet.', text: 'Layouts with detail views, Make2D, dimensions, text and hatches. Print, or export PDF, DXF and SVG.' },
-					{ short: 'Your CAD files open', title: 'Your professional CAD files open in Curva.', text: 'Rhino .3dm in and out; SketchUp, DXF and mesh files (STL, OBJ, PLY) in; STEP, DXF and PDF out. IFC, glTF and USD are planned.' },
+					{ short: 'Your CAD files open', title: 'Your professional CAD files open in Curva.', text: 'Rhino .3dm, DWG, DXF and mesh files (STL, OBJ, PLY) in and out; SketchUp in; STEP, PDF and SVG out. IFC, glTF and USD are planned.' },
 				],
 			},
 			architecture: {

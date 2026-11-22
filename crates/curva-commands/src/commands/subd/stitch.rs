@@ -82,26 +82,39 @@ impl Recipe for Stitch {
         ) else {
             return Err(bad());
         };
-        if id != other {
-            return Err(Message::new("error.stitch_one_subd"));
-        }
-        let subd = cx
-            .doc
-            .state()
-            .objects
-            .iter()
-            .find(|o| o.id == *id)
-            .and_then(|o| o.shape.subd())
-            .ok_or_else(bad)?;
-        let (a, b) = (run(a).ok_or_else(bad)?, run(b).ok_or_else(bad)?);
+        let subd_of = |id: u64| {
+            cx.doc
+                .state()
+                .objects
+                .iter()
+                .find(|o| o.id == id)
+                .and_then(|o| o.shape.subd().cloned())
+        };
+        let failed =
+            |e: curva_mesh::MeshError| Message::with("error.geometry", vec![e.to_string()]);
+        let (a, mut b) = (run(a).ok_or_else(bad)?, run(b).ok_or_else(bad)?);
+        // Sets on two SubDs join them into one first, as Rhino combines them.
+        let subd = if id == other {
+            subd_of(*id).ok_or_else(bad)?
+        } else {
+            let (one, two) = (
+                subd_of(*id).ok_or_else(bad)?,
+                subd_of(*other).ok_or_else(bad)?,
+            );
+            let start = u32::try_from(one.cage().vertex_count()).unwrap_or(u32::MAX);
+            b = b.iter().map(|&v| v + start).collect();
+            one.joined(&two).map_err(failed)?
+        };
         let joined = pairs(&a, &b, subd.cage().vertices()).ok_or_else(bad)?;
-        let stitched = subd
-            .stitched(&joined, place(cx))
-            .map_err(|e| Message::with("error.geometry", vec![e.to_string()]))?;
-        Ok(Made {
+        let stitched = subd.stitched(&joined, place(cx)).map_err(failed)?;
+        let mut made = Made {
             replace: vec![(*id, Shape::SubD(stitched))],
             ..Made::default()
-        })
+        };
+        if id != other {
+            made.remove.push(*other);
+        }
+        Ok(made)
     }
 }
 
@@ -119,6 +132,37 @@ mod tests {
     fn at(subd: &SubD, p: [f64; 3]) -> u32 {
         let k = subd.cage().vertices().iter().position(|&q| q == p).unwrap();
         u32::try_from(k).unwrap()
+    }
+
+    #[test]
+    fn points_on_two_subds_join_them_into_one_as_in_rhino() {
+        // Rhino 8 combines different SubDs into one when it stitches across them (its help).
+        let mut doc = Document::default();
+        let plane = |x: f64| {
+            let frame = Frame {
+                origin: [x, 0.0, 0.0],
+                ..Frame::world()
+            };
+            SubD::subd_plane(&frame, [2.0, 2.0], [1, 1])
+        };
+        let (left, right) = (plane(0.0), plane(3.0));
+        let a = at(&left, [2.0, 0.0, 0.0]);
+        let b = at(&right, [3.0, 0.0, 0.0]);
+        let left_id = doc.add_shape(Shape::SubD(left));
+        let right_id = doc.add_shape(Shape::SubD(right));
+        let mut processor = Processor::default();
+        doc.select_mesh_parts(&[(left_id, MeshPart::Point(a))]);
+        processor.submit(&mut doc, "stitch");
+        processor.submit(&mut doc, "");
+        doc.select_mesh_parts(&[(right_id, MeshPart::Point(b))]);
+        processor.submit(&mut doc, "");
+        processor.submit(&mut doc, "");
+        let objects = &doc.state().objects;
+        assert_eq!(objects.len(), 1, "the second SubD joins the first");
+        let one = objects[0].shape.subd().unwrap();
+        assert_eq!(one.cage().vertex_count(), 7);
+        assert_eq!(one.cage().face_count(), 2);
+        assert!(one.cage().vertices().contains(&[2.5, 0.0, 0.0]));
     }
 
     #[test]
