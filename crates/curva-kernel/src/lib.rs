@@ -24,6 +24,7 @@ mod similarity;
 #[allow(clippy::wildcard_imports)]
 pub use similarity::*;
 mod curve;
+mod curve_nurbs;
 #[allow(clippy::wildcard_imports)]
 pub use curve::*;
 mod area;
@@ -523,8 +524,10 @@ mod tests {
     }
 
     #[test]
-    fn lines_do_not_turn_into_nurbs_yet() {
-        assert!(Curve::line([0.0; 3], X).unwrap().to_nurbs().is_err());
+    fn lines_turn_into_nurbs_of_degree_one() {
+        // As Rhino 8's ToNURBS makes them (#550); they were refused before.
+        let exact = Curve::line([0.0; 3], X).unwrap().to_nurbs().unwrap();
+        assert!(matches!(exact, Curve::Nurbs { degree: 1, .. }));
     }
 
     #[test]
