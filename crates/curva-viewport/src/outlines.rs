@@ -461,13 +461,7 @@ impl Outlines {
         if object.hidden || !state.layer_shown(object.layer) {
             return outlines;
         }
-        let look = Look {
-            colour: layer.map_or(CURVE_COLOUR, |l| l.colour),
-            locked: object.locked || state.layer_locked(object.layer),
-            width: object.print_width.resolved(layer),
-            dashes: object.linetype.resolved(layer).pattern(),
-            coarse: false,
-        };
+        let look = Look::of(state, object, layer);
         for (shape, key) in &parts_of(state, object) {
             // A body is meshed once: its triangles for shading, and its edges, each listed
             // under the body's id, for wireframe, picking and snapping.
@@ -696,6 +690,24 @@ struct Look {
     width: Option<f64>,
     dashes: &'static [f64],
     coarse: bool,
+}
+
+impl Look {
+    /// How `object`, on `layer`, draws: in its own colour or its layer's, locked or not, with its
+    /// print width and its linetype's pattern, the document's own linetypes included (#170).
+    fn of(state: &State, object: &Object, layer: Option<&Layer>) -> Self {
+        Self {
+            colour: if object.colour.is_some() || layer.is_some() {
+                state.object_colour(object)
+            } else {
+                CURVE_COLOUR
+            },
+            locked: object.locked || state.layer_locked(object.layer),
+            width: object.print_width.resolved(layer),
+            dashes: crate::lines::kept_pattern(state.object_pattern(object)),
+            coarse: false,
+        }
+    }
 }
 
 /// A mesh's edges as curves where `placement` puts them, each with its number among the body's

@@ -608,3 +608,58 @@ pub fn preview_lines(points: &[Point], cursor: Option<Point>) -> Vec<Vertex> {
     polyline(&mut out, &all, PREVIEW_COLOUR);
     out
 }
+
+/// `pattern` held for as long as Curva runs, one copy for each distinct pattern, so every line
+/// drawn with it can share it (#170: a document's own linetypes, brought from `.3dm`, DXF and
+/// DWG files, besides the standard ones). A document has a handful of linetypes, so what is held
+/// stays small.
+pub(crate) fn kept_pattern(pattern: &[f64]) -> &'static [f64] {
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+    static KEPT: Mutex<Option<HashMap<Vec<u64>, &'static [f64]>>> = Mutex::new(None);
+    if pattern.is_empty() {
+        return &[];
+    }
+    let Ok(mut kept) = KEPT.lock() else {
+        return &[];
+    };
+    let bits = pattern.iter().map(|d| d.to_bits()).collect();
+    kept.get_or_insert_with(HashMap::new)
+        .entry(bits)
+        .or_insert_with(|| Box::leak(pattern.to_vec().into_boxed_slice()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A pattern is kept once however often it is asked for, and the same lengths come back
+    /// (#170).
+    #[test]
+    fn a_pattern_is_kept_once() {
+        let wall = [6.0, 1.5, 0.5, 1.5];
+        let first = kept_pattern(&wall);
+        let again = kept_pattern(&wall.clone());
+        assert_eq!(first, wall);
+        assert!(std::ptr::eq(first, again));
+        assert!(kept_pattern(&[]).is_empty());
+    }
+
+    /// An object draws in its own colour when it has one, and with its document's own linetype,
+    /// as a file from Rhino or AutoCAD brings them (#170).
+    #[test]
+    fn an_object_draws_in_its_own_colour_and_linetype() {
+        let mut doc = curva_document::Document::default();
+        let id = doc.add(curva_kernel::Curve::line([0.0; 3], [100.0, 0.0, 0.0]).unwrap());
+        let red = [0.9, 0.1, 0.1];
+        doc.set_colour(&[id], Some(red));
+        let wall = doc.add_linetype("Wall dash", &[6.0, 1.5, 0.5, 1.5]);
+        doc.set_linetype(&[id], wall);
+        let outlines = crate::Outlines::of(doc.state());
+        assert_eq!(outlines.colours.first(), Some(&red));
+        assert_eq!(
+            outlines.dashes.first().copied(),
+            Some(&[6.0, 1.5, 0.5, 1.5][..])
+        );
+    }
+}
