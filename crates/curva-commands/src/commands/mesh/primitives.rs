@@ -344,9 +344,11 @@ impl<const SUBD: bool> Recipe for Sphered<SUBD> {
         OptionDef::name(STYLE, if SUBD { "Quads" } else { "UV" }),
         faces(VERTICAL),
         faces(AROUND),
-        // Rhino's range. MeshSphere starts at 2 for Quad (96 quads), measured 22 November 2026;
-        // Rhino keeps a separate 1 for Triangle, which one option here cannot hold yet.
-        OptionDef::whole(SUBDIVISIONS, if SUBD { 1 } else { 2 }, 0, 6),
+        // Rhino's range, remembered per style as Rhino keeps it: MeshSphere starts at 2 for Quad
+        // (96 quads) and 1 for Triangle, measured 22 November 2026. SubDSphere's own style names
+        // keep its 1.
+        OptionDef::whole(SUBDIVISIONS, if SUBD { 1 } else { 2 }, 0, 6)
+            .per(STYLE, &[("Quad", 2.0), ("Triangle", 1.0)]),
     ];
 
     fn choices(&self, _cx: &Context<'_>, option: &str) -> Option<Vec<String>> {
@@ -758,6 +760,16 @@ mod tests {
             "2",
         ]);
         assert_eq!(torus.face_count(), 72);
+    }
+
+    #[test]
+    fn each_sphere_style_starts_at_rhinos_subdivisions() {
+        // Rhino 8: "Style=Quad  Subdivisions=2" (96 quads), "Style=Triangle  Subdivisions=1"
+        // (80 triangles), each remembered on its own.
+        let quad = made(&["meshsphere", "Style", "Quad", "0,0", "5"]);
+        assert_eq!(counts(&quad), (96, 96));
+        let triangle = made(&["meshsphere", "Style", "Triangle", "0,0", "5"]);
+        assert_eq!(triangle.face_count(), 80);
     }
 
     #[test]
