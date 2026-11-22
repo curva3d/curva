@@ -37,7 +37,7 @@ pub mod tie;
 pub mod units;
 pub use shape::Shape;
 mod views;
-pub use views::{SavedCPlane, SavedView};
+pub use views::{SavedCPlane, SavedView, views_for_viewports};
 
 pub use history::Recipe;
 
@@ -209,6 +209,9 @@ pub struct Document {
     /// Whether this model has just replaced another, as Open does, and the views have not yet been
     /// fitted to it (#479). Not saved, and not part of undo.
     just_opened: bool,
+    /// The views a file just opened was saved with, for the viewports to take up (#479). Not
+    /// saved, and not part of undo.
+    opened_views: Vec<views::SavedView>,
 }
 
 impl Document {

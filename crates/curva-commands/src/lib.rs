@@ -350,6 +350,9 @@ pub enum ViewRequest {
     RedoView,
     /// Fit the model in every viewport.
     ZoomExtents,
+    /// Show in each viewport the view the file just opened was saved with, by the viewport's
+    /// name, as Rhino does; the document holds them ([`curva_document::Document::take_opened_views`]).
+    OpenedViews,
     /// Fit the selection in every viewport.
     ZoomSelected,
     /// Go back to four viewports in their standard arrangement.

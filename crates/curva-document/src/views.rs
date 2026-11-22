@@ -197,3 +197,75 @@ mod tests {
         std::fs::remove_dir_all(&folder).unwrap();
     }
 }
+
+/// For each viewport, by its standard view's key (`Top`, `Perspective`...), the view a file was
+/// saved with that it should show (#479): the one of its name, else one looking the same way
+/// that no other viewport has taken, as Rhino's viewports can be renamed ("Top - Floor 1").
+#[must_use]
+pub fn views_for_viewports<'a>(
+    opened: &'a [SavedView],
+    keys: &[&str],
+) -> Vec<Option<&'a SavedView>> {
+    let mut taken = vec![false; opened.len()];
+    let mut chosen: Vec<Option<usize>> = keys
+        .iter()
+        .map(|key| {
+            let at = opened.iter().position(|v| v.name == *key)?;
+            taken[at] = true;
+            Some(at)
+        })
+        .collect();
+    for (k, key) in keys.iter().enumerate() {
+        if chosen[k].is_none()
+            && let Some(at) = (0..opened.len()).find(|&i| !taken[i] && opened[i].kind == *key)
+        {
+            taken[at] = true;
+            chosen[k] = Some(at);
+        }
+    }
+    chosen
+        .into_iter()
+        .map(|at| at.map(|i| &opened[i]))
+        .collect()
+}
+
+#[cfg(test)]
+mod opened_tests {
+    use super::*;
+
+    fn view(name: &str, kind: &str) -> SavedView {
+        SavedView {
+            name: name.to_owned(),
+            kind: kind.to_owned(),
+            target: [0.0; 3],
+            yaw: 0.0,
+            pitch: 0.0,
+            distance: 1.0,
+            axes: None,
+            parallel: kind != "Perspective",
+            lens: None,
+        }
+    }
+
+    #[test]
+    fn viewports_take_the_view_of_their_name_else_one_looking_their_way() {
+        let opened = [
+            view("Perspective", "Perspective"),
+            view("Top - Floor 1", "Top"),
+            view("Front", "Front"),
+            view("Right", "Right"),
+        ];
+        let found = views_for_viewports(&opened, &["Top", "Front", "Right", "Perspective", "Back"]);
+        let names: Vec<Option<&str>> = found.iter().map(|v| v.map(|v| v.name.as_str())).collect();
+        assert_eq!(
+            names,
+            [
+                Some("Top - Floor 1"),
+                Some("Front"),
+                Some("Right"),
+                Some("Perspective"),
+                None
+            ]
+        );
+    }
+}

@@ -319,6 +319,22 @@ impl Document {
     pub fn take_just_opened(&mut self) -> bool {
         std::mem::take(&mut self.just_opened)
     }
+
+    /// Whether a file just opened left views for the viewports to show.
+    #[must_use]
+    pub fn has_opened_views(&self) -> bool {
+        !self.opened_views.is_empty()
+    }
+
+    /// Keeps the views a file was saved with, for the viewports to show once it is opened (#479).
+    pub fn set_opened_views(&mut self, views: Vec<crate::SavedView>) {
+        self.opened_views = views;
+    }
+
+    /// The views the file just opened was saved with, once: asking clears them.
+    pub fn take_opened_views(&mut self) -> Vec<crate::SavedView> {
+        std::mem::take(&mut self.opened_views)
+    }
 }
 
 #[cfg(test)]
