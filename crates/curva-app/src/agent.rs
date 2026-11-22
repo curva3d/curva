@@ -50,6 +50,8 @@ pub(crate) fn picture_of(
         ghosted,
         hidden: false,
         hidden_lines: false,
+        sketch: false,
+        ground: 0.0,
     };
     (picture, camera)
 }
@@ -90,6 +92,8 @@ fn save_bevy_view(picture: Picture, camera: &Camera, path: &std::path::Path) -> 
     // The Hidden and Technical display modes draw on white paper, as their faces are (#164).
     let background = if picture.hidden {
         egui::Color32::WHITE
+    } else if picture.sketch {
+        crate::sheets::SKETCH_SKY.0
     } else {
         PICTURE_BACKGROUND
     };
@@ -102,6 +106,19 @@ fn save_bevy_view(picture: Picture, camera: &Camera, path: &std::path::Path) -> 
         PICTURE_SIZE,
     )?;
     curva_viewport::save_png(path, PICTURE_SIZE, &pixels)
+}
+
+/// `picture` as `mode` draws it: Hidden and Technical on white paper, Technical with its hidden
+/// lines dotted (#164), Clay in a look like SketchUp's with its ground at the model's height 0,
+/// measured from the drawing's `origin` (#551).
+fn in_mode(picture: Picture, mode: DisplayMode, origin: [f64; 3]) -> Picture {
+    Picture {
+        hidden: matches!(mode, DisplayMode::Hidden | DisplayMode::Technical),
+        hidden_lines: mode == DisplayMode::Technical,
+        sketch: mode == DisplayMode::Clay,
+        ground: -origin[2] as f32,
+        ..picture
+    }
 }
 
 /// Runs semicolon-separated command lines and saves a picture of the result: in `style` if given
@@ -169,17 +186,8 @@ pub(crate) fn picture(
         )?;
     } else {
         let (picture, camera) = picture_of(&doc, &outlines, &camera, aspect, ghosted);
-        let hidden = matches!(mode, DisplayMode::Hidden | DisplayMode::Technical);
-        let hidden_lines = mode == DisplayMode::Technical;
-        save_bevy_view(
-            Picture {
-                hidden,
-                hidden_lines,
-                ..picture
-            },
-            &camera,
-            std::path::Path::new(path),
-        )?;
+        let picture = in_mode(picture, mode, outlines.drawing_origin());
+        save_bevy_view(picture, &camera, std::path::Path::new(path))?;
     }
     for line in processor.log() {
         println!("{line}");

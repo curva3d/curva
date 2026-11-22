@@ -15,7 +15,7 @@ pub use drawing::*;
 pub use picture::*;
 use shaders::{
     FACE_SHADER, GHOST_FACE_SHADER, GRID_SHADER, LINE_SHADER, PICK_ROW, dotted, inked, paper_faces,
-    table_wgsl,
+    table_wgsl, white_faces,
 };
 pub use upload::*;
 
@@ -51,6 +51,9 @@ struct ViewSlot {
     ghosted: bool,
     /// The Hidden display mode: faces in paper white, the model's lines in black ink (#164).
     hidden: bool,
+    /// The Clay display mode: faces white and lit, the model's lines in black ink, outlines
+    /// thick, a ground and sun (#551).
+    sketch: bool,
     /// The Technical display mode's addition: lines behind faces drawn dotted (#164).
     hidden_lines: bool,
 }
@@ -66,8 +69,10 @@ pub struct LineRenderer {
     circle_lines: [wgpu::RenderPipeline; 3],
     faces: wgpu::RenderPipeline,
     ghost_faces: wgpu::RenderPipeline,
-    /// The Hidden and Technical display modes' faces, in paper white (#164).
+    /// The Hidden and Technical display modes' faces, in paper white (#164), and Clay's,
+    /// white and lit (#551).
     paper_faces: wgpu::RenderPipeline,
+    white_faces: wgpu::RenderPipeline,
     slots: Vec<ViewSlot>,
     surfaces: Option<Uploaded<MeshVertex>>,
     /// The whole circles, shared by every view drawing the model's lines.
@@ -190,6 +195,7 @@ impl LineRenderer {
                     ghosted: false,
                     hidden: false,
                     hidden_lines: false,
+                    sketch: false,
                 }
             })
             .collect();
@@ -204,7 +210,9 @@ impl LineRenderer {
         };
         let faces = face("curva faces", FACE_SHADER, false);
         let ghost_faces = face("curva ghosted faces", GHOST_FACE_SHADER, true);
-        let paper_faces = face("curva paper faces", &paper_faces(), false);
+        let (paper, white) = (paper_faces(), white_faces());
+        let paper_faces = face("curva paper faces", &paper, false);
+        let white_faces = face("curva white faces", &white, false);
         let circle = |ink| circles::circle_pipeline(device, format, &pipeline_layout, ink);
         Self {
             grid,
@@ -213,6 +221,7 @@ impl LineRenderer {
             faces,
             ghost_faces,
             paper_faces,
+            white_faces,
             timer: None,
             chunk_bytes: CHUNK_BYTES,
             outliner: crate::outline::Outliner::new(device, format),
@@ -422,6 +431,7 @@ impl LineRenderer {
         slot.ghosted = drawing.ghosted;
         slot.hidden = drawing.hidden;
         slot.hidden_lines = drawing.hidden_lines;
+        slot.sketch = drawing.sketch;
         let chunk = self.chunk_bytes;
         if stale(slot.grid.as_ref(), &drawing.grid) {
             slot.grid = Some(upload(
@@ -557,6 +567,8 @@ impl LineRenderer {
         {
             let pipeline = if slot.hidden {
                 &self.paper_faces
+            } else if slot.sketch {
+                &self.white_faces
             } else {
                 &self.faces
             };
@@ -564,16 +576,16 @@ impl LineRenderer {
         }
     }
 
-    /// The colour of the outlines of curved shapes in view `slot` (#182): black ink in the Hidden
-    /// display mode, else the dark of edges on faces.
-    fn outline_colour(&self, slot: usize) -> [f32; 3] {
-        if self.slots.get(slot).is_some_and(|slot| slot.hidden) {
-            crate::INK_COLOUR
-        } else {
-            crate::EDGE_ON_FACES_COLOUR
+    /// The colour of the outlines of curved shapes in view `slot` (#182), and whether they are
+    /// thick: black ink in the Hidden and Technical display modes, thick black ink in Clay
+    /// (#551), else the dark of edges on faces.
+    fn outline_colour(&self, slot: usize) -> ([f32; 3], bool) {
+        match self.slots.get(slot) {
+            Some(slot) if slot.sketch => (crate::INK_COLOUR, true),
+            Some(slot) if slot.hidden => (crate::INK_COLOUR, false),
+            _ => (crate::EDGE_ON_FACES_COLOUR, false),
         }
     }
-
     /// Whether view `slot` has a grid to draw.
     fn grid_wanted(&self, slot: usize) -> bool {
         self.slots
@@ -617,7 +629,11 @@ impl LineRenderer {
         // The model's own lines go in black ink in the Hidden and Technical display modes, and
         // Technical draws them dotted where faces hide them; previews and markers (the overlay)
         // keep their colours.
-        let mut inks = vec![if slot.hidden { Ink::Visible } else { Ink::Own }];
+        let mut inks = vec![if slot.hidden || slot.sketch {
+            Ink::Visible
+        } else {
+            Ink::Own
+        }];
         if slot.hidden_lines {
             inks.push(Ink::Hidden);
         }

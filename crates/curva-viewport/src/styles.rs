@@ -723,6 +723,8 @@ mod tests {
             ghosted: false,
             hidden: false,
             hidden_lines: false,
+            sketch: false,
+            ground: 0.0,
         };
         let size = [64, 64];
         let Ok(pixels) = draw_architectural(picture, [0.0, 0.0, 1.0, -50.0], size) else {

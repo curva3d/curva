@@ -24,6 +24,10 @@ pub struct Picture {
     pub hidden: bool,
     /// The Technical display mode's dotted hidden lines, as for [`Drawing::hidden_lines`].
     pub hidden_lines: bool,
+    /// The Clay display mode, as for [`Drawing::sketch`].
+    pub sketch: bool,
+    /// Where Clay's ground is, as for [`Drawing::ground`].
+    pub ground: f32,
 }
 
 /// Draws a picture into a PNG file without opening a window, so results can be checked by eye.
@@ -203,6 +207,8 @@ fn picture_drawing(picture: Picture, scene: &Scene) -> Drawing {
         ghosted: picture.ghosted,
         hidden: picture.hidden,
         hidden_lines: picture.hidden_lines,
+        sketch: picture.sketch,
+        ground: picture.ground,
         area: epaint::Rect::NOTHING,
         frame: 0,
         background: epaint::Color32::BLACK,
