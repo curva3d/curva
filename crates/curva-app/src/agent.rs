@@ -14,8 +14,6 @@ pub(crate) struct Agents {
 /// How long after an agent's last request it still counts as connected.
 pub(crate) const AGENT_RECENT: std::time::Duration = std::time::Duration::from_secs(30);
 
-pub(crate) const AGENT_ACTIVE: egui::Color32 = egui::Color32::from_rgb(110, 200, 120);
-
 pub(crate) const PICTURE_SIZE: [u32; 2] = [1200, 800];
 
 /// How much closer than a framed view pictures of standard scenes are taken.
@@ -82,19 +80,16 @@ pub(crate) fn picture_from(
     Ok(bytes)
 }
 
-/// Behind pictures for agents: the dark grey they had before Bevy drew them.
-const PICTURE_BACKGROUND: egui::Color32 = egui::Color32::from_rgb(28, 31, 36);
-
 /// Saves `picture`, seen by `camera`, as a PNG file at `path`, drawn as the window draws a view:
 /// Bevy's surfaces with Curva's lines on them. The selection is in the picture's colours.
 fn save_bevy_view(picture: Picture, camera: &Camera, path: &std::path::Path) -> Result<(), String> {
     // The Hidden and Technical display modes draw on white paper, as their faces are (#164).
     let background = if picture.hidden {
-        (egui::Color32::WHITE, egui::Color32::WHITE)
+        (theme::PAPER, theme::PAPER)
     } else if picture.massing {
         crate::sheets::MASSING_SKY
     } else {
-        (PICTURE_BACKGROUND, PICTURE_BACKGROUND)
+        (theme::PICTURE_BACKGROUND, theme::PICTURE_BACKGROUND)
     };
     let pixels = curva_viewport::bevy_picture(
         picture,
@@ -293,17 +288,14 @@ impl Curva {
                 .agent_seen
                 .is_some_and(|seen| seen.elapsed() < AGENT_RECENT);
             let (key, colour) = match (self.agents.agent.is_some(), recent) {
-                (false, _) => ("ui.agent.off", theme::current().quiet),
-                (true, false) => ("ui.agent.waiting", theme::current().quiet),
-                (true, true) => ("ui.agent.active", AGENT_ACTIVE),
+                (false, _) => ("ui.agent.off", ui_kit::colours::quiet()),
+                (true, false) => ("ui.agent.waiting", ui_kit::colours::quiet()),
+                (true, true) => ("ui.agent.active", ui_kit::colours::live()),
             };
             ui.colored_label(colour, self.text.render(&Message::new(key)));
         });
     }
 }
-
-/// Rhino's Shaded viewport grey, behind the look pictures for comparing with it.
-const RHINO_GREY: egui::Color32 = egui::Color32::from_rgb(158, 163, 171);
 
 /// Pictures of Bevy's looks with Curva's lines, beside Curva's own Shaded, with what each costs
 /// per frame, for the owner to choose from (`curva --look-pictures <folder>`): the test building,
@@ -383,7 +375,7 @@ pub(crate) fn look_pictures(out: &std::path::Path) -> Result<(), String> {
                 parts.objects.clone(),
                 camera,
                 *look,
-                RHINO_GREY,
+                theme::RHINO_GREY,
                 PICTURE_SIZE,
                 &out.join(format!("{scene}-{}-{name}.png", index + 1)),
             )?;

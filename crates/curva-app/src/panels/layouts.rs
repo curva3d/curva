@@ -211,25 +211,21 @@ impl Curva {
                 || format!("{w} × {h} {}", layout.unit.symbol()),
                 str::to_owned,
             );
-            egui::ComboBox::from_id_salt(("layout paper", layout.id))
-                .selected_text(shown)
-                .width(80.0)
-                .show_ui(ui, |ui| {
-                    for paper in PAPER_SIZES {
-                        if ui
-                            .selectable_label(layout.paper_name() == Some(paper.name), paper.name)
-                            .clicked()
-                        {
-                            let [pw, ph] = paper.size;
-                            let size = if landscape {
-                                [pw.max(ph), pw.min(ph)]
-                            } else {
-                                [pw.min(ph), pw.max(ph)]
-                            };
-                            chosen = Some(RowAction::Resize(layout.id, size, paper.unit));
-                        }
+            ui_kit::dropdown_sized(ui, ("layout paper", layout.id), shown, 80.0, |ui| {
+                for paper in PAPER_SIZES {
+                    if ui_kit::choice(ui, layout.paper_name() == Some(paper.name), paper.name)
+                        .clicked()
+                    {
+                        let [pw, ph] = paper.size;
+                        let size = if landscape {
+                            [pw.max(ph), pw.min(ph)]
+                        } else {
+                            [pw.min(ph), pw.max(ph)]
+                        };
+                        chosen = Some(RowAction::Resize(layout.id, size, paper.unit));
                     }
-                });
+                }
+            });
             let say = |key: &'static str| self.text.render(&Message::new(key));
             let turn = if landscape {
                 say("ui.layouts.landscape")
@@ -258,21 +254,5 @@ fn sheet_picture(ui: &mut egui::Ui, size: [f64; 2], open: bool) {
         (w / longest) as f32 * box_side,
         (h / longest) as f32 * box_side,
     );
-    let (rect, _) = ui.allocate_exact_size(egui::Vec2::splat(box_side), egui::Sense::hover());
-    let sheet = egui::Rect::from_center_size(rect.center(), picture);
-    ui.painter()
-        .rect_filled(sheet, 1.0, egui::Color32::from_rgb(250, 250, 247));
-    ui.painter().rect_stroke(
-        sheet,
-        1.0,
-        egui::Stroke::new(
-            if open { 2.0 } else { 1.0 },
-            if open {
-                theme::ACCENT
-            } else {
-                theme::current().panel_edge
-            },
-        ),
-        egui::StrokeKind::Outside,
-    );
+    ui_kit::sheet_thumbnail(ui, box_side, picture, open);
 }

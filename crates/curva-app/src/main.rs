@@ -83,8 +83,6 @@ use std::sync::Arc;
 const PICK_REACH: f64 = 6.0;
 /// How far, in points, a left press must travel to draw a selection box and not be a click.
 const BOX_MIN_DRAG: f32 = 6.0;
-const BOX_EDGE: egui::Color32 = egui::Color32::from_rgb(230, 230, 235);
-const BOX_FILL: egui::Color32 = egui::Color32::from_rgba_premultiplied(30, 40, 60, 40);
 const SNAP_MARKER_SIZE: f32 = 10.0;
 /// What Curva puts on the system clipboard when it copies objects, so that the next Ctrl+V
 /// (which the window only reports as a paste of text) is known to be theirs.
@@ -102,20 +100,16 @@ const STARTING_LAYOUT: Option<usize> = Some(PERSPECTIVE);
 const LOG_LINES: usize = 3;
 /// Rows the list of matching commands shows before it scrolls.
 const MOST_MATCH_ROWS: f32 = 10.0;
-const PANEL_RADIUS: u8 = 12;
 const PANEL_MARGIN: f32 = ui_kit::PAD;
 /// The height of a panel's title row, holding its name or tabs.
 const TITLE_ROW: f32 = ui_kit::TITLE_ROW;
 /// The size of panel titles, the same on every panel.
-const TITLE_FONT: f32 = ui_kit::TITLE_FONT;
 /// How near a panel's edge, in points, the pointer turns into a resize arrow.
 const RESIZE_REACH: f32 = 6.0;
 /// Room left around a panel for its shadow, beyond which nothing it holds is drawn.
 const SHADOW_ROOM: f32 = 20.0;
 /// How long a panel takes to slide in or out, in seconds.
 const SLIDE_TIME: f32 = 0.2;
-/// Where a dragged panel would land.
-const DOCK_PREVIEW_FILL: egui::Color32 = egui::Color32::from_rgba_premultiplied(56, 30, 12, 56);
 /// How far the pointer moves, in points, between the points Sketch takes while drawing.
 const SKETCH_STEP: f32 = 4.0;
 /// How long the command bar's opening lines glow, in seconds.

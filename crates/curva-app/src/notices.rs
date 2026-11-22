@@ -47,16 +47,6 @@ impl Notice {
     }
 }
 
-/// `from` moved towards `to` by `amount` (0 to 1).
-pub(crate) fn lerp_colour(from: egui::Color32, to: egui::Color32, amount: f32) -> egui::Color32 {
-    let mix = |a: u8, b: u8| (f32::from(a) + (f32::from(b) - f32::from(a)) * amount).round() as u8;
-    egui::Color32::from_rgb(
-        mix(from.r(), to.r()),
-        mix(from.g(), to.g()),
-        mix(from.b(), to.b()),
-    )
-}
-
 /// Opens a page in the system's browser.
 pub(crate) fn open_link(url: &str) {
     let result = if cfg!(target_os = "windows") {
@@ -143,8 +133,7 @@ impl Curva {
             if glow > 0.0 {
                 ui.ctx().request_repaint();
             }
-            let colour = lerp_colour(theme::current().text, theme::ACCENT, glow);
-            let text = egui::RichText::new(&notice.text).color(colour);
+            let text = ui_kit::fading_accent(&notice.text, glow);
             match notice.action {
                 NoticeAction::None => {
                     ui.label(text);

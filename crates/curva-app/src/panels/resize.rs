@@ -64,13 +64,7 @@ fn resize_zones(rect: egui::Rect) -> [(layout::Sides, egui::Rect, egui::CursorIc
 /// The pulsing glow along the panel at `rect` whose edge the pointer is on, strongest by the
 /// mouse (the owner's choice, 22 November 2026).
 fn glow_edges(ui: &egui::Ui, rect: egui::Rect) {
-    if let Some(pointer) = ui.ctx().pointer_latest_pos() {
-        let time = ui.input(|input| input.time);
-        let radius = f32::from(PANEL_RADIUS);
-        ui.painter()
-            .add(super::glow::resize_glow(rect, radius, pointer, time));
-    }
-    ui.ctx().request_repaint();
+    ui_kit::glow::resize_glow_now(ui, rect);
 }
 
 /// The edges and corners a panel can be resized from: near one, the pointer becomes a resize

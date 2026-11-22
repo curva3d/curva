@@ -4,24 +4,6 @@
 use super::frames::PanelEvent;
 use crate::*;
 
-/// A V pointing along `towards` (a unit direction on screen), as the hide control draws it.
-pub(crate) fn paint_chevron(
-    painter: &egui::Painter,
-    centre: egui::Pos2,
-    towards: egui::Vec2,
-    stroke: egui::Stroke,
-) {
-    let side = egui::vec2(-towards.y, towards.x);
-    let tip = centre + towards * 2.5;
-    let back = centre - towards * 2.5;
-    painter.line_segment([back + side * 4.5, tip], stroke);
-    painter.line_segment([tip, back - side * 4.5], stroke);
-}
-
-/// The title of piece `index` at `tabs[index]`, in the title row of the panel at `frame`'s
-/// rectangle (`frame` is the row, then the panel). On a panel with several pieces it is a tab:
-/// clicked, it shows its piece; dragged out of the row, the piece comes out as a panel of its
-/// own; let go along the row, the tab moves there.
 /// The command bar's title as a small chip on the middle of its top edge, half above it, with
 /// room for its name and, at its right end, the hide and close buttons. Paints the chip and returns
 /// its row, which the title's grip, name and buttons then use as any title row.
@@ -33,27 +15,15 @@ fn title_chip(
     text: &Translations,
 ) -> egui::Rect {
     let name = text.render(&Message::new(place.showing().name_key()));
-    let width = ui
-        .painter()
-        .layout_no_wrap(name, font.clone(), theme::current().quiet)
-        .size()
-        .x;
+    let width = ui_kit::text_width(ui, &name, font);
     // The name centred, with the buttons' room on both sides so it stays centred.
-    let chip = egui::Rect::from_center_size(
-        egui::pos2(rect.center().x, rect.min.y),
-        egui::vec2(width + 2.0 * 48.0, TITLE_ROW),
-    );
-    let colours = theme::current();
-    ui.painter().rect(
-        chip,
-        egui::CornerRadius::same((TITLE_ROW / 2.0) as u8),
-        colours.panel,
-        egui::Stroke::new(1.0, colours.panel_edge),
-        egui::StrokeKind::Inside,
-    );
-    chip.shrink2(egui::vec2(8.0, 0.0))
+    ui_kit::title_chip(ui, rect, width, 48.0)
 }
 
+/// The title of piece `index` at `tabs[index]`, in the title row of the panel at `frame`'s
+/// rectangle (`frame` is the row, then the panel). On a panel with several pieces it is a tab:
+/// clicked, it shows its piece; dragged out of the row, the piece comes out as a panel of its
+/// own; let go along the row, the tab moves there.
 fn title_tab(
     ui: &egui::Ui,
     place: &layout::Place,
@@ -66,11 +36,6 @@ fn title_tab(
     let mut event = None;
     let tab = tabs[index];
     let active = place.pieces.len() > 1 && index == place.active.min(place.pieces.len() - 1);
-    let colour = if active {
-        theme::ACCENT
-    } else {
-        theme::current().quiet
-    };
     if place.pieces.len() > 1 {
         let response = ui
             .interact(
@@ -97,21 +62,8 @@ fn title_tab(
         {
             event = Some(PanelEvent::TabMoved(index, tab_slot(tabs, at.x)));
         }
-        if active {
-            ui.painter().line_segment(
-                [
-                    egui::pos2(tab.min.x, tab.max.y),
-                    egui::pos2(tab.max.x, tab.max.y),
-                ],
-                egui::Stroke::new(2.0, theme::ACCENT),
-            );
-        }
     }
-    ui.painter().galley(
-        egui::pos2(tab.min.x, row.center().y - galley.size().y / 2.0),
-        galley,
-        colour,
-    );
+    ui_kit::title_tab(ui, row, tab, galley, active);
     event
 }
 
@@ -133,7 +85,7 @@ impl Curva {
         rect: egui::Rect,
     ) -> PanelEvent {
         let mut event = PanelEvent::Nothing;
-        let font = egui::FontId::proportional(TITLE_FONT);
+        let font = ui_kit::title_font();
         let row = if place.is_command_alone() {
             // The command bar's title floats on its top edge as a small chip, so all its height
             // is left for the last lines and the prompt (owner, 22 November 2026).
@@ -152,10 +104,10 @@ impl Curva {
             .iter()
             .filter(|_| !tabs_alone)
             .map(|piece| {
-                ui.painter().layout_no_wrap(
+                ui_kit::galley(
+                    ui,
                     self.text.render(&Message::new(piece.name_key())),
                     font.clone(),
-                    theme::current().quiet,
                 )
             })
             .collect();
@@ -241,34 +193,21 @@ impl Curva {
             egui::vec2(16.0, TITLE_ROW),
         );
         let hide = close.translate(egui::vec2(-20.0, 0.0));
-        let quiet = theme::current().quiet;
-        let lit = |r: &egui::Response| {
-            egui::Stroke::new(1.5, if r.hovered() { theme::ACCENT } else { quiet })
-        };
-        let hidden = ui
-            .interact(hide, ui.scope_id().with("hide"), egui::Sense::click())
-            .on_hover_text(self.text.render(&Message::new("ui.panel.hide")));
         let towards = match edge {
             layout::Edge::Top => egui::vec2(0.0, -1.0),
             layout::Edge::Bottom => egui::vec2(0.0, 1.0),
             layout::Edge::Left => egui::vec2(-1.0, 0.0),
             layout::Edge::Right => egui::vec2(1.0, 0.0),
         };
-        paint_chevron(ui.painter(), hide.center(), towards, lit(&hidden));
+        let hint = self.text.render(&Message::new("ui.panel.hide"));
+        let hidden = ui_kit::mark_button(ui, hide, "hide", hint, |painter, at, stroke| {
+            ui_kit::chevron(painter, at, towards, stroke);
+        });
         if hidden.clicked() {
             event = Some(PanelEvent::Hide);
         }
-        let closed = ui
-            .interact(close, ui.scope_id().with("close"), egui::Sense::click())
-            .on_hover_text(self.text.render(&Message::new("ui.panel.close")));
-        let (mid, arm) = (close.center(), 3.5);
-        for (a, b) in [((-arm, -arm), (arm, arm)), ((arm, -arm), (-arm, arm))] {
-            ui.painter().line_segment(
-                [mid + egui::vec2(a.0, a.1), mid + egui::vec2(b.0, b.1)],
-                lit(&closed),
-            );
-        }
-        if closed.clicked() {
+        let hint = self.text.render(&Message::new("ui.panel.close"));
+        if ui_kit::mark_button(ui, close, "close", hint, ui_kit::cross).clicked() {
             event = Some(PanelEvent::Close);
         }
         event

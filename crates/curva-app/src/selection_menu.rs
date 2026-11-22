@@ -111,9 +111,9 @@ impl Curva {
             .order(egui::Order::Foreground)
             .fixed_pos(choosing.at + egui::vec2(12.0, 12.0))
             .show(ctx, |ui| {
-                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                ui_kit::popup_frame(ui).show(ui, |ui| {
                     for (index, name) in names.iter().enumerate() {
-                        let entry = ui.selectable_label(index == choosing.highlighted, name);
+                        let entry = ui_kit::choice(ui, index == choosing.highlighted, name);
                         if entry.hovered() {
                             choosing.highlighted = index;
                         }
@@ -122,7 +122,7 @@ impl Curva {
                         }
                     }
                     ui.separator();
-                    if ui.selectable_label(false, none).clicked() {
+                    if ui_kit::choice(ui, false, none).clicked() {
                         chosen = Some(None);
                     }
                 });

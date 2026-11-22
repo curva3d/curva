@@ -5,7 +5,6 @@
 //! running command's step asks for it (`Panel::MeshSettings`, #387); OK keeps the settings and
 //! answers the step, Cancel ends the command. The live preview is display's (#407).
 
-use crate::settings::centred_dialog;
 use crate::*;
 use curva_document::meshing::{MeshNumbers, mesh_objects, remember_settings, remembered_settings};
 use curva_mesh::{MOST_SUBD_LEVEL, MeshPreset, MeshSettings};
@@ -125,8 +124,8 @@ impl Curva {
         let mut advanced = state.advanced;
         let mut answer = Answer::Waiting;
         let say = |key: &'static str| self.text.render(&Message::new(key));
-        centred_dialog(ctx, "mesh panel", |ui| {
-            ui.label(egui::RichText::new(say("ui.mesh.title")).strong());
+        ui_kit::centred_dialog(ctx, "mesh panel", |ui| {
+            ui_kit::section(ui, say("ui.mesh.title"));
             presets(ui, &mut settings, &say);
             ui.horizontal(|ui| {
                 ui.label(say("ui.mesh.fewer"));
@@ -183,7 +182,7 @@ fn presets(ui: &mut egui::Ui, settings: &mut MeshSettings, say: &dyn Fn(&'static
                 subd_level: settings.subd_level,
                 ..MeshSettings::preset(preset)
             };
-            if ui.selectable_label(*settings == chosen, say(key)).clicked() {
+            if ui_kit::choice(ui, *settings == chosen, say(key)).clicked() {
                 *settings = chosen;
             }
         }

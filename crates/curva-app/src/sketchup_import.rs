@@ -49,11 +49,7 @@ impl Curva {
                 ui.radio_value(&mut choices.trimmed_planes, true, say("ui.skp.planes"));
                 ui.radio_value(&mut choices.trimmed_planes, false, say("ui.skp.mesh"));
                 if choices.trimmed_planes {
-                    ui.label(
-                        egui::RichText::new(say("ui.skp.planes_warning"))
-                            .small()
-                            .color(theme::current().quiet),
-                    );
+                    ui.label(ui_kit::caption(say("ui.skp.planes_warning")));
                 }
                 ui.separator();
                 ui.strong(say("ui.skp.join"));

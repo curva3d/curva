@@ -38,34 +38,8 @@ impl Curva {
             .unwrap_or_else(|| self.text.render(&Message::new(view_label(current))));
         // A button with the accent's outline, as in the chosen mock-up, so it reads as one, and
         // "View:" before the name, quieter, to say what it is (#471).
-        let mut label = egui::text::LayoutJob::default();
-        let font = egui::TextStyle::Button.resolve(ui.style());
-        let small = egui::FontId::proportional(font.size - 2.0);
-        let format = |font_id, color| egui::TextFormat {
-            font_id,
-            color,
-            valign: egui::Align::Center,
-            ..Default::default()
-        };
         let prefix = self.text.render(&Message::new("ui.view.button"));
-        label.append(&prefix, 0.0, format(small, theme::current().quiet));
-        // The font has no down-arrow (it showed as an empty box), so the chevron is drawn.
-        label.append(&title, 4.0, format(font, theme::current().text));
-        let button = ui.add_sized(
-            [ui.available_width(), 22.0],
-            egui::Button::new(label)
-                .fill(theme::ACCENT.gamma_multiply(0.16))
-                .stroke(egui::Stroke::new(1.0, theme::ACCENT.gamma_multiply(0.55))),
-        );
-        let tip = egui::pos2(button.rect.max.x - 12.0, button.rect.center().y + 2.0);
-        ui.painter().add(egui::Shape::line(
-            vec![
-                tip + egui::vec2(-4.0, -4.0),
-                tip,
-                tip + egui::vec2(4.0, -4.0),
-            ],
-            egui::Stroke::new(1.5, theme::current().quiet),
-        ));
+        let button = ui_kit::opener(ui, &prefix, &title);
         let mut picked = None;
         egui::Popup::menu(&button)
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
@@ -91,11 +65,9 @@ impl Curva {
         camera: &curva_viewport::Camera,
     ) -> Option<Picked> {
         let mut picked = None;
-        ui.label(
-            egui::RichText::new(self.text.render(&Message::new("ui.view.caption")))
-                .small()
-                .weak(),
-        );
+        ui.label(ui_kit::caption(
+            self.text.render(&Message::new("ui.view.caption")),
+        ));
         // Each view a filled tile with the house seen from its side, the one shown in the accent,
         // saying what it looks at when the pointer rests on it (#471).
         let mut view_button = |ui: &mut egui::Ui, view: StandardView, size: egui::Vec2| {
@@ -183,30 +155,9 @@ fn view_tile(
     shown: bool,
     size: egui::Vec2,
 ) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
-    let theme = theme::current();
-    let (fill, colour) = if shown {
-        (theme::ACCENT, egui::Color32::WHITE)
-    } else if response.hovered() {
-        (theme.hover, theme.text)
-    } else {
-        (theme.control, theme.text)
-    };
-    let painter = ui.painter();
-    painter.rect_filled(rect, 6, fill);
-    let picture = egui::Rect::from_center_size(
-        egui::pos2(rect.center().x, rect.min.y + 15.0),
-        egui::vec2(32.0, 20.0),
-    );
-    super::view_pictures::paint_house(painter, view, picture, colour);
-    painter.text(
-        egui::pos2(rect.center().x, rect.max.y - 4.0),
-        egui::Align2::CENTER_BOTTOM,
-        name,
-        egui::FontId::proportional(11.0),
-        colour,
-    );
-    response
+    ui_kit::picture_tile(ui, size, shown, name, |painter, room, ink| {
+        crate::icons::houses::paint_house(painter, view, room, ink);
+    })
 }
 
 /// What each view looks at, said when the pointer rests on its tile.

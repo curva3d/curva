@@ -73,7 +73,7 @@ impl Curva {
             .fixed_pos(editing.at + egui::vec2(12.0, 12.0))
             .order(egui::Order::Foreground)
             .show(ctx, |ui| {
-                lit_panel_frame().show(ui, |ui| {
+                ui_kit::lit_panel_frame().show(ui, |ui| {
                     let edit = ui.add(
                         egui::TextEdit::multiline(&mut editing.words)
                             .desired_rows(3)
@@ -91,11 +91,9 @@ impl Curva {
                     });
                     keep = enter || edit.lost_focus() && !escape;
                     cancel = escape;
-                    ui.label(
-                        egui::RichText::new(self.text.render(&Message::new("ui.text.editing")))
-                            .small()
-                            .color(theme::current().quiet),
-                    );
+                    ui.label(ui_kit::caption(
+                        self.text.render(&Message::new("ui.text.editing")),
+                    ));
                 });
             });
         if cancel {

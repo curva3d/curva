@@ -109,113 +109,20 @@ const TOOLS: [(Tool, &str); 8] = [
     (Tool::UpOneParent, "ui.layer.up_one_parent"),
 ];
 
-/// The size of a toolbar button, in points.
-const BUTTON: f32 = 22.0;
-
-/// Draws a tool's icon in `rect`: thin lines in `ink`, the part that says what it does in the
-/// accent, as Curva's command icons.
-fn paint_tool(painter: &egui::Painter, rect: egui::Rect, tool: Tool, ink: egui::Stroke) {
-    let accent = egui::Stroke::new(ink.width, theme::ACCENT);
-    let r = rect.shrink(4.0);
-    let at = |x: f32, y: f32| egui::pos2(r.min.x + x * r.width(), r.min.y + y * r.height());
-    let sheet = |painter: &egui::Painter, x0: f32, y0: f32, x1: f32, y1: f32| {
-        painter.rect_stroke(
-            egui::Rect::from_two_pos(at(x0, y0), at(x1, y1)),
-            1.0,
-            ink,
-            egui::StrokeKind::Middle,
-        );
-    };
-    let plus = |painter: &egui::Painter, cx: f32, cy: f32| {
-        painter.line_segment([at(cx - 0.2, cy), at(cx + 0.2, cy)], accent);
-        painter.line_segment([at(cx, cy - 0.2), at(cx, cy + 0.2)], accent);
-    };
-    let arrow = |painter: &egui::Painter, from: egui::Pos2, to: egui::Pos2| {
-        painter.arrow(from, to - from, accent);
-    };
-    match tool {
-        Tool::NewLayer => {
-            sheet(painter, 0.0, 0.15, 0.7, 0.75);
-            plus(painter, 0.78, 0.78);
-        }
-        Tool::NewSublayer => {
-            sheet(painter, 0.0, 0.0, 0.6, 0.35);
-            sheet(painter, 0.25, 0.5, 0.75, 0.85);
-            plus(painter, 0.85, 0.82);
-        }
-        Tool::Delete => {
-            painter.line_segment([at(0.15, 0.15), at(0.85, 0.85)], accent);
-            painter.line_segment([at(0.85, 0.15), at(0.15, 0.85)], accent);
-        }
-        Tool::ChangeObjectLayer => {
-            sheet(painter, 0.45, 0.2, 1.0, 0.8);
-            painter.circle_stroke(at(0.12, 0.5), r.width() * 0.1, ink);
-            arrow(painter, at(0.25, 0.5), at(0.62, 0.5));
-        }
-        Tool::CopyToLayer => {
-            sheet(painter, 0.45, 0.2, 1.0, 0.8);
-            painter.circle_stroke(at(0.12, 0.4), r.width() * 0.1, ink);
-            painter.circle_stroke(at(0.12, 0.62), r.width() * 0.1, ink);
-            arrow(painter, at(0.25, 0.5), at(0.62, 0.5));
-        }
-        Tool::MoveUp | Tool::MoveDown => {
-            let up = tool == Tool::MoveUp;
-            let (tip, base) = if up { (0.2, 0.75) } else { (0.8, 0.25) };
-            painter.add(egui::Shape::convex_polygon(
-                vec![at(0.5, tip), at(0.85, base), at(0.15, base)],
-                egui::Color32::TRANSPARENT,
-                accent,
-            ));
-        }
-        Tool::UpOneParent => {
-            painter.add(egui::Shape::convex_polygon(
-                vec![at(0.2, 0.5), at(0.75, 0.15), at(0.75, 0.85)],
-                egui::Color32::TRANSPARENT,
-                accent,
-            ));
+impl Tool {
+    /// The icon the button shows.
+    fn icon(self) -> &'static str {
+        match self {
+            Tool::NewLayer => "layer.new",
+            Tool::NewSublayer => "layer.new_sublayer",
+            Tool::Delete => "layer.delete",
+            Tool::ChangeObjectLayer => "layer.change_object_layer",
+            Tool::CopyToLayer => "layer.copy_to_layer",
+            Tool::MoveUp => "layer.move_up",
+            Tool::MoveDown => "layer.move_down",
+            Tool::UpOneParent => "layer.up_one_parent",
         }
     }
-}
-
-/// Draws the Filters icon (a funnel) or the Tools icon (three lines) in `rect`.
-fn paint_menu_icon(painter: &egui::Painter, rect: egui::Rect, funnel: bool, ink: egui::Stroke) {
-    let r = rect.shrink(4.0);
-    let at = |x: f32, y: f32| egui::pos2(r.min.x + x * r.width(), r.min.y + y * r.height());
-    if funnel {
-        painter.add(egui::Shape::closed_line(
-            vec![
-                at(0.05, 0.15),
-                at(0.95, 0.15),
-                at(0.6, 0.55),
-                at(0.6, 0.9),
-                at(0.4, 0.8),
-                at(0.4, 0.55),
-            ],
-            ink,
-        ));
-    } else {
-        for y in [0.25, 0.5, 0.75] {
-            painter.line_segment([at(0.1, y), at(0.9, y)], ink);
-        }
-    }
-}
-
-/// A toolbar button: its icon drawn by `paint`, lit under the pointer, its words on hover.
-fn tool_button(
-    ui: &mut egui::Ui,
-    words: String,
-    paint: impl FnOnce(&egui::Painter, egui::Rect, egui::Stroke),
-) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(egui::Vec2::splat(BUTTON), egui::Sense::click());
-    if response.hovered() {
-        ui.painter().rect_filled(rect, 4.0, theme::current().hover);
-    }
-    paint(
-        ui.painter(),
-        rect,
-        egui::Stroke::new(1.3, theme::current().text),
-    );
-    response.on_hover_text(words)
 }
 
 impl Curva {
@@ -237,23 +144,22 @@ impl Curva {
             .unwrap_or_else(|| self.doc.current_layer());
         let mut clicked = None;
         ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 2.0;
-            for ((tool, _), word) in TOOLS.into_iter().zip(words) {
-                if tool_button(ui, word, |p, r, ink| paint_tool(p, r, tool, ink)).clicked() {
-                    clicked = Some(tool);
+            ui_kit::with_gap(ui, ui_kit::TIGHT_GAP, |ui| {
+                let size = ui_kit::TOOL_BUTTON;
+                for ((tool, _), word) in TOOLS.into_iter().zip(words) {
+                    if ui_kit::icon_button(ui, tool.icon(), size, &word).clicked() {
+                        clicked = Some(tool);
+                    }
+                    // A little room between Rhino's groups of buttons.
+                    if matches!(tool, Tool::Delete | Tool::CopyToLayer | Tool::UpOneParent) {
+                        ui.add_space(ui_kit::CHIP_GAP);
+                    }
                 }
-                if matches!(tool, Tool::Delete | Tool::CopyToLayer | Tool::UpOneParent) {
-                    ui.add_space(6.0);
-                }
-            }
-            let filters = tool_button(ui, filters_word, |p, r, ink| {
-                paint_menu_icon(p, r, true, ink);
+                let filters = ui_kit::icon_button(ui, "layer.filters", size, &filters_word);
+                egui::Popup::menu(&filters).show(|ui| self.layer_filter_menu(ui));
+                let tools = ui_kit::icon_button(ui, "layer.tools", size, &tools_word);
+                egui::Popup::menu(&tools).show(|ui| self.layer_tools_menu(ui, target));
             });
-            egui::Popup::menu(&filters).show(|ui| self.layer_filter_menu(ui));
-            let tools = tool_button(ui, tools_word, |p, r, ink| {
-                paint_menu_icon(p, r, false, ink);
-            });
-            egui::Popup::menu(&tools).show(|ui| self.layer_tools_menu(ui, target));
         });
         if let Some(tool) = clicked {
             self.run_layer_tool(tool, target);

@@ -116,8 +116,8 @@ pub(crate) fn paint_selection_box(
 ) {
     let painter = ui.painter_at(viewport);
     let area = egui::Rect::from_two_pos(from, to);
-    painter.rect_filled(area, 0.0, BOX_FILL);
-    let stroke = egui::Stroke::new(1.0, BOX_EDGE);
+    painter.rect_filled(area, 0.0, theme::SELECTION_BOX_FILL);
+    let stroke = egui::Stroke::new(1.0, theme::SELECTION_BOX_EDGE);
     let edge = vec![
         area.left_top(),
         area.right_top(),

@@ -12,6 +12,22 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// focused fields and highlighted rows.
 pub const ACCENT: Color32 = Color32::from_rgb(0xe0, 0x78, 0x2f);
 
+/// Something live and working, such as a connected agent.
+pub const LIVE: Color32 = Color32::from_rgb(110, 200, 120);
+
+/// The selection window's edge and fill, over the viewports.
+pub const SELECTION_BOX_EDGE: Color32 = Color32::from_rgb(230, 230, 235);
+pub const SELECTION_BOX_FILL: Color32 = Color32::from_rgba_premultiplied(30, 40, 60, 40);
+
+/// Behind pictures for agents: the dark grey they had before Bevy drew them.
+pub const PICTURE_BACKGROUND: Color32 = Color32::from_rgb(28, 31, 36);
+
+/// White paper, behind the Hidden and Technical display modes' pictures.
+pub const PAPER: Color32 = Color32::WHITE;
+
+/// Rhino's Shaded viewport grey, behind the look pictures for comparing with it.
+pub const RHINO_GREY: Color32 = Color32::from_rgb(158, 163, 171);
+
 /// One theme's colours.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Theme {

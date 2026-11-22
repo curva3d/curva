@@ -23,25 +23,12 @@ pub(crate) enum SettingsTab {
     About,
 }
 
-/// A small question in the centre of the window, drawn like a panel.
-pub(crate) fn centred_dialog(ctx: &egui::Context, id: &str, contents: impl FnOnce(&mut egui::Ui)) {
-    egui::Area::new(egui::Id::NULL.with(("dialog", id)))
-        .order(egui::Order::Foreground)
-        .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-        .show(ctx, |ui| {
-            panel_frame().show(ui, |ui| {
-                ui.set_max_width(420.0);
-                contents(ui);
-            });
-        });
-}
-
 /// The words for a key, in the user's language.
 type Say<'a> = dyn Fn(&'static str) -> String + 'a;
 
 /// The theme, and glass or solid panels.
 fn look_settings(ui: &mut egui::Ui, settings: &mut theme::Settings, say: &Say<'_>) {
-    ui.label(egui::RichText::new(say("ui.settings.theme")).strong());
+    ui_kit::section(ui, say("ui.settings.theme"));
     ui.horizontal(|ui| {
         for (choice, key) in [
             (theme::ThemeChoice::System, "ui.settings.system"),
@@ -51,7 +38,7 @@ fn look_settings(ui: &mut egui::Ui, settings: &mut theme::Settings, say: &Say<'_
             ui.radio_value(&mut settings.theme, choice, say(key));
         }
     });
-    ui.label(egui::RichText::new(say("ui.settings.panels")).strong());
+    ui_kit::section(ui, say("ui.settings.panels"));
     ui.horizontal(|ui| {
         ui.radio_value(&mut settings.glass, true, say("ui.settings.glass"));
         ui.radio_value(&mut settings.glass, false, say("ui.settings.solid"));
@@ -60,7 +47,7 @@ fn look_settings(ui: &mut egui::Ui, settings: &mut theme::Settings, say: &Say<'_
 
 /// The model's unit.
 fn unit_choice(ui: &mut egui::Ui, unit: &mut curva_document::Unit, say: &Say<'_>) {
-    ui.label(egui::RichText::new(say("ui.settings.units")).strong());
+    ui_kit::section(ui, say("ui.settings.units"));
     ui.horizontal_wrapped(|ui| {
         for (choice, key) in curva_document::Unit::ALL.into_iter().zip([
             "ui.settings.mm",
@@ -82,14 +69,17 @@ fn length_display_choice(
     ui.horizontal(|ui| {
         ui.radio_value(&mut display.decimals, false, say("ui.settings.fractions"));
         ui.add_enabled_ui(!display.decimals, |ui| {
-            egui::ComboBox::from_id_salt("fraction precision")
-                .selected_text(format!("1/{}\"", display.denominator))
-                .width(64.0)
-                .show_ui(ui, |ui| {
+            ui_kit::dropdown_sized(
+                ui,
+                "fraction precision",
+                format!("1/{}\"", display.denominator),
+                64.0,
+                |ui| {
                     for d in curva_document::units::LengthDisplay::DENOMINATORS {
                         ui.selectable_value(&mut display.denominator, d, format!("1/{d}\""));
                     }
-                });
+                },
+            );
         });
         ui.radio_value(&mut display.decimals, true, say("ui.settings.decimals"));
     });
@@ -104,7 +94,7 @@ fn undo_settings(
     text: &Translations,
     say: &Say<'_>,
 ) {
-    ui.label(egui::RichText::new(say("ui.settings.undo")).strong());
+    ui_kit::section(ui, say("ui.settings.undo"));
     ui.horizontal(|ui| {
         ui.label(say("ui.settings.undo_steps"));
         ui.add(egui::DragValue::new(&mut settings.undo_min_steps).range(0..=1000));
@@ -133,32 +123,7 @@ impl Curva {
         }
         self.settings_ui.applied_light = Some(light);
         theme::use_light(light);
-        ctx.set_visuals(theme::visuals(theme::current()));
-        // One set of sizes for every panel, the top bar included.
-        ctx.all_styles_mut(|style| {
-            use egui::{FontFamily, FontId, TextStyle};
-            style
-                .text_styles
-                .insert(TextStyle::Body, FontId::new(14.0, FontFamily::Proportional));
-            style.text_styles.insert(
-                TextStyle::Button,
-                FontId::new(14.0, FontFamily::Proportional),
-            );
-            style.text_styles.insert(
-                TextStyle::Small,
-                FontId::new(12.0, FontFamily::Proportional),
-            );
-            style.text_styles.insert(
-                TextStyle::Heading,
-                FontId::new(18.0, FontFamily::Proportional),
-            );
-            style.text_styles.insert(
-                TextStyle::Monospace,
-                FontId::new(13.0, FontFamily::Monospace),
-            );
-            // The kit's spacing, row height and corners, after the theme's colours.
-            ui_kit::apply(style);
-        });
+        ui_kit::apply_theme(ctx);
         for pane in &mut self.panes {
             let plane = pane.plane;
             pane.set_plane(plane);
@@ -196,23 +161,20 @@ impl Curva {
                 (SettingsTab::About, "ui.file.about"),
             ] {
                 let label = self.text.render(&Message::new(key));
-                if ui
-                    .selectable_label(self.settings_ui.settings_tab == tab, label)
-                    .clicked()
-                {
+                if ui_kit::tab(ui, self.settings_ui.settings_tab == tab, label).clicked() {
                     self.settings_ui.settings_tab = tab;
                 }
             }
         });
         ui.separator();
-        egui::ScrollArea::vertical()
-            .auto_shrink([false, false])
-            .show(ui, |ui| match self.settings_ui.settings_tab {
+        ui_kit::scroll(ui, ui_kit::Scroll::Down, |ui| {
+            match self.settings_ui.settings_tab {
                 SettingsTab::General => self.general_settings(ui),
                 SettingsTab::Interface => self.interface_settings(ui),
                 SettingsTab::Assistant => self.assistant_settings(ui),
                 SettingsTab::About => self.about_settings(ui),
-            });
+            }
+        });
     }
 
     /// Settings → General: theme, glass or solid panels, the model's unit, the grid, updates.
@@ -311,7 +273,7 @@ impl Curva {
 
     /// Settings → About: the version, the licence, and the credits.
     pub(crate) fn about_settings(&self, ui: &mut egui::Ui) {
-        ui.heading(format!("Curva {}", env!("CARGO_PKG_VERSION")));
+        ui_kit::heading(ui, format!("Curva {}", env!("CARGO_PKG_VERSION")));
         ui.label(self.text.render(&Message::new("ui.about.licence")));
         ui.separator();
         ui.label(include_str!("../../../ATTRIBUTION.md"));
@@ -329,7 +291,7 @@ impl Curva {
             "ui.units.question",
             vec![unit.symbol().to_owned()],
         ));
-        centred_dialog(ctx, "unit question", |ui| {
+        ui_kit::centred_dialog(ctx, "unit question", |ui| {
             ui.label(question);
             ui.horizontal(|ui| {
                 if ui.button(say("ui.units.scale")).clicked() {
@@ -362,17 +324,14 @@ impl Curva {
         // The display mode and, beside it, the view (`panels::view_picker`).
         let half = ((ui.available_width() - ui.spacing().item_spacing.x) / 2.0).max(60.0);
         ui.horizontal(|ui| {
-            egui::ComboBox::from_id_salt("display mode")
-                .selected_text(title)
-                .width(half)
-                .show_ui(ui, |ui| {
-                    for mode in DISPLAY_MODES {
-                        let name = self.text.render(&Message::new(mode_key(mode)));
-                        if ui.selectable_label(mode == current, name).clicked() {
-                            chosen = Some(mode);
-                        }
+            ui_kit::dropdown_sized(ui, "display mode", title, half, |ui| {
+                for mode in DISPLAY_MODES {
+                    let name = self.text.render(&Message::new(mode_key(mode)));
+                    if ui_kit::choice(ui, mode == current, name).clicked() {
+                        chosen = Some(mode);
                     }
-                });
+                }
+            });
             self.view_picker(ui);
         });
         if let Some(mode) = chosen {

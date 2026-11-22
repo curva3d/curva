@@ -73,16 +73,7 @@ pub(crate) fn history_rows(
 
 /// A command button: its icon, with its name on hover, or its name where it has no icon yet.
 pub(crate) fn command_button(ui: &mut egui::Ui, name: &str) -> egui::Response {
-    if !icons::has(name) {
-        return ui.button(name).on_hover_text(name);
-    }
-    let (rect, response) =
-        ui.allocate_exact_size(egui::Vec2::splat(COMMAND_BUTTON), egui::Sense::click());
-    if response.hovered() {
-        ui.painter().rect_filled(rect, 6.0, theme::current().hover);
-    }
-    icons::paint(ui.painter(), rect.shrink(4.0), name);
-    response.on_hover_text(name)
+    ui_kit::icon_button(ui, name, ui_kit::COMMAND_BUTTON, name)
 }
 
 impl Curva {
@@ -282,10 +273,7 @@ impl Curva {
         let mut clicked = None;
         ui.horizontal_wrapped(|ui| {
             for (name, label) in options {
-                let chip = egui::Button::new(egui::RichText::new(label).color(theme::ACCENT))
-                    .small()
-                    .frame(true);
-                if ui.add(chip).on_hover_text(name).clicked() {
+                if ui_kit::option_chip(ui, label).on_hover_text(name).clicked() {
                     clicked = Some(name);
                 }
             }
