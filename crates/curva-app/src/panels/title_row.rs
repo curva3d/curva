@@ -22,6 +22,38 @@ pub(crate) fn paint_chevron(
 /// rectangle (`frame` is the row, then the panel). On a panel with several pieces it is a tab:
 /// clicked, it shows its piece; dragged out of the row, the piece comes out as a panel of its
 /// own; let go along the row, the tab moves there.
+/// The command bar's title as a small chip on the middle of its top edge, half above it, with
+/// room for its name and, at its right end, the hide and close buttons. Paints the chip and returns
+/// its row, which the title's grip, name and buttons then use as any title row.
+fn title_chip(
+    ui: &egui::Ui,
+    place: &layout::Place,
+    rect: egui::Rect,
+    font: &egui::FontId,
+    text: &Translations,
+) -> egui::Rect {
+    let name = text.render(&Message::new(place.showing().name_key()));
+    let width = ui
+        .painter()
+        .layout_no_wrap(name, font.clone(), theme::current().quiet)
+        .size()
+        .x;
+    // The name centred, with the buttons' room on both sides so it stays centred.
+    let chip = egui::Rect::from_center_size(
+        egui::pos2(rect.center().x, rect.min.y),
+        egui::vec2(width + 2.0 * 48.0, TITLE_ROW),
+    );
+    let colours = theme::current();
+    ui.painter().rect(
+        chip,
+        egui::CornerRadius::same((TITLE_ROW / 2.0) as u8),
+        colours.panel,
+        egui::Stroke::new(1.0, colours.panel_edge),
+        egui::StrokeKind::Inside,
+    );
+    chip.shrink2(egui::vec2(8.0, 0.0))
+}
+
 fn title_tab(
     ui: &egui::Ui,
     place: &layout::Place,
@@ -101,11 +133,17 @@ impl Curva {
         rect: egui::Rect,
     ) -> PanelEvent {
         let mut event = PanelEvent::Nothing;
-        let row = egui::Rect::from_min_size(
-            rect.min + egui::vec2(PANEL_MARGIN, 4.0),
-            egui::vec2(rect.width() - 2.0 * PANEL_MARGIN, TITLE_ROW),
-        );
         let font = egui::FontId::proportional(TITLE_FONT);
+        let row = if place.is_command_alone() {
+            // The command bar's title floats on its top edge as a small chip, so all its height
+            // is left for the last lines and the prompt (owner, 22 November 2026).
+            title_chip(ui, place, rect, &font, &self.text)
+        } else {
+            egui::Rect::from_min_size(
+                rect.min + egui::vec2(PANEL_MARGIN, 4.0),
+                egui::vec2(rect.width() - 2.0 * PANEL_MARGIN, TITLE_ROW),
+            )
+        };
         // The command tabs alone show their groups here instead of a title (option E), so the
         // grip that moves the panel starts after the groups, leaving them their clicks.
         let tabs_alone = place.is_command_tabs_alone();

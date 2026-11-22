@@ -113,7 +113,11 @@ fn command_buttons_row(ui: &mut egui::Ui, names: &[&'static str]) -> Option<&'st
         });
     });
     // Fades at the edges where buttons are scrolled out of sight.
-    let (seen, offset, full) = (out.inner_rect, out.state.clamped_offset().x, out.content_size.x);
+    let (seen, offset, full) = (
+        out.inner_rect,
+        out.state.clamped_offset().x,
+        out.content_size.x,
+    );
     let panel = theme::current().panel;
     let fade = |ui: &egui::Ui, x0: f32, x1: f32| {
         let mut mesh = egui::Mesh::default();

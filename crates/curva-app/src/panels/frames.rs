@@ -564,7 +564,7 @@ impl Curva {
                         ui.set_min_size(inner);
                         ui.set_max_size(inner);
                         // The command tabs' groups sit in the title row's place (option E).
-                        if !place.is_command_tabs_alone() {
+                        if !place.is_command_tabs_alone() && !place.is_command_alone() {
                             ui.add_space(TITLE_ROW);
                         }
                         self.piece_contents(ui, place.showing());
