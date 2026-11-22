@@ -43,6 +43,7 @@ mod icons;
 mod layout;
 mod mouse;
 mod notices;
+mod pane_drawing;
 mod panels;
 mod part_picking;
 mod printing;
@@ -61,8 +62,8 @@ mod viewports;
 #[allow(clippy::wildcard_imports)]
 use {
     agent::*, assistant_panel::*, benchmark::*, clipping::*, command_line::*, file_dialogs::*,
-    grid::*, gumball::*, mouse::*, notices::*, panels::frames::*, settings::*, sheets::*,
-    sketchup_import::*, text_edit::*, top_bar::*, viewports::*,
+    grid::*, gumball::*, mouse::*, notices::*, pane_drawing::*, panels::frames::*, settings::*,
+    sheets::*, sketchup_import::*, text_edit::*, top_bar::*, viewports::*,
 };
 
 use curva_commands::{DisplayMode, Kind, Message, Processor, Translations, ViewName, ViewRequest};
