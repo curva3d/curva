@@ -277,7 +277,7 @@ pub(crate) fn dotted(shader: &str) -> String {
     dotted
 }
 
-/// [`FACE_SHADER`] lighting every surface as white, whatever its own colour, for the Clay
+/// [`FACE_SHADER`] lighting every surface as white, whatever its own colour, for the Massing
 /// display mode (#551): white faces, gently shaded so their sides read apart.
 pub(crate) fn white_faces() -> String {
     let own = "input.colour * (0.25";

@@ -515,7 +515,7 @@ impl Curva {
                 DisplayMode::Shaded
                     | DisplayMode::Hidden
                     | DisplayMode::Technical
-                    | DisplayMode::Clay
+                    | DisplayMode::Massing
             ) {
                 &self.drawing.shaded_scene
             } else {
@@ -686,8 +686,7 @@ impl Curva {
                 ghosted: display == DisplayMode::Ghosted,
                 hidden: matches!(display, DisplayMode::Hidden | DisplayMode::Technical),
                 hidden_lines: display == DisplayMode::Technical,
-                sketch: display == DisplayMode::Clay,
-                ground: -origin[2] as f32,
+                massing: display == DisplayMode::Massing,
                 area: *rect,
                 frame: ui.ctx().cumulative_frame_nr(),
                 background: self.pane_background(*pane).0,

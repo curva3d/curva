@@ -54,8 +54,7 @@ fn centre_brightness(ghosted: bool) -> Option<u8> {
         ghosted,
         hidden: false,
         hidden_lines: false,
-        sketch: false,
-        ground: 0.0,
+        massing: false,
     };
     let path = std::env::temp_dir().join(format!(
         "curva-ghost-test-{ghosted}-{}.png",
@@ -107,8 +106,7 @@ fn rows_lit(width: f32) -> Option<usize> {
         ghosted: false,
         hidden: false,
         hidden_lines: false,
-        sketch: false,
-        ground: 0.0,
+        massing: false,
     };
     let path = std::env::temp_dir().join(format!(
         "curva-width-test-{}-{}.png",
@@ -183,8 +181,7 @@ fn mixed_picture() -> Picture {
         ghosted: false,
         hidden: false,
         hidden_lines: false,
-        sketch: false,
-        ground: 0.0,
+        massing: false,
     }
 }
 
@@ -275,8 +272,7 @@ fn the_selection_table_draws_what_coloured_vertices_drew() {
             ghosted: false,
             hidden: false,
             hidden_lines: false,
-            sketch: false,
-            ground: 0.0,
+            massing: false,
         };
         let coloured = picture(
             if shaded {
@@ -348,8 +344,7 @@ fn circles_drawn_from_their_axes_look_as_their_segments() {
             ghosted: false,
             hidden: false,
             hidden_lines: false,
-            sketch: false,
-            ground: 0.0,
+            massing: false,
         };
         let scene = |circles: &[crate::PlacedCircle]| Scene {
             objects: Arc::new(whole.objects.clone()),
@@ -421,8 +416,7 @@ fn a_sphere_is_outlined_at_its_rim_and_clean_inside() {
         ghosted: false,
         hidden: false,
         hidden_lines: false,
-        sketch: false,
-        ground: 0.0,
+        massing: false,
     };
     let Ok(pixels) = draw_picture(picture, size, true) else {
         eprintln!("no graphics adapter to draw with, so not checked");
@@ -481,8 +475,7 @@ fn far_from_the_origin_draws_as_at_the_origin() {
             ghosted: false,
             hidden: false,
             hidden_lines: false,
-            sketch: false,
-            ground: 0.0,
+            massing: false,
         };
         let scene = Scene {
             objects: Arc::new(parts.objects.clone()),
@@ -540,8 +533,7 @@ fn the_hidden_mode_draws_black_ink_on_white_paper() {
         ghosted: false,
         hidden: true,
         hidden_lines: false,
-        sketch: false,
-        ground: 0.0,
+        massing: false,
     };
     let pixels = match draw_picture(picture, SIZE, true) {
         Ok(pixels) => pixels,
@@ -624,8 +616,8 @@ fn the_technical_mode_dots_the_lines_faces_hide() {
     assert!(along.iter().any(|&d| !d), "not dotted: {along:?}");
 }
 
-/// The Clay display mode (#551): a coloured face comes out white, lit, and a line given in
-/// red comes out in black ink, as in SketchUp's default look.
+/// The Massing display mode (#551, first called Clay): a coloured face comes out white, lit,
+/// and a line given in red comes out in black ink, as in SketchUp's default look.
 #[test]
 fn the_clay_mode_draws_white_faces_and_black_lines() {
     let corner = |x: f32, y: f32| MeshVertex {
@@ -650,7 +642,7 @@ fn the_clay_mode_draws_white_faces_and_black_lines() {
             [0.0, 0.0, 0.0, 1.0],
         ],
         light: [0.0, 0.0, 1.0],
-        sketch: true,
+        massing: true,
         ..Picture::default()
     };
     let pixels = match draw_picture(picture, SIZE, true) {

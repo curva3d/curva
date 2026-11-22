@@ -51,9 +51,9 @@ struct ViewSlot {
     ghosted: bool,
     /// The Hidden display mode: faces in paper white, the model's lines in black ink (#164).
     hidden: bool,
-    /// The Clay display mode: faces white and lit, the model's lines in black ink, outlines
-    /// thick, a ground and sun (#551).
-    sketch: bool,
+    /// The Massing display mode: faces white and lit, the model's lines in black ink, outlines
+    /// thick, and the sun (#551).
+    massing: bool,
     /// The Technical display mode's addition: lines behind faces drawn dotted (#164).
     hidden_lines: bool,
 }
@@ -69,7 +69,7 @@ pub struct LineRenderer {
     circle_lines: [wgpu::RenderPipeline; 3],
     faces: wgpu::RenderPipeline,
     ghost_faces: wgpu::RenderPipeline,
-    /// The Hidden and Technical display modes' faces, in paper white (#164), and Clay's,
+    /// The Hidden and Technical display modes' faces, in paper white (#164), and Massing's,
     /// white and lit (#551).
     paper_faces: wgpu::RenderPipeline,
     white_faces: wgpu::RenderPipeline,
@@ -195,7 +195,7 @@ impl LineRenderer {
                     ghosted: false,
                     hidden: false,
                     hidden_lines: false,
-                    sketch: false,
+                    massing: false,
                 }
             })
             .collect();
@@ -431,7 +431,7 @@ impl LineRenderer {
         slot.ghosted = drawing.ghosted;
         slot.hidden = drawing.hidden;
         slot.hidden_lines = drawing.hidden_lines;
-        slot.sketch = drawing.sketch;
+        slot.massing = drawing.massing;
         let chunk = self.chunk_bytes;
         if stale(slot.grid.as_ref(), &drawing.grid) {
             slot.grid = Some(upload(
@@ -567,7 +567,7 @@ impl LineRenderer {
         {
             let pipeline = if slot.hidden {
                 &self.paper_faces
-            } else if slot.sketch {
+            } else if slot.massing {
                 &self.white_faces
             } else {
                 &self.faces
@@ -577,11 +577,11 @@ impl LineRenderer {
     }
 
     /// The colour of the outlines of curved shapes in view `slot` (#182), and whether they are
-    /// thick: black ink in the Hidden and Technical display modes, thick black ink in Clay
+    /// thick: black ink in the Hidden and Technical display modes, thick black ink in Massing
     /// (#551), else the dark of edges on faces.
     fn outline_colour(&self, slot: usize) -> ([f32; 3], bool) {
         match self.slots.get(slot) {
-            Some(slot) if slot.sketch => (crate::INK_COLOUR, true),
+            Some(slot) if slot.massing => (crate::INK_COLOUR, true),
             Some(slot) if slot.hidden => (crate::INK_COLOUR, false),
             _ => (crate::EDGE_ON_FACES_COLOUR, false),
         }
@@ -629,7 +629,7 @@ impl LineRenderer {
         // The model's own lines go in black ink in the Hidden and Technical display modes, and
         // Technical draws them dotted where faces hide them; previews and markers (the overlay)
         // keep their colours.
-        let mut inks = vec![if slot.hidden || slot.sketch {
+        let mut inks = vec![if slot.hidden || slot.massing {
             Ink::Visible
         } else {
             Ink::Own
