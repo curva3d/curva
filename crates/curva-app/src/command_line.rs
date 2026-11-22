@@ -235,6 +235,9 @@ impl Curva {
                 filter.on = !disabled;
             }
         });
+        // The bar is made as tall as all it has drawn by now: the last lines, the prompt and
+        // these toggles, so nothing is left empty below them (owner, 22 November 2026).
+        self.frames.command_fit = ui.min_rect().height() + 2.0 * PANEL_MARGIN;
     }
 
     /// The command bar's own lines first, then the history; together they fill the rows, the

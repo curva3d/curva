@@ -360,6 +360,27 @@ impl eframe::App for Curva {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        self.frame_ui(ui, frame);
+    }
+}
+
+impl Curva {
+    /// Keys go to the command line unless another text box has them. A toggle or button clicked
+    /// last holds the focus too, and it took Space and the letters typed (owner, 22 November
+    /// 2026), so the command line takes the focus back before anything sees this frame's keys.
+    fn keys_to_command_line(&mut self, ctx: &egui::Context) {
+        let focused = ctx.memory(|memory| memory.focused());
+        self.naming_layer = ctx.text_edit_focused() && focused != self.command_field;
+        if let Some(field) = self.command_field
+            && !self.naming_layer
+            && focused != Some(field)
+            && self.gumball_state.gumball_typing.is_none()
+        {
+            ctx.memory_mut(|memory| memory.request_focus(field));
+        }
+    }
+
+    fn frame_ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.apply_theme(ui.ctx());
         self.serve_file_dialogs(frame);
         self.follow_space();
@@ -376,8 +397,7 @@ impl eframe::App for Curva {
         }
         self.window_had_focus = has_focus;
         // Keys go to whichever field has focus; the command line takes them when no other does.
-        let focused = ui.ctx().memory(|memory| memory.focused());
-        self.naming_layer = focused.is_some() && focused != self.command_field;
+        self.keys_to_command_line(ui.ctx());
         // Before the panels, so its Enter is not also taken by the command line.
         self.gumball_value_box(ui.ctx());
         self.share_work_plane();
