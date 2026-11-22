@@ -1248,6 +1248,7 @@ error.bridge_counts = Both sets need as many edges.
 prompt.insertedge.edges = Select edge from loop, then press Enter
 prompt.insertedge.position = Edge positioning. Select point or give amount
 error.insertedge_none = Select edges of SubDs, beside quads.
+error.insertedge_range = With Mode=Range, pick two edges on one loop.
 job.open = Opening {0}
 job.import = Importing {0}
 job.step.reading = Reading the file
