@@ -98,6 +98,7 @@ const TITLE_HEIGHT: f32 = 22.0;
 const PANE_GAP: f32 = 2.0;
 /// Which viewport fills the window when Curva opens.
 const STARTING_LAYOUT: Option<usize> = Some(PERSPECTIVE);
+#[cfg(test)]
 const LOG_LINES: usize = 3;
 /// Rows the list of matching commands shows before it scrolls.
 const MOST_MATCH_ROWS: f32 = 10.0;

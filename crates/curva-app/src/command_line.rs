@@ -44,19 +44,29 @@ fn tab_toggles_subds(typed: &str, running: bool) -> bool {
 /// new message never changes the height of the panel and moves the viewport.
 #[cfg(test)]
 pub(crate) fn log_rows(log: &[String]) -> Vec<&str> {
-    let (blanks, _, shown) = history_rows(log, 0);
+    let (blanks, _, shown) = history_rows(log, 0, LOG_LINES);
     std::iter::repeat_n(" ", blanks)
         .chain(shown.iter().map(String::as_str))
         .collect()
 }
 
+/// How many history lines `line` points tall fit in `room`: at least one.
+pub(crate) fn history_lines(room: f32, line: f32) -> usize {
+    ((room / line).floor() as usize).max(1)
+}
+
 /// How the command bar's rows are shared between its own lines (`notices` of them) and the
 /// history: blank rows first, how many of its own lines to leave out (the oldest), and the history
-/// lines shown. Together they fill [`LOG_LINES`] rows, the oldest going as new ones come.
-pub(crate) fn history_rows(log: &[String], notices: usize) -> (usize, usize, &[String]) {
+/// lines shown. Together they fill `lines` rows, the oldest going as new ones come; the bar shows
+/// as many as its height holds (owner, 22 November 2026: making it taller shows more of the past).
+pub(crate) fn history_rows(
+    log: &[String],
+    notices: usize,
+    lines: usize,
+) -> (usize, usize, &[String]) {
     let total = notices + log.len();
-    let skip = total.saturating_sub(LOG_LINES);
-    let blanks = LOG_LINES.saturating_sub(total);
+    let skip = total.saturating_sub(lines);
+    let blanks = lines.saturating_sub(total);
     let log_skip = skip.saturating_sub(notices);
     (blanks, skip.min(notices), &log[log_skip.min(log.len())..])
 }
@@ -229,21 +239,21 @@ impl Curva {
             ui.separator();
             filter_item = Some(ui.selectable_label(filter_lit, filter_word));
         });
-        // The bar is made as tall as all it has drawn by now: the last lines, the prompt and
-        // these toggles, so nothing is left empty below them (owner, 22 November 2026).
-        self.frames.command_fit = ui.min_rect().height() + 2.0 * PANEL_MARGIN;
         if let Some(item) = filter_item {
             self.selection_filter_panel(ui, &item);
         }
     }
 
-    /// The command bar's own lines first, then the history; together they fill the rows, the
-    /// oldest going as new ones come.
+    /// The command bar's own lines first, then the history, filling the height the bar has above
+    /// its prompt and toggles, flush against them: a taller bar shows more of the past, a
+    /// shorter one less, and nothing else in it moves (owner, 22 November 2026).
     fn command_history(&mut self, ui: &mut egui::Ui) {
         let log = self.processor.log().to_vec();
-        // The options' own row takes one of the rows, so the bar keeps its height (#515).
-        let options_row = usize::from(!self.processor.options().is_empty());
-        let (blanks, skip, shown) = history_rows(&log, self.notices.len() + options_row);
+        let line = ui.text_style_height(&egui::TextStyle::Body) + ui.spacing().item_spacing.y;
+        let room = (self.frames.command_room - self.frames.command_below).max(line);
+        let lines = history_lines(room, line);
+        ui.add_space(room - lines as f32 * line);
+        let (blanks, skip, shown) = history_rows(&log, self.notices.len(), lines);
         for _ in 0..blanks {
             ui.label(" ");
         }
@@ -285,6 +295,7 @@ impl Curva {
 
     pub(crate) fn command_line(&mut self, ui: &mut egui::Ui) {
         self.command_history(ui);
+        let below_from = ui.cursor().min.y;
         let prompt = self
             .processor
             .prompt()
@@ -325,6 +336,8 @@ impl Curva {
             self.processor.submit(&mut self.doc, name);
         }
         self.drawing_aids_bar(ui);
+        // What sits below the history, for the next frame to leave room for.
+        self.frames.command_below = ui.cursor().min.y - below_from;
         let wants_path = self
             .processor
             .current_request()
@@ -471,6 +484,19 @@ mod tests {
         let rows = log_rows(&log);
         assert_eq!(rows[LOG_LINES - 1], log[LOG_LINES + 1]);
         assert_eq!(rows[0], log[2]);
+    }
+
+    /// A taller bar shows more of the past and a shorter one less, never none (owner,
+    /// 22 November 2026).
+    #[test]
+    fn the_bar_shows_as_many_lines_as_its_height_holds() {
+        assert_eq!(history_lines(63.0, 21.0), 3);
+        assert_eq!(history_lines(150.0, 21.0), 7);
+        assert_eq!(history_lines(5.0, 21.0), 1);
+        let log = messages(10);
+        let (blanks, _, shown) = history_rows(&log, 0, 7);
+        assert_eq!((blanks, shown.len()), (0, 7));
+        assert_eq!(shown[6], log[9]);
     }
 
     #[test]

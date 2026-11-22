@@ -223,7 +223,7 @@ pub const LEAST_LAYER_COLUMNS: [f32; 6] = [60.0, 20.0, 24.0, 28.0, 56.0, 52.0];
 pub const COMMAND_TABS_HEIGHT: f32 = 92.0;
 /// The command bar's and the assistant panel's height at first: the same, so the two sit level
 /// along the bottom (owner, 22 November 2026).
-pub const BOTTOM_HEIGHT: f32 = 120.0;
+pub const BOTTOM_HEIGHT: f32 = 128.0;
 
 fn standard_layer_columns() -> [f32; 6] {
     STANDARD_LAYER_COLUMNS
