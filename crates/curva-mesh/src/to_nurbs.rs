@@ -112,14 +112,10 @@ mod tests {
         );
     }
 
-    /// An open 3 × 3 grid, bent: the kernel cannot yet sew patches lying flat in one plane
-    /// (status 1007), though each builds alone.
-    fn bent_grid() -> SubD {
+    /// An open, flat 3 × 3 grid (#506 once kept it bent: the kernel could not sew flat patches).
+    fn flat_grid() -> SubD {
         let points: Vec<Point> = (0..4u32)
-            .flat_map(|j| {
-                (0..4u32)
-                    .map(move |i| [f64::from(i), f64::from(j), 0.1 * f64::from((i * 3 + j) % 4)])
-            })
+            .flat_map(|j| (0..4u32).map(move |i| [f64::from(i), f64::from(j), 0.0]))
             .collect();
         let at = |i: u32, j: u32| j * 4 + i;
         let faces: Vec<[u32; 4]> = (0..3)
@@ -132,7 +128,7 @@ mod tests {
 
     #[test]
     fn an_open_creased_subd_becomes_an_open_polysurface() {
-        let grid = bent_grid();
+        let grid = flat_grid();
         let (body, _) = grid.to_nurbs(1, false).unwrap();
         assert!(!body.is_solid());
         assert_eq!(body.face_count().unwrap(), 36);
@@ -171,7 +167,6 @@ mod tests {
                 6,
                 Some(6.294_84),
             ),
-            // Unpacked, the middle patch of each side is flat and the kernel cannot sew it.
             (
                 "3 a side",
                 SubD::subd_box(&world, [2.0; 3], [3, 3, 3]),
@@ -184,7 +179,7 @@ mod tests {
                 6,
                 Some(3.978_48),
             ),
-            ("plane", bent_grid(), 1, None),
+            ("plane", flat_grid(), 1, None),
             // The side packs into one face closed around; each cap triangle keeps its 3 quads.
             (
                 "triangle caps",
