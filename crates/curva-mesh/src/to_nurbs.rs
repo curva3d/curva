@@ -224,3 +224,18 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod flat_patches {
+    use crate::{Frame, SubD};
+
+    /// #506: a box of 3 × 3 × 3 faces, whose middle patches lie flat, becomes a solid without
+    /// packing (the kernel refused to sew flat patches).
+    #[test]
+    fn flat_patches_are_sewn() {
+        let cube = SubD::subd_box(&Frame::world(), [2.0; 3], [3, 3, 3]);
+        let (body, _) = cube.to_nurbs(1, false).unwrap();
+        assert!(body.is_solid());
+        assert_eq!(body.face_count().unwrap(), 216);
+    }
+}

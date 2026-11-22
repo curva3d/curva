@@ -12,7 +12,7 @@ pub const SEW_TOLERANCE: f64 = 1e-3;
 fn engine_body(record: &Record) -> Result<EngineBody, KernelError> {
     // Trusted: the parts each come from the engine, so the healer is not needed (and would lose
     // the record order).
-    EngineBody::from_record(record, true)
+    EngineBody::from_record(&crate::record_io::squared_planes(record), true)
         .map(|(body, _)| body)
         .map_err(|e| failed("building a body", e))
 }
@@ -312,5 +312,52 @@ mod tests {
         let again = Body::assembled(&[top, rest]).unwrap();
         assert!(again.is_solid());
         assert!((again.volume().unwrap() - 1.0).abs() < 1e-6);
+    }
+}
+
+#[cfg(test)]
+mod flat_patch_tests {
+    use crate::NurbsSurface;
+
+    /// #506: a flat patch of a 3 × 3 × 3 SubD box (ToNURBS, one level), its coordinates 1e-16
+    /// apart as the subdivision leaves them. The engine wrote its plane a hair off square and
+    /// refused to read it back (status 1007), so the box could not be sewn.
+    #[test]
+    fn a_flat_patch_a_hair_off_square_is_read_back_and_sewn() {
+        let e = 1.110_223_024_625_156_5e-16;
+        let (a, b, c, d) = (
+            0.999_999_999_999_999_9,
+            0.888_888_888_888_888_8,
+            0.777_777_777_777_777_7,
+            0.666_666_666_666_666_5,
+        );
+        let net = vec![
+            vec![[a, a, e], [b, 1.0, 0.0], [c, 1.0, 0.0], [d, 1.0, e]],
+            vec![
+                [a, b, 0.0],
+                [b, b, 0.0],
+                [c, b, e],
+                [0.666_666_666_666_666_6, b, 0.0],
+            ],
+            vec![
+                [1.0, c, 0.0],
+                [b, c, e],
+                [c, c, 0.0],
+                [0.666_666_666_666_666_6, c, 0.0],
+            ],
+            vec![
+                [1.0, d, e],
+                [b, 0.666_666_666_666_666_6, 0.0],
+                [c, 0.666_666_666_666_666_6, 0.0],
+                [d, d, e],
+            ],
+        ];
+        let knots = vec![0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
+        let patch = NurbsSurface::new([3, 3], knots.clone(), knots, &net, None)
+            .and_then(|s| s.to_body())
+            .unwrap();
+        let sewn = crate::Body::assembled(&[patch]).unwrap();
+        assert_eq!(sewn.face_count().unwrap(), 1);
+        assert!((sewn.area().unwrap() - 1.0 / 9.0).abs() < 1e-9);
     }
 }
