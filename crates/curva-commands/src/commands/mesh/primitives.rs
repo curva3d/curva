@@ -299,8 +299,21 @@ fn circle_steps(
     steps
 }
 
-/// The options offered while the ends of a diameter are picked.
-const SPHERE_FACES: &[&str] = &[STYLE, VERTICAL, AROUND, SUBDIVISIONS];
+/// The face options Rhino 8 shows for a sphere's style: faces up and around for UV, subdivisions
+/// for the others (measured: "Style=UV  VerticalFaces=10  AroundFaces=10", "Style=Quad
+/// Subdivisions=2").
+const UV_FACES: &[&str] = &[STYLE, VERTICAL, AROUND];
+const SUBDIVIDED_FACES: &[&str] = &[STYLE, SUBDIVISIONS];
+const UV_AT_CENTRE: &[&str] = &[TWO_POINT, DIAMETER, STYLE, VERTICAL, AROUND];
+const SUBDIVIDED_AT_CENTRE: &[&str] = &[TWO_POINT, DIAMETER, STYLE, SUBDIVISIONS];
+
+/// Rhino 8's MeshSphere styles, as its prompt names them: "Style <UV> ( UV  Triangle  Quad )".
+const MESH_STYLES: [&str; 3] = ["UV", "Triangle", "Quad"];
+const SUBD_STYLES: [&str; 3] = ["UV", "Quads", "Triangles"];
+
+fn is_uv(cx: &Context<'_>) -> bool {
+    cx.name(STYLE) == "UV"
+}
 
 /// A sphere's centre and radius: from the centre and radius, or with `2Point` from the ends of a
 /// diameter, as `Sphere`.
@@ -313,7 +326,7 @@ fn sphere_size(cx: &Context<'_>) -> Option<(Point, f64)> {
     Some((point(cx, 0)?, radius(cx, 1)?))
 }
 
-/// `MeshSphere`: its centre, then its radius, in Rhino's UV, Quads or Triangles style.
+/// `MeshSphere`: its centre, then its radius, in Rhino's UV, Triangle or Quad style.
 #[derive(Default)]
 pub struct Sphered<const SUBD: bool>;
 
@@ -331,30 +344,35 @@ impl<const SUBD: bool> Recipe for Sphered<SUBD> {
         OptionDef::name(STYLE, if SUBD { "Quads" } else { "UV" }),
         faces(VERTICAL),
         faces(AROUND),
-        // Rhino's range; MeshSphere's default could not be measured, so 2 (96 quads, 320
-        // triangles).
+        // Rhino's range. MeshSphere starts at 2 for Quad (96 quads), measured 22 November 2026;
+        // Rhino keeps a separate 1 for Triangle, which one option here cannot hold yet.
         OptionDef::whole(SUBDIVISIONS, if SUBD { 1 } else { 2 }, 0, 6),
     ];
 
     fn choices(&self, _cx: &Context<'_>, option: &str) -> Option<Vec<String>> {
-        (option == STYLE).then(|| ["UV", "Quads", "Triangles"].map(str::to_owned).to_vec())
+        let styles = if SUBD { SUBD_STYLES } else { MESH_STYLES };
+        (option == STYLE).then(|| styles.map(str::to_owned).to_vec())
     }
 
     fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
+        let faces = if is_uv(cx) {
+            UV_FACES
+        } else {
+            SUBDIVIDED_FACES
+        };
         if cx.mode == Some(TWO_POINT) {
-            let mut steps = vec![StepDef::point("prompt.sphere.start").offering(SPHERE_FACES)];
-            steps.extend(point(cx, 0).map(|a| {
-                StepDef::point("prompt.sphere.end")
-                    .from(a)
-                    .offering(SPHERE_FACES)
-            }));
+            let mut steps = vec![StepDef::point("prompt.sphere.start").offering(faces)];
+            steps.extend(
+                point(cx, 0).map(|a| StepDef::point("prompt.sphere.end").from(a).offering(faces)),
+            );
             return steps;
         }
-        circle_steps(
-            cx,
-            "sphere",
-            &[TWO_POINT, DIAMETER, STYLE, VERTICAL, AROUND, SUBDIVISIONS],
-        )
+        let at_centre = if is_uv(cx) {
+            UV_AT_CENTRE
+        } else {
+            SUBDIVIDED_AT_CENTRE
+        };
+        circle_steps(cx, "sphere", at_centre)
     }
 
     fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
@@ -366,8 +384,8 @@ impl<const SUBD: bool> Recipe for Sphered<SUBD> {
         }
         let subdivisions = count(cx, SUBDIVISIONS);
         let style = match cx.name(STYLE).as_str() {
-            "Quads" => SphereStyle::Quads { subdivisions },
-            "Triangles" => SphereStyle::Triangles {
+            "Quad" | "Quads" => SphereStyle::Quads { subdivisions },
+            "Triangle" | "Triangles" => SphereStyle::Triangles {
                 subdivisions: subdivisions.min(5),
             },
             _ => SphereStyle::Uv {
@@ -747,7 +765,7 @@ mod tests {
         let quads = made(&[
             "meshsphere",
             "Style",
-            "Quads",
+            "Quad",
             "Subdivisions",
             "1",
             "0,0",
@@ -758,7 +776,7 @@ mod tests {
         let tris = made(&[
             "meshsphere",
             "Style",
-            "Triangles",
+            "Triangle",
             "Subdivisions",
             "0",
             "0,0",

@@ -11,6 +11,12 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 22 November 2026
 
+**MeshSphere's styles as Rhino 8 names them:** measured in its prompt, the styles are UV, Triangle and Quad, Quad starts
+at 2 subdivisions and Triangle at 1, and the prompt shows faces up and around for UV and subdivisions for the others.
+Curva now names and offers them so; Triangle's separate default needs one option to start differently per style, which
+the framework cannot yet do. ReduceMesh's PlanarOnly, InsertEdge and Bridge are still unmeasured: spawned Rhinos
+stopped at a dialog this session.
+
 **Fill and Stitch ask as Rhino does:** with the features stream's choice step (#574), Fill asks "Patch style <Automatic>"
 and Stitch "Stitch location <Average>" after the picks, Enter keeping the one shown. Fill's reference row is done.
 
