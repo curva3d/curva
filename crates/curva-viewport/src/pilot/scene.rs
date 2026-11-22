@@ -13,7 +13,6 @@ use bevy::{
     prelude::*,
 };
 
-mod ground;
 mod shapes;
 
 use super::clip::{Clipping, Clips, CurvaMaterial};
@@ -141,10 +140,8 @@ pub(super) struct ViewScene {
     selection: Option<Arc<Vec<u64>>>,
     ghosted: Option<bool>,
     /// How faces are coloured: their own colours, flat paper white (Hidden, #164) or white and lit
-    /// (Clay, #551).
+    /// (Massing, #551).
     hidden: Option<FaceLook>,
-    /// The Clay display mode's ground, once a Clay view has shown it (#551).
-    ground: Option<Entity>,
     parts: HashMap<PartKey, Part>,
     /// This view's material for each colour, so a style change touches only this view.
     materials: HashMap<[u32; 3], Handle<CurvaMaterial>>,
@@ -231,7 +228,6 @@ impl ViewScene {
             selection: None,
             ghosted: None,
             hidden: None,
-            ground: None,
             parts: HashMap::new(),
             shapes: None,
             shape_parts: HashMap::new(),
@@ -313,7 +309,6 @@ impl ViewScene {
             );
         }
         self.place_preview(world, &drawing.preview_faces);
-        self.place_ground(world, drawing);
         let new_faces = !self
             .faces
             .as_ref()
@@ -633,7 +628,7 @@ pub(super) enum FaceLook {
     /// Flat paper white and unlit, for the Hidden and Technical display modes (#164), so a face
     /// hides what is behind it and shows only its edges.
     Paper,
-    /// White and lit, for the Clay display mode (#551), so the sun shades it and its shadows
+    /// White and lit, for the Massing display mode (#551), so the sun shades it and its shadows
     /// fall on it.
     White,
 }
@@ -643,7 +638,7 @@ impl FaceLook {
     pub(super) fn of(drawing: &Drawing) -> Self {
         if drawing.hidden {
             Self::Paper
-        } else if drawing.sketch {
+        } else if drawing.massing {
             Self::White
         } else {
             Self::Own

@@ -50,8 +50,7 @@ pub(crate) fn picture_of(
         ghosted,
         hidden: false,
         hidden_lines: false,
-        sketch: false,
-        ground: 0.0,
+        massing: false,
     };
     (picture, camera)
 }
@@ -91,11 +90,11 @@ const PICTURE_BACKGROUND: egui::Color32 = egui::Color32::from_rgb(28, 31, 36);
 fn save_bevy_view(picture: Picture, camera: &Camera, path: &std::path::Path) -> Result<(), String> {
     // The Hidden and Technical display modes draw on white paper, as their faces are (#164).
     let background = if picture.hidden {
-        egui::Color32::WHITE
-    } else if picture.sketch {
-        crate::sheets::SKETCH_SKY.0
+        (egui::Color32::WHITE, egui::Color32::WHITE)
+    } else if picture.massing {
+        crate::sheets::MASSING_SKY
     } else {
-        PICTURE_BACKGROUND
+        (PICTURE_BACKGROUND, PICTURE_BACKGROUND)
     };
     let pixels = curva_viewport::bevy_picture(
         picture,
@@ -109,14 +108,12 @@ fn save_bevy_view(picture: Picture, camera: &Camera, path: &std::path::Path) -> 
 }
 
 /// `picture` as `mode` draws it: Hidden and Technical on white paper, Technical with its hidden
-/// lines dotted (#164), Clay in a look like SketchUp's with its ground at the model's height 0,
-/// measured from the drawing's `origin` (#551).
-fn in_mode(picture: Picture, mode: DisplayMode, origin: [f64; 3]) -> Picture {
+/// lines dotted (#164), Massing as a white study model (#551).
+fn in_mode(picture: Picture, mode: DisplayMode) -> Picture {
     Picture {
         hidden: matches!(mode, DisplayMode::Hidden | DisplayMode::Technical),
         hidden_lines: mode == DisplayMode::Technical,
-        sketch: mode == DisplayMode::Clay,
-        ground: -origin[2] as f32,
+        massing: mode == DisplayMode::Massing,
         ..picture
     }
 }
@@ -186,7 +183,7 @@ pub(crate) fn picture(
         )?;
     } else {
         let (picture, camera) = picture_of(&doc, &outlines, &camera, aspect, ghosted);
-        let picture = in_mode(picture, mode, outlines.drawing_origin());
+        let picture = in_mode(picture, mode);
         save_bevy_view(picture, &camera, std::path::Path::new(path))?;
     }
     for line in processor.log() {
