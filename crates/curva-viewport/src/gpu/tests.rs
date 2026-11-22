@@ -669,3 +669,49 @@ fn the_clay_mode_draws_white_faces_and_black_lines() {
         at(32, middle)
     );
 }
+
+/// Lines have smooth edges (spec `display-pipeline.md` §2.5): a slanting white line on the black
+/// picture has pixels part-way between the two along its sides, where a stepped line would have
+/// only black and white.
+#[test]
+fn a_slanting_line_has_smooth_edges() {
+    let end = |x: f32, y: f32| Vertex {
+        position: [x, y, 0.5],
+        colour: [1.0; 3],
+        width: -2.0,
+        object: NO_OBJECT,
+    };
+    let picture = Picture {
+        lines: vec![end(-0.8, -0.3), end(0.8, 0.3)],
+        matrix: [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        light: [0.0, 0.0, 1.0],
+        ..Picture::default()
+    };
+    let path = std::env::temp_dir().join(format!("curva-smooth-test-{}.png", std::process::id()));
+    if let Err(error) = save_picture(picture, SIZE, &path) {
+        eprintln!("no graphics adapter to draw with, so not checked: {error}");
+        return;
+    }
+    let decoder = png::Decoder::new(std::io::BufReader::new(std::fs::File::open(&path).unwrap()));
+    let mut reader = decoder.read_info().unwrap();
+    let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+    reader.next_frame(&mut pixels).unwrap();
+    let _ = std::fs::remove_file(&path);
+    let reds: Vec<u8> = pixels.chunks(4).map(|pixel| pixel[0]).collect();
+    let background = reds[0];
+    let part_way = reds
+        .iter()
+        .filter(|&&red| red > background.saturating_add(40) && red < 215)
+        .count();
+    let full = reds.iter().filter(|&&red| red >= 215).count();
+    assert!(full > 20, "the line is drawn: {full} full pixels");
+    assert!(
+        part_way > full / 2,
+        "{part_way} part-way pixels beside {full} full ones"
+    );
+}

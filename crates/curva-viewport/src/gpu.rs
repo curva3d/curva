@@ -108,6 +108,9 @@ struct PipelineParts<'a> {
     behind: bool,
     /// Whether the buffer is read once per instance (a segment) rather than per vertex.
     per_instance: bool,
+    /// Blended over what is already drawn while still hiding what comes after: lines, whose
+    /// edges fade out (spec `display-pipeline.md` §2.5).
+    smooth: bool,
 }
 
 fn pipeline(
@@ -143,8 +146,7 @@ fn pipeline(
             compilation_options: wgpu::PipelineCompilationOptions::default(),
             targets: &[Some(wgpu::ColorTargetState {
                 format,
-                blend: parts
-                    .see_through
+                blend: (parts.see_through || parts.smooth)
                     .then_some(wgpu::BlendState::ALPHA_BLENDING),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
@@ -289,6 +291,7 @@ impl LineRenderer {
                 // strength changes nothing else.
                 see_through: true,
                 per_instance: false,
+                smooth: false,
                 behind: false,
             },
         );
@@ -310,6 +313,7 @@ impl LineRenderer {
                     bias: LINE_DEPTH_BIAS,
                     see_through: false,
                     per_instance: true,
+                    smooth: true,
                     behind: ink == Ink::Hidden,
                 },
             )
@@ -347,6 +351,7 @@ impl LineRenderer {
                 bias: FACE_DEPTH_BIAS,
                 see_through,
                 per_instance: false,
+                smooth: false,
                 behind: false,
             },
         )

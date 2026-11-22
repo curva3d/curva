@@ -484,7 +484,8 @@ mod tests {
     ];
 
     /// Commands whose preview needs its own setup, tested in their own files.
-    const PREVIEW_TESTED_ELSEWHERE: [&str; 78] = [
+    const PREVIEW_TESTED_ELSEWHERE: [&str; 79] = [
+        "InsertEdge",
         "ReduceMesh",
         "Mesh",
         "DimCurveLength",
