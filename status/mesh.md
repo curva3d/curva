@@ -11,6 +11,10 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 22 November 2026
 
+**MergeFaces, as Rhino 8 measured:** picked SubD faces that touch along edges become one face round their outer
+border; two neighbouring quads on a box side become one six-sided face (23 faces on 26 points), "Changed 1 objects.".
+`SubD::with_faces_merged` in curva-mesh.
+
 **Stitch across two SubDs:** sets on two different SubDs now join them into one first, as Rhino does, instead of being
 refused.
 

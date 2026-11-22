@@ -1248,6 +1248,9 @@ prompt.insertedge.edges = Select edge from loop, then press Enter
 prompt.insertedge.position = Edge positioning. Select point or give amount
 error.insertedge_none = Select edges of SubDs, beside quads.
 error.insertedge_range = With Mode=Range, pick two edges on one loop.
+prompt.mergefaces.faces = Select SubD faces to merge, then press Enter
+error.mergefaces_none = Select SubD faces that touch along edges.
+done.mergefaces = Changed {0} objects.
 job.open = Opening {0}
 job.import = Importing {0}
 job.step.reading = Reading the file
