@@ -132,6 +132,47 @@ pub fn from_record_curve(
     spline.to_curve()
 }
 
+/// The record with every plane's axes made exactly square and of length one, as the engine
+/// needs to read it back (#506, #457): the engine itself writes a flat face's plane with axes
+/// some 1e-15 off square, as a flat bicubic patch with coordinates 1e-16 apart gives, and then
+/// refuses that record with status 1007, even 1e-15 off. Every plane is squared, as no closeness
+/// was found that the engine takes; borrowed as it is when it has no planes.
+pub(crate) fn squared_planes(record: &Record) -> std::borrow::Cow<'_, Record> {
+    use solidcore_record::brep::Surface;
+    let unit = |a: [f64; 3]| {
+        let length = (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]).sqrt();
+        (length > 0.0).then(|| a.map(|c| c / length))
+    };
+    let dot = |a: [f64; 3], b: [f64; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    let squared = |u: [f64; 3], v: [f64; 3]| -> Option<([f64; 3], [f64; 3])> {
+        let u = unit(u)?;
+        let along = dot(u, v);
+        let v = unit([
+            v[0] - along * u[0],
+            v[1] - along * u[1],
+            v[2] - along * u[2],
+        ])?;
+        Some((u, v))
+    };
+    let needs = record
+        .faces
+        .iter()
+        .any(|f| matches!(f.surface, Surface::Plane { .. }));
+    if !needs {
+        return std::borrow::Cow::Borrowed(record);
+    }
+    let mut fixed = record.clone();
+    for face in &mut fixed.faces {
+        if let Surface::Plane { u_axis, v_axis, .. } = &mut face.surface
+            && let Some((u, v)) = squared(*u_axis, *v_axis)
+        {
+            *u_axis = u;
+            *v_axis = v;
+        }
+    }
+    std::borrow::Cow::Owned(fixed)
+}
+
 impl Body {
     /// A body from a record another program made, such as a Rhino file's B-rep turned into the
     /// engine's record: the engine's healer runs on it, as its rules may not all be kept.
@@ -140,10 +181,10 @@ impl Body {
             .canonical()
             .map_err(|e| KernelError(format!("a B-rep Curva cannot read: {e}")))?;
         // The healer first; where it has to change the topology, the record as it is.
-        let body = match EngineBody::from_record(&canonical.brep, false) {
+        let body = match EngineBody::from_record(&squared_planes(&canonical.brep), false) {
             Ok((body, _)) => body,
             Err(_) => {
-                EngineBody::from_record(&canonical.brep, true)
+                EngineBody::from_record(&squared_planes(&canonical.brep), true)
                     .map_err(|e| failed("reading a B-rep", e))?
                     .0
             }
@@ -159,7 +200,7 @@ impl Body {
         let canonical = record
             .canonical()
             .map_err(|e| KernelError(format!("a B-rep Curva cannot read: {e}")))?;
-        let (body, _) = EngineBody::from_record(&canonical.brep, true)
+        let (body, _) = EngineBody::from_record(&squared_planes(&canonical.brep), true)
             .map_err(|e| failed("reading a B-rep", e))?;
         Self::made(&body)
     }
@@ -173,8 +214,8 @@ impl Body {
 impl Body {
     /// A body from the engine's record, as engine operations give them.
     pub fn from_record(record: &Record) -> Result<Self, KernelError> {
-        let (body, _) =
-            EngineBody::from_record(record, true).map_err(|e| failed("reading a body", e))?;
+        let (body, _) = EngineBody::from_record(&squared_planes(record), true)
+            .map_err(|e| failed("reading a body", e))?;
         Self::made(&body)
     }
 
