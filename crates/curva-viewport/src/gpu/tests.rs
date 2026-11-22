@@ -627,7 +627,7 @@ fn the_technical_mode_dots_the_lines_faces_hide() {
 /// The Clay display mode (#551): a coloured face comes out white, lit, and a line given in
 /// red comes out in black ink, as in SketchUp's default look.
 #[test]
-fn the_sketch_mode_draws_white_faces_and_black_lines() {
+fn the_clay_mode_draws_white_faces_and_black_lines() {
     let corner = |x: f32, y: f32| MeshVertex {
         position: [x, y, 0.5],
         normal: [0.0, 0.0, 1.0],
