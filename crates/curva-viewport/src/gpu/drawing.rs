@@ -50,6 +50,13 @@ pub struct Drawing {
     /// With `hidden`, the Technical display mode (#164), as Rhino 8 draws it: the lines faces
     /// hide are drawn as well, dotted.
     pub hidden_lines: bool,
+    /// The Clay display mode (#551), a look like SketchUp's: faces white and gently lit by the
+    /// sun, casting shadows on a grey ground under the model, the model's lines thin in black
+    /// ink and the outlines of shapes thick. The sky is the caller's background.
+    pub sketch: bool,
+    /// The height of the ground under the model in Clay, in the drawing's own coordinates (the
+    /// model's height 0, measured from the drawing's origin, #225).
+    pub ground: f32,
     /// Where the view is in the window, in points.
     pub area: epaint::Rect,
     /// The window's frame number, so the first view drawn in a frame clears the scene texture.

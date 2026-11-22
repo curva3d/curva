@@ -11,6 +11,15 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 ## 22 November 2026
 
 **Done**
+- **Clay display mode, a look like SketchUp's** (#551, the owner's direction: white surfaces,
+  black outlines thicker than inner lines, simple shadows, a light blue sky and a grey ground;
+  plain, with no sketchy edges). Faces are white and lit by the sun, casting shadows on a grey
+  ground at the model's height 0 that reaches to the horizon; the model's lines are thin and
+  black, the outlines of shapes three pixels wide; the sky is light blue overhead and paler at
+  the horizon. In the Display panel, `SetDisplayMode` (`Clay`), detail views and pictures. Named
+  Clay rather than after SketchUp, and because `S` already means Shaded in `SetDisplayMode`.
+  SketchUp's exact default colours were not measured (it is not installed here); the owner chose
+  the colours above.
 - **Picked parts of meshes and SubDs show, and a SubD's cage while it is edited** (#334,
   first part; #563 and this). Points, edges and faces picked with Ctrl+Shift were invisible;
   now they are drawn in the selection colour, as Rhino highlights them: points as dots, edges

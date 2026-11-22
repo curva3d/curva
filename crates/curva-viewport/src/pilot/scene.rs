@@ -13,6 +13,7 @@ use bevy::{
     prelude::*,
 };
 
+mod ground;
 mod shapes;
 
 use super::clip::{Clipping, Clips, CurvaMaterial};
@@ -139,8 +140,11 @@ pub(super) struct ViewScene {
     faces: Option<Arc<Vec<MeshVertex>>>,
     selection: Option<Arc<Vec<u64>>>,
     ghosted: Option<bool>,
-    /// Whether faces are flat paper white, for the Hidden display mode (#164).
-    hidden: Option<bool>,
+    /// How faces are coloured: their own colours, flat paper white (Hidden, #164) or white and lit
+    /// (Clay, #551).
+    hidden: Option<FaceLook>,
+    /// The Clay display mode's ground, once a Clay view has shown it (#551).
+    ground: Option<Entity>,
     parts: HashMap<PartKey, Part>,
     /// This view's material for each colour, so a style change touches only this view.
     materials: HashMap<[u32; 3], Handle<CurvaMaterial>>,
@@ -227,6 +231,7 @@ impl ViewScene {
             selection: None,
             ghosted: None,
             hidden: None,
+            ground: None,
             parts: HashMap::new(),
             shapes: None,
             shape_parts: HashMap::new(),
@@ -308,6 +313,7 @@ impl ViewScene {
             );
         }
         self.place_preview(world, &drawing.preview_faces);
+        self.place_ground(world, drawing);
         let new_faces = !self
             .faces
             .as_ref()
@@ -324,7 +330,7 @@ impl ViewScene {
             self.mirror_shapes(world, &mut meshes.1, &drawing.shapes);
             self.shapes = Some(Arc::clone(&drawing.shapes));
         }
-        self.restyle(world, drawing.ghosted, drawing.hidden);
+        self.restyle(world, drawing.ghosted, FaceLook::of(drawing));
         let clips = Clips::of(&drawing.clips);
         if self.clips != Some(clips) {
             self.clips = Some(clips);
@@ -546,7 +552,7 @@ impl ViewScene {
 
     /// Turns this view's materials see-through for the Ghosted display mode, or flat paper white
     /// for the Hidden one (#164), when either changed since the last frame.
-    fn restyle(&mut self, world: &mut World, ghosted: bool, hidden: bool) {
+    fn restyle(&mut self, world: &mut World, ghosted: bool, hidden: FaceLook) {
         if self.ghosted == Some(ghosted) && self.hidden == Some(hidden) {
             return;
         }
@@ -578,7 +584,7 @@ impl ViewScene {
         }
         let (ghosted, paper, shine) = (
             self.ghosted.unwrap_or(false),
-            self.hidden.unwrap_or(false),
+            self.hidden.unwrap_or_default(),
             self.look.unwrap_or_default().shine,
         );
         let clips = self.clips.unwrap_or_default();
@@ -618,17 +624,43 @@ fn set_shine(material: &mut StandardMaterial, shine: f32) {
     material.reflectance = 0.2 + 0.6 * shine;
 }
 
-/// Flat paper white and unlit for the Hidden display mode (#164), so a face hides what is behind
-/// it and shows only its edges; otherwise lit, in `colour` (as the material's key holds it).
-fn set_paper(material: &mut StandardMaterial, paper: bool, colour: [u32; 3]) {
+/// How a view colours its faces.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum FaceLook {
+    /// Each in its own colour, lit.
+    #[default]
+    Own,
+    /// Flat paper white and unlit, for the Hidden and Technical display modes (#164), so a face
+    /// hides what is behind it and shows only its edges.
+    Paper,
+    /// White and lit, for the Clay display mode (#551), so the sun shades it and its shadows
+    /// fall on it.
+    White,
+}
+
+impl FaceLook {
+    /// How `drawing` asks for its faces to be coloured.
+    pub(super) fn of(drawing: &Drawing) -> Self {
+        if drawing.hidden {
+            Self::Paper
+        } else if drawing.sketch {
+            Self::White
+        } else {
+            Self::Own
+        }
+    }
+}
+
+/// Colours `material` as `look` says; `colour` is its own colour, as the material's key holds it.
+fn set_paper(material: &mut StandardMaterial, look: FaceLook, colour: [u32; 3]) {
     let alpha = material.base_color.alpha();
-    let [r, g, b] = if paper {
-        crate::PAPER_COLOUR
-    } else {
+    let [r, g, b] = if look == FaceLook::Own {
         colour.map(f32::from_bits)
+    } else {
+        crate::PAPER_COLOUR
     };
     material.base_color = Color::srgba(r, g, b, alpha);
-    material.unlit = paper;
+    material.unlit = look == FaceLook::Paper;
 }
 
 fn set_ghosted(material: &mut StandardMaterial, ghosted: bool) {

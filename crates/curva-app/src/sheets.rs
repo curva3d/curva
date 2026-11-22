@@ -7,6 +7,13 @@ use crate::*;
 
 /// The colour of a sheet, and of the lines drawn on it.
 const PAPER: egui::Color32 = egui::Color32::from_rgb(250, 250, 247);
+
+/// The Clay display mode's sky (#551): light blue overhead, paler towards the horizon, where
+/// its grey ground meets it.
+pub(crate) const SKETCH_SKY: (egui::Color32, egui::Color32) = (
+    egui::Color32::from_rgb(170, 204, 232),
+    egui::Color32::from_rgb(226, 236, 244),
+);
 pub(crate) const PAPER_INK: [f32; 3] = [0.12, 0.12, 0.14];
 
 /// A layout open in the viewport area.
@@ -231,6 +238,8 @@ impl Curva {
                 ghosted,
                 hidden: matches!(detail.display.as_str(), "Hidden" | "Technical"),
                 hidden_lines: detail.display == "Technical",
+                sketch: detail.display == "Clay",
+                ground: -origin[2] as f32,
                 area: shown,
                 frame: ui.ctx().cumulative_frame_nr(),
                 background: PAPER,
@@ -447,6 +456,8 @@ impl Curva {
             let [r, g, b] = curva_viewport::PAPER_COLOUR.map(|c| (c * 255.0).round() as u8);
             let paper = egui::Color32::from_rgb(r, g, b);
             (paper, paper)
+        } else if self.panes[pane].display == DisplayMode::Clay {
+            SKETCH_SKY
         } else {
             (theme::current().window, theme::current().window_low)
         }
