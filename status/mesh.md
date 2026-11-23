@@ -9,6 +9,12 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## 23 November 2026
+
+**InsertPoint, as Rhino 8 measured:** points on SubD cage edges, each two in a row that share a face joined by a new edge
+across it; on the measured box, one point gives 24 faces on 27 points and two across a face 25 on 29, as in Rhino.
+`SubD::with_points_inserted` in curva-mesh. Meshes and Undo are still to come.
+
 ## 22 November 2026
 
 **MergeFaces, as Rhino 8 measured:** picked SubD faces that touch along edges become one face round their outer

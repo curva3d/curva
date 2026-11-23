@@ -6,6 +6,7 @@ mod crease;
 mod display_toggle;
 mod fill;
 mod insert_edge;
+mod insert_point;
 mod merge_faces;
 mod parts;
 mod stitch;
@@ -21,6 +22,7 @@ use crease::{Crease, RemoveCrease};
 use display_toggle::SubDDisplayToggle;
 use fill::Fill;
 use insert_edge::InsertEdge;
+use insert_point::InsertPoint;
 use merge_faces::MergeFaces;
 use stitch::Stitch;
 use to_nurbs::ToNurbs;
@@ -48,6 +50,7 @@ pub(crate) static COMMANDS: &[crate::commands::CommandDef] = &[
     recipe!("Bridge", [], true, Bridge),
     recipe!("InsertEdge", [], true, InsertEdge),
     recipe!("MergeFaces", [], true, MergeFaces),
+    recipe!("InsertPoint", [], true, InsertPoint),
 ];
 
 /// The buttons of the SubD tab, in order (spec `docs/specs/command-groups.md` §2).
@@ -70,4 +73,5 @@ pub(crate) const TAB: &[&str] = &[
     "Bridge",
     "InsertEdge",
     "MergeFaces",
+    "InsertPoint",
 ];
