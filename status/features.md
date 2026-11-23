@@ -16,6 +16,40 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## Features stream — 23 November 2026 (website)
+
+- **Orange as small signals** (owner's pick, option C): status tags, plate numbers, list dashes, a
+  short rule above each section title, panel labels and the top-bar hint. In light mode, orange
+  text uses a deeper shade (#A84F12) so small text stays readable; fills and rules keep #E0782F.
+  Dark mode uses #F08A45.
+- **Plate drawings normalised:** each drawing's viewBox is cropped to what it reaches over its whole
+  animation, so all 24 fill their frame the same way, centred; `--lw` keeps line weights even.
+
+## Features stream — 22 November 2026 (docs and GitHub)
+
+- **Docs brought up to 0.1.5:** the Operations panel and its tabs, the specializations shown side by
+  side, other file formats (DWG, DXF, SketchUp, STEP, meshes, PDF, SVG), meshes and SubD, the system
+  save window; the stale roadmap link now points to the specialization pages and
+  `docs/architecture.md`.
+- **README** matches the website: motto, the four specializations with their status, 0.1.5 status,
+  and a logo that switches to the white mark on GitHub's dark theme.
+- **Open for the owner:** the app's specialization switch says **Publisher** (decision 0017) where
+  the website and roadmap say **Urban**; the docs follow the app until the owner chooses. The repo's
+  About description and website link can only be set by the owner.
+
+## Features stream — 22 November 2026 (website, third pass)
+
+- **Plate drawings on the specialization pages** (`POINT_MOTIFS` in `website/src/data/motifs.ts`), one per
+  strong point, approved by the owner on the canvas. New plates: Urban "Street sections", Analysis
+  "Views" and "Carbon"; Urban's "Visual scripting" plate removed. New headlines and paragraphs for
+  most plates; every headline and sentence ends with a full stop.
+- **Panel** on the right lines up with the top of the page title and keeps one height.
+- **Section frames** (the empty "Screenshot to come" boxes) now show the plate's drawing, large and at
+  full strength, until real screenshots exist (owner-approved).
+- **Visual scripting shelved** (owner): `docs/architecture.md` (shared core, Urban row, M5) and the
+  Rhino migration page updated. Urban is now parametric massing and streets; Analysis adds views and
+  carbon.
+
 ## Features stream — 22 November 2026 (website, second pass)
 
 - **Website now scrolls.** Each page opens with its stack, then has a section per plate below it

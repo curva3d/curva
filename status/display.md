@@ -8,6 +8,50 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## 23 November 2026
+
+**Done**
+- **Meshes' wires drawn as plain one-pixel lines** (owner, on the *Meshes* picture: "hard to
+  understand what I'm looking at, is the display glitching?"). Not a glitch: each ring has a
+  million triangles and every edge was drawn, piling up over the surface. Rhino 8 does the same
+  (its Shaded mode shows mesh wires, thickness 1; its rings come out solid black), so the wires
+  stay; they are now plain one-pixel lines, two corners a segment instead of six. *Meshes*: 33.7
+  to 16.6 ms between frames (the screen's rate), Curva's lines on the card 27.7 to 10.6 ms; Rhino
+  about 84 ms. New tests: a wire is one pixel tall over its face; wires show on Bevy's faces in
+  perspective as much as with no face; wires are sent apart from other lines. Seen, not fixed:
+  where a ring's outline crosses the grid, bits of grid line poke over its edge.
+- **Large scenes drew no faces at all, fixed** (found taking pictures of the test scenes for the
+  owner). Bevy packs meshes into shared buffers it grows to 512 MB, past the 256 MB Curva's device
+  allows; once a scene's faces passed 256 MB (the *Meshes* and *Large* scenes, or any model that
+  large without shared copies) Bevy drew nothing, background included, and a picture of a single
+  mesh larger than that crashed Curva. Bevy's buffers are now kept within the device's limit and
+  faces are handed over in meshes of at most a million triangles. New test: 120,000 triangles on
+  a device allowing 8 MB buffers still draw (it fails without the fix). *Meshes* re-measured with
+  its faces drawn: 33.7 ms between frames, Curva's mesh-edge lines 27.7 ms of it; one thread as
+  fast as many (work 12.7–13.7 ms against 13.0–14.1 ms).
+- **The *Meshes* scene measured for the first time** (`--scene meshes`, `docs/performance.md`).
+  Meshes have been in the document and drawn since 18–19 November (#266, #267); an older line
+  below still says the scene waited for them, and only the benchmark scene was missing. 16 mesh
+  rings, 15.68 million triangles: 29–31 ms between frames (target under 16 ms), first frame
+  12–17 s, the first snap 14 s. Most of the frame is the graphics card drawing the meshes' edges
+  as lines (30.6 ms). Bevy on one thread is as fast as on many here (work 12.2–13.5 ms against
+  13.5–13.7 ms, the same time between frames). Next to look at: drawing mesh edges cheaply, and
+  whether Rhino 8 shows them in Shaded at all (to measure with its standard display modes). *These first figures were
+  wrong, as Bevy drew no faces; corrected in the entry above.*
+- **Tidy-up #303 done** (#620): the long functions in `viewports.rs`, `sheets.rs`, `main.rs` and
+  `benchmark.rs` broken into named parts under 80 lines, each viewport's drawing moved to
+  `pane_drawing.rs`; no change in behaviour (pictures byte-for-byte the same).
+- **Step 5, Bevy's fixed cost per frame: part done** (`docs/performance.md`, "Bevy's fixed cost
+  per frame"). Measured where an empty scene's 3 ms a frame goes: Bevy's drawing step 1.23 ms, of
+  which 0.36 ms is the graphics driver taking the frame; Curva's own window, panels and lines
+  about 1.4 ms. Bevy's schedules now run on one thread, and each view uses one light cluster:
+  empty scene 3.38 to 2.82 ms a frame, *Medium* 4.00 to 3.73 ms, *Large* 7.00 to 6.87 ms. The
+  earlier one-thread attempt broke agent pictures because a new view's first picture needs one
+  more update on one thread; it now gets it. A new test checks that changes to a view already
+  drawn (new faces, a new shape, a new look) still show on the very next picture.
+- **Next:** what is left of Bevy's cost is the driver and Bevy's per-frame buffers; Curva's own
+  1.4 ms (window, panels, lines) is the larger part now. Then step 6, customisable styles.
+
 ## 22 November 2026
 
 **Done**

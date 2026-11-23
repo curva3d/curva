@@ -43,6 +43,7 @@ mod icons;
 mod layout;
 mod mouse;
 mod notices;
+mod pane_drawing;
 mod panels;
 mod part_picking;
 mod printing;
@@ -61,8 +62,8 @@ mod viewports;
 #[allow(clippy::wildcard_imports)]
 use {
     agent::*, assistant_panel::*, benchmark::*, clipping::*, command_line::*, file_dialogs::*,
-    grid::*, gumball::*, mouse::*, notices::*, panels::frames::*, settings::*, sheets::*,
-    sketchup_import::*, text_edit::*, top_bar::*, viewports::*,
+    grid::*, gumball::*, mouse::*, notices::*, pane_drawing::*, panels::frames::*, settings::*,
+    sheets::*, sketchup_import::*, text_edit::*, top_bar::*, viewports::*,
 };
 
 use curva_commands::{DisplayMode, Kind, Message, Processor, Translations, ViewName, ViewRequest};
@@ -213,22 +214,7 @@ struct Curva {
 impl Curva {
     fn new(context: &eframe::CreationContext<'_>, benchmark: Option<BenchmarkScene>) -> Self {
         context.egui_ctx.set_fonts(theme::fonts());
-        if let Some(state) = context.wgpu_render_state.as_ref() {
-            let mut renderer = LineRenderer::new(&state.device, state.target_format);
-            // Software graphics, as over some remote desktops, show the glass's tint alone.
-            renderer.set_blur(
-                state.adapter.get_info().device_type != eframe::egui_wgpu::wgpu::DeviceType::Cpu,
-            );
-            let mut egui_renderer = state.renderer.write();
-            egui_renderer.callback_resources.insert(renderer);
-            // For the Bevy pilot (decision 0028), started the first time a view is set to it.
-            egui_renderer
-                .callback_resources
-                .insert(curva_viewport::PilotSeed {
-                    instance: state.instance.clone(),
-                    adapter: state.adapter.clone(),
-                });
-        }
+        install_renderers(context);
         let mut doc = curva_formats::new_document();
         // Benchmarks neither autosave nor offer recovery.
         let folder = recovery::folder().filter(|_| benchmark.is_none());
@@ -236,26 +222,10 @@ impl Curva {
         let autosave = folder
             .as_deref()
             .map(|folder| recovery::Autosave::new(folder, &doc, std::time::Instant::now()));
-        let mut panes = standard_panes();
-        if let Some(scene) = benchmark
-            && benchmark_scene(&mut doc, scene)
-                .inspect(|summary| println!("{summary}"))
-                .is_ok()
-            && let Some((low, high)) = Outlines::of(doc.state()).bounds()
-        {
-            for pane in &mut panes {
-                pane.camera.frame(low, high);
-            }
-        }
+        let panes = starting_panes(&mut doc, benchmark);
         Self {
             doc,
-            processor: {
-                // Commands that ask for a file show the system's dialog here; scripts, agents
-                // and benchmarks type locations instead.
-                let mut processor = Processor::default();
-                processor.use_file_dialogs(benchmark.is_none());
-                processor
-            },
+            processor: command_processor(benchmark.is_none()),
             file_dialogs: FileDialogs::default(),
             print_panel: panels::print::PrintPanel::default(),
             sheets: Sheets::default(),
@@ -320,6 +290,51 @@ impl Curva {
             drawing: ViewportCache::default(),
         }
     }
+}
+
+/// What runs the commands: with `dialogs`, commands that ask for a file show the system's
+/// dialog; scripts, agents and benchmarks type locations instead.
+fn command_processor(dialogs: bool) -> Processor {
+    let mut processor = Processor::default();
+    processor.use_file_dialogs(dialogs);
+    processor
+}
+
+/// Hands egui's renderer Curva's line drawer, and what Bevy starts from the first time a view
+/// draws with it (decision 0028).
+fn install_renderers(context: &eframe::CreationContext<'_>) {
+    let Some(state) = context.wgpu_render_state.as_ref() else {
+        return;
+    };
+    let mut renderer = LineRenderer::new(&state.device, state.target_format);
+    // Software graphics, as over some remote desktops, show the glass's tint alone.
+    renderer
+        .set_blur(state.adapter.get_info().device_type != eframe::egui_wgpu::wgpu::DeviceType::Cpu);
+    let mut egui_renderer = state.renderer.write();
+    egui_renderer.callback_resources.insert(renderer);
+    egui_renderer
+        .callback_resources
+        .insert(curva_viewport::PilotSeed {
+            instance: state.instance.clone(),
+            adapter: state.adapter.clone(),
+        });
+}
+
+/// The viewports Curva opens with: the standard ones, framing `benchmark`'s scene (made in
+/// `doc`) when measuring speed.
+fn starting_panes(doc: &mut Document, benchmark: Option<BenchmarkScene>) -> [Pane; VIEW_SLOTS] {
+    let mut panes = standard_panes();
+    if let Some(scene) = benchmark
+        && benchmark_scene(doc, scene)
+            .inspect(|summary| println!("{summary}"))
+            .is_ok()
+        && let Some((low, high)) = Outlines::of(doc.state()).bounds()
+    {
+        for pane in &mut panes {
+            pane.camera.frame(low, high);
+        }
+    }
+    panes
 }
 
 /// Curva's icon, for the window's title bar and the task bar.
@@ -476,12 +491,7 @@ fn main() -> Result<(), String> {
 
 fn run() -> Result<(), String> {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
-    let value = |flag: &str| {
-        arguments
-            .iter()
-            .position(|argument| argument == flag)
-            .and_then(|index| arguments.get(index + 1))
-    };
+    let value = |flag: &str| flag_value(&arguments, flag);
     if arguments.iter().any(|argument| argument == "--mcp") {
         if arguments.iter().any(|argument| argument == "--connect") {
             return curva_mcp::bridge_to_window();
@@ -495,34 +505,72 @@ fn run() -> Result<(), String> {
         return agent::look_pictures(std::path::Path::new(folder));
     }
     if let Some(path) = value("--picture") {
-        let script = value("--run").map_or("", String::as_str);
-        let style = match value("--style") {
-            Some(name) => Some(
-                curva_viewport::PictureStyle::named(name)
-                    .ok_or_else(|| format!("unknown style: {name}"))?,
-            ),
-            None => None,
-        };
-        let scene = value("--scene").and_then(|name| BenchmarkScene::named(name));
-        // A standard view by name, any case: top, front, right or perspective.
-        let view = value("--view").and_then(|name| {
-            [
-                StandardView::Top,
-                StandardView::Front,
-                StandardView::Right,
-                StandardView::Perspective,
-            ]
-            .into_iter()
-            .find(|view| view.key().eq_ignore_ascii_case(name))
-        });
-        return picture(path, script, style, scene, view);
+        return picture_from_arguments(&arguments, path);
     }
     // A model given on the command line opens, as after an update.
     let file = arguments
         .iter()
         .find(|argument| argument.to_lowercase().ends_with(".curva"))
         .map(std::path::PathBuf::from);
-    let benchmark = arguments
+    let benchmark = benchmark_from_arguments(&arguments);
+    // `--open <file>` with `--orbit-benchmark`: orbit a model from a file (`.3dm`, `.dwg`, `.dxf`
+    // or `.curva`) instead of a generated scene.
+    let model = value("--open")
+        .filter(|_| benchmark.is_some())
+        .map(std::path::PathBuf::from);
+    eframe::run_native(
+        "Curva",
+        native_options(),
+        Box::new(move |context| {
+            let mut app = Curva::new(context, benchmark).opened(&context.egui_ctx, file.as_deref());
+            if let Some(path) = model.as_deref() {
+                app.open_for_benchmark(path);
+            }
+            Ok(Box::new(app))
+        }),
+    )
+    .map_err(|error| error.to_string())
+}
+
+/// The word after `flag` on the command line, if both are there.
+fn flag_value<'a>(arguments: &'a [String], flag: &str) -> Option<&'a String> {
+    arguments
+        .iter()
+        .position(|argument| argument == flag)
+        .and_then(|index| arguments.get(index + 1))
+}
+
+/// `--picture <path>`: runs `--run`'s command lines and saves a picture to `path`, in `--style`
+/// if given, of `--scene` if given, from `--view` if given.
+fn picture_from_arguments(arguments: &[String], path: &str) -> Result<(), String> {
+    let value = |flag: &str| flag_value(arguments, flag);
+    let script = value("--run").map_or("", String::as_str);
+    let style = match value("--style") {
+        Some(name) => Some(
+            curva_viewport::PictureStyle::named(name)
+                .ok_or_else(|| format!("unknown style: {name}"))?,
+        ),
+        None => None,
+    };
+    let scene = value("--scene").and_then(|name| BenchmarkScene::named(name));
+    // A standard view by name, any case: top, front, right or perspective.
+    let view = value("--view").and_then(|name| {
+        [
+            StandardView::Top,
+            StandardView::Front,
+            StandardView::Right,
+            StandardView::Perspective,
+        ]
+        .into_iter()
+        .find(|view| view.key().eq_ignore_ascii_case(name))
+    });
+    picture(path, script, style, scene, view)
+}
+
+/// `--orbit-benchmark`: the scene to orbit, if asked for.
+fn benchmark_from_arguments(arguments: &[String]) -> Option<BenchmarkScene> {
+    let value = |flag: &str| flag_value(arguments, flag);
+    arguments
         .iter()
         .any(|argument| argument == "--orbit-benchmark")
         .then(|| {
@@ -537,61 +585,51 @@ fn run() -> Result<(), String> {
                 solids: count("--solids").unwrap_or(scene.solids),
                 splines: count("--splines").unwrap_or(scene.splines),
                 trees: count("--trees").unwrap_or(scene.trees),
+                meshes: count("--meshes").unwrap_or(scene.meshes),
                 select: arguments.iter().any(|argument| argument == "--select"),
                 ..scene
             }
-        });
-    // `--open <file>` with `--orbit-benchmark`: orbit a model from a file (`.3dm`, `.dwg`, `.dxf`
-    // or `.curva`) instead of a generated scene.
-    let model = value("--open")
-        .filter(|_| benchmark.is_some())
-        .map(std::path::PathBuf::from);
-    eframe::run_native(
-        "Curva",
-        eframe::NativeOptions {
-            renderer: eframe::Renderer::Wgpu,
-            // Waiting for the display adds a frame or more of lag: over Remote Desktop the display runs
-            // at 32 Hz, and measured frames took 31 ms this way against 2 ms without waiting.
-            wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
-                surface: eframe::egui_wgpu::SurfaceConfig {
-                    present_mode: eframe::wgpu::PresentMode::AutoNoVsync,
-                    desired_maximum_frame_latency: Some(1),
+        })
+}
+
+/// The window and its graphics: drawn with wgpu, not waiting for the display, with depth, and
+/// maximised.
+fn native_options() -> eframe::NativeOptions {
+    eframe::NativeOptions {
+        renderer: eframe::Renderer::Wgpu,
+        // Waiting for the display adds a frame or more of lag: over Remote Desktop the display runs
+        // at 32 Hz, and measured frames took 31 ms this way against 2 ms without waiting.
+        wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
+            surface: eframe::egui_wgpu::SurfaceConfig {
+                present_mode: eframe::wgpu::PresentMode::AutoNoVsync,
+                desired_maximum_frame_latency: Some(1),
+            },
+            // The viewport says what it asks of the graphics card: the baseline every
+            // supported card has, plus optional extras when present (spec
+            // `display-pipeline.md` §5).
+            wgpu_setup: eframe::egui_wgpu::WgpuSetup::CreateNew(
+                eframe::egui_wgpu::WgpuSetupCreateNew {
+                    device_descriptor: std::sync::Arc::new(|adapter| {
+                        curva_viewport::device_descriptor(adapter, true)
+                    }),
+                    ..eframe::egui_wgpu::WgpuSetupCreateNew::without_display_handle()
                 },
-                // The viewport says what it asks of the graphics card: the baseline every
-                // supported card has, plus optional extras when present (spec
-                // `display-pipeline.md` §5).
-                wgpu_setup: eframe::egui_wgpu::WgpuSetup::CreateNew(
-                    eframe::egui_wgpu::WgpuSetupCreateNew {
-                        device_descriptor: std::sync::Arc::new(|adapter| {
-                            curva_viewport::device_descriptor(adapter, true)
-                        }),
-                        ..eframe::egui_wgpu::WgpuSetupCreateNew::without_display_handle()
-                    },
-                ),
-                ..eframe::egui_wgpu::WgpuConfiguration::default()
-            },
-            // Shaded views need depth, so nearer faces hide farther ones.
-            depth_buffer: DEPTH_BITS,
-            viewport: match window_icon() {
-                Some(icon) => egui::ViewportBuilder::default()
-                    .with_icon(icon)
-                    .with_app_id(desktop::APP_ID)
-                    .with_maximized(true),
-                None => egui::ViewportBuilder::default()
-                    .with_app_id(desktop::APP_ID)
-                    .with_maximized(true),
-            },
-            ..eframe::NativeOptions::default()
+            ),
+            ..eframe::egui_wgpu::WgpuConfiguration::default()
         },
-        Box::new(move |context| {
-            let mut app = Curva::new(context, benchmark).opened(&context.egui_ctx, file.as_deref());
-            if let Some(path) = model.as_deref() {
-                app.open_for_benchmark(path);
-            }
-            Ok(Box::new(app))
-        }),
-    )
-    .map_err(|error| error.to_string())
+        // Shaded views need depth, so nearer faces hide farther ones.
+        depth_buffer: DEPTH_BITS,
+        viewport: match window_icon() {
+            Some(icon) => egui::ViewportBuilder::default()
+                .with_icon(icon)
+                .with_app_id(desktop::APP_ID)
+                .with_maximized(true),
+            None => egui::ViewportBuilder::default()
+                .with_app_id(desktop::APP_ID)
+                .with_maximized(true),
+        },
+        ..eframe::NativeOptions::default()
+    }
 }
 
 /// A program to run without a console window of its own: on Windows, a console program started
