@@ -10,7 +10,8 @@
 //! On meshes Rhino offers WeldAngle=30 and RetainShape=No instead of KeepCreases; the shape is the
 //! same, each cap a fan of triangles, and the changed faces' sharp edges unwelded (see
 //! `Mesh::bevelled_run`). Points that are not inner ones where four edges meet, branching edges,
-//! `KeepCreases`, RetainShape and EdgeLoop are not here yet.
+//! RetainShape and EdgeLoop are not here yet; KeepCreases (on, as Rhino) carries creases round the
+//! bevel (see `curva_mesh`'s `subd_bevel_creases`).
 
 use super::parts::{by_object, edges, run};
 use crate::Message;
@@ -22,6 +23,7 @@ const SEGMENTS: &str = "Segments";
 const OFFSET_MODE: &str = "OffsetMode";
 const STRAIGHTNESS: &str = "Straightness";
 const WELD_ANGLE: &str = "WeldAngle";
+const KEEP_CREASES: &str = "KeepCreases";
 const MODES: [&str; 2] = ["Absolute", "Proportional"];
 
 /// A SubD or mesh being bevelled.
@@ -36,6 +38,39 @@ impl Bevelling {
             Self::SubD(s) => s.cage().vertices(),
             Self::Mesh(m) => m.vertices(),
         }
+    }
+
+    /// The run `points` bevelled by `size`, with the command's options.
+    fn bevelled(
+        self,
+        cx: &Context<'_>,
+        points: &[u32],
+        size: f64,
+    ) -> Result<Self, curva_mesh::MeshError> {
+        let amount = if cx.name(OFFSET_MODE) == "Proportional" {
+            BevelAmount::Proportional(size)
+        } else {
+            BevelAmount::Absolute(size)
+        };
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let segments = cx.number(SEGMENTS) as u32;
+        let straightness = cx.number(STRAIGHTNESS);
+        Ok(match self {
+            Self::SubD(s) => Self::SubD(s.bevelled_run(
+                points,
+                amount,
+                segments,
+                straightness,
+                cx.toggle(KEEP_CREASES),
+            )?),
+            Self::Mesh(m) => Self::Mesh(m.bevelled_run(
+                points,
+                amount,
+                segments,
+                straightness,
+                cx.number(WELD_ANGLE),
+            )?),
+        })
     }
 
     fn shape(self) -> Shape {
@@ -100,6 +135,7 @@ impl Recipe for Bevel {
         OptionDef::name(OFFSET_MODE, "Absolute"),
         OptionDef::number(STRAIGHTNESS, 0.0),
         OptionDef::number(WELD_ANGLE, 30.0),
+        OptionDef::toggle(KEEP_CREASES, true),
     ];
 
     fn choices(&self, _cx: &Context<'_>, option: &str) -> Option<Vec<String>> {
@@ -167,29 +203,7 @@ impl Recipe for Bevel {
                         None => continue,
                     },
                 };
-                let amount = if cx.name(OFFSET_MODE) == "Proportional" {
-                    BevelAmount::Proportional(size)
-                } else {
-                    BevelAmount::Absolute(size)
-                };
-                let segments = cx.number(SEGMENTS) as u32;
-                let straightness = cx.number(STRAIGHTNESS);
-                target = match target {
-                    Bevelling::SubD(s) => Bevelling::SubD(
-                        s.bevelled_run(&points, amount, segments, straightness)
-                            .map_err(failed)?,
-                    ),
-                    Bevelling::Mesh(m) => Bevelling::Mesh(
-                        m.bevelled_run(
-                            &points,
-                            amount,
-                            segments,
-                            straightness,
-                            cx.number(WELD_ANGLE),
-                        )
-                        .map_err(failed)?,
-                    ),
-                };
+                target = target.bevelled(cx, &points, size).map_err(failed)?;
             }
             made.replace.push((id, target.shape()));
         }

@@ -64,7 +64,8 @@ impl Mesh {
                 uses.entry((a.min(b), a.max(b))).or_default().push(f);
             }
         }
-        let (work, added, gone) = bevel_work(&welded, &uses, &run, amount, segments, straightness)?;
+        let bevel = bevel_work(&welded, &uses, &run, amount, segments, straightness)?;
+        let (work, added, gone) = (bevel.work, bevel.added, bevel.gone);
         let mut changed: Vec<bool> = work
             .rings
             .iter()
