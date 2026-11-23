@@ -122,10 +122,12 @@ impl Curva {
         let (numbers_text, subds) = self.mesh_panel_numbers(&mut state, settings);
         let unit = self.doc.state().unit.symbol();
         let mut advanced = state.advanced;
-        let mut answer = Answer::Waiting;
         let say = |key: &'static str| self.text.render(&Message::new(key));
-        ui_kit::centred_dialog(ctx, "mesh panel", |ui| {
-            ui_kit::section(ui, say("ui.mesh.title"));
+        let buttons = [
+            ui_kit::main_choice(say("ui.mesh.ok")),
+            ui_kit::other_choice(say("ui.mesh.cancel")),
+        ];
+        let clicked = ui_kit::dialog(ctx, "mesh panel", &say("ui.mesh.title"), &buttons, |ui| {
             presets(ui, &mut settings, &say);
             ui.horizontal(|ui| {
                 ui.label(say("ui.mesh.fewer"));
@@ -143,15 +145,12 @@ impl Curva {
             if advanced {
                 advanced_fields(ui, &mut settings, unit, &say);
             }
-            ui.horizontal(|ui| {
-                if ui.button(say("ui.mesh.ok")).clicked() {
-                    answer = Answer::Ok;
-                }
-                if ui.button(say("ui.mesh.cancel")).clicked() {
-                    answer = Answer::Cancel;
-                }
-            });
         });
+        let answer = match clicked {
+            Some(0) => Answer::Ok,
+            Some(_) => Answer::Cancel,
+            None => Answer::Waiting,
+        };
         state.advanced = advanced;
         state.settings = Some(settings);
         match answer {

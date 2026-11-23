@@ -35,6 +35,17 @@ pub(crate) fn toggle(
     response
 }
 
+/// A [`toggle`] that can only be changed while `enabled`, greyed out otherwise, for a choice that
+/// only means something with another one on.
+pub(crate) fn toggle_when(
+    ui: &mut egui::Ui,
+    enabled: bool,
+    on: &mut bool,
+    text: impl Into<egui::WidgetText>,
+) -> egui::Response {
+    ui.add_enabled_ui(enabled, |ui| toggle(ui, on, text)).inner
+}
+
 /// A chip's fill and ink: the accent and its text colour when on; the hover or rest colour
 /// when off.
 fn chip_colours(on: bool, hovered: bool) -> (egui::Color32, egui::Color32) {
@@ -265,7 +276,9 @@ pub(crate) fn opener(ui: &mut egui::Ui, prefix: &str, name: &str) -> egui::Respo
         ..Default::default()
     };
     label.append(prefix, 0.0, format(small, colours::quiet()));
-    label.append(name, 4.0, format(font, colours::text()));
+    label.append(name, 4.0, format(font.clone(), colours::text()));
+    // Room at the end for the chevron, so it never sits on the words.
+    label.append(" ", 14.0, format(font, colours::text()));
     let button = ui.add_sized(
         [ui.available_width(), ROW + 2.0],
         egui::Button::new(label)

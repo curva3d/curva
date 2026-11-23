@@ -53,19 +53,6 @@ pub(crate) fn glass_backdrop(ui: &egui::Ui, rect: egui::Rect) {
     ));
 }
 
-/// A dialog in the middle of the window, in a panel frame, at most 420 points wide.
-pub(crate) fn centred_dialog(ctx: &egui::Context, id: &str, contents: impl FnOnce(&mut egui::Ui)) {
-    egui::Area::new(egui::Id::NULL.with(("dialog", id)))
-        .order(egui::Order::Foreground)
-        .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-        .show(ctx, |ui| {
-            panel_frame().show(ui, |ui| {
-                ui.set_max_width(420.0);
-                contents(ui);
-            });
-        });
-}
-
 /// A short note in a popup outlined in the accent, with its `pivot` corner at `at`, that the
 /// pointer passes through: "copied", and the like.
 pub(crate) fn note(

@@ -621,19 +621,14 @@ impl Curva {
         let question = self
             .text
             .render(&Message::with("ui.close.question", vec![names.join(", ")]));
-        let mut answer = None;
-        ui_kit::centred_dialog(ctx, "close question", |ui| {
-            ui_kit::section(ui, question);
+        let buttons = [
+            ui_kit::main_choice(say("ui.close.close")),
+            ui_kit::other_choice(say("ui.units.cancel")),
+        ];
+        let answer = ui_kit::dialog(ctx, "close question", &question, &buttons, |ui| {
             ui.label(say("ui.close.where"));
-            ui.horizontal(|ui| {
-                if ui.button(say("ui.close.close")).clicked() {
-                    answer = Some(true);
-                }
-                if ui.button(say("ui.units.cancel")).clicked() {
-                    answer = Some(false);
-                }
-            });
-        });
+        })
+        .map(|index| index == 0);
         if let Some(close) = answer {
             self.closing = None;
             if close {

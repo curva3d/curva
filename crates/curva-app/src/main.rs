@@ -57,6 +57,7 @@ mod text_edit;
 mod theme;
 mod top_bar;
 mod ui_kit;
+mod ui_pictures;
 mod updates;
 mod viewports;
 
@@ -379,6 +380,7 @@ impl Curva {
     }
 
     fn frame_ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        self.take_ui_pictures(ui.ctx());
         self.apply_theme(ui.ctx());
         self.serve_file_dialogs(frame);
         self.follow_space();
@@ -540,48 +542,17 @@ fn run() -> Result<(), String> {
         });
     // `--open <file>` with `--orbit-benchmark`: orbit a model from a file (`.3dm`, `.dwg`, `.dxf`
     // or `.curva`) instead of a generated scene.
+    let pictures = value("--ui-pictures")
+        .map(|folder| ui_pictures::UiPictures::new(std::path::Path::new(folder)));
     let model = value("--open")
         .filter(|_| benchmark.is_some())
         .map(std::path::PathBuf::from);
     eframe::run_native(
         "Curva",
-        eframe::NativeOptions {
-            renderer: eframe::Renderer::Wgpu,
-            // Waiting for the display adds a frame or more of lag: over Remote Desktop the display runs
-            // at 32 Hz, and measured frames took 31 ms this way against 2 ms without waiting.
-            wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
-                surface: eframe::egui_wgpu::SurfaceConfig {
-                    present_mode: eframe::wgpu::PresentMode::AutoNoVsync,
-                    desired_maximum_frame_latency: Some(1),
-                },
-                // The viewport says what it asks of the graphics card: the baseline every
-                // supported card has, plus optional extras when present (spec
-                // `display-pipeline.md` §5).
-                wgpu_setup: eframe::egui_wgpu::WgpuSetup::CreateNew(
-                    eframe::egui_wgpu::WgpuSetupCreateNew {
-                        device_descriptor: std::sync::Arc::new(|adapter| {
-                            curva_viewport::device_descriptor(adapter, true)
-                        }),
-                        ..eframe::egui_wgpu::WgpuSetupCreateNew::without_display_handle()
-                    },
-                ),
-                ..eframe::egui_wgpu::WgpuConfiguration::default()
-            },
-            // Shaded views need depth, so nearer faces hide farther ones.
-            depth_buffer: DEPTH_BITS,
-            viewport: match window_icon() {
-                Some(icon) => egui::ViewportBuilder::default()
-                    .with_icon(icon)
-                    .with_app_id(desktop::APP_ID)
-                    .with_maximized(true),
-                None => egui::ViewportBuilder::default()
-                    .with_app_id(desktop::APP_ID)
-                    .with_maximized(true),
-            },
-            ..eframe::NativeOptions::default()
-        },
+        native_options(),
         Box::new(move |context| {
             let mut app = Curva::new(context, benchmark).opened(&context.egui_ctx, file.as_deref());
+            app.startup.ui_pictures = pictures;
             if let Some(path) = model.as_deref() {
                 app.open_for_benchmark(path);
             }
@@ -591,6 +562,45 @@ fn run() -> Result<(), String> {
     .map_err(|error| error.to_string())
 }
 
+/// The window Curva opens in: drawn with wgpu, without waiting for the display, with depth for
+/// shaded views, maximized, with Curva's icon.
+fn native_options() -> eframe::NativeOptions {
+    eframe::NativeOptions {
+        renderer: eframe::Renderer::Wgpu,
+        // Waiting for the display adds a frame or more of lag: over Remote Desktop the display runs
+        // at 32 Hz, and measured frames took 31 ms this way against 2 ms without waiting.
+        wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
+            surface: eframe::egui_wgpu::SurfaceConfig {
+                present_mode: eframe::wgpu::PresentMode::AutoNoVsync,
+                desired_maximum_frame_latency: Some(1),
+            },
+            // The viewport says what it asks of the graphics card: the baseline every
+            // supported card has, plus optional extras when present (spec
+            // `display-pipeline.md` §5).
+            wgpu_setup: eframe::egui_wgpu::WgpuSetup::CreateNew(
+                eframe::egui_wgpu::WgpuSetupCreateNew {
+                    device_descriptor: std::sync::Arc::new(|adapter| {
+                        curva_viewport::device_descriptor(adapter, true)
+                    }),
+                    ..eframe::egui_wgpu::WgpuSetupCreateNew::without_display_handle()
+                },
+            ),
+            ..eframe::egui_wgpu::WgpuConfiguration::default()
+        },
+        // Shaded views need depth, so nearer faces hide farther ones.
+        depth_buffer: DEPTH_BITS,
+        viewport: match window_icon() {
+            Some(icon) => egui::ViewportBuilder::default()
+                .with_icon(icon)
+                .with_app_id(desktop::APP_ID)
+                .with_maximized(true),
+            None => egui::ViewportBuilder::default()
+                .with_app_id(desktop::APP_ID)
+                .with_maximized(true),
+        },
+        ..eframe::NativeOptions::default()
+    }
+}
 /// A program to run without a console window of its own: on Windows, a console program started
 /// from Curva (a GUI program) would otherwise flash one up.
 pub(crate) fn quiet_command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {

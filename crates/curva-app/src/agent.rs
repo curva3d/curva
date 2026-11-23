@@ -250,17 +250,15 @@ impl Curva {
             self.text.render(&Message::new("ui.agent.allow")),
             self.text.render(&Message::new("ui.agent.decline")),
         );
-        let (mut allow, mut decline) = (false, false);
-        egui::Window::new(self.text.render(&Message::new("ui.agent")))
-            .collapsible(false)
-            .resizable(false)
-            .show(ui.ctx(), |ui| {
-                ui.label(question);
-                ui.horizontal(|ui| {
-                    allow = ui.button(allow_text).clicked();
-                    decline = ui.button(decline_text).clicked();
-                });
-            });
+        let buttons = [
+            ui_kit::main_choice(allow_text),
+            ui_kit::other_choice(decline_text),
+        ];
+        let title = self.text.render(&Message::new("ui.agent"));
+        let answer = ui_kit::dialog(ui.ctx(), "agent approval", &title, &buttons, |ui| {
+            ui.label(question);
+        });
+        let (allow, decline) = (answer == Some(0), answer == Some(1));
         if (allow || decline)
             && let Some((request, _)) = self.agents.waiting_approval.take()
         {

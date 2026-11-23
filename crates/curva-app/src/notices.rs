@@ -8,6 +8,8 @@ pub(crate) struct Startup {
     /// A recovery file left by a Curva that did not close normally, waiting for the user to
     /// restore or discard it.
     pub(crate) left_behind: Option<std::path::PathBuf>,
+    /// Pictures of the window being taken (`--ui-pictures`).
+    pub(crate) ui_pictures: Option<crate::ui_pictures::UiPictures>,
     /// The answer of the check for updates, while it is under way.
     pub(crate) update_check: Option<std::sync::mpsc::Receiver<Option<updates::Release>>>,
     /// The update being downloaded.
@@ -237,22 +239,15 @@ impl Curva {
         let Some(file) = self.startup.left_behind.clone() else {
             return;
         };
-        let (mut restore, mut discard) = (false, false);
-        egui::Window::new(self.text.render(&Message::new("ui.recovery")))
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-            .show(ui.ctx(), |ui| {
-                ui.label(self.text.render(&Message::new("ui.recovery.question")));
-                ui.horizontal(|ui| {
-                    restore = ui
-                        .button(self.text.render(&Message::new("ui.recovery.restore")))
-                        .clicked();
-                    discard = ui
-                        .button(self.text.render(&Message::new("ui.recovery.discard")))
-                        .clicked();
-                });
-            });
+        let say = |key: &'static str| self.text.render(&Message::new(key));
+        let buttons = [
+            ui_kit::main_choice(say("ui.recovery.restore")),
+            ui_kit::other_choice(say("ui.recovery.discard")),
+        ];
+        let answer = ui_kit::dialog(ui.ctx(), "recovery", &say("ui.recovery"), &buttons, |ui| {
+            ui.label(say("ui.recovery.question"));
+        });
+        let (restore, discard) = (answer == Some(0), answer == Some(1));
         if restore {
             self.startup.left_behind = None;
             match recovery::restore(&file) {

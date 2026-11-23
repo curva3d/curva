@@ -25,6 +25,7 @@ use eframe::egui;
 pub(crate) mod colours;
 mod containers;
 mod controls;
+mod dialog;
 pub(crate) mod glow;
 mod panel_parts;
 mod shapes;
@@ -33,6 +34,7 @@ mod text;
 
 pub(crate) use containers::*;
 pub(crate) use controls::*;
+pub(crate) use dialog::*;
 pub(crate) use panel_parts::*;
 pub(crate) use shapes::*;
 pub(crate) use table::*;
@@ -152,8 +154,10 @@ mod tests {
     }
 
     /// What only the kit may do: paint, pick fonts, colours, corners and frames, set spacing,
-    /// or build scroll areas, dropdowns and tabs of its own.
-    const KIT_ONLY: [&str; 22] = [
+    /// or build windows, scroll areas, dropdowns and tabs of its own.
+    const KIT_ONLY: [&str; 24] = [
+        "egui::Window::",
+        "Checkbox::",
         ".painter()",
         "painter_at(",
         "layer_painter(",

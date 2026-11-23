@@ -26,6 +26,10 @@ pub(crate) fn bold_font() -> egui::FontId {
 
 /// A section's header inside a panel: strong, on the left edge.
 pub(crate) fn section(ui: &mut egui::Ui, text: impl Into<String>) -> egui::Response {
+    // A little room above, so sections stand apart; none at the very top.
+    if ui.min_rect().height() > 0.0 {
+        ui.add_space(super::ROW_GAP);
+    }
     ui.label(egui::RichText::new(text).strong())
 }
 

@@ -416,19 +416,13 @@ impl Curva {
         let parent_locked = layer.parent.is_some_and(|p| state.layer_locked(p));
         table.in_cell(ui, rect, 1, |ui| {
             let mut visible = layer.visible && !parent_off;
-            if ui
-                .add_enabled(!parent_off, egui::Checkbox::without_text(&mut visible))
-                .changed()
-            {
+            if ui_kit::tick_when(ui, !parent_off, &mut visible).changed() {
                 self.undoable(|doc| doc.set_layer_visible(layer.id, visible));
             }
         });
         table.in_cell(ui, rect, 2, |ui| {
             let mut locked = layer.locked || parent_locked;
-            if ui
-                .add_enabled(!parent_locked, egui::Checkbox::without_text(&mut locked))
-                .changed()
-            {
+            if ui_kit::tick_when(ui, !parent_locked, &mut locked).changed() {
                 self.undoable(|doc| doc.set_layer_locked(layer.id, locked));
             }
         });

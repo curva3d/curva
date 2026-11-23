@@ -285,26 +285,21 @@ impl Curva {
         let Some(unit) = self.settings_ui.unit_asked else {
             return;
         };
-        let mut answer = None;
         let say = |key: &'static str| self.text.render(&Message::new(key));
         let question = self.text.render(&Message::with(
             "ui.units.question",
             vec![unit.symbol().to_owned()],
         ));
-        ui_kit::centred_dialog(ctx, "unit question", |ui| {
+        let buttons = [
+            ui_kit::main_choice(say("ui.units.scale")),
+            ui_kit::other_choice(say("ui.units.keep")),
+            ui_kit::other_choice(say("ui.units.cancel")),
+        ];
+        let title = say("ui.settings.units");
+        let answer = ui_kit::dialog(ctx, "unit question", &title, &buttons, |ui| {
             ui.label(question);
-            ui.horizontal(|ui| {
-                if ui.button(say("ui.units.scale")).clicked() {
-                    answer = Some(Some(true));
-                }
-                if ui.button(say("ui.units.keep")).clicked() {
-                    answer = Some(Some(false));
-                }
-                if ui.button(say("ui.units.cancel")).clicked() {
-                    answer = Some(None);
-                }
-            });
-        });
+        })
+        .map(|index| [Some(true), Some(false), None][index]);
         if let Some(choice) = answer {
             self.settings_ui.unit_asked = None;
             if let Some(scale) = choice {

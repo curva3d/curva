@@ -98,3 +98,9 @@ pub(crate) fn tick(ui: &mut egui::Ui, on: &mut bool) -> egui::Response {
 pub(crate) fn tight(ui: &mut egui::Ui) {
     ui.spacing_mut().item_spacing.x = TIGHT_GAP;
 }
+
+/// A bare tick that can only be changed while `enabled`, greyed out otherwise, as a layer's On
+/// under a layer that is off.
+pub(crate) fn tick_when(ui: &mut egui::Ui, enabled: bool, on: &mut bool) -> egui::Response {
+    ui.add_enabled(enabled, egui::Checkbox::without_text(on))
+}
