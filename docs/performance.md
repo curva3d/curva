@@ -548,6 +548,24 @@ Two changes, measured with the old and new builds run in turn (median of five ru
 the graphics driver taking the frame and Bevy preparing buffers it sends each frame; trimming
 those would mean changing Bevy itself.
 
+## The *Meshes* scene (23 November 2026, display-on-Bevy step 5)
+
+`curva --orbit-benchmark --scene meshes`: 16 mesh objects, each a ring (torus) of 350 by 1,400
+quads, 15.68 million triangles in all (spec target: under 16 ms a frame and under 1 GB). RTX
+3060, Vulkan, release build, two runs each, Bevy's schedules on many threads and on one, run in
+turn:
+
+| | Many threads | One thread |
+|---|---|---|
+| Between frames (median) | 29.5, 29.2 ms | 29.4, 29.3 ms |
+| Work per frame | 13.7, 13.5 ms | 12.2, 13.5 ms |
+| First frame | 13.2, 16.7 s | 12.4, 15.5 s |
+
+One thread is as fast as many on this scene. The target is not met: the graphics card spends
+about 30.6 ms a frame on Curva's lines, which here are the meshes' edges, every triangle's
+outline drawn as a smoothed line. The first snap took 14 s and snapping 9.6 ms a frame, over the
+meshes' 7.8 million points. These are the next things to look at for meshes.
+
 ## Real project files (19 November 2026)
 
 The owner's own project files, kept on the owner's machine and not named here. `curva

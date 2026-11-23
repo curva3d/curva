@@ -11,6 +11,17 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 ## 23 November 2026
 
 **Done**
+- **The *Meshes* scene measured for the first time** (`--scene meshes`, `docs/performance.md`).
+  Meshes have been in the document and drawn since 18–19 November (#266, #267); an older line
+  below still says the scene waited for them, and only the benchmark scene was missing. 16 mesh
+  rings, 15.68 million triangles: 29–31 ms between frames (target under 16 ms), first frame
+  12–17 s, the first snap 14 s. Most of the frame is the graphics card drawing the meshes' edges
+  as lines (30.6 ms). Bevy on one thread is as fast as on many here (work 12.2–13.5 ms against
+  13.5–13.7 ms, the same time between frames). Next to look at: drawing mesh edges cheaply, and
+  whether Rhino 8 shows them in Shaded at all (to measure with its standard display modes).
+- **Tidy-up #303 done** (#620): the long functions in `viewports.rs`, `sheets.rs`, `main.rs` and
+  `benchmark.rs` broken into named parts under 80 lines, each viewport's drawing moved to
+  `pane_drawing.rs`; no change in behaviour (pictures byte-for-byte the same).
 - **Step 5, Bevy's fixed cost per frame: part done** (`docs/performance.md`, "Bevy's fixed cost
   per frame"). Measured where an empty scene's 3 ms a frame goes: Bevy's drawing step 1.23 ms, of
   which 0.36 ms is the graphics driver taking the frame; Curva's own window, panels and lines
