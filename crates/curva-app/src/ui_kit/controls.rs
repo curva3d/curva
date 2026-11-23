@@ -73,6 +73,16 @@ pub(crate) fn chip_row<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> 
     .inner
 }
 
+/// Chips on one line that never wraps, as the status panel's modelling aids: the panel grows to
+/// hold them rather than leave one alone on a row of its own.
+pub(crate) fn chip_line<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = CHIP_GAP;
+        add(ui)
+    })
+    .inner
+}
+
 /// A small button with its name in the accent, for an answer a click gives, such as a command's
 /// options.
 pub(crate) fn option_chip(ui: &mut egui::Ui, text: impl Into<String>) -> egui::Response {

@@ -138,7 +138,7 @@ impl Curva {
         .map(say);
         let filter_lit = self.pick_filter.in_force() || self.filter_row;
         let mut item = None;
-        ui_kit::chip_row(ui, |ui| {
+        ui_kit::chip_line(ui, |ui| {
             ui_kit::toggle(ui, &mut self.ortho, ortho);
             ui_kit::toggle(ui, &mut self.planar, planar);
             ui_kit::toggle(ui, &mut self.grid_snap, grid);
