@@ -1,8 +1,9 @@
 //! Rhino's `MultiPipe` for straight lines. Measured in Rhino 8 (23 November 2026, curves picked by
 //! id): it asks "Select curves to pipe. Press Enter when done", then "Radius <1> ( Cap=No
-//! Struts=1 )". Curves meeting end to end join into one pipe; one line of length 10 gives a SubD
-//! of 12 points and 8 faces, a square corner one of 20, and the curves stay. See
-//! `curva_mesh::SubD::pipe`. Curved curves and junctions of three or more lines are not here yet.
+//! Struts=1 )". Curves meeting end to end join into one pipe, and where three or more meet (or
+//! one ends partway along another) a block joins them; each connected group gives one SubD. One
+//! line of length 10 gives 12 points and 8 faces, a square corner 20, a T 29, and the curves
+//! stay. See `curva_mesh::SubD::pipes`. Curved curves are not here yet.
 
 use crate::Message;
 use crate::commands::arguments::{number, objects};
@@ -11,7 +12,6 @@ use crate::recipe::{Context, Derived, Made, OptionDef, Recipe, StepDef};
 use curva_document::Shape;
 use curva_kernel::{Curve, Point};
 use curva_mesh::{PipeOptions, SubD};
-use std::collections::BTreeMap;
 
 const CAP: &str = "Cap";
 const STRUTS: &str = "Struts";
@@ -37,58 +37,6 @@ fn segments_of(curve: &Curve) -> Option<Vec<[Point; 2]>> {
         }
         _ => None,
     }
-}
-
-/// A place, to match segment ends that meet.
-fn key(p: Point) -> [i64; 3] {
-    #[allow(clippy::cast_possible_truncation)]
-    p.map(|c| (c * 1e9).round() as i64)
-}
-
-/// The segments joined end to end into runs of points, each with whether it closes; `None` when
-/// three or more segments meet at a point.
-fn runs(segments: &[[Point; 2]]) -> Option<Vec<(Vec<Point>, bool)>> {
-    let mut at: BTreeMap<[i64; 3], Vec<usize>> = BTreeMap::new();
-    for (s, [a, b]) in segments.iter().enumerate() {
-        at.entry(key(*a)).or_default().push(s);
-        at.entry(key(*b)).or_default().push(s);
-    }
-    if at.values().any(|s| s.len() > 2) {
-        return None;
-    }
-    let mut used = vec![false; segments.len()];
-    let mut out = Vec::new();
-    // Open runs start at a free end; what is left over are loops.
-    let starts: Vec<usize> = (0..segments.len())
-        .filter(|&s| segments[s].iter().any(|&p| at[&key(p)].len() == 1))
-        .chain(0..segments.len())
-        .collect();
-    for s in starts {
-        if used[s] {
-            continue;
-        }
-        let [a, b] = segments[s];
-        let (mut points, mut here) = if at[&key(a)].len() == 1 || at[&key(b)].len() != 1 {
-            (vec![a, b], b)
-        } else {
-            (vec![b, a], a)
-        };
-        used[s] = true;
-        let mut last = s;
-        while let Some(&next) = at[&key(here)].iter().find(|&&n| n != last && !used[n]) {
-            used[next] = true;
-            let [p, q] = segments[next];
-            here = if key(p) == key(here) { q } else { p };
-            points.push(here);
-            last = next;
-        }
-        let closed = points.len() > 3 && key(points[0]) == key(here);
-        if closed {
-            points.pop();
-        }
-        out.push((points, closed));
-    }
-    Some(out)
 }
 
 impl Recipe for MultiPipe {
@@ -127,7 +75,6 @@ impl Recipe for MultiPipe {
             segments
                 .extend(segments_of(curve).ok_or_else(|| Message::new("error.multipipe_curved"))?);
         }
-        let runs = runs(&segments).ok_or_else(|| Message::new("error.multipipe_junction"))?;
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let options = PipeOptions {
             radius,
@@ -135,9 +82,9 @@ impl Recipe for MultiPipe {
             struts: cx.number(STRUTS) as usize,
         };
         let mut made = Made::default();
-        for (points, closed) in runs {
-            let subd = SubD::pipe(&points, closed, options)
-                .map_err(|e| Message::with("error.geometry", vec![e.0]))?;
+        let pipes = SubD::pipes(&segments, options)
+            .map_err(|e| Message::with("error.geometry", vec![e.0]))?;
+        for subd in pipes {
             made.derived.push(Derived {
                 shape: Shape::SubD(subd),
                 from: first,
@@ -172,7 +119,7 @@ mod tests {
     }
 
     #[test]
-    fn a_junction_of_three_is_refused_for_now() {
+    fn a_junction_of_three_joins_as_in_rhino() {
         let mut doc = Document::default();
         let ids = [
             line(&mut doc, [0.0, 0.0, 0.0], [10.0, 0.0, 0.0]),
@@ -181,7 +128,10 @@ mod tests {
         ];
         doc.select(&ids);
         run(&mut doc, &["multipipe", ""]);
-        assert_eq!(doc.state().objects.len(), 3, "nothing made");
+        let objects = &doc.state().objects;
+        assert_eq!(objects.len(), 4, "one SubD, and the curves stay");
+        let cage = objects[3].shape.subd().unwrap().cage();
+        assert_eq!((cage.vertex_count(), cage.face_count()), (29, 24));
     }
 
     #[test]

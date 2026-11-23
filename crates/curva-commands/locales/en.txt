@@ -1326,7 +1326,6 @@ prompt.multipipe.curves = Select curves to pipe, then press Enter
 prompt.multipipe.radius = Radius
 error.multipipe_none = Select straight curves to pipe.
 error.multipipe_curved = Only straight lines and polylines pipe yet; curved curves are not here yet.
-error.multipipe_junction = Three or more curves meet at a point; pipe junctions are not here yet.
 job.open = Opening {0}
 job.import = Importing {0}
 job.step.reading = Reading the file
