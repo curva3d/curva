@@ -14,8 +14,9 @@
   --pad: 20px;  /* page margin */
   /* Light. The same list is repeated for dark below. */
   --ink: #000; --paper: #efefef; --on-ink: #fff; --quiet: #cfcfcf;
-  --glass: rgba(255,255,255,.42); --glass-line: rgba(255,255,255,.9);
-  --glass-shadow: inset 0 1px 0 #fff, 0 30px 70px rgba(0,0,0,.16);
+  --glass: linear-gradient(140deg, rgba(255,255,255,.32) 0%, rgba(255,255,255,.1) 50%, rgba(222,222,222,.16) 100%); --glass-line: rgba(255,255,255,.95);
+  --glass-shadow: inset 0 1.5px 0 #fff, inset 0 0 0 1px rgba(255,255,255,.45), 0 30px 70px rgba(0,0,0,.16);
+  --grain: url("/assets/frost-dark-specks.png"); --grain-o: .048; --glare: rgba(0,0,0,.07);
   --plate-solid: linear-gradient(160deg, rgba(252,252,252,.94), rgba(244,244,244,.9));
   --hair: rgba(0,0,0,.2); --shot: rgba(255,255,255,.45);
   /* Curva's orange, for small signals only (the owner prefers the brand orange for text too). */
@@ -24,8 +25,9 @@
 }
 :root[data-theme="dark"] {
   --ink: #f4f4f2; --paper: #0b0b0b; --on-ink: #0b0b0b; --quiet: #5a5a58;
-  --glass: rgba(255,255,255,.07); --glass-line: rgba(255,255,255,.16);
-  --glass-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 30px 70px rgba(0,0,0,.6);
+  --glass: linear-gradient(140deg, rgba(255,255,255,.22) 0%, rgba(255,255,255,.06) 55%, rgba(255,255,255,.13) 100%); --glass-line: rgba(255,255,255,.24);
+  --glass-shadow: inset 0 1.5px 0 rgba(255,255,255,.3), inset 0 0 0 1px rgba(255,255,255,.07), 0 30px 70px rgba(0,0,0,.6);
+  --grain: url("/assets/frost-light-specks.png"); --grain-o: .09; --glare: rgba(255,255,255,.14);
   --plate-solid: linear-gradient(160deg, rgba(38,38,38,.95), rgba(26,26,26,.93));
   --hair: rgba(255,255,255,.22); --shot: rgba(255,255,255,.04);
   --accent: #F08A45; --accent-text: #F08A45; --accent-on-ink: #F08A45;
@@ -35,8 +37,9 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
     --ink: #f4f4f2; --paper: #0b0b0b; --on-ink: #0b0b0b; --quiet: #5a5a58;
-    --glass: rgba(255,255,255,.07); --glass-line: rgba(255,255,255,.16);
-    --glass-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 30px 70px rgba(0,0,0,.6);
+    --glass: linear-gradient(140deg, rgba(255,255,255,.22) 0%, rgba(255,255,255,.06) 55%, rgba(255,255,255,.13) 100%); --glass-line: rgba(255,255,255,.24);
+    --glass-shadow: inset 0 1.5px 0 rgba(255,255,255,.3), inset 0 0 0 1px rgba(255,255,255,.07), 0 30px 70px rgba(0,0,0,.6);
+    --grain: url("/assets/frost-light-specks.png"); --grain-o: .09; --glare: rgba(255,255,255,.14);
     --plate-solid: linear-gradient(160deg, rgba(38,38,38,.95), rgba(26,26,26,.93));
     --hair: rgba(255,255,255,.22); --shot: rgba(255,255,255,.04);
     --accent: #F08A45; --accent-text: #F08A45; --accent-on-ink: #F08A45;
@@ -59,12 +62,23 @@ ul { list-style: none; margin: 0; padding: 0; }
 li::before { content: "— "; }
 h1, h2, p { margin: 0; }
 
+/* Frosted glass: a strong blur, a faint wash and a fine grain (dark specks in light mode, light in dark). */
 .glass {
   background: var(--glass);
-  -webkit-backdrop-filter: blur(26px); backdrop-filter: blur(26px);
+  -webkit-backdrop-filter: blur(39px) saturate(1.15); backdrop-filter: blur(39px) saturate(1.15);
   border: 1px solid var(--glass-line);
   box-shadow: var(--glass-shadow);
 }
+.glass::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: var(--grain); background-size: 192px; opacity: var(--grain-o); }
+.info, .dl, .figure { position: relative; }
+
+/* Panels and buttons lean toward the cursor, with a soft light where it is (a soft shadow in light
+   mode). site.js adds .wt and sets --px, --py (-1 to 1), --pd (0 or 1) and --gx, --gy. */
+.wt { transform: perspective(900px) rotateX(calc(var(--py, 0) * -4deg)) rotateY(calc(var(--px, 0) * 4deg)) scale(calc(1 - var(--pd, 0) * .012)); transition: transform .28s cubic-bezier(.2,.7,.2,1), opacity .2s; }
+.wt::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 2; background: radial-gradient(circle at var(--gx, 50%) var(--gy, 50%), var(--glare), transparent 45%); opacity: var(--pd, 0); transition: opacity .3s; }
+.wt.btn { position: relative; transform: perspective(500px) rotateX(calc(var(--py, 0) * -8deg)) rotateY(calc(var(--px, 0) * 8deg)) scale(calc(1 + var(--pd, 0) * .02)); }
+.wt.btn::before { z-index: 0; background: radial-gradient(circle at var(--gx, 50%) var(--gy, 50%), color-mix(in srgb, currentColor 22%, transparent), transparent 60%); }
+.wt.btn > * { position: relative; z-index: 1; }
 
 /* Top bar: stays in view while the page scrolls. */
 .top {
@@ -110,33 +124,32 @@ h1, h2, p { margin: 0; }
 /* The exploded axonometric. It is drawn at a fixed size and scaled to fit (--k). */
 .scene { position: relative; display: flex; justify-content: center; align-items: flex-end; height: calc(590px * var(--k)); min-width: 0; }
 .scene-box { position: relative; width: 560px; height: 700px; flex: none; transform: scale(var(--k)); transform-origin: center bottom; }
-.persp { position: absolute; left: 90px; top: 340px; width: 380px; height: 380px; perspective: 2400px; }
+.persp { position: absolute; left: 90px; top: 340px; width: 380px; height: 380px; }
 .spec .persp { left: 100px; width: 360px; height: 360px; top: 350px; }
-.stack { position: absolute; inset: 0; transform: rotateX(58deg) rotateZ(-45deg); transform-style: preserve-3d; }
+/* The axonometric is drawn with flat 2D transforms (lift, squash, rotate) rather than true 3D: it looks
+   the same, and every browser can blur flat glass (Firefox cannot blur glass tilted in 3D). */
+.stack { position: absolute; inset: 0; }
 .plate {
   position: absolute; inset: 0; border-radius: 26px; padding: 22px;
   display: flex; flex-direction: column; justify-content: space-between;
   color: var(--ink); cursor: pointer;
-  transform: translateZ(calc(var(--gap) * var(--i, 0) + var(--lift, 0px)));
+  transform: translateY(calc((var(--gap) * var(--i, 0) + var(--lift, 0px)) * -.848)) scaleY(.5299) rotate(-45deg);
   transition: transform .35s cubic-bezier(.2,.7,.2,1), background .2s, color .2s;
 }
 .plate:nth-child(2) { --i: 1; } .plate:nth-child(3) { --i: 2; } .plate:nth-child(4) { --i: 3; } .plate:nth-child(5) { --i: 4; }
-.plate:hover, .plate:focus-visible { background: var(--ink); color: var(--on-ink); outline: none; }
+.plate:hover, .plate:focus-visible { background: var(--ink); color: var(--on-ink); border-color: var(--ink); outline: none; }
+.plate:hover::after, .plate:focus-visible::after { opacity: 0; }
 .plate .tag { font-size: 13px; }
 .plate .name { font-size: 58px; line-height: 54px; font-weight: 700; letter-spacing: -.06em; }
 .spec .plate .name { font-size: 44px; line-height: 44px; letter-spacing: -.055em; }
 /* The plates above the one under the mouse rise just enough to show its words. */
 .plate:hover ~ .plate, .plate:focus-visible ~ .plate { --lift: max(0px, calc(var(--need) - var(--gap))); }
-.home { --need: 125px; }
-.spec { --need: 105px; }
-/* Firefox draws no blur on anything tilted in 3D, so the plates would turn clear and show the ones
-   behind sharply. There they get a near-solid finish instead (the -moz- test is true only in Firefox). */
-@supports (-moz-appearance: none) {
-  .plate.glass:not(:hover):not(:focus-visible) { background: var(--plate-solid); }
-}
+.home { --need: 156px; }
+.spec { --need: 131px; }
 
-/* The line drawing on each home plate (src/data/motifs.ts): large, faint and slow, behind the name. */
-.motif { left: 34px; top: 34px; width: 312px; height: 312px; opacity: .2; transition: opacity .3s; position:absolute;pointer-events:none;fill:none;stroke:currentColor;stroke-width: calc(1.1 * var(--lw, 1));stroke-linecap:round;stroke-linejoin:round;overflow:visible}
+/* The line drawing on each home plate (src/data/motifs.ts): faint and slow, one size, centred in the
+   space between the tag and the name so it never sits on the words. */
+.motif { left: 95px; top: 77px; width: 190px; height: 190px; opacity: .2; transition: opacity .3s; position:absolute;pointer-events:none;fill:none;stroke:currentColor;stroke-width: calc(1.1 * var(--lw, 1));stroke-linecap:round;stroke-linejoin:round;overflow:visible}
 .motif .thin{stroke-width: calc(1 * var(--lw, 1));stroke-dasharray: calc(3 * var(--lw, 1)) calc(4 * var(--lw, 1));opacity:.7}
 .motif .d{stroke-dasharray:1;stroke-dashoffset:0}
 .motif .leaf,.motif .sun,.motif .shade{transform-box:view-box}
@@ -156,7 +169,7 @@ h1, h2, p { margin: 0; }
 /* The drawings on the specialization pages' plates (POINT_MOTIFS): the same faint style, sized to
    their smaller plates, with a few more kinds of movement. --face is the plate's colour, used where a
    drawn object hides what is behind it. */
-.spec .motif { left: 30px; top: 30px; width: 300px; height: 300px; }
+.spec .motif { left: 90px; top: 77px; width: 180px; height: 180px; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme]) .motif { --face: #1d1d1d; } }
 .motif .hbar{transform-box:fill-box;transform-origin:0 50%;animation:mhbar 12s cubic-bezier(.3,0,.2,1) infinite}
 .motif .hb2{animation-delay:.3s}.motif .hb3{animation-delay:.6s}.motif .hb4{animation-delay:.9s}
@@ -219,8 +232,7 @@ h1, h2, p { margin: 0; }
 
 /* Download: the big button follows the visitor's system; the chips choose another. */
 .dl { border-radius: 28px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
-.dl-btn { background: var(--ink); color: var(--on-ink); border-radius: 18px; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; gap: 12px; transition: transform .2s; }
-.dl-btn:hover { transform: translateY(-3px); }
+.dl-btn { background: var(--ink); color: var(--on-ink); border-radius: 18px; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .dl-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .dl-text strong { font-size: 22px; line-height: 28px; font-weight: 700; letter-spacing: -.03em; }
 .dl-text .mono { font-size: 11px; color: var(--quiet); text-transform: none; overflow-wrap: anywhere; }
@@ -242,8 +254,7 @@ h1, h2, p { margin: 0; }
 .band h2.point { font-size: clamp(36px, 5.4vw, 64px); line-height: .96; letter-spacing: -.055em; }
 .band-line { font-size: clamp(22px, 3vw, 30px); line-height: 1.1; font-weight: 700; letter-spacing: -.04em; }
 .band-body { font-size: 17px; line-height: 27px; max-width: 520px; }
-.go { margin-top: 6px; display: inline-flex; align-items: center; min-height: 48px; padding: 0 20px; border-radius: 999px; background: var(--ink); color: var(--on-ink); font-weight: 600; transition: transform .2s; }
-.go:hover { transform: translateX(4px); }
+.go { margin-top: 6px; display: inline-flex; align-items: center; min-height: 48px; padding: 0 20px; border-radius: 999px; background: var(--ink); color: var(--on-ink); font-weight: 600; }
 .shot {
   aspect-ratio: 16 / 10; border: 1.5px dashed var(--ink); border-radius: 20px; padding: 14px 16px;
   display: flex; align-items: flex-end; font-size: 11px;
@@ -252,9 +263,10 @@ h1, h2, p { margin: 0; }
               var(--shot);
 }
 /* The frame beside each section: the plate's drawing, large and at full strength. */
-.figure { aspect-ratio: 16 / 10; border-radius: 20px; display: grid; place-items: center; overflow: hidden; --face: #f6f6f6; }
+.figure { aspect-ratio: 16 / 10; border-radius: 20px; overflow: hidden; --face: #f6f6f6; }
 [data-theme="dark"] .figure { --face: #1a1a1a; }
-.figure .motif { position: static; width: min(58%, 340px); height: auto; aspect-ratio: 1; opacity: 1; stroke-width: calc(1.3 * var(--lw, 1)); }
+/* The same share of every frame: 62% of its height, centred, so the padding matches on every page. */
+.figure .motif { position: absolute; inset: 19% 0; margin: auto; z-index: 1; width: auto; height: 62%; aspect-ratio: 1; opacity: 1; stroke-width: calc(1.3 * var(--lw, 1)); }
 .figure .motif .wall path, .figure .motif .grow path, .figure .motif .curA path { stroke-width: 1.6; }
 .switch { display: flex; flex-direction: column; border-bottom: 1.5px solid var(--ink); width: 100%; }
 .switch a { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 0; border-top: 1.5px solid var(--ink); font-size: 20px; transition: padding .25s; }
