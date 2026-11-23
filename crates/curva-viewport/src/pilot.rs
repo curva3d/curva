@@ -193,8 +193,8 @@ impl Pilot {
                 view.placed = None;
                 view.lit = None;
             }
-            // The Massing display mode lights its view by the sun, with shadows (#551).
-            let lit = if drawing.massing {
+            // A style lit by the sun, as Massing is, lights its view by the sun, with shadows (#551).
+            let lit = if drawing.style.light() == Some(crate::Light::Sun) {
                 Look {
                     lighting: Lighting::Sunlit,
                     ..self.look
@@ -492,11 +492,7 @@ fn picture_drawing(
         matrix: picture.matrix,
         light: picture.light,
         clips: Vec::new(),
-        shaded: true,
-        ghosted: picture.ghosted,
-        hidden: picture.hidden,
-        hidden_lines: picture.hidden_lines,
-        massing: picture.massing,
+        style: picture.style,
         area: epaint::Rect::from_min_size(
             epaint::Pos2::ZERO,
             epaint::vec2(size[0] as f32, size[1] as f32),
@@ -668,11 +664,7 @@ mod tests {
             matrix: camera.matrix(f64::from(SIZE[0]) / f64::from(SIZE[1])),
             light: camera.forward().map(|value| value as f32),
             clips: Vec::new(),
-            shaded: true,
-            ghosted: false,
-            hidden: false,
-            hidden_lines: false,
-            massing: false,
+            style: crate::Style::SHADED,
             area: epaint::Rect::from_min_size(
                 epaint::Pos2::ZERO,
                 epaint::vec2(SIZE[0] as f32, SIZE[1] as f32),
@@ -729,8 +721,11 @@ mod tests {
         assert_ne!(shown, background, "a new shape shows at once");
         // Massing lights by the sun with shadows; Ghosted draws see-through.
         for massing in [true, false] {
-            view.massing = massing;
-            view.ghosted = !massing;
+            view.style = if massing {
+                crate::Style::MASSING
+            } else {
+                crate::Style::GHOSTED
+            };
             let first = middle(&mut pilot, &device, &queue, &view);
             for _ in 0..3 {
                 middle(&mut pilot, &device, &queue, &view);
@@ -1250,13 +1245,13 @@ mod tests {
         let picked = middle(&mut pilot, &device, &queue, &view);
         assert!(picked[0] > picked[2] + 60, "selection colour: {picked:?}");
         view.selection = Arc::default();
-        view.ghosted = true;
+        view.style = crate::Style::GHOSTED;
         let ghosted = middle(&mut pilot, &device, &queue, &view);
         assert!(
             ghosted[0] > plain[0] && ghosted[2] < plain[2],
             "background through: {ghosted:?}"
         );
-        view.shaded = false;
+        view.style = crate::Style::WIREFRAME;
         assert_eq!(
             middle(&mut pilot, &device, &queue, &view),
             [200, 120, 40, 255]

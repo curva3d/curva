@@ -297,10 +297,11 @@ impl ViewScene {
         look: Look,
     ) {
         // Only what changed is handed to Bevy: each change makes Bevy redo work for it.
-        if self.shaded != Some(drawing.shaded) {
-            self.shaded = Some(drawing.shaded);
+        let shaded = drawing.style.surfaces.is_some();
+        if self.shaded != Some(shaded) {
+            self.shaded = Some(shaded);
             // Wireframe views show no faces.
-            let shown = if drawing.shaded {
+            let shown = if shaded {
                 Visibility::Visible
             } else {
                 Visibility::Hidden
@@ -369,7 +370,7 @@ impl ViewScene {
             self.mirror_shapes(world, &mut meshes.1, &drawing.shapes);
             self.shapes = Some(Arc::clone(&drawing.shapes));
         }
-        self.restyle(world, drawing.ghosted, FaceLook::of(drawing));
+        self.restyle(world, drawing.style.see_through(), FaceLook::of(drawing));
         let clips = Clips::of(&drawing.clips);
         if self.clips != Some(clips) {
             self.clips = Some(clips);
@@ -672,9 +673,10 @@ pub(super) enum FaceLook {
 impl FaceLook {
     /// How `drawing` asks for its faces to be coloured.
     pub(super) fn of(drawing: &Drawing) -> Self {
-        if drawing.hidden {
+        let surfaces = drawing.style.surfaces;
+        if drawing.style.light() == Some(crate::Light::Flat) {
             Self::Paper
-        } else if drawing.massing {
+        } else if surfaces.is_some_and(|surfaces| surfaces.colour.is_some()) {
             Self::White
         } else {
             Self::Own

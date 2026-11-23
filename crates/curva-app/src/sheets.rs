@@ -248,9 +248,9 @@ impl Curva {
             curva_viewport::StandardView::from_key(&detail.projection).unwrap_or(StandardView::Top);
         let mut camera = view.camera();
         camera.show_exactly(detail.target, model_height / 2.0);
-        let (shaded, ghosted) = (detail.display != "Wireframe", detail.display == "Ghosted");
+        let style = crate::styles::named_style(&detail.display);
         let model = self.model_scene(&detail.hidden_layers);
-        let scene = model.lines(shaded && !ghosted);
+        let scene = model.lines(style.solid());
         let model_faces = Arc::clone(&model.faces);
         let origin = model.origin;
         // The camera measured as the model's positions are, from its middle (#225).
@@ -274,11 +274,7 @@ impl Curva {
             selection: Arc::default(),
             matrix: camera.matrix(f64::from(shown.width() / shown.height())),
             light: camera.forward().map(|value| value as f32),
-            shaded,
-            ghosted,
-            hidden: matches!(detail.display.as_str(), "Hidden" | "Technical"),
-            hidden_lines: detail.display == "Technical",
-            massing: detail.display == "Massing",
+            style,
             area: shown,
             frame: ui.ctx().cumulative_frame_nr(),
             background: PAPER,

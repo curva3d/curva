@@ -51,10 +51,11 @@ fn centre_brightness(ghosted: bool) -> Option<u8> {
         faces,
         matrix: identity,
         light: [0.0, 0.0, 1.0],
-        ghosted,
-        hidden: false,
-        hidden_lines: false,
-        massing: false,
+        style: if ghosted {
+            crate::Style::GHOSTED
+        } else {
+            crate::Style::SHADED
+        },
     };
     let path = std::env::temp_dir().join(format!(
         "curva-ghost-test-{ghosted}-{}.png",
@@ -103,10 +104,7 @@ fn rows_lit(width: f32) -> Option<usize> {
         faces: Vec::new(),
         matrix: identity,
         light: [0.0, 0.0, 1.0],
-        ghosted: false,
-        hidden: false,
-        hidden_lines: false,
-        massing: false,
+        style: crate::Style::SHADED,
     };
     let path = std::env::temp_dir().join(format!(
         "curva-width-test-{}-{}.png",
@@ -178,10 +176,7 @@ fn mixed_picture() -> Picture {
             [0.0, 0.0, 0.0, 1.0],
         ],
         light: [0.0, 0.0, 1.0],
-        ghosted: false,
-        hidden: false,
-        hidden_lines: false,
-        massing: false,
+        style: crate::Style::SHADED,
     }
 }
 
@@ -269,10 +264,7 @@ fn the_selection_table_draws_what_coloured_vertices_drew() {
             faces: if shaded { faces } else { Vec::new() },
             matrix,
             light,
-            ghosted: false,
-            hidden: false,
-            hidden_lines: false,
-            massing: false,
+            style: crate::Style::SHADED,
         };
         let coloured = picture(
             if shaded {
@@ -341,10 +333,7 @@ fn circles_drawn_from_their_axes_look_as_their_segments() {
             },
             matrix,
             light,
-            ghosted: false,
-            hidden: false,
-            hidden_lines: false,
-            massing: false,
+            style: crate::Style::SHADED,
         };
         let scene = |circles: &[crate::PlacedCircle]| Scene {
             objects: Arc::new(whole.objects.clone()),
@@ -413,10 +402,7 @@ fn a_sphere_is_outlined_at_its_rim_and_clean_inside() {
         faces: crate::face_vertices(&outlines, &[]),
         matrix: camera.matrix(1.0),
         light: camera.forward().map(|v| v as f32),
-        ghosted: false,
-        hidden: false,
-        hidden_lines: false,
-        massing: false,
+        style: crate::Style::SHADED,
     };
     let Ok(pixels) = draw_picture(picture, size, true) else {
         eprintln!("no graphics adapter to draw with, so not checked");
@@ -472,10 +458,7 @@ fn far_from_the_origin_draws_as_at_the_origin() {
             faces: Vec::new(),
             matrix: camera.matrix(1.0),
             light: camera.forward().map(|v| v as f32),
-            ghosted: false,
-            hidden: false,
-            hidden_lines: false,
-            massing: false,
+            style: crate::Style::SHADED,
         };
         let scene = Scene {
             objects: Arc::new(parts.objects.clone()),
@@ -530,10 +513,7 @@ fn the_hidden_mode_draws_black_ink_on_white_paper() {
             [0.0, 0.0, 0.0, 1.0],
         ],
         light: [0.0, 0.0, 1.0],
-        ghosted: false,
-        hidden: true,
-        hidden_lines: false,
-        massing: false,
+        style: crate::Style::HIDDEN,
     };
     let pixels = match draw_picture(picture, SIZE, true) {
         Ok(pixels) => pixels,
@@ -596,9 +576,7 @@ fn the_technical_mode_dots_the_lines_faces_hide() {
             [0.0, 0.0, 0.0, 1.0],
         ],
         light: [0.0, 0.0, 1.0],
-        hidden: true,
-        hidden_lines: true,
-        ..Picture::default()
+        style: crate::Style::TECHNICAL,
     };
     let pixels = match draw_picture(picture, SIZE, true) {
         Ok(pixels) => pixels,
@@ -642,8 +620,7 @@ fn the_clay_mode_draws_white_faces_and_black_lines() {
             [0.0, 0.0, 0.0, 1.0],
         ],
         light: [0.0, 0.0, 1.0],
-        massing: true,
-        ..Picture::default()
+        style: crate::Style::MASSING,
     };
     let pixels = match draw_picture(picture, SIZE, true) {
         Ok(pixels) => pixels,
