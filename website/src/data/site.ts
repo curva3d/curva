@@ -2,7 +2,7 @@
 // language, add it to Lang, give it a block in WORDS and pages under src/pages/<lang>/.
 
 export type Lang = 'en';
-export const SLUGS = ['freeform', 'architecture', 'urban', 'analysis'] as const;
+export const SLUGS = ['freeform', 'architecture', 'urban', 'publisher', 'analysis'] as const;
 export type Slug = (typeof SLUGS)[number];
 
 export interface Point { short: string; title: string; text: string }
@@ -50,7 +50,7 @@ export const WORDS: Record<Lang, Words> = {
 		skip: 'Skip to content',
 		home: 'Curva, home',
 		motto: 'Every project starts with a curve.',
-		intro: 'Four specializations, stacked on one model. Freeform is the base; the others build on it.',
+		intro: 'Five specializations, stacked on one model. Freeform is the base; the others build on it.',
 		hintHome: 'Exploded axonometric · Move up to pull it apart · Click a plate to read on',
 		hintSpec: '{n} plates · Move up to pull them apart · Click one to read on',
 		back: '← Back to the stack',
@@ -115,6 +115,21 @@ export const WORDS: Record<Lang, Words> = {
 					{ short: 'Live data, both ways', title: 'Instant data from your model, and back.', text: 'Area and density tables update as the massing changes. Edit a number in a table and the model changes to match.' },
 					{ short: 'Streets to cities', title: 'Generate streets, blocks and cities parametrically.', text: 'Lay out streets, divide them into blocks and grow whole districts from a few parameters. Change a street width or a block size and the city rebuilds.' },
 					{ short: 'Street sections', title: 'Set your street section, watch it being generated.', text: 'Draw the section once: pavements, kerbs, lanes and trees. Curva builds the street from it along any path, and rebuilds it when you change a width.' },
+				],
+			},
+			publisher: {
+				name: 'Publisher',
+				status: 'Planned',
+				live: false,
+				line: 'From the model to the drawing set.',
+				lede: 'Everything that leaves Curva: sheets and drawing sets, title blocks and revisions, presentation boards and exports. All of it live from the model, so what you send is always current.',
+				bullets: ['Sheets, drawing sets and title blocks', 'Revisions and issue sheets', 'Presentation boards and exports'],
+				points: [
+					{ short: 'Drawing sets', title: 'Whole drawing sets, numbered and live.', text: 'Sheets gather into sets with their numbering, title blocks and a drawing list that keeps itself up to date as views change.' },
+					{ short: 'Revisions', title: 'Revisions that track themselves.', text: "Mark a change once: the revision cloud, the sheet's revision table and the issue sheet all follow." },
+					{ short: 'Boards', title: 'Presentation boards from the same model.', text: 'Lay out images, plans and text on boards for clients and competitions, with every view still live.' },
+					{ short: 'Issue in one go', title: 'Issue a whole set in one go.', text: 'Print or export a set to PDF, DWG or images, named and versioned, ready to send.' },
+					{ short: 'Your standards', title: 'Your office standards, set once.', text: 'Title blocks, line weights, hatches and text styles saved as templates, so every project starts looking like yours.' },
 				],
 			},
 			analysis: {

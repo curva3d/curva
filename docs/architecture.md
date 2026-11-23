@@ -49,14 +49,15 @@ Objects from every specialization live in the same file and react to each other.
 
 This avoids FreeCAD's problem, where workbenches feel like separate programs with their own objects and conventions.
 
-### The four specializations
+### The five specializations
 
 | # | Specialization | Inspired by | Content |
 |---|---|---|---|
 | 1 | **Freeform** (the base) | Rhino | Curves, surfaces, solids, transforms, analysis, layouts. Mesh and SubD objects come from their own stream (section 10d). Interface follows Rhino's overall layout and command line |
 | 2 | **Architecture** | Archicad, Vectorworks | Levels, walls, slabs, doors, windows, roofs, stairs, types; plans, sections, elevations; IFC. Interface closer to Archicad / Vectorworks |
 | 3 | **Urban** | Parametric massing and street tools | Rule-based generation of urban settings: plots, setbacks, heights, floor-area ratios; responsive massing; streets, blocks and districts generated parametrically, with streets built from a street section; city data import (OpenStreetMap, terrain, GIS); area and density tables that also edit the model |
-| 4 | **Analysis** (much later) | — | Sun and shadow first, then wind, views, carbon from the model's materials and quantities, and others; the model can respond to results parametrically |
+| 4 | **Publisher** | Archicad's and Revit's sheet sets | Everything that leaves Curva: sheets and drawing sets, title blocks, revisions and issue sheets, presentation boards and exports, all live from the model and built on the shared views-and-sheets core from M3. A full specialization since November 2026 (owner) |
+| 5 | **Analysis** (much later) | — | Sun and shadow first, then wind, views, carbon from the model's materials and quantities, and others; the model can respond to results parametrically |
 
 ## 4. Design-oriented parametric model
 
@@ -313,7 +314,8 @@ Each operation has a primary implementation (solidcore) and can have a second Ru
 | **M4 — Architecture** | Specialization 2: **smart object representations** (section 5b; moved from M3 by decision 0020), levels, walls, slabs, openings, doors, windows, types; live plan and section views; IFC. The Serpentine BIM tool specs carry over. Ships the **built-in object library**: wall and door styles, windows, simple trees and people, each with drawing representations |
 | **Mesh and SubD (third stream, from 16 November 2026)** | Mesh and SubD objects (section 10d), built in parallel with M3 and M4 by their own stream (decision 0032) |
 | **M5 — Urban** | Specialization 3. Visual scripting is shelved for now (owner, 22 November 2026) |
-| **M6 — Analysis** | Specialization 4, starting with sun and shadow |
+| **M6 — Publisher** | Specialization 4: drawing sets, title blocks, revisions, boards and exports on the views-and-sheets core |
+| **M7 — Analysis** | Specialization 5, starting with sun and shadow |
 | **Rendering** | Blender / Cycles bridge, whenever it's useful from M2 on |
 | **Far future — Curva online library and Curva Pro** | Section 10b |
 

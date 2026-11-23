@@ -48,6 +48,7 @@ mod panels;
 mod part_picking;
 mod printing;
 mod recovery;
+mod selection_filter;
 mod selection_menu;
 mod settings;
 mod sheets;
@@ -161,7 +162,7 @@ struct Curva {
     ortho: bool,
     grid_snap: bool,
     /// Which kinds of object clicking and boxing may pick.
-    pick_filter: PickFilter,
+    pick_filter: selection_filter::SelectionFilter,
     /// Whether the selection filter row shows in the status bar.
     filter_row: bool,
     outlines: Outlines,
@@ -250,7 +251,7 @@ impl Curva {
             snaps: SnapSet::default(),
             ortho: false,
             grid_snap: false,
-            pick_filter: PickFilter::default(),
+            pick_filter: selection_filter::SelectionFilter::default(),
             filter_row: false,
             outlines: Outlines::default(),
             scene: Arc::new(Vec::new()),
