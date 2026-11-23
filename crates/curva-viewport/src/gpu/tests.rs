@@ -19,6 +19,7 @@ fn centre_brightness(ghosted: bool) -> Option<u8> {
         normal: [0.0, 0.0, 1.0],
         colour: [0.3, 0.3, 0.3],
         object: NO_OBJECT,
+        kind: crate::FaceKind::Nurbs,
     };
     let faces = vec![corner(-0.9, -0.9), corner(0.9, -0.9), corner(0.0, 0.9)];
     let lines = (-2..=2)
@@ -149,6 +150,7 @@ fn mixed_picture() -> Picture {
         normal: [0.0, 0.0, 1.0],
         colour: [0.4, 0.4, 0.4],
         object: NO_OBJECT,
+        kind: crate::FaceKind::Nurbs,
     };
     let line = |y: f32, width: f32| {
         [-0.8, 0.8].map(|x| Vertex {
@@ -495,6 +497,7 @@ fn the_hidden_mode_draws_black_ink_on_white_paper() {
         normal: [0.0, 0.0, 1.0],
         colour: [0.3, 0.5, 0.7],
         object: NO_OBJECT,
+        kind: crate::FaceKind::Nurbs,
     };
     let segment = |y: f32, depth: f32, colour: [f32; 3]| {
         [-0.6, 0.6].map(|x| Vertex {
@@ -563,6 +566,7 @@ fn the_technical_mode_dots_the_lines_faces_hide() {
         normal: [0.0, 0.0, 1.0],
         colour: [0.3, 0.5, 0.7],
         object: NO_OBJECT,
+        kind: crate::FaceKind::Nurbs,
     };
     // A line behind the face, across its lower part.
     let lines = [-0.6_f32, 0.6].map(|x| Vertex {
@@ -609,6 +613,7 @@ fn the_clay_mode_draws_white_faces_and_black_lines() {
         normal: [0.0, 0.0, 1.0],
         colour: [0.2, 0.5, 0.9],
         object: NO_OBJECT,
+        kind: crate::FaceKind::Nurbs,
     };
     let lines = [-0.6_f32, 0.6].map(|x| Vertex {
         position: [x, 0.0, 0.2],
@@ -718,6 +723,7 @@ fn a_mesh_wire_is_one_pixel_and_shows_on_its_face() {
         normal: [0.0, 0.0, 1.0],
         colour: [0.3; 3],
         object: NO_OBJECT,
+        kind: crate::FaceKind::Nurbs,
     };
     let picture = Picture {
         lines: vec![end(-0.8), end(0.8)],

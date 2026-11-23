@@ -10,6 +10,9 @@ use curva_document::style::{
 /// Outlines wider than this, in millimetres, are drawn thick (three pixels), as Massing's are.
 const THICK_OUTLINE_MM: f32 = 0.5;
 
+/// Rows of the face table ([`Style::face_rows`]): two for each [`FaceKind`].
+pub(crate) const FACE_ROWS: usize = 2 * FaceKind::ALL.len();
+
 /// How a view draws the model: its surfaces, each kind of line, the outlines of shapes, and the
 /// lines surfaces hide. Every display mode is one ([`Style::wireframe`] and the others), drawn
 /// by the same code from its settings.
@@ -112,7 +115,10 @@ impl Style {
             },
             Engine::Rendered => Light::View,
         };
-        let surfaces = faces.shown.then(|| Surfaces {
+        let any_shown = [FacedKind::Nurbs, FacedKind::Mesh, FacedKind::Subd]
+            .iter()
+            .any(|&kind| view.faces(kind).shown);
+        let surfaces = any_shown.then(|| Surfaces {
             colour: match faces.colour {
                 ColourFrom::One(colour) => Some(colour.to_f32()),
                 _ => None,
@@ -185,16 +191,44 @@ impl Style {
         }
     }
 
-    /// Whether faces are drawn solid, hiding what is behind them: shaded and not see-through.
+    /// Whether some kind's faces are drawn solid, hiding what is behind them: shown and opaque.
     #[must_use]
     pub fn solid(&self) -> bool {
-        self.surfaces.is_some_and(|surfaces| !surfaces.see_through)
+        self.any_faces(|faces| faces.opacity >= 1.0)
     }
 
-    /// Whether faces are drawn see-through, as in Ghosted.
+    /// Whether some kind's faces are drawn see-through, as in Ghosted.
     #[must_use]
     pub fn see_through(&self) -> bool {
-        self.surfaces.is_some_and(|surfaces| surfaces.see_through)
+        self.any_faces(|faces| faces.opacity < 1.0)
+    }
+
+    /// Whether the view draws faces and some kind's shown faces are as `test` says.
+    fn any_faces(&self, test: impl Fn(KindFaces) -> bool) -> bool {
+        self.surfaces.is_some()
+            && FaceKind::ALL
+                .into_iter()
+                .map(|kind| self.faces_of(kind))
+                .any(|faces| faces.shown && faces.opacity > 0.0 && test(faces))
+    }
+
+    /// The face table the face shader reads: for each [`FaceKind`] in order, its colour and
+    /// whether to use it, then its opacity and whether it shows. No kind shows in a view without
+    /// faces.
+    pub(crate) fn face_rows(&self) -> [[f32; 4]; FACE_ROWS] {
+        let mut rows = [[0.0; 4]; FACE_ROWS];
+        if self.surfaces.is_none() {
+            return rows;
+        }
+        let flag = |on: bool| if on { 1.0 } else { 0.0 };
+        for kind in FaceKind::ALL {
+            let look = self.faces_of(kind);
+            let [r, g, b] = look.colour.unwrap_or_default();
+            let at = kind as usize * 2;
+            rows[at] = [r, g, b, flag(look.colour.is_some())];
+            rows[at + 1] = [look.opacity, flag(look.shown), 0.0, 0.0];
+        }
+        rows
     }
 
     /// How the faces are lit, if there are any.

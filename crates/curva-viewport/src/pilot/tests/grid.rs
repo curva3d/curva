@@ -16,6 +16,7 @@ fn the_grid_shows_where_bevy_drew_nothing() {
         normal: [0.0, 0.0, 1.0],
         colour: [0.6; 3],
         object: 0,
+        kind: crate::FaceKind::Given,
     };
     let far = 1.0e5;
     let half = vec![

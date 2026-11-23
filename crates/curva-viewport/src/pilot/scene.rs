@@ -697,6 +697,7 @@ mod tests {
             normal: [0.0, 0.0, 1.0],
             colour,
             object,
+            kind: crate::FaceKind::Given,
         };
         [corner(0.0), corner(1.0), corner(2.0)]
     }
