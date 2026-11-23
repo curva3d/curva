@@ -15,7 +15,7 @@ impl Curva {
             ui.label(say("ui.detail.projection"));
             ui_kit::dropdown(ui, "detail projection", changed.projection.clone(), |ui| {
                 for key in ["Top", "Front", "Right", "Perspective"] {
-                    ui.selectable_value(&mut changed.projection, key.to_owned(), key);
+                    ui_kit::pick(ui, &mut changed.projection, key.to_owned(), key);
                 }
             });
             ui.end_row();
@@ -64,7 +64,7 @@ impl Curva {
             ui.label(say("ui.detail.display"));
             ui_kit::dropdown(ui, "detail display", changed.display.clone(), |ui| {
                 for mode in ["Wireframe", "Shaded", "Ghosted"] {
-                    ui.selectable_value(&mut changed.display, mode.to_owned(), mode);
+                    ui_kit::pick(ui, &mut changed.display, mode.to_owned(), mode);
                 }
             });
             ui.end_row();
@@ -196,8 +196,13 @@ impl Curva {
         let patterns = self.doc.state().patterns();
         ui_kit::dropdown(ui, ("hatch pattern", id), changed.pattern.clone(), |ui| {
             for pattern in &patterns {
-                ui.selectable_value(&mut changed.pattern, pattern.name.clone(), &pattern.name)
-                    .on_hover_text(&pattern.description);
+                ui_kit::pick(
+                    ui,
+                    &mut changed.pattern,
+                    pattern.name.clone(),
+                    &pattern.name,
+                )
+                .on_hover_text(&pattern.description);
             }
         });
         ui.horizontal(|ui| {

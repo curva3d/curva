@@ -1,8 +1,8 @@
 //! Dialogs: one look for every question and every set of options Curva asks for in the middle of
 //! the window, such as a format's import or export options, the mesh settings, getting a model
 //! back after a crash, or an agent asking leave. A quiet title centred along the top as on a
-//! panel, the contents, then the buttons in a row at the bottom right, the main one in the
-//! accent. Escape answers with the last button, which is Cancel or its like.
+//! panel, the contents, then the buttons in a row at the bottom right, the main one marked
+//! in the accent. Escape answers with the last button, which is Cancel or its like.
 
 use super::{CONTROL_PAD, ITEM_GAP, ROW, ROW_GAP, colours};
 use eframe::egui;
@@ -81,11 +81,12 @@ fn button_size() -> egui::Vec2 {
     egui::vec2(72.0, ROW)
 }
 
-/// A button filled with the accent, for the main answer.
+/// The main answer's button, marked as a chosen thing is: the accent's wash and edge.
 pub(crate) fn main_button(ui: &mut egui::Ui, word: &str) -> egui::Response {
     ui.add(
-        egui::Button::new(egui::RichText::new(word).color(colours::on_accent()))
-            .fill(colours::accent())
+        egui::Button::new(word)
+            .fill(colours::chosen_fill())
+            .stroke(colours::accent_line(super::LINE))
             .min_size(button_size() + egui::vec2(CONTROL_PAD, 0.0)),
     )
 }

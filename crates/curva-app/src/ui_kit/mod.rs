@@ -16,6 +16,9 @@
 //! - Text comes in four sizes only: [`TITLE_FONT`], [`BODY_FONT`], [`SMALL_FONT`] and
 //!   [`CAPTION_FONT`].
 //! - Colours come from the theme by role ([`colours`]), never picked by hand.
+//! - Anything chosen or switched on is marked one way: the accent's wash and a thin accent edge,
+//!   its words in the text colour, as the chosen specialization ([`chosen_shape`]); never a
+//!   solid fill or an underline.
 //! - Anything with a name that turns on and off is a [`toggle`] chip; a bare tick in a table
 //!   cell, with no name beside it, stays a tick box.
 //! - Icons are centred on their ink, across and down (`icons::paint` does this).
@@ -109,6 +112,11 @@ pub(crate) fn apply(style: &mut egui::Style) {
     spacing.item_spacing = egui::vec2(ITEM_GAP, ROW_GAP);
     spacing.interact_size.y = ROW;
     spacing.button_padding = egui::vec2(CONTROL_PAD, 2.0);
+    // Chosen things in egui's own widgets (items in a dropdown, selected text) take the kit's
+    // wash of the accent.
+    style.visuals.selection.bg_fill = colours::chosen_fill();
+    // The accent's edge stays, as egui also draws a focused field's outline with it.
+    style.visuals.selection.stroke = colours::accent_line(LINE);
     let widgets = &mut style.visuals.widgets;
     for widget in [
         &mut widgets.noninteractive,
@@ -155,7 +163,9 @@ mod tests {
 
     /// What only the kit may do: paint, pick fonts, colours, corners and frames, set spacing,
     /// or build windows, scroll areas, dropdowns and tabs of its own.
-    const KIT_ONLY: [&str; 24] = [
+    const KIT_ONLY: [&str; 26] = [
+        "selectable_value(",
+        "Button::selectable",
         "egui::Window::",
         "Checkbox::",
         ".painter()",

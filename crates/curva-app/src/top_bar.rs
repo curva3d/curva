@@ -123,7 +123,7 @@ pub(crate) const TOP_BAR_HEIGHT: f32 = 36.0;
 impl Curva {
     /// The command tabs, as the owner chose (option E, 22 November 2026): the groups (NURBS,
     /// Polygon, Modify, Publisher) in a row across the top, in the title row's place, with an
-    /// underline that slides to the one chosen; its tabs below, fading in when the group changes;
+    /// mark that slides to the one chosen; its tabs below, fading in when the group changes;
     /// then the chosen tab's buttons. Each group keeps the tab last used in it.
     pub(crate) fn command_tabs(&mut self, ui: &mut egui::Ui) {
         // Only Freeform has commands yet; the other specializations say when they come.
@@ -159,14 +159,14 @@ impl Curva {
         self.bar.tabs_fit = ui.min_rect().height() + 2.0 * PANEL_MARGIN;
     }
 
-    /// The groups' row, with the chosen one marked by a sliding underline; a click on another
+    /// The groups' row, with the chosen one marked, the mark sliding; a click on another
     /// opens the tab last used in it. Notes how wide the row is, for the title row's grip.
     fn tab_groups_row(&mut self, ui: &mut egui::Ui, group: usize) {
         let names: Vec<String> = TAB_GROUPS
             .iter()
             .map(|(key, _)| self.text.render(&Message::new(key)))
             .collect();
-        let (clicked, row) = ui_kit::underlined_tabs(ui, &names, group);
+        let (clicked, row) = ui_kit::group_tabs(ui, &names, group);
         if let Some(index) = clicked {
             self.bar.last_tab[group] = self.bar.command_tab;
             let last = self.bar.last_tab[index];

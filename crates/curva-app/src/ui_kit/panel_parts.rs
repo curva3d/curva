@@ -26,8 +26,8 @@ pub(crate) fn title_chip(
     chip.shrink2(egui::vec2(super::PAD, 0.0))
 }
 
-/// A panel's title or one of its tabs: `galley` at `tab`, middle of `row` height, in the accent
-/// with an underline when `showing`, else quiet.
+/// A panel's title or one of its tabs: `galley` at `tab`, middle of `row` height, marked as
+/// chosen when it is the one `showing`, else quiet.
 pub(crate) fn title_tab(
     ui: &egui::Ui,
     row: egui::Rect,
@@ -36,10 +36,10 @@ pub(crate) fn title_tab(
     showing: bool,
 ) {
     if showing {
-        super::underline(ui.painter(), tab.min.x, tab.width(), tab.max.y);
+        super::chosen_mark(ui.painter(), tab.expand2(egui::vec2(6.0, -1.0)));
     }
     let colour = if showing {
-        colours::accent()
+        colours::text()
     } else {
         colours::quiet()
     };
@@ -109,7 +109,7 @@ pub(crate) fn hanging_tab(ui: &egui::Ui, rect: egui::Rect, hovered: bool, down: 
     );
 }
 
-/// A filled tile `size` big with a drawing above its name, in the accent when `chosen`: one
+/// A filled tile `size` big with a drawing above its name, marked as chosen when `chosen`: one
 /// choice among several shown as pictures, as the view picker's views. `picture` draws in the
 /// rectangle it is given, in the colour it is given.
 pub(crate) fn picture_tile(
@@ -120,15 +120,18 @@ pub(crate) fn picture_tile(
     picture: impl FnOnce(&egui::Painter, egui::Rect, egui::Color32),
 ) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
-    let (fill, ink) = if chosen {
-        (colours::accent(), colours::on_accent())
-    } else if response.hovered() {
-        (colours::hover(), colours::text())
-    } else {
-        (colours::control(), colours::text())
-    };
+    let ink = colours::text();
     let painter = ui.painter();
-    painter.rect_filled(rect, CONTROL_RADIUS, fill);
+    if chosen {
+        super::chosen_mark(painter, rect);
+    } else {
+        let fill = if response.hovered() {
+            colours::hover()
+        } else {
+            colours::control()
+        };
+        painter.rect_filled(rect, CONTROL_RADIUS, fill);
+    }
     let room = egui::Rect::from_center_size(
         egui::pos2(rect.center().x, rect.min.y + 15.0),
         egui::vec2(32.0, 20.0),

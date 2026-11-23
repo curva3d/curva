@@ -19,12 +19,7 @@ impl Curva {
     pub(crate) fn layouts_panel(&mut self, ui: &mut egui::Ui) {
         // The model first, so the panel opens it as it opens a layout.
         let model = self.text.render(&Message::new("ui.layout.model"));
-        if ui
-            .add_sized(
-                [ui.available_width(), 24.0],
-                egui::Button::selectable(self.doc.space().is_none(), model),
-            )
-            .clicked()
+        if ui_kit::wide_choice(ui, self.doc.space().is_none(), model).clicked()
             && self.doc.space().is_some()
         {
             if self.processor.is_running() {

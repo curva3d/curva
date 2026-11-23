@@ -19,11 +19,6 @@ pub(crate) fn accent() -> Color32 {
     theme::ACCENT
 }
 
-/// Text on the accent.
-pub(crate) fn on_accent() -> Color32 {
-    Color32::WHITE
-}
-
 /// A solid panel.
 pub(crate) fn panel() -> Color32 {
     theme::current().panel

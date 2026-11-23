@@ -1,7 +1,7 @@
 //! The marks the kit's controls are made of, each drawn one way everywhere: chevrons, crosses,
-//! the chosen tab's underline, glows, the fades at a strip's edges, washes behind chosen rows.
+//! the mark of a chosen thing, glows, the fades at a strip's edges, washes behind chosen rows.
 
-use super::{CONTROL_RADIUS, FADE, MARK, UNDERLINE, colours};
+use super::{CONTROL_RADIUS, FADE, MARK, colours};
 use eframe::egui;
 
 /// A V pointing along `towards` (a unit direction on screen), centred on `centre`, as the hide
@@ -35,12 +35,22 @@ pub(crate) fn cross(painter: &egui::Painter, centre: egui::Pos2, stroke: egui::S
     }
 }
 
-/// The accent line under a chosen tab, from `left` for `width` at height `y`.
-pub(crate) fn underline(painter: &egui::Painter, left: f32, width: f32, y: f32) {
-    painter.line_segment(
-        [egui::pos2(left, y), egui::pos2(left + width, y)],
-        colours::accent_line(UNDERLINE),
-    );
+/// How a chosen or switched-on thing is marked everywhere, as the chosen specialization in the
+/// top bar (owner, 23 November 2026): a soft wash of the accent with a thin accent edge, its words
+/// in the ordinary text colour; never a solid fill or an underline.
+pub(crate) fn chosen_shape(rect: egui::Rect) -> egui::Shape {
+    egui::Shape::Rect(egui::epaint::RectShape::new(
+        rect,
+        CONTROL_RADIUS,
+        colours::chosen_fill(),
+        colours::accent_line(super::LINE),
+        egui::StrokeKind::Inside,
+    ))
+}
+
+/// Marks `rect` as chosen; see [`chosen_shape`].
+pub(crate) fn chosen_mark(painter: &egui::Painter, rect: egui::Rect) {
+    painter.add(chosen_shape(rect));
 }
 
 /// The wash behind a chosen row of a list or table.

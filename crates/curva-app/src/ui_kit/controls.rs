@@ -1,4 +1,4 @@
-//! The controls: on/off chips, option chips, tabs, the underlined group tabs, the pill of
+//! The controls: on/off chips, option chips, tabs, the group tabs, the pill of
 //! choices, dropdowns, the opener with its chevron, and icon buttons. Stock egui buttons, fields
 //! and sliders are themed by [`super::apply`] and used as they are.
 
@@ -7,7 +7,8 @@ use super::{
 };
 use eframe::egui;
 
-/// A named on/off chip: filled with the accent when on, like a control at rest when off.
+/// A named on/off chip: marked as chosen when on (see [`super::chosen_shape`]), like a control
+/// at rest when off.
 /// Clicking it turns it over; the response says `changed` when it did.
 pub(crate) fn toggle(
     ui: &mut egui::Ui,
@@ -26,10 +27,9 @@ pub(crate) fn toggle(
         *on = !*on;
         response.mark_changed();
     }
-    let (fill, ink) = chip_colours(*on, response.hovered());
-    ui.painter().rect_filled(rect, CONTROL_RADIUS, fill);
+    ui.painter().add(chip_shape(rect, *on, response.hovered()));
     let corner = rect.center() - galley.size() / 2.0;
-    ui.painter().galley(corner, galley, ink);
+    ui.painter().galley(corner, galley, colours::text());
     let shown = *on;
     response.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, true, shown, ""));
     response
@@ -46,14 +46,12 @@ pub(crate) fn toggle_when(
     ui.add_enabled_ui(enabled, |ui| toggle(ui, on, text)).inner
 }
 
-/// A chip's fill and ink: the accent and its text colour when on; the hover or rest colour
-/// when off.
-fn chip_colours(on: bool, hovered: bool) -> (egui::Color32, egui::Color32) {
+/// A chip's ground: marked as chosen when on; the hover or rest colour when off.
+fn chip_shape(rect: egui::Rect, on: bool, hovered: bool) -> egui::Shape {
     match (on, hovered) {
-        (true, false) => (colours::accent(), colours::on_accent()),
-        (true, true) => (colours::accent_at(0.85), colours::on_accent()),
-        (false, false) => (colours::control(), colours::text()),
-        (false, true) => (colours::hover(), colours::text()),
+        (true, _) => super::chosen_shape(rect),
+        (false, false) => egui::Shape::rect_filled(rect, CONTROL_RADIUS, colours::control()),
+        (false, true) => egui::Shape::rect_filled(rect, CONTROL_RADIUS, colours::hover()),
     }
 }
 
@@ -78,17 +76,73 @@ pub(crate) fn tab(
     showing: bool,
     text: impl Into<egui::WidgetText>,
 ) -> egui::Response {
-    ui.selectable_label(showing, text)
+    chosen_label(ui, showing, text)
 }
 
-/// A row of group names, small, the chosen one strong with an accent underline that glides to
+/// A choice filling the row, its words in the middle, marked as chosen when `chosen`, as the
+/// Layouts panel's Model.
+pub(crate) fn wide_choice(
+    ui: &mut egui::Ui,
+    chosen: bool,
+    text: impl Into<String>,
+) -> egui::Response {
+    let size = egui::vec2(ui.available_width(), ROW + 4.0);
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    if chosen {
+        super::chosen_mark(ui.painter(), rect);
+    } else {
+        let fill = if response.hovered() {
+            colours::hover()
+        } else {
+            colours::control()
+        };
+        ui.painter().rect_filled(rect, CONTROL_RADIUS, fill);
+    }
+    let galley = super::galley(ui, text.into(), egui::TextStyle::Button.resolve(ui.style()));
+    ui.painter()
+        .galley(rect.center() - galley.size() / 2.0, galley, colours::text());
+    response
+}
+
+/// Words that can be chosen among others, as a tab or a list's item: marked as chosen when
+/// `chosen`, washed under the pointer otherwise.
+fn chosen_label(
+    ui: &mut egui::Ui,
+    chosen: bool,
+    text: impl Into<egui::WidgetText>,
+) -> egui::Response {
+    let galley = text.into().into_galley(
+        ui,
+        Some(egui::TextWrapMode::Extend),
+        f32::INFINITY,
+        egui::TextStyle::Button,
+    );
+    let size = egui::vec2(galley.size().x + 2.0 * CONTROL_PAD, ROW);
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    if chosen {
+        super::chosen_mark(ui.painter(), rect);
+    } else if response.hovered() {
+        super::hover_wash(ui.painter(), rect);
+    }
+    let corner = egui::pos2(
+        rect.min.x + CONTROL_PAD,
+        rect.center().y - galley.size().y / 2.0,
+    );
+    ui.painter().galley(corner, galley, colours::text());
+    response.widget_info(|| egui::WidgetInfo::selected(egui::Role::Tab, true, chosen, ""));
+    response
+}
+
+/// A row of group names, small, the chosen one strong and marked as chosen, the mark gliding to
 /// it when the choice changes; the others quiet. Returns the one clicked, if another, and the
 /// row's rectangle.
-pub(crate) fn underlined_tabs(
+pub(crate) fn group_tabs(
     ui: &mut egui::Ui,
     names: &[String],
     chosen: usize,
 ) -> (Option<usize>, egui::Rect) {
+    // The mark goes under the names, so it is kept a place before them.
+    let behind = ui.painter().add(egui::Shape::Noop);
     let row = ui.horizontal(|ui| {
         // The names start where a tab button's words do, past its padding, so they stand right
         // over the tabs below (owner, 22 November 2026).
@@ -123,10 +177,17 @@ pub(crate) fn underlined_tabs(
     let (clicked, chosen_rect) = row.inner;
     if let Some(chosen) = chosen_rect {
         let ctx = ui.ctx();
-        let id = ui.scope_id().with("tab underline");
+        let id = ui.scope_id().with("tab mark");
         let left = ctx.animate_value_with_time(id.with("left"), chosen.min.x, 0.25);
         let width = ctx.animate_value_with_time(id.with("width"), chosen.width(), 0.25);
-        super::underline(ui.painter(), left, width, chosen.max.y + 1.0);
+        let mark = egui::Rect::from_min_size(
+            egui::pos2(left, chosen.min.y),
+            egui::vec2(width, chosen.height()),
+        );
+        ui.painter().set(
+            behind,
+            super::chosen_shape(mark.expand2(egui::vec2(6.0, 2.0))),
+        );
     }
     (clicked, row.response.rect)
 }
@@ -191,17 +252,10 @@ pub(crate) fn pill(
             ui.scope_id().with(("pill", index)),
             egui::Sense::click(),
         );
-        let radius = PILL_RADIUS - 2;
         if index == chosen {
-            painter.rect_filled(cell, radius, colours::chosen_fill());
-            painter.rect_stroke(
-                cell,
-                radius,
-                colours::accent_line(LINE),
-                egui::StrokeKind::Inside,
-            );
+            super::chosen_mark(&painter, cell);
         } else if hit.hovered() {
-            painter.rect_filled(cell, radius, colours::panel());
+            painter.rect_filled(cell, CONTROL_RADIUS, colours::panel());
         }
         let colour = if index == chosen {
             colours::text()
@@ -248,7 +302,23 @@ pub(crate) fn choice(
     chosen: bool,
     text: impl Into<egui::WidgetText>,
 ) -> egui::Response {
-    ui.selectable_label(chosen, text)
+    chosen_label(ui, chosen, text)
+}
+
+/// One item in a dropdown's list that sets `current` to `value` when clicked, marked as chosen
+/// while it is the one set.
+pub(crate) fn pick<T: PartialEq>(
+    ui: &mut egui::Ui,
+    current: &mut T,
+    value: T,
+    text: impl Into<egui::WidgetText>,
+) -> egui::Response {
+    let mut response = chosen_label(ui, *current == value, text);
+    if response.clicked() && *current != value {
+        *current = value;
+        response.mark_changed();
+    }
+    response
 }
 
 /// A dropdown with its name beside it.
@@ -330,8 +400,14 @@ mod tests {
 
     #[test]
     fn a_chip_shows_on_in_the_accent_and_off_like_a_control() {
-        assert_eq!(chip_colours(true, false).0, colours::accent());
-        assert_eq!(chip_colours(false, false).0, colours::control());
-        assert_eq!(chip_colours(false, true).0, colours::hover());
+        let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(40.0, ROW));
+        // On: the accent's wash and edge, as every chosen thing (owner, 23 November 2026).
+        assert_eq!(
+            chip_shape(rect, true, false),
+            super::super::chosen_shape(rect)
+        );
+        let off = |fill| egui::Shape::rect_filled(rect, CONTROL_RADIUS, fill);
+        assert_eq!(chip_shape(rect, false, false), off(colours::control()));
+        assert_eq!(chip_shape(rect, false, true), off(colours::hover()));
     }
 }

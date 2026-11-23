@@ -76,7 +76,7 @@ fn length_display_choice(
                 64.0,
                 |ui| {
                     for d in curva_document::units::LengthDisplay::DENOMINATORS {
-                        ui.selectable_value(&mut display.denominator, d, format!("1/{d}\""));
+                        ui_kit::pick(ui, &mut display.denominator, d, format!("1/{d}\""));
                     }
                 },
             );
