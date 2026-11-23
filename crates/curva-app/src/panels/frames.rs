@@ -8,6 +8,8 @@ use crate::*;
 pub(crate) struct Frames {
     /// Focus mode: the panels slid out of view.
     pub(crate) focus: bool,
+    /// The Layers panel's own state: the layer picked in it, the search and the filters.
+    pub(crate) layers_ui: super::layer_tools::LayersUi,
     /// How tall the command bar's contents are with the panel's margins: it is made this tall
     /// when it is on its own, so no room is left below its snaps.
     pub(crate) command_fit: f32,

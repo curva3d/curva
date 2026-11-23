@@ -213,10 +213,10 @@ pub struct Layout {
 }
 
 /// The Layers panel's columns as they start, and after Reset layout.
-pub const STANDARD_LAYER_COLUMNS: [f32; 6] = [100.0, 26.0, 30.0, 36.0, 84.0, 72.0];
+pub const STANDARD_LAYER_COLUMNS: [f32; 6] = [120.0, 22.0, 26.0, 32.0, 72.0, 64.0];
 
 /// The narrowest each of the Layers panel's columns can be made.
-pub const LEAST_LAYER_COLUMNS: [f32; 6] = [60.0, 24.0, 28.0, 32.0, 60.0, 56.0];
+pub const LEAST_LAYER_COLUMNS: [f32; 6] = [60.0, 20.0, 24.0, 28.0, 56.0, 52.0];
 
 /// The command tabs' height at first: the groups, their tabs and one row of buttons (owner,
 /// 22 November 2026: the bar had a title row and room to spare).
