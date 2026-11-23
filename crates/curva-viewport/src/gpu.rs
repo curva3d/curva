@@ -14,8 +14,8 @@ mod upload;
 pub use drawing::*;
 pub use picture::*;
 use shaders::{
-    FACE_SHADER, GHOST_FACE_SHADER, GRID_SHADER, LINE_SHADER, PICK_ROW, dotted, paper_faces,
-    table_wgsl, thin, white_faces,
+    FACE_SHADER, GRID_SHADER, LINE_SHADER, PICK_ROW, dotted, preview_faces, see_through_faces,
+    table_wgsl, thin,
 };
 pub use upload::*;
 
@@ -63,11 +63,10 @@ pub struct LineRenderer {
     thin_lines: [wgpu::RenderPipeline; 2],
     circle_lines: [wgpu::RenderPipeline; 2],
     faces: wgpu::RenderPipeline,
+    /// The faces a style makes see-through, drawn over the lines.
+    see_through_faces: wgpu::RenderPipeline,
+    /// A command's preview, ghosted in every display mode.
     ghost_faces: wgpu::RenderPipeline,
-    /// The Hidden and Technical display modes' faces, in paper white (#164), and Massing's,
-    /// white and lit (#551).
-    paper_faces: wgpu::RenderPipeline,
-    white_faces: wgpu::RenderPipeline,
     slots: Vec<ViewSlot>,
     surfaces: Option<Uploaded<MeshVertex>>,
     /// The whole circles, shared by every view drawing the model's lines.
@@ -203,10 +202,9 @@ impl LineRenderer {
             Self::face_pipeline(device, format, &pipeline_layout, label, shader, see_through)
         };
         let faces = face("curva faces", FACE_SHADER, false);
-        let ghost_faces = face("curva ghosted faces", GHOST_FACE_SHADER, true);
-        let (paper, white) = (paper_faces(), white_faces());
-        let paper_faces = face("curva paper faces", &paper, false);
-        let white_faces = face("curva white faces", &white, false);
+        let (see_through, preview) = (see_through_faces(), preview_faces());
+        let see_through_faces = face("curva see-through faces", &see_through, true);
+        let ghost_faces = face("curva preview faces", &preview, true);
         let circle = |ink| circles::circle_pipeline(device, format, &pipeline_layout, ink);
         Self {
             grid,
@@ -214,9 +212,8 @@ impl LineRenderer {
             thin_lines,
             circle_lines: [Ink::Own, Ink::Hidden].map(circle),
             faces,
+            see_through_faces,
             ghost_faces,
-            paper_faces,
-            white_faces,
             timer: None,
             chunk_bytes: CHUNK_BYTES,
             outliner: crate::outline::Outliner::new(device, format),
@@ -447,7 +444,7 @@ impl LineRenderer {
                 drawing.light,
                 pixel,
                 &drawing.clips,
-                &drawing.style.lines.rows(),
+                &drawing.style,
             ),
         );
         slot.style = drawing.style;
@@ -581,19 +578,11 @@ impl LineRenderer {
         // The grid goes first, writing no depth, so whatever lies on it or near it draws over
         // it, as in Rhino; drawn after faces, it showed through faces lying exactly on it.
         Self::grid_lines(pass, &self.grid, slot);
-        // Solid faces go next and hide the lines behind them.
+        // Opaque faces go next and hide the lines behind them, each kind as the style says.
         if slot.style.solid()
             && let Some(faces) = faces
         {
-            let style = slot.style.surfaces;
-            let pipeline = if slot.style.light() == Some(crate::Light::Flat) {
-                &self.paper_faces
-            } else if style.is_some_and(|surfaces| surfaces.colour.is_some()) {
-                &self.white_faces
-            } else {
-                &self.faces
-            };
-            Self::draw_faces(pass, pipeline, faces);
+            Self::draw_faces(pass, &self.faces, faces);
         }
     }
 
@@ -669,7 +658,7 @@ impl LineRenderer {
         if slot.style.see_through()
             && let Some(faces) = faces
         {
-            Self::draw_faces(pass, &self.ghost_faces, faces);
+            Self::draw_faces(pass, &self.see_through_faces, faces);
         }
         // A command's solid preview is ghosted in every display mode, over the model.
         if let Some(preview) = self.preview_faces.as_ref().filter(|faces| faces.count > 0) {
@@ -710,6 +699,8 @@ impl LineRenderer {
     }
 }
 
+#[cfg(test)]
+mod face_tests;
 #[cfg(test)]
 mod kind_tests;
 #[cfg(test)]

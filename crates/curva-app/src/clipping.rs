@@ -79,6 +79,7 @@ fn fills_for(state: &State, cuts: &[PlaneCut], origin: Point) -> Vec<curva_viewp
                         normal: cut.keep.map(|v| v as f32),
                         colour,
                         object: curva_viewport::NO_OBJECT,
+                        kind: curva_viewport::FaceKind::Given,
                     });
                 }
             }

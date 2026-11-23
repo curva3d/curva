@@ -713,6 +713,7 @@ mod tests {
                 normal: narrow(mesh.normals[corner as usize]),
                 colour: [1.0; 3],
                 object: 0,
+                kind: crate::FaceKind::Given,
             })
             .collect();
         let mut camera = crate::StandardView::Top.camera();

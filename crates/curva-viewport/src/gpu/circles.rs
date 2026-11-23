@@ -20,7 +20,7 @@ pub(crate) fn circle_bytes(circles: &[PlacedCircle]) -> Vec<u8> {
         {
             bytes.extend_from_slice(&value.to_le_bytes());
         }
-        let packed = super::upload::packed(circle.object, circle.kind);
+        let packed = super::upload::packed(circle.object, circle.kind as u32);
         bytes.extend_from_slice(&packed.to_le_bytes());
     }
     bytes

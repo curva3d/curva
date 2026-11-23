@@ -93,6 +93,9 @@ pub struct MeshVertex {
     pub colour: [f32; 3],
     /// As [`Vertex::object`].
     pub object: u32,
+    /// What kind of object the face belongs to, whose look the view's style gives
+    /// ([`crate::Style::faces_of`]).
+    pub kind: FaceKind,
 }
 
 pub(crate) fn grid_segment(out: &mut Vec<Vertex>, a: [f32; 3], b: [f32; 3], colour: [f32; 3]) {
@@ -354,6 +357,11 @@ pub enum FaceKind {
     Mesh,
     /// A SubD.
     Subd,
+}
+
+impl FaceKind {
+    /// Every kind, in order.
+    pub const ALL: [Self; 4] = [Self::Given, Self::Nurbs, Self::Mesh, Self::Subd];
 }
 
 impl SceneParts {
@@ -638,6 +646,7 @@ pub(crate) fn faces_of(
                         .copied()
                         .unwrap_or(colour),
                     object,
+                    kind: faces.face_kind,
                 });
             }
         }
@@ -661,6 +670,7 @@ pub fn ghost_faces(meshes: &[curva_kernel::BodyMesh], origin: Point) -> Vec<Mesh
                     normal: narrow(*normal),
                     colour: PREVIEW_COLOUR,
                     object: NO_OBJECT,
+                    kind: crate::FaceKind::Given,
                 });
             }
         }

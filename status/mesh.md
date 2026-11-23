@@ -11,6 +11,10 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 23 November 2026
 
+**Bevel KeepCreases, as Rhino 8 measured:** on, as Rhino starts it; a crease leaving a bevelled point creases its row and the
+cap edges to the far point, a creased side edge stays creased to the row, and a creased picked edge creases the strip's long
+sides; off, the creases go with the points. Rhino's crease counts in five cases. `SubD::bevelled_run` takes it.
+
 **SubD friendly fit of open curves, measured further:** Rhino keeps an open curve's inner control points and moves the
 one next to each end towards it (1/16 for a cubic, 7/128 for a quadratic, none for 4 points), but the same control points
 move differently in curves of other shapes (15/16 in one, 63/64 in another), so the fit depends on the curve's shape and
