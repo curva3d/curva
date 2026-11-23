@@ -48,7 +48,10 @@ pub(crate) fn built_in_style(mode: DisplayMode) -> &'static ViewStyle {
 
 /// The user's own styles ("My styles", `views-and-styles.md` §2.4): the `styles` folder in
 /// Curva's own folder in the user's app data. `None` where that folder is unknown.
-#[expect(dead_code, reason = "for the Style panel, which the features stream is building")]
+#[expect(
+    dead_code,
+    reason = "for the Style panel, which the features stream is building"
+)]
 pub(crate) fn library() -> Option<curva_document::style::Library> {
     crate::recovery::app_folder()
         .map(|folder| curva_document::style::Library::at(folder.join("styles")))
