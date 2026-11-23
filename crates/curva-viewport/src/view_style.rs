@@ -2,21 +2,21 @@
 //! `docs/specs/views-and-styles.md` §2): [`Style::of`] reads it. More of the style's settings are
 //! drawn as the drawing code learns them.
 
-use crate::{EDGE_ON_FACES_COLOUR, INK_COLOUR, PAPER_COLOUR};
-use curva_document::style::{self, ColourFrom, Engine, OcclusionLight, VectorFaces, ViewStyle};
+use crate::{EDGE_ON_FACES_COLOUR, LineTable};
+use curva_document::style::{ColourFrom, Engine, OcclusionLight, VectorFaces, ViewStyle};
 
 /// Outlines wider than this, in millimetres, are drawn thick (three pixels), as Massing's are.
 const THICK_OUTLINE_MM: f32 = 0.5;
 
-/// How a view draws the model: its surfaces, the model's lines, the outlines of shapes, and the
-/// lines surfaces hide. Every display mode is one of these ([`Style::WIREFRAME`] and the others),
-/// drawn by the same code from its settings.
+/// How a view draws the model: its surfaces, each kind of line, the outlines of shapes, and the
+/// lines surfaces hide. Every display mode is one ([`Style::wireframe`] and the others), drawn
+/// by the same code from its settings.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Style {
     /// The faces of surfaces and solids; `None` draws lines only, as Wireframe does.
     pub surfaces: Option<Surfaces>,
-    /// What colour the model's lines (curves and edges) are drawn in.
-    pub lines: LineColour,
+    /// Each kind of line's colour, width and whether it shows, and hidden lines'.
+    pub lines: LineTable,
     /// The outlines of curved shapes against what is behind them, found from the surfaces'
     /// depth (#182); drawn where surfaces hide what is behind them.
     pub outlines: OutlineLook,
@@ -46,15 +46,6 @@ pub enum Light {
     Flat,
 }
 
-/// What colour a style draws the model's lines in.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LineColour {
-    /// Each line in its object's own colour, as in Shaded.
-    Own,
-    /// Every line in black ink, as in Hidden; previews and markers keep their colours.
-    Ink,
-}
-
 /// The Outlines layer.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct OutlineLook {
@@ -67,76 +58,8 @@ pub struct OutlineLook {
 }
 
 impl Style {
-    /// Lines only: curves, and the edges of surfaces and solids.
-    pub const WIREFRAME: Self = Self {
-        surfaces: None,
-        lines: LineColour::Own,
-        outlines: OutlineLook {
-            shown: false,
-            ..OutlineLook::EDGES
-        },
-        hidden_lines: false,
-    };
-    /// Surfaces and solids filled in their own colours and lit, with their edges on top.
-    pub const SHADED: Self = Self {
-        surfaces: Some(Surfaces {
-            colour: None,
-            see_through: false,
-            light: Light::View,
-        }),
-        outlines: OutlineLook::EDGES,
-        ..Self::WIREFRAME
-    };
-    /// Surfaces and solids see-through at half strength, so the edges behind them show.
-    pub const GHOSTED: Self = Self {
-        surfaces: Some(Surfaces {
-            colour: None,
-            see_through: true,
-            light: Light::View,
-        }),
-        outlines: OutlineLook::EDGES,
-        ..Self::WIREFRAME
-    };
-    /// Rhino 8's Hidden mode (#164): faces flat in paper white hiding what is behind them, and
-    /// the visible lines and outlines in black ink.
-    pub const HIDDEN: Self = Self {
-        surfaces: Some(Surfaces {
-            colour: Some(PAPER_COLOUR),
-            see_through: false,
-            light: Light::Flat,
-        }),
-        lines: LineColour::Ink,
-        outlines: OutlineLook {
-            shown: true,
-            colour: INK_COLOUR,
-            thick: false,
-        },
-        hidden_lines: false,
-    };
-    /// Rhino 8's Technical mode (#164): as Hidden, with the lines faces hide drawn dotted.
-    pub const TECHNICAL: Self = Self {
-        hidden_lines: true,
-        ..Self::HIDDEN
-    };
-    /// A white study model (#551): white faces lit by the sun, with their shadows, thin black
-    /// edges and thick black outlines. Its sky-to-grey background is the caller's.
-    pub const MASSING: Self = Self {
-        surfaces: Some(Surfaces {
-            colour: Some(PAPER_COLOUR),
-            see_through: false,
-            light: Light::Sun,
-        }),
-        lines: LineColour::Ink,
-        outlines: OutlineLook {
-            shown: true,
-            colour: INK_COLOUR,
-            thick: true,
-        },
-        hidden_lines: false,
-    };
-
-    /// What of `view` the drawing code honours: its NURBS faces and their light, whether its
-    /// lines are in ink, its outlines and its hidden lines.
+    /// What of `view` the drawing code honours: its NURBS faces and their light, each kind of
+    /// line, its outlines and its hidden lines.
     #[must_use]
     pub fn of(view: &ViewStyle) -> Self {
         let faces = &view.nurbs.faces;
@@ -160,15 +83,9 @@ impl Style {
             see_through: faces.opacity < 1.0,
             light,
         });
-        // Curves in one colour put every model line in ink; the line drawer has no other
-        // single colour for lines yet.
-        let lines = match view.curves.colour {
-            style::LineColour::One(_) => LineColour::Ink,
-            style::LineColour::Object => LineColour::Own,
-        };
         Self {
             surfaces,
-            lines,
+            lines: LineTable::from_style(view),
             outlines: OutlineLook {
                 shown: view.outlines.shown,
                 colour: view.outlines.colour.to_f32(),
@@ -178,6 +95,42 @@ impl Style {
         }
     }
 
+    /// Lines only: curves, and the edges of surfaces and solids.
+    #[must_use]
+    pub fn wireframe() -> Self {
+        Self::of(&ViewStyle::wireframe())
+    }
+
+    /// Surfaces and solids in their own colours and lit, with dark edges on top.
+    #[must_use]
+    pub fn shaded() -> Self {
+        Self::of(&ViewStyle::shaded())
+    }
+
+    /// Surfaces and solids see-through at half strength, so the edges behind them show.
+    #[must_use]
+    pub fn ghosted() -> Self {
+        Self::of(&ViewStyle::ghosted())
+    }
+
+    /// Rhino 8's Hidden mode (#164): faces flat in paper white, lines in black ink.
+    #[must_use]
+    pub fn hidden() -> Self {
+        Self::of(&ViewStyle::hidden())
+    }
+
+    /// Rhino 8's Technical mode (#164): as Hidden, with the lines faces hide drawn dotted.
+    #[must_use]
+    pub fn technical() -> Self {
+        Self::of(&ViewStyle::technical())
+    }
+
+    /// A white study model (#551), lit by the sun, with thick black outlines.
+    #[must_use]
+    pub fn massing() -> Self {
+        Self::of(&ViewStyle::massing())
+    }
+
     /// Whether faces are drawn solid, hiding what is behind them: shaded and not see-through.
     #[must_use]
     pub fn solid(&self) -> bool {
@@ -185,11 +138,13 @@ impl Style {
     }
 
     /// Whether faces are drawn see-through, as in Ghosted.
+    #[must_use]
     pub fn see_through(&self) -> bool {
         self.surfaces.is_some_and(|surfaces| surfaces.see_through)
     }
 
     /// How the faces are lit, if there are any.
+    #[must_use]
     pub fn light(&self) -> Option<Light> {
         self.surfaces.map(|surfaces| surfaces.light)
     }
@@ -198,12 +153,12 @@ impl Style {
 impl Default for Style {
     /// Shaded, as a new view opens.
     fn default() -> Self {
-        Self::SHADED
+        Self::shaded()
     }
 }
 
 impl OutlineLook {
-    /// OutlineLook as dark and thin as the edges on faces.
+    /// Outlines as dark and thin as the edges on faces.
     pub const EDGES: Self = Self {
         shown: true,
         colour: EDGE_ON_FACES_COLOUR,
@@ -214,46 +169,79 @@ impl OutlineLook {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{INK_COLOUR, PAPER_COLOUR};
+    use curva_document::style;
 
     #[test]
     fn only_wireframe_draws_no_surfaces() {
         let all = [
-            Style::WIREFRAME,
-            Style::SHADED,
-            Style::GHOSTED,
-            Style::HIDDEN,
-            Style::TECHNICAL,
-            Style::MASSING,
+            Style::wireframe(),
+            Style::shaded(),
+            Style::ghosted(),
+            Style::hidden(),
+            Style::technical(),
+            Style::massing(),
         ];
         let without: Vec<_> = all.iter().filter(|s| s.surfaces.is_none()).collect();
-        assert_eq!(without, vec![&Style::WIREFRAME]);
+        assert_eq!(without, vec![&Style::wireframe()]);
     }
 
     #[test]
     fn only_ghosted_is_see_through_and_only_technical_shows_hidden_lines() {
-        assert!(Style::GHOSTED.see_through() && !Style::GHOSTED.solid());
-        assert!(Style::SHADED.solid() && !Style::SHADED.see_through());
-        assert!(!Style::WIREFRAME.solid() && !Style::WIREFRAME.see_through());
-        let (technical, hidden) = (Style::TECHNICAL, Style::HIDDEN);
-        assert!(technical.hidden_lines && !hidden.hidden_lines);
-        assert_eq!(Style::HIDDEN.light(), Some(Light::Flat));
-        assert_eq!(Style::MASSING.light(), Some(Light::Sun));
-        assert_eq!(Style::default(), Style::SHADED);
+        assert!(Style::ghosted().see_through() && !Style::ghosted().solid());
+        assert!(Style::shaded().solid() && !Style::shaded().see_through());
+        assert!(!Style::wireframe().solid() && !Style::wireframe().see_through());
+        assert!(Style::technical().hidden_lines && !Style::hidden().hidden_lines);
+        assert_eq!(Style::hidden().light(), Some(Light::Flat));
+        assert_eq!(Style::massing().light(), Some(Light::Sun));
+        assert_eq!(Style::default(), Style::shaded());
     }
 
     #[test]
     fn each_built_in_style_draws_as_its_display_mode_did() {
-        let pairs = [
-            (ViewStyle::wireframe(), Style::WIREFRAME),
-            (ViewStyle::shaded(), Style::SHADED),
-            (ViewStyle::ghosted(), Style::GHOSTED),
-            (ViewStyle::hidden(), Style::HIDDEN),
-            (ViewStyle::technical(), Style::TECHNICAL),
-            (ViewStyle::massing(), Style::MASSING),
-        ];
-        for (view, drawn) in pairs {
-            assert_eq!(Style::of(&view), drawn, "{}", view.name);
+        let paper = Some(Surfaces {
+            colour: Some(PAPER_COLOUR),
+            see_through: false,
+            light: Light::Flat,
+        });
+        assert_eq!(Style::hidden().surfaces, paper);
+        let ink = OutlineLook {
+            shown: true,
+            colour: INK_COLOUR,
+            thick: false,
+        };
+        assert_eq!(Style::hidden().outlines, ink);
+        assert_eq!(
+            Style::massing().outlines,
+            OutlineLook { thick: true, ..ink }
+        );
+        assert_eq!(Style::shaded().outlines, OutlineLook::EDGES);
+        assert!(!Style::wireframe().outlines.shown);
+        let massing = Style::massing().surfaces.expect("faces");
+        assert_eq!(
+            (massing.colour, massing.light),
+            (Some(PAPER_COLOUR), Light::Sun)
+        );
+        // Every display mode's surfaces, as before.
+        let own = |see_through: bool| Surfaces {
+            colour: None,
+            see_through,
+            light: Light::View,
+        };
+        assert_eq!(Style::wireframe().surfaces, None);
+        assert_eq!(Style::shaded().surfaces, Some(own(false)));
+        assert_eq!(Style::ghosted().surfaces, Some(own(true)));
+        assert_eq!(Style::technical().surfaces, paper);
+        // Lines: dark edges on solid faces, light ones otherwise, ink in Hidden, Technical and
+        // Massing, hidden lines only in Technical.
+        let edge = |style: Style| style.lines.of(crate::LineKind::Edge).colour;
+        assert_eq!(edge(Style::shaded()), Some(EDGE_ON_FACES_COLOUR));
+        assert_eq!(edge(Style::wireframe()), None);
+        assert_eq!(edge(Style::ghosted()), None);
+        for inked in [Style::hidden(), Style::technical(), Style::massing()] {
+            assert_eq!(edge(inked), Some(INK_COLOUR));
         }
+        assert!(Style::technical().hidden_lines && !Style::massing().hidden_lines);
     }
 
     #[test]

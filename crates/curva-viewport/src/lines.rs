@@ -20,7 +20,36 @@ pub struct Vertex {
     /// The object's number in the scene's list ([`SceneParts::objects`]), whose selection the
     /// graphics card looks up, or [`NO_OBJECT`] for lines whose look is final as given.
     pub object: u32,
+    /// What kind of line it is part of, which picks the look its view's style gives it
+    /// ([`crate::LineTable`]).
+    pub kind: LineKind,
 }
+
+/// What kind of line a vertex is part of. A view's style gives each kind its colour, width and
+/// whether it shows, applied on the graphics card, so a change to the style shows at once.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum LineKind {
+    /// Drawn as given: previews, markers, the grid, locked objects.
+    #[default]
+    Given = 0,
+    /// A curve or a point.
+    Curve,
+    /// An edge of a surface, polysurface or solid.
+    Edge,
+    /// A seam of a surface or solid, where its shape closes on itself.
+    Seam,
+    /// A mesh's wire.
+    MeshWire,
+    /// A SubD's crease or border.
+    SubdEdge,
+    /// A SubD's other cage edges.
+    SubdWire,
+    /// Text, dimensions and other annotation.
+    Annotation,
+}
+
+/// How many kinds of line there are.
+pub const LINE_KINDS: usize = 8;
 
 /// The [`Vertex::object`] of lines and faces that belong to no object in the scene's list:
 /// previews, the grid, and pictures, whose selection is drawn into their colours.
@@ -82,12 +111,14 @@ pub(crate) fn segment_with(
         colour,
         width,
         object: NO_OBJECT,
+        kind: LineKind::Given,
     });
     out.push(Vertex {
         position: b,
         colour,
         width,
         object: NO_OBJECT,
+        kind: LineKind::Given,
     });
 }
 
@@ -468,8 +499,16 @@ pub(crate) fn lines_of(
         } else {
             dashed(&mut out, &points, dashes, colour, width);
         }
-        if let Some(&number) = numbers.and_then(|numbers| numbers.get(id)) {
-            for vertex in &mut out[start..] {
+        // A line drawn selected here, in the selection colour, keeps that look.
+        let kind = if selected.contains(id) {
+            LineKind::Given
+        } else {
+            line_kind(outlines, index)
+        };
+        let number = numbers.and_then(|numbers| numbers.get(id)).copied();
+        for vertex in &mut out[start..] {
+            vertex.kind = kind;
+            if let Some(number) = number {
                 vertex.object = number;
             }
         }
@@ -494,6 +533,18 @@ pub(crate) fn piece_colour(
         EDGE_ON_FACES_COLOUR
     } else {
         outlines.colours.get(index).copied().unwrap_or(CURVE_COLOUR)
+    }
+}
+
+/// The kind of line entry `index` of `outlines` draws as: a locked object's lines keep their
+/// grey whatever the style, and a body's seams are their own kind.
+pub(crate) fn line_kind(outlines: &Outlines, index: usize) -> LineKind {
+    if outlines.locked.get(index).copied().unwrap_or(false) {
+        LineKind::Given
+    } else if outlines.seams.get(index).copied().unwrap_or(false) {
+        LineKind::Seam
+    } else {
+        outlines.line_kinds.get(index).copied().unwrap_or_default()
     }
 }
 

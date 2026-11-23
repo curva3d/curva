@@ -89,6 +89,13 @@ const EDGES: Edges = Edges {
     colour: LineColour::One(Colour::EDGE),
     pattern: Pattern::Solid,
 };
+/// A line of its own in its object's colour, as a SubD's cage edges and a mesh's wires draw in
+/// every view (#472).
+const OWN_LINE: LineLook = LineLook {
+    shown: true,
+    width: LineWidth::Object(1.0),
+    colour: Some(LineColour::Object),
+};
 /// A line of its own drawn as the edges are.
 const EDGE_LINE: LineLook = LineLook {
     shown: true,
@@ -117,7 +124,7 @@ const MESHES: MeshLook = MeshLook {
     wires: Wires {
         shown: true,
         width: WireWidth::OnePixel,
-        colour: None,
+        colour: Some(LineColour::Object),
     },
     vertices: false,
 };
@@ -125,7 +132,7 @@ const SUBD: SubdLook = SubdLook {
     same_as_nurbs: true,
     faces: FACES,
     outline: OutlineChoice::AsStyle,
-    smooth: EDGE_LINE,
+    smooth: OWN_LINE,
     creases: EDGE_LINE,
     boundary: EDGE_LINE,
     reflected_half: true,
@@ -284,6 +291,8 @@ impl ViewStyle {
         let mut style = Self::shaded();
         style.name = "Ghosted".into();
         style.nurbs.faces.opacity = 0.5;
+        // The light wireframe edges show through the faces, in their objects' colours.
+        style.nurbs.edges.colour = LineColour::Object;
         style
     }
 
@@ -330,9 +339,13 @@ impl ViewStyle {
     }
 }
 
-/// Every line of `style` in black ink: edges, curves and outlines.
+/// Every line of `style` in black ink: edges, curves, wires, annotation and outlines.
 fn ink(style: &mut ViewStyle) {
     style.nurbs.edges.colour = LineColour::One(Colour::BLACK);
     style.curves.colour = LineColour::One(Colour::BLACK);
     style.outlines.colour = Colour::BLACK;
+    let black = Some(LineColour::One(Colour::BLACK));
+    style.meshes.wires.colour = black;
+    style.subd.smooth.colour = black;
+    style.annotation.colour = LineColour::One(Colour::BLACK);
 }

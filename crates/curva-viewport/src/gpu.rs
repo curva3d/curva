@@ -14,17 +14,16 @@ mod upload;
 pub use drawing::*;
 pub use picture::*;
 use shaders::{
-    FACE_SHADER, GHOST_FACE_SHADER, GRID_SHADER, LINE_SHADER, PICK_ROW, dotted, inked, paper_faces,
+    FACE_SHADER, GHOST_FACE_SHADER, GRID_SHADER, LINE_SHADER, PICK_ROW, dotted, paper_faces,
     table_wgsl, thin, white_faces,
 };
 pub use upload::*;
 
-/// How the model's lines are drawn: in their own colours, in black ink (the Hidden and
-/// Technical display modes, #164), or dotted in ink where faces hide them (Technical).
+/// How the model's lines are drawn: as the view's style gives each kind of line, or dotted where
+/// faces hide them, in the style's hidden-lines look (the Technical display mode, #164).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Ink {
     Own,
-    Visible,
     Hidden,
 }
 
@@ -33,8 +32,7 @@ impl Ink {
     pub(crate) fn shader(self, shader: &str) -> String {
         match self {
             Self::Own => shader.to_owned(),
-            Self::Visible => inked(shader),
-            Self::Hidden => dotted(&inked(shader)),
+            Self::Hidden => dotted(shader),
         }
     }
 }
@@ -60,10 +58,10 @@ pub struct LineRenderer {
     grid: wgpu::RenderPipeline,
     /// The model's lines, and whole circles drawn from their centre and axes (#153), each in
     /// their own colours, in ink and dotted behind faces, in [`Ink`] order (#164).
-    lines: [wgpu::RenderPipeline; 3],
+    lines: [wgpu::RenderPipeline; 2],
     /// Meshes' wires as plain one-pixel lines, in the same [`Ink`] order.
-    thin_lines: [wgpu::RenderPipeline; 3],
-    circle_lines: [wgpu::RenderPipeline; 3],
+    thin_lines: [wgpu::RenderPipeline; 2],
+    circle_lines: [wgpu::RenderPipeline; 2],
     faces: wgpu::RenderPipeline,
     ghost_faces: wgpu::RenderPipeline,
     /// The Hidden and Technical display modes' faces, in paper white (#164), and Massing's,
@@ -191,7 +189,7 @@ impl LineRenderer {
                     grid: None,
                     scene: None,
                     wires: None,
-                    style: crate::Style::WIREFRAME,
+                    style: crate::Style::wireframe(),
                 }
             })
             .collect();
@@ -214,7 +212,7 @@ impl LineRenderer {
             grid,
             lines,
             thin_lines,
-            circle_lines: [Ink::Own, Ink::Visible, Ink::Hidden].map(circle),
+            circle_lines: [Ink::Own, Ink::Hidden].map(circle),
             faces,
             ghost_faces,
             paper_faces,
@@ -264,16 +262,16 @@ impl LineRenderer {
         })
     }
 
-    /// The grid's pipeline, and the model lines' in their own colours, in ink (Hidden and
-    /// Technical) and dotted in ink where faces hide them (Technical's hidden lines).
+    /// The grid's pipeline, and the model lines' as their style gives them, and dotted where faces
+    /// hide them (Technical's hidden lines).
     fn line_pipelines(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         pipeline_layout: &wgpu::PipelineLayout,
     ) -> (
         wgpu::RenderPipeline,
-        [wgpu::RenderPipeline; 3],
-        [wgpu::RenderPipeline; 3],
+        [wgpu::RenderPipeline; 2],
+        [wgpu::RenderPipeline; 2],
     ) {
         let grid = pipeline(
             device,
@@ -331,12 +329,10 @@ impl LineRenderer {
         };
         let lines = [
             segments("curva lines", Ink::Own, false),
-            segments("curva inked lines", Ink::Visible, false),
             segments("curva hidden lines", Ink::Hidden, false),
         ];
         let thin_lines = [
             segments("curva wires", Ink::Own, true),
-            segments("curva inked wires", Ink::Visible, true),
             segments("curva hidden wires", Ink::Hidden, true),
         ];
         (grid, lines, thin_lines)
@@ -446,7 +442,13 @@ impl LineRenderer {
         queue.write_buffer(
             &slot.uniforms,
             0,
-            &uniform_bytes(&drawing.matrix, drawing.light, pixel, &drawing.clips),
+            &uniform_bytes(
+                &drawing.matrix,
+                drawing.light,
+                pixel,
+                &drawing.clips,
+                &drawing.style.lines.rows(),
+            ),
         );
         slot.style = drawing.style;
         let chunk = self.chunk_bytes;
@@ -644,14 +646,10 @@ impl LineRenderer {
         };
         pass.set_bind_group(0, &slot.bind_group, &[]);
         let faces = self.surfaces.as_ref().filter(|faces| faces.count > 0);
-        // The model's own lines go in black ink in the Hidden and Technical display modes, and
-        // Technical draws them dotted where faces hide them; previews and markers (the overlay)
-        // keep their colours.
-        let mut inks = vec![if slot.style.lines == crate::LineColour::Ink {
-            Ink::Visible
-        } else {
-            Ink::Own
-        }];
+        // The model's lines take each kind's look from the view's style, and a style with hidden
+        // lines draws them dotted where faces hide them; previews and markers (the overlay) are
+        // drawn as given.
+        let mut inks = vec![Ink::Own];
         if slot.style.hidden_lines {
             inks.push(Ink::Hidden);
         }
@@ -712,5 +710,7 @@ impl LineRenderer {
     }
 }
 
+#[cfg(test)]
+mod kind_tests;
 #[cfg(test)]
 mod tests;

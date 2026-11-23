@@ -2,6 +2,11 @@
 
 use crate::NO_OBJECT;
 
+// The line program's table and its places, written out in its text, match the Rust side's.
+const _: () = assert!(crate::line_table::LINE_ROWS == 18);
+const _: () = assert!(crate::line_table::HIDDEN_SLOT == 8);
+const _: () = assert!(super::upload::OBJECT_BITS == 0x00FF_FFFF);
+
 /// How many objects one row of the selection table holds (spec `display-pipeline.md` step 4).
 pub(crate) const PICK_ROW: u32 = 4096;
 
@@ -56,11 +61,18 @@ struct Out { @builtin(position) position: vec4<f32>, @location(0) colour: vec3<f
 macro_rules! segment_wgsl {
     () => {
         "
-struct Uniforms { matrix: mat4x4<f32>, light: vec4<f32>, pixel: vec4<f32>, clips: array<vec4<f32>, 4> };
+struct Uniforms {
+    matrix: mat4x4<f32>, light: vec4<f32>, pixel: vec4<f32>, clips: array<vec4<f32>, 4>,
+    // Each kind of line's look from the view's style (`LineTable::rows`): its colour and whether
+    // to use it, then its width factor, fixed width (below zero for none) and whether it shows.
+    lines: array<vec4<f32>, 18>,
+};
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
-// The Hidden display mode's lines are all in black ink: `inked` turns this on.
-const INKED: bool = false;
-const INK: vec3<f32> = vec3<f32>(0.0, 0.0, 0.0);
+// Where hidden lines' look is in `lines`, after the eight kinds of line (`HIDDEN_SLOT`).
+const HIDDEN_SLOT: u32 = 8u;
+// A line's object word: its object's number in the low three bytes (all ones for none), its
+// kind in the top byte (`upload::packed`).
+const OBJECT_BITS: u32 = 0x00FFFFFFu;
 // The Technical display mode's hidden lines are dotted: `dotted` turns this on.
 const DOTTED: bool = false;
 // One dot and one gap, in pixels.
@@ -93,19 +105,31 @@ struct Out {
 fn pixels(width: f32) -> f32 {
     return max(select(-width, width * uniforms.pixel.z, width > 0.0), 1.0);
 }
+// A line's own width as its kind's look sets it: fixed, or its own times a factor.
+fn styled(width: f32, size: vec4<f32>) -> f32 {
+    if (size.y >= 0.0) { return size.y; }
+    return width * size.x;
+}
 fn segment(
     corner: u32,
     a: vec3<f32>, given_ca: vec3<f32>, given_wa: f32,
     b: vec3<f32>, given_cb: vec3<f32>, given_wb: f32,
     object: u32,
 ) -> Out {
-    // A selected object draws in the selection colour and a pixel wider (`line_width`); in
-    // the Hidden display mode every other line is in black ink (`inked`).
-    let chosen = picked(object);
-    let ca = select(select(given_ca, INK, INKED), SELECTED, chosen);
-    let cb = select(select(given_cb, INK, INKED), SELECTED, chosen);
-    let wa = widened(given_wa, chosen);
-    let wb = widened(given_wb, chosen);
+    // The look the view's style gives this kind of line; hidden lines all take hidden lines'.
+    let number = object & OBJECT_BITS;
+    let slot = select(object >> 24u, HIDDEN_SLOT, DOTTED);
+    let look = uniforms.lines[slot * 2u];
+    let size = uniforms.lines[slot * 2u + 1u];
+    if (size.z < 0.5) {
+        return Out(vec4<f32>(2.0, 2.0, 2.0, 1.0), given_ca, a, 0.0, 0.0, 0.0);
+    }
+    // A selected object draws in the selection colour and a pixel wider (`line_width`).
+    let chosen = picked(select(number, NO_OBJECT, number == OBJECT_BITS));
+    let ca = select(select(given_ca, look.rgb, look.w > 0.5), SELECTED, chosen);
+    let cb = select(select(given_cb, look.rgb, look.w > 0.5), SELECTED, chosen);
+    let wa = widened(styled(given_wa, size), chosen);
+    let wb = widened(styled(given_wb, size), chosen);
     var pa = uniforms.matrix * vec4<f32>(a, 1.0);
     var pb = uniforms.matrix * vec4<f32>(b, 1.0);
     // Behind the camera: cut the segment where it crosses the near plane.
@@ -262,15 +286,6 @@ struct Out {
     // Alpha 0.5: a ghosted face covers half of what is behind it.
     return vec4<f32>(input.colour * (0.25 + 0.5 * facing + 0.2 * above), 0.5);
 }";
-
-/// `shader` (one built on the shared line code: [`LINE_SHADER`], [`CIRCLE_SHADER`]) drawing every
-/// line not selected in black ink, for the model's lines in the Hidden display mode (#164).
-/// Previews and markers keep their own colours, drawn with the plain shader.
-pub(crate) fn inked(shader: &str) -> String {
-    let inked = shader.replace("const INKED: bool = false;", "const INKED: bool = true;");
-    debug_assert_ne!(inked, shader, "the shader has no ink switch");
-    inked
-}
 
 /// [`FACE_SHADER`] filling surfaces flat in paper white, unlit, for the Hidden display mode:
 /// they hide what is behind them and show nothing of themselves but their edges (#164).

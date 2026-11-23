@@ -25,6 +25,8 @@ pub struct PlacedCircle {
     pub width: f32,
     /// The object's number in [`crate::SceneParts::objects`].
     pub object: u32,
+    /// What kind of line it is ([`crate::LineKind`]): a curve or an edge.
+    pub kind: crate::LineKind,
 }
 
 /// A circle's centre and its two axes as long as its radius; `None` for any other curve.
@@ -77,6 +79,7 @@ pub(crate) fn circles_of(
                 colour: piece_colour(outlines, index, false, false),
                 width: line_width(outlines.widths.get(index).copied().flatten(), false),
                 object: numbers.get(id).copied().unwrap_or(crate::NO_OBJECT),
+                kind: crate::lines::line_kind(outlines, index),
             })
         })
         .collect()

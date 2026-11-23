@@ -92,7 +92,7 @@ pub struct LineLook {
     /// How thick.
     pub width: LineWidth,
     /// Its colour, or `None` for the edges' colour.
-    pub colour: Option<Colour>,
+    pub colour: Option<LineColour>,
 }
 
 /// How one kind of object's outlines differ from the style's.
@@ -142,7 +142,7 @@ pub struct Wires {
     /// How thick.
     pub width: WireWidth,
     /// Their colour, or `None` for the edges' colour.
-    pub colour: Option<Colour>,
+    pub colour: Option<LineColour>,
 }
 
 /// Meshes.

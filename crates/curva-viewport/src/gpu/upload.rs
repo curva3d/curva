@@ -1,6 +1,6 @@
 //! Turning lines, faces and the selection into bytes for the graphics card, sent in blocks.
 
-use crate::{MeshVertex, Vertex};
+use crate::{LineKind, MeshVertex, Vertex};
 use egui_wgpu::wgpu;
 use std::sync::Arc;
 
@@ -19,7 +19,7 @@ pub(crate) const SEGMENT_SIZE: u64 = 2 * LINE_VERTEX_SIZE;
 pub(crate) const SEGMENT_CORNERS: u32 = 6;
 /// A face vertex: position, normal, colour and object number.
 pub(crate) const FACE_VERTEX_SIZE: u64 = 40;
-pub(crate) const UNIFORM_SIZE: u64 = 160;
+pub(crate) const UNIFORM_SIZE: u64 = 160 + 16 * crate::line_table::LINE_ROWS as u64;
 
 /// The most clipping planes one view is cut by.
 pub const MOST_CLIPS: usize = 4;
@@ -44,6 +44,21 @@ pub(crate) const PICTURE_BACKGROUND: wgpu::Color = wgpu::Color {
     a: 1.0,
 };
 
+/// The bits of a line's object word holding its object's number; the top byte holds its
+/// [`LineKind`], so lines need no more memory for it. All ones is no object.
+pub(crate) const OBJECT_BITS: u32 = 0x00FF_FFFF;
+
+/// A line's object number and kind as one word for the graphics card. Numbers past
+/// [`OBJECT_BITS`] (over 16 million objects) share the last one.
+pub(crate) fn packed(object: u32, kind: LineKind) -> u32 {
+    let number = if object == crate::NO_OBJECT {
+        OBJECT_BITS
+    } else {
+        object.min(OBJECT_BITS - 1)
+    };
+    ((kind as u32) << 24) | number
+}
+
 // Written out by hand so the crate needs no unsafe casting of memory.
 pub(crate) fn line_bytes(lines: &[Vertex]) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(lines.len() * LINE_VERTEX_SIZE as usize);
@@ -56,7 +71,7 @@ pub(crate) fn line_bytes(lines: &[Vertex]) -> Vec<u8> {
         {
             bytes.extend(value.to_le_bytes());
         }
-        bytes.extend(vertex.object.to_le_bytes());
+        bytes.extend(packed(vertex.object, vertex.kind).to_le_bytes());
     }
     bytes
 }
@@ -85,6 +100,7 @@ pub(crate) fn uniform_bytes(
     light: [f32; 3],
     pixel: [f32; 3],
     clips: &[[f32; 4]],
+    lines: &[[f32; 4]; crate::line_table::LINE_ROWS],
 ) -> Vec<u8> {
     let clips = &clips[..clips.len().min(MOST_CLIPS)];
     #[allow(clippy::cast_precision_loss)]
@@ -99,6 +115,7 @@ pub(crate) fn uniform_bytes(
         .chain(&pixel)
         .chain(&[count])
         .chain(planes.iter().flatten())
+        .chain(lines.iter().flatten())
         .flat_map(|value| value.to_le_bytes())
         .collect()
 }

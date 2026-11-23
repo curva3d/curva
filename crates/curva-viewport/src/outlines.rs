@@ -136,6 +136,8 @@ pub struct Outlines {
     pub(crate) boxes: Vec<(Point, Point)>,
     /// The sort of object each entry belongs to, in the same order, for the selection filter.
     pub(crate) kinds: Vec<PickKind>,
+    /// The kind of line each entry draws as, in the same order ([`crate::LineKind`]).
+    pub(crate) line_kinds: Vec<crate::LineKind>,
     /// Which kinds clicking and boxing may pick.
     pub(crate) filter: PickFilter,
     /// The objects and snap places indexed by where they are, made the first time snapping asks.
@@ -447,6 +449,7 @@ impl Outlines {
         self.circles.extend_from_slice(&other.circles);
         self.boxes.extend_from_slice(&other.boxes);
         self.kinds.extend_from_slice(&other.kinds);
+        self.line_kinds.extend_from_slice(&other.line_kinds);
     }
 
     /// What one object draws as, on `layer`: nothing if it or its layer is out of sight.
@@ -520,6 +523,7 @@ impl Outlines {
                 } else {
                     look.width
                 },
+                line: line_kind_of(shape),
                 ..look
             };
             outlines.push_pieces(object.id, pieces, look, kind, &seam, on_faces);
@@ -555,6 +559,10 @@ impl Outlines {
         }
         // Its other cage edges draw in every view in its own colour, as Rhino 8 draws them (#472).
         let wires = drawing.wires.into_iter().map(|wire| (wire, None)).collect();
+        let look = Look {
+            line: crate::LineKind::SubdWire,
+            ..look
+        };
         self.push_pieces(id, wires, look, kind, &|_| false, false);
         let lines = drawing.lines.into_iter().map(|line| (line, None)).collect();
         (lines, kind)
@@ -683,6 +691,7 @@ impl Outlines {
             self.edge_of.push(edge);
             self.circles.push(crate::circles::axes_of(&outline));
             self.kinds.push(kind);
+            self.line_kinds.push(look.line);
             self.objects.push((id, points.into()));
         }
     }
@@ -697,6 +706,8 @@ struct Look {
     width: Option<f64>,
     dashes: &'static [f64],
     coarse: bool,
+    /// The kind of line its pieces draw as.
+    line: crate::LineKind,
 }
 
 impl Look {
@@ -713,7 +724,19 @@ impl Look {
             width: object.print_width.resolved(layer),
             dashes: crate::lines::kept_pattern(state.object_pattern(object)),
             coarse: false,
+            line: crate::LineKind::Curve,
         }
+    }
+}
+
+/// The kind of line `shape`'s pieces draw as ([`crate::LineKind`]).
+fn line_kind_of(shape: &Shape) -> crate::LineKind {
+    match shape {
+        Shape::Body(_) => crate::LineKind::Edge,
+        Shape::Mesh(_) => crate::LineKind::MeshWire,
+        Shape::SubD(_) => crate::LineKind::SubdEdge,
+        Shape::Annotation(_) => crate::LineKind::Annotation,
+        _ => crate::LineKind::Curve,
     }
 }
 

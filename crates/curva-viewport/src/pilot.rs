@@ -664,7 +664,7 @@ mod tests {
             matrix: camera.matrix(f64::from(SIZE[0]) / f64::from(SIZE[1])),
             light: camera.forward().map(|value| value as f32),
             clips: Vec::new(),
-            style: crate::Style::SHADED,
+            style: crate::Style::shaded(),
             area: epaint::Rect::from_min_size(
                 epaint::Pos2::ZERO,
                 epaint::vec2(SIZE[0] as f32, SIZE[1] as f32),
@@ -722,9 +722,9 @@ mod tests {
         // Massing lights by the sun with shadows; Ghosted draws see-through.
         for massing in [true, false] {
             view.style = if massing {
-                crate::Style::MASSING
+                crate::Style::massing()
             } else {
-                crate::Style::GHOSTED
+                crate::Style::ghosted()
             };
             let first = middle(&mut pilot, &device, &queue, &view);
             for _ in 0..3 {
@@ -1245,13 +1245,13 @@ mod tests {
         let picked = middle(&mut pilot, &device, &queue, &view);
         assert!(picked[0] > picked[2] + 60, "selection colour: {picked:?}");
         view.selection = Arc::default();
-        view.style = crate::Style::GHOSTED;
+        view.style = crate::Style::ghosted();
         let ghosted = middle(&mut pilot, &device, &queue, &view);
         assert!(
             ghosted[0] > plain[0] && ghosted[2] < plain[2],
             "background through: {ghosted:?}"
         );
-        view.style = crate::Style::WIREFRAME;
+        view.style = crate::Style::wireframe();
         assert_eq!(
             middle(&mut pilot, &device, &queue, &view),
             [200, 120, 40, 255]

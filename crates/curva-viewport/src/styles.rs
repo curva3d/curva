@@ -104,6 +104,7 @@ pub(crate) fn draw_diagram(picture: Picture, size: [u32; 2]) -> Result<Vec<u8>, 
             .map(|vertex| Vertex {
                 colour: MARKER,
                 width: -EDGE_PIXELS * scale,
+                kind: crate::LineKind::Given,
                 ..*vertex
             })
             .collect(),
@@ -178,6 +179,7 @@ pub(crate) fn draw_architectural(
             Vertex {
                 colour: [grey; 3],
                 width: -width * scale,
+                kind: crate::LineKind::Given,
                 ..*vertex
             }
         })
@@ -720,7 +722,7 @@ mod tests {
             faces,
             matrix: camera.matrix(1.0),
             light: camera.forward().map(|v| v as f32),
-            style: crate::Style::SHADED,
+            style: crate::Style::shaded(),
         };
         let size = [64, 64];
         let Ok(pixels) = draw_architectural(picture, [0.0, 0.0, 1.0, -50.0], size) else {
