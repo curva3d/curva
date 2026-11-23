@@ -129,10 +129,38 @@ impl SubD {
         amount: InsertAmount,
         side: InsertSide,
     ) -> Result<Self, MeshError> {
-        let run = self.edge_run(edge);
+        self.with_edges_inserted_on(&self.edge_run(edge), amount, side)
+    }
+
+    /// The part of `first`'s run ([`SubD::edge_run`]) from `first` to `last`, both included, as
+    /// Rhino's InsertEdge `Mode=Range` takes the edges between two picked ones (measured: the
+    /// two middle edges of a box side give just those two, where `Full` runs round the box).
+    /// `None` when `last` is not on that run.
+    #[must_use]
+    pub fn edge_range(&self, first: [u32; 2], last: [u32; 2]) -> Option<Vec<u32>> {
+        let run = self.edge_run(first);
+        let at = |[p, q]: [u32; 2]| {
+            run.windows(2)
+                .position(|w| (w[0], w[1]) == (p, q) || (w[0], w[1]) == (q, p))
+        };
+        let (i, j) = (at(first)?, at(last)?);
+        Some(run[i.min(j)..=i.max(j) + 1].to_vec())
+    }
+
+    /// New edges beside the given run of points (one [`SubD::edge_run`] or
+    /// [`SubD::edge_range`] made), as [`SubD::with_edges_inserted`] does.
+    ///
+    /// # Errors
+    /// When a face beside the run is not a quad, or the new cage is not a valid mesh.
+    pub fn with_edges_inserted_on(
+        &self,
+        run: &[u32],
+        amount: InsertAmount,
+        side: InsertSide,
+    ) -> Result<Self, MeshError> {
         let mut subd = self.clone();
         if matches!(side, InsertSide::Along | InsertSide::Both) {
-            subd = subd.inserted_beside(&run, amount)?;
+            subd = subd.inserted_beside(run, amount)?;
         }
         if matches!(side, InsertSide::Against | InsertSide::Both) {
             let back: Vec<u32> = run.iter().rev().copied().collect();
@@ -274,6 +302,35 @@ mod tests {
             front.is_some(),
             "one side puts the run at x = 203.5 on the front"
         );
+    }
+
+    #[test]
+    fn a_range_takes_only_the_edges_between_as_rhino_does() {
+        // Rhino 8, Mode=Range: the two middle edges of the front, x = 202, give a run beside
+        // just them at x = 202.5: 3 new points, 26 faces on 29 points. Full runs round the box.
+        let subd = rhino_box();
+        let p = |z: f64| at(&subd, [202.0, 0.0, z]);
+        let (low, high) = ([p(0.0), p(2.0)], [p(2.0), p(4.0)]);
+        assert_eq!(
+            subd.edge_run(low).len(),
+            9,
+            "Full runs round the box and back"
+        );
+        let range = subd.edge_range(low, high).unwrap();
+        assert_eq!(range.len(), 3);
+        let mut placed = Vec::new();
+        for side in [InsertSide::Along, InsertSide::Against] {
+            let out = subd
+                .with_edges_inserted_on(&range, InsertAmount::Absolute(0.5), side)
+                .unwrap();
+            assert_eq!(
+                (out.cage().face_count(), out.cage().vertex_count()),
+                (26, 29)
+            );
+            placed.push(out.cage().vertices()[26][0]);
+        }
+        placed.sort_by(f64::total_cmp);
+        assert_eq!(placed, vec![201.5, 202.5], "one side each way");
     }
 
     #[test]

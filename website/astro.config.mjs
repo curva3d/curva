@@ -19,6 +19,7 @@ export default defineConfig({
 			head: [
 				{ tag: 'link', attrs: { rel: 'icon', href: '/assets/favicon-32.png', sizes: '32x32', type: 'image/png' } },
 				{ tag: 'link', attrs: { rel: 'apple-touch-icon', href: '/assets/apple-touch-icon.png' } },
+				{ tag: 'script', attrs: { src: '/assets/lean.js', defer: true } },
 			],
 			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/curva3d/curva' }],
 			editLink: { baseUrl: 'https://github.com/curva3d/curva/edit/main/website/' },

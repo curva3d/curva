@@ -38,18 +38,39 @@
   }
 
   // Moving the mouse up pulls the plates apart; down packs them together.
-  var max = isSpec ? Math.round(430 / Math.max(1, plates.length - 1)) : 150;
+  var max = Math.round((isSpec ? 430 : 450) / Math.max(1, plates.length - 1));
   var min = isSpec ? 18 : 20;
   var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   if (!reduced) {
+    // Only near the stack (within 80 px of it); farther away it settles back to rest.
+    var scene = document.querySelector(".scene"), near = 80;
     window.addEventListener("mousemove", function (e) {
-      var t = Math.max(0, Math.min(1, e.clientY / window.innerHeight));
+      if (!scene) return;
+      var r = scene.getBoundingClientRect();
+      var inside = e.clientX > r.left - near && e.clientX < r.right + near && e.clientY > r.top - near && e.clientY < r.bottom + near;
+      if (!inside) { root.style.setProperty("--gap", rest + "px"); return; }
+      var t = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
       root.style.setProperty("--gap", (max - t * (max - min)).toFixed(0) + "px");
     }, { passive: true });
+
+    // Panels and buttons lean toward the cursor, with a soft light where it is (styles: .wt in site.css).
+    if (window.matchMedia("(hover: hover)").matches) {
+      document.querySelectorAll(".info, .dl, .figure").forEach(function (el) { el.classList.add("wt"); });
+      document.querySelectorAll(".dl-btn, .go, .os, .theme").forEach(function (el) { el.classList.add("wt", "btn"); });
+      document.querySelectorAll(".wt").forEach(function (el) {
+        el.addEventListener("pointermove", function (e) {
+          var r = el.getBoundingClientRect(), px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height;
+          el.style.setProperty("--px", (px * 2 - 1).toFixed(3)); el.style.setProperty("--py", (py * 2 - 1).toFixed(3));
+          el.style.setProperty("--pd", "1"); el.style.setProperty("--gx", (px * 100).toFixed(1) + "%"); el.style.setProperty("--gy", (py * 100).toFixed(1) + "%");
+        });
+        el.addEventListener("pointerleave", function () { el.style.setProperty("--pd", "0"); el.style.setProperty("--px", "0"); el.style.setProperty("--py", "0"); });
+      });
+    }
   }
   // Without a mouse (phones, tablets) the plates start spread out so every name can be read.
   var touch = window.matchMedia("(hover: none)").matches;
-  root.style.setProperty("--gap", Math.round(touch ? max * (isSpec ? 0.75 : 0.6) : isSpec ? max * 0.45 : 80) + "px");
+  var rest = Math.round(touch ? max * (isSpec ? 0.75 : 0.6) : isSpec ? max * 0.45 : 80);
+  root.style.setProperty("--gap", rest + "px");
 
   // The plate under the mouse (or keyboard focus) shows in the panel on the right.
   function show(i) {

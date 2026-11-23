@@ -9,7 +9,44 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## 23 November 2026
+
+**UnweldEdge for meshes, as Rhino 8 measured:** each point on the picked edges gets a vertex for each side, ends included,
+and with ModifyNormals (Yes, as Rhino) each copy the normal of its side; a mesh box gives Rhino's vertex counts and normals.
+SharpCorners is still to come. `Mesh::with_edges_unwelded`.
+
+**Bevel for joined edges:** edges joined end to end bevel as one run, a row at each point and caps only at open ends, as
+Rhino 8 measured (two in a row: 32 faces on 35 points; a loop round the box: 48 quads on 50 points). `SubD::bevelled_run`.
+
+**Bevel for SubD edges, as Rhino 8 measured:** each picked edge becomes a strip of Segments quads, its ends giving way to rows
+of points along the side edges and a five-sided cap closing each end; the measured box gives Rhino's 29 faces on 32 points
+and its rows. Edges sharing an end, KeepCreases and meshes are still to come. `SubD::bevelled` in curva-mesh.
+
+**Reflect measured, not built:** Rhino mirrors a SubD into itself (touching the plane: welded, the side on the plane
+dropped; crossing it: the crossing faces replaced by new ones between the halves) and keeps the halves linked so edits
+mirror. That needs a symmetry record in curva-mesh and gumball hooks, so it waits.
+
+**OffsetSubD, as Rhino 8 measured:** each cage point moves the distance along its limit normal (the measured box's cage lands
+exactly where Rhino puts it); Solid joins the offset to the SubD with side quads round the border, BothSides offsets both
+ways, DeleteInput and picked-to-flip as in Rhino. `SubD::offset`, `offset_solid` and `limit_normals` in curva-mesh.
+
+**InsertPoint, as Rhino 8 measured:** points on SubD cage edges, each two in a row that share a face joined by a new edge
+across it; on the measured box, one point gives 24 faces on 27 points and two across a face 25 on 29, as in Rhino.
+`SubD::with_points_inserted` in curva-mesh. Meshes and Undo are still to come.
+
 ## 22 November 2026
+
+**MergeFaces, as Rhino 8 measured:** picked SubD faces that touch along edges become one face round their outer
+border; two neighbouring quads on a box side become one six-sided face (23 faces on 26 points), "Changed 1 objects.".
+`SubD::with_faces_merged` in curva-mesh.
+
+**Stitch across two SubDs:** sets on two different SubDs now join them into one first, as Rhino does, instead of being
+refused.
+
+**InsertEdge Type=Ring, as Rhino 8 measured:** the corner edge of the measured box and 0.5 cut the ring of 8 faces round
+it at z = 0.5 (32 quads on 34 points), with only OffsetMode offered; Curva now does the same with its ring cut. Mode=Range
+takes only the edges between two picked ones (the measured box's two middle front edges: 26 faces on 29 points, as
+Rhino). A typed amount goes on one fixed side; Rhino follows the mouse, which recipes cannot see yet.
 
 **InsertEdge, as Rhino 8 measured (Type=Loop, Mode=Full):** a picked edge runs on through points where four edges meet;
 new edges go beside it at the amount along each crossing edge (Absolute or Proportional, on one side or BothSides), the

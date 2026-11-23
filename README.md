@@ -1,17 +1,33 @@
 <p align="center">
-  <img src="packaging/icons/curva.svg" width="128" height="128" alt="Curva's icon: one closed curve, a soft black-and-white tube that reads C from the front and U from above">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/design/brand/logo-3d/renders/set/white-mark.png">
+    <img src="docs/design/brand/logo-3d/renders/set/black-mark.png" width="120" alt="Curva's logo: one closed curve, a soft tube that reads C from the front and U from above">
+  </picture>
 </p>
 
 <h1 align="center">Curva</h1>
 
+<p align="center"><strong>Every project starts with a curve.</strong></p>
+
 <p align="center"><a href="https://curva3d.com">curva3d.com</a> · <a href="https://curva3d.com/docs/">Documentation</a> · <a href="https://github.com/curva3d/curva/releases">Download</a></p>
 
-Curva is an open-source, design-oriented 3D suite for architects and designers, written in Rust.
-It combines Rhino-style freeform modelling with the "memory" of Archicad and Revit: objects that
-remember how they were made, live 2D plans and sections, and sheets.
+Curva is an open-source 3D suite for architects and designers, written in Rust. It models freely,
+like Rhino; its objects remember how they were made; and its plans, sections and sheets come live
+from the model, like Archicad and Revit. One program, with specializations that change the tools
+for the kind of work, all on one model.
 
-**Status:** preview, 0.1.1: Milestone 1 complete, with line weights, an AI Assistant, one-click updates, a Rhino-style gumball and every Rhino NURBS command the geometry engine can do. Early and
-unpolished; a Windows installer, a Linux AppImage and a macOS disk image are on the Releases page.
+| Specialization | Status | What it does |
+|---|---|---|
+| [**Freeform**](https://curva3d.com/freeform/) | Out now | Rhino-level modelling: curves, surfaces, solids, meshes and SubD, with Rhino's commands, a model with memory, and sheets |
+| [**Architecture**](https://curva3d.com/architecture/) | Coming next | Smart building elements that draw themselves in 3D, plan and section; live plans, sections and elevations; IFC |
+| [**Urban**](https://curva3d.com/urban/) | Planned | Massing from rules, real context, streets and blocks generated from street sections, live area and density data |
+| [**Publisher**](https://curva3d.com/publisher/) | Planned | From the model to the drawing set: sheets and drawing sets, title blocks, revisions, presentation boards and exports, all live from the model |
+| [**Analysis**](https://curva3d.com/analysis/) | Later | Sun and shadow, wind, views and carbon, run on the live model |
+
+**Status:** preview, 0.1.5. Freeform with NURBS, meshes and SubD; layouts, Make2D, dimensions and
+printing; Rhino `.3dm`, DWG, DXF, SketchUp, STEP and mesh files; commands checked against Rhino 8.
+Early and unpolished: a Windows installer, a macOS disk image and a Linux AppImage are on the
+[Releases page](https://github.com/curva3d/curva/releases).
 
 ## Where things are
 

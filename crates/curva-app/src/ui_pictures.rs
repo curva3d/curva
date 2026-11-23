@@ -67,6 +67,7 @@ impl Curva {
                 select: false,
                 building: true,
                 house: false,
+                meshes: 0,
             };
             let _ = benchmark_scene(&mut self.doc, scene);
             self.processor.submit(&mut self.doc, "ZoomExtents");

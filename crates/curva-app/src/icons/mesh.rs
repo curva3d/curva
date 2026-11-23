@@ -148,7 +148,7 @@ pub(super) fn mesh_3(pen: &Pen<'_>, key: &str) -> bool {
             );
         }
         "crease" | "removecrease" | "fill" | "unweldedge" | "weldedge" | "stitch" | "bridge"
-        | "insertedge" => {
+        | "insertedge" | "mergefaces" | "insertpoint" | "offsetsubd" | "bevel" => {
             subd_edit(pen, key);
         }
         key if key.starts_with("meshboolean") => mesh_boolean(pen, key),
@@ -289,19 +289,10 @@ fn grid(pen: &Pen<'_>, a: (f32, f32), b: (f32, f32), n: u32) {
 /// The SubD editing commands: a cage of four faces, with what each does drawn in the accent
 /// colour.
 fn subd_edit(pen: &Pen<'_>, key: &str) {
+    if subd_edit_later(pen, key) {
+        return;
+    }
     match key {
-        "insertedge" => {
-            // A cage with a new run of edges beside its middle one.
-            grid(pen, (2.0, 2.0), (20.0, 20.0), 2);
-            pen.path_in(&[(14.0, 2.0), (14.0, 20.0)], false, pen.accent());
-        }
-        "bridge" => {
-            // Two cage strips joined by a row of faces.
-            grid(pen, (2.0, 2.0), (20.0, 7.0), 2);
-            grid(pen, (2.0, 15.0), (20.0, 20.0), 2);
-            pen.path_in(&[(2.0, 7.0), (2.0, 15.0)], false, pen.accent());
-            pen.path_in(&[(20.0, 7.0), (20.0, 15.0)], false, pen.accent());
-        }
         "stitch" => {
             // Two points of a cage pulled into one.
             grid(pen, (2.0, 2.0), (20.0, 20.0), 2);
@@ -348,4 +339,55 @@ fn subd_edit(pen: &Pen<'_>, key: &str) {
         }
         _ => {}
     }
+}
+
+/// The later SubD editing commands' icons, drawn as `subd_edit` draws the first; whether `key` is one.
+fn subd_edit_later(pen: &Pen<'_>, key: &str) -> bool {
+    match key {
+        "bevel" => {
+            // A cage edge split into a narrow strip.
+            grid(pen, (2.0, 2.0), (20.0, 20.0), 2);
+            pen.path_in(&[(9.5, 2.0), (9.5, 20.0)], false, pen.accent());
+            pen.path_in(&[(12.5, 2.0), (12.5, 20.0)], false, pen.accent());
+        }
+        "offsetsubd" => {
+            // A cage and a copy moved off it.
+            grid(pen, (2.0, 8.0), (14.0, 20.0), 2);
+            pen.path_in(
+                &[(8.0, 2.0), (20.0, 2.0), (20.0, 14.0)],
+                false,
+                pen.accent(),
+            );
+        }
+        "insertpoint" => {
+            // A cage with two new points on its edges, joined across a face.
+            grid(pen, (2.0, 2.0), (20.0, 20.0), 2);
+            pen.path_in(&[(6.5, 2.0), (6.5, 11.0)], false, pen.accent());
+            pen.dot(6.5, 2.0);
+            pen.dot(6.5, 11.0);
+        }
+        "mergefaces" => {
+            // Two cage faces drawn as one.
+            grid(pen, (2.0, 2.0), (20.0, 20.0), 2);
+            pen.path_in(
+                &[(2.0, 11.0), (20.0, 11.0), (20.0, 20.0), (2.0, 20.0)],
+                true,
+                pen.accent(),
+            );
+        }
+        "insertedge" => {
+            // A cage with a new run of edges beside its middle one.
+            grid(pen, (2.0, 2.0), (20.0, 20.0), 2);
+            pen.path_in(&[(14.0, 2.0), (14.0, 20.0)], false, pen.accent());
+        }
+        "bridge" => {
+            // Two cage strips joined by a row of faces.
+            grid(pen, (2.0, 2.0), (20.0, 7.0), 2);
+            grid(pen, (2.0, 15.0), (20.0, 20.0), 2);
+            pen.path_in(&[(2.0, 7.0), (2.0, 15.0)], false, pen.accent());
+            pen.path_in(&[(20.0, 7.0), (20.0, 15.0)], false, pen.accent());
+        }
+        _ => return false,
+    }
+    true
 }

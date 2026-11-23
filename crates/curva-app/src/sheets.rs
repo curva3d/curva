@@ -214,53 +214,11 @@ impl Curva {
             if on_screen.width() < 2.0 || on_screen.height() < 2.0 {
                 continue;
             }
-            let view = curva_viewport::StandardView::from_key(&detail.projection)
-                .unwrap_or(StandardView::Top);
-            let mut camera = view.camera();
-            match detail.scale {
-                Some(scale) => {
-                    let model_height = (high[1] - low[1]) * paper_mm / scale / model_mm;
-                    camera.show_exactly(detail.target, model_height / 2.0);
-                }
-                None => camera.show_exactly(detail.target, detail.distance / 2.0),
-            }
-            let (shaded, ghosted) = (detail.display != "Wireframe", detail.display == "Ghosted");
-            let model = self.model_scene(&detail.hidden_layers);
-            let scene = model.lines(shaded && !ghosted);
-            let model_faces = Arc::clone(&model.faces);
-            let origin = model.origin;
-            // The camera measured as the model's positions are, from its middle (#225).
-            let camera = camera.measured_from(origin);
-            let (clips, faces) = self.clipped_view(
-                curva_document::clipping::ClipView::Detail(detail.frame),
-                &model_faces,
-                origin,
-            );
-            let drawing = curva_viewport::Drawing {
-                clips,
-                slot: VIEW_SLOTS + slot,
-                grid: Arc::default(),
-                scene,
-                faces,
-                shapes: Arc::default(),
-                circles: Arc::default(),
-                overlay: Arc::default(),
-                preview_faces: Arc::default(),
-                objects: Arc::default(),
-                selection: Arc::default(),
-                matrix: camera.matrix(f64::from(shown.width() / shown.height())),
-                light: camera.forward().map(|value| value as f32),
-                shaded,
-                ghosted,
-                hidden: matches!(detail.display.as_str(), "Hidden" | "Technical"),
-                hidden_lines: detail.display == "Technical",
-                massing: detail.display == "Massing",
-                area: shown,
-                frame: ui.ctx().cumulative_frame_nr(),
-                background: PAPER,
-                background_low: PAPER,
-                camera,
-            };
+            // How much model the frame's height shows, at the detail's scale if it has one.
+            let model_height = detail.scale.map_or(detail.distance, |scale| {
+                (high[1] - low[1]) * paper_mm / scale / model_mm
+            });
+            let drawing = self.detail_drawing(ui, VIEW_SLOTS + slot, detail, model_height, shown);
             ui.painter()
                 .with_clip_rect(on_screen)
                 .add(egui_wgpu_callback(shown, drawing));
@@ -272,6 +230,56 @@ impl Curva {
                     egui::StrokeKind::Outside,
                 );
             }
+        }
+    }
+
+    /// What a detail hands the graphics card, drawn in view `slot` at `shown` on screen: the
+    /// model, `model_height` high in the frame, seen through the detail's own camera in its
+    /// display mode, on paper.
+    fn detail_drawing(
+        &mut self,
+        ui: &egui::Ui,
+        slot: usize,
+        detail: &curva_document::layouts::Detail,
+        model_height: f64,
+        shown: egui::Rect,
+    ) -> curva_viewport::Drawing {
+        let view =
+            curva_viewport::StandardView::from_key(&detail.projection).unwrap_or(StandardView::Top);
+        let mut camera = view.camera();
+        camera.show_exactly(detail.target, model_height / 2.0);
+        let style = crate::styles::named_style(&detail.display);
+        let model = self.model_scene(&detail.hidden_layers);
+        let scene = model.lines(style.solid());
+        let model_faces = Arc::clone(&model.faces);
+        let origin = model.origin;
+        // The camera measured as the model's positions are, from its middle (#225).
+        let camera = camera.measured_from(origin);
+        let (clips, faces) = self.clipped_view(
+            curva_document::clipping::ClipView::Detail(detail.frame),
+            &model_faces,
+            origin,
+        );
+        curva_viewport::Drawing {
+            clips,
+            slot,
+            grid: Arc::default(),
+            scene,
+            faces,
+            shapes: Arc::default(),
+            circles: Arc::default(),
+            overlay: Arc::default(),
+            preview_faces: Arc::default(),
+            objects: Arc::default(),
+            selection: Arc::default(),
+            matrix: camera.matrix(f64::from(shown.width() / shown.height())),
+            light: camera.forward().map(|value| value as f32),
+            style,
+            area: shown,
+            frame: ui.ctx().cumulative_frame_nr(),
+            background: PAPER,
+            background_low: PAPER,
+            camera,
         }
     }
 
@@ -376,24 +384,7 @@ impl Curva {
             self.sheets.entered = None;
             return false;
         };
-        let Some((_, shown)) = self
-            .doc
-            .details_on(self.doc.space().unwrap_or_default())
-            .into_iter()
-            .find(|(d, _)| d.frame == frame)
-            .and_then(|(_, [low, high])| {
-                let camera = &self.panes[pane].camera;
-                let corner = |x: f64, y: f64| {
-                    camera
-                        .project([x, y, 0.0], size)
-                        .map(|[sx, sy]| rect.min + egui::vec2(sx as f32, sy as f32))
-                };
-                Some((
-                    frame,
-                    egui::Rect::from_two_pos(corner(low[0], low[1])?, corner(high[0], high[1])?),
-                ))
-            })
-        else {
+        let Some(shown) = self.detail_on_screen(pane, rect, size, frame) else {
             return false;
         };
         let (delta, middle, right, shift, scroll) = ui.input(|input| {
@@ -410,9 +401,50 @@ impl Curva {
         if !(pans || zooms) {
             return false;
         }
-        if detail.locked {
-            return true;
+        if !detail.locked {
+            let pan = pans.then_some(delta);
+            let zoom = zooms.then_some(scroll);
+            self.move_detail(frame, &detail, shown, pan, zoom);
         }
+        true
+    }
+
+    /// Where the detail framed by `frame` lies on screen in the sheet pane.
+    fn detail_on_screen(
+        &self,
+        pane: usize,
+        rect: egui::Rect,
+        size: [f64; 2],
+        frame: u64,
+    ) -> Option<egui::Rect> {
+        let (_, [low, high]) = self
+            .doc
+            .details_on(self.doc.space().unwrap_or_default())
+            .into_iter()
+            .find(|(d, _)| d.frame == frame)?;
+        let camera = &self.panes[pane].camera;
+        let corner = |x: f64, y: f64| {
+            camera
+                .project([x, y, 0.0], size)
+                .map(|[sx, sy]| rect.min + egui::vec2(sx as f32, sy as f32))
+        };
+        Some(egui::Rect::from_two_pos(
+            corner(low[0], low[1])?,
+            corner(high[0], high[1])?,
+        ))
+    }
+
+    /// Moves the view of the detail framed by `frame`, shown at `shown` on screen: by `pan`
+    /// points of pointer movement, and by `zoom` points of scrolling (its scale, or its distance
+    /// when it has none).
+    fn move_detail(
+        &mut self,
+        frame: u64,
+        detail: &curva_document::layouts::Detail,
+        shown: egui::Rect,
+        pan: Option<egui::Vec2>,
+        zoom: Option<f32>,
+    ) {
         // How much model one point of the frame on screen covers.
         let model_mm = self.doc.state().unit.millimetres();
         let paper_mm = self
@@ -435,14 +467,14 @@ impl Curva {
             .map_or(([1.0, 0.0, 0.0], [0.0, 1.0, 0.0]), |(way, up)| {
                 (curva_kernel::cross(way, up), up)
             });
-        let (dx, dy) = (f64::from(delta.x), f64::from(delta.y));
         self.doc.change_detail(frame, |d| {
-            if pans {
+            if let Some(delta) = pan {
+                let (dx, dy) = (f64::from(delta.x), f64::from(delta.y));
                 for k in 0..3 {
                     d.target[k] -= (across[k] * dx - up[k] * dy) * per_point;
                 }
             }
-            if zooms {
+            if let Some(scroll) = zoom {
                 let factor = (f64::from(scroll) * 0.002).exp();
                 match d.scale.as_mut() {
                     Some(scale) => *scale = (*scale * factor).clamp(1e-6, 1e3),
@@ -450,7 +482,6 @@ impl Curva {
                 }
             }
         });
-        true
     }
 
     /// Whether the pane shows a sheet rather than the model.

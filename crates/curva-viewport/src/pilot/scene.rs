@@ -73,20 +73,64 @@ const PREVIEW_ALPHA: f32 = 0.5;
 
 /// A mesh's contents, as a fingerprint and a length: equal contents share one Bevy mesh.
 type MeshKey = (u64, usize);
-/// One object's faces of one colour: its number in the scene and the colour's bits.
-type PartKey = (u32, [u32; 3]);
+/// One object's faces of one colour: its number in the scene, the colour's bits, and which piece
+/// of them, as faces past [`MOST_PART_CORNERS`] go in further pieces.
+type PartKey = (u32, [u32; 3], u32);
+/// The most corners one Bevy mesh holds: a million triangles, 72 MB of positions and normals,
+/// well within the 256 MB a graphics buffer may hold on every card. A larger mesh object, or a
+/// picture in which all faces are numbered alike, would otherwise ask for a buffer the card
+/// refuses, and Bevy stops.
+const MOST_PART_CORNERS: usize = 3_000_000;
+
+/// `faces` sorted into parts by object and colour, each part's corners and normals in pieces of
+/// at most `most` corners.
+fn group_faces(faces: &[MeshVertex], most: usize) -> HashMap<PartKey, Triangles> {
+    let mut groups: HashMap<PartKey, Triangles> = HashMap::new();
+    let mut pieces: HashMap<(u32, [u32; 3]), u32> = HashMap::new();
+    for triangle in faces.as_chunks::<3>().0 {
+        let (object, colour) = (triangle[0].object, triangle[0].colour.map(f32::to_bits));
+        let piece = pieces.entry((object, colour)).or_default();
+        if groups
+            .get(&(object, colour, *piece))
+            .is_some_and(|(positions, _)| positions.len() + 3 > most)
+        {
+            *piece += 1;
+        }
+        let (positions, normals) = groups.entry((object, colour, *piece)).or_default();
+        for corner in triangle {
+            positions.push(corner.position);
+            normals.push(corner.normal);
+        }
+    }
+    groups
+}
 /// Corners and their normals, three per triangle.
 type Triangles = (Vec<[f32; 3]>, Vec<[f32; 3]>);
 
 /// Meshes shared by every view's copies, each with how many copies use it: loose triangles by
 /// their contents, then the kernel's shared shapes.
-#[derive(Default)]
 pub(super) struct SharedMeshes(
     HashMap<MeshKey, (Handle<Mesh>, usize)>,
     pub(super) shapes::ShapeMeshes,
+    /// The most corners one mesh holds on this device.
+    usize,
 );
 
+/// The bytes one corner takes in a Bevy mesh: its position and its normal.
+const CORNER_BYTES: u64 = 24;
+
 impl SharedMeshes {
+    /// None yet, on a device whose buffers hold at most `most_bytes`: a mesh holds at most
+    /// [`MOST_PART_CORNERS`], and never more than half the largest buffer, so it fits one.
+    pub(super) fn within(most_bytes: u64) -> Self {
+        let fits = usize::try_from(most_bytes / 2 / CORNER_BYTES).unwrap_or(usize::MAX);
+        Self(
+            HashMap::new(),
+            shapes::ShapeMeshes::default(),
+            fits.clamp(3, MOST_PART_CORNERS),
+        )
+    }
+
     fn take(
         &mut self,
         world: &mut World,
@@ -253,10 +297,11 @@ impl ViewScene {
         look: Look,
     ) {
         // Only what changed is handed to Bevy: each change makes Bevy redo work for it.
-        if self.shaded != Some(drawing.shaded) {
-            self.shaded = Some(drawing.shaded);
+        let shaded = drawing.style.surfaces.is_some();
+        if self.shaded != Some(shaded) {
+            self.shaded = Some(shaded);
             // Wireframe views show no faces.
-            let shown = if drawing.shaded {
+            let shown = if shaded {
                 Visibility::Visible
             } else {
                 Visibility::Hidden
@@ -325,7 +370,7 @@ impl ViewScene {
             self.mirror_shapes(world, &mut meshes.1, &drawing.shapes);
             self.shapes = Some(Arc::clone(&drawing.shapes));
         }
-        self.restyle(world, drawing.ghosted, FaceLook::of(drawing));
+        self.restyle(world, drawing.style.see_through(), FaceLook::of(drawing));
         let clips = Clips::of(&drawing.clips);
         if self.clips != Some(clips) {
             self.clips = Some(clips);
@@ -439,15 +484,7 @@ impl ViewScene {
     /// Makes this view's entities match `faces`: unchanged parts stay, changed parts get their
     /// new mesh, parts gone are removed.
     fn mirror(&mut self, world: &mut World, meshes: &mut SharedMeshes, faces: &[MeshVertex]) {
-        let mut groups: HashMap<PartKey, Triangles> = HashMap::new();
-        for triangle in faces.as_chunks::<3>().0 {
-            let key = (triangle[0].object, triangle[0].colour.map(f32::to_bits));
-            let (positions, normals) = groups.entry(key).or_default();
-            for corner in triangle {
-                positions.push(corner.position);
-                normals.push(corner.normal);
-            }
-        }
+        let groups = group_faces(faces, meshes.2);
         let mut kept = HashSet::new();
         for (key, (positions, normals)) in groups {
             kept.insert(key);
@@ -500,7 +537,7 @@ impl ViewScene {
         for (number, colour, entity) in self
             .parts
             .iter()
-            .map(|(&(number, colour), part)| (number, colour, part.entity))
+            .map(|(&(number, colour, _), part)| (number, colour, part.entity))
             .chain(copies)
         {
             // Parts of no object (numbered past the list) are drawn too, never selected.
@@ -636,9 +673,10 @@ pub(super) enum FaceLook {
 impl FaceLook {
     /// How `drawing` asks for its faces to be coloured.
     pub(super) fn of(drawing: &Drawing) -> Self {
-        if drawing.hidden {
+        let surfaces = drawing.style.surfaces;
+        if drawing.style.light() == Some(crate::Light::Flat) {
             Self::Paper
-        } else if drawing.massing {
+        } else if surfaces.is_some_and(|surfaces| surfaces.colour.is_some()) {
             Self::White
         } else {
             Self::Own
@@ -755,4 +793,47 @@ fn backdrop_mesh(top: epaint::Color32, bottom: epaint::Color32) -> Mesh {
     )
     .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colours)
     .with_inserted_indices(bevy::mesh::Indices::U32(indices))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A triangle of object `object` in `colour`.
+    fn triangle(object: u32, colour: [f32; 3]) -> [MeshVertex; 3] {
+        let corner = |x: f32| MeshVertex {
+            position: [x, 0.0, 0.0],
+            normal: [0.0, 0.0, 1.0],
+            colour,
+            object,
+        };
+        [corner(0.0), corner(1.0), corner(2.0)]
+    }
+
+    /// Faces past the most one Bevy mesh holds go in further pieces of the same part, every
+    /// triangle kept whole and kept once; other objects and colours stay apart.
+    #[test]
+    fn a_part_too_large_for_one_mesh_is_cut_into_pieces() {
+        let mut faces = Vec::new();
+        for _ in 0..7 {
+            faces.extend(triangle(0, [0.5; 3]));
+        }
+        faces.extend(triangle(1, [0.5; 3]));
+        faces.extend(triangle(0, [0.9; 3]));
+        let groups = group_faces(&faces, 9);
+        let grey = [0.5f32; 3].map(f32::to_bits);
+        let sizes: Vec<usize> = (0..3)
+            .map(|piece| groups[&(0, grey, piece)].0.len())
+            .collect();
+        assert_eq!(
+            sizes,
+            [9, 9, 3],
+            "three triangles a piece, the rest in the last"
+        );
+        assert_eq!(groups[&(1, grey, 0)].0.len(), 3);
+        assert_eq!(groups[&(0, [0.9f32; 3].map(f32::to_bits), 0)].0.len(), 3);
+        assert_eq!(groups.len(), 5);
+        let corners: usize = groups.values().map(|(positions, _)| positions.len()).sum();
+        assert_eq!(corners, faces.len());
+    }
 }

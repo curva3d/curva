@@ -215,12 +215,31 @@ pub(crate) struct SceneTarget {
 
 /// The blur's textures for one glass panel's size.
 struct BlurChain {
-    /// The panel's size in pixels the chain was made for.
-    size: [u32; 2],
     /// Halved, then halved again.
     levels: Vec<(wgpu::TextureView, [u32; 2])>,
     /// Back at half the panel's size: what the panel shows.
     result: wgpu::TextureView,
+}
+
+/// A glass panel as its blur knows it: its rectangle in pixels and its corners' radius (as bits),
+/// and the scene's size.
+type PanelKey = ([u32; 4], u32, [u32; 2]);
+
+/// The most panels whose blur is kept: well over the glass panels one window shows (nine with
+/// the standard layout and Settings, Print and Layouts open; with eight kept, one went sharp
+/// every frame), as a panel being dragged makes a new one each frame.
+const MOST_PANELS: usize = 32;
+
+/// One glass panel's blur: its passes, which hold its textures, and the glass's own bind group.
+struct PanelBlur {
+    /// What the blur shows, at half the panel's size, read back by the test.
+    #[cfg(test)]
+    result: wgpu::TextureView,
+    /// Each pass: whether it goes down, what it reads, and what it draws into.
+    steps: Vec<(bool, wgpu::BindGroup, wgpu::TextureView)>,
+    glass_group: wgpu::BindGroup,
+    /// When it was last blurred, by [`Compositor::uses`].
+    used: u64,
 }
 
 /// The pipelines and textures for drawing the viewports through a texture and blurring it.
@@ -234,15 +253,12 @@ pub(crate) struct Compositor {
     up: wgpu::RenderPipeline,
     glass: wgpu::RenderPipeline,
     pub(crate) target: Option<SceneTarget>,
-    chain: Option<BlurChain>,
-    /// The blur's passes, kept while the glass panel stays the same place and size.
-    #[allow(clippy::type_complexity)]
-    plan: Option<(
-        ([f32; 4], f32, [u32; 2]),
-        Vec<(bool, wgpu::BindGroup, wgpu::TextureView)>,
-    )>,
-    /// Ready for the glass to draw this frame.
-    glass_group: Option<wgpu::BindGroup>,
+    /// Each glass panel's blur, by its place, size and corners: every panel prepares its blur
+    /// before any paints, so each keeps its own (with one kept for all, only the last panel
+    /// prepared showed frost and the others the view sharp).
+    panels: std::collections::HashMap<PanelKey, PanelBlur>,
+    /// Counts blurs made, so the panels least lately blurred go first.
+    uses: u64,
     /// Whether to blur at all; off on software graphics.
     pub(crate) blur: bool,
 }
@@ -317,9 +333,8 @@ impl Compositor {
             copy_layout,
             step_layout,
             target: None,
-            chain: None,
-            glass_group: None,
-            plan: None,
+            panels: std::collections::HashMap::new(),
+            uses: 0,
             blur: true,
         }
     }
@@ -420,8 +435,16 @@ impl Compositor {
         })
     }
 
+    /// The key of a glass panel at `rect` (pixels, `[x, y, width, height]`) with corners of
+    /// `radius` pixels, over the scene as it is; `None` with no scene yet.
+    fn panel_key(&self, rect: [f32; 4], radius: f32) -> Option<PanelKey> {
+        let target = self.target.as_ref()?;
+        Some((rect.map(f32::to_bits), radius.to_bits(), target.size))
+    }
+
     /// Blurs the scene behind a glass panel, `rect` in pixels as `[x, y, width, height]`, ready
-    /// for [`Self::draw_glass`]. `radius` is its corners' radius in pixels.
+    /// for [`Self::draw_glass`] to draw for the same panel. `radius` is its corners' radius in
+    /// pixels.
     pub(crate) fn blur_behind(
         &mut self,
         device: &wgpu::Device,
@@ -430,22 +453,25 @@ impl Compositor {
         radius: f32,
     ) {
         if !self.blur {
-            self.glass_group = None;
             return;
         }
-        let Some(target) = &self.target else {
-            self.glass_group = None;
+        let Some(key) = self.panel_key(rect, radius) else {
             return;
         };
-        let key = (rect, radius, target.size);
-        if self.plan.as_ref().is_none_or(|(held, _)| *held != key) {
-            let steps = self.plan_blur(device, rect, radius);
-            self.plan = Some((key, steps));
+        self.uses += 1;
+        let used = self.uses;
+        if !self.panels.contains_key(&key) {
+            let Some(blur) = self.plan_blur(device, rect, radius) else {
+                return;
+            };
+            self.panels.insert(key, blur);
+            self.forget_old_panels();
         }
-        let Some((_, steps)) = &self.plan else {
+        let Some(panel) = self.panels.get_mut(&key) else {
             return;
         };
-        for (down, group, into) in steps {
+        panel.used = used;
+        for (down, group, into) in &panel.steps {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("curva blur"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -468,25 +494,27 @@ impl Compositor {
         }
     }
 
-    /// The blur's passes for a glass panel at `rect`, made once for each place and size: down
-    /// from the panel's part of the scene, down again, then back up twice. Each is whether it
-    /// goes down, what it reads, and what it draws into. Also makes the glass's own bind group.
-    fn plan_blur(
-        &mut self,
-        device: &wgpu::Device,
-        rect: [f32; 4],
-        radius: f32,
-    ) -> Vec<(bool, wgpu::BindGroup, wgpu::TextureView)> {
-        if self.target.is_none() {
-            return Vec::new();
+    /// Lets go of the blurs of the panels least lately blurred, past [`MOST_PANELS`].
+    fn forget_old_panels(&mut self) {
+        while self.panels.len() > MOST_PANELS {
+            let oldest = self
+                .panels
+                .iter()
+                .min_by_key(|(_, panel)| panel.used)
+                .map(|(key, _)| *key);
+            if let Some(key) = oldest {
+                self.panels.remove(&key);
+            }
         }
+    }
+
+    /// The blur of a glass panel at `rect`, made once for each place and size: its textures, and
+    /// its passes, down from the panel's part of the scene, down again, then back up twice.
+    fn plan_blur(&self, device: &wgpu::Device, rect: [f32; 4], radius: f32) -> Option<PanelBlur> {
+        let target = self.target.as_ref()?;
         let size = [rect[2].max(1.0) as u32, rect[3].max(1.0) as u32];
-        self.make_chain(device, size);
-        let Some(target) = &self.target else {
-            return Vec::new();
-        };
+        let chain = self.make_chain(device, size);
         let [tw, th] = target.size.map(|v| v as f32);
-        let chain = self.chain.as_ref().expect("made just above");
         let mut steps = Vec::new();
         let region = [rect[0] / tw, rect[1] / th, rect[2] / tw, rect[3] / th];
         let whole = [0.0, 0.0, 1.0, 1.0];
@@ -495,20 +523,8 @@ impl Compositor {
             (&target.colour, region, [0.5 / tw, 0.5 / th]);
         for (view, level) in &chain.levels {
             let [hx, hy] = source.2;
-            let group = self.step_group(
-                device,
-                source.0,
-                [
-                    source.1[0],
-                    source.1[1],
-                    source.1[2],
-                    source.1[3],
-                    hx,
-                    hy,
-                    0.0,
-                    0.0,
-                ],
-            );
+            let [x, y, w, h] = source.1;
+            let group = self.step_group(device, source.0, [x, y, w, h, hx, hy, 0.0, 0.0]);
             steps.push((true, group, view.clone()));
             source = (view, whole, half_texel(*level));
         }
@@ -529,59 +545,68 @@ impl Compositor {
             steps.push((false, group, view.clone()));
             source = (view, whole, half_texel(level));
         }
-        self.glass_group = Some(self.step_group(
+        let glass_group = self.step_group(
             device,
             &chain.result,
             [rect[0], rect[1], rect[2], rect[3], radius, 0.0, 0.0, 0.0],
-        ));
-        steps
+        );
+        Some(PanelBlur {
+            #[cfg(test)]
+            result: chain.result.clone(),
+            steps,
+            glass_group,
+            used: 0,
+        })
     }
 
-    /// The textures the blur goes down into and back up through, for a panel `size` pixels big;
-    /// made again only when the size changes.
-    fn make_chain(&mut self, device: &wgpu::Device, size: [u32; 2]) {
-        if self.chain.as_ref().is_none_or(|chain| chain.size != size) {
-            let usage =
-                wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
-            let mut levels = Vec::new();
-            let mut level = size;
-            for index in 0..BLUR_LEVELS {
-                level = level.map(|v| (v / 2).max(1));
-                levels.push((
-                    texture(
-                        device,
-                        &format!("curva blur {index}"),
-                        level,
-                        self.format,
-                        usage,
-                    ),
+    /// The textures the blur goes down into and back up through, for a panel `size` pixels big.
+    fn make_chain(&self, device: &wgpu::Device, size: [u32; 2]) -> BlurChain {
+        let usage = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
+        let mut levels = Vec::new();
+        let mut level = size;
+        for index in 0..BLUR_LEVELS {
+            level = level.map(|v| (v / 2).max(1));
+            levels.push((
+                texture(
+                    device,
+                    &format!("curva blur {index}"),
                     level,
-                ));
-            }
-            let half = size.map(|v| (v / 2).max(1));
-            // Readable too, for the test that checks the blur.
-            let result = texture(
-                device,
-                "curva blur result",
-                half,
-                self.format,
-                usage | wgpu::TextureUsages::COPY_SRC,
-            );
-            self.chain = Some(BlurChain {
-                size,
-                levels,
-                result,
-            });
+                    self.format,
+                    usage,
+                ),
+                level,
+            ));
         }
+        let half = size.map(|v| (v / 2).max(1));
+        // Readable too, for the test that checks the blur.
+        let result = texture(
+            device,
+            "curva blur result",
+            half,
+            self.format,
+            usage | wgpu::TextureUsages::COPY_SRC,
+        );
+        BlurChain { levels, result }
     }
 
-    /// Draws the blur made by [`Self::blur_behind`] into the glass panel, inside egui's pass.
-    pub(crate) fn draw_glass(&self, pass: &mut wgpu::RenderPass<'_>) {
-        if let Some(group) = &self.glass_group {
+    /// Draws the blur [`Self::blur_behind`] made for the glass panel at `rect` with corners of
+    /// `radius`, inside egui's pass.
+    pub(crate) fn draw_glass(&self, pass: &mut wgpu::RenderPass<'_>, rect: [f32; 4], radius: f32) {
+        let panel = self
+            .panel_key(rect, radius)
+            .and_then(|key| self.panels.get(&key));
+        if let Some(panel) = panel {
             pass.set_pipeline(&self.glass);
-            pass.set_bind_group(0, group, &[]);
+            pass.set_bind_group(0, &panel.glass_group, &[]);
             pass.draw(0..3, 0..1);
         }
+    }
+
+    /// What the blur for the glass panel at `rect` shows, at half its size.
+    #[cfg(test)]
+    fn blurred(&self, rect: [f32; 4], radius: f32) -> Option<&wgpu::TextureView> {
+        let key = self.panel_key(rect, radius)?;
+        Some(&self.panels.get(&key)?.result)
     }
 }
 
@@ -591,6 +616,20 @@ pub struct Glass {
     pub rect: epaint::Rect,
     /// Its corners' radius, in points.
     pub radius: f32,
+}
+
+impl Glass {
+    /// The panel in pixels, `[x, y, width, height]`, and its corners' radius in pixels, at
+    /// `scale` pixels a point: the same in `prepare` and `paint`, so each finds its own blur.
+    fn in_pixels(&self, scale: f32) -> ([f32; 4], f32) {
+        let rect = [
+            self.rect.min.x * scale,
+            self.rect.min.y * scale,
+            self.rect.width() * scale,
+            self.rect.height() * scale,
+        ];
+        (rect, self.radius * scale)
+    }
 }
 
 impl egui_wgpu::CallbackTrait for Glass {
@@ -603,28 +642,23 @@ impl egui_wgpu::CallbackTrait for Glass {
         resources: &mut egui_wgpu::CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
         if let Some(renderer) = resources.get_mut::<crate::LineRenderer>() {
-            let scale = screen.pixels_per_point;
-            let rect = [
-                self.rect.min.x * scale,
-                self.rect.min.y * scale,
-                self.rect.width() * scale,
-                self.rect.height() * scale,
-            ];
+            let (rect, radius) = self.in_pixels(screen.pixels_per_point);
             renderer
                 .compositor
-                .blur_behind(device, encoder, rect, self.radius * scale);
+                .blur_behind(device, encoder, rect, radius);
         }
         Vec::new()
     }
 
     fn paint(
         &self,
-        _info: epaint::PaintCallbackInfo,
+        info: epaint::PaintCallbackInfo,
         pass: &mut wgpu::RenderPass<'static>,
         resources: &egui_wgpu::CallbackResources,
     ) {
         if let Some(renderer) = resources.get::<crate::LineRenderer>() {
-            renderer.compositor.draw_glass(pass);
+            let (rect, radius) = self.in_pixels(info.pixels_per_point);
+            renderer.compositor.draw_glass(pass, rect, radius);
         }
     }
 }
@@ -687,7 +721,11 @@ mod tests {
             0.0,
         );
         // Read the blurred result back: half the panel's size.
-        let result = compositor.chain.as_ref().unwrap().result.texture().clone();
+        let result = compositor
+            .blurred([0.0, 0.0, width as f32, height as f32], 0.0)
+            .unwrap()
+            .texture()
+            .clone();
         let (rw, rh) = (width / 2, height / 2);
         let row = (rw * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
         let readback = device.create_buffer(&wgpu::BufferDescriptor {
@@ -726,5 +764,126 @@ mod tests {
             .filter(|value| (40..=215).contains(*value))
             .count();
         assert!(greys >= 3, "the edge was not softened: {reds:?}");
+    }
+
+    /// The middle pixel's red of `view`, `size` pixels big.
+    fn middle_red(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        view: &wgpu::TextureView,
+        size: [u32; 2],
+    ) -> u8 {
+        let row = (size[0] * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
+        let readback = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("curva glass test"),
+            size: u64::from(row * size[1]),
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        encoder.copy_texture_to_buffer(
+            view.texture().as_image_copy(),
+            wgpu::TexelCopyBufferInfo {
+                buffer: &readback,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(row),
+                    rows_per_image: Some(size[1]),
+                },
+            },
+            wgpu::Extent3d {
+                width: size[0],
+                height: size[1],
+                depth_or_array_layers: 1,
+            },
+        );
+        queue.submit([encoder.finish()]);
+        let slice = readback.slice(..);
+        slice.map_async(wgpu::MapMode::Read, |_| {});
+        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+        let mapped = slice.get_mapped_range().unwrap();
+        mapped[(size[1] / 2 * row + size[0] / 2 * 4) as usize]
+    }
+
+    /// Two glass panels at once each show the blur of what is behind them: every panel blurs
+    /// before any is painted, and with one blur kept for all, only the last showed frost.
+    #[test]
+    fn two_glass_panels_each_keep_their_own_blur() {
+        let Some((device, queue)) = device() else {
+            eprintln!("no graphics adapter to draw with, so not checked");
+            return;
+        };
+        let (width, height) = (128u32, 64u32);
+        let mut compositor = Compositor::new(&device, wgpu::TextureFormat::Rgba8Unorm);
+        let target = compositor.target(&device, [width, height]);
+        // Black on the left half, white on the right.
+        let pixels: Vec<u8> = (0..height)
+            .flat_map(|_| {
+                (0..width).flat_map(|x| {
+                    if x < width / 2 {
+                        [0, 0, 0, 255]
+                    } else {
+                        [255; 4]
+                    }
+                })
+            })
+            .collect();
+        queue.write_texture(
+            target.colour.texture().as_image_copy(),
+            &pixels,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(width * 4),
+                rows_per_image: Some(height),
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+        let (left, right) = ([8.0, 8.0, 40.0, 40.0], [80.0, 8.0, 40.0, 40.0]);
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        compositor.blur_behind(&device, &mut encoder, left, 0.0);
+        compositor.blur_behind(&device, &mut encoder, right, 0.0);
+        queue.submit([encoder.finish()]);
+        let red = |rect: [f32; 4]| {
+            let view = compositor.blurred(rect, 0.0).expect("its blur");
+            middle_red(&device, &queue, view, [20, 20])
+        };
+        assert!(red(left) < 30, "the left panel shows the black behind it");
+        assert!(
+            red(right) > 225,
+            "the right panel shows the white behind it"
+        );
+    }
+
+    /// Every glass panel a window shows keeps its blur: twelve at once, more than the nine of
+    /// the standard layout with Settings, Print and Layouts open (with eight kept, one of those
+    /// nine went sharp every frame).
+    #[test]
+    fn a_dozen_glass_panels_all_keep_their_blur() {
+        let Some((device, _queue)) = device() else {
+            eprintln!("no graphics adapter to draw with, so not checked");
+            return;
+        };
+        let mut compositor = Compositor::new(&device, wgpu::TextureFormat::Rgba8Unorm);
+        compositor.target(&device, [256, 64]);
+        let panels: Vec<[f32; 4]> = (0..12)
+            .map(|i| [i as f32 * 20.0, 8.0, 16.0, 16.0])
+            .collect();
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        // Two frames, each blurring every panel before any is painted.
+        for _ in 0..2 {
+            for &rect in &panels {
+                compositor.blur_behind(&device, &mut encoder, rect, 0.0);
+            }
+        }
+        for &rect in &panels {
+            assert!(
+                compositor.blurred(rect, 0.0).is_some(),
+                "panel at {rect:?} kept its blur"
+            );
+        }
     }
 }

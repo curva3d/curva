@@ -22,7 +22,7 @@ pub(crate) const SCENE_PICTURE_ZOOM: f64 = 0.74;
 /// The height a plan is cut at, in millimetres, as is usual for floor plans.
 pub(crate) const PLAN_CUT_HEIGHT: f32 = 1200.0;
 
-/// What a picture of the model shows: everything, shaded or `ghosted`, seen by `camera`; with
+/// What a picture of the model shows: everything, drawn in `style`, seen by `camera`; with
 /// the camera measured as the picture is, from the middle of the model, so a model far from the
 /// origin pictures as exactly as one at it (#225).
 pub(crate) fn picture_of(
@@ -30,14 +30,14 @@ pub(crate) fn picture_of(
     outlines: &Outlines,
     camera: &Camera,
     aspect: f64,
-    ghosted: bool,
+    style: curva_viewport::Style,
 ) -> (Picture, Camera) {
     let selection = doc.selection();
     let origin = outlines.drawing_origin();
     let camera = camera.measured_from(origin);
     let faces = curva_viewport::face_vertices_from(outlines, &selection, origin);
     let picture = Picture {
-        lines: if faces.is_empty() || ghosted {
+        lines: if faces.is_empty() || !style.solid() {
             curva_viewport::scene_lines_from(outlines, &selection, origin)
         } else {
             curva_viewport::shaded_scene_lines_from(outlines, &selection, origin)
@@ -45,10 +45,7 @@ pub(crate) fn picture_of(
         faces,
         matrix: camera.matrix(aspect),
         light: camera.forward().map(|value| value as f32),
-        ghosted,
-        hidden: false,
-        hidden_lines: false,
-        massing: false,
+        style,
     };
     (picture, camera)
 }
@@ -72,7 +69,12 @@ pub(crate) fn picture_from(
     let outlines = Outlines::of(doc.state());
     let aspect = f64::from(PICTURE_SIZE[0]) / f64::from(PICTURE_SIZE[1]);
     let path = std::env::temp_dir().join(format!("curva-mcp-{}.png", std::process::id()));
-    let (picture, camera) = picture_of(doc, &outlines, camera, aspect, ghosted);
+    let style = if ghosted {
+        curva_viewport::Style::GHOSTED
+    } else {
+        curva_viewport::Style::SHADED
+    };
+    let (picture, camera) = picture_of(doc, &outlines, camera, aspect, style);
     save_bevy_view(picture, &camera, &path)?;
     let bytes = std::fs::read(&path).map_err(|error| error.to_string())?;
     // The picture has been read; a leftover temporary file would do no harm.
@@ -84,9 +86,9 @@ pub(crate) fn picture_from(
 /// Bevy's surfaces with Curva's lines on them. The selection is in the picture's colours.
 fn save_bevy_view(picture: Picture, camera: &Camera, path: &std::path::Path) -> Result<(), String> {
     // The Hidden and Technical display modes draw on white paper, as their faces are (#164).
-    let background = if picture.hidden {
+    let background = if picture.style.light() == Some(curva_viewport::Light::Flat) {
         (theme::PAPER, theme::PAPER)
-    } else if picture.massing {
+    } else if picture.style.light() == Some(curva_viewport::Light::Sun) {
         crate::sheets::MASSING_SKY
     } else {
         (theme::PICTURE_BACKGROUND, theme::PICTURE_BACKGROUND)
@@ -100,17 +102,6 @@ fn save_bevy_view(picture: Picture, camera: &Camera, path: &std::path::Path) -> 
         PICTURE_SIZE,
     )?;
     curva_viewport::save_png(path, PICTURE_SIZE, &pixels)
-}
-
-/// `picture` as `mode` draws it: Hidden and Technical on white paper, Technical with its hidden
-/// lines dotted (#164), Massing as a white study model (#551).
-fn in_mode(picture: Picture, mode: DisplayMode) -> Picture {
-    Picture {
-        hidden: matches!(mode, DisplayMode::Hidden | DisplayMode::Technical),
-        hidden_lines: mode == DisplayMode::Technical,
-        massing: mode == DisplayMode::Massing,
-        ..picture
-    }
 }
 
 /// Runs semicolon-separated command lines and saves a picture of the result: in `style` if given
@@ -138,7 +129,6 @@ pub(crate) fn picture(
             }
         }
     }
-    let ghosted = mode == DisplayMode::Ghosted;
     let outlines = Outlines::of(doc.state());
     let mut camera = view.map_or_else(Camera::default, StandardView::camera);
     if let Some((low, high)) = outlines.bounds() {
@@ -177,8 +167,8 @@ pub(crate) fn picture(
             std::path::Path::new(path),
         )?;
     } else {
-        let (picture, camera) = picture_of(&doc, &outlines, &camera, aspect, ghosted);
-        let picture = in_mode(picture, mode);
+        let style = crate::styles::mode_style(mode);
+        let (picture, camera) = picture_of(&doc, &outlines, &camera, aspect, style);
         save_bevy_view(picture, &camera, std::path::Path::new(path))?;
     }
     for line in processor.log() {
@@ -299,7 +289,7 @@ impl Curva {
 /// per frame, for the owner to choose from (`curva --look-pictures <folder>`): the test building,
 /// and a box, a sphere and a flat four-sided surface as in Rhino's example.
 pub(crate) fn look_pictures(out: &std::path::Path) -> Result<(), String> {
-    use curva_viewport::{Lighting, Look};
+    use curva_viewport::{Lighting, Look, Style};
     let text = |error: curva_kernel::KernelError| error.to_string();
     std::fs::create_dir_all(out).map_err(|error| error.to_string())?;
     let mut building = Document::default();
@@ -351,7 +341,7 @@ pub(crate) fn look_pictures(out: &std::path::Path) -> Result<(), String> {
         camera.frame(low, high);
         camera.zoom(zoom);
         let aspect = f64::from(PICTURE_SIZE[0]) / f64::from(PICTURE_SIZE[1]);
-        let (curva, _) = picture_of(doc, &outlines, &camera, aspect, false);
+        let (curva, _) = picture_of(doc, &outlines, &camera, aspect, Style::SHADED);
         save_picture(
             curva,
             PICTURE_SIZE,
