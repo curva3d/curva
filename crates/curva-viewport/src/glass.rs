@@ -222,8 +222,10 @@ struct BlurChain {
 /// and the scene's size.
 type PanelKey = ([u32; 4], u32, [u32; 2]);
 
-/// The most panels whose blur is kept; a panel being dragged makes a new one each frame.
-const MOST_PANELS: usize = 8;
+/// The most panels whose blur is kept: well over the glass panels one window shows (nine with
+/// the standard layout and Settings, Print and Layouts open; with eight kept, one went sharp
+/// every frame), as a panel being dragged makes a new one each frame.
+const MOST_PANELS: usize = 32;
 
 /// One glass panel's blur: its passes, which hold its textures, and the glass's own bind group.
 struct PanelBlur {
@@ -851,5 +853,34 @@ mod tests {
             red(right) > 225,
             "the right panel shows the white behind it"
         );
+    }
+
+    /// Every glass panel a window shows keeps its blur: twelve at once, more than the nine of
+    /// the standard layout with Settings, Print and Layouts open (with eight kept, one of those
+    /// nine went sharp every frame).
+    #[test]
+    fn a_dozen_glass_panels_all_keep_their_blur() {
+        let Some((device, _queue)) = device() else {
+            eprintln!("no graphics adapter to draw with, so not checked");
+            return;
+        };
+        let mut compositor = Compositor::new(&device, wgpu::TextureFormat::Rgba8Unorm);
+        compositor.target(&device, [256, 64]);
+        let panels: Vec<[f32; 4]> = (0..12)
+            .map(|i| [i as f32 * 20.0, 8.0, 16.0, 16.0])
+            .collect();
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        // Two frames, each blurring every panel before any is painted.
+        for _ in 0..2 {
+            for &rect in &panels {
+                compositor.blur_behind(&device, &mut encoder, rect, 0.0);
+            }
+        }
+        for &rect in &panels {
+            assert!(
+                compositor.blurred(rect, 0.0).is_some(),
+                "panel at {rect:?} kept its blur"
+            );
+        }
     }
 }

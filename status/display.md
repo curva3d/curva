@@ -14,7 +14,7 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 - **Two glass panels at once each frosted** (features stream's report, seen in `--ui-pictures`):
   with Settings and Layouts floating side by side only one showed frost. Every panel prepares
   its blur before any paints, and there was one blur for all, so the last won. Each panel now
-  keeps its own blur, by place and size (the eight most lately used kept). New test: two panels
+  keeps its own blur, by place and size (the 32 most lately used kept). New test: two panels
   over black and white each show what is behind them.
 - **Large scenes drew no faces at all, fixed** (found taking pictures of the test scenes for the
   owner). Bevy packs meshes into shared buffers it grows to 512 MB, past the 256 MB Curva's device
