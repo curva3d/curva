@@ -8,6 +8,7 @@ mod display_toggle;
 mod fill;
 mod insert_edge;
 mod insert_point;
+mod loft;
 mod merge_faces;
 mod offset_subd;
 mod parts;
@@ -26,6 +27,7 @@ use display_toggle::SubDDisplayToggle;
 use fill::Fill;
 use insert_edge::InsertEdge;
 use insert_point::InsertPoint;
+use loft::SubDLoft;
 use merge_faces::MergeFaces;
 use offset_subd::OffsetSubD;
 use stitch::Stitch;
@@ -57,6 +59,7 @@ pub(crate) static COMMANDS: &[crate::commands::CommandDef] = &[
     recipe!("InsertPoint", [], true, InsertPoint),
     recipe!("OffsetSubD", [], true, OffsetSubD),
     recipe!("Bevel", [], true, Bevel),
+    recipe!("SubDLoft", [], true, SubDLoft),
 ];
 
 /// The buttons of the SubD tab, in order (spec `docs/specs/command-groups.md` §2).
@@ -82,4 +85,5 @@ pub(crate) const TAB: &[&str] = &[
     "InsertPoint",
     "OffsetSubD",
     "Bevel",
+    "SubDLoft",
 ];

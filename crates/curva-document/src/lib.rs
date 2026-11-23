@@ -33,6 +33,7 @@ mod repairs;
 pub mod section;
 pub mod shape;
 pub mod sheet;
+pub mod style;
 pub mod tie;
 pub mod units;
 pub use shape::Shape;

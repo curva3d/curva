@@ -1,0 +1,61 @@
+/* Curva's UI kit for the web: the one place the website's and the docs' colours, glass, grain,
+   orange, type and the lean-toward-the-cursor effect are set. Both load this file first
+   (website: Page.astro; docs: astro.config.mjs), so changing it changes every page.
+   Light by default; dark when theme.js (website) or Starlight (docs) sets data-theme="dark", or,
+   without JavaScript, when the system is dark. The elements built from it are shown on /kit/. */
+@font-face { font-family: "Inter"; font-style: normal; font-weight: 400; font-display: swap; src: url("fonts/inter-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-style: normal; font-weight: 600; font-display: swap; src: url("fonts/inter-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-style: normal; font-weight: 700; font-display: swap; src: url("fonts/inter-latin-700-normal.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url("fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2"); }
+
+:root {
+  --sans: Inter, system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  /* Light. The same list is repeated for dark below. */
+  --ink: #000; --paper: #efefef; --on-ink: #fff; --quiet: #cfcfcf;
+  --glass: linear-gradient(140deg, rgba(255,255,255,.32) 0%, rgba(255,255,255,.1) 50%, rgba(222,222,222,.16) 100%); --glass-line: rgba(255,255,255,.95);
+  --glass-shadow: inset 0 1.5px 0 #fff, inset 0 0 0 1px rgba(255,255,255,.45), 0 30px 70px rgba(0,0,0,.16);
+  --grain: url("/assets/frost-dark-specks.png"); --grain-o: .048; --glare: rgba(0,0,0,.07);
+  --hair: rgba(0,0,0,.2); --shot: rgba(255,255,255,.45);
+  /* Curva's orange, for small signals only (the owner prefers the brand orange for text too). */
+  --accent: #E0782F; --accent-text: #E0782F; --accent-on-ink: #E0782F;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --ink: #f4f4f2; --paper: #0b0b0b; --on-ink: #0b0b0b; --quiet: #5a5a58;
+  --glass: linear-gradient(140deg, rgba(255,255,255,.22) 0%, rgba(255,255,255,.06) 55%, rgba(255,255,255,.13) 100%); --glass-line: rgba(255,255,255,.24);
+  --glass-shadow: inset 0 1.5px 0 rgba(255,255,255,.3), inset 0 0 0 1px rgba(255,255,255,.07), 0 30px 70px rgba(0,0,0,.6);
+  --grain: url("/assets/frost-light-specks.png"); --grain-o: .09; --glare: rgba(255,255,255,.14);
+  --hair: rgba(255,255,255,.22); --shot: rgba(255,255,255,.04);
+  --accent: #F08A45; --accent-text: #F08A45; --accent-on-ink: #F08A45;
+  color-scheme: dark;
+}
+/* Without JavaScript, follow the system. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --ink: #f4f4f2; --paper: #0b0b0b; --on-ink: #0b0b0b; --quiet: #5a5a58;
+    --glass: linear-gradient(140deg, rgba(255,255,255,.22) 0%, rgba(255,255,255,.06) 55%, rgba(255,255,255,.13) 100%); --glass-line: rgba(255,255,255,.24);
+    --glass-shadow: inset 0 1.5px 0 rgba(255,255,255,.3), inset 0 0 0 1px rgba(255,255,255,.07), 0 30px 70px rgba(0,0,0,.6);
+    --grain: url("/assets/frost-light-specks.png"); --grain-o: .09; --glare: rgba(255,255,255,.14);
+    --hair: rgba(255,255,255,.22); --shot: rgba(255,255,255,.04);
+    --accent: #F08A45; --accent-text: #F08A45; --accent-on-ink: #F08A45;
+    color-scheme: dark;
+  }
+}
+
+/* Frosted glass: a strong blur, a faint wash and a fine grain (dark specks in light mode, light in dark). */
+.glass {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(39px) saturate(1.15); backdrop-filter: blur(39px) saturate(1.15);
+  border: 1px solid var(--glass-line);
+  box-shadow: var(--glass-shadow);
+}
+.glass::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: var(--grain); background-size: 192px; opacity: var(--grain-o); }
+
+/* Panels and buttons lean toward the cursor, with a soft light where it is (a soft shadow in light
+   mode). lean.js adds .wt and sets --px, --py (-1 to 1), --pd (0 or 1) and --gx, --gy. */
+.wt { transform: perspective(900px) rotateX(calc(var(--py, 0) * -4deg)) rotateY(calc(var(--px, 0) * 4deg)) scale(calc(1 - var(--pd, 0) * .012)); transition: transform .28s cubic-bezier(.2,.7,.2,1), opacity .2s; }
+.wt::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 2; background: radial-gradient(circle at var(--gx, 50%) var(--gy, 50%), var(--glare), transparent 45%); opacity: var(--pd, 0); transition: opacity .3s; }
+.wt.btn { position: relative; transform: perspective(500px) rotateX(calc(var(--py, 0) * -8deg)) rotateY(calc(var(--px, 0) * 8deg)) scale(calc(1 + var(--pd, 0) * .02)); }
+.wt.btn::before { z-index: 0; background: radial-gradient(circle at var(--gx, 50%) var(--gy, 50%), color-mix(in srgb, currentColor 22%, transparent), transparent 60%); }
+.wt.btn > * { position: relative; z-index: 1; }

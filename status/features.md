@@ -16,6 +16,25 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## Features stream — 23 November 2026 (website UI kit)
+
+- **One UI kit for the web, like the app's `ui_kit.rs`:** `website/public/assets/kit.css` holds every
+  colour, the glass, grain, orange, fonts and the lean effect, for the website and the docs (the docs
+  map Starlight onto it in `src/styles/curva.css`). `assets/lean.js` is the one lean script for both.
+- **The elements as components** in `website/src/components/ui/`: Stack and Plate, InfoPanel,
+  Section, Figure, Button, StatusTag, List, DownloadPanel. The home and specialization pages only list
+  their words and drawings.
+- **`/kit/`** shows every element in light and dark (not linked, `noindex`); mockups start there.
+- Checked: every page (home, five specializations, three docs pages; light and dark; 1440 and 390 px
+  wide) is pixel-identical to before, apart from the live release name.
+
+## Features stream — 23 November 2026 (website, stack order)
+
+- **Freeform on top:** the stacks are drawn bottom to top, so the first plate sits on top; the home
+  order is Freeform, Architecture, Urban, Analysis, Publisher (also the sections and README).
+- **New intro line:** "Five specializations, stacked on one model. Sketch the idea in Freeform, then
+  let the Curva specializations give it structure."
+
 ## Features stream — 23 November 2026 (website, the approved frost look)
 
 - **Frosted glass everywhere, as the owner approved it on the review page:** a stronger blur, a

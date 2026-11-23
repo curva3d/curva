@@ -11,6 +11,22 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 ## 23 November 2026
 
 **Done**
+- **Step 6, part 2a: the style model and style files** (owner, 23 November 2026, after mock-ups of
+  the Style panel: "let's build it… focus on the inherent code and make this well done; UI will
+  change after the features stream is done revising the UI look"). The owner's decisions are in
+  `views-and-styles.md` §2.5: three engines (Vector, Occlusion, Rendered); settings per object type
+  (NURBS, Meshes, SubD, Curves, Points, Text, Lights, Clipping planes), Meshes and SubD starting as
+  "Same as NURBS"; one style for 3D views, diagrams, renders and live plans, sections and
+  elevations; a simple panel later, a few choices per section and the rest under More.
+  **Announced, outside the viewport crate (decision B of the spec):** `curva-document` gains a
+  `style` module, `ViewStyle`, where every setting of Rhino 8's display modes has a place (the
+  mock-up's table maps them), plus style files (`.curvastyle`, plain text, one setting a line
+  under its group's heading): unknown settings kept and written back, a bad value keeps its
+  default and is reported with its line, nothing fails to read. The six display modes are
+  built-in styles there; the viewport reads them through `Style::of`, and backgrounds come from
+  the style. Nothing looks different (one colour, the edges' near-black, moved by less than a
+  hundredth to fit a file's 0–255 steps). **Next:** lines carry their kind so a style's widths
+  and colours are applied on the graphics card, then faces per object type, then the engines.
 - **Step 6, styles as settings: part 1, the display modes as built-in styles** (owner, 23
   November 2026: "Let's start on custom display styles"). A view no longer carries five on/off
   switches (shaded, ghosted, hidden, hidden lines, massing); it carries a style

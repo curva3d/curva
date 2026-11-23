@@ -1,0 +1,7 @@
+---
+// A glass frame with a line drawing centred in it, 62% of its height (site.css: .figure).
+import { fig } from '../../data/motifs';
+interface Props { drawing: string }
+const { drawing } = Astro.props;
+---
+<div class="figure glass"><Fragment set:html={fig(drawing)} /></div>
