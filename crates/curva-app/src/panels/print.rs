@@ -3,7 +3,6 @@
 
 use crate::*;
 use curva_commands::{PrintJob, PrintTo};
-use curva_document::drawing::{Mark, Page};
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, TryRecvError};
 
@@ -26,59 +25,6 @@ pub(crate) struct PrintPanel {
     saving: Option<(Receiver<Option<PathBuf>>, PrintJob)>,
     /// The page preview, built once on another thread and kept while nothing changes.
     preview: super::print_preview::Preview,
-}
-
-/// The preview's page drawn into `rect`, white paper with its marks; fills show as outlines.
-fn paint_page(ui: &egui::Ui, page: &Page, rect: egui::Rect) {
-    let painter = ui.painter_at(rect);
-    let [width, height] = page.size;
-    let scale = (rect.width() as f64 / width).min(rect.height() as f64 / height);
-    let paper = egui::Rect::from_center_size(
-        rect.center(),
-        egui::vec2((width * scale) as f32, (height * scale) as f32),
-    );
-    painter.rect_filled(paper, 0.0, egui::Color32::WHITE);
-    let at = |p: [f64; 2]| {
-        egui::pos2(
-            paper.min.x + (p[0] * scale) as f32,
-            paper.max.y - (p[1] * scale) as f32,
-        )
-    };
-    let colour = |c: [f32; 3]| {
-        let [r, g, b] = c.map(|v| (v.clamp(0.0, 1.0) * 255.0) as u8);
-        egui::Color32::from_rgb(r, g, b)
-    };
-    for mark in &page.marks {
-        match mark {
-            Mark::Line {
-                points,
-                closed,
-                colour: c,
-                width,
-                ..
-            } => {
-                let stroke = egui::Stroke::new(((width * scale) as f32).max(0.6), colour(*c));
-                let mut shown: Vec<egui::Pos2> = points.iter().map(|p| at(*p)).collect();
-                if *closed && let Some(first) = shown.first().copied() {
-                    shown.push(first);
-                }
-                painter.add(egui::Shape::line(shown, stroke));
-            }
-            Mark::Fill {
-                contours,
-                colour: c,
-                ..
-            } => {
-                for contour in contours {
-                    let mut shown: Vec<egui::Pos2> = contour.iter().map(|p| at(*p)).collect();
-                    if let Some(first) = shown.first().copied() {
-                        shown.push(first);
-                    }
-                    painter.add(egui::Shape::line(shown, egui::Stroke::new(0.8, colour(*c))));
-                }
-            }
-        }
-    }
 }
 
 /// A box to tick for each layout; the ticked ones keep the Layouts panel's order.
@@ -146,7 +92,7 @@ fn page_preview(
         let aspect = (page.size[1] / page.size[0].max(1e-9)) as f32;
         let height = (width * aspect).min(MOST_PREVIEW_HEIGHT);
         let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::hover());
-        paint_page(ui, page, rect);
+        super::print_preview::paint_page(ui, page, rect);
     }
 }
 
@@ -174,7 +120,7 @@ impl Curva {
             None => layouts.iter().map(|(id, _)| *id).collect(),
         });
         chosen.retain(|id| layouts.iter().any(|(l, _)| l == id));
-        ui.label(egui::RichText::new(say("ui.print.layouts")).strong());
+        ui_kit::section(ui, say("ui.print.layouts"));
         layout_ticks(ui, chosen, &layouts);
         ui.separator();
         print_choices(ui, panel, &say);

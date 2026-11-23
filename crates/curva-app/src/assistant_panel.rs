@@ -43,7 +43,7 @@ impl Curva {
         self.provider_choice(ui);
         let connect = self.provider_details(ui);
         if let Some(error) = &self.assistant.assistant_error {
-            ui.colored_label(theme::ACCENT, error);
+            ui.label(ui_kit::accented(error));
         }
         self.mcp_help(ui);
         if let Some((provider, model)) = connect {
@@ -69,7 +69,7 @@ impl Curva {
                 let chosen = self.assistant.assistant_choice == Some(provider)
                     || (provider == assistant::Provider::OpenAi
                         && self.assistant.assistant_choice == Some(assistant::Provider::Claude));
-                if ui.selectable_label(chosen, say(key)).clicked() {
+                if ui_kit::choice(ui, chosen, say(key)).clicked() {
                     self.assistant.assistant_choice = Some(provider);
                     self.assistant.assistant_error = None;
                     if provider == assistant::Provider::LmStudio {
@@ -178,11 +178,7 @@ impl Curva {
         let connection = self.settings.assistant.clone();
         self.chat_heading(ui, &connection);
         let height = (ui.available_height() - 64.0).max(60.0);
-        egui::ScrollArea::vertical()
-            .max_height(height)
-            .stick_to_bottom(true)
-            .auto_shrink([false, false])
-            .show(ui, |ui| self.chat_lines(ui));
+        ui_kit::scroll_to_bottom(ui, height, |ui| self.chat_lines(ui));
         let mut send = false;
         ui.horizontal(|ui| {
             let field = ui.add(
@@ -209,10 +205,11 @@ impl Curva {
     /// The model connected, with buttons to change it and to start a new conversation.
     fn chat_heading(&mut self, ui: &mut egui::Ui, connection: &assistant::Connection) {
         ui.horizontal(|ui| {
-            ui.colored_label(
-                theme::ACCENT,
-                format!("{} · {}", connection.provider.label(), connection.model),
-            );
+            ui.label(ui_kit::accented(format!(
+                "{} · {}",
+                connection.provider.label(),
+                connection.model
+            )));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .small_button("⟲")
@@ -239,24 +236,23 @@ impl Curva {
         for line in &self.assistant.assistant_lines {
             match line {
                 assistant::Line::User(text) => {
-                    ui.label(egui::RichText::new(text).strong());
+                    ui.label(ui_kit::strong(text));
                 }
                 assistant::Line::Assistant(text) => {
                     ui.label(text);
                 }
                 assistant::Line::Tool(name) => {
-                    ui.colored_label(theme::current().quiet, format!("· {name}"));
+                    ui.label(ui_kit::quiet(format!("· {name}")));
                 }
                 assistant::Line::Error(text) => {
-                    ui.colored_label(theme::ACCENT, text);
+                    ui.label(ui_kit::accented(text));
                 }
             }
         }
         if self.assistant.assistant_busy.is_some() {
-            ui.colored_label(
-                theme::current().quiet,
+            ui.label(ui_kit::quiet(
                 self.text.render(&Message::new("ui.assistant.thinking")),
-            );
+            ));
         }
     }
 

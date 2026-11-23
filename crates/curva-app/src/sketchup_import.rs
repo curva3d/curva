@@ -39,40 +39,43 @@ impl Curva {
             .choices
             .unwrap_or((self.settings.sketchup, self.settings.sketchup_always));
         let say = |key: &'static str| self.text.render(&Message::new(key));
-        let (mut ok, mut cancel) = (false, false);
-        egui::Window::new(say("ui.skp.title"))
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-            .show(ui.ctx(), |ui| {
-                ui.strong(say("ui.skp.faces"));
+        let choices_row = [
+            ui_kit::main_choice(say("ui.skp.ok")),
+            ui_kit::other_choice(say("ui.units.cancel")),
+        ];
+        let answer = ui_kit::dialog(
+            ui.ctx(),
+            "sketchup import",
+            &say("ui.skp.title"),
+            &choices_row,
+            |ui| {
+                ui_kit::section(ui, say("ui.skp.faces"));
                 ui.radio_value(&mut choices.trimmed_planes, true, say("ui.skp.planes"));
                 ui.radio_value(&mut choices.trimmed_planes, false, say("ui.skp.mesh"));
                 if choices.trimmed_planes {
-                    ui.label(
-                        egui::RichText::new(say("ui.skp.planes_warning"))
-                            .small()
-                            .color(theme::current().quiet),
-                    );
+                    ui.label(ui_kit::caption(say("ui.skp.planes_warning")));
                 }
-                ui.separator();
-                ui.strong(say("ui.skp.join"));
-                ui_kit::toggle(ui, &mut choices.join_edges, say("ui.skp.join_edges"));
-                ui.add_enabled(
-                    choices.trimmed_planes,
-                    egui::Checkbox::new(&mut choices.join_faces, say("ui.skp.join_faces")),
-                );
-                ui.separator();
-                ui.strong(say("ui.skp.groups"));
-                ui_kit::toggle(ui, &mut choices.group_layers, say("ui.skp.group_layers"));
-                ui_kit::toggle(ui, &mut choices.add_to_groups, say("ui.skp.add_to_groups"));
-                ui.separator();
-                ui_kit::toggle(ui, &mut always, say("ui.skp.always"));
-                ui.horizontal(|ui| {
-                    ok = ui.button(say("ui.skp.ok")).clicked();
-                    cancel = ui.button(say("ui.units.cancel")).clicked();
+                ui_kit::section(ui, say("ui.skp.join"));
+                ui_kit::chip_row(ui, |ui| {
+                    ui_kit::toggle(ui, &mut choices.join_edges, say("ui.skp.join_edges"));
+                    let planes = choices.trimmed_planes;
+                    ui_kit::toggle_when(
+                        ui,
+                        planes,
+                        &mut choices.join_faces,
+                        say("ui.skp.join_faces"),
+                    );
                 });
-            });
+                ui_kit::section(ui, say("ui.skp.groups"));
+                ui_kit::chip_row(ui, |ui| {
+                    ui_kit::toggle(ui, &mut choices.group_layers, say("ui.skp.group_layers"));
+                    ui_kit::toggle(ui, &mut choices.add_to_groups, say("ui.skp.add_to_groups"));
+                });
+                ui.add_space(ui_kit::ROW_GAP);
+                ui_kit::toggle(ui, &mut always, say("ui.skp.always"));
+            },
+        );
+        let (ok, cancel) = (answer == Some(0), answer == Some(1));
         if ok {
             self.settings.sketchup = choices;
             self.settings.sketchup_always = always;

@@ -1,0 +1,10 @@
+---
+// The exploded axonometric: a stack of glass plates. Give the plates top first; they are drawn
+// bottom to top, so the first one sits on top. Styles: .persp, .stack, .plate in site.css.
+import Plate from './Plate.astro';
+interface Props { plates: { href: string; tag: string; name: string; drawing: string }[] }
+const { plates } = Astro.props;
+---
+<div class="persp"><div class="stack">
+	{plates.map((p, i) => ({ ...p, i })).reverse().map((p) => <Plate href={p.href} tag={p.tag} name={p.name} drawing={p.drawing} index={p.i} />)}
+</div></div>

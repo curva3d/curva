@@ -3,7 +3,6 @@
 pub(crate) mod annotation_styles;
 pub(crate) mod blocks;
 pub(crate) mod frames;
-pub(crate) mod glow;
 pub(crate) mod layer_table;
 pub(crate) mod layer_tools;
 pub(crate) mod layers;
@@ -17,4 +16,3 @@ pub(crate) mod properties;
 pub(crate) mod resize;
 pub(crate) mod title_row;
 pub(crate) mod view_picker;
-pub(crate) mod view_pictures;

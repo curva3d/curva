@@ -9,17 +9,15 @@ impl Curva {
             return;
         };
         let say = |key: &'static str| self.text.render(&Message::new(key));
-        ui.label(egui::RichText::new(say("ui.detail")).strong());
+        ui_kit::section(ui, say("ui.detail"));
         let mut changed = detail.clone();
         egui::Grid::new("detail properties").show(ui, |ui| {
             ui.label(say("ui.detail.projection"));
-            egui::ComboBox::from_id_salt("detail projection")
-                .selected_text(&changed.projection)
-                .show_ui(ui, |ui| {
-                    for key in ["Top", "Front", "Right", "Perspective"] {
-                        ui.selectable_value(&mut changed.projection, key.to_owned(), key);
-                    }
-                });
+            ui_kit::dropdown(ui, "detail projection", changed.projection.clone(), |ui| {
+                for key in ["Top", "Front", "Right", "Perspective"] {
+                    ui_kit::pick(ui, &mut changed.projection, key.to_owned(), key);
+                }
+            });
             ui.end_row();
             if changed.projection == "Perspective" {
                 changed.scale = None;
@@ -28,49 +26,50 @@ impl Curva {
             }
             if let Some(scale) = changed.scale {
                 ui.label(say("ui.detail.scale"));
-                egui::ComboBox::from_id_salt("detail scale")
-                    .selected_text(curva_document::layouts::scale_text(scale))
-                    .show_ui(ui, |ui| {
+                ui_kit::dropdown(
+                    ui,
+                    "detail scale",
+                    curva_document::layouts::scale_text(scale),
+                    |ui| {
                         for n in [
                             1.0, 2.0, 5.0, 10.0, 20.0, 25.0, 50.0, 100.0, 200.0, 250.0, 500.0,
                             1000.0,
                         ] {
                             let value = 1.0 / n;
-                            if ui
-                                .selectable_label(
-                                    (scale - value).abs() < 1e-12,
-                                    curva_document::layouts::scale_text(value),
-                                )
-                                .clicked()
+                            if ui_kit::choice(
+                                ui,
+                                (scale - value).abs() < 1e-12,
+                                curva_document::layouts::scale_text(value),
+                            )
+                            .clicked()
                             {
                                 changed.scale = Some(value);
                             }
                         }
                         for n in [2.0, 5.0, 10.0] {
-                            if ui
-                                .selectable_label(
-                                    (scale - n).abs() < 1e-12,
-                                    curva_document::layouts::scale_text(n),
-                                )
-                                .clicked()
+                            if ui_kit::choice(
+                                ui,
+                                (scale - n).abs() < 1e-12,
+                                curva_document::layouts::scale_text(n),
+                            )
+                            .clicked()
                             {
                                 changed.scale = Some(n);
                             }
                         }
-                    });
+                    },
+                );
                 ui.end_row();
             }
             ui.label(say("ui.detail.display"));
-            egui::ComboBox::from_id_salt("detail display")
-                .selected_text(&changed.display)
-                .show_ui(ui, |ui| {
-                    for mode in ["Wireframe", "Shaded", "Ghosted"] {
-                        ui.selectable_value(&mut changed.display, mode.to_owned(), mode);
-                    }
-                });
+            ui_kit::dropdown(ui, "detail display", changed.display.clone(), |ui| {
+                for mode in ["Wireframe", "Shaded", "Ghosted"] {
+                    ui_kit::pick(ui, &mut changed.display, mode.to_owned(), mode);
+                }
+            });
             ui.end_row();
             ui.label(say("ui.detail.locked"));
-            ui.checkbox(&mut changed.locked, "");
+            ui_kit::tick(ui, &mut changed.locked);
             ui.end_row();
         });
         if changed != detail {
@@ -86,7 +85,7 @@ impl Curva {
             return;
         };
         let say = |key: &'static str| self.text.render(&Message::new(key));
-        ui.label(egui::RichText::new(say("ui.clipping")).strong());
+        ui_kit::section(ui, say("ui.clipping"));
         let mut changed = plane.clone();
         ui_kit::toggle(ui, &mut changed.flipped, say("ui.clipping.flipped"));
         ui.horizontal(|ui| {
@@ -137,7 +136,7 @@ impl Curva {
     ) {
         use curva_document::annotation::Annotation;
         let say = |key: &'static str| self.text.render(&Message::new(key));
-        ui.label(egui::RichText::new(say("ui.leader")).strong());
+        ui_kit::section(ui, say("ui.leader"));
         let mut changed = leader.clone();
         ui.add(
             egui::TextEdit::multiline(&mut changed.content)
@@ -162,7 +161,7 @@ impl Curva {
     ) {
         use curva_document::annotation::Annotation;
         let say = |key: &'static str| self.text.render(&Message::new(key));
-        ui.label(egui::RichText::new(say("ui.dot")).strong());
+        ui_kit::section(ui, say("ui.dot"));
         let mut changed = dot.clone();
         ui.add(
             egui::TextEdit::multiline(&mut changed.content)
@@ -192,17 +191,20 @@ impl Curva {
     ) {
         use curva_document::annotation::Annotation;
         let say = |key: &'static str| self.text.render(&Message::new(key));
-        ui.label(egui::RichText::new(say("ui.hatch")).strong());
+        ui_kit::section(ui, say("ui.hatch"));
         let mut changed = hatch.clone();
         let patterns = self.doc.state().patterns();
-        egui::ComboBox::from_id_salt(("hatch pattern", id))
-            .selected_text(&changed.pattern)
-            .show_ui(ui, |ui| {
-                for pattern in &patterns {
-                    ui.selectable_value(&mut changed.pattern, pattern.name.clone(), &pattern.name)
-                        .on_hover_text(&pattern.description);
-                }
-            });
+        ui_kit::dropdown(ui, ("hatch pattern", id), changed.pattern.clone(), |ui| {
+            for pattern in &patterns {
+                ui_kit::pick(
+                    ui,
+                    &mut changed.pattern,
+                    pattern.name.clone(),
+                    &pattern.name,
+                )
+                .on_hover_text(&pattern.description);
+            }
+        });
         ui.horizontal(|ui| {
             ui.label(say("ui.hatch.scale"));
             ui.add(
@@ -244,7 +246,7 @@ impl Curva {
             _ => {}
         }
         let say = |key: &'static str| self.text.render(&Message::new(key));
-        ui.label(egui::RichText::new(say("ui.dimension")).strong());
+        ui_kit::section(ui, say("ui.dimension"));
         let value = match dimension {
             Annotation::Text(_)
             | Annotation::Leader(_)
@@ -292,7 +294,7 @@ impl Curva {
     ) {
         use curva_document::annotation::{Annotation, TextAlign};
         let say = |key: &'static str| self.text.render(&Message::new(key));
-        ui.label(egui::RichText::new(say("ui.text")).strong());
+        ui_kit::section(ui, say("ui.text"));
         let mut changed = text.clone();
         ui.add(
             egui::TextEdit::multiline(&mut changed.content)
@@ -320,7 +322,7 @@ impl Curva {
     }
 
     pub(crate) fn properties_panel(&mut self, ui: &mut egui::Ui) {
-        ui.heading(self.text.render(&Message::new("ui.properties")));
+        ui_kit::heading(ui, self.text.render(&Message::new("ui.properties")));
         let selection = self.doc.selection();
         if selection.is_empty() {
             ui.label(self.text.render(&Message::new("ui.properties.none")));
@@ -466,18 +468,18 @@ impl Curva {
                 |layer| layer.name.clone(),
             );
         let mut chosen = None;
-        egui::ComboBox::from_label(self.text.render(&Message::new("ui.properties.layer")))
-            .selected_text(shown)
-            .show_ui(ui, |ui| {
+        ui_kit::labelled_dropdown(
+            ui,
+            self.text.render(&Message::new("ui.properties.layer")),
+            shown,
+            |ui| {
                 for layer in &layers {
-                    if ui
-                        .selectable_label(shared == Some(layer.id), &layer.name)
-                        .clicked()
-                    {
+                    if ui_kit::choice(ui, shared == Some(layer.id), &layer.name).clicked() {
                         chosen = Some(layer.id);
                     }
                 }
-            });
+            },
+        );
         if let Some(layer) = chosen {
             self.undoable(|doc| doc.move_to_layer(selection, layer));
         }
@@ -506,12 +508,12 @@ impl Curva {
         ui.horizontal(|ui| {
             ui.label(self.text.render(&Message::new("ui.properties.colour")));
             let by_layer = matches!(own, Some(None));
-            if ui
-                .selectable_label(
-                    by_layer,
-                    self.text.render(&Message::new("ui.width.by_layer")),
-                )
-                .clicked()
+            if ui_kit::choice(
+                ui,
+                by_layer,
+                self.text.render(&Message::new("ui.width.by_layer")),
+            )
+            .clicked()
                 && !by_layer
             {
                 self.undoable(|doc| doc.set_colour(selection, None));

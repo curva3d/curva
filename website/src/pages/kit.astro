@@ -1,0 +1,101 @@
+---
+// Curva's UI kit for the web, on one page: every shared element in its current look, in light and
+// dark (the toggle in the top bar). Not linked and kept out of search engines; mockups start here.
+// The elements live in src/components/ui/, their colours, glass, grain and lean in assets/kit.css.
+import Page from '../components/Page.astro';
+import Stack from '../components/ui/Stack.astro';
+import InfoPanel from '../components/ui/InfoPanel.astro';
+import Section from '../components/ui/Section.astro';
+import StatusTag from '../components/ui/StatusTag.astro';
+import Button from '../components/ui/Button.astro';
+import List from '../components/ui/List.astro';
+import Figure from '../components/ui/Figure.astro';
+import DownloadPanel from '../components/ui/DownloadPanel.astro';
+import { WORDS, SLUGS } from '../data/site';
+import { MOTIFS, POINT_MOTIFS } from '../data/motifs';
+const lang = 'en';
+const w = WORDS[lang];
+const COLOURS = [
+	['--ink', 'Ink: text, buttons, rules'], ['--paper', 'Paper: the page'], ['--accent', 'Orange: small signals only'],
+	['--quiet', 'Quiet: small secondary text'], ['--hair', 'Hairline'],
+];
+---
+<Page lang={lang} kind="kit" title="UI kit · Curva" description="Curva's UI kit for the web." hint="UI kit · Every shared element · Light and dark">
+	<header class="kit-head">
+		<p class="mono kit-label">UI kit</p>
+		<h1 class="kit-title">Written once, used everywhere.</h1>
+		<p class="kit-lede">Every element the website and the docs share. Change one here and every page follows: colours, glass, grain and the lean effect in <code>kit.css</code>, the elements in <code>src/components/ui/</code>.</p>
+	</header>
+
+	<section class="kit-part">
+		<h2 class="kit-h">Colours.</h2>
+		<div class="kit-swatches">
+			{COLOURS.map(([v, t]) => (
+				<div class="kit-swatch"><span class={`kit-chip kit-${v.slice(2)}`}></span><span class="mono">{v}</span><span class="kit-note">{t}</span></div>
+			))}
+		</div>
+	</section>
+
+	<section class="kit-part">
+		<h2 class="kit-h">Type.</h2>
+		<p class="motto kit-motto">{w.motto}</p>
+		<p class="kit-h2">Section title.</p>
+		<p class="band-line">A line under a title.</p>
+		<p class="band-body">Body text for a section: Inter, 17 px on 27 px. Every sentence and headline ends with a full stop.</p>
+		<p class="mono">Mono label · JetBrains Mono · 12 px</p>
+	</section>
+
+	<section class="kit-part">
+		<h2 class="kit-h">Tags, lists and buttons.</h2>
+		<div class="kit-row">
+			<StatusTag text="01 · Out now" live />
+			<StatusTag text="02 · Coming next" />
+			<p class="mono">Plate 2.1</p>
+		</div>
+		<List items={['A list with orange dashes', 'Short items, no full stops', 'Three is plenty']} />
+		<div class="kit-row">
+			<Button href="#" text="Explore Freeform →" />
+			<span class="oses"><a class="os" href="#">macOS</a><a class="os" href="#">Windows</a><a class="os" href="#">Linux</a></span>
+		</div>
+	</section>
+
+	<section class="kit-part">
+		<h2 class="kit-h">Glass panels.</h2>
+		<p class="kit-note">Frosted: a strong blur, a faint wash and a fine grain. They lean toward the cursor, with a soft light (a soft shadow in light mode).</p>
+		<div class="kit-panels">
+			<InfoPanel items={[{ label: w.specs.freeform.status, name: w.specs.freeform.name, line: w.specs.freeform.line, bullets: w.specs.freeform.bullets }]} />
+			<DownloadPanel lang={lang} releases="https://github.com/curva3d/curva/releases" />
+		</div>
+	</section>
+
+	<section class="kit-part kit-stack-part">
+		<h2 class="kit-h">The stack.</h2>
+		<p class="kit-note">Plates are given top first. Move up to pull it apart; hover a plate and the ones above lift so it can be read.</p>
+		<div class="scene"><div class="scene-box">
+			<Stack plates={SLUGS.map((s, i) => ({ href: '#', tag: `0${i + 1} · ${w.specs[s].status}`, name: w.specs[s].name, drawing: MOTIFS[s] }))} />
+		</div></div>
+	</section>
+
+	<section class="kit-part">
+		<h2 class="kit-h">A section.</h2>
+		<div class="bands kit-bands">
+			<Section id="kit-section" status label="01 · Out now" title="Freeform" line={w.specs.freeform.line}
+				body={w.specs.freeform.lede} bullets={w.specs.freeform.bullets} button={{ href: '#', text: 'Explore Freeform →' }}
+				drawing={MOTIFS.freeform} />
+		</div>
+	</section>
+
+	<section class="kit-part">
+		<h2 class="kit-h">Drawings.</h2>
+		<p class="kit-note">Every line drawing in its frame: 62% of the frame's height, centred, so all read at about the same size.</p>
+		{SLUGS.map((s) => (
+			<div class="kit-drawings">
+				<p class="mono kit-label">{w.specs[s].name}</p>
+				<div class="kit-grid">
+					<Figure drawing={MOTIFS[s]} />
+					{POINT_MOTIFS[s].map((d) => <Figure drawing={d} />)}
+				</div>
+			</div>
+		))}
+	</section>
+</Page>

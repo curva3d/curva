@@ -1,9 +1,11 @@
 ---
 // The frame every home-side page shares: head, top bar, the opening screen with the stack and the
-// download panel, then the scrolling sections and the footer.
+// download panel, then the scrolling sections and the footer. The kit page (/kit/) uses the same
+// head, top bar and footer around its own content, and is kept out of search engines.
 // Nothing inline: the pages are served with a strict Content-Security-Policy (public/_headers).
 import { WORDS, href, type Lang, type Slug } from '../data/site';
-interface Props { lang: Lang; slug?: Slug | ''; kind: 'home' | 'spec'; title: string; description: string; hint: string }
+import DownloadPanel from './ui/DownloadPanel.astro';
+interface Props { lang: Lang; slug?: Slug | ''; kind: 'home' | 'spec' | 'kit'; title: string; description: string; hint: string }
 const { lang, slug = '', kind, title, description, hint } = Astro.props;
 const w = WORDS[lang];
 const site = 'https://curva3d.com';
@@ -21,6 +23,7 @@ const stamp = (f: string) => `/assets/${f}?v=` + createHash('sha256').update(rea
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title}</title>
 <meta name="description" content={description}>
+{kind === 'kit' && <meta name="robots" content="noindex">}
 <link rel="canonical" href={site + href(lang, slug)}>
 <link rel="icon" href="/assets/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="icon" href="/assets/favicon-192.png" sizes="192x192" type="image/png">
@@ -38,6 +41,7 @@ const stamp = (f: string) => `/assets/${f}?v=` + createHash('sha256').update(rea
 <meta name="twitter:card" content="summary_large_image">
 <link rel="preload" href="/assets/fonts/inter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/assets/fonts/inter-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href={stamp('kit.css')}>
 <link rel="stylesheet" href={stamp('site.css')}>
 <script is:inline src={stamp('theme.js')}></script>
 </head>
@@ -56,30 +60,17 @@ const stamp = (f: string) => `/assets/${f}?v=` + createHash('sha256').update(rea
 		</button>
 	</nav>
 </header>
-<main id="main">
+{kind === 'kit' ? <main id="main" class="kit-main"><slot /></main> : <main id="main">
 	<section class="hero">
 		<div class="left"><slot name="left" /></div>
 		<div class="scene"><div class="scene-box"><slot name="stack" /></div></div>
 		<div class="right">
 			<slot name="info" />
-			<div class="dl glass" id="download">
-				<a class="dl-btn" href={releases} data-dl-primary data-tpl={w.downloadFor}>
-					<span class="dl-text"><strong data-dl-label>{w.download}</strong><span class="mono" data-dl-file>{w.latest}</span></span>
-					<span class="arrow" aria-hidden="true">↓</span>
-				</a>
-				<div class="dl-row">
-					<span class="mono" data-dl-note data-free={w.free} data-note-mac={w.notes.mac} data-note-win={w.notes.win} data-note-linux={w.notes.linux}>{w.free}</span>
-					<span class="oses" role="group" aria-label={w.system}>
-						<a class="os" href={releases} data-os="mac">macOS</a>
-						<a class="os" href={releases} data-os="win">Windows</a>
-						<a class="os" href={releases} data-os="linux">Linux</a>
-					</span>
-				</div>
-			</div>
+			<DownloadPanel lang={lang} releases={releases} />
 		</div>
 	</section>
 	<div class="bands"><slot name="sections" /></div>
-</main>
+</main>}
 <footer class="foot">
 	<span class="foot-brand">Curva</span>
 	<span>{w.foot}</span>
@@ -90,5 +81,6 @@ const stamp = (f: string) => `/assets/${f}?v=` + createHash('sha256').update(rea
 	</nav>
 </footer>
 <script is:inline src={stamp('site.js')} defer></script>
+<script is:inline src={stamp('lean.js')} defer></script>
 </body>
 </html>

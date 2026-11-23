@@ -1,0 +1,24 @@
+---
+// One scrolling section: its words on one side and a glass frame with the drawing on the other
+// (sides alternate down the page). The label is a dashed status tag, or a plain mono label.
+import StatusTag from './StatusTag.astro';
+import List from './List.astro';
+import Button from './Button.astro';
+import Figure from './Figure.astro';
+interface Props {
+	id: string; label: string; status?: boolean; live?: boolean; title: string; point?: boolean;
+	line?: string; body: string; bullets?: string[]; button?: { href: string; text: string }; drawing: string;
+}
+const { id, label, status = false, live = false, title, point = false, line, body, bullets, button, drawing } = Astro.props;
+---
+<section class="band" id={id}>
+	<div class="band-text">
+		{status ? <StatusTag text={label} live={live} /> : <p class="mono">{label}</p>}
+		<h2 class:list={[{ point }]}>{title}</h2>
+		{line && <p class="band-line">{line}</p>}
+		<p class="band-body">{body}</p>
+		{bullets && <List items={bullets} />}
+		{button && <Button href={button.href} text={button.text} />}
+	</div>
+	<Figure drawing={drawing} />
+</section>

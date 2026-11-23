@@ -123,3 +123,25 @@ a change there changes the whole interface. The owner chose, from mock-ups:
 All other text starts on the panel's left edge. Tabs and group labels start on the same edge as
 the row below them. Icons are centred on their ink, across and down, and a test checks every
 command's icon.
+
+## 12. The glass look (owner's choice, 23 November 2026)
+
+After comparing real renders of several directions against curva3d.com and Apple's Human
+Interface Guidelines, the owner chose deep black frosted glass:
+
+- **Dark:** panels are a dark see-through tint over a strong blur of the model (Apple's frosted
+  glass), with a fine light edge and a soft highlight along the top. The background stays warm
+  grey, not black. Controls inside panels are faint washes of white.
+- **Light:** panels are white and see-through over the same blur, on a clean, slightly cool light
+  grey background (Apple's system greys), with a fine dark edge.
+- **Solid panels** (Settings → Panels → Solid) use the same colours without the blur: deep black,
+  or near-white.
+- **Chosen things** are marked as the chosen specialization in the top bar is: a soft wash of the
+  accent and a thin accent edge, the words in the text colour. No solid fills, no underlines.
+- **Icons** keep their accent strokes.
+- **Text:** body text is 13 points, as macOS uses.
+
+The blur is four halvings deep (about 32 points) with a slight colour boost, in
+`crates/curva-viewport/src/glass.rs`. `curva --ui-pictures <folder>` renders the interface in
+eleven states for checking; `CURVA_PICTURES_LIGHT` and `CURVA_PICTURES_SOLID` take them in the
+light theme or with solid panels.

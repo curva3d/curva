@@ -12,6 +12,22 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// focused fields and highlighted rows.
 pub const ACCENT: Color32 = Color32::from_rgb(0xe0, 0x78, 0x2f);
 
+/// Something live and working, such as a connected agent.
+pub const LIVE: Color32 = Color32::from_rgb(110, 200, 120);
+
+/// The selection window's edge and fill, over the viewports.
+pub const SELECTION_BOX_EDGE: Color32 = Color32::from_rgb(230, 230, 235);
+pub const SELECTION_BOX_FILL: Color32 = Color32::from_rgba_premultiplied(30, 40, 60, 40);
+
+/// Behind pictures for agents: the dark grey they had before Bevy drew them.
+pub const PICTURE_BACKGROUND: Color32 = Color32::from_rgb(28, 31, 36);
+
+/// White paper, behind the Hidden and Technical display modes' pictures.
+pub const PAPER: Color32 = Color32::WHITE;
+
+/// Rhino's Shaded viewport grey, behind the look pictures for comparing with it.
+pub const RHINO_GREY: Color32 = Color32::from_rgb(158, 163, 171);
+
 /// One theme's colours.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Theme {
@@ -39,33 +55,37 @@ pub struct Theme {
     pub viewport: curva_viewport::Palette,
 }
 
-/// The dark theme.
+/// The dark theme (owner, 23 November 2026, after Apple's frosted glass): deep black frosted
+/// panels, a dark see-through tint over a strong blur with a fine light edge, over a warm grey
+/// background; controls faint washes of white.
 pub const DARK: Theme = Theme {
     dark: true,
     window: Color32::from_rgb(0x26, 0x26, 0x24),
     window_low: Color32::from_rgb(0x1f, 0x1f, 0x1d),
-    panel: Color32::from_rgb(0x30, 0x30, 0x2e),
-    glass: Color32::from_rgba_premultiplied(0x20, 0x20, 0x1e, 0xa2),
-    panel_edge: Color32::from_rgb(0x45, 0x44, 0x3f),
-    text: Color32::from_rgb(0xf5, 0xf4, 0xef),
-    quiet: Color32::from_rgb(0xa6, 0xa3, 0x9b),
-    control: Color32::from_rgb(0x3a, 0x39, 0x36),
-    hover: Color32::from_rgb(0x48, 0x47, 0x42),
+    panel: Color32::from_rgb(0x0e, 0x0e, 0x0e),
+    glass: Color32::from_rgba_premultiplied(0x04, 0x04, 0x04, 0x80),
+    panel_edge: Color32::from_rgba_premultiplied(0x26, 0x26, 0x26, 0x26),
+    text: Color32::from_rgb(0xf4, 0xf4, 0xf2),
+    quiet: Color32::from_rgb(0x9a, 0x9a, 0x96),
+    control: Color32::from_rgba_premultiplied(0x12, 0x12, 0x12, 0x12),
+    hover: Color32::from_rgba_premultiplied(0x22, 0x22, 0x22, 0x22),
     viewport: curva_viewport::Palette::DARK,
 };
 
-/// The light theme.
+/// The light theme, after Apple's light frosted glass: white see-through panels over a strong blur
+/// and a clean, slightly cool light grey background (Apple's system greys), a fine dark edge,
+/// controls faint washes of grey.
 pub const LIGHT: Theme = Theme {
     dark: false,
-    window: Color32::from_rgb(0xf5, 0xf4, 0xef),
-    window_low: Color32::from_rgb(0xec, 0xeb, 0xe5),
-    panel: Color32::from_rgb(0xfa, 0xf9, 0xf5),
-    glass: Color32::from_rgba_premultiplied(0xaf, 0xae, 0xab, 0xac),
-    panel_edge: Color32::from_rgb(0xe5, 0xe3, 0xda),
-    text: Color32::from_rgb(0x1f, 0x1e, 0x1d),
-    quiet: Color32::from_rgb(0x6b, 0x6a, 0x64),
-    control: Color32::from_rgb(0xee, 0xec, 0xe5),
-    hover: Color32::from_rgb(0xe2, 0xe0, 0xd7),
+    window: Color32::from_rgb(0xf5, 0xf5, 0xf7),
+    window_low: Color32::from_rgb(0xe1, 0xe1, 0xe6),
+    panel: Color32::from_rgb(0xfb, 0xfb, 0xfa),
+    glass: Color32::from_rgba_premultiplied(0xd9, 0xd9, 0xd9, 0xd9),
+    panel_edge: Color32::from_rgba_premultiplied(0x00, 0x00, 0x00, 0x1c),
+    text: Color32::from_rgb(0x1d, 0x1d, 0x1f),
+    quiet: Color32::from_rgb(0x6e, 0x6e, 0x73),
+    control: Color32::from_rgba_premultiplied(0x00, 0x00, 0x00, 0x0e),
+    hover: Color32::from_rgba_premultiplied(0x00, 0x00, 0x00, 0x1a),
     viewport: curva_viewport::Palette::LIGHT,
 };
 

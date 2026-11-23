@@ -11,6 +11,8 @@ use eframe::egui::{self, Color32, Pos2, Stroke, epaint};
 mod curves;
 mod editing;
 mod files;
+pub(crate) mod houses;
+mod layer_tools;
 mod measuring;
 mod mesh;
 mod organising;
@@ -351,7 +353,8 @@ fn ink_shift(rect: egui::Rect, name: &str) -> egui::Vec2 {
 /// Draws the icon for `name`, trying each group in turn; returns whether there was one.
 fn draw(pen: &Pen<'_>, name: &str) -> bool {
     let key = name.to_lowercase();
-    let groups: [fn(&Pen<'_>, &str) -> bool; 34] = [
+    let groups: [fn(&Pen<'_>, &str) -> bool; 35] = [
+        layer_tools::layer_tools,
         curves::curves_1,
         curves::curves_2,
         curves::curves_3,
