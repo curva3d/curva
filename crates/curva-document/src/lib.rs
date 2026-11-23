@@ -64,6 +64,10 @@ struct FileContents {
     state: State,
     views: Vec<SavedView>,
     cplanes: Vec<SavedCPlane>,
+    /// The model's own styles, each as its `.curvastyle` text; none in files saved before
+    /// styles were kept.
+    #[serde(default, with = "style::kept::as_text")]
+    styles: Vec<style::ViewStyle>,
 }
 
 /// Why a file could not be saved or opened.
@@ -185,6 +189,8 @@ pub struct Document {
     views: Vec<SavedView>,
     /// Construction planes saved under a name. Saved in the file, but not part of undo.
     cplanes: Vec<SavedCPlane>,
+    /// The model's own styles (`style::kept`). Saved in the file, but not part of undo.
+    styles: Vec<style::ViewStyle>,
     /// Objects showing their control points. Not saved, and not part of undo.
     showing_points: BTreeSet<u64>,
     /// The picked control points. Not saved, and not part of undo.
@@ -662,6 +668,7 @@ impl Document {
             state: self.state.clone(),
             views: self.views.clone(),
             cplanes: self.cplanes.clone(),
+            styles: self.styles.clone(),
         };
         let failed = |e: &dyn std::fmt::Display| FileError(e.to_string());
         let json = serde_json::to_vec(&contents).map_err(|e| failed(&e))?;
@@ -720,6 +727,7 @@ impl Document {
             state: contents.state,
             views: contents.views,
             cplanes: contents.cplanes,
+            styles: contents.styles,
             path: Some(path.to_owned()),
             ..Self::default()
         })
@@ -936,6 +944,7 @@ mod tests {
             state: doc.state().clone(),
             views: Vec::new(),
             cplanes: Vec::new(),
+            styles: Vec::new(),
         })
         .unwrap();
         std::fs::write(&old, &text).unwrap();
