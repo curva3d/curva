@@ -203,7 +203,9 @@ impl Curva {
         let snaps = &mut self.snaps;
         let (ortho, grid_snap) = (&mut self.ortho, &mut self.grid_snap);
         let gumball_on = &mut self.gumball_on;
-        let (filter, filter_row) = (&mut self.pick_filter, self.filter_row);
+        let filter_lit = self.pick_filter.in_force() || self.filter_row;
+        let filter_word = text.render(&Message::new("ui.filter"));
+        let mut filter_item = None;
         ui_kit::chip_row(ui, |ui| {
             tick(ui, &mut snaps.end, snap_label(SnapKind::End));
             tick(ui, &mut snaps.mid, snap_label(SnapKind::Mid));
@@ -223,21 +225,16 @@ impl Curva {
             tick(ui, ortho, "ui.ortho");
             tick(ui, grid_snap, "ui.grid_snap");
             tick(ui, gumball_on, "ui.gumball");
-            if filter_row {
-                ui.separator();
-                ui.label(text.render(&Message::new("ui.filter")));
-                tick(ui, &mut filter.points, "ui.filter.points");
-                tick(ui, &mut filter.curves, "ui.filter.curves");
-                tick(ui, &mut filter.surfaces, "ui.filter.surfaces");
-                tick(ui, &mut filter.solids, "ui.filter.solids");
-                let mut disabled = !filter.on;
-                tick(ui, &mut disabled, "ui.filter.disable");
-                filter.on = !disabled;
-            }
+            // Rhino's selection filter, from its own item, as in Rhino's status bar.
+            ui.separator();
+            filter_item = Some(ui.selectable_label(filter_lit, filter_word));
         });
         // The bar is made as tall as all it has drawn by now: the last lines, the prompt and
         // these toggles, so nothing is left empty below them (owner, 22 November 2026).
         self.frames.command_fit = ui.min_rect().height() + 2.0 * PANEL_MARGIN;
+        if let Some(item) = filter_item {
+            self.selection_filter_panel(ui, &item);
+        }
     }
 
     /// The command bar's own lines first, then the history; together they fill the rows, the

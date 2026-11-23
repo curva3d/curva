@@ -261,7 +261,11 @@ impl Curva {
             self.drawn = Some((self.doc.state().clone(), selection));
         }
         // The filter can change without the model changing, so it is passed on every frame.
-        self.outlines.set_filter(self.pick_filter);
+        // Rhino's selection filter is applied to what a pick finds (`filtered_picks`).
+        self.outlines.set_filter(PickFilter {
+            on: false,
+            ..PickFilter::default()
+        });
     }
 
     /// The surfaces and solids the running command would make, as ghosted triangles. The meshes
@@ -422,7 +426,9 @@ impl Curva {
             }
             ViewRequest::Display(mode) => self.panes[self.active].display = mode,
             ViewRequest::ShowSelectionFilter => self.filter_row = !self.filter_row,
-            ViewRequest::ToggleSelectionFilter => self.pick_filter.on = !self.pick_filter.on,
+            ViewRequest::ToggleSelectionFilter => {
+                self.pick_filter.disable = !self.pick_filter.disable;
+            }
         }
     }
 
