@@ -11,6 +11,11 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 ## 23 November 2026
 
 **Done**
+- **Two glass panels at once each frosted** (features stream's report, seen in `--ui-pictures`):
+  with Settings and Layouts floating side by side only one showed frost. Every panel prepares
+  its blur before any paints, and there was one blur for all, so the last won. Each panel now
+  keeps its own blur, by place and size (the 32 most lately used kept). New test: two panels
+  over black and white each show what is behind them.
 - **Meshes' wires drawn as plain one-pixel lines** (owner, on the *Meshes* picture: "hard to
   understand what I'm looking at, is the display glitching?"). Not a glitch: each ring has a
   million triangles and every edge was drawn, piling up over the surface. Rhino 8 does the same
