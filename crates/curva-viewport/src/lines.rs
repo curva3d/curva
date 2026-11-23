@@ -35,11 +35,19 @@ pub(crate) const MM_PER_PIXEL: f32 = 25.4 / 96.0;
 /// The grid and axes stay a pixel thick.
 pub(crate) const GRID_WIDTH: f32 = -1.0;
 
+/// The print width marking a mesh's wires: a pixel wide, drawn as plain one-pixel lines, two
+/// corners a segment instead of six, as a mesh has millions of them (the *Meshes* scene's took
+/// 27.7 ms a frame drawn as smoothed lines, 10.8 ms this way).
+pub(crate) const WIRE_MM: f64 = -1.0;
+/// The [`Vertex::width`] of a mesh's wires ([`WIRE_MM`]): a pixel, told apart from the grid's.
+pub(crate) const WIRE_WIDTH: f32 = -1.001;
+
 /// The [`Vertex::width`] of a line: millimetres, or the default line when `None`. Selected lines
 /// draw a pixel thicker, so they stand out.
 #[must_use]
 pub fn line_width(mm: Option<f64>, selected: bool) -> f32 {
     match mm {
+        Some(mm) if mm == WIRE_MM => WIRE_WIDTH,
         Some(mm) if mm > 0.0 => mm as f32 + if selected { MM_PER_PIXEL } else { 0.0 },
         _ => -(DEFAULT_LINE_PIXELS + if selected { 1.0 } else { 0.0 }),
     }

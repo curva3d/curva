@@ -1,11 +1,15 @@
 //! SubD commands (the mesh stream's folder, `AGENTS.md`; spec `docs/specs/command-groups.md`).
 //! The SubD primitives share their picking with the mesh primitives (`commands/mesh/primitives.rs`).
 
+mod bevel;
 mod bridge;
 mod crease;
 mod display_toggle;
 mod fill;
 mod insert_edge;
+mod insert_point;
+mod merge_faces;
+mod offset_subd;
 mod parts;
 mod stitch;
 mod to_nurbs;
@@ -15,11 +19,15 @@ mod weld;
 use crate::commands::mesh::primitives::{
     SubDBox, SubDCone, SubDCylinder, SubDPlane, SubDSphere, SubDTorus,
 };
+use bevel::Bevel;
 use bridge::Bridge;
 use crease::{Crease, RemoveCrease};
 use display_toggle::SubDDisplayToggle;
 use fill::Fill;
 use insert_edge::InsertEdge;
+use insert_point::InsertPoint;
+use merge_faces::MergeFaces;
+use offset_subd::OffsetSubD;
 use stitch::Stitch;
 use to_nurbs::ToNurbs;
 use to_subd::ToSubD;
@@ -45,6 +53,10 @@ pub(crate) static COMMANDS: &[crate::commands::CommandDef] = &[
     recipe!("Stitch", [], true, Stitch),
     recipe!("Bridge", [], true, Bridge),
     recipe!("InsertEdge", [], true, InsertEdge),
+    recipe!("MergeFaces", [], true, MergeFaces),
+    recipe!("InsertPoint", [], true, InsertPoint),
+    recipe!("OffsetSubD", [], true, OffsetSubD),
+    recipe!("Bevel", [], true, Bevel),
 ];
 
 /// The buttons of the SubD tab, in order (spec `docs/specs/command-groups.md` §2).
@@ -66,4 +78,8 @@ pub(crate) const TAB: &[&str] = &[
     "Stitch",
     "Bridge",
     "InsertEdge",
+    "MergeFaces",
+    "InsertPoint",
+    "OffsetSubD",
+    "Bevel",
 ];
