@@ -162,8 +162,42 @@ impl Work {
     }
 }
 
-/// A bevel before it becomes a SubD or mesh: the working cage, its added faces, the points that go.
-pub(crate) type Bevelled = (Work, Vec<Vec<u32>>, Vec<u32>);
+/// A bevel before it becomes a SubD or mesh.
+pub(crate) struct Bevelled {
+    /// The working cage.
+    pub(crate) work: Work,
+    /// The faces it adds: strips, then the caps.
+    pub(crate) added: Vec<Vec<u32>>,
+    /// The run's points, in order (a loop's first not repeated), which go.
+    pub(crate) gone: Vec<u32>,
+    /// Each run point's row of new points.
+    pub(crate) rows: Vec<Vec<u32>>,
+    /// Each run point's two side points, by its row's start and end.
+    pub(crate) sides: Vec<[u32; 2]>,
+    /// The far points past an open run's two ends.
+    pub(crate) ends: Option<(u32, u32)>,
+}
+
+/// The faces joining `rows` (a loop's when there are no `ends`): `segments` quads between each
+/// two rows next to each other, then a cap round each open end's row and its far point.
+fn strips_and_caps(rows: &[Vec<u32>], ends: Option<(u32, u32)>, segments: usize) -> Vec<Vec<u32>> {
+    let m = rows.len();
+    let joins = if ends.is_none() { m } else { m - 1 };
+    let mut added: Vec<Vec<u32>> = Vec::new();
+    for i in 0..joins {
+        let (ra, rb) = (&rows[i], &rows[(i + 1) % m]);
+        added.extend((0..segments).map(|k| vec![rb[k], ra[k], ra[k + 1], rb[k + 1]]));
+    }
+    if let Some((first, last)) = ends {
+        let mut cap: Vec<u32> = rows[0].iter().rev().copied().collect();
+        cap.push(first);
+        added.push(cap);
+        let mut cap = rows[m - 1].clone();
+        cap.push(last);
+        added.push(cap);
+    }
+    added
+}
 
 /// The bevel of `run` in `cage` (whose edges with the faces using them are `uses`), before it
 /// becomes a SubD or mesh: the working cage, the faces it adds (strips, then the caps), and the
@@ -227,21 +261,15 @@ pub(crate) fn bevel_work(
     for i in 0..m {
         work.move_corners(points[i], side_pairs[i], &rows[i]);
     }
-    let joins = if closed { m } else { m - 1 };
-    let mut added: Vec<Vec<u32>> = Vec::new();
-    for i in 0..joins {
-        let (ra, rb) = (&rows[i], &rows[(i + 1) % m]);
-        added.extend((0..shape.segments).map(|k| vec![rb[k], ra[k], ra[k + 1], rb[k + 1]]));
-    }
-    if let Some((first, last)) = ends {
-        let mut cap: Vec<u32> = rows[0].iter().rev().copied().collect();
-        cap.push(first);
-        added.push(cap);
-        let mut cap = rows[m - 1].clone();
-        cap.push(last);
-        added.push(cap);
-    }
-    Ok((work, added, points))
+    let added = strips_and_caps(&rows, ends, shape.segments);
+    Ok(Bevelled {
+        work,
+        added,
+        gone: points,
+        rows,
+        sides: side_pairs,
+        ends,
+    })
 }
 
 impl SubD {
@@ -256,7 +284,7 @@ impl SubD {
         segments: u32,
         straightness: f64,
     ) -> Result<Self, MeshError> {
-        self.bevelled_run(&edge, amount, segments, straightness)
+        self.bevelled_run(&edge, amount, segments, straightness, true)
     }
 
     /// A run of edges bevelled, as Rhino's Bevel: `run` lists its points in order (a loop
@@ -266,7 +294,8 @@ impl SubD {
     /// open run's ends are capped round their row and the far point of the edge that carried on
     /// past them. Measured: two edges in a row give 32 faces on 35 points; a loop round a box
     /// gives 48 quads on 50 points, with no caps. Every point must be an inner one where four
-    /// edges meet.
+    /// edges meet. With `keep_creases` (Rhino's KeepCreases, on at first) the creases there are
+    /// carried round the bevel (see `subd_bevel_creases`); without, they go with the run's points.
     ///
     /// # Errors
     /// When a point is not such a point, or the bevelled cage is not a valid mesh.
@@ -276,8 +305,9 @@ impl SubD {
         amount: BevelAmount,
         segments: u32,
         straightness: f64,
+        keep_creases: bool,
     ) -> Result<Self, MeshError> {
-        let (work, added, gone) = bevel_work(
+        let bevel = bevel_work(
             self.cage(),
             &self.edge_uses(),
             run,
@@ -285,7 +315,17 @@ impl SubD {
             segments,
             straightness,
         )?;
-        self.carried_to_without(work, added, &gone)
+        let kept = if keep_creases {
+            self.kept_creases(&bevel)
+        } else {
+            Vec::new()
+        };
+        let gone = bevel.gone.clone();
+        let out = self.carried_to_without(bevel.work, bevel.added, &gone)?;
+        // Points after a gone one move down one place for each gone before them.
+        let number = |v: u32| v - index(gone.iter().filter(|&&g| g < v).count());
+        let kept: Vec<[u32; 2]> = kept.iter().map(|e| e.map(number)).collect();
+        Ok(out.with_creases(&kept))
     }
 
     /// The working cage, with `added` faces after its own, as a SubD without the points `gone`.
@@ -375,7 +415,7 @@ mod tests {
             .map(|p| at(&subd, p))
             .to_vec();
         let out = subd
-            .bevelled_run(&run, BevelAmount::Absolute(0.5), 3, 0.0)
+            .bevelled_run(&run, BevelAmount::Absolute(0.5), 3, 0.0, true)
             .unwrap();
         let cage = out.cage();
         assert_eq!((cage.face_count(), cage.vertex_count()), (32, 35));
@@ -408,7 +448,7 @@ mod tests {
         .to_vec();
         run.push(run[0]);
         let out = subd
-            .bevelled_run(&run, BevelAmount::Absolute(0.5), 3, 0.0)
+            .bevelled_run(&run, BevelAmount::Absolute(0.5), 3, 0.0, true)
             .unwrap();
         let cage = out.cage();
         assert_eq!((cage.face_count(), cage.vertex_count()), (48, 50));
