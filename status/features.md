@@ -16,6 +16,21 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## Features stream — 23 November 2026 (website, the approved frost look)
+
+- **Frosted glass everywhere, as the owner approved it on the review page:** a stronger blur, a
+  fainter wash in light mode, a fine grain (`frost-dark-specks.png` / `frost-light-specks.png`), on
+  the website and the docs.
+- **The stack is drawn with flat 2D transforms** (lift, squash, rotate) instead of 3D: it looks the
+  same, and Firefox can blur it; the Firefox-only solid plates are gone.
+- **Panels and buttons lean toward the cursor** with a soft light (a soft shadow in light mode);
+  buttons no longer slide. Docs cards and buttons too (`assets/lean.js`).
+- **The stack reacts only near it** (within 80 px), and the plates above a hovered one lift 25% more.
+- **Drawings:** one size on the plates, between the tag and the name; 62% of the frame's height in
+  every section frame; wide, flat drawings enlarged so all read at about the same size.
+- **Publisher is a full specialization** beside Urban (decision 0041): fifth plate and page, README,
+  `docs/architecture.md`. **Open:** add Urban to the app's specialization switch.
+
 ## Features stream — 23 November 2026 (website, second pass)
 
 - **Orange back to the brand shade** for text too (owner's preference over the deeper, more
