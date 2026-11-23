@@ -18,6 +18,8 @@
   --glass-shadow: inset 0 1px 0 #fff, 0 30px 70px rgba(0,0,0,.16);
   --plate-solid: linear-gradient(160deg, rgba(252,252,252,.94), rgba(244,244,244,.9));
   --hair: rgba(0,0,0,.2); --shot: rgba(255,255,255,.45);
+  /* Curva's orange, for small signals only (the owner prefers the brand orange for text too). */
+  --accent: #E0782F; --accent-text: #E0782F; --accent-on-ink: #E0782F;
   color-scheme: light;
 }
 :root[data-theme="dark"] {
@@ -26,6 +28,7 @@
   --glass-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 30px 70px rgba(0,0,0,.6);
   --plate-solid: linear-gradient(160deg, rgba(38,38,38,.95), rgba(26,26,26,.93));
   --hair: rgba(255,255,255,.22); --shot: rgba(255,255,255,.04);
+  --accent: #F08A45; --accent-text: #F08A45; --accent-on-ink: #F08A45;
   color-scheme: dark;
 }
 /* Without JavaScript, follow the system. */
@@ -36,6 +39,7 @@
     --glass-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 30px 70px rgba(0,0,0,.6);
     --plate-solid: linear-gradient(160deg, rgba(38,38,38,.95), rgba(26,26,26,.93));
     --hair: rgba(255,255,255,.22); --shot: rgba(255,255,255,.04);
+    --accent: #F08A45; --accent-text: #F08A45; --accent-on-ink: #F08A45;
     color-scheme: dark;
   }
   :root:not([data-theme]) .mark-light { display: none; }
@@ -132,8 +136,8 @@ h1, h2, p { margin: 0; }
 }
 
 /* The line drawing on each home plate (src/data/motifs.ts): large, faint and slow, behind the name. */
-.motif { left: 34px; top: 34px; width: 312px; height: 312px; opacity: .2; transition: opacity .3s; position:absolute;pointer-events:none;fill:none;stroke:currentColor;stroke-width:1.1;stroke-linecap:round;stroke-linejoin:round;overflow:visible}
-.motif .thin{stroke-width:1;stroke-dasharray:3 4;opacity:.7}
+.motif { left: 34px; top: 34px; width: 312px; height: 312px; opacity: .2; transition: opacity .3s; position:absolute;pointer-events:none;fill:none;stroke:currentColor;stroke-width: calc(1.1 * var(--lw, 1));stroke-linecap:round;stroke-linejoin:round;overflow:visible}
+.motif .thin{stroke-width: calc(1 * var(--lw, 1));stroke-dasharray: calc(3 * var(--lw, 1)) calc(4 * var(--lw, 1));opacity:.7}
 .motif .d{stroke-dasharray:1;stroke-dashoffset:0}
 .motif .leaf,.motif .sun,.motif .shade{transform-box:view-box}
 .motif .leaf{transform-origin:84px 164px}.motif .sun{transform-origin:100px 150px}.motif .shade{transform-origin:100px 150px}
@@ -149,14 +153,69 @@ h1, h2, p { margin: 0; }
 .motif .leaf{animation:mleaf 6.0s ease-in-out infinite alternate}
 .motif .sun{animation:msun 12s ease-in-out infinite alternate}.motif .shade{animation:mshade 12s ease-in-out infinite alternate}
 
+/* The drawings on the specialization pages' plates (POINT_MOTIFS): the same faint style, sized to
+   their smaller plates, with a few more kinds of movement. --face is the plate's colour, used where a
+   drawn object hides what is behind it. */
+.spec .motif { left: 30px; top: 30px; width: 300px; height: 300px; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme]) .motif { --face: #1d1d1d; } }
+.motif .hbar{transform-box:fill-box;transform-origin:0 50%;animation:mhbar 12s cubic-bezier(.3,0,.2,1) infinite}
+.motif .hb2{animation-delay:.3s}.motif .hb3{animation-delay:.6s}.motif .hb4{animation-delay:.9s}
+@keyframes mhbar{0%,28%{transform:scaleX(0);opacity:1}46%,88%{transform:scaleX(1);opacity:1}100%{transform:scaleX(1);opacity:0}}
+.motif text{fill:currentColor;stroke:none;font:12px "JetBrains Mono",ui-monospace,monospace}
+.motif .leafb{transform-origin:76px 180px}
+.motif .wall path{stroke-width:1.65}
+.motif .grow{transform-box:fill-box;transform-origin:0 50%;animation:mgrow 12s cubic-bezier(.45,0,.35,1) infinite}
+.motif .cap{animation:mcap 12s cubic-bezier(.45,0,.35,1) infinite}
+.motif .wall{animation:mwall 12s linear infinite}
+@keyframes mgrow{0%,8%{transform:scaleX(0)}38%,100%{transform:scaleX(1)}}
+@keyframes mcap{0%,8%{transform:translateX(0)}38%,100%{transform:translateX(150px)}}
+@keyframes mwall{0%,7.9%{opacity:0}8%,88%{opacity:1}100%{opacity:0}}
+.motif .cursor{animation:mcur 12s cubic-bezier(.45,0,.35,1) infinite}
+@keyframes mcur{0%,45.9%{opacity:0;transform:translate(130px,75px)}46%{opacity:1;transform:translate(130px,75px)}55%{transform:translate(68px,32px)}61%{opacity:1;transform:translate(68px,32px)}66%,100%{opacity:0;transform:translate(68px,32px)}}
+.motif .curA{animation:mcurA 12s linear infinite}
+.motif .curA path{stroke-width:1.65}
+@keyframes mcurA{0%,2.9%{opacity:0}3%,45.9%{opacity:1}46%,100%{opacity:0}}
+.motif .pin{fill:currentColor;stroke:none;opacity:0}
+.motif .pin1{animation:mpin1 12s ease infinite}.motif .pin2{animation:mpin2 12s ease infinite}
+@keyframes mpin1{0%,3%{opacity:0}4%,88%{opacity:1}100%{opacity:0}}
+@keyframes mpin2{0%,37%{opacity:0}38%,88%{opacity:1}100%{opacity:0}}
+.motif .solid{fill:var(--face,#f6f6f6)}
+[data-theme="dark"] .motif{--face:#1d1d1d}
+.plate:hover .motif,.plate:focus-visible .motif{--face:var(--ink)}
+.motif .cut{opacity:0;animation:mcut 12s ease infinite}
+@keyframes mcut{0%,56%{opacity:0}64%,88%{opacity:1}100%{opacity:0}}
+.motif .drop{opacity:0;animation:mdrop 12s cubic-bezier(.3,0,.2,1) infinite}
+@keyframes mdrop{0%,58%{opacity:0;transform:translateY(-6px)}61%{opacity:1;transform:translateY(0)}88%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(0)}}
+.motif .leaf3{transform-box:view-box;transform-origin:96px 0;animation:mleaf3 6s ease-in-out infinite alternate}
+@keyframes mleaf3{0%,12%{transform:scaleX(1)}60%,100%{transform:scaleX(-1)}}
+.motif .swingm{fill:none;stroke:#fff;stroke-width:8;stroke-dasharray:1;stroke-dashoffset:1;animation:mswing 6s ease-in-out infinite alternate}
+@keyframes mswing{0%,12%{stroke-dashoffset:1}60%,100%{stroke-dashoffset:0}}
+.motif .scan{transform-box:view-box;transform-origin:30px 100px;animation:mscan 7s ease-in-out infinite alternate}
+@keyframes mscan{0%{transform:rotate(-9deg)}100%{transform:rotate(9deg)}}
+.motif .sweep{animation:msweep 6s ease-in-out infinite alternate}
+@keyframes msweep{0%{transform:translateY(0)}100%{transform:translateY(74px)}}
+.motif .bar{transform-box:fill-box;transform-origin:50% 100%;animation:mbar 5s ease-in-out infinite alternate}
+.motif .b2{animation-delay:-1.2s}.motif .b3{animation-delay:-2.6s}.motif .b4{animation-delay:-3.7s}
+@keyframes mbar{0%{transform:scaleY(.55)}100%{transform:scaleY(1)}}
+.motif .flow{stroke-dasharray: calc(10 * var(--lw, 1)) calc(8 * var(--lw, 1));animation:mflow 2.4s linear infinite}.motif .f2{animation-duration:3.2s}.motif .f3{animation-duration:2.8s}
+@keyframes mflow{to{stroke-dashoffset:-36}}
+@media (prefers-reduced-motion: reduce) {
+  .motif .cap { transform: translateX(150px); }
+  .motif .drop, .motif .pin { opacity: 1; }
+  .motif .curA, .motif .cursor { opacity: 0; }
+  .motif .swingm { stroke-dashoffset: 0; }
+}
+
 /* The panel that shows the plate under the mouse. Only where there is a mouse and room for it;
    the sections further down carry the same words for everyone. */
-.info { display: none; border-radius: 28px; padding: 26px; flex-direction: column; gap: 12px; }
-.info-item { display: none; flex-direction: column; gap: 12px; }
-.info-item.on { display: flex; }
-.info-name { font-size: clamp(44px, 4.6vw, 64px); line-height: .94; font-weight: 700; letter-spacing: -.06em; }
+/* Every plate's text sits in the same spot, hidden but for the one shown, so the panel keeps the
+   height of the longest and doesn't jump as the mouse moves across the plates. */
+.info { display: none; border-radius: 28px; padding: 26px; align-content: start; }
+.info-item { grid-area: 1 / 1; display: flex; flex-direction: column; gap: 12px; visibility: hidden; }
+.info-item.on { visibility: visible; }
+.info-name { font-size: clamp(44px, 4.6vw, 64px); line-height: 1; font-weight: 700; letter-spacing: -.06em; }
 .info-line { font-size: 22px; line-height: 28px; font-weight: 600; }
-.info-title { font-size: clamp(30px, 3vw, 40px); line-height: 1; font-weight: 700; letter-spacing: -.055em; }
+.info-title { font-size: clamp(30px, 3vw, 40px); line-height: 1.08; font-weight: 700; letter-spacing: -.05em; }
 
 /* Download: the big button follows the visitor's system; the chips choose another. */
 .dl { border-radius: 28px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
@@ -192,6 +251,11 @@ h1, h2, p { margin: 0; }
               linear-gradient(to bottom right, transparent calc(50% - .5px), var(--hair) 50%, transparent calc(50% + .5px)),
               var(--shot);
 }
+/* The frame beside each section: the plate's drawing, large and at full strength. */
+.figure { aspect-ratio: 16 / 10; border-radius: 20px; display: grid; place-items: center; overflow: hidden; --face: #f6f6f6; }
+[data-theme="dark"] .figure { --face: #1a1a1a; }
+.figure .motif { position: static; width: min(58%, 340px); height: auto; aspect-ratio: 1; opacity: 1; stroke-width: calc(1.3 * var(--lw, 1)); }
+.figure .motif .wall path, .figure .motif .grow path, .figure .motif .curA path { stroke-width: 1.6; }
 .switch { display: flex; flex-direction: column; border-bottom: 1.5px solid var(--ink); width: 100%; }
 .switch a { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 0; border-top: 1.5px solid var(--ink); font-size: 20px; transition: padding .25s; }
 .switch a:hover { padding-left: 10px; }
@@ -217,9 +281,11 @@ h1, h2, p { margin: 0; }
   .band { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); column-gap: 48px; align-items: center; padding: 64px 0 72px; }
   .band.others { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); align-items: start; }
   .bands .band:nth-child(even):not(.others) .band-text { order: 2; }
+  /* Text and frame swap sides, but the frame keeps the wider column, so every frame is the same size. */
+  .bands .band:nth-child(even):not(.others) { grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); }
 }
 @media (min-width: 720px) and (hover: hover) {
-  .info { display: flex; }
+  .info { display: grid; }
 }
 /* Wide windows: words, stack, panels. The opening screen fills the window. */
 @media (min-width: 1100px) and (min-aspect-ratio: 5/4) {
@@ -230,11 +296,22 @@ h1, h2, p { margin: 0; }
   .scene { grid-column: 2; align-self: end; }
   .right { grid-column: 3; align-self: stretch; justify-content: space-between; }
   .home .left { justify-content: space-between; }
-  .home .right { padding-top: 54px; }
+  /* The panel's top lines up with the top of the page title: on specialization pages the title
+     sits below the back link (36px), a gap (16px), the status tag (29px) and another gap. */
+  .spec .right { padding-top: 97px; }
   .motto { font-size: clamp(62px, 5.8vw, 84px); }
   .spec-name { font-size: clamp(72px, 6.9vw, 100px); }
   .spec-name.long { font-size: clamp(56px, 5.4vw, 78px); }
 }
+/* Orange as small signals (the owner's pick, option C): status tags, plate numbers, list dashes,
+   the short rule above each section title, the panel labels and the hint in the top bar. */
+.status.live { background: var(--accent); border-color: var(--accent); color: #fff; }
+.status:not(.live) { border-color: var(--accent); color: var(--accent-text); }
+li::before { color: var(--accent-text); }
+.band h2::before { content: ""; display: block; width: 32px; height: 4px; border-radius: 2px; background: var(--accent); margin-bottom: 18px; }
+.plate .tag, .info .mono, .hint { color: var(--accent-text); }
+.plate:hover .tag, .plate:focus-visible .tag { color: var(--accent-on-ink); }
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation: none !important; transition: none !important; }

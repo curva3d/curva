@@ -2,7 +2,7 @@
 // The home page: the four specializations as an exploded stack of plates, then a section for each.
 import Page from './Page.astro';
 import { WORDS, SLUGS, href, type Lang } from '../data/site';
-import { MOTIFS } from '../data/motifs';
+import { MOTIFS, fig } from '../data/motifs';
 interface Props { lang: Lang }
 const { lang } = Astro.props;
 const w = WORDS[lang];
@@ -42,7 +42,7 @@ const w = WORDS[lang];
 					<ul>{w.specs[s].bullets.map((b) => <li>{b}</li>)}</ul>
 					<a class="go" href={href(lang, s)}>{w.explore.replace('{name}', w.specs[s].name)}</a>
 				</div>
-				<div class="shot mono">{w.shot}</div>
+				<div class="figure glass"><Fragment set:html={fig(MOTIFS[s])} /></div>
 			</section>
 		))}
 	</Fragment>

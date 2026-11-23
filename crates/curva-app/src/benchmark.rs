@@ -125,24 +125,7 @@ pub(crate) fn benchmark_scene(doc: &mut Document, scene: BenchmarkScene) -> Resu
     }
     let splines = grid(scene.splines, BENCHMARK_SPACING);
     for index in 0..scene.splines {
-        let [x, y, z] = splines(index);
-        // A wave through five points, so it is cut by the spline rule, not the circle rule.
-        let points = (0..5)
-            .map(|k: u8| {
-                let t = f64::from(k) / 4.0;
-                let wave = if k.is_multiple_of(2) {
-                    0.0
-                } else {
-                    BENCHMARK_RADIUS
-                };
-                [
-                    x - BENCHMARK_RADIUS + 2.0 * BENCHMARK_RADIUS * t,
-                    y + wave,
-                    z,
-                ]
-            })
-            .collect();
-        doc.add(Curve::interpolated(points, false).map_err(text)?);
+        doc.add(Curve::interpolated(benchmark_wave(splines(index)), false).map_err(text)?);
     }
     let solids = grid(scene.solids, BENCHMARK_SPACING);
     // With `shapes` set, solids are copies of that many different shapes, moved: copies share
@@ -168,24 +151,91 @@ pub(crate) fn benchmark_scene(doc: &mut Document, scene: BenchmarkScene) -> Resu
     if scene.building {
         benchmark_building(doc)?;
     }
-    let mut tree_triangles = 0;
-    if scene.trees > 0 {
-        let trees = grid(scene.trees, BENCHMARK_TREE_SPACING);
-        let tree = benchmark_tree()?;
-        for body in &tree {
-            tree_triangles += body.mesh().map_err(text)?.triangles.len();
-        }
-        let ids = tree
-            .into_iter()
-            .map(|body| doc.add_body(body))
-            .collect::<Vec<_>>();
-        let (definition, first) = doc.define_block("tree".to_owned(), [0.0; 3], &ids);
-        doc.remove(&[first]);
-        for index in 0..scene.trees {
-            doc.insert_block(definition, curva_document::blocks::moved_by(trees(index)));
-        }
-    }
+    let rings = grid(scene.meshes, MESH_RING_SPACING);
+    let mesh_triangles = add_benchmark_meshes(doc, scene.meshes, rings);
+    let trees = grid(scene.trees, BENCHMARK_TREE_SPACING);
+    let tree_triangles = add_benchmark_trees(doc, scene.trees, trees)?;
     Ok(format!(
+        "{}, {} meshes of {mesh_triangles} triangles in all",
+        scene_summary(&scene, tree_triangles, started.elapsed()),
+        scene.meshes
+    ))
+}
+
+/// `count` mesh rings, the `index`th about `place(index)`, each a torus of 350 by 1,400 quads
+/// (980,000 triangles), curved all over so lighting changes across it; their triangles in all.
+fn add_benchmark_meshes(doc: &mut Document, count: usize, place: impl Fn(usize) -> Point) -> usize {
+    let mut triangles = 0;
+    for index in 0..count {
+        let frame = curva_mesh::Frame {
+            origin: place(index),
+            ..curva_mesh::Frame::world()
+        };
+        let ring = curva_mesh::Mesh::mesh_torus(
+            &frame,
+            MESH_RING_RADIUS,
+            MESH_RING_RADIUS * 0.3,
+            (350, 1400),
+        );
+        triangles += ring.faces().map(|face| face.len() - 2).sum::<usize>();
+        doc.add_shape(curva_document::Shape::Mesh(ring));
+    }
+    triangles
+}
+
+/// A wave through five points around `at`, so it is cut by the spline rule, not the circle rule.
+fn benchmark_wave([x, y, z]: Point) -> Vec<Point> {
+    (0..5)
+        .map(|k: u8| {
+            let t = f64::from(k) / 4.0;
+            let wave = if k.is_multiple_of(2) {
+                0.0
+            } else {
+                BENCHMARK_RADIUS
+            };
+            [
+                x - BENCHMARK_RADIUS + 2.0 * BENCHMARK_RADIUS * t,
+                y + wave,
+                z,
+            ]
+        })
+        .collect()
+}
+
+/// `count` instances of a tree block, the `index`th at `place(index)`; the tree's triangles.
+fn add_benchmark_trees(
+    doc: &mut Document,
+    count: usize,
+    place: impl Fn(usize) -> Point,
+) -> Result<usize, String> {
+    if count == 0 {
+        return Ok(0);
+    }
+    let text = |error: curva_kernel::KernelError| error.to_string();
+    let tree = benchmark_tree()?;
+    let mut tree_triangles = 0;
+    for body in &tree {
+        tree_triangles += body.mesh().map_err(text)?.triangles.len();
+    }
+    let ids = tree
+        .into_iter()
+        .map(|body| doc.add_body(body))
+        .collect::<Vec<_>>();
+    let (definition, first) = doc.define_block("tree".to_owned(), [0.0; 3], &ids);
+    doc.remove(&[first]);
+    for index in 0..count {
+        doc.insert_block(definition, curva_document::blocks::moved_by(place(index)));
+    }
+    Ok(tree_triangles)
+}
+
+/// A line saying what `scene` holds and how long it took to build, for the report.
+fn scene_summary(
+    scene: &BenchmarkScene,
+    tree_triangles: usize,
+    took: std::time::Duration,
+) -> String {
+    format!(
         "scene: {} circles, {} splines, {} solids ({}), {} trees of {tree_triangles} triangles, \
          moved by {:?} mm, built in {:.1} s",
         scene.curves,
@@ -197,8 +247,8 @@ pub(crate) fn benchmark_scene(doc: &mut Document, scene: BenchmarkScene) -> Resu
         },
         scene.trees,
         scene.offset,
-        started.elapsed().as_secs_f64(),
-    ))
+        took.as_secs_f64(),
+    )
 }
 
 /// A small house for cut drawings (spec `views-and-styles.md` §5), in millimetres: a ground
@@ -275,6 +325,12 @@ fn benchmark_house(doc: &mut Document) -> Result<(), String> {
     }
     // Ground around, lower than the floor.
     add([-3000.0, -3000.0, -700.0], [18000.0, 14000.0, 400.0])?;
+    add_house_trees(doc)
+}
+
+/// Three trees around the house, instances of one block: a trunk and a round crown.
+fn add_house_trees(doc: &mut Document) -> Result<(), String> {
+    let text = |error: curva_kernel::KernelError| error.to_string();
     let trunk = curva_kernel::Body::extruded(
         &[Curve::circle([0.0; 3], 180.0).map_err(text)?],
         [0.0, 0.0, 1.0],
@@ -381,6 +437,9 @@ pub(crate) struct BenchmarkScene {
     pub(crate) shapes: usize,
     /// Block instances of one tree.
     pub(crate) trees: usize,
+    /// Mesh objects, rings of about 980,000 triangles each (`--scene meshes`: 16, about 15.7
+    /// million triangles, the *Meshes* scene of `display-on-bevy.md` §2).
+    pub(crate) meshes: usize,
     /// Where the scene is moved to, for drawing far from the origin.
     pub(crate) offset: Point,
     /// Whether the benchmark also selects and deselects an object now and then (`--select`).
@@ -400,6 +459,7 @@ impl BenchmarkScene {
             solids: 10_000,
             shapes: 100,
             trees: 2_000,
+            meshes: 0,
             offset: [0.0; 3],
             select: false,
             building: false,
@@ -419,6 +479,10 @@ impl BenchmarkScene {
             }),
             "building" => Some(Self {
                 building: true,
+                ..Self::default()
+            }),
+            "meshes" => Some(Self {
+                meshes: 16,
                 ..Self::default()
             }),
             "far" => Some(Self {
@@ -553,6 +617,10 @@ pub(crate) const SETTLE_FRAMES: usize = 30;
 /// How far, in points, the benchmark drags the view each frame.
 pub(crate) const BENCHMARK_DRAG: f64 = 4.0;
 
+/// The radius of a mesh ring in a benchmark scene, and the spacing of the rings, in millimetres.
+pub(crate) const MESH_RING_RADIUS: f64 = 40.0;
+pub(crate) const MESH_RING_SPACING: f64 = 120.0;
+
 /// Spacing of the trees in a benchmark scene, in millimetres.
 pub(crate) const BENCHMARK_TREE_SPACING: f64 = 40.0;
 
@@ -572,6 +640,7 @@ mod tests {
             solids: 5,
             shapes: 2,
             trees: 3,
+            meshes: 0,
             offset,
             select: false,
             building: false,
@@ -599,6 +668,13 @@ mod tests {
             large
         );
         assert!(BenchmarkScene::named("huge").is_none());
+    }
+
+    #[test]
+    fn the_meshes_scene_holds_sixteen_mesh_rings() {
+        let meshes = BenchmarkScene::named("meshes").unwrap();
+        assert_eq!(meshes.meshes, 16);
+        assert_eq!(meshes.solids + meshes.curves + meshes.trees, 0);
     }
 
     #[test]

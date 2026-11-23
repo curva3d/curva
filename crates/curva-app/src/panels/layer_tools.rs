@@ -330,15 +330,16 @@ impl Curva {
             *filter = LayerFilter::default();
         }
         ui.separator();
-        ui.checkbox(&mut filter.on, say("ui.layer.filter_on"));
-        ui.checkbox(&mut filter.off, say("ui.layer.filter_off"));
-        ui.checkbox(&mut filter.locked, say("ui.layer.filter_locked"));
-        ui.checkbox(&mut filter.unlocked, say("ui.layer.filter_unlocked"));
-        ui.checkbox(
+        ui_kit::toggle(ui, &mut filter.on, say("ui.layer.filter_on"));
+        ui_kit::toggle(ui, &mut filter.off, say("ui.layer.filter_off"));
+        ui_kit::toggle(ui, &mut filter.locked, say("ui.layer.filter_locked"));
+        ui_kit::toggle(ui, &mut filter.unlocked, say("ui.layer.filter_unlocked"));
+        ui_kit::toggle(
+            ui,
             &mut filter.with_objects,
             say("ui.layer.filter_with_objects"),
         );
-        ui.checkbox(&mut filter.empty, say("ui.layer.filter_empty"));
+        ui_kit::toggle(ui, &mut filter.empty, say("ui.layer.filter_empty"));
     }
 
     /// Rhino's Tools menu, the parts Curva has: picking the selected objects' layer, selecting

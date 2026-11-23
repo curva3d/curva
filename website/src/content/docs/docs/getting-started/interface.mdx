@@ -13,8 +13,8 @@ Curva's window is the model, with panels floating over it. Every panel can be mo
 
 | Piece | Where it starts | What it's for |
 |---|---|---|
-| **Top bar** | Top | Curva's **File** and **Settings** menus, the **specialization dial**, and the name of the open model. Always there. |
-| **Commands** | Under the top bar | The commands for the current specialization, as tabs of buttons. Hover a button to see its name. From version 0.1.3 this panel is called **Operations**. |
+| **Top bar** | Top | Curva's **File** and **Settings** menus, the **specializations**, and the name of the open model. Always there. |
+| **Operations** | Under the top bar | The commands for the current specialization, as tabs of buttons: **Curves**, **Surfaces** and **Solids** for NURBS, then **Mesh** and **SubD**, then **Edit**, **Organise**, **Annotate**, **Layouts**, **Analyze** and **Select**. Hover a button to see its name. |
 | **Viewports** | Behind everything | The model, in four views: Top, Front, Right and Perspective. |
 | **Display** | Top left | How the viewport draws the model: **Wireframe**, **Shaded** or **Ghosted**. |
 | **Layers** | Right | Layers: name, colour, visible, locked, print width. |
@@ -25,9 +25,9 @@ Curva's window is the model, with panels floating over it. Every panel can be mo
 
 The version number sits in small text at the window's bottom right.
 
-### The specialization dial
+### The specializations
 
-Curva is one program whose tools change with the kind of work. The dial in the top bar turns between **Freeform**, **Architecture**, **Publisher** and **Analysis**: click a name, or scroll over the dial. Today only Freeform has its tools. The others show "Coming in a later milestone".
+Curva is one program whose tools change with the kind of work. The top bar shows the four specializations side by side, **Freeform**, **Architecture**, **Publisher** and **Analysis**, with the chosen one lit: click a name to switch. Today only Freeform has its tools. The others say they come in a later milestone.
 
 ## The command bar
 
@@ -39,7 +39,11 @@ Almost everything in Curva is a command, and the command bar is where you run th
 - **The history** above the prompt shows what you've run and what Curva answered.
 - **Under the prompt:** object snaps, **Ortho**, **Grid snap**, the **Gumball** and the selection filter, each one click to turn on or off.
 
-You can also start commands from the buttons in the Commands panel: it's the same command either way.
+You can also start commands from the buttons in the Operations panel: it's the same command either way.
+
+- **A step's options** sit on a row of their own above the prompt.
+- **Clicking where several objects overlap** opens a menu to choose one; <kbd>Tab</kbd> moves through them.
+- **Opening or importing a big file** runs in the background, with a progress line in the command bar and a **Stop** button (<kbd>Esc</kbd> stops too).
 
 ## Moving around
 

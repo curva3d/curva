@@ -10,6 +10,9 @@ pub(crate) struct Frames {
     pub(crate) focus: bool,
     /// The Layers panel's own state: the layer picked in it, the search and the filters.
     pub(crate) layers_ui: super::layer_tools::LayersUi,
+    /// How tall the command bar's contents are with the panel's margins: it is made this tall
+    /// when it is on its own, so no room is left below its snaps.
+    pub(crate) command_fit: f32,
     /// In focus mode, the one panel brought back out by clicking its strip.
     pub(crate) revealed: Option<layout::PanelId>,
     /// Where each panel was last drawn, for hovering over a hidden one.
@@ -163,7 +166,35 @@ fn closes_without_asking(pieces: &[layout::Piece]) -> bool {
         })
 }
 
+/// Which place a measured height belongs to.
+type PlaceTest = fn(&layout::Place) -> bool;
+
 impl Curva {
+    /// Makes the command tabs, docked at the top or bottom on their own, exactly as tall as what
+    /// they hold, as measured when last drawn (owner, 22 November 2026: no room to spare below
+    /// the buttons). Not while a panel is being dragged or resized.
+    fn fit_command_tabs(&mut self) {
+        if self.frames.panel_drag.is_some() {
+            return;
+        }
+        // The command bar too, so no room is left below its snaps (owner, 22 November 2026).
+        let fits: [(PlaceTest, f32); 2] = [
+            (layout::Place::is_command_tabs_alone, self.bar.tabs_fit),
+            (layout::Place::is_command_alone, self.frames.command_fit),
+        ];
+        for (holds, fit) in fits {
+            if fit <= 0.0 {
+                continue;
+            }
+            if let Some(place) = self.layout.places.iter_mut().find(|p| {
+                holds(p) && !p.hidden && matches!(p.dock, layout::Dock::Top | layout::Dock::Bottom)
+            }) && (place.size[1] - fit).abs() > 0.5
+            {
+                place.size[1] = fit;
+            }
+        }
+    }
+
     /// Lays out and draws the panels, sliding hidden ones to their edges (all of them in focus
     /// mode). Returns the area left for the viewports, and how far they may reach to be seen
     /// through glass panels.
@@ -179,6 +210,7 @@ impl Curva {
         self.window_rect = window;
         let full_window = window;
         let window = self.top_bar_slot(ctx, window);
+        self.fit_command_tabs();
         let (placed, free) = self.layout.arrange(window);
         // While a panel is dragged over another, that one lights up to show they would merge.
         let merge_into = self.frames.panel_drag.and_then(|drag| {
@@ -546,7 +578,10 @@ impl Curva {
                         let inner = size - egui::Vec2::splat(2.0 * PANEL_MARGIN);
                         ui.set_min_size(inner);
                         ui.set_max_size(inner);
-                        ui.add_space(TITLE_ROW);
+                        // The command tabs' groups sit in the title row's place (option E).
+                        if !place.is_command_tabs_alone() && !place.is_command_alone() {
+                            ui.add_space(TITLE_ROW);
+                        }
                         self.piece_contents(ui, place.showing());
                     })
                     .response

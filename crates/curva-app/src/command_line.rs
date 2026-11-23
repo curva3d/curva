@@ -198,13 +198,13 @@ impl Curva {
         }
         let text = &self.text;
         let tick = |ui: &mut egui::Ui, value: &mut bool, key: &'static str| {
-            ui.checkbox(value, text.render(&Message::new(key)));
+            ui_kit::toggle(ui, value, text.render(&Message::new(key)));
         };
         let snaps = &mut self.snaps;
         let (ortho, grid_snap) = (&mut self.ortho, &mut self.grid_snap);
         let gumball_on = &mut self.gumball_on;
         let (filter, filter_row) = (&mut self.pick_filter, self.filter_row);
-        ui.horizontal(|ui| {
+        ui_kit::chip_row(ui, |ui| {
             tick(ui, &mut snaps.end, snap_label(SnapKind::End));
             tick(ui, &mut snaps.mid, snap_label(SnapKind::Mid));
             tick(ui, &mut snaps.center, snap_label(SnapKind::Center));
@@ -235,6 +235,9 @@ impl Curva {
                 filter.on = !disabled;
             }
         });
+        // The bar is made as tall as all it has drawn by now: the last lines, the prompt and
+        // these toggles, so nothing is left empty below them (owner, 22 November 2026).
+        self.frames.command_fit = ui.min_rect().height() + 2.0 * PANEL_MARGIN;
     }
 
     /// The command bar's own lines first, then the history; together they fill the rows, the
