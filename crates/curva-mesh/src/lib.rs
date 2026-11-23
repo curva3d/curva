@@ -27,6 +27,7 @@ mod settings;
 mod smooth;
 mod subd;
 mod subd_bevel;
+mod subd_bevel_creases;
 mod subd_edit;
 mod subd_from_body;
 mod subd_loft;
