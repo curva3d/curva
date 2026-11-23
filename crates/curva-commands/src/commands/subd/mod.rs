@@ -1,6 +1,7 @@
 //! SubD commands (the mesh stream's folder, `AGENTS.md`; spec `docs/specs/command-groups.md`).
 //! The SubD primitives share their picking with the mesh primitives (`commands/mesh/primitives.rs`).
 
+mod bevel;
 mod bridge;
 mod crease;
 mod display_toggle;
@@ -18,6 +19,7 @@ mod weld;
 use crate::commands::mesh::primitives::{
     SubDBox, SubDCone, SubDCylinder, SubDPlane, SubDSphere, SubDTorus,
 };
+use bevel::Bevel;
 use bridge::Bridge;
 use crease::{Crease, RemoveCrease};
 use display_toggle::SubDDisplayToggle;
@@ -54,6 +56,7 @@ pub(crate) static COMMANDS: &[crate::commands::CommandDef] = &[
     recipe!("MergeFaces", [], true, MergeFaces),
     recipe!("InsertPoint", [], true, InsertPoint),
     recipe!("OffsetSubD", [], true, OffsetSubD),
+    recipe!("Bevel", [], true, Bevel),
 ];
 
 /// The buttons of the SubD tab, in order (spec `docs/specs/command-groups.md` §2).
@@ -78,4 +81,5 @@ pub(crate) const TAB: &[&str] = &[
     "MergeFaces",
     "InsertPoint",
     "OffsetSubD",
+    "Bevel",
 ];

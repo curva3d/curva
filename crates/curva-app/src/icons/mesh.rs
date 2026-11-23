@@ -148,7 +148,7 @@ pub(super) fn mesh_3(pen: &Pen<'_>, key: &str) -> bool {
             );
         }
         "crease" | "removecrease" | "fill" | "unweldedge" | "weldedge" | "stitch" | "bridge"
-        | "insertedge" | "mergefaces" | "insertpoint" | "offsetsubd" => {
+        | "insertedge" | "mergefaces" | "insertpoint" | "offsetsubd" | "bevel" => {
             subd_edit(pen, key);
         }
         key if key.starts_with("meshboolean") => mesh_boolean(pen, key),
@@ -344,6 +344,12 @@ fn subd_edit(pen: &Pen<'_>, key: &str) {
 /// The later SubD editing commands' icons, drawn as `subd_edit` draws the first; whether `key` is one.
 fn subd_edit_later(pen: &Pen<'_>, key: &str) -> bool {
     match key {
+        "bevel" => {
+            // A cage edge split into a narrow strip.
+            grid(pen, (2.0, 2.0), (20.0, 20.0), 2);
+            pen.path_in(&[(9.5, 2.0), (9.5, 20.0)], false, pen.accent());
+            pen.path_in(&[(12.5, 2.0), (12.5, 20.0)], false, pen.accent());
+        }
         "offsetsubd" => {
             // A cage and a copy moved off it.
             grid(pen, (2.0, 8.0), (14.0, 20.0), 2);

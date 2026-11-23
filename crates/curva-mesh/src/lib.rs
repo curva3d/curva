@@ -24,6 +24,7 @@ mod repair;
 mod settings;
 mod smooth;
 mod subd;
+mod subd_bevel;
 mod subd_edit;
 mod subd_from_body;
 mod subd_merge;
@@ -47,6 +48,7 @@ pub use quad_remesh::{HARD_EDGE_ANGLE, QuadRemeshError, QuadRemeshOptions, QuadT
 pub use settings::{DEFAULT_SUBD_LEVEL, MOST_SUBD_LEVEL, MeshPreset, MeshSettings};
 pub use smooth::{LiveSurface, MAX_LEVELS, Patch, SmoothError};
 pub use subd::{Sharpness, SubD, SubDDisplay, VertexTag};
+pub use subd_bevel::BevelAmount;
 pub use subd_edit::{FillStyle, StitchAt};
 pub use to_nurbs::ToNurbsError;
 pub use to_subd::ToSubdOptions;
