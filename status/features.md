@@ -16,6 +16,13 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## Features stream — 23 November 2026 (website, stack order)
+
+- **Freeform on top:** the stacks are drawn bottom to top, so the first plate sits on top; the home
+  order is Freeform, Architecture, Urban, Analysis, Publisher (also the sections and README).
+- **New intro line:** "Five specializations, stacked on one model. Sketch the idea in Freeform, then
+  let the Curva specializations give it structure."
+
 ## Features stream — 23 November 2026 (website, the approved frost look)
 
 - **Frosted glass everywhere, as the owner approved it on the review page:** a stronger blur, a
