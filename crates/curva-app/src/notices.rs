@@ -137,7 +137,7 @@ impl Curva {
             if glow > 0.0 {
                 ui.ctx().request_repaint();
             }
-            let text = ui_kit::fading_accent(&notice.text, glow);
+            let text = ui_kit::fading_in(&notice.text, glow);
             match notice.action {
                 NoticeAction::None => {
                     ui.label(text);

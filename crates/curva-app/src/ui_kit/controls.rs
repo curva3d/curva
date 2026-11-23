@@ -2,9 +2,7 @@
 //! choices, dropdowns, the opener with its chevron, and icon buttons. Stock egui buttons, fields
 //! and sliders are themed by [`super::apply`] and used as they are.
 
-use super::{
-    CHIP_GAP, CONTROL_PAD, CONTROL_RADIUS, GROUP_GAP, LINE, MARK, PILL_RADIUS, ROW, colours,
-};
+use super::{CHIP_GAP, CONTROL_PAD, CONTROL_RADIUS, LINE, MARK, PILL_RADIUS, ROW, colours};
 use eframe::egui;
 
 /// A named on/off chip: marked as chosen when on (see [`super::chosen_shape`]), like a control
@@ -28,11 +26,22 @@ pub(crate) fn toggle(
         response.mark_changed();
     }
     ui.painter().add(chip_shape(rect, *on, response.hovered()));
+    pressed_wash(ui, &response, rect);
+    let name = galley.text().to_owned();
     let corner = rect.center() - galley.size() / 2.0;
     ui.painter().galley(corner, galley, colours::text());
     let shown = *on;
-    response.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, true, shown, ""));
+    response.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, true, shown, &name));
     response
+}
+
+/// A darker wash over a control while it is pressed, so every click is answered (Apple's
+/// guidelines: custom buttons always have a pressed state).
+fn pressed_wash(ui: &egui::Ui, response: &egui::Response, rect: egui::Rect) {
+    if response.is_pointer_button_down_on() {
+        ui.painter()
+            .rect_filled(rect, CONTROL_RADIUS, colours::press());
+    }
 }
 
 /// A [`toggle`] that can only be changed while `enabled`, greyed out otherwise, for a choice that
@@ -64,10 +73,26 @@ pub(crate) fn chip_row<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> 
     .inner
 }
 
+/// Chips on one line that never wraps, as the status panel's modelling aids: the panel grows to
+/// hold them rather than leave one alone on a row of its own.
+pub(crate) fn chip_line<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = CHIP_GAP;
+        add(ui)
+    })
+    .inner
+}
+
 /// A small button with its name in the accent, for an answer a click gives, such as a command's
 /// options.
 pub(crate) fn option_chip(ui: &mut egui::Ui, text: impl Into<String>) -> egui::Response {
-    ui.add(egui::Button::new(super::accented(text)).small().frame(true))
+    // Outlined and neutral: the accent marks only what is chosen (owner, 23 November 2026).
+    ui.add(
+        egui::Button::new(egui::RichText::new(text))
+            .small()
+            .fill(egui::Color32::TRANSPARENT)
+            .stroke(egui::Stroke::new(LINE, colours::edge())),
+    )
 }
 
 /// A tab among others: lit when it is the one showing.
@@ -133,6 +158,7 @@ fn chosen_label(
     } else if response.hovered() {
         super::hover_wash(ui.painter(), rect);
     }
+    pressed_wash(ui, &response, rect);
     let corner = egui::pos2(
         rect.min.x + CONTROL_PAD,
         rect.center().y - galley.size().y / 2.0,
@@ -140,65 +166,6 @@ fn chosen_label(
     ui.painter().galley(corner, galley, colours::text());
     response.widget_info(|| egui::WidgetInfo::selected(egui::Role::Tab, true, chosen, ""));
     response
-}
-
-/// A row of group names, small, the chosen one strong and marked as chosen, the mark gliding to
-/// it when the choice changes; the others quiet. Returns the one clicked, if another, and the
-/// row's rectangle.
-pub(crate) fn group_tabs(
-    ui: &mut egui::Ui,
-    names: &[String],
-    chosen: usize,
-) -> (Option<usize>, egui::Rect) {
-    // The mark goes under the names, so it is kept a place before them.
-    let behind = ui.painter().add(egui::Shape::Noop);
-    let row = ui.horizontal(|ui| {
-        // The names start where a tab button's words do, past its padding, so they stand right
-        // over the tabs below (owner, 22 November 2026).
-        let padding = ui.spacing().button_padding.x;
-        super::with_gap(ui, 0.0, |ui| ui.add_space(padding));
-        ui.spacing_mut().item_spacing.x = GROUP_GAP;
-        let mut clicked = None;
-        let mut chosen_rect = None;
-        for (index, name) in names.iter().enumerate() {
-            let text = egui::RichText::new(name).small();
-            let text = if index == chosen {
-                text.strong()
-            } else {
-                text.weak()
-            };
-            let response = ui
-                .add(
-                    egui::Label::new(text)
-                        .selectable(false)
-                        .sense(egui::Sense::click()),
-                )
-                .on_hover_cursor(egui::CursorIcon::PointingHand);
-            if index == chosen {
-                chosen_rect = Some(response.rect);
-            }
-            if response.clicked() && index != chosen {
-                clicked = Some(index);
-            }
-        }
-        (clicked, chosen_rect)
-    });
-    let (clicked, chosen_rect) = row.inner;
-    if let Some(chosen) = chosen_rect {
-        let ctx = ui.ctx();
-        let id = ui.scope_id().with("tab mark");
-        let left = ctx.animate_value_with_time(id.with("left"), chosen.min.x, 0.25);
-        let width = ctx.animate_value_with_time(id.with("width"), chosen.width(), 0.25);
-        let mark = egui::Rect::from_min_size(
-            egui::pos2(left, chosen.min.y),
-            egui::vec2(width, chosen.height()),
-        );
-        ui.painter().set(
-            behind,
-            super::chosen_shape(mark.expand2(egui::vec2(6.0, 2.0))),
-        );
-    }
-    (clicked, row.response.rect)
 }
 
 /// Room either side of a name inside its part of a pill, above and below it, and between the
@@ -379,28 +346,104 @@ pub(crate) fn icon_button(ui: &mut egui::Ui, name: &str, size: f32, hint: &str) 
     if response.hovered() {
         super::hover_wash(ui.painter(), rect);
     }
+    pressed_wash(ui, &response, rect);
     crate::icons::paint(ui.painter(), rect.shrink(size * 0.15), name);
+    // Named for screen readers by what it does, as its tooltip says.
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, hint));
     response.on_hover_text(hint)
 }
 
 /// A small control drawn as a mark, such as a panel's hide or close: a clickable area at `rect`
-/// with `mark` drawn in the quiet colour, or the accent under the pointer.
+/// with `mark` drawn in the quiet colour, or the accent under the pointer. It shows only while
+/// the pointer is `near` (over its panel), fading in, so resting panels stay quiet (Apple's
+/// guidelines: controls appear when wanted).
 pub(crate) fn mark_button(
     ui: &egui::Ui,
     rect: egui::Rect,
     id: impl std::hash::Hash + std::fmt::Debug,
     hint: String,
+    near: bool,
     mark: impl FnOnce(&egui::Painter, egui::Pos2, egui::Stroke),
 ) -> egui::Response {
-    let response = ui
-        .interact(rect, ui.scope_id().with(id), egui::Sense::click())
-        .on_hover_text(hint);
-    mark(
-        ui.painter(),
-        rect.center(),
-        colours::mark(MARK, response.hovered()),
-    );
+    let id = ui.scope_id().with(id);
+    let shown = super::fade(ui.ctx(), id.with("shown"), near);
+    let response = ui.interact(rect, id, egui::Sense::click());
+    if shown <= 0.0 {
+        return response;
+    }
+    let response = response.on_hover_text(hint);
+    let stroke = colours::mark(MARK, response.hovered());
+    let stroke = egui::Stroke::new(stroke.width, stroke.color.gamma_multiply(shown));
+    mark(ui.painter(), rect.center(), stroke);
     response
+}
+
+/// Closely related choices side by side in one control, the chosen one marked: Apple's segmented
+/// control, for the command groups and for settings such as Theme and Units. Returns the one
+/// clicked, if another.
+pub(crate) fn segmented(ui: &mut egui::Ui, names: &[String], chosen: usize) -> Option<usize> {
+    let mut clicked = None;
+    egui::Frame::new()
+        .fill(colours::control())
+        .corner_radius(CONTROL_RADIUS)
+        .inner_margin(2)
+        .show(ui, |ui| {
+            super::with_gap(ui, super::TIGHT_GAP, |ui| {
+                ui.horizontal(|ui| {
+                    for (index, name) in names.iter().enumerate() {
+                        let response = segment(ui, index == chosen, name);
+                        if response.clicked() && index != chosen {
+                            clicked = Some(index);
+                        }
+                    }
+                });
+            });
+        });
+    clicked
+}
+
+/// One segment of a [`segmented`] control.
+fn segment(ui: &mut egui::Ui, chosen: bool, name: &str) -> egui::Response {
+    let galley = super::galley(
+        ui,
+        name.to_owned(),
+        egui::TextStyle::Button.resolve(ui.style()),
+    );
+    let size = egui::vec2(galley.size().x + 2.0 * CONTROL_PAD, ROW - 4.0);
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    if chosen {
+        super::chosen_mark(ui.painter(), rect);
+    } else if response.hovered() {
+        super::hover_wash(ui.painter(), rect);
+    }
+    pressed_wash(ui, &response, rect);
+    let at = rect.center() - galley.size() / 2.0;
+    ui.painter().galley(at, galley, colours::text());
+    let named = name.to_owned();
+    response.widget_info(|| egui::WidgetInfo::selected(egui::Role::Tab, true, chosen, &named));
+    response
+}
+
+/// A choice between two, as a segmented control: `words[0]` when `on` is false, `words[1]` when
+/// true. Returns whether it changed.
+pub(crate) fn either(ui: &mut egui::Ui, on: &mut bool, words: [String; 2]) -> bool {
+    match segmented(ui, &words, usize::from(*on)) {
+        Some(index) => {
+            *on = index == 1;
+            true
+        }
+        None => false,
+    }
+}
+
+/// A thin upright line between groups of controls in a row, such as the command groups.
+pub(crate) fn divider(ui: &mut egui::Ui) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(13.0, ROW), egui::Sense::hover());
+    ui.painter().vline(
+        rect.center().x,
+        rect.shrink2(egui::vec2(0.0, 3.0)).y_range(),
+        egui::Stroke::new(LINE, colours::edge()),
+    );
 }
 
 #[cfg(test)]

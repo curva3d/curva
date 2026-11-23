@@ -64,11 +64,6 @@ pub(crate) fn opener_edge() -> Color32 {
     theme::ACCENT.gamma_multiply(0.55)
 }
 
-/// A strip's scroll handle, quiet so it never draws the eye.
-pub(crate) fn scroll_handle() -> Color32 {
-    theme::current().quiet.gamma_multiply(0.6)
-}
-
 /// The outline of where a dragged panel would dock.
 pub(crate) fn dock_edge() -> Color32 {
     theme::ACCENT.gamma_multiply(0.6)
@@ -124,4 +119,32 @@ pub(crate) fn sheet() -> Color32 {
 /// is on: the accent, fainter than [`chosen_fill`].
 pub(crate) fn related_fill() -> Color32 {
     theme::ACCENT.gamma_multiply(0.10)
+}
+
+/// A control being pressed: a step stronger than [`hover`], so a click is always answered.
+pub(crate) fn press() -> Color32 {
+    if theme::current().dark {
+        Color32::from_white_alpha(52)
+    } else {
+        Color32::from_black_alpha(38)
+    }
+}
+
+/// Errors and destructive actions: red, never the accent, so orange keeps one meaning
+/// (Apple's guidelines; owner, 23 November 2026).
+pub(crate) fn danger() -> Color32 {
+    if theme::current().dark {
+        Color32::from_rgb(0xef, 0x6f, 0x61)
+    } else {
+        Color32::from_rgb(0xc0, 0x39, 0x2b)
+    }
+}
+
+/// The dim over the window behind a dialog.
+pub(crate) fn backdrop() -> Color32 {
+    if theme::current().dark {
+        Color32::from_black_alpha(82)
+    } else {
+        Color32::from_black_alpha(46)
+    }
 }

@@ -7,6 +7,7 @@ use crate::{Camera, Outlines};
 mod guides;
 use curva_kernel::{Curve, Point, closest_between};
 pub use guides::Guides;
+use std::f64::consts::TAU;
 
 /// How close to something the cursor must be to snap to it, in pixels.
 const SNAP_REACH: f64 = 12.0;
@@ -36,6 +37,10 @@ pub enum SnapKind {
     Perpendicular,
     /// The closest point on a curve.
     Near,
+    /// A point object, as Rhino's Point snap.
+    Point,
+    /// A quarter of the way round a circle or arc along its own axes, as Rhino's Quad snap.
+    Quad,
     /// A point along a guideline from a held point, away from any crossing, as Rhino's
     /// SmartTrack runs the pointer along its tracking line (#512, #547). Shown by the guideline
     /// itself, with no name.
@@ -58,6 +63,15 @@ pub struct SnapSet {
     pub perpendicular: bool,
     /// The closest point on a curve.
     pub near: bool,
+    /// Point objects.
+    pub point: bool,
+    /// Quarter points of circles and arcs.
+    pub quad: bool,
+    /// All object snaps at once, as Rhino's Osnap switch: off leaves the kinds as they are but
+    /// uses none of them.
+    pub on: bool,
+    /// Guidelines from held points, as Rhino's SmartTrack switch.
+    pub track: bool,
     /// Only points that can be seen, not hidden behind a face: on in shaded and ghosted views,
     /// off in wireframe ones, where everything can be seen. Set by the view, not a checkbox.
     pub visible_only: bool,
@@ -73,6 +87,10 @@ impl Default for SnapSet {
             intersection: true,
             perpendicular: true,
             near: false,
+            point: true,
+            quad: false,
+            on: true,
+            track: true,
             visible_only: false,
         }
     }
@@ -80,16 +98,19 @@ impl Default for SnapSet {
 
 impl SnapSet {
     fn has(&self, kind: SnapKind) -> bool {
-        match kind {
+        let wanted = match kind {
             SnapKind::End => self.end,
             SnapKind::Mid => self.mid,
             SnapKind::Center => self.center,
             SnapKind::Intersection => self.intersection,
             SnapKind::Perpendicular => self.perpendicular,
             SnapKind::Near => self.near,
-            // Guidelines come from held points, which are on whenever there are any.
-            SnapKind::Track => true,
-        }
+            SnapKind::Point => self.point,
+            SnapKind::Quad => self.quad,
+            // Guidelines have their own switch, apart from the object snaps.
+            SnapKind::Track => return self.track,
+        };
+        self.on && wanted
     }
 }
 
@@ -147,10 +168,26 @@ fn half_way(points: &[Point]) -> Option<Point> {
     None
 }
 
+/// The quarter points of a circle or arc turning `sweep` from `x` towards `y`, short of a full
+/// turn, measured along its own axes.
+fn quarters(centre: Point, radius: f64, x: Point, y: Point, sweep: f64) -> Vec<Site> {
+    (0..4)
+        .map(|quarter| f64::from(quarter) * std::f64::consts::FRAC_PI_2)
+        // An arc's own ends are End snaps already.
+        .filter(|angle| *angle < sweep - 1e-9 && (*angle > 0.0 || sweep >= TAU - 1e-9))
+        .map(|angle| {
+            let (sin, cos) = angle.sin_cos();
+            let at =
+                std::array::from_fn(|axis| centre[axis] + radius * (cos * x[axis] + sin * y[axis]));
+            site(SnapKind::Quad, at)
+        })
+        .collect()
+}
+
 /// The fixed snap places on a curve, given the points it is drawn through.
 pub(crate) fn sites_of(curve: &Curve, points: &[Point]) -> Vec<Site> {
     match curve {
-        Curve::Point { at } => vec![site(SnapKind::End, *at)],
+        Curve::Point { at } => vec![site(SnapKind::Point, *at)],
         Curve::Line { .. } | Curve::Polyline { .. } => points
             .iter()
             .map(|p| site(SnapKind::End, *p))
@@ -160,14 +197,28 @@ pub(crate) fn sites_of(curve: &Curve, points: &[Point]) -> Vec<Site> {
                     .map(|p| site(SnapKind::Mid, along(p[0], p[1], 0.5))),
             )
             .collect(),
-        Curve::Circle { centre, .. } => vec![site(SnapKind::Center, *centre)],
-        Curve::Arc { centre, .. } => points
+        Curve::Circle {
+            centre,
+            radius,
+            x,
+            y,
+        } => std::iter::once(site(SnapKind::Center, *centre))
+            .chain(quarters(*centre, *radius, *x, *y, TAU))
+            .collect(),
+        Curve::Arc {
+            centre,
+            radius,
+            x,
+            y,
+            sweep,
+        } => points
             .first()
             .into_iter()
             .chain(points.last())
             .map(|p| site(SnapKind::End, *p))
             .chain(half_way(points).map(|p| site(SnapKind::Mid, p)))
             .chain(std::iter::once(site(SnapKind::Center, *centre)))
+            .chain(quarters(*centre, *radius, *x, *y, *sweep))
             .collect(),
         Curve::Nurbs { .. } => {
             let open = points.first() != points.last();
@@ -707,6 +758,10 @@ mod tests {
             intersection: kind == SnapKind::Intersection,
             perpendicular: kind == SnapKind::Perpendicular,
             near: kind == SnapKind::Near,
+            point: kind == SnapKind::Point,
+            quad: kind == SnapKind::Quad,
+            on: true,
+            track: true,
             visible_only: false,
         }
     }
@@ -846,6 +901,34 @@ mod tests {
         )
         .unwrap();
         assert!(close(hit.point, [20.0, 0.0, 0.0]), "{:?}", hit.point);
+    }
+
+    #[test]
+    fn quad_finds_the_quarter_points_of_a_circle() {
+        let circle = Curve::circle([0.0; 3], 10.0).unwrap();
+        let shapes = outlines(vec![circle]);
+        let hit = snap_by(&shapes, [0.0, 10.0, 0.0], only(SnapKind::Quad), None).unwrap();
+        assert_eq!(hit.kind, SnapKind::Quad);
+        assert!(close(hit.point, [0.0, 10.0, 0.0]));
+    }
+
+    #[test]
+    fn point_finds_a_point_object() {
+        let shapes = outlines(vec![Curve::Point {
+            at: [5.0, 5.0, 0.0],
+        }]);
+        let hit = snap_by(&shapes, [5.0, 5.0, 0.0], only(SnapKind::Point), None).unwrap();
+        assert_eq!(hit.kind, SnapKind::Point);
+    }
+
+    #[test]
+    fn osnap_off_uses_no_object_snaps() {
+        let shapes = outlines(vec![line([0.0; 3], [30.0, 0.0, 0.0])]);
+        let set = SnapSet {
+            on: false,
+            ..only(SnapKind::End)
+        };
+        assert_eq!(snap_by(&shapes, [30.0, 0.0, 0.0], set, None), None);
     }
 
     #[test]

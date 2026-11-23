@@ -199,15 +199,20 @@ impl Curva {
             layout::Edge::Left => egui::vec2(-1.0, 0.0),
             layout::Edge::Right => egui::vec2(1.0, 0.0),
         };
+        // Shown only while the pointer is over the panel, so resting panels stay quiet.
+        let near = ui
+            .ctx()
+            .pointer_hover_pos()
+            .is_some_and(|at| rect.contains(at));
         let hint = self.text.render(&Message::new("ui.panel.hide"));
-        let hidden = ui_kit::mark_button(ui, hide, "hide", hint, |painter, at, stroke| {
+        let hidden = ui_kit::mark_button(ui, hide, "hide", hint, near, |painter, at, stroke| {
             ui_kit::chevron(painter, at, towards, stroke);
         });
         if hidden.clicked() {
             event = Some(PanelEvent::Hide);
         }
         let hint = self.text.render(&Message::new("ui.panel.close"));
-        if ui_kit::mark_button(ui, close, "close", hint, ui_kit::cross).clicked() {
+        if ui_kit::mark_button(ui, close, "close", hint, near, ui_kit::cross).clicked() {
             event = Some(PanelEvent::Close);
         }
         event

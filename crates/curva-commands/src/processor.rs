@@ -33,6 +33,8 @@ pub struct Processor {
     /// Whether a click just used what was being typed, so the interface clears it.
     typed_used: bool,
     log: Vec<String>,
+    /// Which lines of the log are errors, by index, so the interface can show them as errors.
+    error_lines: Vec<usize>,
     text: Translations,
     view_requests: std::collections::VecDeque<ViewRequest>,
     /// Whether the interface shows file dialogs; off for scripts and agents.
@@ -54,6 +56,7 @@ impl Default for Processor {
             pending_number: None,
             typed_used: false,
             log: Vec::new(),
+            error_lines: Vec::new(),
             text: Translations::english(),
             view_requests: std::collections::VecDeque::new(),
             dialogs: false,
@@ -363,7 +366,16 @@ impl Processor {
 
     fn say(&mut self, message: &Message) {
         let line = self.text.render(message);
+        if message.key.starts_with("error.") {
+            self.error_lines.push(self.log.len());
+        }
         self.log.push(line);
+    }
+
+    /// Whether line `index` of the log is an error, which the interface shows as one.
+    #[must_use]
+    pub fn is_error_line(&self, index: usize) -> bool {
+        self.error_lines.binary_search(&index).is_ok()
     }
 
     /// Handles a line from the command line, including Enter on an empty line.
@@ -1170,6 +1182,17 @@ mod tests {
         processor.submit(&mut doc, "nonsense");
         assert!(processor.log()[0].contains("nonsense"));
         assert!(!processor.is_running());
+    }
+
+    /// Errors are known as errors, so the command bar can show them in red, apart from notes.
+    #[test]
+    fn errors_are_marked_and_notes_are_not() {
+        let mut doc = Document::default();
+        let mut processor = Processor::default();
+        processor.note("Saved".to_owned());
+        processor.submit(&mut doc, "nonsense");
+        assert!(!processor.is_error_line(0));
+        assert!(processor.is_error_line(1));
     }
 
     #[test]

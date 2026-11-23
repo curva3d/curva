@@ -150,41 +150,6 @@ pub(crate) fn scroll_to_bottom<R>(
         .inner
 }
 
-/// A row that scrolls sideways when it is wider than its room: a thin quiet bar under it (not
-/// over it), and the row fading out at an edge where more waits (owner, 22 November 2026).
-pub(crate) fn strip<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
-    let style = ui.style_mut();
-    style.spacing.scroll = egui::style::ScrollStyle {
-        bar_width: 3.0,
-        handle_min_length: 24.0,
-        bar_inner_margin: 3.0,
-        bar_outer_margin: 0.0,
-        floating: false,
-        ..egui::style::ScrollStyle::solid()
-    };
-    for widget in [
-        &mut style.visuals.widgets.inactive,
-        &mut style.visuals.widgets.hovered,
-        &mut style.visuals.widgets.active,
-    ] {
-        widget.bg_fill = colours::scroll_handle();
-    }
-    style.visuals.extreme_bg_color = egui::Color32::TRANSPARENT;
-    let out = egui::ScrollArea::horizontal().show(ui, |ui| ui.horizontal(add).inner);
-    let (seen, offset, full) = (
-        out.inner_rect,
-        out.state.clamped_offset().x,
-        out.content_size.x,
-    );
-    if offset > 1.0 {
-        super::edge_fade(ui.painter(), seen, seen.min.x, 1.0);
-    }
-    if offset + seen.width() < full - 1.0 {
-        super::edge_fade(ui.painter(), seen, seen.max.x, -1.0);
-    }
-    out.inner
-}
-
 /// Where a dragged panel would dock, outlined in the accent over everything.
 pub(crate) fn dock_preview(ctx: &egui::Context, spot: egui::Rect) {
     ctx.layer_painter(egui::LayerId::new(

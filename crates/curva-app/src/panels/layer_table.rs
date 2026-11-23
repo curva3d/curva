@@ -400,7 +400,7 @@ impl Curva {
                 ui.close();
             }
             ui.separator();
-            if ui.button(&delete).clicked() {
+            if ui_kit::danger_button(ui, &delete).clicked() {
                 self.undoable(|doc| {
                     doc.delete_layer(layer.id);
                 });

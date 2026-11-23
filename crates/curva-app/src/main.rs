@@ -27,6 +27,7 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 mod agent;
+mod aiming;
 mod assistant;
 mod assistant_panel;
 mod benchmark;
@@ -41,6 +42,7 @@ mod grips;
 mod gumball;
 mod icons;
 mod layout;
+mod menus;
 mod mouse;
 mod notices;
 mod pane_drawing;
@@ -54,6 +56,7 @@ mod settings;
 mod sheets;
 mod shortcuts;
 mod sketchup_import;
+mod status_bar;
 mod styles;
 mod text_edit;
 mod theme;
@@ -156,6 +159,8 @@ struct Curva {
     alt_held: bool,
     snaps: SnapSet,
     ortho: bool,
+    /// Rhino's Planar: points picked with the pointer stay level with the last one.
+    planar: bool,
     grid_snap: bool,
     /// Which kinds of object clicking and boxing may pick.
     pick_filter: selection_filter::SelectionFilter,
@@ -246,6 +251,7 @@ impl Curva {
             alt_held: false,
             snaps: SnapSet::default(),
             ortho: false,
+            planar: false,
             grid_snap: false,
             pick_filter: selection_filter::SelectionFilter::default(),
             filter_row: false,

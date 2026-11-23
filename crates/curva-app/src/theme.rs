@@ -89,21 +89,50 @@ pub const LIGHT: Theme = Theme {
     viewport: curva_viewport::Palette::LIGHT,
 };
 
+/// The dark theme with Increase contrast on, as Apple's accessibility setting: nearly solid
+/// panels, firmer edges and controls, and quiet text closer to the rest.
+pub const DARK_CONTRAST: Theme = Theme {
+    glass: Color32::from_rgba_premultiplied(0x04, 0x04, 0x04, 0xe0),
+    panel_edge: Color32::from_rgba_premultiplied(0x73, 0x73, 0x73, 0x73),
+    text: Color32::WHITE,
+    quiet: Color32::from_rgb(0xc8, 0xc8, 0xc4),
+    control: Color32::from_rgba_premultiplied(0x26, 0x26, 0x26, 0x26),
+    hover: Color32::from_rgba_premultiplied(0x40, 0x40, 0x40, 0x40),
+    ..DARK
+};
+
+/// The light theme with Increase contrast on.
+pub const LIGHT_CONTRAST: Theme = Theme {
+    glass: Color32::from_rgba_premultiplied(0xf6, 0xf6, 0xf6, 0xf6),
+    panel_edge: Color32::from_rgba_premultiplied(0x00, 0x00, 0x00, 0x59),
+    text: Color32::BLACK,
+    quiet: Color32::from_rgb(0x3c, 0x3c, 0x40),
+    control: Color32::from_rgba_premultiplied(0x00, 0x00, 0x00, 0x1c),
+    hover: Color32::from_rgba_premultiplied(0x00, 0x00, 0x00, 0x30),
+    ..LIGHT
+};
+
 static LIGHT_ON: AtomicBool = AtomicBool::new(false);
+static CONTRAST_ON: AtomicBool = AtomicBool::new(false);
 
 /// The theme in use.
 #[must_use]
 pub fn current() -> &'static Theme {
-    if LIGHT_ON.load(Ordering::Relaxed) {
-        &LIGHT
-    } else {
-        &DARK
+    match (
+        LIGHT_ON.load(Ordering::Relaxed),
+        CONTRAST_ON.load(Ordering::Relaxed),
+    ) {
+        (true, false) => &LIGHT,
+        (true, true) => &LIGHT_CONTRAST,
+        (false, false) => &DARK,
+        (false, true) => &DARK_CONTRAST,
     }
 }
 
-/// Puts the light or dark theme in use.
-pub fn use_light(light: bool) {
+/// Puts the light or dark theme in use, with or without increased contrast.
+pub fn use_light(light: bool, contrast: bool) {
     LIGHT_ON.store(light, Ordering::Relaxed);
+    CONTRAST_ON.store(contrast, Ordering::Relaxed);
 }
 
 /// Which theme to use.
@@ -144,6 +173,12 @@ pub struct Settings {
     pub sketchup: curva_document::formats::SketchUpImport,
     /// Whether those choices are used without showing the SketchUp import dialog.
     pub sketchup_always: bool,
+    /// How large the interface is drawn, in percent: 100 to 200, as Apple's text size.
+    pub interface_size: u32,
+    /// Firmer edges, nearly solid panels and stronger quiet text, as Apple's Increase contrast.
+    pub increased_contrast: bool,
+    /// No fades, slides or pulsing glow, as Apple's Reduce motion.
+    pub reduce_motion: bool,
 }
 
 impl Default for Settings {
@@ -160,6 +195,9 @@ impl Default for Settings {
             desktop_offered: false,
             sketchup: curva_document::formats::SketchUpImport::default(),
             sketchup_always: false,
+            interface_size: 100,
+            increased_contrast: false,
+            reduce_motion: false,
         }
     }
 }

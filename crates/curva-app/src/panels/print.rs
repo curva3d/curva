@@ -46,12 +46,18 @@ fn layout_ticks(ui: &mut egui::Ui, chosen: &mut Vec<u64>, layouts: &[(u64, Strin
 /// Colour as displayed or everything black, and a PDF or the printer.
 fn print_choices(ui: &mut egui::Ui, panel: &mut PrintPanel, say: &dyn Fn(&'static str) -> String) {
     ui.horizontal(|ui| {
-        ui.radio_value(&mut panel.black, false, say("ui.print.display"));
-        ui.radio_value(&mut panel.black, true, say("ui.print.black"));
+        ui_kit::either(
+            ui,
+            &mut panel.black,
+            [say("ui.print.display"), say("ui.print.black")],
+        );
     });
     ui.horizontal(|ui| {
-        ui.radio_value(&mut panel.printer, false, say("ui.print.pdf"));
-        ui.radio_value(&mut panel.printer, true, say("ui.print.printer"));
+        ui_kit::either(
+            ui,
+            &mut panel.printer,
+            [say("ui.print.pdf"), say("ui.print.printer")],
+        );
     });
 }
 
