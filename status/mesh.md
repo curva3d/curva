@@ -11,6 +11,14 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 23 November 2026
 
+**Bevel for SubD edges, as Rhino 8 measured:** each picked edge becomes a strip of Segments quads, its ends giving way to rows
+of points along the side edges and a five-sided cap closing each end; the measured box gives Rhino's 29 faces on 32 points
+and its rows. Edges sharing an end, KeepCreases and meshes are still to come. `SubD::bevelled` in curva-mesh.
+
+**Reflect measured, not built:** Rhino mirrors a SubD into itself (touching the plane: welded, the side on the plane
+dropped; crossing it: the crossing faces replaced by new ones between the halves) and keeps the halves linked so edits
+mirror. That needs a symmetry record in curva-mesh and gumball hooks, so it waits.
+
 **OffsetSubD, as Rhino 8 measured:** each cage point moves the distance along its limit normal (the measured box's cage lands
 exactly where Rhino puts it); Solid joins the offset to the SubD with side quads round the border, BothSides offsets both
 ways, DeleteInput and picked-to-flip as in Rhino. `SubD::offset`, `offset_solid` and `limit_normals` in curva-mesh.
