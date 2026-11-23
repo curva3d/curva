@@ -599,6 +599,7 @@ pub fn save_png(path: &std::path::Path, size: [u32; 2], pixels: &[u8]) -> Result
 mod tests {
     use super::*;
 
+    mod faces;
     mod grid;
     mod wires;
 
@@ -716,6 +717,7 @@ mod tests {
             mesh: slab.shared_mesh().unwrap(),
             placement: slab.placement(),
             colours: None,
+            kind: crate::FaceKind::Nurbs,
         }]);
         let shown = middle(&mut pilot, &device, &queue, &view);
         assert_ne!(shown, background, "a new shape shows at once");
@@ -799,6 +801,7 @@ mod tests {
             mesh: body.shared_mesh().unwrap(),
             placement: body.placement(),
             colours: None,
+            kind: crate::FaceKind::Nurbs,
         };
         let mut view = drawing(StandardView::Top, Vec::new());
         view.shapes = Arc::new(vec![copy(&slab), copy(&away)]);
@@ -971,6 +974,7 @@ mod tests {
             mesh: body.shared_mesh().unwrap(),
             placement: body.placement(),
             colours: None,
+            kind: crate::FaceKind::Nurbs,
         };
         let mut view = drawing(StandardView::Top, Vec::new());
         view.objects = Arc::new(vec![7, 8]);

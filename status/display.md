@@ -11,6 +11,18 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 ## 23 November 2026
 
 **Done**
+- **Step 6, part 2c: faces of NURBS, meshes and SubD each drawn as the style says.** Every shaded
+  shape now carries its kind of object (NURBS, mesh, SubD, or as given for locked objects and
+  annotation's filled letters), and each view's style gives each kind whether it shows, one colour
+  or its own, and how opaque (`Style::faces_of`). Bevy keeps one material for each colour and
+  opacity actually shown, and a style change shows each part again in its kind's new look,
+  skipping those that do not change. Meshes and SubD follow NURBS until set apart, as the style
+  model says. Locked objects keep their grey but are as see-through as NURBS faces, so Ghosted
+  still sees through them; a selected object whose kind has one colour keeps it (its lines show
+  the selection), as Hidden's white faces did. Pictures drawn by Curva's own drawer still give
+  every face NURBS' look. Nothing looks different. New tests on Bevy's pictures: meshes follow
+  NURBS until set apart; a kind's faces hidden show what is behind while others show; a kind's
+  opacity lets the background through, and a locked object keeps its own colour.
 - **Step 6, part 2b: each kind of line drawn as the style says, on the graphics card.** Every
   line now carries its kind (curve, NURBS edge, seam, mesh wire, SubD crease or border, SubD cage
   edge, annotation, or as given for previews, markers, the grid and locked objects), packed into

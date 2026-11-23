@@ -2,8 +2,10 @@
 //! `docs/specs/views-and-styles.md` §2): [`Style::of`] reads it. More of the style's settings are
 //! drawn as the drawing code learns them.
 
-use crate::{EDGE_ON_FACES_COLOUR, LineTable};
-use curva_document::style::{ColourFrom, Engine, OcclusionLight, VectorFaces, ViewStyle};
+use crate::{EDGE_ON_FACES_COLOUR, FaceKind, LineTable};
+use curva_document::style::{
+    ColourFrom, Engine, FacedKind, OcclusionLight, VectorFaces, ViewStyle,
+};
 
 /// Outlines wider than this, in millimetres, are drawn thick (three pixels), as Massing's are.
 const THICK_OUTLINE_MM: f32 = 0.5;
@@ -22,6 +24,41 @@ pub struct Style {
     pub outlines: OutlineLook,
     /// Whether the lines surfaces hide are drawn too, dotted, as Rhino 8's Technical mode does.
     pub hidden_lines: bool,
+    /// The faces of NURBS, meshes and SubD objects, each as the style sets them apart.
+    pub faces: [KindFaces; 3],
+}
+
+/// One kind of object's faces.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct KindFaces {
+    /// Whether they show.
+    pub shown: bool,
+    /// One colour for them all, or `None` for each object's own.
+    pub colour: Option<[f32; 3]>,
+    /// 0 (invisible) to 1 (solid).
+    pub opacity: f32,
+}
+
+impl KindFaces {
+    /// As each object is given.
+    pub const GIVEN: Self = Self {
+        shown: true,
+        colour: None,
+        opacity: 1.0,
+    };
+
+    /// `kind`'s faces in `view`.
+    fn of(view: &ViewStyle, kind: FacedKind) -> Self {
+        let faces = view.faces(kind);
+        Self {
+            shown: faces.shown,
+            colour: match faces.colour {
+                ColourFrom::One(colour) => Some(colour.to_f32()),
+                _ => None,
+            },
+            opacity: faces.opacity,
+        }
+    }
 }
 
 /// The Surfaces layer: the faces of surfaces and solids.
@@ -92,6 +129,8 @@ impl Style {
                 thick: view.outlines.width > THICK_OUTLINE_MM,
             },
             hidden_lines: view.hidden_lines.shown,
+            faces: [FacedKind::Nurbs, FacedKind::Mesh, FacedKind::Subd]
+                .map(|kind| KindFaces::of(view, kind)),
         }
     }
 
@@ -129,6 +168,21 @@ impl Style {
     #[must_use]
     pub fn massing() -> Self {
         Self::of(&ViewStyle::massing())
+    }
+
+    /// How faces of `kind` look: locked objects' and annotation's in their own colours, as
+    /// opaque as NURBS faces, so Ghosted sees through them too.
+    #[must_use]
+    pub fn faces_of(&self, kind: FaceKind) -> KindFaces {
+        match kind {
+            FaceKind::Given => KindFaces {
+                opacity: self.faces[0].opacity,
+                ..KindFaces::GIVEN
+            },
+            FaceKind::Nurbs => self.faces[0],
+            FaceKind::Mesh => self.faces[1],
+            FaceKind::Subd => self.faces[2],
+        }
     }
 
     /// Whether faces are drawn solid, hiding what is behind them: shaded and not see-through.
