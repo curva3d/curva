@@ -20,8 +20,8 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
   whose meshes are on now draws the meshes' faces. Nothing looks different in the six modes,
   except that locked objects keep their grey faces in Hidden, Technical and Massing (they were
   white), as Rhino 8 draws them with its default settings (measured: a locked box stays grey when
-  a mode paints every surface one colour). Rhino also draws locked objects half see-through by
-  default; Curva does not yet. New tests on the graphics card: meshes follow NURBS until set
+  a mode paints every surface one colour, and is opaque: seen from above it reads 125,125,125
+  over a 157,163,170 background). New tests on the graphics card: meshes follow NURBS until set
   apart; a hidden kind draws nothing while others show; meshes alone still draw; a see-through
   kind lets the background through; flat faces take the style's colour unlit while locked ones
   keep their own.
