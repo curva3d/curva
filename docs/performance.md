@@ -552,19 +552,25 @@ those would mean changing Bevy itself.
 
 `curva --orbit-benchmark --scene meshes`: 16 mesh objects, each a ring (torus) of 350 by 1,400
 quads, 15.68 million triangles in all (spec target: under 16 ms a frame and under 1 GB). RTX
-3060, Vulkan, release build, two runs each, Bevy's schedules on many threads and on one, run in
+3060, Vulkan, release build, three runs each, Bevy's schedules on many threads and on one, run in
 turn:
 
 | | Many threads | One thread |
 |---|---|---|
-| Between frames (median) | 29.5, 29.2 ms | 29.4, 29.3 ms |
-| Work per frame | 13.7, 13.5 ms | 12.2, 13.5 ms |
-| First frame | 13.2, 16.7 s | 12.4, 15.5 s |
+| Between frames (median) | 33.6, 33.7, 33.7 ms | 33.7, 33.7, 33.7 ms |
+| Work per frame | 14.1, 13.0, 13.0 ms | 13.7, 12.8, 12.7 ms |
+| First frame | | 11.3, 11.4 s |
 
-One thread is as fast as many on this scene. The target is not met: the graphics card spends
-about 30.6 ms a frame on Curva's lines, which here are the meshes' edges, every triangle's
-outline drawn as a smoothed line. The first snap took 14 s and snapping 9.6 ms a frame, over the
-meshes' 7.8 million points. These are the next things to look at for meshes.
+One thread is as fast as many on this scene. **The first measurements (29–31 ms) were wrong:**
+Bevy drew no faces at all. It packs meshes into shared buffers it lets grow to 512 MB, past the
+256 MB a buffer may hold on Curva's device; once a scene's faces passed 256 MB the buffer was
+refused without a word, and Bevy drew nothing, background included. Its buffers are now kept
+within the device's limit and no mesh it is handed is larger than half of it, so the faces show.
+
+The target is not met: the graphics card spends about 27.7 ms a frame on Curva's lines, which
+here are the meshes' edges, every triangle's outline drawn as a smoothed line; Bevy's faces add
+about 4 ms. The first snap took 14 s and snapping 9.6 ms a frame, over the meshes' 7.8 million
+points. These are the next things to look at for meshes.
 
 ## Real project files (19 November 2026)
 

@@ -109,13 +109,28 @@ type Triangles = (Vec<[f32; 3]>, Vec<[f32; 3]>);
 
 /// Meshes shared by every view's copies, each with how many copies use it: loose triangles by
 /// their contents, then the kernel's shared shapes.
-#[derive(Default)]
 pub(super) struct SharedMeshes(
     HashMap<MeshKey, (Handle<Mesh>, usize)>,
     pub(super) shapes::ShapeMeshes,
+    /// The most corners one mesh holds on this device.
+    usize,
 );
 
+/// The bytes one corner takes in a Bevy mesh: its position and its normal.
+const CORNER_BYTES: u64 = 24;
+
 impl SharedMeshes {
+    /// None yet, on a device whose buffers hold at most `most_bytes`: a mesh holds at most
+    /// [`MOST_PART_CORNERS`], and never more than half the largest buffer, so it fits one.
+    pub(super) fn within(most_bytes: u64) -> Self {
+        let fits = usize::try_from(most_bytes / 2 / CORNER_BYTES).unwrap_or(usize::MAX);
+        Self(
+            HashMap::new(),
+            shapes::ShapeMeshes::default(),
+            fits.clamp(3, MOST_PART_CORNERS),
+        )
+    }
+
     fn take(
         &mut self,
         world: &mut World,
@@ -468,7 +483,7 @@ impl ViewScene {
     /// Makes this view's entities match `faces`: unchanged parts stay, changed parts get their
     /// new mesh, parts gone are removed.
     fn mirror(&mut self, world: &mut World, meshes: &mut SharedMeshes, faces: &[MeshVertex]) {
-        let groups = group_faces(faces, MOST_PART_CORNERS);
+        let groups = group_faces(faces, meshes.2);
         let mut kept = HashSet::new();
         for (key, (positions, normals)) in groups {
             kept.insert(key);
