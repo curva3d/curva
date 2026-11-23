@@ -2,14 +2,16 @@
 //! `-Bevel`): it asks "Select Mesh or SubD edges to bevel ( EdgeLoop )", then "Bevel positioning.
 //! Select point or give amount ( Segments=3  OffsetMode=Absolute  Straightness=0  KeepCreases=Yes
 //! )"; 0.5 on the middle edge of a 4 m SubD box's front gives a strip of 3 quads, two five-sided
-//! caps and Rhino's rows of points (29 faces on 32 points). A clicked point gives the distance
-//! from the edge. Edges whose ends are not inner points where four edges meet, edges that share
-//! an end, `KeepCreases`, meshes and EdgeLoop are not here yet.
+//! caps and Rhino's rows of points (29 faces on 32 points). Edges joined end to end bevel as one
+//! run: one row at each point, caps only at open ends (two in a row: 32 faces on 35 points; a
+//! loop round the box: 48 quads on 50 points). A clicked point gives the distance from the
+//! nearest picked edge. Points that are not inner ones where four edges meet, branching edges,
+//! `KeepCreases`, meshes and EdgeLoop are not here yet.
 
-use super::parts::{by_object, edges};
+use super::parts::{by_object, edges, run};
 use crate::Message;
 use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef, Value};
-use curva_document::Shape;
+use curva_document::{MeshPart, Shape};
 use curva_mesh::{BevelAmount, Point};
 
 const SEGMENTS: &str = "Segments";
@@ -30,6 +32,26 @@ fn off_segment(p: Point, a: Point, b: Point) -> f64 {
     let foot: Point = std::array::from_fn(|i| a[i] + t * ab[i]);
     let d: Point = std::array::from_fn(|i| p[i] - foot[i]);
     dot(d, d).sqrt()
+}
+
+/// The picked edges split into runs joined end to end, each as [`run`] reads it. `None` when
+/// edges branch.
+fn runs(picked: &[[u32; 2]]) -> Option<Vec<Vec<u32>>> {
+    let mut left: Vec<[u32; 2]> = picked.to_vec();
+    let mut out = Vec::new();
+    while let Some(seed) = left.pop() {
+        let mut group = vec![seed];
+        loop {
+            let ends: Vec<u32> = group.iter().flatten().copied().collect();
+            let Some(k) = left.iter().position(|e| e.iter().any(|v| ends.contains(v))) else {
+                break;
+            };
+            group.push(left.swap_remove(k));
+        }
+        let parts: Vec<MeshPart> = group.iter().map(|&[a, b]| MeshPart::edge(a, b)).collect();
+        out.push(run(&parts)?);
+    }
+    Some(out)
 }
 
 impl Recipe for Bevel {
@@ -77,30 +99,31 @@ impl Recipe for Bevel {
             else {
                 continue;
             };
-            let picked = edges(&parts);
-            // Edges sharing an end would need the ends joined, which is not here yet.
-            let ends: Vec<u32> = picked.iter().flatten().copied().collect();
-            let mut unique = ends.clone();
-            unique.sort_unstable();
-            unique.dedup();
-            if unique.len() != ends.len() {
+            // Bevelling one run renumbers points, so each later run is found again by place.
+            let Some(found) = runs(&edges(&parts)) else {
                 return Err(Message::new("error.bevel_apart"));
-            }
-            // Bevelling one edge renumbers points, so each later edge is found again by place.
-            let places: Vec<[Point; 2]> = picked
+            };
+            let places: Vec<Vec<Point>> = found
                 .iter()
-                .map(|e| e.map(|v| subd.cage().vertices()[v as usize]))
+                .map(|r| {
+                    r.iter()
+                        .map(|&v| subd.cage().vertices()[v as usize])
+                        .collect()
+                })
                 .collect();
-            for [pa, pb] in places {
+            for place in places {
                 let at = subd.cage().vertices();
-                let find = |p: Point| at.iter().position(|&q| q == p).map(|k| k as u32);
-                let (Some(a), Some(b)) = (find(pa), find(pb)) else {
+                let find = |p: &Point| at.iter().position(|q| q == p).map(|k| k as u32);
+                let Some(points) = place.iter().map(find).collect::<Option<Vec<u32>>>() else {
                     continue;
                 };
                 let size = match answer {
                     Value::Number(n) => *n,
                     other => match other.point() {
-                        Some(p) => off_segment(p, pa, pb),
+                        Some(p) => place
+                            .windows(2)
+                            .map(|w| off_segment(p, w[0], w[1]))
+                            .fold(f64::INFINITY, f64::min),
                         None => continue,
                     },
                 };
@@ -111,7 +134,7 @@ impl Recipe for Bevel {
                 };
                 let segments = cx.number(SEGMENTS) as u32;
                 subd = subd
-                    .bevelled([a, b], amount, segments, cx.number(STRAIGHTNESS))
+                    .bevelled_run(&points, amount, segments, cx.number(STRAIGHTNESS))
                     .map_err(failed)?;
             }
             made.replace.push((id, Shape::SubD(subd)));
@@ -165,5 +188,32 @@ mod tests {
         processor.submit(&mut doc, "bevel");
         processor.submit(&mut doc, "");
         assert!(!processor.preview(&doc, None, "0.5").is_empty());
+    }
+
+    #[test]
+    fn two_edges_in_a_row_bevel_as_one_run() {
+        let mut doc = Document::default();
+        let frame = Frame {
+            origin: [200.0, 0.0, 0.0],
+            ..Frame::world()
+        };
+        let subd = SubD::subd_box(&frame, [4.0; 3], [2, 2, 2]);
+        let at = |p: [f64; 3]| {
+            let k = subd.cage().vertices().iter().position(|&q| q == p).unwrap();
+            u32::try_from(k).unwrap()
+        };
+        let (a, b, c) = (
+            at([202.0, 0.0, 0.0]),
+            at([202.0, 0.0, 2.0]),
+            at([202.0, 0.0, 4.0]),
+        );
+        let id = doc.add_shape(Shape::SubD(subd));
+        doc.select_mesh_parts(&[(id, MeshPart::edge(a, b)), (id, MeshPart::edge(b, c))]);
+        run(&mut doc, &["bevel", "", "0.5"]);
+        let out = doc.state().objects[0].shape.subd().unwrap();
+        assert_eq!(
+            (out.cage().face_count(), out.cage().vertex_count()),
+            (32, 35)
+        );
     }
 }
