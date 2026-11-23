@@ -65,6 +65,9 @@ const INK: vec3<f32> = vec3<f32>(0.0, 0.0, 0.0);
 const DOTTED: bool = false;
 // One dot and one gap, in pixels.
 const DOT_PERIOD: f32 = 6.0;
+// Plain one-pixel lines, two corners a segment drawn as a line list, for meshes' wires:
+// `thin` turns this on.
+const THIN: bool = false;
 // Clipping planes (spec `layouts.md` §3): `pixel.w` of them, each keeping the side where
 // dot(n, p) + d is not above zero.
 fn clipped(p: vec3<f32>) -> bool {
@@ -119,8 +122,9 @@ fn segment(
     // Corners 0-5 make two triangles: which end, and which side.
     var ends = array<f32, 6>(0.0, 0.0, 1.0, 0.0, 1.0, 1.0);
     var sides = array<f32, 6>(-1.0, 1.0, -1.0, 1.0, 1.0, -1.0);
-    let end = ends[corner];
-    let side = sides[corner];
+    // A thin line is just its two ends.
+    let end = select(ends[corner], f32(corner), THIN);
+    let side = select(sides[corner], 0.0, THIN);
     var at = pa;
     var colour = ca;
     var world = a;
@@ -291,4 +295,11 @@ pub(crate) fn white_faces() -> String {
     let own = "input.colour * (0.25";
     debug_assert!(FACE_SHADER.contains(own), "the face shader changed");
     FACE_SHADER.replace(own, "vec3<f32>(1.0, 1.0, 1.0) * (0.25")
+}
+
+/// The line `shader` drawing plain one-pixel lines, two corners a segment, for meshes' wires.
+pub(crate) fn thin(shader: &str) -> String {
+    let thin = shader.replace("const THIN: bool = false;", "const THIN: bool = true;");
+    debug_assert_ne!(thin, shader, "the shader has no thin switch");
+    thin
 }

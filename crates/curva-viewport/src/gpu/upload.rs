@@ -264,3 +264,24 @@ pub(crate) fn bind_view(
         ],
     })
 }
+
+/// `lines` parted, segment by segment, into ordinary lines and meshes' wires (both ends
+/// [`crate::WIRE_WIDTH`]), which are drawn as plain one-pixel lines; `None` when there are no
+/// wires, so the lines are sent as they are.
+pub(crate) fn apart_wires(
+    lines: &[crate::Vertex],
+) -> Option<(Vec<crate::Vertex>, Vec<crate::Vertex>)> {
+    let wire = |segment: &&[crate::Vertex; 2]| {
+        segment[0].width == crate::WIRE_WIDTH && segment[1].width == crate::WIRE_WIDTH
+    };
+    let segments = lines.as_chunks::<2>().0;
+    if !segments.iter().any(|segment| wire(&segment)) {
+        return None;
+    }
+    let (wires, rest): (Vec<&[crate::Vertex; 2]>, Vec<&[crate::Vertex; 2]>) =
+        segments.iter().partition(wire);
+    Some((
+        rest.into_iter().flatten().copied().collect(),
+        wires.into_iter().flatten().copied().collect(),
+    ))
+}

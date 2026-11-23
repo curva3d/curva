@@ -15,7 +15,7 @@ pub use drawing::*;
 pub use picture::*;
 use shaders::{
     FACE_SHADER, GHOST_FACE_SHADER, GRID_SHADER, LINE_SHADER, PICK_ROW, dotted, inked, paper_faces,
-    table_wgsl, white_faces,
+    table_wgsl, thin, white_faces,
 };
 pub use upload::*;
 
@@ -47,6 +47,8 @@ struct ViewSlot {
     /// Shared between views drawing the same lines: shaded and wireframe views draw edges in
     /// different colours, so there are at most two different ones.
     scene: Option<Arc<Uploaded<Vertex>>>,
+    /// Meshes' wires from those lines, drawn as plain one-pixel lines; shared the same way.
+    wires: Option<Arc<Uploaded<Vertex>>>,
     shaded: bool,
     ghosted: bool,
     /// The Hidden display mode: faces in paper white, the model's lines in black ink (#164).
@@ -66,6 +68,8 @@ pub struct LineRenderer {
     /// The model's lines, and whole circles drawn from their centre and axes (#153), each in
     /// their own colours, in ink and dotted behind faces, in [`Ink`] order (#164).
     lines: [wgpu::RenderPipeline; 3],
+    /// Meshes' wires as plain one-pixel lines, in the same [`Ink`] order.
+    thin_lines: [wgpu::RenderPipeline; 3],
     circle_lines: [wgpu::RenderPipeline; 3],
     faces: wgpu::RenderPipeline,
     ghost_faces: wgpu::RenderPipeline,
@@ -193,6 +197,7 @@ impl LineRenderer {
                     bind_group,
                     grid: None,
                     scene: None,
+                    wires: None,
                     shaded: false,
                     ghosted: false,
                     hidden: false,
@@ -206,7 +211,7 @@ impl LineRenderer {
             bind_group_layouts: &[Some(&layout)],
             immediate_size: 0,
         });
-        let (grid, lines) = Self::line_pipelines(device, format, &pipeline_layout);
+        let (grid, lines, thin_lines) = Self::line_pipelines(device, format, &pipeline_layout);
         let face = |label, shader, see_through| {
             Self::face_pipeline(device, format, &pipeline_layout, label, shader, see_through)
         };
@@ -219,6 +224,7 @@ impl LineRenderer {
         Self {
             grid,
             lines,
+            thin_lines,
             circle_lines: [Ink::Own, Ink::Visible, Ink::Hidden].map(circle),
             faces,
             ghost_faces,
@@ -275,7 +281,11 @@ impl LineRenderer {
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         pipeline_layout: &wgpu::PipelineLayout,
-    ) -> (wgpu::RenderPipeline, [wgpu::RenderPipeline; 3]) {
+    ) -> (
+        wgpu::RenderPipeline,
+        [wgpu::RenderPipeline; 3],
+        [wgpu::RenderPipeline; 3],
+    ) {
         let grid = pipeline(
             device,
             format,
@@ -295,35 +305,52 @@ impl LineRenderer {
                 behind: false,
             },
         );
-        let segments = |label, ink: Ink| {
+        // Thin: plain one-pixel lines (meshes' wires), which may take no depth bias; they still
+        // show on their own faces (`pilot/tests/wires.rs`).
+        let segments = |label, ink: Ink, one_pixel: bool| {
+            let shader = ink.shader(LINE_SHADER);
+            let shader = if one_pixel { thin(&shader) } else { shader };
             pipeline(
                 device,
                 format,
                 pipeline_layout,
                 &PipelineParts {
                     label,
-                    shader: &format!("{}{}", table_wgsl(), ink.shader(LINE_SHADER)),
+                    shader: &format!("{}{}", table_wgsl(), shader),
                     stride: SEGMENT_SIZE,
                     attributes: &wgpu::vertex_attr_array![
                         0 => Float32x3, 1 => Float32x3, 2 => Float32, 6 => Uint32,
                         3 => Float32x3, 4 => Float32x3, 5 => Float32, 7 => Uint32
                     ],
-                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    topology: if one_pixel {
+                        wgpu::PrimitiveTopology::LineList
+                    } else {
+                        wgpu::PrimitiveTopology::TriangleList
+                    },
                     // Pulled a little toward the camera, so a line wins over a face or grid at its own depth.
-                    bias: LINE_DEPTH_BIAS,
+                    bias: if one_pixel {
+                        wgpu::DepthBiasState::default()
+                    } else {
+                        LINE_DEPTH_BIAS
+                    },
                     see_through: false,
                     per_instance: true,
-                    smooth: true,
+                    smooth: !one_pixel,
                     behind: ink == Ink::Hidden,
                 },
             )
         };
         let lines = [
-            segments("curva lines", Ink::Own),
-            segments("curva inked lines", Ink::Visible),
-            segments("curva hidden lines", Ink::Hidden),
+            segments("curva lines", Ink::Own, false),
+            segments("curva inked lines", Ink::Visible, false),
+            segments("curva hidden lines", Ink::Hidden, false),
         ];
-        (grid, lines)
+        let thin_lines = [
+            segments("curva wires", Ink::Own, true),
+            segments("curva inked wires", Ink::Visible, true),
+            segments("curva hidden wires", Ink::Hidden, true),
+        ];
+        (grid, lines, thin_lines)
     }
 
     /// A pipeline shading faces with `shader`, which reads the selection table.
@@ -459,25 +486,27 @@ impl LineRenderer {
     /// already sent.
     fn update_scene(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, drawing: &Drawing) {
         let chunk = self.chunk_bytes;
-        let shared = self
-            .slots
-            .iter()
-            .filter_map(|other| other.scene.as_ref())
-            .find(|held| Arc::ptr_eq(&held.source, &drawing.scene))
-            .map(Arc::clone);
-        let scene = shared.unwrap_or_else(|| {
-            Arc::new(upload(
-                device,
-                queue,
-                &drawing.scene,
-                line_bytes,
-                LINE_VERTEX_SIZE,
-                2,
-                chunk,
-            ))
+        let shared = self.slots.iter().find_map(|other| {
+            let held = other.scene.as_ref()?;
+            Arc::ptr_eq(&held.source, &drawing.scene)
+                .then(|| (Arc::clone(held), other.wires.clone()))
+        });
+        let (scene, wires) = shared.unwrap_or_else(|| {
+            // Both are known by the lines they came from, so a view with the same lines shares
+            // them and an unchanged view sends nothing.
+            let send = |lines: &Arc<Vec<Vertex>>| {
+                let mut sent = upload(device, queue, lines, line_bytes, LINE_VERTEX_SIZE, 2, chunk);
+                sent.source = Arc::clone(&drawing.scene);
+                Arc::new(sent)
+            };
+            match apart_wires(&drawing.scene) {
+                Some((lines, wires)) => (send(&Arc::new(lines)), Some(send(&Arc::new(wires)))),
+                None => (send(&drawing.scene), None),
+            }
         });
         if let Some(slot) = self.slots.get_mut(drawing.slot) {
             slot.scene = Some(scene);
+            slot.wires = wires;
         }
     }
 
@@ -646,6 +675,9 @@ impl LineRenderer {
             if let Some(scene) = slot.scene.as_deref() {
                 Self::draw_segments(pass, &self.lines[ink as usize], scene);
             }
+            if let Some(wires) = slot.wires.as_deref() {
+                Self::draw_thin(pass, &self.thin_lines[ink as usize], wires);
+            }
             if let Some(circles) = self.circles.as_ref() {
                 circles::draw_circles(pass, &self.circle_lines[ink as usize], circles);
             }
@@ -664,6 +696,19 @@ impl LineRenderer {
         }
         if let Some(overlay) = self.overlay.as_ref() {
             Self::draw_segments(pass, &self.lines[Ink::Own as usize], overlay);
+        }
+    }
+
+    /// Draws meshes' wires as plain lines with `pipeline`, one instance a segment, its two ends.
+    fn draw_thin(
+        pass: &mut wgpu::RenderPass<'_>,
+        pipeline: &wgpu::RenderPipeline,
+        lines: &Uploaded<Vertex>,
+    ) {
+        pass.set_pipeline(pipeline);
+        for (buffer, count) in &lines.chunks {
+            pass.set_vertex_buffer(0, buffer.slice(..));
+            pass.draw(0..2, 0..count / 2);
         }
     }
 

@@ -572,6 +572,24 @@ here are the meshes' edges, every triangle's outline drawn as a smoothed line; B
 about 4 ms. The first snap took 14 s and snapping 9.6 ms a frame, over the meshes' 7.8 million
 points. These are the next things to look at for meshes.
 
+### Meshes' wires as plain one-pixel lines (23 November 2026)
+
+Rhino 8 draws a mesh's wires in Shaded and Wireframe (its display modes' "Show mesh wires", mesh
+wire thickness 1), so Curva keeps them; at this density both bury the surface under its wires
+(Rhino's rings come out solid black, Curva's solid white). Curva drew them as smoothed lines, six
+corners a segment; they are now plain one-pixel lines, two corners a segment, as a mesh has
+millions. Two runs:
+
+| *Meshes* | Smoothed wires | One-pixel wires |
+|---|---|---|
+| Between frames (median) | 33.6, 33.7 ms | 16.6, 16.6 ms |
+| Curva's lines on the card | 27.7 ms | 10.6 ms |
+| Work per frame | 12.9–15.0 ms | 14.0, 14.3 ms |
+
+16.6 ms is the screen's own rate, so the target of 16 ms is met as far as the screen shows.
+Rhino 8 on the same 16 rings, timed by drawing the view into a 1920 × 1080 picture 15 times
+(which adds copying the picture back): about 84 ms a frame in Shaded.
+
 ## Real project files (19 November 2026)
 
 The owner's own project files, kept on the owner's machine and not named here. `curva
