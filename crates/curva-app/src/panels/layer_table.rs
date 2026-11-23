@@ -160,7 +160,20 @@ impl Curva {
             layers: layers.to_vec(),
             ..curva_document::State::default()
         };
-        for (layer, depth, has_sublayers) in tree_rows(layers) {
+        // The search and the filters leave out layers, as in Rhino.
+        let search = self.frames.layers_ui.search.clone();
+        let filter = self.frames.layers_ui.filter;
+        let with_objects: std::collections::HashSet<u64> =
+            self.doc.state().objects.iter().map(|o| o.layer).collect();
+        let rows = tree_rows(layers).into_iter().filter(|(layer, ..)| {
+            super::layer_tools::name_matches(&layer.name, &search)
+                && filter.passes(
+                    layer.visible,
+                    layer.locked,
+                    with_objects.contains(&layer.id),
+                )
+        });
+        for (layer, depth, has_sublayers) in rows {
             let listed = Listed {
                 layer,
                 depth,
@@ -179,7 +192,8 @@ impl Curva {
     /// The table's columns sized for the panel, with a first column, while a detail is entered,
     /// that hides layers in that detail only (spec `layouts.md` §2).
     fn layer_table_size(&self, ui: &egui::Ui, id: egui::Id, current: u64) -> Table {
-        let gap = ui.spacing().item_spacing.x;
+        // Close-set columns, so the name has the room (owner, 22 November 2026).
+        let gap = 4.0;
         let row = ui.spacing().interact_size.y;
         let mut columns = self.layout.layer_columns;
         let in_detail = self.sheets.entered.and_then(|frame| {
@@ -235,8 +249,10 @@ impl Curva {
         let mut finished = false;
         for (index, key) in HEADINGS.iter().enumerate() {
             let rect = table.cell(header, index);
+            // "Name" starts where the rows' grips do, past the room kept for the triangle.
+            let inset = if index == 0 { ARROW + 2.0 } else { 0.0 };
             ui.painter().text(
-                rect.left_center() + egui::vec2(2.0, 0.0),
+                rect.left_center() + egui::vec2(inset, 0.0),
                 egui::Align2::LEFT_CENTER,
                 self.text.render(&Message::new(key)),
                 egui::FontId::proportional(11.5),
@@ -291,6 +307,11 @@ impl Curva {
             }
         }
         outline_drop_target(ui, &row_response, rect);
+        // The layer picked in the list, which the toolbar acts on, is lit.
+        if self.frames.layers_ui.selected == Some(layer.id) {
+            ui.painter()
+                .rect_filled(rect, 3.0, theme::ACCENT.gamma_multiply(0.18));
+        }
         let (current, height) = (table.current, table.row);
         table.in_cell(ui, rect, 0, |ui| {
             self.layer_name_cell(ui, listed, current, height, state);
@@ -320,9 +341,18 @@ impl Curva {
         }
         let mut name = layer.name.clone();
         let room = ui.available_width();
-        let edit = ui.add(egui::TextEdit::singleline(&mut name).desired_width(room));
+        // Without a frame the name keeps all its room; clicking it picks the layer.
+        let edit = ui.add(
+            egui::TextEdit::singleline(&mut name)
+                .frame(egui::Frame::NONE)
+                .margin(egui::Margin::symmetric(2, 0))
+                .desired_width(room),
+        );
         if edit.changed() {
             self.doc.rename_layer(layer.id, name.clone());
+        }
+        if edit.gained_focus() || edit.clicked() {
+            self.frames.layers_ui.selected = Some(layer.id);
         }
         self.layer_menu(&edit, listed, state);
     }
