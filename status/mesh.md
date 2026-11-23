@@ -15,8 +15,10 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 the same on a flat edge, closer to the fold on a corner line (a 4 × 4 × 4 box: Rhino's (200.049, 0.236) and
 (200.236, 0.049)). Measured the same for SubDs and meshes.
 
-**Mesh Bevel measured, not built:** the SubD shape with each cap a fan of triangles from its far point, and the changed
-faces' edges sharper than WeldAngle (30) unwelded with side normals as UnweldEdge gives.
+**Bevel for meshes, as Rhino 8 measured:** the SubD shape with each cap a fan of triangles from its far point, and the
+changed faces' edges sharper than WeldAngle (30) unwelded, each copy's normal from its side weighted by corner angle
+(UnweldEdge now weights the same way). Rhino left one run end welded (46 vertices where Curva gives 47); why is not
+known. `Mesh::bevelled_run`.
 
 **SubDLoft, partly, as Rhino 8 measured:** curves become rings of cage points joined by quads, end rings creased; closed
 curves give their own control points (three circles: Rhino's 24 points and 16 faces), polylines their corners and

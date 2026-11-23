@@ -30,6 +30,7 @@ fn index(i: usize) -> u32 {
 struct Corner {
     face: usize,
     at: usize,
+    here: u32,
     before: u32,
     after: u32,
 }
@@ -78,6 +79,19 @@ fn extended<T: Clone>(values: &Attribute<T>, sources: &[u32]) -> Attribute<T> {
     }
 }
 
+/// The angle a face makes at the point of corner `c`, whose own place is `c.here`.
+fn corner_angle(points: &[Point], c: &Corner) -> f64 {
+    let p = points[c.here as usize];
+    let (a, b) = (points[c.before as usize], points[c.after as usize]);
+    let u: Point = std::array::from_fn(|k| a[k] - p[k]);
+    let w: Point = std::array::from_fn(|k| b[k] - p[k]);
+    let dot: f64 = (0..3).map(|k| u[k] * w[k]).sum();
+    let len = |q: Point| (0..3).map(|k| q[k] * q[k]).sum::<f64>().sqrt();
+    (dot / (len(u) * len(w)).max(f64::MIN_POSITIVE))
+        .clamp(-1.0, 1.0)
+        .acos()
+}
+
 fn unit(s: Point) -> Point {
     let l = (s[0] * s[0] + s[1] * s[1] + s[2] * s[2]).sqrt();
     if l > 0.0 { s.map(|c| c / l) } else { s }
@@ -90,6 +104,7 @@ fn side_normal(
     part: &[usize],
     picked_at: &BTreeSet<u32>,
     faces: &[Point],
+    points: &[Point],
 ) -> Point {
     let edges_here: BTreeSet<u32> = part
         .iter()
@@ -101,7 +116,11 @@ fn side_normal(
         let across =
             !part.contains(&i) && (edges_here.contains(&c.before) || edges_here.contains(&c.after));
         if !across {
-            (0..3).for_each(|k| sum[k] += faces[c.face][k]);
+            // Each face counts by its angle at the point, as Rhino's normals do (measured on a
+            // bevelled box, where a smaller face next to the point counts the same).
+            let weight = corner_angle(points, c);
+            let n = unit(faces[c.face]);
+            (0..3).for_each(|k| sum[k] += weight * n[k]);
         }
     }
     unit(sum)
@@ -126,6 +145,7 @@ impl Mesh {
                 fans.entry(here).or_default().push(Corner {
                     face: f,
                     at: c,
+                    here,
                     before,
                     after,
                 });
@@ -211,7 +231,7 @@ impl Mesh {
                 for &i in part {
                     corners[fan[i].at] = vertex;
                 }
-                let normal = side_normal(fan, part, &picked_at, &face_normals);
+                let normal = side_normal(fan, part, &picked_at, &face_normals, self.vertices());
                 set_normal.extend(part.iter().map(|&i| (fan[i].at, normal)));
             }
         }
