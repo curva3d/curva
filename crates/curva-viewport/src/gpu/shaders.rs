@@ -5,6 +5,7 @@ use crate::NO_OBJECT;
 // The line program's table and its places, written out in its text, match the Rust side's.
 const _: () = assert!(crate::line_table::LINE_ROWS == 18);
 const _: () = assert!(crate::line_table::HIDDEN_SLOT == 8);
+const _: () = assert!(crate::view_style::FACE_ROWS == 8);
 const _: () = assert!(super::upload::OBJECT_BITS == 0x00FF_FFFF);
 
 /// How many objects one row of the selection table holds (spec `display-pipeline.md` step 4).
@@ -214,11 +215,31 @@ pub(crate) const CIRCLE_SHADER: &str = concat!(
 }"
 );
 
-/// Lit mostly from the camera, like a headlight, so whatever faces the viewer is brightest.
-/// Both sides of a face are lit alike, as an open surface can be seen from either.
+/// Faces, each kind as the view's style gives it (`Style::face_rows`): shown or not, in one
+/// colour or its own (the selection colour when selected), and how opaque. One pass draws the
+/// opaque ones, hiding what is behind them; `see_through` makes a pass drawing the others over
+/// the lines, so lines behind them show through. Lit mostly from the camera, like a headlight,
+/// so whatever faces the viewer is brightest, or flat where the style says (Hidden, #164). Both
+/// sides of a face are lit alike, as an open surface can be seen from either.
 pub(crate) const FACE_SHADER: &str = "
-struct Uniforms { matrix: mat4x4<f32>, light: vec4<f32>, pixel: vec4<f32>, clips: array<vec4<f32>, 4> };
+struct Uniforms {
+    matrix: mat4x4<f32>,
+    // The direction faces are lit from, and 1 after it where the style lights them flat.
+    light: vec4<f32>,
+    pixel: vec4<f32>, clips: array<vec4<f32>, 4>,
+    lines: array<vec4<f32>, 18>,
+    // Each kind of face's look (`Style::face_rows`): its colour and whether to use it, then its
+    // opacity and whether it shows.
+    faces: array<vec4<f32>, 8>,
+};
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
+// A face's object word: its object's number in the low three bytes (all ones for none), its
+// kind in the top byte (`upload::packed`).
+const OBJECT_BITS: u32 = 0x00FFFFFFu;
+// This pass draws the see-through faces rather than the opaque ones: `see_through` turns it on.
+const SEE_THROUGH: bool = false;
+// A command's preview: half see-through in its own colour whatever the style, lit (`preview`).
+const PREVIEW: bool = false;
 // Clipping planes (spec `layouts.md` §3): `pixel.w` of them, each keeping the side where
 // dot(n, p) + d is not above zero.
 fn clipped(p: vec3<f32>) -> bool {
@@ -235,65 +256,59 @@ struct Out {
     @location(0) normal: vec3<f32>,
     @location(1) colour: vec3<f32>,
     @location(2) world: vec3<f32>,
+    // How opaque, 0 where the face's kind is hidden.
+    @location(3) @interpolate(flat) opacity: f32,
 };
 @vertex fn vertex_main(
     @location(0) p: vec3<f32>, @location(1) n: vec3<f32>, @location(2) c: vec3<f32>,
     @location(3) object: u32,
 ) -> Out {
-    return Out(uniforms.matrix * vec4<f32>(p, 1.0), n, select(c, SELECTED, picked(object)), p);
+    let at = uniforms.matrix * vec4<f32>(p, 1.0);
+    if (PREVIEW) { return Out(at, n, c, p, 0.5); }
+    let number = object & OBJECT_BITS;
+    let kind = object >> 24u;
+    let look = uniforms.faces[kind * 2u];
+    let how = uniforms.faces[kind * 2u + 1u];
+    // A kind in one colour keeps it when selected: its selection shows by its lines.
+    let chosen = picked(select(number, NO_OBJECT, number == OBJECT_BITS));
+    let colour = select(select(c, SELECTED, chosen), look.rgb, look.w > 0.5);
+    return Out(at, n, colour, p, select(0.0, how.x, how.y > 0.5));
 }
 @fragment fn fragment_main(input: Out) -> @location(0) vec4<f32> {
     if (clipped(input.world)) { discard; }
+    var alpha = 1.0;
+    if (PREVIEW) {
+        alpha = input.opacity;
+    } else {
+        if (input.opacity <= 0.0 || (input.opacity < 1.0) != SEE_THROUGH) { discard; }
+        if (SEE_THROUGH) { alpha = input.opacity; }
+        if (uniforms.light.w > 0.5) { return vec4<f32>(input.colour, alpha); }
+    }
     let n = normalize(input.normal);
     let facing = abs(dot(n, uniforms.light.xyz));
     // A little light from above as well, so tops and sides of a box differ.
     let above = abs(n.z);
-    return vec4<f32>(input.colour * (0.25 + 0.5 * facing + 0.2 * above), 1.0);
+    return vec4<f32>(input.colour * (0.25 + 0.5 * facing + 0.2 * above), alpha);
 }";
 
-/// As [`FACE_SHADER`], but see-through at half strength, for the Ghosted display mode.
-pub(crate) const GHOST_FACE_SHADER: &str = "
-struct Uniforms { matrix: mat4x4<f32>, light: vec4<f32>, pixel: vec4<f32>, clips: array<vec4<f32>, 4> };
-@group(0) @binding(0) var<uniform> uniforms: Uniforms;
-// Clipping planes (spec `layouts.md` §3): `pixel.w` of them, each keeping the side where
-// dot(n, p) + d is not above zero.
-fn clipped(p: vec3<f32>) -> bool {
-    let count = u32(uniforms.pixel.w);
-    for (var i = 0u; i < 4u; i = i + 1u) {
-        if (i < count && dot(uniforms.clips[i].xyz, p) + uniforms.clips[i].w > 0.0) {
-            return true;
-        }
-    }
-    return false;
+/// [`FACE_SHADER`] drawing the faces the style makes see-through, over the lines.
+pub(crate) fn see_through_faces() -> String {
+    let on = FACE_SHADER.replace(
+        "const SEE_THROUGH: bool = false;",
+        "const SEE_THROUGH: bool = true;",
+    );
+    debug_assert_ne!(on, FACE_SHADER, "the face shader has no see-through switch");
+    on
 }
-struct Out {
-    @builtin(position) position: vec4<f32>,
-    @location(0) normal: vec3<f32>,
-    @location(1) colour: vec3<f32>,
-    @location(2) world: vec3<f32>,
-};
-@vertex fn vertex_main(
-    @location(0) p: vec3<f32>, @location(1) n: vec3<f32>, @location(2) c: vec3<f32>,
-    @location(3) object: u32,
-) -> Out {
-    return Out(uniforms.matrix * vec4<f32>(p, 1.0), n, select(c, SELECTED, picked(object)), p);
-}
-@fragment fn fragment_main(input: Out) -> @location(0) vec4<f32> {
-    if (clipped(input.world)) { discard; }
-    let n = normalize(input.normal);
-    let facing = abs(dot(n, uniforms.light.xyz));
-    let above = abs(n.z);
-    // Alpha 0.5: a ghosted face covers half of what is behind it.
-    return vec4<f32>(input.colour * (0.25 + 0.5 * facing + 0.2 * above), 0.5);
-}";
 
-/// [`FACE_SHADER`] filling surfaces flat in paper white, unlit, for the Hidden display mode:
-/// they hide what is behind them and show nothing of themselves but their edges (#164).
-pub(crate) fn paper_faces() -> String {
-    let [r, g, b] = crate::PAPER_COLOUR;
-    let lit = "return vec4<f32>(input.colour * (0.25 + 0.5 * facing + 0.2 * above), 1.0);";
-    debug_assert!(FACE_SHADER.contains(lit), "the face shader changed");
-    FACE_SHADER.replace(lit, &format!("return vec4<f32>({r:?}, {g:?}, {b:?}, 1.0);"))
+/// [`FACE_SHADER`] drawing a command's preview, ghosted in every display mode.
+pub(crate) fn preview_faces() -> String {
+    let on = FACE_SHADER.replace(
+        "const PREVIEW: bool = false;",
+        "const PREVIEW: bool = true;",
+    );
+    debug_assert_ne!(on, FACE_SHADER, "the face shader has no preview switch");
+    on
 }
 
 /// `shader`, built on the shared line code, drawing dotted, for the Technical display mode's
@@ -302,14 +317,6 @@ pub(crate) fn dotted(shader: &str) -> String {
     let dotted = shader.replace("const DOTTED: bool = false;", "const DOTTED: bool = true;");
     debug_assert_ne!(dotted, shader, "the shader has no dotted switch");
     dotted
-}
-
-/// [`FACE_SHADER`] lighting every surface as white, whatever its own colour, for the Massing
-/// display mode (#551): white faces, gently shaded so their sides read apart.
-pub(crate) fn white_faces() -> String {
-    let own = "input.colour * (0.25";
-    debug_assert!(FACE_SHADER.contains(own), "the face shader changed");
-    FACE_SHADER.replace(own, "vec3<f32>(1.0, 1.0, 1.0) * (0.25")
 }
 
 /// The line `shader` drawing plain one-pixel lines, two corners a segment, for meshes' wires.

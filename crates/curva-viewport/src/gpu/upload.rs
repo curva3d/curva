@@ -1,6 +1,6 @@
 //! Turning lines, faces and the selection into bytes for the graphics card, sent in blocks.
 
-use crate::{LineKind, MeshVertex, Vertex};
+use crate::{MeshVertex, Vertex};
 use egui_wgpu::wgpu;
 use std::sync::Arc;
 
@@ -19,7 +19,8 @@ pub(crate) const SEGMENT_SIZE: u64 = 2 * LINE_VERTEX_SIZE;
 pub(crate) const SEGMENT_CORNERS: u32 = 6;
 /// A face vertex: position, normal, colour and object number.
 pub(crate) const FACE_VERTEX_SIZE: u64 = 40;
-pub(crate) const UNIFORM_SIZE: u64 = 160 + 16 * crate::line_table::LINE_ROWS as u64;
+pub(crate) const UNIFORM_SIZE: u64 =
+    160 + 16 * (crate::line_table::LINE_ROWS + crate::view_style::FACE_ROWS) as u64;
 
 /// The most clipping planes one view is cut by.
 pub const MOST_CLIPS: usize = 4;
@@ -44,19 +45,20 @@ pub(crate) const PICTURE_BACKGROUND: wgpu::Color = wgpu::Color {
     a: 1.0,
 };
 
-/// The bits of a line's object word holding its object's number; the top byte holds its
-/// [`LineKind`], so lines need no more memory for it. All ones is no object.
+/// The bits of a line's or face's object word holding its object's number; the top byte holds
+/// its kind ([`crate::LineKind`] or [`crate::FaceKind`]), so vertices need no more memory for
+/// it. All ones is no object.
 pub(crate) const OBJECT_BITS: u32 = 0x00FF_FFFF;
 
-/// A line's object number and kind as one word for the graphics card. Numbers past
+/// A line's or face's object number and kind as one word for the graphics card. Numbers past
 /// [`OBJECT_BITS`] (over 16 million objects) share the last one.
-pub(crate) fn packed(object: u32, kind: LineKind) -> u32 {
+pub(crate) fn packed(object: u32, kind: u32) -> u32 {
     let number = if object == crate::NO_OBJECT {
         OBJECT_BITS
     } else {
         object.min(OBJECT_BITS - 1)
     };
-    ((kind as u32) << 24) | number
+    (kind << 24) | number
 }
 
 // Written out by hand so the crate needs no unsafe casting of memory.
@@ -71,7 +73,7 @@ pub(crate) fn line_bytes(lines: &[Vertex]) -> Vec<u8> {
         {
             bytes.extend(value.to_le_bytes());
         }
-        bytes.extend(packed(vertex.object, vertex.kind).to_le_bytes());
+        bytes.extend(packed(vertex.object, vertex.kind as u32).to_le_bytes());
     }
     bytes
 }
@@ -87,35 +89,42 @@ pub(crate) fn face_bytes(faces: &[MeshVertex]) -> Vec<u8> {
         {
             bytes.extend(value.to_le_bytes());
         }
-        bytes.extend(vertex.object.to_le_bytes());
+        bytes.extend(packed(vertex.object, vertex.kind as u32).to_le_bytes());
     }
     bytes
 }
 
-/// `pixel`: a pixel's width and height in clip space, and the screen's pixels per millimetre.
-/// `clips`: up to [`MOST_CLIPS`] clipping planes, each `[nx, ny, nz, d]`, cutting away where
-/// `n·p + d > 0`.
+/// A view's uniforms: its camera `matrix`; the `light` direction, with 1 after it when `style`
+/// lights faces flat; `pixel`, a pixel's width and height in clip space and the screen's pixels
+/// per millimetre; up to [`MOST_CLIPS`] `clips`, each `[nx, ny, nz, d]`, cutting away where
+/// `n·p + d > 0`; then `style`'s line table and face table.
 pub(crate) fn uniform_bytes(
     matrix: &[[f32; 4]; 4],
     light: [f32; 3],
     pixel: [f32; 3],
     clips: &[[f32; 4]],
-    lines: &[[f32; 4]; crate::line_table::LINE_ROWS],
+    style: &crate::Style,
 ) -> Vec<u8> {
     let clips = &clips[..clips.len().min(MOST_CLIPS)];
     #[allow(clippy::cast_precision_loss)]
     let count = clips.len() as f32;
     let mut planes = [[0.0_f32; 4]; MOST_CLIPS];
     planes[..clips.len()].copy_from_slice(clips);
+    let flat = if style.light() == Some(crate::Light::Flat) {
+        1.0
+    } else {
+        0.0
+    };
     matrix
         .iter()
         .flatten()
         .chain(&light)
-        .chain(&[0.0])
+        .chain(&[flat])
         .chain(&pixel)
         .chain(&[count])
         .chain(planes.iter().flatten())
-        .chain(lines.iter().flatten())
+        .chain(style.lines.rows().iter().flatten())
+        .chain(style.face_rows().iter().flatten())
         .flat_map(|value| value.to_le_bytes())
         .collect()
 }

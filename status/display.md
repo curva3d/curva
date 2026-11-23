@@ -11,6 +11,20 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 ## 23 November 2026
 
 **Done**
+- **Step 6, part 2d: Curva's own drawer gives each kind of face its style's look too.** Each
+  face vertex now carries its kind, packed into the top byte of its object number as lines' are,
+  and each view sends a small face table with its line table (`Style::face_rows`): each kind's
+  colour (its own or one), opacity and whether it shows, and whether faces are lit flat. One face
+  program reads it, in an opaque pass and a see-through pass over the lines; the separate paper
+  (Hidden), white (Massing) and ghosted programs are gone. A view whose NURBS faces are off but
+  whose meshes are on now draws the meshes' faces. Nothing looks different in the six modes,
+  except that locked objects keep their grey faces in Hidden, Technical and Massing (they were
+  white), as Rhino 8 draws them with its default settings (measured: a locked box stays grey when
+  a mode paints every surface one colour). Rhino also draws locked objects half see-through by
+  default; Curva does not yet. New tests on the graphics card: meshes follow NURBS until set
+  apart; a hidden kind draws nothing while others show; meshes alone still draw; a see-through
+  kind lets the background through; flat faces take the style's colour unlit while locked ones
+  keep their own.
 - **Step 6, part 2c: faces of NURBS, meshes and SubD each drawn as the style says.** Every shaded
   shape now carries its kind of object (NURBS, mesh, SubD, or as given for locked objects and
   annotation's filled letters), and each view's style gives each kind whether it shows, one colour

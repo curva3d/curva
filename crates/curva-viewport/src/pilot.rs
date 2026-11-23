@@ -641,6 +641,7 @@ mod tests {
             normal,
             colour,
             object: 0,
+            kind: crate::FaceKind::Given,
         };
         [-a - b, a - b, a + b, -a - b, a + b, -a + b]
             .into_iter()
@@ -758,6 +759,7 @@ mod tests {
                     normal: [0.0, 0.0, 1.0],
                     colour: [0.6; 3],
                     object: 0,
+                    kind: crate::FaceKind::Given,
                 });
             }
         }
