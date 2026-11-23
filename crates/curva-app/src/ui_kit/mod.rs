@@ -194,6 +194,7 @@ mod tests {
 
     /// The files that may: the kit, the icon library, the theme, and what is drawn in the 3D
     /// view rather than on a panel (the gumball, control points, the selection window, dots, the grid,
+    /// the view styles' backgrounds,
     /// picked parts, the viewports, the sheets of a layout and the printed page's preview).
     fn may_paint(path: &str) -> bool {
         path.starts_with("ui_kit/")
@@ -208,6 +209,7 @@ mod tests {
                 "viewports.rs",
                 "sheets.rs",
                 "grid.rs",
+                "styles.rs",
                 "panels/print_preview.rs",
             ]
             .contains(&path)
