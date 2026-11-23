@@ -233,6 +233,11 @@ impl Curva {
     /// opens the tab last used in it. Notes how wide the row is, for the title row's grip.
     fn tab_groups_row(&mut self, ui: &mut egui::Ui, group: usize) {
         let row = ui.horizontal(|ui| {
+            // The groups start where the tabs' words do, past a tab button's own padding, so
+            // NURBS stands right over Curves (owner, 22 November 2026).
+            let padding = ui.spacing().button_padding.x;
+            ui.spacing_mut().item_spacing.x = 0.0;
+            ui.add_space(padding);
             ui.spacing_mut().item_spacing.x = 16.0;
             let mut chosen_rect = None;
             for (index, (key, _)) in TAB_GROUPS.iter().enumerate() {

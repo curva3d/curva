@@ -32,6 +32,7 @@ impl Layout {
         counts: impl Fn(&Place) -> bool,
     ) -> (Vec<(PanelId, Rect)>, Rect) {
         let inner = window.shrink(GAP);
+        let cap = end_cap(inner);
         let mut free = inner;
         let mut placed = Vec::new();
         // Top and bottom first, so side panels fit between them.
@@ -41,7 +42,15 @@ impl Layout {
                 .iter()
                 .filter(|p| p.dock == dock && counts(p))
                 .collect();
-            for row in rows(&on_edge, free, dock) {
+            // A side column makes room only for the top and bottom panels it overlaps, so a
+            // panel elsewhere along an edge never changes it (owner, 22 November 2026: raising the
+            // centred command bar shortened the Layers panel beside it).
+            let edge_free = if across(dock) {
+                free
+            } else {
+                column_room(&on_edge, &placed, free, inner, dock, cap)
+            };
+            for row in rows(&on_edge, edge_free, dock, cap) {
                 let thickness = row
                     .iter()
                     .map(|(_, rect)| {
@@ -83,13 +92,70 @@ impl Layout {
     }
 }
 
+/// The room for the column of side panels on `dock`: as wide as `free` across, and as tall as
+/// the window between the top and bottom panels already `placed` that overlap the column, so a
+/// top or bottom panel beside the column (the centred command bar) leaves it alone.
+fn column_room(
+    on_edge: &[&Place],
+    placed: &[(PanelId, Rect)],
+    free: Rect,
+    inner: Rect,
+    dock: Dock,
+    cap: f32,
+) -> Rect {
+    let width = on_edge
+        .iter()
+        .map(|p| p.size[0].min(cap))
+        .fold(0.0, f32::max)
+        .min(free.width());
+    let (left, right) = if dock == Dock::Left {
+        (free.min.x, free.min.x + width)
+    } else {
+        (free.max.x - width, free.max.x)
+    };
+    let overlaps = |rect: &Rect| rect.max.x > left && rect.min.x < right;
+    let (mut top, mut bottom) = (inner.min.y, inner.max.y);
+    for (_, rect) in placed.iter().filter(|(_, rect)| overlaps(rect)) {
+        if rect.center().y < inner.center().y {
+            top = top.max(rect.max.y + GAP);
+        } else {
+            bottom = bottom.min(rect.min.y - GAP);
+        }
+    }
+    Rect::from_min_max(pos2(free.min.x, top), pos2(free.max.x, bottom.max(top)))
+}
+
 /// A panel in a row: which, where it starts along the edge, its length and its thickness.
 type RowItem = (PanelId, f32, f32, f32);
+
+/// A panel's length along its edge and its thickness, as it asks for them but held within half
+/// the room across and, at the ends of an edge or in a side column, within `cap`.
+fn capped_size(place: &Place, free: Rect, dock: Dock, cap: f32) -> (f32, f32) {
+    let (along_size, thickness, half) = if across(dock) {
+        (place.size[0], place.size[1], free.height() / 2.0)
+    } else {
+        (place.size[1], place.size[0], free.width() / 2.0)
+    };
+    let thickness = thickness.min(half).max(0.0);
+    if across(dock) {
+        let at_end = matches!(place.align, Align::Start | Align::End);
+        (
+            if at_end {
+                along_size.min(cap)
+            } else {
+                along_size
+            },
+            thickness,
+        )
+    } else {
+        (along_size, thickness.min(cap))
+    }
+}
 
 /// The panels on one edge, laid out in rows running along it (columns, for a side), each
 /// row's rectangles placed along the edge but not yet against it. A panel that fills its edge
 /// has a row to itself; shorter ones share a row while they fit side by side.
-fn rows(on_edge: &[&Place], free: Rect, dock: Dock) -> Vec<Vec<(PanelId, Rect)>> {
+fn rows(on_edge: &[&Place], free: Rect, dock: Dock, cap: f32) -> Vec<Vec<(PanelId, Rect)>> {
     let length = if across(dock) {
         free.width()
     } else {
@@ -101,23 +167,19 @@ fn rows(on_edge: &[&Place], free: Rect, dock: Dock) -> Vec<Vec<(PanelId, Rect)>>
     let ends = on_edge
         .iter()
         .filter(|p| matches!(p.align, Align::Start | Align::End))
-        .map(|p| if across(dock) { p.size[0] } else { p.size[1] })
+        .map(|p| {
+            if across(dock) {
+                p.size[0].min(cap)
+            } else {
+                p.size[1]
+            }
+        })
         .fold(0.0, f32::max);
     // Each row: whether a filling panel has it, and its panels as their start, length along
     // the edge and thickness.
     let mut rows: Vec<(bool, Vec<RowItem>)> = Vec::new();
     for place in on_edge {
-        let (along_size, thickness) = if across(dock) {
-            (place.size[0], place.size[1])
-        } else {
-            (place.size[1], place.size[0])
-        };
-        let half = if across(dock) {
-            free.height()
-        } else {
-            free.width()
-        } / 2.0;
-        let thickness = thickness.min(half).max(0.0);
+        let (along_size, thickness) = capped_size(place, free, dock, cap);
         let fills = place.align == Align::Fill || along_size <= 0.0;
         let along_size = if fills {
             length
@@ -158,4 +220,12 @@ fn rows(on_edge: &[&Place], free: Rect, dock: Dock) -> Vec<Vec<(PanelId, Rect)>>
                 .collect()
         })
         .collect()
+}
+
+/// The most a panel at either end of an edge may take, across or along: enough that a centred
+/// panel of the smallest size still fits between two of them, so in a small window the side
+/// columns and the corner panels narrow together instead of pushing the command bar into a row of
+/// its own.
+fn end_cap(inner: Rect) -> f32 {
+    ((inner.width() - MIN_PANEL.x) / 2.0 - GAP).max(MIN_PANEL.x)
 }

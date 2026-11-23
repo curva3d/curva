@@ -8,6 +8,9 @@ use crate::*;
 pub(crate) struct Frames {
     /// Focus mode: the panels slid out of view.
     pub(crate) focus: bool,
+    /// How tall the command bar's contents are with the panel's margins: it is made this tall
+    /// when it is on its own, so no room is left below its snaps.
+    pub(crate) command_fit: f32,
     /// In focus mode, the one panel brought back out by clicking its strip.
     pub(crate) revealed: Option<layout::PanelId>,
     /// Where each panel was last drawn, for hovering over a hidden one.
@@ -161,22 +164,32 @@ fn closes_without_asking(pieces: &[layout::Piece]) -> bool {
         })
 }
 
+/// Which place a measured height belongs to.
+type PlaceTest = fn(&layout::Place) -> bool;
+
 impl Curva {
     /// Makes the command tabs, docked at the top or bottom on their own, exactly as tall as what
     /// they hold, as measured when last drawn (owner, 22 November 2026: no room to spare below
     /// the buttons). Not while a panel is being dragged or resized.
     fn fit_command_tabs(&mut self) {
-        let fit = self.bar.tabs_fit;
-        if fit <= 0.0 || self.frames.panel_drag.is_some() {
+        if self.frames.panel_drag.is_some() {
             return;
         }
-        if let Some(place) = self.layout.places.iter_mut().find(|p| {
-            p.is_command_tabs_alone()
-                && !p.hidden
-                && matches!(p.dock, layout::Dock::Top | layout::Dock::Bottom)
-        }) && (place.size[1] - fit).abs() > 0.5
-        {
-            place.size[1] = fit;
+        // The command bar too, so no room is left below its snaps (owner, 22 November 2026).
+        let fits: [(PlaceTest, f32); 2] = [
+            (layout::Place::is_command_tabs_alone, self.bar.tabs_fit),
+            (layout::Place::is_command_alone, self.frames.command_fit),
+        ];
+        for (holds, fit) in fits {
+            if fit <= 0.0 {
+                continue;
+            }
+            if let Some(place) = self.layout.places.iter_mut().find(|p| {
+                holds(p) && !p.hidden && matches!(p.dock, layout::Dock::Top | layout::Dock::Bottom)
+            }) && (place.size[1] - fit).abs() > 0.5
+            {
+                place.size[1] = fit;
+            }
         }
     }
 
