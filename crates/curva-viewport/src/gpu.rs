@@ -49,15 +49,8 @@ struct ViewSlot {
     scene: Option<Arc<Uploaded<Vertex>>>,
     /// Meshes' wires from those lines, drawn as plain one-pixel lines; shared the same way.
     wires: Option<Arc<Uploaded<Vertex>>>,
-    shaded: bool,
-    ghosted: bool,
-    /// The Hidden display mode: faces in paper white, the model's lines in black ink (#164).
-    hidden: bool,
-    /// The Massing display mode: faces white and lit, the model's lines in black ink, outlines
-    /// thick, and the sun (#551).
-    massing: bool,
-    /// The Technical display mode's addition: lines behind faces drawn dotted (#164).
-    hidden_lines: bool,
+    /// How this view draws the model.
+    style: crate::Style,
 }
 
 /// The graphics card's side of the viewport.
@@ -198,11 +191,7 @@ impl LineRenderer {
                     grid: None,
                     scene: None,
                     wires: None,
-                    shaded: false,
-                    ghosted: false,
-                    hidden: false,
-                    hidden_lines: false,
-                    massing: false,
+                    style: crate::Style::WIREFRAME,
                 }
             })
             .collect();
@@ -459,11 +448,7 @@ impl LineRenderer {
             0,
             &uniform_bytes(&drawing.matrix, drawing.light, pixel, &drawing.clips),
         );
-        slot.shaded = drawing.shaded;
-        slot.ghosted = drawing.ghosted;
-        slot.hidden = drawing.hidden;
-        slot.hidden_lines = drawing.hidden_lines;
-        slot.massing = drawing.massing;
+        slot.style = drawing.style;
         let chunk = self.chunk_bytes;
         if stale(slot.grid.as_ref(), &drawing.grid) {
             slot.grid = Some(upload(
@@ -564,9 +549,7 @@ impl LineRenderer {
     /// ghosted (ghosted faces write no depth), with faces to show.
     fn outlines_wanted(&self, slot: usize) -> bool {
         self.slots.get(slot).is_some_and(|slot| {
-            slot.shaded
-                && !slot.ghosted
-                && self.surfaces.as_ref().is_some_and(|faces| faces.count > 0)
+            slot.style.solid() && self.surfaces.as_ref().is_some_and(|faces| faces.count > 0)
         })
     }
 
@@ -595,13 +578,13 @@ impl LineRenderer {
         // it, as in Rhino; drawn after faces, it showed through faces lying exactly on it.
         Self::grid_lines(pass, &self.grid, slot);
         // Solid faces go next and hide the lines behind them.
-        if slot.shaded
-            && !slot.ghosted
+        if slot.style.solid()
             && let Some(faces) = faces
         {
-            let pipeline = if slot.hidden {
+            let style = slot.style.surfaces;
+            let pipeline = if slot.style.light() == Some(crate::Light::Flat) {
                 &self.paper_faces
-            } else if slot.massing {
+            } else if style.is_some_and(|surfaces| surfaces.colour.is_some()) {
                 &self.white_faces
             } else {
                 &self.faces
@@ -611,14 +594,13 @@ impl LineRenderer {
     }
 
     /// The colour of the outlines of curved shapes in view `slot` (#182), and whether they are
-    /// thick: black ink in the Hidden and Technical display modes, thick black ink in Massing
-    /// (#551), else the dark of edges on faces.
+    /// thick, as its style's Outlines layer says.
     fn outline_colour(&self, slot: usize) -> ([f32; 3], bool) {
-        match self.slots.get(slot) {
-            Some(slot) if slot.massing => (crate::INK_COLOUR, true),
-            Some(slot) if slot.hidden => (crate::INK_COLOUR, false),
-            _ => (crate::EDGE_ON_FACES_COLOUR, false),
-        }
+        let look = self
+            .slots
+            .get(slot)
+            .map_or(crate::OutlineLook::EDGES, |slot| slot.style.outlines);
+        (look.colour, look.thick)
     }
     /// Whether view `slot` has a grid to draw.
     fn grid_wanted(&self, slot: usize) -> bool {
@@ -663,12 +645,12 @@ impl LineRenderer {
         // The model's own lines go in black ink in the Hidden and Technical display modes, and
         // Technical draws them dotted where faces hide them; previews and markers (the overlay)
         // keep their colours.
-        let mut inks = vec![if slot.hidden || slot.massing {
+        let mut inks = vec![if slot.style.lines == crate::LineColour::Ink {
             Ink::Visible
         } else {
             Ink::Own
         }];
-        if slot.hidden_lines {
+        if slot.style.hidden_lines {
             inks.push(Ink::Hidden);
         }
         for ink in inks {
@@ -684,8 +666,7 @@ impl LineRenderer {
         }
         // Ghosted faces go over the lines, so lines behind a face show through it, dimmed,
         // while lines on its near side stay in front.
-        if slot.shaded
-            && slot.ghosted
+        if slot.style.see_through()
             && let Some(faces) = faces
         {
             Self::draw_faces(pass, &self.ghost_faces, faces);

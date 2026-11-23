@@ -11,6 +11,22 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 ## 23 November 2026
 
 **Done**
+- **Step 6, styles as settings: part 1, the display modes as built-in styles** (owner, 23
+  November 2026: "Let's start on custom display styles"). A view no longer carries five on/off
+  switches (shaded, ghosted, hidden, hidden lines, massing); it carries a style
+  (`curva_viewport::Style`) made of the layers of `views-and-styles.md` §2.1: Surfaces (shown or
+  not, one colour or each object's, see-through, lit by the view, the sun, or flat), the model's
+  lines (own colours or black ink), Outlines (colour, thin or thick) and hidden lines. The six
+  display modes are built-in styles (`Style::SHADED` and the others) and look exactly as before;
+  the line drawer, Bevy and pictures read the style's settings, not the mode's name. One change
+  you can see: a picture script asking for `SetDisplayMode Wireframe` now gets a wireframe picture
+  (it was shaded). **Announced, outside the viewport crate:** `crates/curva-app` gains
+  `styles.rs` (each display mode's built-in style) and passes styles to views, details and
+  pictures. Rhino 8's display-mode settings were exported for the next parts (surfaces' colour
+  and transparency, lighting and shadows, edge, curve and mesh-wire widths and colours,
+  silhouettes, background). **Next:** part 2, each setting adjustable (colours, opacity, line
+  widths, lighting, background), drawn by the same code; part 3, the Style panel to edit styles
+  live and save your own.
 - **Two glass panels at once each frosted** (features stream's report, seen in `--ui-pictures`):
   with Settings and Layouts floating side by side only one showed frost. Every panel prepares
   its blur before any paints, and there was one blur for all, so the last won. Each panel now
