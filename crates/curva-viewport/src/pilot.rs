@@ -533,9 +533,31 @@ pub fn bevy_picture(
         if let Some(pilot) = pictures.resources.get_mut::<Pilot>() {
             pilot.look = look;
         }
-        pictures.draw(&mut drawing, size);
-        pictures.pixels(size)
+        settled_pixels(pictures, &mut drawing, size)
     })
+}
+
+/// The most times a picture is drawn while waiting for Bevy to have all of it on the card.
+const MOST_PICTURE_DRAWS: usize = 12;
+
+/// Draws `drawing` until two pictures in a row are the same, and returns that picture: Bevy hands
+/// a large scene's faces to the card over several updates (the *Meshes* scene, 15.7 million
+/// triangles, came out without its faces from one draw), and a picture is drawn only once.
+fn settled_pixels(
+    pictures: &mut Pictures,
+    drawing: &mut Drawing,
+    size: [u32; 2],
+) -> Result<Vec<u8>, String> {
+    let mut last = None;
+    for _ in 0..MOST_PICTURE_DRAWS {
+        pictures.draw(drawing, size);
+        let pixels = pictures.pixels(size)?;
+        if last.as_ref() == Some(&pixels) {
+            return Ok(pixels);
+        }
+        last = Some(pixels);
+    }
+    last.ok_or_else(|| "no picture".to_owned())
 }
 
 /// As [`bevy_picture`], saved as a PNG file at `path`; returns the median time to draw one frame,
