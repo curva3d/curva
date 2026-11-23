@@ -21,8 +21,8 @@ for the kind of work, all on one model.
 | [**Freeform**](https://curva3d.com/freeform/) | Out now | Rhino-level modelling: curves, surfaces, solids, meshes and SubD, with Rhino's commands, a model with memory, and sheets |
 | [**Architecture**](https://curva3d.com/architecture/) | Coming next | Smart building elements that draw themselves in 3D, plan and section; live plans, sections and elevations; IFC |
 | [**Urban**](https://curva3d.com/urban/) | Planned | Massing from rules, real context, streets and blocks generated from street sections, live area and density data |
-| [**Publisher**](https://curva3d.com/publisher/) | Planned | From the model to the drawing set: sheets and drawing sets, title blocks, revisions, presentation boards and exports, all live from the model |
 | [**Analysis**](https://curva3d.com/analysis/) | Later | Sun and shadow, wind, views and carbon, run on the live model |
+| [**Publisher**](https://curva3d.com/publisher/) | Planned | From the model to the drawing set: sheets and drawing sets, title blocks, revisions, presentation boards and exports, all live from the model |
 
 **Status:** preview, 0.1.5. Freeform with NURBS, meshes and SubD; layouts, Make2D, dimensions and
 printing; Rhino `.3dm`, DWG, DXF, SketchUp, STEP and mesh files; commands checked against Rhino 8.

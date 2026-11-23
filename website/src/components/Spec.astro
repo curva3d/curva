@@ -19,7 +19,8 @@ const hint = `0${n} ${s.name} · ` + w.hintSpec.replace('{n}', String(s.points.l
 		<p class="lede">{s.lede}</p>
 	</Fragment>
 	<div class="persp" slot="stack"><div class="stack">
-		{s.points.map((p, i) => (
+		{/* Drawn bottom to top, so the first plate sits on top of the stack. */}
+		{s.points.map((p, i) => ({ p, i })).reverse().map(({ p, i }) => (
 			<a class="plate glass" href={`#p${i + 1}`} data-plate={i}>
 				<span class="tag mono">{n}.{i + 1}</span>
 				<span class="name">{p.short}</span>

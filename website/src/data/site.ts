@@ -2,7 +2,7 @@
 // language, add it to Lang, give it a block in WORDS and pages under src/pages/<lang>/.
 
 export type Lang = 'en';
-export const SLUGS = ['freeform', 'architecture', 'urban', 'publisher', 'analysis'] as const;
+export const SLUGS = ['freeform', 'architecture', 'urban', 'analysis', 'publisher'] as const;
 export type Slug = (typeof SLUGS)[number];
 
 export interface Point { short: string; title: string; text: string }
@@ -50,7 +50,7 @@ export const WORDS: Record<Lang, Words> = {
 		skip: 'Skip to content',
 		home: 'Curva, home',
 		motto: 'Every project starts with a curve.',
-		intro: 'Five specializations, stacked on one model. Freeform is the base; the others build on it.',
+		intro: 'Five specializations, stacked on one model. Sketch the idea in Freeform, then let the Curva specializations give it structure.',
 		hintHome: 'Exploded axonometric · Move up to pull it apart · Click a plate to read on',
 		hintSpec: '{n} plates · Move up to pull them apart · Click one to read on',
 		back: '← Back to the stack',
