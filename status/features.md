@@ -16,6 +16,15 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## Features stream — 23 November 2026 (website)
+
+- **Orange as small signals** (owner's pick, option C): status tags, plate numbers, list dashes, a
+  short rule above each section title, panel labels and the top-bar hint. In light mode, orange
+  text uses a deeper shade (#A84F12) so small text stays readable; fills and rules keep #E0782F.
+  Dark mode uses #F08A45.
+- **Plate drawings normalised:** each drawing's viewBox is cropped to what it reaches over its whole
+  animation, so all 24 fill their frame the same way, centred; `--lw` keeps line weights even.
+
 ## Features stream — 22 November 2026 (docs and GitHub)
 
 - **Docs brought up to 0.1.5:** the Operations panel and its tabs, the specializations shown side by
