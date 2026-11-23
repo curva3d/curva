@@ -119,12 +119,13 @@ impl Pilot {
         });
         clip::install(&mut app);
         one_thread(&mut app);
+        keep_buffers_within(&mut app, device.limits().max_buffer_size);
         app.finish();
         app.cleanup();
         Self {
             apps: Mutex::new(std::mem::take(app.sub_apps_mut())),
             views: HashMap::new(),
-            meshes: SharedMeshes::default(),
+            meshes: SharedMeshes::within(device.limits().max_buffer_size),
             look: Look::default(),
             skies: None,
             format: format.add_srgb_suffix(),
@@ -305,6 +306,20 @@ fn make_camera(
         ))
         .id();
     (camera, target)
+}
+
+/// Keeps Bevy's shared mesh buffers within `most` bytes, the largest buffer Curva's device may
+/// make. Bevy grows them to 512 MB by default, past the 256 MB every supported card allows; once
+/// a scene's faces passed 256 MB, the buffer was refused without a word and Bevy drew nothing at
+/// all, not even the background (the *Meshes* scene, 15.7 million triangles).
+fn keep_buffers_within(app: &mut App, most: u64) {
+    use bevy::render::mesh::allocator::MeshAllocatorSettings;
+    let mut settings = MeshAllocatorSettings::default();
+    settings.max_slab_size = settings.max_slab_size.min(most);
+    // A mesh too large for a shared buffer gets one of its own, which must fit too: no part is
+    // larger than half the largest buffer (`SharedMeshes::within`).
+    settings.large_threshold = settings.large_threshold.min(most / 2);
+    app.sub_app_mut(RenderApp).insert_resource(settings);
 }
 
 /// Runs Bevy's schedules on this thread alone, each system after the other. Handing systems out
@@ -722,6 +737,53 @@ mod tests {
             let settled = middle(&mut pilot, &device, &queue, &view);
             assert_eq!(first, settled, "a new look shows at once");
         }
+    }
+
+    /// Faces past the largest buffer the device allows still draw (the *Meshes* scene, 15.7
+    /// million triangles, drew nothing at all): on a device whose buffers hold at most 8 MB,
+    /// 120,000 triangles of one object (8.6 MB) give a picture, background and all.
+    #[test]
+    fn faces_larger_than_a_buffer_still_draw() {
+        let _turn = one_at_a_time();
+        let Some((mut pilot, device, queue)) = pilot_within(8 * 1024 * 1024) else {
+            return;
+        };
+        let mut faces = Vec::new();
+        for i in 0..120_000_u32 {
+            let (x, y) = (
+                (i % 400) as f32 * 10.0 - 2000.0,
+                (i / 400) as f32 * 10.0 - 1500.0,
+            );
+            for (dx, dy) in [(0.0, 0.0), (9.0, 0.0), (0.0, 9.0)] {
+                faces.push(MeshVertex {
+                    position: [x + dx, y + dy, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    colour: [0.6; 3],
+                    object: 0,
+                });
+            }
+        }
+        let view = drawing(StandardView::Top, faces);
+        for _ in 0..3 {
+            pilot.draw(&view, SIZE);
+        }
+        let texture = pilot.draw(&view, SIZE).expect("Bevy's picture");
+        let pixels = crate::gpu::read_texture(&device, &queue, &texture, SIZE);
+        assert_eq!(pixels[3], 255, "the picture is drawn, not left empty");
+    }
+
+    /// As [`pilot`], on a device whose buffers hold at most `most_bytes`.
+    fn pilot_within(most_bytes: u64) -> Option<(Pilot, wgpu::Device, wgpu::Queue)> {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let adapter =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+                .ok()?;
+        let mut descriptor = crate::device_descriptor(&adapter, true);
+        descriptor.required_limits.max_buffer_size = most_bytes;
+        let (device, queue) = pollster::block_on(adapter.request_device(&descriptor)).ok()?;
+        let seed = PilotSeed { instance, adapter };
+        let pilot = Pilot::new(&seed, &device, &queue, wgpu::TextureFormat::Rgba8Unorm);
+        Some((pilot, device, queue))
     }
 
     /// Copies of one solid are drawn from one Bevy mesh, each at its placement (#153): the copy
