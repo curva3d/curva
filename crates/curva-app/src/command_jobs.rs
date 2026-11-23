@@ -35,9 +35,7 @@ impl Curva {
         let Some(job) = jobs.first() else {
             return false;
         };
-        let painter = ui.painter();
         // The line: its counted part, or a short piece sliding along while not counted.
-        let line = egui::Rect::from_min_size(bar.left_top(), egui::vec2(bar.width(), 3.0));
         let (from, to) = match job.fraction() {
             Some(part) => (0.0, part),
             None => {
@@ -45,44 +43,14 @@ impl Curva {
                 (t * 1.3 - 0.3, t * 1.3)
             }
         };
-        let x = |f: f32| line.left() + line.width() * f.clamp(0.0, 1.0);
-        painter.rect_filled(
-            egui::Rect::from_x_y_ranges(x(from)..=x(to), line.y_range()),
-            0.0,
-            theme::ACCENT,
-        );
+        ui_kit::progress_line(ui, bar, from, to);
         // The chip, at the right end of the bar's first row.
         let mut label = chip_text(&self.text, job);
         if jobs.len() > 1 {
             label = format!("{label} (+{})", jobs.len() - 1);
         }
-        let font = egui::FontId::proportional(12.0);
-        let galley = painter.layout_no_wrap(label, font, theme::current().text);
-        let size = egui::vec2(galley.size().x + 34.0, galley.size().y + 8.0);
-        let chip = egui::Rect::from_min_size(
-            egui::pos2(bar.right() - size.x - 8.0, bar.top() + 6.0),
-            size,
-        );
-        painter.rect_filled(chip, size.y / 2.0, theme::ACCENT.gamma_multiply(0.22));
-        painter.rect_stroke(
-            chip,
-            size.y / 2.0,
-            egui::Stroke::new(1.0, theme::ACCENT),
-            egui::StrokeKind::Inside,
-        );
-        let spinner = egui::Rect::from_center_size(
-            egui::pos2(chip.left() + 14.0, chip.center().y),
-            egui::vec2(10.0, 10.0),
-        );
-        egui::Spinner::new().size(10.0).paint_at(ui, spinner);
-        painter.galley(
-            egui::pos2(chip.left() + 24.0, chip.center().y - galley.size().y / 2.0),
-            galley,
-            theme::current().text,
-        );
-        let response = ui
-            .interact(chip, ui.scope_id().with("job chip"), egui::Sense::click())
-            .on_hover_cursor(egui::CursorIcon::PointingHand);
+        let corner = egui::pos2(bar.right() - ui_kit::PAD, bar.top() + 6.0);
+        let response = ui_kit::busy_chip(ui, corner, label);
         let mut stop = false;
         egui::Popup::from_toggle_button_response(&response).show(|ui| {
             for job in &jobs {

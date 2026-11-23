@@ -8,6 +8,10 @@ pub(crate) struct Startup {
     /// A recovery file left by a Curva that did not close normally, waiting for the user to
     /// restore or discard it.
     pub(crate) left_behind: Option<std::path::PathBuf>,
+    /// Pictures of the window being taken (`--ui-pictures`).
+    pub(crate) ui_pictures: Option<crate::ui_pictures::UiPictures>,
+    /// Whether this run only takes pictures, so it keeps none of its layout or settings.
+    pub(crate) pictures_run: bool,
     /// The answer of the check for updates, while it is under way.
     pub(crate) update_check: Option<std::sync::mpsc::Receiver<Option<updates::Release>>>,
     /// The update being downloaded.
@@ -45,16 +49,6 @@ impl Notice {
             born: None,
         }
     }
-}
-
-/// `from` moved towards `to` by `amount` (0 to 1).
-pub(crate) fn lerp_colour(from: egui::Color32, to: egui::Color32, amount: f32) -> egui::Color32 {
-    let mix = |a: u8, b: u8| (f32::from(a) + (f32::from(b) - f32::from(a)) * amount).round() as u8;
-    egui::Color32::from_rgb(
-        mix(from.r(), to.r()),
-        mix(from.g(), to.g()),
-        mix(from.b(), to.b()),
-    )
 }
 
 /// Opens a page in the system's browser.
@@ -143,8 +137,7 @@ impl Curva {
             if glow > 0.0 {
                 ui.ctx().request_repaint();
             }
-            let colour = lerp_colour(theme::current().text, theme::ACCENT, glow);
-            let text = egui::RichText::new(&notice.text).color(colour);
+            let text = ui_kit::fading_accent(&notice.text, glow);
             match notice.action {
                 NoticeAction::None => {
                     ui.label(text);
@@ -248,22 +241,15 @@ impl Curva {
         let Some(file) = self.startup.left_behind.clone() else {
             return;
         };
-        let (mut restore, mut discard) = (false, false);
-        egui::Window::new(self.text.render(&Message::new("ui.recovery")))
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-            .show(ui.ctx(), |ui| {
-                ui.label(self.text.render(&Message::new("ui.recovery.question")));
-                ui.horizontal(|ui| {
-                    restore = ui
-                        .button(self.text.render(&Message::new("ui.recovery.restore")))
-                        .clicked();
-                    discard = ui
-                        .button(self.text.render(&Message::new("ui.recovery.discard")))
-                        .clicked();
-                });
-            });
+        let say = |key: &'static str| self.text.render(&Message::new(key));
+        let buttons = [
+            ui_kit::main_choice(say("ui.recovery.restore")),
+            ui_kit::other_choice(say("ui.recovery.discard")),
+        ];
+        let answer = ui_kit::dialog(ui.ctx(), "recovery", &say("ui.recovery"), &buttons, |ui| {
+            ui.label(say("ui.recovery.question"));
+        });
+        let (restore, discard) = (answer == Some(0), answer == Some(1));
         if restore {
             self.startup.left_behind = None;
             match recovery::restore(&file) {

@@ -5,7 +5,6 @@
 //! running command's step asks for it (`Panel::MeshSettings`, #387); OK keeps the settings and
 //! answers the step, Cancel ends the command. The live preview is display's (#407).
 
-use crate::settings::centred_dialog;
 use crate::*;
 use curva_document::meshing::{MeshNumbers, mesh_objects, remember_settings, remembered_settings};
 use curva_mesh::{MOST_SUBD_LEVEL, MeshPreset, MeshSettings};
@@ -123,10 +122,12 @@ impl Curva {
         let (numbers_text, subds) = self.mesh_panel_numbers(&mut state, settings);
         let unit = self.doc.state().unit.symbol();
         let mut advanced = state.advanced;
-        let mut answer = Answer::Waiting;
         let say = |key: &'static str| self.text.render(&Message::new(key));
-        centred_dialog(ctx, "mesh panel", |ui| {
-            ui.label(egui::RichText::new(say("ui.mesh.title")).strong());
+        let buttons = [
+            ui_kit::main_choice(say("ui.mesh.ok")),
+            ui_kit::other_choice(say("ui.mesh.cancel")),
+        ];
+        let clicked = ui_kit::dialog(ctx, "mesh panel", &say("ui.mesh.title"), &buttons, |ui| {
             presets(ui, &mut settings, &say);
             ui.horizontal(|ui| {
                 ui.label(say("ui.mesh.fewer"));
@@ -144,15 +145,12 @@ impl Curva {
             if advanced {
                 advanced_fields(ui, &mut settings, unit, &say);
             }
-            ui.horizontal(|ui| {
-                if ui.button(say("ui.mesh.ok")).clicked() {
-                    answer = Answer::Ok;
-                }
-                if ui.button(say("ui.mesh.cancel")).clicked() {
-                    answer = Answer::Cancel;
-                }
-            });
         });
+        let answer = match clicked {
+            Some(0) => Answer::Ok,
+            Some(_) => Answer::Cancel,
+            None => Answer::Waiting,
+        };
         state.advanced = advanced;
         state.settings = Some(settings);
         match answer {
@@ -183,7 +181,7 @@ fn presets(ui: &mut egui::Ui, settings: &mut MeshSettings, say: &dyn Fn(&'static
                 subd_level: settings.subd_level,
                 ..MeshSettings::preset(preset)
             };
-            if ui.selectable_label(*settings == chosen, say(key)).clicked() {
+            if ui_kit::choice(ui, *settings == chosen, say(key)).clicked() {
                 *settings = chosen;
             }
         }

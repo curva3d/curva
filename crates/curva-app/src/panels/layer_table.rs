@@ -84,14 +84,7 @@ impl Listed<'_> {
 
 /// Outlines `rect` while a layer is dragged over it.
 fn outline_drop_target(ui: &egui::Ui, response: &egui::Response, rect: egui::Rect) {
-    if response.dnd_hover_payload::<u64>().is_some() {
-        ui.painter().rect_stroke(
-            rect,
-            2.0,
-            egui::Stroke::new(1.0, theme::ACCENT),
-            egui::StrokeKind::Inside,
-        );
-    }
+    ui_kit::drop_outline::<u64>(ui, response, rect);
 }
 
 /// The divider after column `index` of the header, whose cell is `rect`: dragged, it sizes the
@@ -116,11 +109,7 @@ fn column_divider(
     );
     if handle.hovered() || handle.dragged() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeColumn);
-        ui.painter().vline(
-            divider.center().x,
-            divider.y_range(),
-            egui::Stroke::new(1.0, theme::ACCENT),
-        );
+        ui_kit::divider_lit(ui, divider.center().x, divider.y_range());
     }
     let columns = &mut table.columns;
     if handle.dragged() {
@@ -235,14 +224,12 @@ impl Curva {
             });
         }
         outline_drop_target(ui, &header_response, header);
-        let quiet = theme::current().quiet;
         if table.in_detail.is_some() {
-            ui.painter().text(
-                table.detail_cell(header).left_center() + egui::vec2(2.0, 0.0),
-                egui::Align2::LEFT_CENTER,
+            let at = table.detail_cell(header).left_center() + egui::vec2(2.0, 0.0);
+            ui_kit::header_note(
+                ui,
+                at,
                 self.text.render(&Message::new("ui.layer.in_detail")),
-                egui::FontId::proportional(11.5),
-                theme::ACCENT,
             );
         }
         let mut resized = false;
@@ -251,13 +238,8 @@ impl Curva {
             let rect = table.cell(header, index);
             // "Name" starts where the rows' grips do, past the room kept for the triangle.
             let inset = if index == 0 { ARROW + 2.0 } else { 0.0 };
-            ui.painter().text(
-                rect.left_center() + egui::vec2(inset, 0.0),
-                egui::Align2::LEFT_CENTER,
-                self.text.render(&Message::new(key)),
-                egui::FontId::proportional(11.5),
-                quiet,
-            );
+            let at = rect.left_center() + egui::vec2(inset, 0.0);
+            ui_kit::header_text(ui, at, self.text.render(&Message::new(key)));
             let (r, f) = column_divider(ui, table, rect, index, last_widest);
             resized |= r;
             finished |= f;
@@ -281,18 +263,9 @@ impl Curva {
         state: &curva_document::State,
     ) -> f32 {
         let layer = listed.layer;
-        let quiet = theme::current().quiet;
         // The Name column fits the longest name, not the room its field was given.
-        let name_width = ui.fonts_mut(|fonts| {
-            fonts
-                .layout_no_wrap(
-                    layer.name.clone(),
-                    egui::TextStyle::Body.resolve(ui.style()),
-                    quiet,
-                )
-                .size()
-                .x
-        });
+        let body = egui::TextStyle::Body.resolve(ui.style());
+        let name_width = ui_kit::text_width(ui, &layer.name, &body);
         let fit = name_width + 56.0 + listed.indent() + ARROW + GRIP;
         let (rect, row_response) =
             ui.allocate_exact_size(egui::vec2(table.total, table.row), egui::Sense::hover());
@@ -309,8 +282,7 @@ impl Curva {
         outline_drop_target(ui, &row_response, rect);
         // The layer picked in the list, which the toolbar acts on, is lit.
         if self.frames.layers_ui.selected == Some(layer.id) {
-            ui.painter()
-                .rect_filled(rect, 3.0, theme::ACCENT.gamma_multiply(0.18));
+            ui_kit::chosen_row(ui, rect);
         }
         let (current, height) = (table.current, table.row);
         table.in_cell(ui, rect, 0, |ui| {
@@ -332,7 +304,7 @@ impl Curva {
         state: &curva_document::State,
     ) {
         let layer = listed.layer;
-        ui.spacing_mut().item_spacing.x = 2.0;
+        ui_kit::tight(ui);
         ui.add_space(listed.indent());
         self.sublayer_arrow(ui, listed, height);
         self.layer_grip(ui, layer.id, height);
@@ -342,12 +314,7 @@ impl Curva {
         let mut name = layer.name.clone();
         let room = ui.available_width();
         // Without a frame the name keeps all its room; clicking it picks the layer.
-        let edit = ui.add(
-            egui::TextEdit::singleline(&mut name)
-                .frame(egui::Frame::NONE)
-                .margin(egui::Margin::symmetric(2, 0))
-                .desired_width(room),
-        );
+        let edit = ui_kit::plain_field(ui, &mut name, room);
         if edit.changed() {
             self.doc.rename_layer(layer.id, name.clone());
         }
@@ -361,37 +328,8 @@ impl Curva {
     /// room for it is kept on layers without sublayers too.
     fn sublayer_arrow(&mut self, ui: &mut egui::Ui, listed: &Listed<'_>, height: f32) {
         let layer = listed.layer;
-        let (arrow, clicked) =
-            ui.allocate_exact_size(egui::vec2(ARROW, height), egui::Sense::click());
-        if !listed.has_sublayers {
-            return;
-        }
-        let c = arrow.center();
-        let s = ARROW * 0.3;
-        let points = if layer.collapsed {
-            vec![
-                egui::pos2(c.x - s * 0.6, c.y - s),
-                egui::pos2(c.x + s * 0.8, c.y),
-                egui::pos2(c.x - s * 0.6, c.y + s),
-            ]
-        } else {
-            vec![
-                egui::pos2(c.x - s, c.y - s * 0.6),
-                egui::pos2(c.x + s, c.y - s * 0.6),
-                egui::pos2(c.x, c.y + s * 0.8),
-            ]
-        };
-        let colour = if clicked.hovered() {
-            theme::ACCENT
-        } else {
-            theme::current().quiet
-        };
-        ui.painter().add(egui::Shape::convex_polygon(
-            points,
-            colour,
-            egui::Stroke::NONE,
-        ));
-        if clicked.clicked() {
+        let clicked = ui_kit::tree_arrow(ui, ARROW, height, layer.collapsed, listed.has_sublayers);
+        if clicked.clicked() && listed.has_sublayers {
             let (id, folded) = (layer.id, !layer.collapsed);
             self.doc.set_layer_collapsed(id, folded);
         }
@@ -399,21 +337,10 @@ impl Curva {
 
     /// A grip to drag the layer `id` onto another, or onto the header for the top.
     fn layer_grip(&self, ui: &mut egui::Ui, id: u64, height: f32) {
-        let quiet = theme::current().quiet;
         let handle_id = ui.scope_id().with(("layer drag", id));
         let drag_hint = self.text.render(&Message::new("ui.layer.drag"));
         ui.dnd_drag_source(handle_id, id, |ui| {
-            let (grip, hover) =
-                ui.allocate_exact_size(egui::vec2(GRIP, height), egui::Sense::hover());
-            for k in 0..3 {
-                for side in [-1.5_f32, 1.5] {
-                    ui.painter().circle_filled(
-                        grip.center() + egui::vec2(side, (k as f32 - 1.0) * 4.0),
-                        1.1,
-                        quiet,
-                    );
-                }
-            }
+            let hover = ui_kit::drag_grip(ui, GRIP, height);
             hover.on_hover_text(drag_hint);
         });
     }
@@ -489,19 +416,13 @@ impl Curva {
         let parent_locked = layer.parent.is_some_and(|p| state.layer_locked(p));
         table.in_cell(ui, rect, 1, |ui| {
             let mut visible = layer.visible && !parent_off;
-            if ui
-                .add_enabled(!parent_off, egui::Checkbox::without_text(&mut visible))
-                .changed()
-            {
+            if ui_kit::tick_when(ui, !parent_off, &mut visible).changed() {
                 self.undoable(|doc| doc.set_layer_visible(layer.id, visible));
             }
         });
         table.in_cell(ui, rect, 2, |ui| {
             let mut locked = layer.locked || parent_locked;
-            if ui
-                .add_enabled(!parent_locked, egui::Checkbox::without_text(&mut locked))
-                .changed()
-            {
+            if ui_kit::tick_when(ui, !parent_locked, &mut locked).changed() {
                 self.undoable(|doc| doc.set_layer_locked(layer.id, locked));
             }
         });
@@ -547,7 +468,7 @@ impl Curva {
                 .max_rect(table.detail_cell(rect))
                 .layout(egui::Layout::left_to_right(egui::Align::Center)),
         );
-        if child.checkbox(&mut shown, "").changed() {
+        if ui_kit::tick(&mut child, &mut shown).changed() {
             let frame = *frame;
             self.undoable(|doc| {
                 doc.change_detail(frame, |d| {

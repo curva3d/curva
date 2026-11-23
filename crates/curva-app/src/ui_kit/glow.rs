@@ -69,6 +69,25 @@ pub(crate) fn edge_glow(rect: egui::Rect, radius: f32, pointer: egui::Pos2) -> e
     glow_at(rect, radius, pointer, 1.0)
 }
 
+/// Lights the panel at `rect` inside its edge, strongest by the mouse, while a dragged panel
+/// would merge into it.
+pub(crate) fn merge_glow(ui: &egui::Ui, rect: egui::Rect) {
+    if let Some(pointer) = ui.ctx().pointer_latest_pos() {
+        ui.painter()
+            .add(edge_glow(rect, f32::from(super::PANEL_RADIUS), pointer));
+    }
+}
+
+/// Lights the edge of the panel at `rect` that the pointer is about to resize, pulsing.
+pub(crate) fn resize_glow_now(ui: &egui::Ui, rect: egui::Rect) {
+    if let Some(pointer) = ui.ctx().pointer_latest_pos() {
+        let time = ui.input(|input| input.time);
+        let radius = f32::from(super::PANEL_RADIUS);
+        ui.painter().add(resize_glow(rect, radius, pointer, time));
+    }
+    ui.ctx().request_repaint();
+}
+
 /// How strong the resize glow pulses at `time` in seconds: gently between half and full (the
 /// owner's choice, 22 November 2026: a pulsing glow that follows the mouse).
 pub(crate) fn pulse(time: f64) -> f32 {

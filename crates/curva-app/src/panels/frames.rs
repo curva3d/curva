@@ -8,11 +8,12 @@ use crate::*;
 pub(crate) struct Frames {
     /// Focus mode: the panels slid out of view.
     pub(crate) focus: bool,
+    /// The height inside the command bar, and how much of it the prompt, options and toggles
+    /// take when last drawn; the history fills the rest.
+    pub(crate) command_room: f32,
+    pub(crate) command_below: f32,
     /// The Layers panel's own state: the layer picked in it, the search and the filters.
     pub(crate) layers_ui: super::layer_tools::LayersUi,
-    /// How tall the command bar's contents are with the panel's margins: it is made this tall
-    /// when it is on its own, so no room is left below its snaps.
-    pub(crate) command_fit: f32,
     /// In focus mode, the one panel brought back out by clicking its strip.
     pub(crate) revealed: Option<layout::PanelId>,
     /// Where each panel was last drawn, for hovering over a hidden one.
@@ -56,34 +57,6 @@ pub(crate) struct PanelDrag {
     pub(crate) grab: egui::Vec2,
     /// Its size while it moves.
     pub(crate) size: egui::Vec2,
-}
-
-/// The frame every panel is drawn in: rounded, edged and shadowed, glass or solid. A panel that
-/// a dragged one would merge into glows inside its edge as well (`glow::edge_glow`).
-pub(crate) fn panel_frame() -> egui::Frame {
-    egui::Frame::new()
-        .fill(theme::current().glass)
-        .stroke(egui::Stroke::new(1.0, theme::current().panel_edge))
-        .corner_radius(PANEL_RADIUS)
-        .shadow(egui::Shadow {
-            offset: [0, 4],
-            blur: 16,
-            spread: 0,
-            color: egui::Color32::from_black_alpha(90),
-        })
-        .inner_margin(PANEL_MARGIN)
-}
-
-/// A panel frame lit in the accent all round, for a box being typed into (text edited in place).
-pub(crate) fn lit_panel_frame() -> egui::Frame {
-    panel_frame()
-        .stroke(egui::Stroke::new(2.0, theme::ACCENT))
-        .shadow(egui::Shadow {
-            offset: [0, 4],
-            blur: 24,
-            spread: 0,
-            color: theme::ACCENT.gamma_multiply(0.5),
-        })
 }
 
 /// The size of the tab at the top centre that turns focus mode on and off.
@@ -133,17 +106,7 @@ fn dock_preview(
             .into_iter()
             .find(|(p, _)| *p == id)
     {
-        ctx.layer_painter(egui::LayerId::new(
-            egui::Order::Foreground,
-            egui::Id::NULL.with("dock preview"),
-        ))
-        .rect(
-            spot,
-            PANEL_RADIUS,
-            DOCK_PREVIEW_FILL,
-            egui::Stroke::new(1.5, theme::ACCENT.gamma_multiply(0.6)),
-            egui::StrokeKind::Inside,
-        );
+        ui_kit::dock_preview(ctx, spot);
     }
 }
 
@@ -166,9 +129,6 @@ fn closes_without_asking(pieces: &[layout::Piece]) -> bool {
         })
 }
 
-/// Which place a measured height belongs to.
-type PlaceTest = fn(&layout::Place) -> bool;
-
 impl Curva {
     /// Makes the command tabs, docked at the top or bottom on their own, exactly as tall as what
     /// they hold, as measured when last drawn (owner, 22 November 2026: no room to spare below
@@ -177,21 +137,18 @@ impl Curva {
         if self.frames.panel_drag.is_some() {
             return;
         }
-        // The command bar too, so no room is left below its snaps (owner, 22 November 2026).
-        let fits: [(PlaceTest, f32); 2] = [
-            (layout::Place::is_command_tabs_alone, self.bar.tabs_fit),
-            (layout::Place::is_command_alone, self.frames.command_fit),
-        ];
-        for (holds, fit) in fits {
-            if fit <= 0.0 {
-                continue;
-            }
-            if let Some(place) = self.layout.places.iter_mut().find(|p| {
-                holds(p) && !p.hidden && matches!(p.dock, layout::Dock::Top | layout::Dock::Bottom)
-            }) && (place.size[1] - fit).abs() > 0.5
-            {
-                place.size[1] = fit;
-            }
+        // The command bar is not fitted: its height is the user's, and the history fills it.
+        let fit = self.bar.tabs_fit;
+        if fit <= 0.0 {
+            return;
+        }
+        if let Some(place) = self.layout.places.iter_mut().find(|p| {
+            p.is_command_tabs_alone()
+                && !p.hidden
+                && matches!(p.dock, layout::Dock::Top | layout::Dock::Bottom)
+        }) && (place.size[1] - fit).abs() > 0.5
+        {
+            place.size[1] = fit;
         }
     }
 
@@ -494,33 +451,7 @@ impl Curva {
             .show(ctx, |ui| {
                 let (rect, response) =
                     ui.allocate_exact_size(tab.size(), egui::Sense::click_and_drag());
-                let fill = if response.hovered() {
-                    theme::current().panel_edge
-                } else {
-                    theme::current().panel
-                };
-                ui.painter().rect_filled(rect, 6.0, fill);
-                let font = egui::FontId::proportional(12.0);
-                let galley =
-                    ui.painter()
-                        .layout_no_wrap(names.join(" · "), font, theme::current().quiet);
-                let text_size = galley.size();
-                let (position, angle) = if upright {
-                    // Running upwards along a side.
-                    (
-                        egui::pos2(
-                            rect.center().x - text_size.y / 2.0,
-                            rect.center().y + text_size.x / 2.0,
-                        ),
-                        -std::f32::consts::FRAC_PI_2,
-                    )
-                } else {
-                    (rect.center() - text_size / 2.0, 0.0)
-                };
-                ui.painter().add(
-                    egui::epaint::TextShape::new(position, galley, theme::current().quiet)
-                        .with_angle(angle),
-                );
+                ui_kit::edge_strip(ui, rect, response.hovered(), names.join(" · "), upright);
                 if response.clicked() {
                     event = PanelEvent::StripClicked;
                 } else if response.drag_started() {
@@ -546,11 +477,7 @@ impl Curva {
         let panel = place.id();
         let mut event = PanelEvent::Nothing;
         let glass = self.settings.glass;
-        let frame = panel_frame().fill(if glass {
-            theme::current().glass
-        } else {
-            theme::current().panel
-        });
+        let frame = ui_kit::panel_frame_for(glass);
         egui::Area::new(egui::Id::NULL.with(("panel", panel)))
             .fixed_pos(rect.min)
             .order(egui::Order::Middle)
@@ -560,15 +487,7 @@ impl Curva {
                 ui.set_clip_rect(rect.expand(SHADOW_ROOM));
                 // The blurred view behind, under the tint the frame paints over it.
                 if glass {
-                    ui.painter().add(egui::Shape::from(
-                        eframe::egui_wgpu::Callback::new_paint_callback(
-                            rect,
-                            curva_viewport::Glass {
-                                rect,
-                                radius: f32::from(PANEL_RADIUS),
-                            },
-                        ),
-                    ));
+                    ui_kit::glass_backdrop(ui, rect);
                 }
                 // Where the panel is drawn: its place, or wider when what it holds will not fit
                 // (the Display panel's view field), so the glow and the resize edges follow the
@@ -589,12 +508,11 @@ impl Curva {
                     .union(rect);
                 // A dragged panel would merge into this one: it glows inside its edge, most
                 // where the mouse is.
-                if glowing && let Some(pointer) = ui.ctx().pointer_latest_pos() {
-                    ui.painter().add(crate::panels::glow::edge_glow(
-                        shown,
-                        f32::from(PANEL_RADIUS),
-                        pointer,
-                    ));
+                if glass {
+                    ui_kit::glass_edge_light(ui, shown);
+                }
+                if glowing {
+                    ui_kit::glow::merge_glow(ui, shown);
                 }
                 // Added after the contents, so these sit above the panel's own controls.
                 event = self.panel_title(ui, place, rect);
@@ -608,81 +526,38 @@ impl Curva {
     /// What a piece shows inside its panel. Each is inside a scroll area, so nothing a piece
     /// holds grows the panel past its place.
     fn piece_contents(&mut self, ui: &mut egui::Ui, piece: layout::Piece) {
+        use layout::Piece;
+        use ui_kit::Scroll;
         match piece {
-            layout::Piece::CommandTabs => {
-                egui::ScrollArea::vertical()
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| self.command_tabs(ui));
-            }
-            layout::Piece::Layers => {
-                egui::ScrollArea::both()
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| self.layers_panel(ui));
-            }
-            layout::Piece::Properties => {
-                egui::ScrollArea::both()
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| self.properties_panel(ui));
-            }
-            layout::Piece::Command => {
+            Piece::CommandTabs => ui_kit::scroll(ui, Scroll::Down, |ui| self.command_tabs(ui)),
+            Piece::Layers => ui_kit::scroll(ui, Scroll::Both, |ui| self.layers_panel(ui)),
+            Piece::Properties => ui_kit::scroll(ui, Scroll::Both, |ui| self.properties_panel(ui)),
+            Piece::Command => {
                 let bar = ui.max_rect();
-                egui::ScrollArea::vertical()
-                    .auto_shrink([false, false])
-                    .stick_to_bottom(true)
-                    .show(ui, |ui| self.command_line(ui));
+                self.frames.command_room = ui.available_height();
+                ui_kit::scroll(ui, Scroll::DownFromBottom, |ui| self.command_line(ui));
                 // Long jobs over the bar: a progress line and a chip that can stop them (#480).
                 if self.command_jobs(ui, bar) {
                     self.processor.stop_background(&mut self.doc);
                 }
             }
-            layout::Piece::Agent => {
-                egui::ScrollArea::vertical()
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| self.assistant_panel(ui));
+            Piece::Agent => ui_kit::scroll(ui, Scroll::Down, |ui| self.assistant_panel(ui)),
+            Piece::Display => self.display_piece(ui),
+            Piece::Settings => self.settings_piece(ui),
+            Piece::Blocks => ui_kit::scroll(ui, Scroll::Both, |ui| self.blocks_panel(ui)),
+            Piece::Layouts => ui_kit::scroll(ui, Scroll::Both, |ui| self.layouts_panel(ui)),
+            Piece::AnnotationStyles => {
+                ui_kit::scroll(ui, Scroll::Down, |ui| self.annotation_styles_panel(ui));
             }
-            layout::Piece::Display => self.display_piece(ui),
-            layout::Piece::Settings => self.settings_piece(ui),
-            layout::Piece::Blocks => {
-                egui::ScrollArea::both()
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| self.blocks_panel(ui));
-            }
-            layout::Piece::Layouts => {
-                egui::ScrollArea::both()
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| self.layouts_panel(ui));
-            }
-            layout::Piece::AnnotationStyles => {
-                egui::ScrollArea::vertical()
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| self.annotation_styles_panel(ui));
-            }
-            layout::Piece::Notes => {
-                egui::ScrollArea::vertical()
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| self.notes_panel(ui));
-            }
-            layout::Piece::Print => {
-                egui::ScrollArea::vertical()
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| self.print_panel(ui));
-            }
+            Piece::Notes => ui_kit::scroll(ui, Scroll::Down, |ui| self.notes_panel(ui)),
+            Piece::Print => ui_kit::scroll(ui, Scroll::Down, |ui| self.print_panel(ui)),
         }
     }
 
     /// The software's name and version, small and quiet, at the window's bottom right.
     pub(crate) fn version_label(&self, ctx: &egui::Context, window: egui::Rect) {
-        let painter = ctx.layer_painter(egui::LayerId::new(
-            egui::Order::Background,
-            egui::Id::NULL.with("version"),
-        ));
-        painter.text(
-            window.max - egui::vec2(8.0, 4.0),
-            egui::Align2::RIGHT_BOTTOM,
-            format!("Curva {}", env!("CARGO_PKG_VERSION")),
-            egui::FontId::proportional(11.0),
-            theme::current().quiet,
-        );
+        let text = format!("Curva {}", env!("CARGO_PKG_VERSION"));
+        ui_kit::corner_caption(ctx, window, text);
     }
 
     /// Hides every panel, or brings them all back.
@@ -701,30 +576,8 @@ impl Curva {
             .order(egui::Order::Foreground)
             .show(ctx, |ui| {
                 let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
-                let fill = if response.hovered() {
-                    theme::current().panel_edge
-                } else {
-                    theme::current().panel
-                };
-                let radius = egui::CornerRadius {
-                    nw: 0,
-                    ne: 0,
-                    sw: 7,
-                    se: 7,
-                };
-                ui.painter().rect_filled(rect, radius, fill);
                 // A V while the panels are hidden, to bring them down; turned over to hide them.
-                let (mid, half) = (rect.center(), egui::vec2(6.0, 3.0));
-                let tip = if self.frames.focus { half.y } else { -half.y };
-                let stroke = egui::Stroke::new(1.5, theme::current().quiet);
-                ui.painter().line_segment(
-                    [mid + egui::vec2(-half.x, -tip), mid + egui::vec2(0.0, tip)],
-                    stroke,
-                );
-                ui.painter().line_segment(
-                    [mid + egui::vec2(0.0, tip), mid + egui::vec2(half.x, -tip)],
-                    stroke,
-                );
+                ui_kit::hanging_tab(ui, rect, response.hovered(), self.frames.focus);
                 let tip_text = if self.frames.focus {
                     "ui.focus.off"
                 } else {
@@ -746,6 +599,7 @@ impl Curva {
     /// Keeps the panel arrangement for the next session. Losing it only loses the arrangement.
     pub(crate) fn save_layout(&self) {
         if self.benchmark.is_none()
+            && !self.startup.pictures_run
             && let Some(file) = layout::file()
         {
             let _ = self.layout.save(&file);
@@ -771,19 +625,14 @@ impl Curva {
         let question = self
             .text
             .render(&Message::with("ui.close.question", vec![names.join(", ")]));
-        let mut answer = None;
-        centred_dialog(ctx, "close question", |ui| {
-            ui.label(egui::RichText::new(question).strong());
+        let buttons = [
+            ui_kit::main_choice(say("ui.close.close")),
+            ui_kit::other_choice(say("ui.units.cancel")),
+        ];
+        let answer = ui_kit::dialog(ctx, "close question", &question, &buttons, |ui| {
             ui.label(say("ui.close.where"));
-            ui.horizontal(|ui| {
-                if ui.button(say("ui.close.close")).clicked() {
-                    answer = Some(true);
-                }
-                if ui.button(say("ui.units.cancel")).clicked() {
-                    answer = Some(false);
-                }
-            });
-        });
+        })
+        .map(|index| index == 0);
         if let Some(close) = answer {
             self.closing = None;
             if close {

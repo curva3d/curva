@@ -77,23 +77,18 @@ impl Curva {
             || self.text.render(&Message::new("ui.width.varies")),
             |l| state.linetype_name(l),
         );
-        egui::ComboBox::from_id_salt(id)
-            .selected_text(label)
-            .width(width)
-            .show_ui(ui, |ui| {
-                let choices = by_layer
-                    .then_some(Linetype::ByLayer)
-                    .into_iter()
-                    .chain(state.linetypes_offered());
-                for choice in choices {
-                    if ui
-                        .selectable_label(shown == Some(choice), state.linetype_name(choice))
-                        .clicked()
-                    {
-                        chosen = Some(choice);
-                    }
+        ui_kit::dropdown_sized(ui, id, label, width, |ui| {
+            let choices = by_layer
+                .then_some(Linetype::ByLayer)
+                .into_iter()
+                .chain(state.linetypes_offered());
+            for choice in choices {
+                if ui_kit::choice(ui, shown == Some(choice), state.linetype_name(choice)).clicked()
+                {
+                    chosen = Some(choice);
                 }
-            });
+            }
+        });
         chosen
     }
 
@@ -118,10 +113,12 @@ impl Curva {
                 .render(&Message::with("ui.width.mm", vec![format!("{mm:.2}")])),
         };
         let mut chosen = None;
-        egui::ComboBox::from_id_salt(id)
-            .selected_text(shown.map_or_else(|| text("ui.width.varies"), named))
-            .width(width)
-            .show_ui(ui, |ui| {
+        ui_kit::dropdown_sized(
+            ui,
+            id,
+            shown.map_or_else(|| text("ui.width.varies"), named),
+            width,
+            |ui| {
                 let mut choices = Vec::new();
                 if by_layer {
                     choices.push(PrintWidth::ByLayer);
@@ -129,10 +126,7 @@ impl Curva {
                 choices.push(PrintWidth::Default);
                 choices.extend(PrintWidth::COMMON.map(PrintWidth::Millimetres));
                 for choice in choices {
-                    if ui
-                        .selectable_label(shown == Some(choice), named(choice))
-                        .clicked()
-                    {
+                    if ui_kit::choice(ui, shown == Some(choice), named(choice)).clicked() {
                         chosen = Some(choice);
                     }
                 }
@@ -153,7 +147,8 @@ impl Curva {
                         chosen = Some(PrintWidth::Millimetres(mm));
                     }
                 });
-            });
+            },
+        );
         chosen
     }
 

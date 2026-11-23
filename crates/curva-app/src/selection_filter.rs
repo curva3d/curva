@@ -179,7 +179,7 @@ impl Curva {
             .fixed_pos(item.rect.left_top() - egui::vec2(0.0, 4.0))
             .pivot(egui::Align2::LEFT_BOTTOM)
             .show(ui.ctx(), |ui| {
-                panel_frame().show(ui, |ui| {
+                ui_kit::panel_frame().show(ui, |ui| {
                     for (index, ((_, value), word)) in
                         filter.boxes().into_iter().zip(words).enumerate()
                     {
