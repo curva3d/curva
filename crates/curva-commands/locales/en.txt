@@ -1251,6 +1251,10 @@ error.insertedge_range = With Mode=Range, pick two edges on one loop.
 prompt.mergefaces.faces = Select SubD faces to merge, then press Enter
 error.mergefaces_none = Select SubD faces that touch along edges.
 done.mergefaces = Changed {0} objects.
+prompt.insertpoint.object = Select mesh or SubD
+prompt.insertpoint.first = Select first point on mesh edge
+prompt.insertpoint.next = Select next point on mesh edge, or press Enter
+error.insertpoint_none = Select a SubD.
 job.open = Opening {0}
 job.import = Importing {0}
 job.step.reading = Reading the file

@@ -10,6 +10,7 @@ mod convert;
 mod fill;
 mod from_body;
 mod insert_edge;
+mod insert_point;
 mod join;
 mod measure;
 mod mesh;
