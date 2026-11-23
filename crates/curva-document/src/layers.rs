@@ -71,6 +71,23 @@ impl Document {
         self.state.current_layer
     }
 
+    /// The layers the selected objects are on, read in one pass over the objects, so a large
+    /// selection costs no more than a small one (owner, 23 November 2026: the Layers panel lights
+    /// the layer of what is selected).
+    #[must_use]
+    pub fn layers_of_selection(&self) -> std::collections::BTreeSet<u64> {
+        let chosen: std::collections::HashSet<u64> = self.selection().into_iter().collect();
+        if chosen.is_empty() {
+            return std::collections::BTreeSet::new();
+        }
+        self.state
+            .objects
+            .iter()
+            .filter(|o| chosen.contains(&o.id))
+            .map(|o| o.layer)
+            .collect()
+    }
+
     /// The layer an object is on.
     #[must_use]
     pub fn layer_of(&self, object: u64) -> Option<u64> {
@@ -413,6 +430,25 @@ mod tests {
         assert_eq!(doc.layers().len(), 1);
         let id = doc.add(line());
         assert_eq!(doc.layer_of(id), Some(doc.current_layer()));
+    }
+
+    #[test]
+    fn the_selections_layers_are_those_its_objects_are_on() {
+        let mut doc = Document::default();
+        let first = doc.current_layer();
+        let walls = doc.add_layer("Walls".to_owned());
+        let roof = doc.add_layer("Roof".to_owned());
+        let a = doc.add(line());
+        doc.set_current_layer(walls);
+        let b = doc.add(line());
+        doc.set_current_layer(roof);
+        let _c = doc.add(line());
+        assert!(doc.layers_of_selection().is_empty());
+        doc.select(&[a, b]);
+        let lit: Vec<u64> = doc.layers_of_selection().into_iter().collect();
+        let mut want = vec![first, walls];
+        want.sort_unstable();
+        assert_eq!(lit, want, "the roof has nothing selected");
     }
 
     #[test]

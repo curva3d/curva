@@ -11,7 +11,7 @@ const WINDOW: egui::Vec2 = egui::vec2(1600.0, 1000.0);
 const SETTLE: u32 = 40;
 
 /// The states pictured, in order, each with its file name.
-const STATES: [&str; 11] = [
+const STATES: [&str; 12] = [
     "1-main-dark",
     "2-main-light",
     "3-command-running",
@@ -23,6 +23,7 @@ const STATES: [&str; 11] = [
     "9-sketchup-import",
     "10-units-question",
     "11-recovery",
+    "12-selected-layer",
 ];
 
 /// Where the pictures go and how far along they are.
@@ -141,8 +142,22 @@ impl Curva {
             }
             "10-units-question" => self.settings_ui.unit_asked = Some(curva_document::Unit::Metres),
             "11-recovery" => self.startup.left_behind = Some("recovery.curva".into()),
+            "12-selected-layer" => self.picture_selected_layer(),
             _ => {}
         }
+    }
+}
+
+impl Curva {
+    /// Half the building on a Trees layer and two of its objects selected, so the Layers panel
+    /// shows the layer of what is selected softly lit.
+    fn picture_selected_layer(&mut self) {
+        self.layout = layout::Layout::default();
+        let trees = self.doc.add_layer("Trees".to_owned());
+        let ids: Vec<u64> = self.doc.state().objects.iter().map(|o| o.id).collect();
+        let half = &ids[..ids.len() / 2];
+        self.doc.move_to_layer(half, trees);
+        self.doc.select(&half[..half.len().min(2)]);
     }
 }
 

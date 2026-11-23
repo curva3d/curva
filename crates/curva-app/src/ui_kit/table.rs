@@ -104,3 +104,10 @@ pub(crate) fn tight(ui: &mut egui::Ui) {
 pub(crate) fn tick_when(ui: &mut egui::Ui, enabled: bool, on: &mut bool) -> egui::Response {
     ui.add_enabled(enabled, egui::Checkbox::without_text(on))
 }
+
+/// The soft wash behind a row related to what is chosen, such as the layer a selected object is
+/// on (owner, 23 November 2026): fainter than [`chosen_row`], with no edge.
+pub(crate) fn related_row(ui: &egui::Ui, rect: egui::Rect) {
+    ui.painter()
+        .rect_filled(rect, super::CONTROL_RADIUS / 2, colours::related_fill());
+}
