@@ -27,6 +27,7 @@ mod subd;
 mod subd_edit;
 mod subd_from_body;
 mod subd_merge;
+mod subd_offset;
 mod subd_parts;
 mod subd_primitives;
 mod to_nurbs;
