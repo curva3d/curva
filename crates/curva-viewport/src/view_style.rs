@@ -1,7 +1,12 @@
-//! How a view draws the model: a visualisation style, as layers with settings
-//! (`docs/specs/views-and-styles.md` §2.1). The display modes are built-in styles.
+//! What the drawing code honours of a view's style ([`curva_document::style::ViewStyle`],
+//! `docs/specs/views-and-styles.md` §2): [`Style::of`] reads it. More of the style's settings are
+//! drawn as the drawing code learns them.
 
 use crate::{EDGE_ON_FACES_COLOUR, INK_COLOUR, PAPER_COLOUR};
+use curva_document::style::{self, ColourFrom, Engine, OcclusionLight, VectorFaces, ViewStyle};
+
+/// Outlines wider than this, in millimetres, are drawn thick (three pixels), as Massing's are.
+const THICK_OUTLINE_MM: f32 = 0.5;
 
 /// How a view draws the model: its surfaces, the model's lines, the outlines of shapes, and the
 /// lines surfaces hide. Every display mode is one of these ([`Style::WIREFRAME`] and the others),
@@ -53,6 +58,8 @@ pub enum LineColour {
 /// The Outlines layer.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct OutlineLook {
+    /// Whether outlines are drawn.
+    pub shown: bool,
     /// The outlines' colour.
     pub colour: [f32; 3],
     /// Whether they are thick, as in Massing, rather than as thin as edges.
@@ -64,7 +71,10 @@ impl Style {
     pub const WIREFRAME: Self = Self {
         surfaces: None,
         lines: LineColour::Own,
-        outlines: OutlineLook::EDGES,
+        outlines: OutlineLook {
+            shown: false,
+            ..OutlineLook::EDGES
+        },
         hidden_lines: false,
     };
     /// Surfaces and solids filled in their own colours and lit, with their edges on top.
@@ -74,6 +84,7 @@ impl Style {
             see_through: false,
             light: Light::View,
         }),
+        outlines: OutlineLook::EDGES,
         ..Self::WIREFRAME
     };
     /// Surfaces and solids see-through at half strength, so the edges behind them show.
@@ -83,6 +94,7 @@ impl Style {
             see_through: true,
             light: Light::View,
         }),
+        outlines: OutlineLook::EDGES,
         ..Self::WIREFRAME
     };
     /// Rhino 8's Hidden mode (#164): faces flat in paper white hiding what is behind them, and
@@ -95,6 +107,7 @@ impl Style {
         }),
         lines: LineColour::Ink,
         outlines: OutlineLook {
+            shown: true,
             colour: INK_COLOUR,
             thick: false,
         },
@@ -115,13 +128,58 @@ impl Style {
         }),
         lines: LineColour::Ink,
         outlines: OutlineLook {
+            shown: true,
             colour: INK_COLOUR,
             thick: true,
         },
         hidden_lines: false,
     };
 
+    /// What of `view` the drawing code honours: its NURBS faces and their light, whether its
+    /// lines are in ink, its outlines and its hidden lines.
+    #[must_use]
+    pub fn of(view: &ViewStyle) -> Self {
+        let faces = &view.nurbs.faces;
+        let light = match view.engine {
+            Engine::Vector => match view.lighting.vector {
+                VectorFaces::Flat => Light::Flat,
+                VectorFaces::Tones => Light::View,
+            },
+            Engine::Occlusion => match view.lighting.occlusion {
+                OcclusionLight::Studio => Light::View,
+                OcclusionLight::Sun => Light::Sun,
+                OcclusionLight::Flat => Light::Flat,
+            },
+            Engine::Rendered => Light::View,
+        };
+        let surfaces = faces.shown.then(|| Surfaces {
+            colour: match faces.colour {
+                ColourFrom::One(colour) => Some(colour.to_f32()),
+                _ => None,
+            },
+            see_through: faces.opacity < 1.0,
+            light,
+        });
+        // Curves in one colour put every model line in ink; the line drawer has no other
+        // single colour for lines yet.
+        let lines = match view.curves.colour {
+            style::LineColour::One(_) => LineColour::Ink,
+            style::LineColour::Object => LineColour::Own,
+        };
+        Self {
+            surfaces,
+            lines,
+            outlines: OutlineLook {
+                shown: view.outlines.shown,
+                colour: view.outlines.colour.to_f32(),
+                thick: view.outlines.width > THICK_OUTLINE_MM,
+            },
+            hidden_lines: view.hidden_lines.shown,
+        }
+    }
+
     /// Whether faces are drawn solid, hiding what is behind them: shaded and not see-through.
+    #[must_use]
     pub fn solid(&self) -> bool {
         self.surfaces.is_some_and(|surfaces| !surfaces.see_through)
     }
@@ -147,6 +205,7 @@ impl Default for Style {
 impl OutlineLook {
     /// OutlineLook as dark and thin as the edges on faces.
     pub const EDGES: Self = Self {
+        shown: true,
         colour: EDGE_ON_FACES_COLOUR,
         thick: false,
     };
@@ -180,5 +239,38 @@ mod tests {
         assert_eq!(Style::HIDDEN.light(), Some(Light::Flat));
         assert_eq!(Style::MASSING.light(), Some(Light::Sun));
         assert_eq!(Style::default(), Style::SHADED);
+    }
+
+    #[test]
+    fn each_built_in_style_draws_as_its_display_mode_did() {
+        let pairs = [
+            (ViewStyle::wireframe(), Style::WIREFRAME),
+            (ViewStyle::shaded(), Style::SHADED),
+            (ViewStyle::ghosted(), Style::GHOSTED),
+            (ViewStyle::hidden(), Style::HIDDEN),
+            (ViewStyle::technical(), Style::TECHNICAL),
+            (ViewStyle::massing(), Style::MASSING),
+        ];
+        for (view, drawn) in pairs {
+            assert_eq!(Style::of(&view), drawn, "{}", view.name);
+        }
+    }
+
+    #[test]
+    fn a_style_s_own_settings_reach_the_drawing() {
+        let mut view = ViewStyle::shaded();
+        view.nurbs.faces.colour = ColourFrom::One(style::Colour([255, 0, 0]));
+        view.nurbs.faces.opacity = 0.7;
+        view.outlines.shown = false;
+        view.outlines.width = 1.0;
+        let drawn = Style::of(&view);
+        let surfaces = drawn.surfaces.expect("faces shown");
+        assert_eq!(surfaces.colour, Some([1.0, 0.0, 0.0]));
+        assert!(surfaces.see_through);
+        assert!(!drawn.outlines.shown && drawn.outlines.thick);
+        view.engine = Engine::Vector;
+        assert_eq!(Style::of(&view).light(), Some(Light::View), "tones are lit");
+        view.lighting.vector = VectorFaces::Flat;
+        assert_eq!(Style::of(&view).light(), Some(Light::Flat));
     }
 }

@@ -549,7 +549,9 @@ impl LineRenderer {
     /// ghosted (ghosted faces write no depth), with faces to show.
     fn outlines_wanted(&self, slot: usize) -> bool {
         self.slots.get(slot).is_some_and(|slot| {
-            slot.style.solid() && self.surfaces.as_ref().is_some_and(|faces| faces.count > 0)
+            slot.style.solid()
+                && slot.style.outlines.shown
+                && self.surfaces.as_ref().is_some_and(|faces| faces.count > 0)
         })
     }
 
