@@ -198,7 +198,7 @@ mod tests {
     }
 
     #[test]
-    fn each_built_in_style_draws_its_faces_and_outlines_as_its_display_mode_did() {
+    fn each_built_in_style_draws_as_its_display_mode_did() {
         let paper = Some(Surfaces {
             colour: Some(PAPER_COLOUR),
             see_through: false,
@@ -222,6 +222,26 @@ mod tests {
             (massing.colour, massing.light),
             (Some(PAPER_COLOUR), Light::Sun)
         );
+        // Every display mode's surfaces, as before.
+        let own = |see_through: bool| Surfaces {
+            colour: None,
+            see_through,
+            light: Light::View,
+        };
+        assert_eq!(Style::wireframe().surfaces, None);
+        assert_eq!(Style::shaded().surfaces, Some(own(false)));
+        assert_eq!(Style::ghosted().surfaces, Some(own(true)));
+        assert_eq!(Style::technical().surfaces, paper);
+        // Lines: dark edges on solid faces, light ones otherwise, ink in Hidden, Technical and
+        // Massing, hidden lines only in Technical.
+        let edge = |style: Style| style.lines.of(crate::LineKind::Edge).colour;
+        assert_eq!(edge(Style::shaded()), Some(EDGE_ON_FACES_COLOUR));
+        assert_eq!(edge(Style::wireframe()), None);
+        assert_eq!(edge(Style::ghosted()), None);
+        for inked in [Style::hidden(), Style::technical(), Style::massing()] {
+            assert_eq!(edge(inked), Some(INK_COLOUR));
+        }
+        assert!(Style::technical().hidden_lines && !Style::massing().hidden_lines);
     }
 
     #[test]
