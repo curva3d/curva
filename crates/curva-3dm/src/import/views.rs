@@ -62,6 +62,7 @@ fn saved_view(v: &model::View, scale: f64) -> Option<SavedView> {
         axes,
         parallel: v.parallel,
         lens: None,
+        style: None,
     })
 }
 

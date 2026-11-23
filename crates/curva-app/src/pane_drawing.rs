@@ -34,7 +34,7 @@ impl Curva {
         }
         // The camera as the scene is measured, from its origin (#225).
         let camera = self.panes[pane].camera.measured_from(origin);
-        let display = self.panes[pane].display;
+        let style = self.pane_style(pane);
         Drawing {
             clips,
             slot: pane,
@@ -43,7 +43,7 @@ impl Curva {
             } else {
                 Arc::default()
             },
-            scene: self.scene_for(display),
+            scene: self.scene_for(&style),
             faces: pane_faces,
             shapes: Arc::clone(&frame.shapes),
             circles: Arc::clone(&self.drawing.circles),
@@ -53,7 +53,7 @@ impl Curva {
             preview_faces: Arc::clone(&frame.preview_faces),
             matrix: camera.matrix(size[0] / size[1]),
             light: camera.forward().map(|value| value as f32),
-            style: crate::styles::mode_style(display),
+            style,
             area: rect,
             frame: ui.ctx().cumulative_frame_nr(),
             background: self.pane_background(pane).0,

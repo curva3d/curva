@@ -475,6 +475,7 @@ impl Camera {
             axes: self.fixed_axes,
             parallel: self.parallel,
             lens: Some(self.lens_length),
+            style: None,
         }
     }
 

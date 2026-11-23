@@ -46,9 +46,9 @@ impl Curva {
             .show(|ui| picked = self.view_box(ui, current, &camera));
         match picked {
             Some(Picked::View(view)) => {
-                let display = self.panes[self.active].display;
+                let drawn = self.panes[self.active].drawn();
                 self.panes[self.active] = Pane::new(view);
-                self.panes[self.active].display = display;
+                self.panes[self.active].set_drawn(drawn);
             }
             Some(Picked::Lens(millimetres)) => {
                 self.panes[self.active].camera.set_lens_length(millimetres);

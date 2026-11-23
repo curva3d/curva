@@ -114,7 +114,8 @@ impl Document {
         self.styles.len() != before
     }
 
-    /// Renames the model's style `from` to `to`. A new name only differing in case is allowed.
+    /// Renames the model's style `from` to `to`, and the saved views drawing with it follow. A
+    /// new name only differing in case is allowed.
     pub fn rename_style(&mut self, from: &str, to: &str) -> Result<(), StyleError> {
         usable(to)?;
         if !same_name(from, to) && self.model_style(to).is_some() {
@@ -126,6 +127,15 @@ impl Document {
             .find(|style| same_name(&style.name, from))
             .ok_or_else(|| StyleError::Missing(from.trim().to_owned()))?;
         to.trim().clone_into(&mut style.name);
+        for view in &mut self.views {
+            if view
+                .style
+                .as_deref()
+                .is_some_and(|name| same_name(name, from))
+            {
+                view.style = Some(to.trim().to_owned());
+            }
+        }
         Ok(())
     }
 }

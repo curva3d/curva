@@ -76,6 +76,7 @@ mod tests {
             axes: None,
             parallel: true,
             lens: None,
+            style: None,
         });
         doc
     }

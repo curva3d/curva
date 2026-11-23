@@ -47,6 +47,8 @@ pub(crate) struct Pane {
     pub(crate) named: Option<String>,
     /// How it draws surfaces and solids: by their edges, filled in and lit, or see-through.
     pub(crate) display: DisplayMode,
+    /// The style it draws with, by name ([`Pane::set_style`]); `None` draws `display`'s.
+    pub(crate) style: Option<String>,
     /// Views to step back to with `UndoView`, newest last, and the view they were left from.
     pub(crate) views_back: Vec<Camera>,
     /// Views stepped back from, for `RedoView`, newest last.
@@ -111,6 +113,7 @@ impl Pane {
             grid_look: look,
             gestures: LeftGestures::default(),
             named: None,
+            style: None,
             // As in Rhino, the perspective view starts shaded and the flat views in wireframe.
             display: if view == StandardView::Perspective {
                 DisplayMode::Shaded
@@ -295,7 +298,8 @@ impl Curva {
     /// Saves the last-used viewport's camera under `name`.
     fn save_view_as(&mut self, name: String) {
         let pane = &self.panes[self.active];
-        let view = pane.camera.saved(name.clone(), pane.view);
+        let mut view = pane.camera.saved(name.clone(), pane.view);
+        view.style = Some(pane.style_name());
         self.doc.save_view(view);
         let said = self
             .text
@@ -349,6 +353,7 @@ impl Curva {
             }
             pane.camera = Camera::from_saved(&saved);
             pane.named = Some(saved.name);
+            saved.style.inspect(|style| pane.set_style(style));
         }
     }
 
@@ -403,9 +408,9 @@ impl Curva {
                 pane.set_plane(pane.view.plane());
             }
             ViewRequest::Show(name) => {
-                let display = self.panes[self.active].display;
+                let drawn = self.panes[self.active].drawn();
                 self.panes[self.active] = Pane::new(standard_view(name));
-                self.panes[self.active].display = display;
+                self.panes[self.active].set_drawn(drawn);
             }
             ViewRequest::ShowBlocks => self.open_piece(layout::Piece::Blocks),
             ViewRequest::ShowLayouts => self.open_piece(layout::Piece::Layouts),
@@ -424,7 +429,7 @@ impl Curva {
                 let plane = pane.plane;
                 pane.camera.plan(&plane);
             }
-            ViewRequest::Display(mode) => self.panes[self.active].display = mode,
+            ViewRequest::Display(mode) => self.panes[self.active].set_display(mode),
             ViewRequest::ShowSelectionFilter => self.filter_row = !self.filter_row,
             ViewRequest::ToggleSelectionFilter => {
                 self.pick_filter.disable = !self.pick_filter.disable;
@@ -523,23 +528,18 @@ impl Curva {
         }
     }
 
-    /// The model's lines a view in `display` draws: dark edges suit solid faces (and Hidden
+    /// The model's lines a view drawn in `style` draws: dark edges suit solid faces (and Hidden
     /// draws every line in black ink, from the same lines, seams left out); ghosted and
     /// wireframe views keep the light wireframe edges.
-    pub(crate) fn scene_for(&self, display: DisplayMode) -> Arc<Vec<curva_viewport::Vertex>> {
-        Arc::clone(
-            if matches!(
-                display,
-                DisplayMode::Shaded
-                    | DisplayMode::Hidden
-                    | DisplayMode::Technical
-                    | DisplayMode::Massing
-            ) {
-                &self.drawing.shaded_scene
-            } else {
-                &self.scene
-            },
-        )
+    pub(crate) fn scene_for(
+        &self,
+        style: &curva_viewport::Style,
+    ) -> Arc<Vec<curva_viewport::Vertex>> {
+        Arc::clone(if style.solid() {
+            &self.drawing.shaded_scene
+        } else {
+            &self.scene
+        })
     }
 
     pub(crate) fn viewports(&mut self, ui: &mut egui::Ui, area: egui::Rect, reach: egui::Rect) {

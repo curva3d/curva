@@ -330,7 +330,7 @@ impl Curva {
             self.view_picker(ui);
         });
         if let Some(mode) = chosen {
-            self.panes[self.active].display = mode;
+            self.panes[self.active].set_display(mode);
         }
     }
 
