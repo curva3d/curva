@@ -1,0 +1,6 @@
+---
+// An ink pill button ("Explore Architecture →"). It leans toward the cursor (lean.js).
+interface Props { href: string; text: string }
+const { href, text } = Astro.props;
+---
+<a class="go" href={href}>{text}</a>

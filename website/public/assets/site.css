@@ -1,50 +1,14 @@
 /* Curva website: the home page and the specialization pages. Black and white, frosted glass.
    Each page opens with an exploded axonometric stack and scrolls on to a section per plate.
-   Light and dark (theme.js sets data-theme). The docs (/docs/) are styled by src/styles/curva.css. */
-@font-face { font-family: "Inter"; font-style: normal; font-weight: 400; font-display: swap; src: url("fonts/inter-latin-400-normal.woff2") format("woff2"); }
-@font-face { font-family: "Inter"; font-style: normal; font-weight: 600; font-display: swap; src: url("fonts/inter-latin-600-normal.woff2") format("woff2"); }
-@font-face { font-family: "Inter"; font-style: normal; font-weight: 700; font-display: swap; src: url("fonts/inter-latin-700-normal.woff2") format("woff2"); }
-@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url("fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2"); }
+   Colours, glass, grain and the lean effect come from kit.css; the docs (/docs/) add src/styles/curva.css. */
 
 :root {
-  --sans: Inter, system-ui, sans-serif;
-  --mono: "JetBrains Mono", ui-monospace, monospace;
   --gap: 80px;  /* space between plates, set from the mouse by site.js */
   --k: .62;     /* scale of the stack, set from the room it has by site.js */
   --pad: 20px;  /* page margin */
-  /* Light. The same list is repeated for dark below. */
-  --ink: #000; --paper: #efefef; --on-ink: #fff; --quiet: #cfcfcf;
-  --glass: linear-gradient(140deg, rgba(255,255,255,.32) 0%, rgba(255,255,255,.1) 50%, rgba(222,222,222,.16) 100%); --glass-line: rgba(255,255,255,.95);
-  --glass-shadow: inset 0 1.5px 0 #fff, inset 0 0 0 1px rgba(255,255,255,.45), 0 30px 70px rgba(0,0,0,.16);
-  --grain: url("/assets/frost-dark-specks.png"); --grain-o: .048; --glare: rgba(0,0,0,.07);
-  --plate-solid: linear-gradient(160deg, rgba(252,252,252,.94), rgba(244,244,244,.9));
-  --hair: rgba(0,0,0,.2); --shot: rgba(255,255,255,.45);
-  /* Curva's orange, for small signals only (the owner prefers the brand orange for text too). */
-  --accent: #E0782F; --accent-text: #E0782F; --accent-on-ink: #E0782F;
-  color-scheme: light;
 }
-:root[data-theme="dark"] {
-  --ink: #f4f4f2; --paper: #0b0b0b; --on-ink: #0b0b0b; --quiet: #5a5a58;
-  --glass: linear-gradient(140deg, rgba(255,255,255,.22) 0%, rgba(255,255,255,.06) 55%, rgba(255,255,255,.13) 100%); --glass-line: rgba(255,255,255,.24);
-  --glass-shadow: inset 0 1.5px 0 rgba(255,255,255,.3), inset 0 0 0 1px rgba(255,255,255,.07), 0 30px 70px rgba(0,0,0,.6);
-  --grain: url("/assets/frost-light-specks.png"); --grain-o: .09; --glare: rgba(255,255,255,.14);
-  --plate-solid: linear-gradient(160deg, rgba(38,38,38,.95), rgba(26,26,26,.93));
-  --hair: rgba(255,255,255,.22); --shot: rgba(255,255,255,.04);
-  --accent: #F08A45; --accent-text: #F08A45; --accent-on-ink: #F08A45;
-  color-scheme: dark;
-}
-/* Without JavaScript, follow the system. */
+/* Without JavaScript, follow the system (the colours themselves are in kit.css). */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) {
-    --ink: #f4f4f2; --paper: #0b0b0b; --on-ink: #0b0b0b; --quiet: #5a5a58;
-    --glass: linear-gradient(140deg, rgba(255,255,255,.22) 0%, rgba(255,255,255,.06) 55%, rgba(255,255,255,.13) 100%); --glass-line: rgba(255,255,255,.24);
-    --glass-shadow: inset 0 1.5px 0 rgba(255,255,255,.3), inset 0 0 0 1px rgba(255,255,255,.07), 0 30px 70px rgba(0,0,0,.6);
-    --grain: url("/assets/frost-light-specks.png"); --grain-o: .09; --glare: rgba(255,255,255,.14);
-    --plate-solid: linear-gradient(160deg, rgba(38,38,38,.95), rgba(26,26,26,.93));
-    --hair: rgba(255,255,255,.22); --shot: rgba(255,255,255,.04);
-    --accent: #F08A45; --accent-text: #F08A45; --accent-on-ink: #F08A45;
-    color-scheme: dark;
-  }
   :root:not([data-theme]) .mark-light { display: none; }
   :root:not([data-theme]) .mark-dark { display: block; }
 }
@@ -62,23 +26,8 @@ ul { list-style: none; margin: 0; padding: 0; }
 li::before { content: "— "; }
 h1, h2, p { margin: 0; }
 
-/* Frosted glass: a strong blur, a faint wash and a fine grain (dark specks in light mode, light in dark). */
-.glass {
-  background: var(--glass);
-  -webkit-backdrop-filter: blur(39px) saturate(1.15); backdrop-filter: blur(39px) saturate(1.15);
-  border: 1px solid var(--glass-line);
-  box-shadow: var(--glass-shadow);
-}
-.glass::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: var(--grain); background-size: 192px; opacity: var(--grain-o); }
+/* Glass, grain and the lean effect come from kit.css. */
 .info, .dl, .figure { position: relative; }
-
-/* Panels and buttons lean toward the cursor, with a soft light where it is (a soft shadow in light
-   mode). site.js adds .wt and sets --px, --py (-1 to 1), --pd (0 or 1) and --gx, --gy. */
-.wt { transform: perspective(900px) rotateX(calc(var(--py, 0) * -4deg)) rotateY(calc(var(--px, 0) * 4deg)) scale(calc(1 - var(--pd, 0) * .012)); transition: transform .28s cubic-bezier(.2,.7,.2,1), opacity .2s; }
-.wt::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 2; background: radial-gradient(circle at var(--gx, 50%) var(--gy, 50%), var(--glare), transparent 45%); opacity: var(--pd, 0); transition: opacity .3s; }
-.wt.btn { position: relative; transform: perspective(500px) rotateX(calc(var(--py, 0) * -8deg)) rotateY(calc(var(--px, 0) * 8deg)) scale(calc(1 + var(--pd, 0) * .02)); }
-.wt.btn::before { z-index: 0; background: radial-gradient(circle at var(--gx, 50%) var(--gy, 50%), color-mix(in srgb, currentColor 22%, transparent), transparent 60%); }
-.wt.btn > * { position: relative; z-index: 1; }
 
 /* Top bar: stays in view while the page scrolls. */
 .top {
@@ -329,3 +278,30 @@ li::before { color: var(--accent-text); }
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .js .band { opacity: 1; transform: none; }
 }
+
+/* The UI kit page (/kit/): the shared elements laid out to look at. */
+.kit-main { padding: 0 var(--pad) 60px; max-width: 1560px; margin: 0 auto; }
+.kit-head { padding: 48px 0 40px; max-width: 760px; }
+.kit-label { color: var(--accent-text); margin-bottom: 14px; }
+.kit-title { font-size: clamp(44px, 7vw, 88px); line-height: .92; font-weight: 700; letter-spacing: -.06em; margin-bottom: 20px; }
+.kit-lede { font-size: 17px; line-height: 27px; }
+.kit-lede code { font-family: var(--mono); font-size: 14px; }
+.kit-part { border-top: 1.5px solid var(--ink); padding: 32px 0 44px; display: flex; flex-direction: column; gap: 18px; align-items: flex-start; }
+.kit-h { font-size: 32px; line-height: 36px; font-weight: 700; letter-spacing: -.04em; }
+.kit-h::before { content: ""; display: block; width: 32px; height: 4px; border-radius: 2px; background: var(--accent); margin-bottom: 14px; }
+.kit-note { color: var(--ink); opacity: .7; max-width: 640px; }
+.kit-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.kit-swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; width: 100%; }
+.kit-swatch { display: flex; flex-direction: column; gap: 6px; }
+.kit-chip { height: 72px; border-radius: 16px; border: 1px solid var(--hair); }
+.kit-ink { background: var(--ink); } .kit-paper { background: var(--paper); } .kit-accent { background: var(--accent); }
+.kit-quiet { background: var(--quiet); } .kit-hair { background: var(--hair); }
+.kit-motto { font-size: clamp(48px, 7vw, 96px); }
+.kit-h2 { font-size: clamp(52px, 9vw, 104px); line-height: .9; font-weight: 700; letter-spacing: -.065em; }
+.kit-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 420px)); gap: 20px; width: 100%; }
+.kit { --need: 156px; }
+.kit-stack-part .scene { width: 100%; }
+.kit-bands { padding: 0; width: 100%; }
+.kit-bands .band { border-top: 0; opacity: 1; transform: none; }
+.kit-drawings { width: 100%; display: flex; flex-direction: column; gap: 10px; }
+.kit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; width: 100%; }
