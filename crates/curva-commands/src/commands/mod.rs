@@ -485,7 +485,8 @@ mod tests {
     ];
 
     /// Commands whose preview needs its own setup, tested in their own files.
-    const PREVIEW_TESTED_ELSEWHERE: [&str; 80] = [
+    const PREVIEW_TESTED_ELSEWHERE: [&str; 81] = [
+        "OffsetSubD",
         "InsertPoint",
         "InsertEdge",
         "ReduceMesh",

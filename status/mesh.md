@@ -11,6 +11,10 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 23 November 2026
 
+**OffsetSubD, as Rhino 8 measured:** each cage point moves the distance along its limit normal (the measured box's cage lands
+exactly where Rhino puts it); Solid joins the offset to the SubD with side quads round the border, BothSides offsets both
+ways, DeleteInput and picked-to-flip as in Rhino. `SubD::offset`, `offset_solid` and `limit_normals` in curva-mesh.
+
 **InsertPoint, as Rhino 8 measured:** points on SubD cage edges, each two in a row that share a face joined by a new edge
 across it; on the measured box, one point gives 24 faces on 27 points and two across a face 25 on 29, as in Rhino.
 `SubD::with_points_inserted` in curva-mesh. Meshes and Undo are still to come.
