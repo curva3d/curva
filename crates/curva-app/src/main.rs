@@ -53,6 +53,7 @@ mod settings;
 mod sheets;
 mod shortcuts;
 mod sketchup_import;
+mod styles;
 mod text_edit;
 mod theme;
 mod top_bar;

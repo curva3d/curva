@@ -22,6 +22,7 @@ mod subd_live;
 mod subd_parts;
 mod subds;
 mod timer;
+mod view_style;
 mod views;
 
 #[cfg(test)]
@@ -40,6 +41,7 @@ pub use snap::{Guides, SnapHit, SnapKind, SnapSet, constrained};
 pub use styles::{PictureStyle, save_styled_picture};
 pub use subd_parts::{PartShape, subd_parts};
 pub use timer::{OPTIONAL_FEATURES, baseline_limits, device_descriptor};
+pub use view_style::{Light, LineColour, OutlineLook, Style, Surfaces};
 pub use views::StandardView;
 
 pub use lines::*;

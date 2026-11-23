@@ -6,8 +6,8 @@ use std::sync::Arc;
 
 use super::{CHUNK_BYTES, DEPTH_FORMAT, Drawing, LineRenderer, PICTURE_BACKGROUND, PIXELS_PER_MM};
 
-/// What a picture shows: lines, and faces to shade. The default shows nothing, neither ghosted
-/// nor hidden, with an all-zero camera, so it is for filling in with `..Default::default()`.
+/// What a picture shows: lines, and faces to shade. The default shows nothing, in Shaded,
+/// with an all-zero camera, so it is for filling in with `..Default::default()`.
 #[derive(Default)]
 pub struct Picture {
     /// Lines, as for [`Drawing::scene`].
@@ -18,14 +18,9 @@ pub struct Picture {
     pub matrix: [[f32; 4]; 4],
     /// The direction the camera looks.
     pub light: [f32; 3],
-    /// Whether faces are see-through, as in the Ghosted display mode.
-    pub ghosted: bool,
-    /// The Hidden display mode, as for [`Drawing::hidden`]; the picture's paper is white.
-    pub hidden: bool,
-    /// The Technical display mode's dotted hidden lines, as for [`Drawing::hidden_lines`].
-    pub hidden_lines: bool,
-    /// The Massing display mode, as for [`Drawing::massing`].
-    pub massing: bool,
+    /// How the picture draws the model ([`Drawing::style`]); faces are drawn only when there
+    /// are any. Hidden and Technical pictures are on white paper.
+    pub style: crate::Style,
 }
 
 /// Draws a picture into a PNG file without opening a window, so results can be checked by eye.
@@ -181,7 +176,10 @@ fn picture_targets(
 /// The picture as one frame of a view.
 fn picture_drawing(picture: Picture, scene: &Scene) -> Drawing {
     let empty = Arc::new(Vec::new());
-    let shaded = !picture.faces.is_empty();
+    let mut style = picture.style;
+    if picture.faces.is_empty() {
+        style.surfaces = None;
+    }
     // The grid is drawn as in a window: thin and under the model's lines.
     let (grid, lines): (Vec<Vertex>, Vec<Vertex>) = picture
         .lines
@@ -201,16 +199,26 @@ fn picture_drawing(picture: Picture, scene: &Scene) -> Drawing {
         selection: Arc::clone(&scene.selection),
         matrix: picture.matrix,
         light: picture.light,
-        shaded,
-        ghosted: picture.ghosted,
-        hidden: picture.hidden,
-        hidden_lines: picture.hidden_lines,
-        massing: picture.massing,
+        style,
         area: epaint::Rect::NOTHING,
         frame: 0,
         background: epaint::Color32::BLACK,
         background_low: epaint::Color32::BLACK,
         camera: crate::Camera::default(),
+    }
+}
+
+/// What a picture is drawn on: white paper for a style with flat faces, as Hidden draws.
+fn picture_paper(renderer: &LineRenderer) -> wgpu::Color {
+    let flat = renderer
+        .slots
+        .first()
+        .is_some_and(|slot| slot.style.light() == Some(crate::Light::Flat));
+    if flat {
+        let [r, g, b] = crate::PAPER_COLOUR.map(f64::from);
+        wgpu::Color { r, g, b, a: 1.0 }
+    } else {
+        PICTURE_BACKGROUND
     }
 }
 
@@ -232,15 +240,7 @@ fn draw_picture_passes(
                 depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
-                    // The Hidden display mode draws on white paper.
-                    load: wgpu::LoadOp::Clear(
-                        if renderer.slots.first().is_some_and(|s| s.hidden) {
-                            let [r, g, b] = crate::PAPER_COLOUR.map(f64::from);
-                            wgpu::Color { r, g, b, a: 1.0 }
-                        } else {
-                            PICTURE_BACKGROUND
-                        },
-                    ),
+                    load: wgpu::LoadOp::Clear(picture_paper(renderer)),
                     store: wgpu::StoreOp::Store,
                 },
             })],

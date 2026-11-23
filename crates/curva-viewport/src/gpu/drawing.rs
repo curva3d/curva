@@ -39,21 +39,9 @@ pub struct Drawing {
     /// Clipping planes cutting this view, each `[nx, ny, nz, d]`, cutting away where
     /// `n·p + d > 0`; at most [`MOST_CLIPS`] are used.
     pub clips: Vec<[f32; 4]>,
-    /// Whether this view shows faces shaded, rather than only lines.
-    pub shaded: bool,
-    /// Whether shaded faces are see-through, for the Ghosted display mode.
-    pub ghosted: bool,
-    /// The Hidden display mode (#164), as Rhino 8 draws it: faces flat in paper white
-    /// ([`crate::PAPER_COLOUR`]), hiding what is behind them, and the model's lines and the
-    /// outlines of curved shapes in black ink. Needs `shaded`; the background is the caller's.
-    pub hidden: bool,
-    /// With `hidden`, the Technical display mode (#164), as Rhino 8 draws it: the lines faces
-    /// hide are drawn as well, dotted.
-    pub hidden_lines: bool,
-    /// The Massing display mode (#551), a white study model: faces white and gently lit by the
-    /// sun, with its shadows, the model's lines thin in black ink and the outlines of shapes
-    /// thick. Its sky-to-grey gradient is the caller's background, behind the model.
-    pub massing: bool,
+    /// How this view draws the model: its visualisation style ([`crate::Style`]). The
+    /// background is the caller's.
+    pub style: crate::Style,
     /// Where the view is in the window, in points.
     pub area: epaint::Rect,
     /// The window's frame number, so the first view drawn in a frame clears the scene texture.
