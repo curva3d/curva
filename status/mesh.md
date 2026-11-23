@@ -11,6 +11,9 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 23 November 2026
 
+**Bevel for joined edges:** edges joined end to end bevel as one run, a row at each point and caps only at open ends, as
+Rhino 8 measured (two in a row: 32 faces on 35 points; a loop round the box: 48 quads on 50 points). `SubD::bevelled_run`.
+
 **Bevel for SubD edges, as Rhino 8 measured:** each picked edge becomes a strip of Segments quads, its ends giving way to rows
 of points along the side edges and a five-sided cap closing each end; the measured box gives Rhino's 29 faces on 32 points
 and its rows. Edges sharing an end, KeepCreases and meshes are still to come. `SubD::bevelled` in curva-mesh.

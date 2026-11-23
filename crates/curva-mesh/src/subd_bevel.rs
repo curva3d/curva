@@ -30,18 +30,6 @@ fn corner(ring: &[u32], v: u32) -> Option<usize> {
     ring.iter().position(|&p| p == v)
 }
 
-/// The face other than `not` that has the edge `a`–`b`.
-fn face_with(rings: &[Vec<u32>], a: u32, b: u32, not: usize) -> Option<usize> {
-    rings.iter().enumerate().position(|(f, ring)| {
-        let n = ring.len();
-        f != not
-            && (0..n).any(|k| {
-                let (p, q) = (ring[k], ring[(k + 1) % n]);
-                (p, q) == (a, b) || (p, q) == (b, a)
-            })
-    })
-}
-
 /// A bevel's working cage: its faces and points as they change.
 struct Work {
     rings: Vec<Vec<u32>>,
@@ -68,36 +56,39 @@ fn side_point(points: &[Point], v: u32, s: u32, amount: BevelAmount) -> Point {
     lerp(pv, ps, t)
 }
 
+/// The two side points of a run's point `v`: by the faces the run's edge `[p, q]` (holding `v`)
+/// runs along, and by the faces it runs against.
+fn sides(rings: &[Vec<u32>], v: u32, [p, q]: [u32; 2]) -> Option<[u32; 2]> {
+    let holds = |ring: &[u32], x: u32, y: u32| {
+        let n = ring.len();
+        (0..n).any(|k| (ring[k], ring[(k + 1) % n]) == (x, y))
+    };
+    let along = rings.iter().find(|r| holds(r, p, q))?;
+    let against = rings.iter().find(|r| holds(r, q, p))?;
+    let (na, nb) = (along.len(), against.len());
+    let (ka, kb) = (corner(along, v)?, corner(against, v)?);
+    Some(if v == p {
+        [along[(ka + na - 1) % na], against[(kb + 1) % nb]]
+    } else {
+        [along[(ka + 1) % na], against[(kb + nb - 1) % nb]]
+    })
+}
+
+/// The points joined to `v` by an edge.
+fn neighbours(uses: &std::collections::BTreeMap<(u32, u32), Vec<usize>>, v: u32) -> Vec<u32> {
+    uses.keys()
+        .filter_map(|&(p, q)| match (p == v, q == v) {
+            (true, _) => Some(q),
+            (_, true) => Some(p),
+            _ => None,
+        })
+        .collect()
+}
+
 impl Work {
-    /// One end `v` of the bevelled edge (`first` for the edge's first point): its row of new
-    /// points from the side by face `f1` to the side by `f2`, the four faces round it moved onto
-    /// the row's ends, and its cap. `None` when `v` is not an inner point where four edges meet.
-    fn end(
-        &mut self,
-        v: u32,
-        first: bool,
-        [f1, f2]: [usize; 2],
-        uses: &std::collections::BTreeMap<(u32, u32), Vec<usize>>,
-        shape: Shape,
-    ) -> Option<(Vec<u32>, Vec<u32>)> {
-        let (ring1, ring2) = (&self.rings[f1], &self.rings[f2]);
-        let (n1, n2) = (ring1.len(), ring2.len());
-        let (k1, k2) = (corner(ring1, v)?, corner(ring2, v)?);
-        // The side point by f1 comes before the edge's first point in f1, after its second; by
-        // f2 the other way round.
-        let (s1, s2) = if first {
-            (ring1[(k1 + n1 - 1) % n1], ring2[(k2 + 1) % n2])
-        } else {
-            (ring1[(k1 + 1) % n1], ring2[(k2 + n2 - 1) % n2])
-        };
-        let f3 = face_with(&self.rings, v, s1, f1)?;
-        let f4 = face_with(&self.rings, v, s2, f2)?;
-        let far = self.rings[f3].iter().copied().find(|&p| {
-            p != v
-                && p != s1
-                && self.rings[f4].contains(&p)
-                && uses.contains_key(&(p.min(v), p.max(v)))
-        })?;
+    /// The row of new points for `v`, from `amount` along the edge to `s1` to `amount` along the
+    /// edge to `s2`, bowed towards `v`.
+    fn row(&mut self, v: u32, [s1, s2]: [u32; 2], shape: Shape) -> Vec<u32> {
         let (p1, p2) = (
             side_point(&self.points, v, s1, shape.amount),
             side_point(&self.points, v, s2, shape.amount),
@@ -108,7 +99,7 @@ impl Work {
             shape.straightness.clamp(0.0, 1.0),
         );
         let n = shape.segments;
-        let row: Vec<u32> = (0..=n)
+        (0..=n)
             .map(|k| {
                 #[allow(clippy::cast_precision_loss)]
                 let t = k as f64 / n as f64;
@@ -118,67 +109,128 @@ impl Work {
                 self.points.push(q);
                 index(self.points.len() - 1)
             })
-            .collect();
-        for (f, r) in [(f1, row[0]), (f3, row[0]), (f2, row[n]), (f4, row[n])] {
-            if let Some(k) = corner(&self.rings[f], v) {
-                self.rings[f][k] = r;
+            .collect()
+    }
+
+    /// Every face corner at `v` moved onto its row: to the row's start in faces beside `s1`,
+    /// to its end in faces beside `s2`.
+    fn move_corners(&mut self, v: u32, [s1, s2]: [u32; 2], row: &[u32]) {
+        let (first, last) = (row[0], row[row.len() - 1]);
+        for ring in &mut self.rings {
+            let n = ring.len();
+            if let Some(k) = corner(ring, v) {
+                let (before, after) = (ring[(k + n - 1) % n], ring[(k + 1) % n]);
+                if before == s1 || after == s1 {
+                    ring[k] = first;
+                } else if before == s2 || after == s2 {
+                    ring[k] = last;
+                }
             }
         }
-        let mut cap: Vec<u32> = if first {
-            row.iter().rev().copied().collect()
-        } else {
-            row.clone()
-        };
-        cap.push(far);
-        Some((row, cap))
     }
 }
 
 impl SubD {
-    /// The edge `[a, b]` bevelled, as Rhino's Bevel: a strip of `segments` quads in its place,
-    /// each end point given way to a row from `amount` along one side edge to `amount` along the
-    /// other, bowed towards where the point was (`straightness` 0) or straight (1), and a cap
-    /// closing each end round the row and the far point of the edge that carried on past it.
-    /// Both ends must be inner points where four edges meet.
+    /// The edge `[a, b]` bevelled, as Rhino's Bevel ([`SubD::bevelled_run`] of one edge).
     ///
     /// # Errors
-    /// When an end is not such a point, or the bevelled cage is not a valid mesh.
+    /// As [`SubD::bevelled_run`].
     pub fn bevelled(
         &self,
-        [a, b]: [u32; 2],
+        edge: [u32; 2],
+        amount: BevelAmount,
+        segments: u32,
+        straightness: f64,
+    ) -> Result<Self, MeshError> {
+        self.bevelled_run(&edge, amount, segments, straightness)
+    }
+
+    /// A run of edges bevelled, as Rhino's Bevel: `run` lists its points in order (a loop
+    /// repeats its first at the end). Each point gives way to a row from `amount` along one side
+    /// edge to `amount` along the other, bowed towards where the point was (`straightness` 0)
+    /// or straight (1); rows next to each other are joined by strips of `segments` quads; an
+    /// open run's ends are capped round their row and the far point of the edge that carried on
+    /// past them. Measured: two edges in a row give 32 faces on 35 points; a loop round a box
+    /// gives 48 quads on 50 points, with no caps. Every point must be an inner one where four
+    /// edges meet.
+    ///
+    /// # Errors
+    /// When a point is not such a point, or the bevelled cage is not a valid mesh.
+    pub fn bevelled_run(
+        &self,
+        run: &[u32],
         amount: BevelAmount,
         segments: u32,
         straightness: f64,
     ) -> Result<Self, MeshError> {
         let cage = self.cage();
-        let bad = || MeshError::UnusableEdge { edge: [a, b] };
+        let closed = run.len() > 3 && run.first() == run.last();
+        let points: Vec<u32> = if closed {
+            run[..run.len() - 1].to_vec()
+        } else {
+            run.to_vec()
+        };
+        let bad = || MeshError::UnusableEdge {
+            edge: [run[0], run.get(1).copied().unwrap_or(run[0])],
+        };
+        let uses = self.edge_uses();
+        if points.len() < 2 || points.iter().any(|&v| neighbours(&uses, v).len() != 4) {
+            return Err(bad());
+        }
         let mut work = Work {
             rings: cage.faces().map(<[u32]>::to_vec).collect(),
             points: cage.vertices().to_vec(),
         };
-        let along = |ring: &[u32]| {
-            let n = ring.len();
-            (0..n).any(|k| (ring[k], ring[(k + 1) % n]) == (a, b))
-        };
-        let f1 = work.rings.iter().position(|r| along(r)).ok_or_else(bad)?;
-        let f2 = face_with(&work.rings, a, b, f1).ok_or_else(bad)?;
-        let uses = self.edge_uses();
-        let valence = |v: u32| uses.keys().filter(|&&(p, q)| p == v || q == v).count();
-        if valence(a) != 4 || valence(b) != 4 {
-            return Err(bad());
-        }
         let shape = Shape {
             amount,
             segments: segments.max(1) as usize,
             straightness,
         };
-        let (ra, cap_a) = work.end(a, true, [f1, f2], &uses, shape).ok_or_else(bad)?;
-        let (rb, cap_b) = work.end(b, false, [f1, f2], &uses, shape).ok_or_else(bad)?;
-        let mut added: Vec<Vec<u32>> = (0..shape.segments)
-            .map(|k| vec![rb[k], ra[k], ra[k + 1], rb[k + 1]])
+        let m = points.len();
+        let edge_at = |i: usize| -> [u32; 2] {
+            if i + 1 < m || closed {
+                [points[i], points[(i + 1) % m]]
+            } else {
+                [points[i - 1], points[i]]
+            }
+        };
+        let side_pairs: Vec<[u32; 2]> = (0..m)
+            .map(|i| sides(&work.rings, points[i], edge_at(i)).ok_or_else(bad))
+            .collect::<Result<_, _>>()?;
+        // The far point past an open end: its fourth neighbour, found before any corner moves.
+        let far = |i: usize, next: usize| {
+            let [s1, s2] = side_pairs[i];
+            neighbours(&uses, points[i])
+                .into_iter()
+                .find(|&w| w != points[next] && w != s1 && w != s2)
+                .ok_or_else(bad)
+        };
+        let ends = if closed {
+            None
+        } else {
+            Some((far(0, 1)?, far(m - 1, m - 2)?))
+        };
+        let rows: Vec<Vec<u32>> = (0..m)
+            .map(|i| work.row(points[i], side_pairs[i], shape))
             .collect();
-        added.extend([cap_a, cap_b]);
-        self.carried_to_without(work, added, [a, b])
+        for i in 0..m {
+            work.move_corners(points[i], side_pairs[i], &rows[i]);
+        }
+        let joins = if closed { m } else { m - 1 };
+        let mut added: Vec<Vec<u32>> = Vec::new();
+        for i in 0..joins {
+            let (ra, rb) = (&rows[i], &rows[(i + 1) % m]);
+            added.extend((0..shape.segments).map(|k| vec![rb[k], ra[k], ra[k + 1], rb[k + 1]]));
+        }
+        if let Some((first, last)) = ends {
+            let mut cap: Vec<u32> = rows[0].iter().rev().copied().collect();
+            cap.push(first);
+            added.push(cap);
+            let mut cap = rows[m - 1].clone();
+            cap.push(last);
+            added.push(cap);
+        }
+        self.carried_to_without(work, added, &points)
     }
 
     /// The working cage, with `added` faces after its own, as a SubD without the points `gone`.
@@ -186,30 +238,25 @@ impl SubD {
         &self,
         work: Work,
         added: Vec<Vec<u32>>,
-        gone: [u32; 2],
+        gone: &[u32],
     ) -> Result<Self, MeshError> {
         let Work { mut rings, points } = work;
         let mut old_faces: Vec<Option<usize>> = (0..rings.len()).map(Some).collect();
         old_faces.extend(std::iter::repeat_n(None, added.len()));
         rings.extend(added);
-        let (lo, hi) = (gone[0].min(gone[1]), gone[0].max(gone[1]));
-        let renumber = |p: u32| p - u32::from(p > lo) - u32::from(p > hi);
-        let number: Vec<Option<u32>> = (0..self.cage().vertex_count())
-            .map(|v| {
-                let v = index(v);
-                (!gone.contains(&v)).then(|| renumber(v))
-            })
-            .collect();
-        let kept: Vec<Point> = points
-            .iter()
-            .enumerate()
-            .filter(|&(v, _)| !gone.contains(&index(v)))
-            .map(|(_, p)| *p)
-            .collect();
+        let mut number: Vec<Option<u32>> = vec![None; points.len()];
+        let mut kept: Vec<Point> = Vec::new();
+        for (v, p) in points.iter().enumerate() {
+            if !gone.contains(&index(v)) {
+                number[v] = Some(index(kept.len()));
+                kept.push(*p);
+            }
+        }
         let rings: Vec<Vec<u32>> = rings
             .iter()
-            .map(|ring| ring.iter().map(|&p| renumber(p)).collect())
+            .map(|ring| ring.iter().filter_map(|&p| number[p as usize]).collect())
             .collect();
+        number.truncate(self.cage().vertex_count());
         Ok(self.carried_to(Mesh::new(kept, &rings)?, &number, &old_faces))
     }
 }
@@ -252,5 +299,65 @@ mod tests {
             vec![200.0, 201.5, 201.8333, 202.1667, 202.5, 204.0],
             "Rhino's rows, the end points gone"
         );
+    }
+
+    fn front_box() -> SubD {
+        let frame = Frame {
+            origin: [200.0, 0.0, 0.0],
+            ..Frame::world()
+        };
+        SubD::subd_box(&frame, [4.0; 3], [2, 2, 2])
+    }
+
+    fn at(subd: &SubD, p: Point) -> u32 {
+        index(subd.cage().vertices().iter().position(|&q| q == p).unwrap())
+    }
+
+    #[test]
+    fn two_edges_in_a_row_bevel_as_rhino_bevels_them() {
+        let subd = front_box();
+        let run: Vec<u32> = [[202.0, 0.0, 0.0], [202.0, 0.0, 2.0], [202.0, 0.0, 4.0]]
+            .map(|p| at(&subd, p))
+            .to_vec();
+        let out = subd
+            .bevelled_run(&run, BevelAmount::Absolute(0.5), 3, 0.0)
+            .unwrap();
+        let cage = out.cage();
+        assert_eq!((cage.face_count(), cage.vertex_count()), (32, 35));
+        assert_eq!(cage.faces().filter(|f| f.len() == 5).count(), 2);
+        assert!(cage.is_closed());
+        for z in [0.0, 2.0, 4.0] {
+            let row = cage
+                .vertices()
+                .iter()
+                .filter(|p| p[1] == 0.0 && (p[2] - z).abs() < 1e-9 && p[0] > 201.0 && p[0] < 203.0)
+                .count();
+            assert_eq!(row, 4, "Rhino's row of 4 at z = {z}");
+        }
+    }
+
+    #[test]
+    fn a_loop_round_the_box_bevels_without_caps() {
+        let subd = front_box();
+        let mut run: Vec<u32> = [
+            [202.0, 0.0, 0.0],
+            [202.0, 0.0, 2.0],
+            [202.0, 0.0, 4.0],
+            [202.0, 2.0, 4.0],
+            [202.0, 4.0, 4.0],
+            [202.0, 4.0, 2.0],
+            [202.0, 4.0, 0.0],
+            [202.0, 2.0, 0.0],
+        ]
+        .map(|p| at(&subd, p))
+        .to_vec();
+        run.push(run[0]);
+        let out = subd
+            .bevelled_run(&run, BevelAmount::Absolute(0.5), 3, 0.0)
+            .unwrap();
+        let cage = out.cage();
+        assert_eq!((cage.face_count(), cage.vertex_count()), (48, 50));
+        assert!(cage.faces().all(|f| f.len() == 4));
+        assert!(cage.is_closed());
     }
 }
