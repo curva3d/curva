@@ -57,17 +57,17 @@ impl Curva {
                 }
                 ui.separator();
                 ui.strong(say("ui.skp.join"));
-                ui.checkbox(&mut choices.join_edges, say("ui.skp.join_edges"));
+                ui_kit::toggle(ui, &mut choices.join_edges, say("ui.skp.join_edges"));
                 ui.add_enabled(
                     choices.trimmed_planes,
                     egui::Checkbox::new(&mut choices.join_faces, say("ui.skp.join_faces")),
                 );
                 ui.separator();
                 ui.strong(say("ui.skp.groups"));
-                ui.checkbox(&mut choices.group_layers, say("ui.skp.group_layers"));
-                ui.checkbox(&mut choices.add_to_groups, say("ui.skp.add_to_groups"));
+                ui_kit::toggle(ui, &mut choices.group_layers, say("ui.skp.group_layers"));
+                ui_kit::toggle(ui, &mut choices.add_to_groups, say("ui.skp.add_to_groups"));
                 ui.separator();
-                ui.checkbox(&mut always, say("ui.skp.always"));
+                ui_kit::toggle(ui, &mut always, say("ui.skp.always"));
                 ui.horizontal(|ui| {
                     ok = ui.button(say("ui.skp.ok")).clicked();
                     cancel = ui.button(say("ui.units.cancel")).clicked();

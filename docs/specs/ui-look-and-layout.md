@@ -108,3 +108,18 @@ minor step.
   - the unit round-trips through a file, and scaling on a unit change is exact
   - every command button names a real command
 - **The owner's check:** both themes by eye, on Windows and over Remote Desktop.
+
+## 11. The UI kit (owner's choice, 22 November 2026)
+
+Every panel takes its spacing, sizes and shared controls from `crates/curva-app/src/ui_kit.rs`, so
+a change there changes the whole interface. The owner chose, from mock-ups:
+
+- **Titles:** quiet, small and centred on every panel.
+- **On and off:** filled chips, in the accent when on (snaps, filters, settings). A bare tick in a
+  table cell with no name beside it stays a tick box.
+- **Density:** compact, as in Rhino. Rows are 20 points; panels have 8 points of room inside; there
+  are 4 points between rows and 8 between things in a row (4 between chips); corners are 6 points.
+
+All other text starts on the panel's left edge. Tabs and group labels start on the same edge as
+the row below them. Icons are centred on their ink, across and down, and a test checks every
+command's icon.
