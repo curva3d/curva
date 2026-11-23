@@ -85,9 +85,40 @@ fn neighbours(uses: &std::collections::BTreeMap<(u32, u32), Vec<usize>>, v: u32)
         .collect()
 }
 
+/// The parameters, from 0 to 1, that cut the curve `at` into `n` pieces of equal length.
+#[allow(clippy::cast_precision_loss)]
+fn evenly_along(at: &dyn Fn(f64) -> Point, n: usize) -> Vec<f64> {
+    const STEPS: usize = 4096;
+    #[allow(clippy::cast_precision_loss)]
+    let t_of = |k: usize| k as f64 / STEPS as f64;
+    let mut lengths = vec![0.0; STEPS + 1];
+    for k in 1..=STEPS {
+        let (a, b) = (at(t_of(k - 1)), at(t_of(k)));
+        let step = (0..3).map(|i| (b[i] - a[i]).powi(2)).sum::<f64>().sqrt();
+        lengths[k] = lengths[k - 1] + step;
+    }
+    let total = lengths[STEPS];
+    (0..=n)
+        .map(|j| {
+            if total <= 0.0 || j == 0 || j == n {
+                #[allow(clippy::cast_precision_loss)]
+                return j as f64 / n.max(1) as f64;
+            }
+            #[allow(clippy::cast_precision_loss)]
+            let goal = total * j as f64 / n as f64;
+            let k = lengths.partition_point(|&l| l < goal).clamp(1, STEPS);
+            let share =
+                (goal - lengths[k - 1]) / (lengths[k] - lengths[k - 1]).max(f64::MIN_POSITIVE);
+            t_of(k - 1) + share / STEPS as f64
+        })
+        .collect()
+}
+
 impl Work {
     /// The row of new points for `v`, from `amount` along the edge to `s1` to `amount` along the
-    /// edge to `s2`, bowed towards `v`.
+    /// edge to `s2`, on a curve bowed towards `v` and evenly spaced along it (measured on a fold:
+    /// 0.5 either side of a box's corner line gives (0.049, 0.236) and (0.236, 0.049) off it, the
+    /// curve's thirds by length).
     fn row(&mut self, v: u32, [s1, s2]: [u32; 2], shape: Shape) -> Vec<u32> {
         let (p1, p2) = (
             side_point(&self.points, v, s1, shape.amount),
@@ -98,15 +129,16 @@ impl Work {
             lerp(p1, p2, 0.5),
             shape.straightness.clamp(0.0, 1.0),
         );
+        let at = |t: f64| -> Point {
+            std::array::from_fn(|i| {
+                (1.0 - t).powi(2) * p1[i] + 2.0 * t * (1.0 - t) * bow[i] + t * t * p2[i]
+            })
+        };
         let n = shape.segments;
-        (0..=n)
-            .map(|k| {
-                #[allow(clippy::cast_precision_loss)]
-                let t = k as f64 / n as f64;
-                let q: Point = std::array::from_fn(|i| {
-                    (1.0 - t).powi(2) * p1[i] + 2.0 * t * (1.0 - t) * bow[i] + t * t * p2[i]
-                });
-                self.points.push(q);
+        evenly_along(&at, n)
+            .into_iter()
+            .map(|t| {
+                self.points.push(at(t));
                 index(self.points.len() - 1)
             })
             .collect()
@@ -359,5 +391,39 @@ mod tests {
         assert_eq!((cage.face_count(), cage.vertex_count()), (48, 50));
         assert!(cage.faces().all(|f| f.len() == 4));
         assert!(cage.is_closed());
+    }
+
+    #[test]
+    fn rows_on_a_fold_are_spaced_along_their_curve_as_in_rhino() {
+        // Rhino 8: a 4 m box of 4 × 4 faces a side, the edge (200, 0, 1)–(200, 0, 2) on its
+        // front-left corner line, 0.5: the row at z = 1 runs (200, 0.5), (200.049, 0.236),
+        // (200.236, 0.049), (200.5, 0).
+        let frame = Frame {
+            origin: [200.0, 0.0, 0.0],
+            ..Frame::world()
+        };
+        let subd = SubD::subd_box(&frame, [4.0; 3], [4, 4, 4]);
+        let at = |p: Point| index(subd.cage().vertices().iter().position(|&q| q == p).unwrap());
+        let edge = [at([200.0, 0.0, 1.0]), at([200.0, 0.0, 2.0])];
+        let out = subd
+            .bevelled(edge, BevelAmount::Absolute(0.5), 3, 0.0)
+            .unwrap();
+        let mut row: Vec<[f64; 2]> = out
+            .cage()
+            .vertices()
+            .iter()
+            .filter(|p| (p[2] - 1.0).abs() < 1e-9 && p[0] < 201.0 && p[1] < 1.0)
+            .map(|p| [(p[0] * 1e3).round() / 1e3, (p[1] * 1e3).round() / 1e3])
+            .collect();
+        row.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        assert_eq!(
+            row,
+            vec![
+                [200.0, 0.5],
+                [200.049, 0.236],
+                [200.236, 0.049],
+                [200.5, 0.0]
+            ]
+        );
     }
 }
