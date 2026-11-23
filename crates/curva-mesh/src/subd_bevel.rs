@@ -31,9 +31,9 @@ fn corner(ring: &[u32], v: u32) -> Option<usize> {
 }
 
 /// A bevel's working cage: its faces and points as they change.
-struct Work {
-    rings: Vec<Vec<u32>>,
-    points: Vec<Point>,
+pub(crate) struct Work {
+    pub(crate) rings: Vec<Vec<u32>>,
+    pub(crate) points: Vec<Point>,
 }
 
 /// How a bevel's rows are made.
@@ -162,6 +162,88 @@ impl Work {
     }
 }
 
+/// A bevel before it becomes a SubD or mesh: the working cage, its added faces, the points that go.
+pub(crate) type Bevelled = (Work, Vec<Vec<u32>>, Vec<u32>);
+
+/// The bevel of `run` in `cage` (whose edges with the faces using them are `uses`), before it
+/// becomes a SubD or mesh: the working cage, the faces it adds (strips, then the caps), and the
+/// points that go (see [`SubD::bevelled_run`]).
+pub(crate) fn bevel_work(
+    cage: &Mesh,
+    uses: &std::collections::BTreeMap<(u32, u32), Vec<usize>>,
+    run: &[u32],
+    amount: BevelAmount,
+    segments: u32,
+    straightness: f64,
+) -> Result<Bevelled, MeshError> {
+    let closed = run.len() > 3 && run.first() == run.last();
+    let points: Vec<u32> = if closed {
+        run[..run.len() - 1].to_vec()
+    } else {
+        run.to_vec()
+    };
+    let bad = || MeshError::UnusableEdge {
+        edge: [run[0], run.get(1).copied().unwrap_or(run[0])],
+    };
+    if points.len() < 2 || points.iter().any(|&v| neighbours(uses, v).len() != 4) {
+        return Err(bad());
+    }
+    let mut work = Work {
+        rings: cage.faces().map(<[u32]>::to_vec).collect(),
+        points: cage.vertices().to_vec(),
+    };
+    let shape = Shape {
+        amount,
+        segments: segments.max(1) as usize,
+        straightness,
+    };
+    let m = points.len();
+    let edge_at = |i: usize| -> [u32; 2] {
+        if i + 1 < m || closed {
+            [points[i], points[(i + 1) % m]]
+        } else {
+            [points[i - 1], points[i]]
+        }
+    };
+    let side_pairs: Vec<[u32; 2]> = (0..m)
+        .map(|i| sides(&work.rings, points[i], edge_at(i)).ok_or_else(bad))
+        .collect::<Result<_, _>>()?;
+    // The far point past an open end: its fourth neighbour, found before any corner moves.
+    let far = |i: usize, next: usize| {
+        let [s1, s2] = side_pairs[i];
+        neighbours(uses, points[i])
+            .into_iter()
+            .find(|&w| w != points[next] && w != s1 && w != s2)
+            .ok_or_else(bad)
+    };
+    let ends = if closed {
+        None
+    } else {
+        Some((far(0, 1)?, far(m - 1, m - 2)?))
+    };
+    let rows: Vec<Vec<u32>> = (0..m)
+        .map(|i| work.row(points[i], side_pairs[i], shape))
+        .collect();
+    for i in 0..m {
+        work.move_corners(points[i], side_pairs[i], &rows[i]);
+    }
+    let joins = if closed { m } else { m - 1 };
+    let mut added: Vec<Vec<u32>> = Vec::new();
+    for i in 0..joins {
+        let (ra, rb) = (&rows[i], &rows[(i + 1) % m]);
+        added.extend((0..shape.segments).map(|k| vec![rb[k], ra[k], ra[k + 1], rb[k + 1]]));
+    }
+    if let Some((first, last)) = ends {
+        let mut cap: Vec<u32> = rows[0].iter().rev().copied().collect();
+        cap.push(first);
+        added.push(cap);
+        let mut cap = rows[m - 1].clone();
+        cap.push(last);
+        added.push(cap);
+    }
+    Ok((work, added, points))
+}
+
 impl SubD {
     /// The edge `[a, b]` bevelled, as Rhino's Bevel ([`SubD::bevelled_run`] of one edge).
     ///
@@ -195,74 +277,15 @@ impl SubD {
         segments: u32,
         straightness: f64,
     ) -> Result<Self, MeshError> {
-        let cage = self.cage();
-        let closed = run.len() > 3 && run.first() == run.last();
-        let points: Vec<u32> = if closed {
-            run[..run.len() - 1].to_vec()
-        } else {
-            run.to_vec()
-        };
-        let bad = || MeshError::UnusableEdge {
-            edge: [run[0], run.get(1).copied().unwrap_or(run[0])],
-        };
-        let uses = self.edge_uses();
-        if points.len() < 2 || points.iter().any(|&v| neighbours(&uses, v).len() != 4) {
-            return Err(bad());
-        }
-        let mut work = Work {
-            rings: cage.faces().map(<[u32]>::to_vec).collect(),
-            points: cage.vertices().to_vec(),
-        };
-        let shape = Shape {
+        let (work, added, gone) = bevel_work(
+            self.cage(),
+            &self.edge_uses(),
+            run,
             amount,
-            segments: segments.max(1) as usize,
+            segments,
             straightness,
-        };
-        let m = points.len();
-        let edge_at = |i: usize| -> [u32; 2] {
-            if i + 1 < m || closed {
-                [points[i], points[(i + 1) % m]]
-            } else {
-                [points[i - 1], points[i]]
-            }
-        };
-        let side_pairs: Vec<[u32; 2]> = (0..m)
-            .map(|i| sides(&work.rings, points[i], edge_at(i)).ok_or_else(bad))
-            .collect::<Result<_, _>>()?;
-        // The far point past an open end: its fourth neighbour, found before any corner moves.
-        let far = |i: usize, next: usize| {
-            let [s1, s2] = side_pairs[i];
-            neighbours(&uses, points[i])
-                .into_iter()
-                .find(|&w| w != points[next] && w != s1 && w != s2)
-                .ok_or_else(bad)
-        };
-        let ends = if closed {
-            None
-        } else {
-            Some((far(0, 1)?, far(m - 1, m - 2)?))
-        };
-        let rows: Vec<Vec<u32>> = (0..m)
-            .map(|i| work.row(points[i], side_pairs[i], shape))
-            .collect();
-        for i in 0..m {
-            work.move_corners(points[i], side_pairs[i], &rows[i]);
-        }
-        let joins = if closed { m } else { m - 1 };
-        let mut added: Vec<Vec<u32>> = Vec::new();
-        for i in 0..joins {
-            let (ra, rb) = (&rows[i], &rows[(i + 1) % m]);
-            added.extend((0..shape.segments).map(|k| vec![rb[k], ra[k], ra[k + 1], rb[k + 1]]));
-        }
-        if let Some((first, last)) = ends {
-            let mut cap: Vec<u32> = rows[0].iter().rev().copied().collect();
-            cap.push(first);
-            added.push(cap);
-            let mut cap = rows[m - 1].clone();
-            cap.push(last);
-            added.push(cap);
-        }
-        self.carried_to_without(work, added, &points)
+        )?;
+        self.carried_to_without(work, added, &gone)
     }
 
     /// The working cage, with `added` faces after its own, as a SubD without the points `gone`.
