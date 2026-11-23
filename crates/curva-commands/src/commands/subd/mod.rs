@@ -10,6 +10,7 @@ mod insert_edge;
 mod insert_point;
 mod loft;
 mod merge_faces;
+mod multipipe;
 mod offset_subd;
 mod parts;
 mod stitch;
@@ -29,6 +30,7 @@ use insert_edge::InsertEdge;
 use insert_point::InsertPoint;
 use loft::SubDLoft;
 use merge_faces::MergeFaces;
+use multipipe::MultiPipe;
 use offset_subd::OffsetSubD;
 use stitch::Stitch;
 use to_nurbs::ToNurbs;
@@ -60,6 +62,7 @@ pub(crate) static COMMANDS: &[crate::commands::CommandDef] = &[
     recipe!("OffsetSubD", [], true, OffsetSubD),
     recipe!("Bevel", [], true, Bevel),
     recipe!("SubDLoft", [], true, SubDLoft),
+    recipe!("MultiPipe", [], true, MultiPipe),
 ];
 
 /// The buttons of the SubD tab, in order (spec `docs/specs/command-groups.md` §2).
@@ -86,4 +89,5 @@ pub(crate) const TAB: &[&str] = &[
     "OffsetSubD",
     "Bevel",
     "SubDLoft",
+    "MultiPipe",
 ];
