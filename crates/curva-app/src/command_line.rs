@@ -229,6 +229,9 @@ impl Curva {
             ui.separator();
             filter_item = Some(ui.selectable_label(filter_lit, filter_word));
         });
+        // The bar is made as tall as all it has drawn by now: the last lines, the prompt and
+        // these toggles, so nothing is left empty below them (owner, 22 November 2026).
+        self.frames.command_fit = ui.min_rect().height() + 2.0 * PANEL_MARGIN;
         if let Some(item) = filter_item {
             self.selection_filter_panel(ui, &item);
         }

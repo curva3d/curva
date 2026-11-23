@@ -1,96 +1,198 @@
-/* Starlight in Curva's colours and type (values from the Curva brand guidelines). */
+/* The docs in the website's look: black and white, frosted glass, Inter with JetBrains Mono for
+   small labels, and Curva's orange as small signals only (labels, markers, dashes, short rules).
+   Starlight's names are inverted: --sl-color-black is the page, --sl-color-white the ink. */
 @font-face { font-family: "Inter"; font-style: normal; font-weight: 400; font-display: swap; src: url("/assets/fonts/inter-latin-400-normal.woff2") format("woff2"); }
 @font-face { font-family: "Inter"; font-style: normal; font-weight: 600; font-display: swap; src: url("/assets/fonts/inter-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-style: normal; font-weight: 700; font-display: swap; src: url("/assets/fonts/inter-latin-700-normal.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url("/assets/fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2"); }
 
-/* Dark theme */
+/* Dark */
 :root {
 	--sl-font: Inter, system-ui, sans-serif;
-	--sl-color-accent-low: #684327;
-	--sl-color-accent: #e0782f;
-	--sl-color-accent-high: #f8ddcc;
-	--sl-color-white: #f5f4ef;
-	--sl-color-gray-1: #e5e3da;
-	--sl-color-gray-2: #c9c6bd;
-	--sl-color-gray-3: #a6a39b;
-	--sl-color-gray-4: #6b6a64;
-	--sl-color-gray-5: #45443f;
-	--sl-color-gray-6: #30302e;
-	--sl-color-black: #262624;
-	--curva-underline: #e0782f;
+	--sl-font-mono: "JetBrains Mono", ui-monospace, monospace;
+	--sl-color-accent-low: #3a2416;
+	--sl-color-accent: #f08a45;
+	--sl-color-accent-high: #fde3d0;
+	--sl-color-text-accent: #f08a45;
+	--sl-color-white: #f4f4f2;
+	--sl-color-gray-1: #e2e2e0;
+	--sl-color-gray-2: #c4c4c2;
+	--sl-color-gray-3: #9a9a98;
+	--sl-color-gray-4: #6a6a68;
+	--sl-color-gray-5: #3a3a39;
+	--sl-color-gray-6: #1d1d1d;
+	--sl-color-black: #0b0b0b;
+	--sl-color-bg-nav: color-mix(in srgb, #0b0b0b 78%, transparent);
+	--sl-color-bg-sidebar: #0b0b0b;
+	--sl-color-hairline: #f4f4f2;
+	--sl-color-hairline-light: rgba(255, 255, 255, .16);
 	--sl-content-width: 46rem;
+	--curva-accent: #f08a45;
+	--curva-glass: rgba(255, 255, 255, .07);
+	--curva-glass-line: rgba(255, 255, 255, .16);
+	--curva-glass-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), 0 30px 70px rgba(0, 0, 0, .6);
+	/* Callouts all share the glass look; their colour shows only in the label. */
+	--sl-color-purple-low: transparent; --sl-color-purple: #f08a45; --sl-color-purple-high: #f4f4f2;
+	--sl-color-blue-low: transparent; --sl-color-blue: #f08a45; --sl-color-blue-high: #f4f4f2;
+	--sl-color-orange-low: transparent; --sl-color-orange: #f08a45; --sl-color-orange-high: #f4f4f2;
+	--sl-color-red-low: transparent; --sl-color-red: #ff6b5a; --sl-color-red-high: #f4f4f2;
+	--sl-color-green-low: transparent; --sl-color-green: #f08a45; --sl-color-green-high: #f4f4f2;
 }
-
-/* Light theme */
+/* Light */
 :root[data-theme='light'] {
 	--sl-color-accent-low: #f8ddcc;
 	--sl-color-accent: #e0782f;
-	--sl-color-accent-high: #1f1e1d;
-	--sl-color-white: #1f1e1d;
-	--sl-color-gray-1: #30302e;
-	--sl-color-gray-2: #45443f;
-	--sl-color-gray-3: #6b6a64;
-	--sl-color-gray-4: #8c8a84;
-	--sl-color-gray-5: #c9c6bd;
-	--sl-color-gray-6: #e5e3da;
-	--sl-color-gray-7: #eeece5;
-	--sl-color-black: #f5f4ef;
+	--sl-color-accent-high: #000;
+	--sl-color-text-accent: #e0782f;
+	--sl-color-white: #000;
+	--sl-color-gray-1: #1a1a1a;
+	--sl-color-gray-2: #333;
+	--sl-color-gray-3: #555;
+	--sl-color-gray-4: #777;
+	--sl-color-gray-5: #bdbdbd;
+	--sl-color-gray-6: #e2e2e2;
+	--sl-color-gray-7: #f6f6f6;
+	--sl-color-black: #efefef;
+	--sl-color-bg-nav: color-mix(in srgb, #efefef 78%, transparent);
+	--sl-color-bg-sidebar: #efefef;
+	--sl-color-hairline: #000;
+	--sl-color-hairline-light: rgba(0, 0, 0, .14);
+	--curva-accent: #e0782f;
+	--curva-glass: rgba(255, 255, 255, .42);
+	--curva-glass-line: rgba(255, 255, 255, .9);
+	--curva-glass-shadow: inset 0 1px 0 #fff, 0 30px 70px rgba(0, 0, 0, .16);
+	--sl-color-purple: #e0782f; --sl-color-purple-high: #000;
+	--sl-color-blue: #e0782f; --sl-color-blue-high: #000;
+	--sl-color-orange: #e0782f; --sl-color-orange-high: #000;
+	--sl-color-red: #d23b2a; --sl-color-red-high: #000;
+	--sl-color-green: #e0782f; --sl-color-green-high: #000;
 }
 
-/* Links: ink text with the orange underline, as on the home page. */
-.sl-markdown-content a:not(.card a, .sl-link-card a, .sl-link-button) {
-	color: var(--sl-color-white);
-	text-decoration: underline;
-	text-decoration-color: var(--curva-underline);
-	text-decoration-thickness: 2px;
-	text-underline-offset: 4px;
+/* Top bar: frosted, like the website's. */
+.header { -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-bottom: 0; }
+.site-title { font-weight: 700; font-size: 20px; letter-spacing: -.03em; color: var(--sl-color-white); gap: 8px; }
+.site-title img { height: 30px; width: 30px; }
+site-search button[data-open-modal] {
+	border-radius: 14px; border: 1px solid var(--curva-glass-line); background: var(--curva-glass);
+	box-shadow: var(--curva-glass-shadow); font-family: var(--sl-font-mono); font-size: 12px; text-transform: uppercase;
 }
-.sl-markdown-content a:hover { text-decoration-thickness: 3px; }
+site-search kbd { box-shadow: none; }
 
-/* Headings: SemiBold, tight, with the short orange rule above page titles. */
-h1, h2, h3, h4 { font-weight: 600; letter-spacing: -0.015em; }
-.content-panel h1#_top { letter-spacing: -0.03em; }
-.content-panel h1#_top::before {
-	content: ""; display: block; width: 24px; height: 3px; border-radius: 2px;
-	background: var(--curva-underline); margin-bottom: 1rem;
+/* Headings: bold and tight, as on the website. Page titles end with a full stop in the text itself. */
+.sl-markdown-content :is(h2, h3, h4), .content-panel h1 { font-weight: 700; color: var(--sl-color-white); }
+.content-panel h1#_top { font-size: clamp(2.8rem, 6vw, 4.75rem); line-height: .92; letter-spacing: -.065em; }
+.sl-markdown-content h2 { font-size: clamp(1.8rem, 3.2vw, 2.4rem); line-height: 1; letter-spacing: -.05em; }
+/* Each section starts with a full-width line, then the short orange rule, as on the website. */
+.sl-markdown-content .sl-heading-wrapper.level-h2 { margin-top: 3rem; padding-top: 1.4rem; border-top: 1.5px solid var(--sl-color-hairline); }
+.sl-markdown-content .sl-heading-wrapper.level-h2::before {
+	content: ""; display: block; width: 32px; height: 4px; border-radius: 2px;
+	background: var(--curva-accent); margin-bottom: 1.1rem;
 }
+/* Headlines end with a full stop on the page, but not in the sidebar or the window title. */
+.content-panel h1#_top::after, .sl-markdown-content h2::after { content: "."; }
+/* No dividing lines of Starlight's own. */
+.content-panel + .content-panel { border-top: 0; }
+.right-sidebar { border-inline-start: 0; }
+.sl-markdown-content h3 { font-size: 1.4rem; letter-spacing: -.035em; }
+.sl-markdown-content :is(p, li) { font-size: 1.0625rem; line-height: 1.65; }
 
-/* Current page in the sidebar: a quiet fill with an orange edge, never an orange block. */
-.sidebar-content a[aria-current='page'] {
-	background: var(--sl-color-gray-6);
-	color: var(--sl-color-white);
-	font-weight: 600;
-	box-shadow: inset 3px 0 0 var(--curva-underline);
-}
-:root[data-theme='light'] .sidebar-content a[aria-current='page'] { background: var(--sl-color-gray-7); }
+/* Lists: a dash in orange, like the website's. */
+.sl-markdown-content ul:not(:where(.not-content *)) { list-style: none; padding-inline-start: 0; }
+.sl-markdown-content ul:not(:where(.not-content *)) > li { padding-inline-start: 1.6em; text-indent: -1.6em; }
+.sl-markdown-content ul:not(:where(.not-content *)) > li > * { text-indent: 0; }
+.sl-markdown-content ul:not(:where(.not-content *)) > li::before { content: "— "; color: var(--curva-accent); }
+.sl-markdown-content ol > li::marker { font-family: var(--sl-font-mono); font-size: .8em; color: var(--curva-accent); }
 
-/* Keyboard keys */
-kbd {
-	font-family: var(--sl-font); font-size: 0.85em; padding: 0.1em 0.45em; border-radius: 6px;
-	border: 1px solid var(--sl-color-gray-5); background: var(--sl-color-gray-6); color: var(--sl-color-white);
-	box-shadow: 0 1px 0 var(--sl-color-gray-5);
+/* Links: ink, with an orange underline. */
+.sl-markdown-content a:not(:where(.not-content *)) {
+	color: var(--sl-color-white); text-decoration: underline; text-decoration-color: var(--curva-accent);
+	text-decoration-thickness: 2px; text-underline-offset: 4px;
 }
-:root[data-theme='light'] kbd { background: var(--sl-color-gray-7); }
+.sl-markdown-content a:not(:where(.not-content *)):hover { text-decoration-thickness: 3px; }
 
-/* Callouts in Curva's colours: tips on the orange highlight, notes on grey. Orange never fills a large area. */
-:root {
-	--sl-color-purple-low: #684327; --sl-color-purple: #e0782f; --sl-color-purple-high: #f5f4ef;
-	--sl-color-blue-low: #30302e; --sl-color-blue: #a6a39b; --sl-color-blue-high: #f5f4ef;
+/* Sidebar: the website's square-marker list; group names as small orange labels. */
+.sidebar-content { padding-top: 1.5rem; }
+.sidebar-content .large { font-size: 16px; }
+.sidebar-content .group-label .large, .sidebar-content .group-label {
+	font-family: var(--sl-font-mono); font-size: 12px; text-transform: uppercase; font-weight: 400; color: var(--curva-accent);
 }
-:root[data-theme='light'] {
-	--sl-color-purple-low: #f8ddcc; --sl-color-purple: #e0782f; --sl-color-purple-high: #1f1e1d;
-	--sl-color-blue-low: #eeece5; --sl-color-blue: #8c8a84; --sl-color-blue-high: #1f1e1d;
-	/* Accent-coloured text (page contents, active tab) stays ink on light grounds, for contrast. */
-	--sl-color-text-accent: #1f1e1d;
+.sidebar-content ul ul { border-inline-start: 0; margin-inline-start: 0; padding: 0; border-bottom: 1.5px solid var(--sl-color-hairline); }
+.sidebar-content ul ul li { border-inline-start: 0; padding: 0; }
+.sidebar-content a {
+	border-radius: 0; padding: .7rem 0; border-top: 1.5px solid var(--sl-color-hairline); color: var(--sl-color-white);
+	font-size: 16px; transition: padding .25s;
 }
+.sidebar-content a:hover { padding-inline-start: .5rem; background: none; color: var(--sl-color-white); }
+.sidebar-content a span::before { content: "□ "; white-space: pre; }
+.sidebar-content a[aria-current='page'], .sidebar-content a[aria-current='page']:hover {
+	background: none; color: var(--sl-color-white); font-weight: 700; box-shadow: none;
+}
+.sidebar-content a[aria-current='page'] span::before { content: "■ "; }
 
-/* Buttons: ink, like the home page's main button. */
+/* "On this page": a small orange label; the current entry gets the dash. */
+.right-sidebar-panel h2 { font-family: var(--sl-font-mono); font-size: 12px; text-transform: uppercase; font-weight: 400; color: var(--curva-accent); }
+starlight-toc a { color: var(--sl-color-gray-2); }
+starlight-toc a[aria-current='true'] { color: var(--sl-color-white); font-weight: 700; }
+starlight-toc a[aria-current='true']::before { content: "— "; color: var(--curva-accent); }
+
+/* Callouts: frosted cards with a small dashed label. */
+.starlight-aside {
+	border: 1px solid var(--curva-glass-line); border-radius: 20px; background: var(--curva-glass);
+	box-shadow: var(--curva-glass-shadow); padding: 1.1rem 1.4rem;
+	-webkit-backdrop-filter: blur(26px); backdrop-filter: blur(26px);
+}
+.starlight-aside__title {
+	font-family: var(--sl-font-mono); font-size: 12px; text-transform: uppercase; font-weight: 400;
+	color: var(--curva-accent); display: inline-flex; padding: 2px 10px; border: 1.5px dashed var(--curva-accent);
+}
+.starlight-aside__icon { display: none; }
+
+/* Tabs: the website's system chips. */
+starlight-tabs [role='tablist'] { border-bottom: 0; gap: 6px; flex-wrap: wrap; }
+starlight-tabs .tab { margin-bottom: 0; }
+starlight-tabs .tab > [role='tab'] {
+	font-family: var(--sl-font-mono); font-size: 12px; min-height: 44px; padding: 0 14px; border-radius: 999px;
+	border: 1.5px solid var(--sl-color-white); color: var(--sl-color-white); line-height: 1;
+}
+starlight-tabs .tab [aria-selected='true'] { background: var(--sl-color-white); color: var(--sl-color-black); font-weight: 400; border-color: var(--sl-color-white); }
+starlight-tabs [role='tabpanel'] { padding-top: 1rem; }
+
+/* Cards and link cards: glass. */
+.card, .sl-link-card {
+	border: 1px solid var(--curva-glass-line); border-radius: 20px; background: var(--curva-glass); box-shadow: var(--curva-glass-shadow);
+}
+.sl-link-card:hover { border-color: var(--sl-color-white); }
+.card .title { font-weight: 700; letter-spacing: -.035em; }
+
+/* Previous / next: glass cards that turn ink on hover. */
+.pagination-links a {
+	border: 1px solid var(--curva-glass-line); border-radius: 20px; background: var(--curva-glass);
+	box-shadow: var(--curva-glass-shadow); padding: 1rem 1.3rem;
+}
+.pagination-links a:hover { background: var(--sl-color-white); color: var(--sl-color-black); border-color: var(--sl-color-white); }
+.pagination-links a:hover .link-title { color: var(--sl-color-black); }
+.pagination-links .link-title { font-size: 1.5rem; font-weight: 700; letter-spacing: -.04em; color: var(--sl-color-white); }
+.pagination-links a > span { font-family: var(--sl-font-mono); font-size: 12px; text-transform: uppercase; }
+.pagination-links .link-title { font-family: var(--sl-font); text-transform: none; }
+
+/* Buttons: ink pills, like "Explore". */
+.sl-link-button { border-radius: 999px; font-weight: 600; }
 .sl-link-button.primary { background: var(--sl-color-white); border-color: var(--sl-color-white); color: var(--sl-color-black); }
-.sl-link-button.primary:hover { opacity: 0.88; }
+.sl-link-button.primary:hover { opacity: .88; }
 
-/* Current entry in "On this page": ink with an orange mark. */
-starlight-toc a[aria-current='true'] { color: var(--sl-color-white); font-weight: 600; }
-starlight-toc a[aria-current='true']::before { content: "· "; color: var(--curva-underline); }
+/* Code and keys. */
+.sl-markdown-content code:not(:where(.not-content *, pre *)) {
+	font-family: var(--sl-font-mono); font-size: .86em; padding: 1px 6px; border-radius: 6px;
+	background: var(--curva-glass); border: 1px solid var(--curva-glass-line);
+}
+.expressive-code .frame { border-radius: 16px; overflow: hidden; }
+kbd {
+	font-family: var(--sl-font-mono); font-size: 12px; line-height: 1; padding: 4px 8px; border-radius: 8px;
+	border: 1.5px solid var(--sl-color-white); background: none; color: var(--sl-color-white);
+	box-shadow: 0 2px 0 var(--sl-color-white);
+}
 
-/* Header icons in quiet grey. */
+/* Footer details in small mono. */
+.meta, .meta a { font-family: var(--sl-font-mono); font-size: 12px; text-transform: uppercase; }
 .social-icons a { color: var(--sl-color-gray-3); }
 .social-icons a:hover { color: var(--sl-color-white); }

@@ -715,3 +715,83 @@ fn a_slanting_line_has_smooth_edges() {
         "{part_way} part-way pixels beside {full} full ones"
     );
 }
+
+/// A mesh's wires draw as plain one-pixel lines (as Rhino 8's mesh wire thickness of 1): a
+/// white wire across a grey face at the same depth is one pixel tall and seen all along.
+#[test]
+fn a_mesh_wire_is_one_pixel_and_shows_on_its_face() {
+    let end = |x: f32| Vertex {
+        // Half a pixel up, so the wire falls in one row of pixels, not between two.
+        position: [x, 1.0 / 64.0, 0.5],
+        colour: [1.0; 3],
+        width: crate::WIRE_WIDTH,
+        object: NO_OBJECT,
+    };
+    let corner = |x: f32, y: f32| MeshVertex {
+        position: [x, y, 0.5],
+        normal: [0.0, 0.0, 1.0],
+        colour: [0.3; 3],
+        object: NO_OBJECT,
+    };
+    let picture = Picture {
+        lines: vec![end(-0.8), end(0.8)],
+        faces: vec![
+            corner(-1.0, -1.0),
+            corner(1.0, -1.0),
+            corner(1.0, 1.0),
+            corner(-1.0, -1.0),
+            corner(1.0, 1.0),
+            corner(-1.0, 1.0),
+        ],
+        matrix: [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        light: [0.0, 0.0, 1.0],
+        ..Picture::default()
+    };
+    let path = std::env::temp_dir().join(format!("curva-wire-test-{}.png", std::process::id()));
+    if let Err(error) = save_picture(picture, SIZE, &path) {
+        eprintln!("no graphics adapter to draw with, so not checked: {error}");
+        return;
+    }
+    let decoder = png::Decoder::new(std::io::BufReader::new(std::fs::File::open(&path).unwrap()));
+    let mut reader = decoder.read_info().unwrap();
+    let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+    reader.next_frame(&mut pixels).unwrap();
+    let _ = std::fs::remove_file(&path);
+    let white = |x: u32, y: u32| pixels[((y * SIZE[0] + x) * 4) as usize] > 200;
+    let rows = (0..SIZE[1]).filter(|&y| white(32, y)).count();
+    assert_eq!(rows, 1, "the wire is one pixel tall");
+    let seen = (10..54)
+        .filter(|&x| (0..SIZE[1]).any(|y| white(x, y)))
+        .count();
+    assert_eq!(seen, 44, "the wire shows all along its face");
+}
+
+/// Meshes' wires are sent apart from other lines, segment by segment, and lines without any are
+/// sent as they are.
+#[test]
+fn meshes_wires_are_parted_from_other_lines() {
+    let at = |x: f32, width: f32| Vertex {
+        position: [x, 0.0, 0.0],
+        colour: [1.0; 3],
+        width,
+        object: NO_OBJECT,
+    };
+    let wire = crate::WIRE_WIDTH;
+    let lines = vec![
+        at(0.0, -2.0),
+        at(1.0, -2.0),
+        at(2.0, wire),
+        at(3.0, wire),
+        at(4.0, -2.0),
+        at(5.0, -2.0),
+    ];
+    let (rest, wires) = super::apart_wires(&lines).unwrap();
+    assert_eq!(rest, vec![lines[0], lines[1], lines[4], lines[5]]);
+    assert_eq!(wires, vec![lines[2], lines[3]]);
+    assert!(super::apart_wires(&rest).is_none());
+}

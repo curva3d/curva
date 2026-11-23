@@ -49,17 +49,23 @@ impl Curva {
         };
         let prefix = self.text.render(&Message::new("ui.view.button"));
         label.append(&prefix, 0.0, format(small, theme::current().quiet));
-        label.append(
-            &format!("{title} ▾"),
-            4.0,
-            format(font, theme::current().text),
-        );
+        // The font has no down-arrow (it showed as an empty box), so the chevron is drawn.
+        label.append(&title, 4.0, format(font, theme::current().text));
         let button = ui.add_sized(
             [ui.available_width(), 22.0],
             egui::Button::new(label)
                 .fill(theme::ACCENT.gamma_multiply(0.16))
                 .stroke(egui::Stroke::new(1.0, theme::ACCENT.gamma_multiply(0.55))),
         );
+        let tip = egui::pos2(button.rect.max.x - 12.0, button.rect.center().y + 2.0);
+        ui.painter().add(egui::Shape::line(
+            vec![
+                tip + egui::vec2(-4.0, -4.0),
+                tip,
+                tip + egui::vec2(4.0, -4.0),
+            ],
+            egui::Stroke::new(1.5, theme::current().quiet),
+        ));
         let mut picked = None;
         egui::Popup::menu(&button)
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)

@@ -40,6 +40,8 @@ pub(crate) struct Pane {
     pub(crate) grid: Arc<Vec<curva_viewport::Vertex>>,
     /// What the grid's positions are measured from: the scene's origin when it was made (#225).
     pub(crate) grid_origin: Point,
+    /// How the grid is drawn: its colours for the display mode, and its spacing for the unit.
+    pub(crate) grid_look: curva_viewport::GridLook,
     pub(crate) gestures: LeftGestures,
     /// The saved view it shows, whose name becomes its title.
     pub(crate) named: Option<String>,
@@ -56,11 +58,15 @@ pub(crate) struct Pane {
 impl Pane {
     pub(crate) fn set_plane(&mut self, plane: CPlane) {
         self.plane = plane;
-        self.grid = Arc::new(grid_lines_in(
-            &plane,
-            &theme::current().viewport,
-            self.grid_origin,
-        ));
+        self.grid = Arc::new(grid_lines_in(&plane, &self.grid_look, self.grid_origin));
+    }
+
+    /// Draws the grid in `look` from now on, made afresh if it changed.
+    pub(crate) fn restyle_grid(&mut self, look: curva_viewport::GridLook) {
+        if look != self.grid_look {
+            self.grid_look = look;
+            self.set_plane(self.plane);
+        }
     }
 
     /// Keeps the view history: once the camera has moved and stands still again, the view it
@@ -92,6 +98,7 @@ impl Pane {
     }
 
     pub(crate) fn new(view: StandardView) -> Self {
+        let look = curva_viewport::GridLook::new(theme::current().viewport);
         Self {
             view,
             views_back: Vec::new(),
@@ -99,12 +106,9 @@ impl Pane {
             settled: view.camera(),
             camera: view.camera(),
             plane: view.plane(),
-            grid: Arc::new(grid_lines_in(
-                &view.plane(),
-                &theme::current().viewport,
-                [0.0; 3],
-            )),
+            grid: Arc::new(grid_lines_in(&view.plane(), &look, [0.0; 3])),
             grid_origin: [0.0; 3],
+            grid_look: look,
             gestures: LeftGestures::default(),
             named: None,
             // As in Rhino, the perspective view starts shaded and the flat views in wireframe.
@@ -318,6 +322,36 @@ impl Curva {
         }
     }
 
+    /// Saves the active viewport's plane under `name`.
+    fn save_cplane_as(&mut self, name: String) {
+        let plane = self.panes[self.active].plane;
+        self.doc.save_cplane(curva_document::SavedCPlane {
+            name: name.clone(),
+            origin: plane.origin,
+            x: plane.x,
+            y: plane.y,
+        });
+        let said = self
+            .text
+            .render(&Message::with("done.namedcplane.save", vec![name]));
+        self.processor.note(said);
+    }
+
+    /// Shows the view saved as `name` in the active viewport, which becomes the saved view's
+    /// kind (top, perspective and so on) if it was another.
+    fn restore_view(&mut self, name: &str) {
+        if let Some(saved) = self.doc.saved_view(name).cloned() {
+            let pane = &mut self.panes[self.active];
+            if let Some(kind) = StandardView::from_key(&saved.kind)
+                && kind != pane.view
+            {
+                *pane = Pane::new(kind);
+            }
+            pane.camera = Camera::from_saved(&saved);
+            pane.named = Some(saved.name);
+        }
+    }
+
     /// Carries out one change of view.
     pub(crate) fn apply_view(&mut self, request: ViewRequest) {
         match request {
@@ -335,31 +369,8 @@ impl Curva {
                 self.panes[self.active].camera.target = at;
             }
             ViewRequest::SaveView(name) => self.save_view_as(name),
-            ViewRequest::SaveCPlane(name) => {
-                let plane = self.panes[self.active].plane;
-                self.doc.save_cplane(curva_document::SavedCPlane {
-                    name: name.clone(),
-                    origin: plane.origin,
-                    x: plane.x,
-                    y: plane.y,
-                });
-                let said = self
-                    .text
-                    .render(&Message::with("done.namedcplane.save", vec![name]));
-                self.processor.note(said);
-            }
-            ViewRequest::RestoreView(name) => {
-                if let Some(saved) = self.doc.saved_view(&name).cloned() {
-                    let pane = &mut self.panes[self.active];
-                    if let Some(kind) = StandardView::from_key(&saved.kind)
-                        && kind != pane.view
-                    {
-                        *pane = Pane::new(kind);
-                    }
-                    pane.camera = Camera::from_saved(&saved);
-                    pane.named = Some(saved.name);
-                }
-            }
+            ViewRequest::SaveCPlane(name) => self.save_cplane_as(name),
+            ViewRequest::RestoreView(name) => self.restore_view(&name),
             ViewRequest::ZoomExtents => {
                 self.refresh_scene();
                 if let Some((low, high)) = self.outlines.bounds() {
@@ -379,12 +390,13 @@ impl Curva {
             }
             ViewRequest::SetCPlane { origin, x, y } => {
                 let normal = curva_kernel::cross(x, y);
-                self.panes[self.active].set_plane(CPlane {
+                let plane = CPlane {
                     origin,
                     x,
                     y,
                     normal,
-                });
+                };
+                self.panes[self.active].set_plane(plane);
             }
             ViewRequest::ResetCPlane => {
                 let pane = &mut self.panes[self.active];
@@ -514,7 +526,7 @@ impl Curva {
     /// The model's lines a view in `display` draws: dark edges suit solid faces (and Hidden
     /// draws every line in black ink, from the same lines, seams left out); ghosted and
     /// wireframe views keep the light wireframe edges.
-    fn scene_for(&self, display: DisplayMode) -> Arc<Vec<curva_viewport::Vertex>> {
+    pub(crate) fn scene_for(&self, display: DisplayMode) -> Arc<Vec<curva_viewport::Vertex>> {
         Arc::clone(
             if matches!(
                 display,
@@ -531,16 +543,58 @@ impl Curva {
     }
 
     pub(crate) fn viewports(&mut self, ui: &mut egui::Ui, area: egui::Rect, reach: egui::Rect) {
-        // Picked edges and faces stay picked, as Ctrl+Shift picks them for the gumball and the
-        // commands that follow (they were cleared every frame no command asked for them, so a
-        // Ctrl+Shift pick on a solid vanished at once). They go when the object they belong to
-        // changes, as its numbered edges and faces may then be other ones.
+        self.drop_stale_picks();
+        let shown = self.lay_out_panes(ui, area, reach);
+        self.refresh_scene();
+        let hovered = shown
+            .iter()
+            .find_map(|(pane, rect, response)| response.hover_pos().map(|at| (*pane, *rect, at)));
+        let aimed = self.aim_pointer(ui, hovered);
+        let cursor = aimed.map(|(at, _)| at);
+        self.paint_pointer_tags(ui, hovered, cursor);
+        let mut previewed = self.processor.preview(&self.doc, cursor, &self.typed);
+        previewed.extend(self.gumball_preview());
+        let origin = self.drawing.origin;
+        let overlay = Arc::new(ghost_lines(&previewed, origin));
+        let preview_faces = self.ghosted_preview(cursor);
+        let (faces, shapes) = self.faces_shown(cursor);
+        let frame = PaneFrame {
+            overlay,
+            preview_faces,
+            previewed,
+            faces,
+            shapes,
+            hovered,
+            aimed,
+        };
+        for (pane, rect, _) in &shown {
+            let drawing = self.pane_drawing(ui, *pane, *rect, &frame);
+            ui.painter().add(egui_wgpu_callback(*rect, drawing));
+            self.paint_pane_marks(ui, *pane, *rect, &frame);
+        }
+    }
+
+    /// Picked edges and faces stay picked, as Ctrl+Shift picks them for the gumball and the
+    /// commands that follow (they were cleared every frame no command asked for them, so a
+    /// Ctrl+Shift pick on a solid vanished at once). They go when the object they belong to
+    /// changes, as its numbered edges and faces may then be other ones.
+    fn drop_stale_picks(&mut self) {
         let picked = !self.doc.edge_selection().is_empty() || !self.doc.face_selection().is_empty();
         if picked && self.picked_parts_stale() {
             self.doc.select_edges(&[]);
             self.doc.select_faces(&[]);
             self.mouse.parts_on.clear();
         }
+    }
+
+    /// Places the viewports in `area`, each reaching to `reach` where it meets its edge, and
+    /// handles the mouse in each: the panes shown, their rectangles and their responses.
+    fn lay_out_panes(
+        &mut self,
+        ui: &mut egui::Ui,
+        area: egui::Rect,
+        reach: egui::Rect,
+    ) -> Vec<(usize, egui::Rect, egui::Response)> {
         let mut shown = Vec::new();
         self.pane_areas = [None; VIEW_SLOTS];
         for (pane, visible) in pane_rects(area, self.maximised) {
@@ -551,12 +605,13 @@ impl Curva {
             self.handle_mouse(ui, pane, &response, pane_size(rect));
             shown.push((pane, rect, response));
         }
-        self.refresh_scene();
-        let hovered = shown
-            .iter()
-            .find_map(|(pane, rect, response)| response.hover_pos().map(|at| (*pane, *rect, at)));
-        // While the view is being turned or slid, the aim holds where it was, so a height or a
-        // preview does not jump with the view.
+        shown
+    }
+
+    /// Where the pointer over `hovered` aims, and what it snaps to: while the view is being
+    /// turned or slid, the aim holds where it was, so a height or a preview does not jump with
+    /// the view.
+    fn aim_pointer(&mut self, ui: &egui::Ui, hovered: Hovered) -> Aimed {
         let navigating =
             ui.input(|input| input.pointer.secondary_down() || input.pointer.middle_down());
         let held = self.held_aim;
@@ -576,13 +631,18 @@ impl Curva {
         });
         let aimed = if navigating { held } else { aimed };
         self.held_aim = aimed;
-        let cursor = aimed.map(|(at, _)| at);
-        self.last_aim = cursor;
+        self.last_aim = aimed.map(|(at, _)| at);
         self.rest_on(ui.ctx(), aimed.and_then(|(_, hit)| hit));
-        // Picking a point shows a crosshair, and what the step measures beside it.
-        if let Some((.., position)) = hovered
-            && self.takes_position()
-        {
+        aimed
+    }
+
+    /// Beside the pointer: picking a point shows a crosshair and what the step measures; picking
+    /// objects, edges or faces shows a small box.
+    fn paint_pointer_tags(&self, ui: &egui::Ui, hovered: Hovered, cursor: Option<Point>) {
+        let Some((.., position)) = hovered else {
+            return;
+        };
+        if self.takes_position() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
             // A rectangle's far corner shows width × depth.
             let corner = cursor.and_then(|at| self.processor.corner_size(&self.doc, at));
@@ -603,16 +663,13 @@ impl Curva {
                 paint_cursor_tag(ui, position, &self.doc.length_text(value));
             }
         }
-        // Picking objects, edges or faces shows the pointer with a small box beside it.
         let picking = self.processor.current_request().is_some_and(|request| {
             matches!(
                 request.kind,
                 Kind::Objects | Kind::Edges | Kind::Faces | Kind::MeshParts
             )
         });
-        if let Some((.., position)) = hovered
-            && picking
-        {
+        if picking {
             let corner = position + egui::vec2(10.0, 10.0);
             ui.painter().rect_stroke(
                 egui::Rect::from_min_size(corner, egui::Vec2::splat(8.0)),
@@ -621,111 +678,36 @@ impl Curva {
                 egui::StrokeKind::Middle,
             );
         }
-        let mut previewed = self.processor.preview(&self.doc, cursor, &self.typed);
-        previewed.extend(self.gumball_preview());
-        let origin = self.drawing.origin;
-        let preview = ghost_lines(&previewed, origin);
-        let overlay = Arc::new(preview);
-        let preview_faces = self.ghosted_preview(cursor);
-        // A solid the preview changes in place is hidden, so the changed one shows in its place.
+    }
+
+    /// The faces and shared shapes to draw: a solid the preview changes in place is left out, so
+    /// the changed one shows in its place.
+    fn faces_shown(
+        &mut self,
+        cursor: Option<Point>,
+    ) -> (Arc<Vec<MeshVertex>>, Arc<Vec<curva_viewport::PlacedShape>>) {
         let replaced = self
             .processor
             .preview_replaces(&self.doc, cursor, &self.typed);
-        let (faces, shapes) = if replaced.is_empty() {
-            (
+        if replaced.is_empty() {
+            return (
                 Arc::clone(&self.drawing.faces),
                 Arc::clone(&self.drawing.shapes),
-            )
-        } else {
-            if self.drawing.faces_without.0 != replaced {
-                let objects = &self.drawing.objects;
-                let made =
-                    curva_viewport::scene_faces_without(&self.outlines, objects, &replaced, origin);
-                let shapes =
-                    curva_viewport::scene_shapes_without(&self.drawing.shapes, objects, &replaced);
-                self.drawing.faces_without = (replaced, Arc::new(made), Arc::new(shapes));
-            }
-            (
-                Arc::clone(&self.drawing.faces_without.1),
-                Arc::clone(&self.drawing.faces_without.2),
-            )
-        };
-        for (pane, rect, _) in &shown {
-            let size = pane_size(*rect);
-            // Clipping planes cut the model's viewports, never a sheet.
-            let (clips, pane_faces) = if self.shows_sheet(*pane) {
-                (Vec::new(), Arc::clone(&faces))
-            } else {
-                self.clipped_view(
-                    curva_document::clipping::ClipView::Viewport(*pane),
-                    &faces,
-                    origin,
-                )
-            };
-            if self.panes[*pane].grid_origin != origin {
-                let pane = &mut self.panes[*pane];
-                pane.grid_origin = origin;
-                pane.set_plane(pane.plane);
-            }
-            // The camera as the scene is measured, from its origin (#225).
-            let camera = self.panes[*pane].camera.measured_from(origin);
-            let display = self.panes[*pane].display;
-            let drawing = Drawing {
-                clips,
-                slot: *pane,
-                grid: if self.settings.grid {
-                    Arc::clone(&self.panes[*pane].grid)
-                } else {
-                    Arc::default()
-                },
-                scene: self.scene_for(display),
-                faces: pane_faces,
-                shapes: Arc::clone(&shapes),
-                circles: Arc::clone(&self.drawing.circles),
-                objects: Arc::clone(&self.drawing.objects),
-                selection: Arc::clone(&self.drawing.selection),
-                overlay: Arc::clone(&overlay),
-                preview_faces: Arc::clone(&preview_faces),
-                matrix: camera.matrix(size[0] / size[1]),
-                light: camera.forward().map(|value| value as f32),
-                shaded: display != DisplayMode::Wireframe,
-                ghosted: display == DisplayMode::Ghosted,
-                hidden: matches!(display, DisplayMode::Hidden | DisplayMode::Technical),
-                hidden_lines: display == DisplayMode::Technical,
-                massing: display == DisplayMode::Massing,
-                area: *rect,
-                frame: ui.ctx().cumulative_frame_nr(),
-                background: self.pane_background(*pane).0,
-                background_low: self.pane_background(*pane).1,
-                camera,
-            };
-            ui.painter().add(egui_wgpu_callback(*rect, drawing));
-            self.paint_details(ui, *pane, *rect, size);
-            self.paint_desk(ui, *pane, *rect, size);
-            self.paint_frame(ui, *pane, *rect);
-            self.paint_points(ui, *pane, *rect, size, &previewed);
-            self.paint_grips(ui, *pane, *rect, size);
-            self.paint_picked_edges(ui, *pane, *rect, size);
-            self.paint_picked_faces(ui, *pane, *rect, size);
-            self.paint_picked_parts(ui, *pane, *rect, size);
-            self.paint_gumball(ui, *pane, *rect, size);
-            self.paint_guides(ui, *pane, *rect, size);
-            self.paint_dots(ui, *pane, *rect, size);
-            if let Some((hover_pane, ..)) = hovered
-                && hover_pane == *pane
-                && let Some(hit) = aimed.and_then(|(_, hit)| hit)
-            {
-                self.paint_snap_marker(ui, *pane, *rect, size, hit);
-            }
-            let dragging = self.panes[*pane]
-                .gestures
-                .pressed_at
-                .zip(ui.input(|input| input.pointer.latest_pos()))
-                .filter(|(from, to)| !self.takes_position() && is_box_drag(*from, *to));
-            if let Some((from, to)) = dragging {
-                paint_selection_box(ui, *rect, from, to);
-            }
+            );
         }
+        if self.drawing.faces_without.0 != replaced {
+            let origin = self.drawing.origin;
+            let objects = &self.drawing.objects;
+            let made =
+                curva_viewport::scene_faces_without(&self.outlines, objects, &replaced, origin);
+            let shapes =
+                curva_viewport::scene_shapes_without(&self.drawing.shapes, objects, &replaced);
+            self.drawing.faces_without = (replaced, Arc::new(made), Arc::new(shapes));
+        }
+        (
+            Arc::clone(&self.drawing.faces_without.1),
+            Arc::clone(&self.drawing.faces_without.2),
+        )
     }
 }
 
@@ -792,7 +774,7 @@ mod tests {
         assert_eq!(pane.plane, raised);
         assert_eq!(
             pane.grid.len(),
-            grid_lines_in(&raised, &theme::current().viewport, [0.0; 3]).len()
+            grid_lines_in(&raised, &pane.grid_look, [0.0; 3]).len()
         );
         assert!(pane.grid.iter().all(|v| v.position[2] == 5.0));
         pane.set_plane(pane.view.plane());

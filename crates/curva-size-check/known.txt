@@ -2,16 +2,8 @@
 # split. An entry may only shrink; remove it once it is within the limit. Never add to it.
 fn crates/curva-3dm/src/import/surfaces.rs nurbs_surface 85
 fn crates/curva-app/src/agent.rs look_pictures 84
-fn crates/curva-app/src/benchmark.rs benchmark_house 90
-fn crates/curva-app/src/benchmark.rs benchmark_scene 102
 fn crates/curva-app/src/command_line.rs command_line 103
 fn crates/curva-app/src/icons/selection.rs selection_1 82
-fn crates/curva-app/src/main.rs new 109
-fn crates/curva-app/src/main.rs run 119
-fn crates/curva-app/src/sheets.rs detail_mouse 102
-fn crates/curva-app/src/sheets.rs paint_details 104
-fn crates/curva-app/src/viewports.rs apply_view 105
-fn crates/curva-app/src/viewports.rs viewports 200
 fn crates/curva-commands/src/processor.rs answer_typed 108
 fn crates/curva-commands/src/recipe/run.rs step 99
 fn crates/curva-document/src/annotation/arc_length.rs parts 88
@@ -40,5 +32,4 @@ fn crates/curva-mesh/src/to_subd.rs from_mesh 82
 fn crates/curva-meshfiles/src/obj.rs read 92
 fn crates/curva-meshfiles/src/ply.rs read 117
 fn crates/curva-viewport/src/gpu/depth.rs write 86
-fn crates/curva-viewport/src/pilot.rs draw_all 101
 fn crates/curva-viewport/src/pilot/scene.rs update 114

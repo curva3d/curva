@@ -28,11 +28,16 @@ const RED: Color32 = Color32::from_rgb(0xc9, 0x5f, 0x5f);
 type P = (f32, f32);
 
 /// Draws one icon in a 22-unit box scaled to fit a rectangle; with no painter it draws nothing,
-/// which tells whether an icon exists.
+/// which tells whether an icon exists, or, given `seen`, only measures what it would draw.
 struct Pen<'a> {
     painter: Option<&'a egui::Painter>,
     rect: egui::Rect,
     ink: Color32,
+    /// Grows to hold everything drawn, when measuring.
+    seen: Option<&'a std::cell::RefCell<egui::Rect>>,
+    /// Moves the drawing so its ink sits in the middle of `rect` (the owner's rule: icons are
+    /// always centred, across and down).
+    shift: egui::Vec2,
 }
 
 impl Pen<'_> {
@@ -43,7 +48,7 @@ impl Pen<'_> {
     fn at(&self, p: P) -> Pos2 {
         let scale = self.scale();
         let corner = self.rect.center() - egui::Vec2::splat(BOX * scale / 2.0);
-        corner + egui::vec2(p.0 * scale, p.1 * scale)
+        corner + egui::vec2(p.0 * scale, p.1 * scale) + self.shift
     }
 
     fn width(&self, w: f32) -> Stroke {
@@ -59,8 +64,18 @@ impl Pen<'_> {
     }
 
     fn add(&self, shape: egui::Shape) {
-        if let Some(painter) = self.painter {
-            painter.add(shape);
+        match (self.painter, self.seen) {
+            (Some(painter), _) => {
+                painter.add(shape);
+            }
+            (None, Some(seen)) => {
+                let bounds = shape.visual_bounding_rect();
+                if bounds.is_finite() {
+                    let mut seen = seen.borrow_mut();
+                    *seen = seen.union(bounds);
+                }
+            }
+            (None, None) => {}
         }
     }
 
@@ -92,13 +107,8 @@ impl Pen<'_> {
     fn dashed_in(&self, points: &[P], stroke: Stroke) {
         let points: Vec<Pos2> = points.iter().map(|p| self.at(*p)).collect();
         let scale = self.scale();
-        if let Some(painter) = self.painter {
-            painter.extend(egui::Shape::dashed_line(
-                &points,
-                stroke,
-                3.0 * scale,
-                2.0 * scale,
-            ));
+        for dash in egui::Shape::dashed_line(&points, stroke, 3.0 * scale, 2.0 * scale) {
+            self.add(dash);
         }
     }
 
@@ -165,15 +175,19 @@ impl Pen<'_> {
     }
 
     fn dot(&self, x: f32, y: f32) {
-        if let Some(painter) = self.painter {
-            painter.circle_filled(self.at((x, y)), 1.6 * self.scale(), theme::ACCENT);
-        }
+        self.add(egui::Shape::circle_filled(
+            self.at((x, y)),
+            1.6 * self.scale(),
+            theme::ACCENT,
+        ));
     }
 
     fn ring(&self, x: f32, y: f32) {
-        if let Some(painter) = self.painter {
-            painter.circle_stroke(self.at((x, y)), 1.8 * self.scale(), self.width(1.1));
-        }
+        self.add(egui::Shape::circle_stroke(
+            self.at((x, y)),
+            1.8 * self.scale(),
+            self.width(1.1),
+        ));
     }
 
     fn rect(&self, x: f32, y: f32, w: f32, h: f32) {
@@ -232,9 +246,11 @@ impl Pen<'_> {
         self.quad((3.0, 11.0), (11.0, 3.0), (19.0, 11.0));
         if open {
             self.quad((3.0, 11.0), (11.0, 19.0), (19.0, 11.0));
-            if let Some(painter) = self.painter {
-                painter.circle_filled(self.at((11.0, 11.0)), 2.6 * self.scale(), theme::ACCENT);
-            }
+            self.add(egui::Shape::circle_filled(
+                self.at((11.0, 11.0)),
+                2.6 * self.scale(),
+                theme::ACCENT,
+            ));
         } else {
             for (a, b) in [
                 ((6.0, 9.0), (5.0, 12.0)),
@@ -289,21 +305,47 @@ pub fn has(name: &str) -> bool {
             painter: None,
             rect: egui::Rect::from_min_size(Pos2::ZERO, egui::Vec2::splat(BOX)),
             ink: Color32::WHITE,
+            seen: None,
+            shift: egui::Vec2::ZERO,
         },
         name,
     )
 }
 
 /// Draws the icon for the command `name` in `rect`, if there is one; returns whether there was.
+/// The drawing is measured first and moved so its ink is centred in `rect`, whatever part of the
+/// box the icon was drawn in.
 pub fn paint(painter: &egui::Painter, rect: egui::Rect, name: &str) -> bool {
+    let shift = ink_shift(rect, name);
     draw(
         &Pen {
             painter: Some(painter),
             rect,
             ink: theme::current().text,
+            seen: None,
+            shift,
         },
         name,
     )
+}
+
+/// How far the icon `name` drawn in `rect` must move for its ink to sit in the middle of `rect`.
+fn ink_shift(rect: egui::Rect, name: &str) -> egui::Vec2 {
+    let seen = std::cell::RefCell::new(egui::Rect::NOTHING);
+    let pen = Pen {
+        painter: None,
+        rect,
+        ink: Color32::WHITE,
+        seen: Some(&seen),
+        shift: egui::Vec2::ZERO,
+    };
+    draw(&pen, name);
+    let bounds = seen.into_inner();
+    if bounds.is_finite() && bounds.is_positive() {
+        rect.center() - bounds.center()
+    } else {
+        egui::Vec2::ZERO
+    }
 }
 
 /// Draws the icon for `name`, trying each group in turn; returns whether there was one.
@@ -370,6 +412,29 @@ mod tests {
     fn every_command_has_an_icon() {
         for def in &curva_commands::commands::COMMANDS {
             assert!(super::has(def.name), "{} has no icon", def.name);
+        }
+    }
+
+    /// The owner's rule: every icon's ink sits in the middle of its button, across and down
+    /// (SimplifyCrv was drawn off to one side).
+    #[test]
+    fn every_icon_is_centred_once_moved() {
+        let rect =
+            eframe::egui::Rect::from_min_size(eframe::egui::pos2(10.0, 20.0), [44.0; 2].into());
+        for def in &curva_commands::commands::COMMANDS {
+            let shift = super::ink_shift(rect, def.name);
+            let seen = std::cell::RefCell::new(eframe::egui::Rect::NOTHING);
+            let pen = super::Pen {
+                painter: None,
+                rect,
+                ink: super::Color32::WHITE,
+                seen: Some(&seen),
+                shift,
+            };
+            super::draw(&pen, def.name);
+            let bounds = seen.into_inner();
+            let off = bounds.center() - rect.center();
+            assert!(off.length() < 0.01, "{} is {off:?} off centre", def.name);
         }
     }
 }

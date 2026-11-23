@@ -517,6 +517,79 @@ release build, RTX 3060, peak memory as Windows reports it, two runs each:
 About 1 GB less. Frames did not get slower: moving corners into place costs nothing that shows
 here. (The memory-limit work for the graphics card, spec step 13, is separate.)
 
+## Bevy's fixed cost per frame (23 November 2026, display-on-Bevy step 5)
+
+Where an empty scene's 3 ms of work a frame goes, timed inside Bevy's update (release build,
+RTX 3060, Vulkan, one view): Bevy's main step 0.29 ms, handing the scene to its drawing step 0.14
+ms, its drawing step 1.23 ms; the rest (about 1.4 ms) is Curva's own window, panels and lines.
+Inside the drawing step: preparing the frame's buffers and lights 0.42 ms, recording the passes
+0.13 ms, and handing the recorded frame to the graphics card's queue 0.36 ms, almost all of it
+the graphics driver's (Vulkan; DirectX 12 was much slower, 4.6 ms a frame in all).
+
+Two changes, measured with the old and new builds run in turn (median of five runs; three on
+*Large*), while other builds were running on the machine:
+
+- **Bevy's schedules run on one thread:** handing each system to another thread and waiting for
+  it cost more than the systems themselves. Systems that split their own work across threads
+  still do. A new view's first picture then needs one more update (three, not two), as Bevy
+  readies its pipelines in another order; changes to a view already drawn still show on the next
+  picture (a new test checks faces, a shape and a new look).
+- **One light cluster per view:** Curva lights with sun-like lights only, which reach everywhere,
+  so sorting lights into Bevy's thousands of regions of the view found nothing. Turning clusters
+  off altogether stops Bevy drawing the view, so one cluster it is.
+
+| Work per frame | Before | After |
+|---|---|---|
+| Empty scene | 3.38 ms | 2.82 ms |
+| *Medium* | 4.00 ms | 3.73 ms |
+| *Large* | 7.00 ms | 6.87 ms |
+
+*Large*'s frames stay at the screen's own rate (16.2 ms). What is left of Bevy's cost is mostly
+the graphics driver taking the frame and Bevy preparing buffers it sends each frame; trimming
+those would mean changing Bevy itself.
+
+## The *Meshes* scene (23 November 2026, display-on-Bevy step 5)
+
+`curva --orbit-benchmark --scene meshes`: 16 mesh objects, each a ring (torus) of 350 by 1,400
+quads, 15.68 million triangles in all (spec target: under 16 ms a frame and under 1 GB). RTX
+3060, Vulkan, release build, three runs each, Bevy's schedules on many threads and on one, run in
+turn:
+
+| | Many threads | One thread |
+|---|---|---|
+| Between frames (median) | 33.6, 33.7, 33.7 ms | 33.7, 33.7, 33.7 ms |
+| Work per frame | 14.1, 13.0, 13.0 ms | 13.7, 12.8, 12.7 ms |
+| First frame | | 11.3, 11.4 s |
+
+One thread is as fast as many on this scene. **The first measurements (29–31 ms) were wrong:**
+Bevy drew no faces at all. It packs meshes into shared buffers it lets grow to 512 MB, past the
+256 MB a buffer may hold on Curva's device; once a scene's faces passed 256 MB the buffer was
+refused without a word, and Bevy drew nothing, background included. Its buffers are now kept
+within the device's limit and no mesh it is handed is larger than half of it, so the faces show.
+
+The target is not met: the graphics card spends about 27.7 ms a frame on Curva's lines, which
+here are the meshes' edges, every triangle's outline drawn as a smoothed line; Bevy's faces add
+about 4 ms. The first snap took 14 s and snapping 9.6 ms a frame, over the meshes' 7.8 million
+points. These are the next things to look at for meshes.
+
+### Meshes' wires as plain one-pixel lines (23 November 2026)
+
+Rhino 8 draws a mesh's wires in Shaded and Wireframe (its display modes' "Show mesh wires", mesh
+wire thickness 1), so Curva keeps them; at this density both bury the surface under its wires
+(Rhino's rings come out solid black, Curva's solid white). Curva drew them as smoothed lines, six
+corners a segment; they are now plain one-pixel lines, two corners a segment, as a mesh has
+millions. Two runs:
+
+| *Meshes* | Smoothed wires | One-pixel wires |
+|---|---|---|
+| Between frames (median) | 33.6, 33.7 ms | 16.6, 16.6 ms |
+| Curva's lines on the card | 27.7 ms | 10.6 ms |
+| Work per frame | 12.9–15.0 ms | 14.0, 14.3 ms |
+
+16.6 ms is the screen's own rate, so the target of 16 ms is met as far as the screen shows.
+Rhino 8 on the same 16 rings, timed by drawing the view into a 1920 × 1080 picture 15 times
+(which adds copying the picture back): about 84 ms a frame in Shaded.
+
 ## Real project files (19 November 2026)
 
 The owner's own project files, kept on the owner's machine and not named here. `curva
