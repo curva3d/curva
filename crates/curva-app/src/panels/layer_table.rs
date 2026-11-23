@@ -27,6 +27,8 @@ struct Table {
     current: u64,
     in_detail: Option<(u64, Vec<u64>)>,
     widest: [f32; 6],
+    /// The layers the selected objects are on, softly lit.
+    lit: std::collections::BTreeSet<u64>,
 }
 
 impl Table {
@@ -209,6 +211,7 @@ impl Curva {
             current,
             in_detail,
             widest: [0.0; 6],
+            lit: self.doc.layers_of_selection(),
         }
     }
 
@@ -280,6 +283,10 @@ impl Curva {
             }
         }
         outline_drop_target(ui, &row_response, rect);
+        // The layer of what is selected is softly lit, so it can be found in a long list.
+        if table.lit.contains(&layer.id) {
+            ui_kit::related_row(ui, rect);
+        }
         // The layer picked in the list, which the toolbar acts on, is lit.
         if self.frames.layers_ui.selected == Some(layer.id) {
             ui_kit::chosen_row(ui, rect);
