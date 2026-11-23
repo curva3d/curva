@@ -336,6 +336,24 @@ pub struct PlacedShape {
     /// For a mesh with vertex colours, the colour at each of `mesh`'s positions; `colour` is
     /// then white, so the faces show these as they are (#267).
     pub colours: Option<std::sync::Arc<Vec<[f32; 3]>>>,
+    /// What kind of object the faces belong to, which picks the look its view's style gives
+    /// them ([`crate::Style::faces_of`]).
+    pub kind: FaceKind,
+}
+
+/// What kind of object faces belong to. A view's style gives each kind its own look: whether it
+/// shows, one colour or its own, and how opaque.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum FaceKind {
+    /// Drawn as given: locked objects, and annotation's filled letters and marks.
+    #[default]
+    Given,
+    /// A surface, polysurface or solid.
+    Nurbs,
+    /// A mesh.
+    Mesh,
+    /// A SubD.
+    Subd,
 }
 
 impl SceneParts {
@@ -412,6 +430,11 @@ fn shapes_of(
                 mesh: std::sync::Arc::clone(mesh),
                 placement: placed_from(placement, origin),
                 colours: faces.colours.clone(),
+                kind: if faces.locked {
+                    FaceKind::Given
+                } else {
+                    faces.face_kind
+                },
             })
         })
         .collect()

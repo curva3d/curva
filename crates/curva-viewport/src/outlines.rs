@@ -38,6 +38,8 @@ pub(crate) struct Faces {
     /// What sort of object the faces belong to, for the selection filter, so an object drawn by
     /// its faces alone, such as a smooth SubD without creases, can still be picked (#324).
     pub(crate) kind: PickKind,
+    /// What kind of object the faces belong to, for the look a view's style gives them.
+    pub(crate) face_kind: crate::FaceKind,
 }
 
 impl Faces {
@@ -471,6 +473,8 @@ impl Outlines {
             let mut kind = PickKind::Curve;
             // A body's seams, by edge number, which shaded views leave out.
             let mut seam_edges: Vec<usize> = Vec::new();
+            // Its faces and lines take the look its kind of object has in a view's style.
+            let look = look.drawn_as(line_kind_of(shape));
             let pieces: Vec<(Curve, Option<usize>)> = match shape {
                 Shape::Curve(curve) => {
                     if matches!(curve, Curve::Point { .. }) {
@@ -523,7 +527,6 @@ impl Outlines {
                 } else {
                     look.width
                 },
-                line: line_kind_of(shape),
                 ..look
             };
             outlines.push_pieces(object.id, pieces, look, kind, &seam, on_faces);
@@ -559,11 +562,8 @@ impl Outlines {
         }
         // Its other cage edges draw in every view in its own colour, as Rhino 8 draws them (#472).
         let wires = drawing.wires.into_iter().map(|wire| (wire, None)).collect();
-        let look = Look {
-            line: crate::LineKind::SubdWire,
-            ..look
-        };
-        self.push_pieces(id, wires, look, kind, &|_| false, false);
+        let wire_look = look.drawn_as(crate::LineKind::SubdWire);
+        self.push_pieces(id, wires, wire_look, kind, &|_| false, false);
         let lines = drawing.lines.into_iter().map(|line| (line, None)).collect();
         (lines, kind)
     }
@@ -636,6 +636,12 @@ impl Outlines {
             placement,
             colours: None,
             kind,
+            face_kind: match look.line {
+                crate::LineKind::Edge => crate::FaceKind::Nurbs,
+                crate::LineKind::MeshWire => crate::FaceKind::Mesh,
+                crate::LineKind::SubdEdge | crate::LineKind::SubdWire => crate::FaceKind::Subd,
+                _ => crate::FaceKind::Given,
+            },
         });
     }
 
@@ -711,6 +717,11 @@ struct Look {
 }
 
 impl Look {
+    /// This look, its pieces drawn as `line`.
+    fn drawn_as(self, line: crate::LineKind) -> Self {
+        Self { line, ..self }
+    }
+
     /// How `object`, on `layer`, draws: in its own colour or its layer's, locked or not, with its
     /// print width and its linetype's pattern, the document's own linetypes included (#170).
     fn of(state: &State, object: &Object, layer: Option<&Layer>) -> Self {

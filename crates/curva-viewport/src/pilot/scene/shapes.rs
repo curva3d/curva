@@ -84,6 +84,8 @@ pub(super) struct ShapePart {
     pub(super) object: u32,
     /// Its colour's bits, for its material.
     pub(super) colour: [u32; 3],
+    /// What kind of object it is, for the look its view's style gives it.
+    pub(super) kind: crate::FaceKind,
     shape: ShapeKey,
     placement: [[f64; 4]; 4],
     pub(super) entity: Entity,
@@ -93,6 +95,36 @@ impl ViewScene {
     /// Makes this view's copies match `shapes`: a copy whose shape and placement are unchanged
     /// stays as it is, a moved one only gets its new place, gone ones are removed. Copies are
     /// matched by their object and their order within it (an instance has one per part).
+    /// A new copy of `shape` in this view.
+    fn new_part(
+        &self,
+        world: &mut World,
+        meshes: &mut ShapeMeshes,
+        shape: &PlacedShape,
+    ) -> ShapePart {
+        let (shape_key, handle, centre) = meshes.take(
+            world,
+            &shape.mesh,
+            shape.colours.as_deref().map(Vec::as_slice),
+        );
+        let entity = world
+            .spawn((
+                Mesh3d(handle),
+                placed(&shape.placement, centre),
+                self.layer.clone(),
+                ChildOf(self.root),
+            ))
+            .id();
+        ShapePart {
+            object: shape.object,
+            colour: shape.colour.map(f32::to_bits),
+            kind: shape.kind,
+            shape: shape_key,
+            placement: shape.placement,
+            entity,
+        }
+    }
+
     pub(super) fn mirror_shapes(
         &mut self,
         world: &mut World,
@@ -118,6 +150,7 @@ impl ViewScene {
                             .insert(placed(&shape.placement, centre));
                     }
                     part.colour = colour;
+                    part.kind = shape.kind;
                 }
                 Some(part) => {
                     meshes.give_back(world, part.shape);
@@ -132,31 +165,11 @@ impl ViewScene {
                     part.shape = shape_key;
                     part.placement = shape.placement;
                     part.colour = colour;
+                    part.kind = shape.kind;
                 }
                 None => {
-                    let (shape_key, handle, centre) = meshes.take(
-                        world,
-                        &shape.mesh,
-                        shape.colours.as_deref().map(Vec::as_slice),
-                    );
-                    let entity = world
-                        .spawn((
-                            Mesh3d(handle),
-                            placed(&shape.placement, centre),
-                            self.layer.clone(),
-                            ChildOf(self.root),
-                        ))
-                        .id();
-                    self.shape_parts.insert(
-                        key,
-                        ShapePart {
-                            object: shape.object,
-                            colour,
-                            shape: shape_key,
-                            placement: shape.placement,
-                            entity,
-                        },
-                    );
+                    let part = self.new_part(world, meshes, shape);
+                    self.shape_parts.insert(key, part);
                 }
             }
         }

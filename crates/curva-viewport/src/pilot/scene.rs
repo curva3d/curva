@@ -13,10 +13,11 @@ use bevy::{
     prelude::*,
 };
 
+mod looks;
 mod shapes;
 
-use super::clip::{Clipping, Clips, CurvaMaterial};
-use crate::{Drawing, MeshVertex};
+use super::clip::{Clips, CurvaMaterial};
+use crate::{Drawing, FaceKind, MeshVertex};
 
 /// How surfaces are lit (`views-and-styles.md` §2.1, the Surfaces layer's lighting).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -66,11 +67,12 @@ const STUDIO_SKY: [[f32; 3]; 3] = [[0.72, 0.72, 0.72], [1.0, 1.0, 1.0], [0.18, 0
 const OPEN_SKY: [[f32; 3]; 3] = [[0.62, 0.72, 0.86], [0.92, 0.93, 0.94], [0.40, 0.38, 0.35]];
 const STUDIO_SKY_BRIGHTNESS: f32 = 150.0;
 const OPEN_SKY_BRIGHTNESS: f32 = 120.0;
-/// How much of what is behind a ghosted face shows through, as in Curva's Ghosted mode.
-const GHOSTED_ALPHA: f32 = 0.5;
 /// How much a command's preview covers what is behind it, as Curva's ghosted faces did.
 const PREVIEW_ALPHA: f32 = 0.5;
 
+/// One part or copy of an object as shown in a view: its entity, its own colour's bits and its
+/// kind of object.
+type PartOf = (Entity, [u32; 3], FaceKind);
 /// A mesh's contents, as a fingerprint and a length: equal contents share one Bevy mesh.
 type MeshKey = (u64, usize);
 /// One object's faces of one colour: its number in the scene, the colour's bits, and which piece
@@ -182,19 +184,20 @@ pub(super) struct ViewScene {
     look: Option<Look>,
     faces: Option<Arc<Vec<MeshVertex>>>,
     selection: Option<Arc<Vec<u64>>>,
-    ghosted: Option<bool>,
-    /// How faces are coloured: their own colours, flat paper white (Hidden, #164) or white and lit
-    /// (Massing, #551).
-    hidden: Option<FaceLook>,
+    /// Whether faces are unlit, flat (Hidden, #164).
+    unlit: Option<bool>,
+    /// Each kind of object's faces as last shown, and the style they come from.
+    style_faces: Option<[crate::KindFaces; 3]>,
+    face_style: crate::Style,
     parts: HashMap<PartKey, Part>,
     /// This view's material for each colour, so a style change touches only this view.
-    materials: HashMap<[u32; 3], Handle<CurvaMaterial>>,
+    materials: HashMap<([u32; 3], u32), Handle<CurvaMaterial>>,
     /// The colour each part and copy is shown in now, so a new selection hands Bevy only the
     /// parts whose colour changes: handing it every part made it redo them all (step 5).
-    shown: HashMap<Entity, [u32; 3]>,
+    shown: HashMap<Entity, looks::Seen>,
     /// Each object's parts and copies, by its id (`None` for parts of no object), each with its
     /// own colour.
-    by_object: HashMap<Option<u64>, Vec<(Entity, [u32; 3])>>,
+    by_object: HashMap<Option<u64>, Vec<PartOf>>,
     /// The objects shown selected.
     picked: HashSet<u64>,
     /// The planes this view's surfaces were last cut by.
@@ -270,8 +273,9 @@ impl ViewScene {
             look: None,
             faces: None,
             selection: None,
-            ghosted: None,
-            hidden: None,
+            unlit: None,
+            style_faces: None,
+            face_style: crate::Style::default(),
             parts: HashMap::new(),
             shapes: None,
             shape_parts: HashMap::new(),
@@ -297,7 +301,9 @@ impl ViewScene {
         look: Look,
     ) {
         // Only what changed is handed to Bevy: each change makes Bevy redo work for it.
-        let shaded = drawing.style.surfaces.is_some();
+        // Faces show when any kind of object's do; each kind is then shown or hidden itself.
+        let shaded =
+            drawing.style.surfaces.is_some() || drawing.style.faces.iter().any(|faces| faces.shown);
         if self.shaded != Some(shaded) {
             self.shaded = Some(shaded);
             // Wireframe views show no faces.
@@ -370,7 +376,7 @@ impl ViewScene {
             self.mirror_shapes(world, &mut meshes.1, &drawing.shapes);
             self.shapes = Some(Arc::clone(&drawing.shapes));
         }
-        self.restyle(world, drawing.style.see_through(), FaceLook::of(drawing));
+        self.restyle(world, &drawing.style);
         let clips = Clips::of(&drawing.clips);
         if self.clips != Some(clips) {
             self.clips = Some(clips);
@@ -532,39 +538,42 @@ impl ViewScene {
         let copies = self
             .shape_parts
             .values()
-            .map(|part| (part.object, part.colour, part.entity));
+            .map(|part| (part.object, part.colour, part.entity, part.kind));
         self.by_object.clear();
-        for (number, colour, entity) in self
+        for (number, colour, entity, kind) in self
             .parts
             .iter()
-            .map(|(&(number, colour, _), part)| (number, colour, part.entity))
+            .map(|(&(number, colour, _), part)| (number, colour, part.entity, FaceKind::Given))
             .chain(copies)
         {
             // Parts of no object (numbered past the list) are drawn too, never selected.
             let id = objects.get(number as usize).copied();
-            self.by_object.entry(id).or_default().push((entity, colour));
+            self.by_object
+                .entry(id)
+                .or_default()
+                .push((entity, colour, kind));
         }
         // Parts gone are forgotten, so the list does not grow.
         let live: HashSet<Entity> = self
             .by_object
             .values()
             .flatten()
-            .map(|(entity, _)| *entity)
+            .map(|(entity, ..)| *entity)
             .collect();
         self.shown.retain(|entity, _| live.contains(entity));
         self.picked = selection.iter().copied().collect();
-        let all: Vec<(Option<u64>, Entity, [u32; 3])> = self
+        let all: Vec<(Option<u64>, Entity, [u32; 3], FaceKind)> = self
             .by_object
             .iter()
             .flat_map(|(&id, parts)| {
                 parts
                     .iter()
-                    .map(move |&(entity, colour)| (id, entity, colour))
+                    .map(move |&(entity, colour, kind)| (id, entity, colour, kind))
             })
             .collect();
-        for (id, entity, colour) in all {
+        for (id, entity, colour, kind) in all {
             let picked = id.is_some_and(|id| self.picked.contains(&id));
-            self.show(world, entity, colour, picked);
+            self.show(world, entity, colour, kind, picked);
         }
     }
 
@@ -575,78 +584,11 @@ impl ViewScene {
         let changed: Vec<u64> = now.symmetric_difference(&self.picked).copied().collect();
         for id in changed {
             let parts = self.by_object.get(&Some(id)).cloned().unwrap_or_default();
-            for (entity, colour) in parts {
-                self.show(world, entity, colour, now.contains(&id));
+            for (entity, colour, kind) in parts {
+                self.show(world, entity, colour, kind, now.contains(&id));
             }
         }
         self.picked = now;
-    }
-
-    /// Turns this view's materials see-through for the Ghosted display mode, or flat paper white
-    /// for the Hidden one (#164), when either changed since the last frame.
-    fn restyle(&mut self, world: &mut World, ghosted: bool, hidden: FaceLook) {
-        if self.ghosted == Some(ghosted) && self.hidden == Some(hidden) {
-            return;
-        }
-        (self.ghosted, self.hidden) = (Some(ghosted), Some(hidden));
-        let materials = self
-            .materials
-            .iter()
-            .map(|(colour, handle)| (*colour, handle.clone()))
-            .collect::<Vec<_>>();
-        let mut assets = world.resource_mut::<Assets<CurvaMaterial>>();
-        for (colour, handle) in materials {
-            if let Some(mut material) = assets.get_mut(&handle) {
-                set_paper(&mut material.base, hidden, colour);
-                set_ghosted(&mut material.base, ghosted);
-            }
-        }
-    }
-
-    /// Shows `entity` in `colour`, or the selection colour when `picked`, handing Bevy a material
-    /// only when that changes: each one handed makes Bevy redo the part.
-    fn show(&mut self, world: &mut World, entity: Entity, colour: [u32; 3], picked: bool) {
-        let colour = if picked {
-            crate::SELECTED_COLOUR.map(f32::to_bits)
-        } else {
-            colour
-        };
-        if self.shown.insert(entity, colour) == Some(colour) {
-            return;
-        }
-        let (ghosted, paper, shine) = (
-            self.ghosted.unwrap_or(false),
-            self.hidden.unwrap_or_default(),
-            self.look.unwrap_or_default().shine,
-        );
-        let clips = self.clips.unwrap_or_default();
-        let material = self
-            .materials
-            .entry(colour)
-            .or_insert_with(|| {
-                let mut material = StandardMaterial {
-                    base_color: Color::srgb(
-                        f32::from_bits(colour[0]),
-                        f32::from_bits(colour[1]),
-                        f32::from_bits(colour[2]),
-                    ),
-                    // Open surfaces are seen from both sides.
-                    double_sided: true,
-                    cull_mode: None,
-                    ..default()
-                };
-                set_paper(&mut material, paper, colour);
-                set_ghosted(&mut material, ghosted);
-                set_shine(&mut material, shine);
-                world
-                    .resource_mut::<Assets<CurvaMaterial>>()
-                    .add(CurvaMaterial {
-                        base: material,
-                        extension: Clipping { clips },
-                    })
-            })
-            .clone();
-        world.entity_mut(entity).insert(MeshMaterial3d(material));
     }
 }
 
@@ -654,57 +596,6 @@ impl ViewScene {
 fn set_shine(material: &mut StandardMaterial, shine: f32) {
     material.perceptual_roughness = 0.9 - 0.8 * shine;
     material.reflectance = 0.2 + 0.6 * shine;
-}
-
-/// How a view colours its faces.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(super) enum FaceLook {
-    /// Each in its own colour, lit.
-    #[default]
-    Own,
-    /// Flat paper white and unlit, for the Hidden and Technical display modes (#164), so a face
-    /// hides what is behind it and shows only its edges.
-    Paper,
-    /// White and lit, for the Massing display mode (#551), so the sun shades it and its shadows
-    /// fall on it.
-    White,
-}
-
-impl FaceLook {
-    /// How `drawing` asks for its faces to be coloured.
-    pub(super) fn of(drawing: &Drawing) -> Self {
-        let surfaces = drawing.style.surfaces;
-        if drawing.style.light() == Some(crate::Light::Flat) {
-            Self::Paper
-        } else if surfaces.is_some_and(|surfaces| surfaces.colour.is_some()) {
-            Self::White
-        } else {
-            Self::Own
-        }
-    }
-}
-
-/// Colours `material` as `look` says; `colour` is its own colour, as the material's key holds it.
-fn set_paper(material: &mut StandardMaterial, look: FaceLook, colour: [u32; 3]) {
-    let alpha = material.base_color.alpha();
-    let [r, g, b] = if look == FaceLook::Own {
-        colour.map(f32::from_bits)
-    } else {
-        crate::PAPER_COLOUR
-    };
-    material.base_color = Color::srgba(r, g, b, alpha);
-    material.unlit = look == FaceLook::Paper;
-}
-
-fn set_ghosted(material: &mut StandardMaterial, ghosted: bool) {
-    material
-        .base_color
-        .set_alpha(if ghosted { GHOSTED_ALPHA } else { 1.0 });
-    material.alpha_mode = if ghosted {
-        AlphaMode::Blend
-    } else {
-        AlphaMode::Opaque
-    };
 }
 
 /// Triangles as a Bevy mesh, kept only on the graphics card.
