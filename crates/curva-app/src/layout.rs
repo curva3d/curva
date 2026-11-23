@@ -158,6 +158,20 @@ pub struct Place {
 }
 
 impl Place {
+    /// Whether the panel holds the command tabs and nothing else, so their groups take the title
+    /// row's place rather than a title.
+    #[must_use]
+    pub fn is_command_tabs_alone(&self) -> bool {
+        self.pieces.as_slice() == [Piece::CommandTabs]
+    }
+
+    /// Whether the panel holds the command bar and nothing else, so its title floats on its top
+    /// edge and the bar keeps all its height for its lines.
+    #[must_use]
+    pub fn is_command_alone(&self) -> bool {
+        self.pieces.as_slice() == [Piece::Command]
+    }
+
     /// The panel's name: its first piece.
     #[must_use]
     pub fn id(&self) -> PanelId {
@@ -204,6 +218,13 @@ pub const STANDARD_LAYER_COLUMNS: [f32; 6] = [100.0, 26.0, 30.0, 36.0, 84.0, 72.
 /// The narrowest each of the Layers panel's columns can be made.
 pub const LEAST_LAYER_COLUMNS: [f32; 6] = [60.0, 24.0, 28.0, 32.0, 60.0, 56.0];
 
+/// The command tabs' height at first: the groups, their tabs and one row of buttons (owner,
+/// 22 November 2026: the bar had a title row and room to spare).
+pub const COMMAND_TABS_HEIGHT: f32 = 92.0;
+/// The command bar's and the assistant panel's height at first: the same, so the two sit level
+/// along the bottom (owner, 22 November 2026).
+pub const BOTTOM_HEIGHT: f32 = 132.0;
+
 fn standard_layer_columns() -> [f32; 6] {
     STANDARD_LAYER_COLUMNS
 }
@@ -219,19 +240,19 @@ impl Default for Layout {
                     vec![Piece::CommandTabs],
                     Dock::Top,
                     Align::Fill,
-                    [0.0, 104.0],
+                    [0.0, COMMAND_TABS_HEIGHT],
                 ),
                 Place::new(
                     vec![Piece::Command],
                     Dock::Bottom,
                     Align::Centre,
-                    [COMMAND_WIDTH, 132.0],
+                    [COMMAND_WIDTH, BOTTOM_HEIGHT],
                 ),
                 Place::new(
                     vec![Piece::Agent],
                     Dock::Bottom,
                     Align::End,
-                    [SIDE_WIDTH, 96.0],
+                    [SIDE_WIDTH, BOTTOM_HEIGHT],
                 ),
                 Place::new(
                     vec![Piece::Layers, Piece::Properties],
@@ -244,7 +265,7 @@ impl Default for Layout {
                     vec![Piece::Display],
                     Dock::Floating {
                         x: GAP,
-                        y: GAP + 104.0 + GAP,
+                        y: GAP + COMMAND_TABS_HEIGHT + GAP,
                     },
                     Align::Fill,
                     [DISPLAY_WIDTH, 64.0],
