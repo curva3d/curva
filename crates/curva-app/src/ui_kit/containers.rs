@@ -124,6 +124,18 @@ pub(crate) fn scroll<R>(ui: &mut egui::Ui, way: Scroll, add: impl FnOnce(&mut eg
     area.auto_shrink([false, false]).show(ui, add).inner
 }
 
+/// A list at most `height` tall, scrolling down when it is longer.
+pub(crate) fn scroll_list<R>(
+    ui: &mut egui::Ui,
+    height: f32,
+    add: impl FnOnce(&mut egui::Ui) -> R,
+) -> R {
+    egui::ScrollArea::vertical()
+        .max_height(height)
+        .show(ui, add)
+        .inner
+}
+
 /// A conversation or log at most `height` tall, scrolling down, kept at its newest line.
 pub(crate) fn scroll_to_bottom<R>(
     ui: &mut egui::Ui,

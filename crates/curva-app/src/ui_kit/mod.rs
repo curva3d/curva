@@ -177,7 +177,7 @@ mod tests {
         "gamma_multiply",
         "egui::Shape::",
         "epaint::",
-        "Frame::",
+        "egui::Frame::",
         "ScrollArea::",
         "ComboBox::",
         "ui.heading(",

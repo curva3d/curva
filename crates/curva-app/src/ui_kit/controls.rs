@@ -79,6 +79,15 @@ pub(crate) fn tab(
     chosen_label(ui, showing, text)
 }
 
+/// An item in a list, as the command matches: marked as chosen when `chosen`.
+pub(crate) fn list_item(
+    ui: &mut egui::Ui,
+    chosen: bool,
+    text: impl Into<egui::WidgetText>,
+) -> egui::Response {
+    chosen_label(ui, chosen, text)
+}
+
 /// A choice filling the row, its words in the middle, marked as chosen when `chosen`, as the
 /// Layouts panel's Model.
 pub(crate) fn wide_choice(

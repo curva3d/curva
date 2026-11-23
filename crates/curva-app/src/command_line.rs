@@ -171,19 +171,17 @@ impl Curva {
                     // It follows the highlight only when the arrows move it, so the wheel can scroll
                     // the list freely (#517: it jumped back to the highlight every frame).
                     let follow = highlight_moved(ui, self.highlight);
-                    egui::ScrollArea::vertical()
-                        .max_height(row * MOST_MATCH_ROWS)
-                        .show(ui, |ui| {
-                            for (index, name) in matches.iter().enumerate() {
-                                let shown = ui.selectable_label(index == self.highlight, *name);
-                                if follow && index == self.highlight {
-                                    shown.scroll_to_me(None);
-                                }
-                                if shown.clicked() {
-                                    clicked = Some(*name);
-                                }
+                    ui_kit::scroll_list(ui, row * MOST_MATCH_ROWS, |ui| {
+                        for (index, name) in matches.iter().enumerate() {
+                            let shown = ui_kit::list_item(ui, index == self.highlight, *name);
+                            if follow && index == self.highlight {
+                                shown.scroll_to_me(None);
                             }
-                        });
+                            if shown.clicked() {
+                                clicked = Some(*name);
+                            }
+                        }
+                    });
                 });
             });
         clicked
@@ -228,7 +226,7 @@ impl Curva {
             tick(ui, gumball_on, "ui.gumball");
             // Rhino's selection filter, from its own item, as in Rhino's status bar.
             ui.separator();
-            filter_item = Some(ui.selectable_label(filter_lit, filter_word));
+            filter_item = Some(ui_kit::list_item(ui, filter_lit, filter_word));
         });
         if let Some(item) = filter_item {
             self.selection_filter_panel(ui, &item);
