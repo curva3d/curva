@@ -23,6 +23,8 @@ pub(crate) struct TopBar {
     /// How tall the command tabs' contents are with the panel's margins: the panel is made this
     /// tall when it holds them alone, so no room is wasted below the buttons.
     pub(crate) tabs_fit: f32,
+    /// An edit asked for from the Edit menu, carried out with the keys' own code this frame.
+    pub(crate) wanted_edit: Option<crate::menus::EditAction>,
 }
 
 /// How long the glow and the note show after the path is copied, in seconds.
@@ -80,17 +82,82 @@ pub(crate) const TAB_GROUPS: [(&str, std::ops::Range<usize>); 4] = [
     ("ui.tab_group.publisher", 9..11),
 ];
 
-/// The buttons of one tab in a row that scrolls sideways when the bar is narrower than they are:
-/// a thin bar under them in the panel's own quiet colour (not over them), and the row fading out
-/// at an edge where more buttons wait (owner, 22 November 2026). Returns the command clicked.
-fn command_buttons_row(ui: &mut egui::Ui, names: &[&'static str]) -> Option<&'static str> {
+/// Where each tab's buttons break into groups: the commands that start a group after the first,
+/// in the order of [`COMMAND_TABS`] (owner, 23 November 2026: commands in groups, not one long
+/// row). A thin line goes before each.
+const GROUP_STARTS: [&[&str]; 11] = [
+    &["Circle", "Helix", "Point", "Offset", "Extend"],
+    &["ExtrudeCrv", "DupEdge", "EdgeSrf", "Project", "BlendSrf"],
+    &["Pipe", "BooleanUnion"],
+    &["ReduceMesh", "MeshBooleanUnion", "Check"],
+    &["ToSubD", "Crease"],
+    &["Move", "Array", "Shear"],
+    &["Block", "ChangeLayer", "Lock", "BringToFront"],
+    &["SelCrv", "SelSrf", "Hide"],
+    &["EvaluatePt", "ShowEdges", "Count"],
+    &["Leader", "DimCurveLength"],
+    &["Make2D"],
+];
+
+/// How many of `names` fit in `room` as buttons with their group lines, leaving `reserve` for
+/// the More menu when not all do.
+fn buttons_that_fit(names: &[&str], starts: &[&str], room: f32, reserve: f32) -> usize {
+    let width = |count: usize| -> f32 {
+        names[..count]
+            .iter()
+            .enumerate()
+            .map(|(index, name)| {
+                let line = if index > 0 && starts.contains(name) {
+                    13.0
+                } else {
+                    0.0
+                };
+                line + ui_kit::COMMAND_BUTTON + ui_kit::TIGHT_GAP
+            })
+            .sum()
+    };
+    if width(names.len()) <= room {
+        return names.len();
+    }
+    (0..names.len())
+        .rev()
+        .find(|&count| width(count) <= room - reserve)
+        .unwrap_or(0)
+}
+
+/// The buttons of one tab in groups, as many as fit, the rest in a More menu at the end, so the
+/// row never scrolls sideways (Apple's guidelines; owner, 23 November 2026). Returns the command
+/// clicked.
+fn command_buttons_row(
+    ui: &mut egui::Ui,
+    names: &[&'static str],
+    starts: &[&str],
+    more: &str,
+) -> Option<&'static str> {
     let mut chosen = None;
-    ui_kit::strip(ui, |ui| {
-        for name in names {
-            if command_button(ui, name).clicked() {
-                chosen = Some(*name);
+    let shown = buttons_that_fit(names, starts, ui.available_width(), 80.0);
+    ui.horizontal(|ui| {
+        ui_kit::with_gap(ui, ui_kit::TIGHT_GAP, |ui| {
+            for (index, name) in names[..shown].iter().enumerate() {
+                if index > 0 && starts.contains(name) {
+                    ui_kit::divider(ui);
+                }
+                if command_button(ui, name).clicked() {
+                    chosen = Some(*name);
+                }
             }
-        }
+            if shown < names.len() {
+                ui.add_space(ui_kit::ITEM_GAP);
+                ui.menu_button(more, |ui| {
+                    for name in &names[shown..] {
+                        if ui_kit::menu_item(ui, true, (*name).to_owned(), None).clicked() {
+                            chosen = Some(*name);
+                            ui.close();
+                        }
+                    }
+                });
+            }
+        });
     });
     chosen
 }
@@ -133,16 +200,18 @@ impl Curva {
         }
         let tab = self.bar.command_tab.min(COMMAND_TABS.len() - 1);
         let group = group_of(tab);
-        self.tab_groups_row(ui, group);
         // The tabs and buttons fade in when the group changes, while the groups stay put.
         let now = ui.input(|input| input.time);
         let shown = ((now - self.bar.group_changed_at) / GROUP_FADE).clamp(0.0, 1.0) as f32;
         if shown < 1.0 {
             ui.ctx().request_repaint();
         }
-        ui.scope(|ui| {
-            ui.multiply_opacity(shown);
-            ui.horizontal(|ui| {
+        // The groups and the chosen group's tabs share one row (owner, 23 November 2026).
+        let row = ui.horizontal(|ui| {
+            self.tab_groups_row(ui, group);
+            ui_kit::divider(ui);
+            ui.scope(|ui| {
+                ui.multiply_opacity(shown);
                 for index in TAB_GROUPS[group].1.clone() {
                     let label = self.text.render(&Message::new(COMMAND_TABS[index].0));
                     if ui_kit::tab(ui, tab == index, label).clicked() {
@@ -150,7 +219,12 @@ impl Curva {
                     }
                 }
             });
-            let chosen = command_buttons_row(ui, COMMAND_TABS[tab].1);
+        });
+        self.bar.groups_width = row.response.rect.width();
+        ui.scope(|ui| {
+            ui.multiply_opacity(shown);
+            let more = self.text.render(&Message::new("ui.more"));
+            let chosen = command_buttons_row(ui, COMMAND_TABS[tab].1, GROUP_STARTS[tab], &more);
             if let Some(name) = chosen {
                 self.run_from_button(name);
             }
@@ -159,14 +233,14 @@ impl Curva {
         self.bar.tabs_fit = ui.min_rect().height() + 2.0 * PANEL_MARGIN;
     }
 
-    /// The groups' row, with the chosen one marked, the mark sliding; a click on another
-    /// opens the tab last used in it. Notes how wide the row is, for the title row's grip.
+    /// The groups as a segmented control, the chosen one marked; a click on another opens the tab
+    /// last used in it.
     fn tab_groups_row(&mut self, ui: &mut egui::Ui, group: usize) {
         let names: Vec<String> = TAB_GROUPS
             .iter()
             .map(|(key, _)| self.text.render(&Message::new(key)))
             .collect();
-        let (clicked, row) = ui_kit::group_tabs(ui, &names, group);
+        let clicked = ui_kit::segmented(ui, &names, group);
         if let Some(index) = clicked {
             self.bar.last_tab[group] = self.bar.command_tab;
             let last = self.bar.last_tab[index];
@@ -177,7 +251,6 @@ impl Curva {
             };
             self.bar.group_changed_at = ui.input(|input| input.time);
         }
-        self.bar.groups_width = row.width();
     }
 
     /// The top bar, named Curva: always there and fixed (only focus mode hides it). The file's
@@ -212,15 +285,7 @@ impl Curva {
                             }
                             ui.label(ui_kit::brand("Curva"));
                             ui.add_space(ui_kit::ITEM_GAP);
-                            ui.menu_button(self.text.render(&Message::new("ui.tab.file")), |ui| {
-                                chosen = self.file_items(ui);
-                            });
-                            if ui
-                                .button(self.text.render(&Message::new("ui.file.settings")))
-                                .clicked()
-                            {
-                                self.open_settings(SettingsTab::General);
-                            }
+                            chosen = self.menus(ui);
                         })
                         .response
                         .rect;
@@ -339,44 +404,6 @@ impl Curva {
         self.typed.clear();
         self.highlight = 0;
         self.processor.submit(&mut self.doc, name);
-    }
-
-    /// The File menu: New, Open, Save, Save As, Import, Export and Export Selected run their
-    /// commands; About opens Settings at its About tab. Returns a command to run.
-    pub(crate) fn file_items(&mut self, ui: &mut egui::Ui) -> Option<&'static str> {
-        let mut chosen = None;
-        for (name, key) in [
-            ("New", "ui.file.new"),
-            ("Open", "ui.file.open"),
-            ("Save", "ui.file.save"),
-            ("SaveAs", "ui.file.save_as"),
-        ] {
-            if ui.button(self.text.render(&Message::new(key))).clicked() {
-                chosen = Some(name);
-                ui.close();
-            }
-        }
-        ui.separator();
-        // Rhino files: Import adds one to the model, Export and ExportSelected write one.
-        for (name, key) in [
-            ("Import", "ui.file.import"),
-            ("Export", "ui.file.export"),
-            ("ExportSelected", "ui.file.export_selected"),
-        ] {
-            if ui.button(self.text.render(&Message::new(key))).clicked() {
-                chosen = Some(name);
-                ui.close();
-            }
-        }
-        ui.separator();
-        if ui
-            .button(self.text.render(&Message::new("ui.file.about")))
-            .clicked()
-        {
-            self.open_settings(SettingsTab::About);
-            ui.close();
-        }
-        chosen
     }
 
     /// Brings a closed or hidden panel piece out, as Settings is.
@@ -509,5 +536,31 @@ mod tests {
                 assert_eq!(found, Some(*name), "{name} in {tab}");
             }
         }
+    }
+
+    /// Every group starts at a button its tab has, and not at the first, so no line is lost to a
+    /// renamed command.
+    #[test]
+    fn every_group_starts_at_a_button_of_its_tab() {
+        for ((tab, names), starts) in COMMAND_TABS.iter().zip(GROUP_STARTS) {
+            for start in starts {
+                let at = names.iter().position(|name| name == start);
+                assert!(at.is_some_and(|at| at > 0), "{start} in {tab}");
+            }
+        }
+    }
+
+    /// Buttons that do not fit leave room for More; all fit when there is room.
+    #[test]
+    fn the_buttons_that_do_not_fit_go_to_more() {
+        let names = ["A", "B", "C", "D"];
+        let one = ui_kit::COMMAND_BUTTON + ui_kit::TIGHT_GAP;
+        assert_eq!(buttons_that_fit(&names, &[], one * 4.0, 80.0), 4);
+        assert_eq!(buttons_that_fit(&names, &[], one * 3.0, 0.0), 3);
+        assert_eq!(
+            buttons_that_fit(&names, &["C"], one * 4.0, 0.0),
+            3,
+            "the line takes room"
+        );
     }
 }

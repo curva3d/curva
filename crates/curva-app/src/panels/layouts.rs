@@ -155,7 +155,7 @@ impl Curva {
             {
                 action = Some(RowAction::Move(layout.id, index + 1));
             }
-            if ui.button(say("ui.layer.delete")).clicked() {
+            if ui_kit::danger_button(ui, say("ui.layer.delete")).clicked() {
                 action = Some(RowAction::Delete(layout.id));
             }
         });

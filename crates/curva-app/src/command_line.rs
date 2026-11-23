@@ -187,50 +187,28 @@ impl Curva {
         clicked
     }
 
-    /// The row of snap checkboxes, with the keys for ortho and grid snap.
+    /// The row of object snaps, the Osnap switch first, as Rhino's Osnap bar: with it off the
+    /// kinds stay as they are but are greyed and unused. The other modelling aids are in the
+    /// status bar.
     pub(crate) fn drawing_aids_bar(&mut self, ui: &mut egui::Ui) {
-        if ui.input(|input| input.key_pressed(egui::Key::F8)) {
-            self.ortho = !self.ortho;
-        }
-        if ui.input(|input| input.key_pressed(egui::Key::F9)) {
-            self.grid_snap = !self.grid_snap;
-        }
         let text = &self.text;
-        let tick = |ui: &mut egui::Ui, value: &mut bool, key: &'static str| {
-            ui_kit::toggle(ui, value, text.render(&Message::new(key)));
-        };
         let snaps = &mut self.snaps;
-        let (ortho, grid_snap) = (&mut self.ortho, &mut self.grid_snap);
-        let gumball_on = &mut self.gumball_on;
-        let filter_lit = self.pick_filter.in_force() || self.filter_row;
-        let filter_word = text.render(&Message::new("ui.filter"));
-        let mut filter_item = None;
+        let on = snaps.on;
+        let kind = |ui: &mut egui::Ui, value: &mut bool, kind: SnapKind| {
+            ui_kit::toggle_when(ui, on, value, text.render(&Message::new(snap_label(kind))));
+        };
         ui_kit::chip_row(ui, |ui| {
-            tick(ui, &mut snaps.end, snap_label(SnapKind::End));
-            tick(ui, &mut snaps.mid, snap_label(SnapKind::Mid));
-            tick(ui, &mut snaps.center, snap_label(SnapKind::Center));
-            tick(
-                ui,
-                &mut snaps.intersection,
-                snap_label(SnapKind::Intersection),
-            );
-            tick(
-                ui,
-                &mut snaps.perpendicular,
-                snap_label(SnapKind::Perpendicular),
-            );
-            tick(ui, &mut snaps.near, snap_label(SnapKind::Near));
-            ui.separator();
-            tick(ui, ortho, "ui.ortho");
-            tick(ui, grid_snap, "ui.grid_snap");
-            tick(ui, gumball_on, "ui.gumball");
-            // Rhino's selection filter, from its own item, as in Rhino's status bar.
-            ui.separator();
-            filter_item = Some(ui_kit::list_item(ui, filter_lit, filter_word));
+            ui_kit::toggle(ui, &mut snaps.on, text.render(&Message::new("ui.osnap")));
+            ui_kit::divider(ui);
+            kind(ui, &mut snaps.end, SnapKind::End);
+            kind(ui, &mut snaps.mid, SnapKind::Mid);
+            kind(ui, &mut snaps.center, SnapKind::Center);
+            kind(ui, &mut snaps.intersection, SnapKind::Intersection);
+            kind(ui, &mut snaps.perpendicular, SnapKind::Perpendicular);
+            kind(ui, &mut snaps.quad, SnapKind::Quad);
+            kind(ui, &mut snaps.point, SnapKind::Point);
+            kind(ui, &mut snaps.near, SnapKind::Near);
         });
-        if let Some(item) = filter_item {
-            self.selection_filter_panel(ui, &item);
-        }
     }
 
     /// The command bar's own lines first, then the history, filling the height the bar has above
@@ -247,8 +225,15 @@ impl Curva {
             ui.label(" ");
         }
         self.notices(ui, skip);
-        for row in shown {
-            ui.add(egui::Label::new(row.as_str()).truncate());
+        // Errors in red, so they stand apart from notes (owner, 23 November 2026).
+        let first = log.len() - shown.len();
+        for (offset, row) in shown.iter().enumerate() {
+            let words = if self.processor.is_error_line(first + offset) {
+                ui_kit::error(row.as_str())
+            } else {
+                egui::RichText::new(row.as_str())
+            };
+            ui.add(egui::Label::new(words).truncate());
         }
     }
 

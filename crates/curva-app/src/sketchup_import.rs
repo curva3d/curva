@@ -50,8 +50,10 @@ impl Curva {
             &choices_row,
             |ui| {
                 ui_kit::section(ui, say("ui.skp.faces"));
-                ui.radio_value(&mut choices.trimmed_planes, true, say("ui.skp.planes"));
-                ui.radio_value(&mut choices.trimmed_planes, false, say("ui.skp.mesh"));
+                let mut mesh = !choices.trimmed_planes;
+                if ui_kit::either(ui, &mut mesh, [say("ui.skp.planes"), say("ui.skp.mesh")]) {
+                    choices.trimmed_planes = !mesh;
+                }
                 if choices.trimmed_planes {
                     ui.label(ui_kit::caption(say("ui.skp.planes_warning")));
                 }

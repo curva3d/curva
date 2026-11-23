@@ -150,41 +150,6 @@ pub(crate) fn scroll_to_bottom<R>(
         .inner
 }
 
-/// A row that scrolls sideways when it is wider than its room: a thin quiet bar under it (not
-/// over it), and the row fading out at an edge where more waits (owner, 22 November 2026).
-pub(crate) fn strip<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
-    let style = ui.style_mut();
-    style.spacing.scroll = egui::style::ScrollStyle {
-        bar_width: 3.0,
-        handle_min_length: 24.0,
-        bar_inner_margin: 3.0,
-        bar_outer_margin: 0.0,
-        floating: false,
-        ..egui::style::ScrollStyle::solid()
-    };
-    for widget in [
-        &mut style.visuals.widgets.inactive,
-        &mut style.visuals.widgets.hovered,
-        &mut style.visuals.widgets.active,
-    ] {
-        widget.bg_fill = colours::scroll_handle();
-    }
-    style.visuals.extreme_bg_color = egui::Color32::TRANSPARENT;
-    let out = egui::ScrollArea::horizontal().show(ui, |ui| ui.horizontal(add).inner);
-    let (seen, offset, full) = (
-        out.inner_rect,
-        out.state.clamped_offset().x,
-        out.content_size.x,
-    );
-    if offset > 1.0 {
-        super::edge_fade(ui.painter(), seen, seen.min.x, 1.0);
-    }
-    if offset + seen.width() < full - 1.0 {
-        super::edge_fade(ui.painter(), seen, seen.max.x, -1.0);
-    }
-    out.inner
-}
-
 /// Where a dragged panel would dock, outlined in the accent over everything.
 pub(crate) fn dock_preview(ctx: &egui::Context, spot: egui::Rect) {
     ctx.layer_painter(egui::LayerId::new(
@@ -200,17 +165,18 @@ pub(crate) fn dock_preview(ctx: &egui::Context, spot: egui::Rect) {
     );
 }
 
-/// A quiet caption in the window's corner behind everything, as Curva's version.
-pub(crate) fn corner_caption(ctx: &egui::Context, window: egui::Rect, text: String) {
-    let painter = ctx.layer_painter(egui::LayerId::new(
-        egui::Order::Background,
-        egui::Id::NULL.with("corner caption"),
-    ));
-    painter.text(
-        window.max - egui::vec2(PAD, 4.0),
-        egui::Align2::RIGHT_BOTTOM,
-        text,
-        super::caption_font(),
-        colours::quiet(),
-    );
+/// How far a slim bar's contents sit from its top and bottom, as the status bar's.
+pub(crate) const BAR_PAD: f32 = 4.0;
+
+/// A slim bar's frame, see-through (`glass`) or solid: a panel frame with less room above and
+/// below, as the status bar along the foot of the window.
+pub(crate) fn bar_frame(glass: bool) -> egui::Frame {
+    #[allow(clippy::cast_possible_truncation)] // Small whole numbers of points.
+    let margin = egui::Margin::symmetric(super::PAD as i8, BAR_PAD as i8);
+    panel_frame_for(glass).inner_margin(margin)
+}
+
+/// The room a slim bar's frame leaves round its contents.
+pub(crate) fn bar_margin() -> egui::Vec2 {
+    egui::vec2(super::PAD, BAR_PAD)
 }

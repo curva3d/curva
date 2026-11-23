@@ -91,8 +91,11 @@ impl Curva {
         ui.horizontal(|ui| {
             ui.label(say("ui.clipping.fill"));
             let mut filled = matches!(changed.section, SectionFill::Solid(_));
-            ui.radio_value(&mut filled, false, say("ui.clipping.no_fill"));
-            ui.radio_value(&mut filled, true, say("ui.clipping.solid_fill"));
+            ui_kit::either(
+                ui,
+                &mut filled,
+                [say("ui.clipping.no_fill"), say("ui.clipping.solid_fill")],
+            );
             let mut colour = match changed.section {
                 SectionFill::Solid(colour) => colour,
                 SectionFill::None => match SectionFill::default() {
@@ -310,9 +313,12 @@ impl Curva {
             );
         });
         ui.horizontal(|ui| {
-            ui.radio_value(&mut changed.align, TextAlign::Left, say("ui.text.left"));
-            ui.radio_value(&mut changed.align, TextAlign::Centre, say("ui.text.centre"));
-            ui.radio_value(&mut changed.align, TextAlign::Right, say("ui.text.right"));
+            let aligns = [TextAlign::Left, TextAlign::Centre, TextAlign::Right];
+            let words = ["ui.text.left", "ui.text.centre", "ui.text.right"].map(say);
+            let at = aligns.iter().position(|a| *a == changed.align).unwrap_or(0);
+            if let Some(index) = ui_kit::segmented(ui, &words, at) {
+                changed.align = aligns[index];
+            }
         });
         if changed != *text && !changed.content.trim().is_empty() {
             self.undoable(|doc| {
