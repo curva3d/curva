@@ -53,6 +53,32 @@ pub(crate) fn glass_backdrop(ui: &egui::Ui, rect: egui::Rect) {
     ));
 }
 
+/// The light catching the top edge of a glass panel at `rect`, as on Apple's frosted glass: a
+/// fine line inside the edge, brightest in the middle, fading towards the corners.
+pub(crate) fn glass_edge_light(ui: &egui::Ui, rect: egui::Rect) {
+    let radius = f32::from(PANEL_RADIUS);
+    let (left, right, y) = (rect.min.x + radius, rect.max.x - radius, rect.min.y + 0.75);
+    if right <= left {
+        return;
+    }
+    let mut mesh = egui::Mesh::default();
+    let steps = 16;
+    for step in 0..=steps {
+        let t = step as f32 / steps as f32;
+        let x = left + (right - left) * t;
+        let strength = (1.0 - (2.0 * t - 1.0).powi(2)).max(0.0);
+        let colour = egui::Color32::from_white_alpha((120.0 * strength) as u8);
+        mesh.colored_vertex(egui::pos2(x, y - 0.75), colour);
+        mesh.colored_vertex(egui::pos2(x, y + 0.75), colour);
+        if step > 0 {
+            let i = (step * 2) as u32;
+            mesh.add_triangle(i - 2, i - 1, i);
+            mesh.add_triangle(i - 1, i, i + 1);
+        }
+    }
+    ui.painter().add(egui::Shape::mesh(mesh));
+}
+
 /// A short note in a popup outlined in the accent, with its `pivot` corner at `at`, that the
 /// pointer passes through: "copied", and the like.
 pub(crate) fn note(

@@ -508,6 +508,9 @@ impl Curva {
                     .union(rect);
                 // A dragged panel would merge into this one: it glows inside its edge, most
                 // where the mouse is.
+                if glass {
+                    ui_kit::glass_edge_light(ui, shown);
+                }
                 if glowing {
                     ui_kit::glow::merge_glow(ui, shown);
                 }
@@ -596,6 +599,7 @@ impl Curva {
     /// Keeps the panel arrangement for the next session. Losing it only loses the arrangement.
     pub(crate) fn save_layout(&self) {
         if self.benchmark.is_none()
+            && !self.startup.pictures_run
             && let Some(file) = layout::file()
         {
             let _ = self.layout.save(&file);

@@ -237,6 +237,9 @@ impl Curva {
                     );
                     self.file_label(ui, room);
                 });
+                if glass {
+                    ui_kit::glass_edge_light(ui, rect);
+                }
             });
         if let Some(name) = chosen {
             self.run_from_button(name);

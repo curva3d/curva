@@ -43,7 +43,7 @@ pub(crate) fn chosen_shape(rect: egui::Rect) -> egui::Shape {
         rect,
         CONTROL_RADIUS,
         colours::chosen_fill(),
-        colours::accent_line(super::LINE),
+        colours::chosen_edge(),
         egui::StrokeKind::Inside,
     ))
 }

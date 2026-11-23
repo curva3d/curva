@@ -82,8 +82,8 @@ pub(crate) const UNDERLINE: f32 = 2.0;
 
 /// Panel titles, the same on every panel.
 pub(crate) const TITLE_FONT: f32 = 13.0;
-/// Body text, buttons and fields.
-pub(crate) const BODY_FONT: f32 = 14.0;
+/// Body text, buttons and fields: 13, as macOS uses (Apple's guidelines; owner, 23 November 2026).
+pub(crate) const BODY_FONT: f32 = 13.0;
 /// Smaller text: group names, file names.
 pub(crate) const SMALL_FONT: f32 = 12.0;
 /// The smallest text: captions, table headers, the version.

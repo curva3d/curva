@@ -53,6 +53,8 @@ impl Curva {
         };
         ctx.request_repaint();
         if pictures.state == 0 && pictures.frames == 0 {
+            // The standard arrangement, so the pictures never depend on a saved one.
+            self.layout = layout::Layout::default();
             ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(false));
             ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(WINDOW));
             let scene = BenchmarkScene {
@@ -106,7 +108,10 @@ impl Curva {
 
     /// Puts the window in the state named `name`.
     fn set_up_picture(&mut self, name: &str) {
-        let light = name.contains("light");
+        // `CURVA_PICTURES_LIGHT` takes every picture in the light theme.
+        let light = name.contains("light") || std::env::var_os("CURVA_PICTURES_LIGHT").is_some();
+        // `CURVA_PICTURES_SOLID` takes them with solid panels rather than frosted glass.
+        self.settings.glass = std::env::var_os("CURVA_PICTURES_SOLID").is_none();
         self.settings.theme = if light {
             theme::ThemeChoice::Light
         } else {
@@ -142,6 +147,9 @@ impl Curva {
 
 /// Saves `image` as a PNG file at `file`.
 fn save_picture(image: &egui::ColorImage, file: &std::path::Path) -> Result<(), String> {
+    if let Some(folder) = file.parent() {
+        std::fs::create_dir_all(folder).map_err(|e| e.to_string())?;
+    }
     let [width, height] = image.size;
     let out = std::fs::File::create(file).map_err(|e| e.to_string())?;
     let mut encoder = png::Encoder::new(std::io::BufWriter::new(out), width as u32, height as u32);

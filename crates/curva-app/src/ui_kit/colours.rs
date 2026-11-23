@@ -49,6 +49,11 @@ pub(crate) fn chosen_fill() -> Color32 {
     theme::ACCENT.gamma_multiply(0.22)
 }
 
+/// The thin edge round a chosen thing.
+pub(crate) fn chosen_edge() -> egui::Stroke {
+    accent_line(super::LINE)
+}
+
 /// The softer wash behind a control that opens something, such as the view picker.
 pub(crate) fn opener_fill() -> Color32 {
     theme::ACCENT.gamma_multiply(0.16)

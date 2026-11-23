@@ -342,6 +342,7 @@ impl Curva {
     /// Keeps the settings for the next session.
     pub(crate) fn save_settings(&self) {
         if self.benchmark.is_none()
+            && !self.startup.pictures_run
             && let Some(file) = theme::file()
         {
             let _ = self.settings.save(&file);

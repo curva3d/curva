@@ -81,12 +81,15 @@ struct Panel { rect: vec4<f32>, radius: vec4<f32> };
     let q = abs(local - size * 0.5) - (size * 0.5 - vec2<f32>(r));
     let outside = length(max(q, vec2<f32>(0.0))) + min(max(q.x, q.y), 0.0) - r;
     let inside = clamp(0.5 - outside, 0.0, 1.0);
-    return vec4<f32>(colour.rgb, inside);
+    // A little more colour, as Apple's frosted glass keeps what shows through it from going grey.
+    let grey = dot(colour.rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
+    let vivid = clamp(mix(vec3<f32>(grey), colour.rgb, 1.35), vec3<f32>(0.0), vec3<f32>(1.0));
+    return vec4<f32>(vivid, inside);
 }";
 
-/// How many times the blur halves the picture before growing it back: two gives a soft blur of
-/// about 8 points at the window's scale.
-const BLUR_LEVELS: usize = 2;
+/// How many times the blur halves the picture before growing it back: four gives the deep frost of
+/// Apple's glass, about 32 points at the window's scale (owner, 23 November 2026).
+const BLUR_LEVELS: usize = 4;
 
 fn texture(
     device: &wgpu::Device,

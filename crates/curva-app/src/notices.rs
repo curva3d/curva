@@ -10,6 +10,8 @@ pub(crate) struct Startup {
     pub(crate) left_behind: Option<std::path::PathBuf>,
     /// Pictures of the window being taken (`--ui-pictures`).
     pub(crate) ui_pictures: Option<crate::ui_pictures::UiPictures>,
+    /// Whether this run only takes pictures, so it keeps none of its layout or settings.
+    pub(crate) pictures_run: bool,
     /// The answer of the check for updates, while it is under way.
     pub(crate) update_check: Option<std::sync::mpsc::Receiver<Option<updates::Release>>>,
     /// The update being downloaded.

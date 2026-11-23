@@ -552,6 +552,7 @@ fn run() -> Result<(), String> {
         native_options(),
         Box::new(move |context| {
             let mut app = Curva::new(context, benchmark).opened(&context.egui_ctx, file.as_deref());
+            app.startup.pictures_run = pictures.is_some();
             app.startup.ui_pictures = pictures;
             if let Some(path) = model.as_deref() {
                 app.open_for_benchmark(path);
