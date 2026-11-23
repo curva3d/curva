@@ -72,9 +72,9 @@ pub(crate) fn picture_from(
     let aspect = f64::from(PICTURE_SIZE[0]) / f64::from(PICTURE_SIZE[1]);
     let path = std::env::temp_dir().join(format!("curva-mcp-{}.png", std::process::id()));
     let style = if ghosted {
-        curva_viewport::Style::GHOSTED
+        curva_viewport::Style::ghosted()
     } else {
-        curva_viewport::Style::SHADED
+        curva_viewport::Style::shaded()
     };
     let (picture, camera) = picture_of(doc, &outlines, camera, aspect, style);
     save_bevy_view(picture, &camera, &path)?;
@@ -351,7 +351,7 @@ pub(crate) fn look_pictures(out: &std::path::Path) -> Result<(), String> {
         camera.frame(low, high);
         camera.zoom(zoom);
         let aspect = f64::from(PICTURE_SIZE[0]) / f64::from(PICTURE_SIZE[1]);
-        let (curva, _) = picture_of(doc, &outlines, &camera, aspect, Style::SHADED);
+        let (curva, _) = picture_of(doc, &outlines, &camera, aspect, Style::shaded());
         save_picture(
             curva,
             PICTURE_SIZE,

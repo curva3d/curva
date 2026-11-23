@@ -30,12 +30,14 @@ fn centre_brightness(ghosted: bool) -> Option<u8> {
                     colour: [1.0; 3],
                     width: -1.0,
                     object: NO_OBJECT,
+                    kind: crate::LineKind::Given,
                 },
                 Vertex {
                     position: [0.5, y, 0.8],
                     colour: [1.0; 3],
                     width: -1.0,
                     object: NO_OBJECT,
+                    kind: crate::LineKind::Given,
                 },
             ]
         })
@@ -52,9 +54,9 @@ fn centre_brightness(ghosted: bool) -> Option<u8> {
         matrix: identity,
         light: [0.0, 0.0, 1.0],
         style: if ghosted {
-            crate::Style::GHOSTED
+            crate::Style::ghosted()
         } else {
-            crate::Style::SHADED
+            crate::Style::shaded()
         },
     };
     let path = std::env::temp_dir().join(format!(
@@ -92,6 +94,7 @@ fn rows_lit(width: f32) -> Option<usize> {
         colour: [1.0; 3],
         width,
         object: NO_OBJECT,
+        kind: crate::LineKind::Given,
     };
     let identity = [
         [1.0, 0.0, 0.0, 0.0],
@@ -104,7 +107,7 @@ fn rows_lit(width: f32) -> Option<usize> {
         faces: Vec::new(),
         matrix: identity,
         light: [0.0, 0.0, 1.0],
-        style: crate::Style::SHADED,
+        style: crate::Style::shaded(),
     };
     let path = std::env::temp_dir().join(format!(
         "curva-width-test-{}-{}.png",
@@ -153,6 +156,7 @@ fn mixed_picture() -> Picture {
             colour: [0.9, 0.5, 0.2],
             width,
             object: NO_OBJECT,
+            kind: crate::LineKind::Given,
         })
     };
     Picture {
@@ -176,7 +180,7 @@ fn mixed_picture() -> Picture {
             [0.0, 0.0, 0.0, 1.0],
         ],
         light: [0.0, 0.0, 1.0],
-        style: crate::Style::SHADED,
+        style: crate::Style::shaded(),
     }
 }
 
@@ -264,7 +268,7 @@ fn the_selection_table_draws_what_coloured_vertices_drew() {
             faces: if shaded { faces } else { Vec::new() },
             matrix,
             light,
-            style: crate::Style::SHADED,
+            style: crate::Style::shaded(),
         };
         let coloured = picture(
             if shaded {
@@ -333,7 +337,7 @@ fn circles_drawn_from_their_axes_look_as_their_segments() {
             },
             matrix,
             light,
-            style: crate::Style::SHADED,
+            style: crate::Style::shaded(),
         };
         let scene = |circles: &[crate::PlacedCircle]| Scene {
             objects: Arc::new(whole.objects.clone()),
@@ -402,7 +406,7 @@ fn a_sphere_is_outlined_at_its_rim_and_clean_inside() {
         faces: crate::face_vertices(&outlines, &[]),
         matrix: camera.matrix(1.0),
         light: camera.forward().map(|v| v as f32),
-        style: crate::Style::SHADED,
+        style: crate::Style::shaded(),
     };
     let Ok(pixels) = draw_picture(picture, size, true) else {
         eprintln!("no graphics adapter to draw with, so not checked");
@@ -458,7 +462,7 @@ fn far_from_the_origin_draws_as_at_the_origin() {
             faces: Vec::new(),
             matrix: camera.matrix(1.0),
             light: camera.forward().map(|v| v as f32),
-            style: crate::Style::SHADED,
+            style: crate::Style::shaded(),
         };
         let scene = Scene {
             objects: Arc::new(parts.objects.clone()),
@@ -498,6 +502,7 @@ fn the_hidden_mode_draws_black_ink_on_white_paper() {
             colour,
             width: -2.0,
             object: NO_OBJECT,
+            kind: crate::LineKind::Given,
         })
     };
     // In front of the face across the middle, and behind it lower down.
@@ -513,7 +518,7 @@ fn the_hidden_mode_draws_black_ink_on_white_paper() {
             [0.0, 0.0, 0.0, 1.0],
         ],
         light: [0.0, 0.0, 1.0],
-        style: crate::Style::HIDDEN,
+        style: crate::Style::hidden(),
     };
     let pixels = match draw_picture(picture, SIZE, true) {
         Ok(pixels) => pixels,
@@ -565,6 +570,7 @@ fn the_technical_mode_dots_the_lines_faces_hide() {
         colour: [1.0, 1.0, 1.0],
         width: -2.0,
         object: NO_OBJECT,
+        kind: crate::LineKind::Given,
     });
     let picture = Picture {
         lines: lines.to_vec(),
@@ -576,7 +582,7 @@ fn the_technical_mode_dots_the_lines_faces_hide() {
             [0.0, 0.0, 0.0, 1.0],
         ],
         light: [0.0, 0.0, 1.0],
-        style: crate::Style::TECHNICAL,
+        style: crate::Style::technical(),
     };
     let pixels = match draw_picture(picture, SIZE, true) {
         Ok(pixels) => pixels,
@@ -609,6 +615,7 @@ fn the_clay_mode_draws_white_faces_and_black_lines() {
         colour: [1.0, 0.0, 0.0],
         width: -2.0,
         object: NO_OBJECT,
+        kind: crate::LineKind::Given,
     });
     let picture = Picture {
         lines: lines.to_vec(),
@@ -620,7 +627,7 @@ fn the_clay_mode_draws_white_faces_and_black_lines() {
             [0.0, 0.0, 0.0, 1.0],
         ],
         light: [0.0, 0.0, 1.0],
-        style: crate::Style::MASSING,
+        style: crate::Style::massing(),
     };
     let pixels = match draw_picture(picture, SIZE, true) {
         Ok(pixels) => pixels,
@@ -657,6 +664,7 @@ fn a_slanting_line_has_smooth_edges() {
         colour: [1.0; 3],
         width: -2.0,
         object: NO_OBJECT,
+        kind: crate::LineKind::Given,
     };
     let picture = Picture {
         lines: vec![end(-0.8, -0.3), end(0.8, 0.3)],
@@ -703,6 +711,7 @@ fn a_mesh_wire_is_one_pixel_and_shows_on_its_face() {
         colour: [1.0; 3],
         width: crate::WIRE_WIDTH,
         object: NO_OBJECT,
+        kind: crate::LineKind::Given,
     };
     let corner = |x: f32, y: f32| MeshVertex {
         position: [x, y, 0.5],
@@ -757,6 +766,7 @@ fn meshes_wires_are_parted_from_other_lines() {
         colour: [1.0; 3],
         width,
         object: NO_OBJECT,
+        kind: crate::LineKind::Given,
     };
     let wire = crate::WIRE_WIDTH;
     let lines = vec![

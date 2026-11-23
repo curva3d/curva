@@ -7,6 +7,7 @@ mod glass;
 mod gpu;
 mod gumball;
 mod index;
+mod line_table;
 mod lines;
 mod meshes;
 mod outline;
@@ -37,11 +38,12 @@ pub use gpu::{
     DEPTH_BITS, DETAIL_SLOTS, Drawing, LineRenderer, MOST_CLIPS, Picture, VIEW_SLOTS, save_picture,
 };
 pub use gumball::{Amount, Gumball, GumballChange, Handle};
+pub use line_table::{KindLook, LineTable};
 pub use snap::{Guides, SnapHit, SnapKind, SnapSet, constrained};
 pub use styles::{PictureStyle, save_styled_picture};
 pub use subd_parts::{PartShape, subd_parts};
 pub use timer::{OPTIONAL_FEATURES, baseline_limits, device_descriptor};
-pub use view_style::{Light, LineColour, OutlineLook, Style, Surfaces};
+pub use view_style::{Light, OutlineLook, Style, Surfaces};
 pub use views::StandardView;
 
 pub use lines::*;
@@ -66,6 +68,7 @@ pub(crate) const EDGE_ON_FACES_COLOUR: [f32; 3] = [20.0 / 255.0, 20.0 / 255.0, 2
 /// The Hidden display mode (#164), as Rhino 8 draws it: surfaces flat in paper white, hiding
 /// what is behind them, and every line and outline in black ink.
 pub const PAPER_COLOUR: [f32; 3] = [1.0, 1.0, 1.0];
+#[cfg(test)]
 pub(crate) const INK_COLOUR: [f32; 3] = [0.0, 0.0, 0.0];
 /// The colour every preview is drawn in: the accent orange, `#e0782f` (decision 0016).
 pub const PREVIEW_COLOUR: [f32; 3] = [0.878, 0.471, 0.184];

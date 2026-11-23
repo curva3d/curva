@@ -20,7 +20,8 @@ pub(crate) fn circle_bytes(circles: &[PlacedCircle]) -> Vec<u8> {
         {
             bytes.extend_from_slice(&value.to_le_bytes());
         }
-        bytes.extend_from_slice(&circle.object.to_le_bytes());
+        let packed = super::upload::packed(circle.object, circle.kind);
+        bytes.extend_from_slice(&packed.to_le_bytes());
     }
     bytes
 }
@@ -40,7 +41,6 @@ pub(crate) fn circle_pipeline(
         &PipelineParts {
             label: match ink {
                 Ink::Own => "curva circles",
-                Ink::Visible => "curva inked circles",
                 Ink::Hidden => "curva hidden circles",
             },
             shader: &format!(
@@ -92,6 +92,7 @@ mod tests {
             colour: [0.5; 3],
             width: -2.0,
             object: 9,
+            kind: crate::LineKind::Curve,
         };
         let bytes = circle_bytes(&[circle, circle]);
         assert_eq!(bytes.len() as u64, 2 * CIRCLE_SIZE);

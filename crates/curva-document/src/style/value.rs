@@ -72,6 +72,20 @@ impl Value for Option<Colour> {
     }
 }
 
+/// `auto` for the edges' colour, else as [`LineColour`].
+impl Value for Option<LineColour> {
+    fn write(&self) -> String {
+        self.map_or_else(|| "auto".into(), |c| c.write())
+    }
+    fn read(text: &str) -> Option<Self> {
+        if text.eq_ignore_ascii_case("auto") {
+            Some(None)
+        } else {
+            LineColour::read(text).map(Some)
+        }
+    }
+}
+
 impl Value for ColourFrom {
     fn write(&self) -> String {
         match self {

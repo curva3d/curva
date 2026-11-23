@@ -17,6 +17,7 @@ fn a_mesh_wire_shows_on_its_own_face() {
             colour: [1.0; 3],
             width: crate::WIRE_WIDTH,
             object: NO_OBJECT,
+            kind: crate::LineKind::Given,
         };
         view.scene = Arc::new(vec![end(-1.0e5), end(1.0e5)]);
         let pixels = super::super::with_pictures(|pictures| {

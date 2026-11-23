@@ -88,7 +88,7 @@ mod tests {
                 "{mode:?}"
             );
         }
-        assert_eq!(named_style("Rendered"), Style::SHADED);
+        assert_eq!(named_style("Rendered"), Style::shaded());
     }
 
     #[test]
