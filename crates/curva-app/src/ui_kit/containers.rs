@@ -165,18 +165,17 @@ pub(crate) fn dock_preview(ctx: &egui::Context, spot: egui::Rect) {
     );
 }
 
-/// How far a slim bar's contents sit from its top and bottom, as the status bar's.
-pub(crate) const BAR_PAD: f32 = 4.0;
-
-/// A slim bar's frame, see-through (`glass`) or solid: a panel frame with less room above and
-/// below, as the status bar along the foot of the window.
-pub(crate) fn bar_frame(glass: bool) -> egui::Frame {
-    #[allow(clippy::cast_possible_truncation)] // Small whole numbers of points.
-    let margin = egui::Margin::symmetric(super::PAD as i8, BAR_PAD as i8);
-    panel_frame_for(glass).inner_margin(margin)
-}
-
-/// The room a slim bar's frame leaves round its contents.
-pub(crate) fn bar_margin() -> egui::Vec2 {
-    egui::vec2(super::PAD, BAR_PAD)
+/// A quiet caption in the window's corner behind everything, as Curva's version.
+pub(crate) fn corner_caption(ctx: &egui::Context, window: egui::Rect, text: String) {
+    let painter = ctx.layer_painter(egui::LayerId::new(
+        egui::Order::Background,
+        egui::Id::NULL.with("corner caption"),
+    ));
+    painter.text(
+        window.max - egui::vec2(PAD, 4.0),
+        egui::Align2::RIGHT_BOTTOM,
+        text,
+        super::caption_font(),
+        colours::quiet(),
+    );
 }

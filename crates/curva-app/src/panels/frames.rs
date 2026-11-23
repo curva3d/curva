@@ -167,7 +167,6 @@ impl Curva {
         self.window_rect = window;
         let full_window = window;
         let window = self.top_bar_slot(ctx, window);
-        let window = self.status_bar_slot(ctx, window);
         self.fit_command_tabs();
         let (placed, free) = self.layout.arrange(window);
         // While a panel is dragged over another, that one lights up to show they would merge.
@@ -209,6 +208,8 @@ impl Curva {
         if pass.released && self.frames.resize_from.take().is_some() {
             self.save_layout();
         }
+        self.status_panel(ctx, window);
+        self.version_label(ctx, full_window);
         self.focus_tab(ctx, full_window);
         // In focus mode the viewports take the window, short of the tabs left at its edges.
         if self.frames.focus {
