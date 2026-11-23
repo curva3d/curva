@@ -565,6 +565,7 @@ fn benchmark_from_arguments(arguments: &[String]) -> Option<BenchmarkScene> {
                 solids: count("--solids").unwrap_or(scene.solids),
                 splines: count("--splines").unwrap_or(scene.splines),
                 trees: count("--trees").unwrap_or(scene.trees),
+                meshes: count("--meshes").unwrap_or(scene.meshes),
                 select: arguments.iter().any(|argument| argument == "--select"),
                 ..scene
             }

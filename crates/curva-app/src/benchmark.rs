@@ -151,9 +151,36 @@ pub(crate) fn benchmark_scene(doc: &mut Document, scene: BenchmarkScene) -> Resu
     if scene.building {
         benchmark_building(doc)?;
     }
+    let rings = grid(scene.meshes, MESH_RING_SPACING);
+    let mesh_triangles = add_benchmark_meshes(doc, scene.meshes, rings);
     let trees = grid(scene.trees, BENCHMARK_TREE_SPACING);
     let tree_triangles = add_benchmark_trees(doc, scene.trees, trees)?;
-    Ok(scene_summary(&scene, tree_triangles, started.elapsed()))
+    Ok(format!(
+        "{}, {} meshes of {mesh_triangles} triangles in all",
+        scene_summary(&scene, tree_triangles, started.elapsed()),
+        scene.meshes
+    ))
+}
+
+/// `count` mesh rings, the `index`th about `place(index)`, each a torus of 350 by 1,400 quads
+/// (980,000 triangles), curved all over so lighting changes across it; their triangles in all.
+fn add_benchmark_meshes(doc: &mut Document, count: usize, place: impl Fn(usize) -> Point) -> usize {
+    let mut triangles = 0;
+    for index in 0..count {
+        let frame = curva_mesh::Frame {
+            origin: place(index),
+            ..curva_mesh::Frame::world()
+        };
+        let ring = curva_mesh::Mesh::mesh_torus(
+            &frame,
+            MESH_RING_RADIUS,
+            MESH_RING_RADIUS * 0.3,
+            (350, 1400),
+        );
+        triangles += ring.faces().map(|face| face.len() - 2).sum::<usize>();
+        doc.add_shape(curva_document::Shape::Mesh(ring));
+    }
+    triangles
 }
 
 /// A wave through five points around `at`, so it is cut by the spline rule, not the circle rule.
@@ -410,6 +437,9 @@ pub(crate) struct BenchmarkScene {
     pub(crate) shapes: usize,
     /// Block instances of one tree.
     pub(crate) trees: usize,
+    /// Mesh objects, rings of about 980,000 triangles each (`--scene meshes`: 16, about 15.7
+    /// million triangles, the *Meshes* scene of `display-on-bevy.md` §2).
+    pub(crate) meshes: usize,
     /// Where the scene is moved to, for drawing far from the origin.
     pub(crate) offset: Point,
     /// Whether the benchmark also selects and deselects an object now and then (`--select`).
@@ -429,6 +459,7 @@ impl BenchmarkScene {
             solids: 10_000,
             shapes: 100,
             trees: 2_000,
+            meshes: 0,
             offset: [0.0; 3],
             select: false,
             building: false,
@@ -448,6 +479,10 @@ impl BenchmarkScene {
             }),
             "building" => Some(Self {
                 building: true,
+                ..Self::default()
+            }),
+            "meshes" => Some(Self {
+                meshes: 16,
                 ..Self::default()
             }),
             "far" => Some(Self {
@@ -582,6 +617,10 @@ pub(crate) const SETTLE_FRAMES: usize = 30;
 /// How far, in points, the benchmark drags the view each frame.
 pub(crate) const BENCHMARK_DRAG: f64 = 4.0;
 
+/// The radius of a mesh ring in a benchmark scene, and the spacing of the rings, in millimetres.
+pub(crate) const MESH_RING_RADIUS: f64 = 40.0;
+pub(crate) const MESH_RING_SPACING: f64 = 120.0;
+
 /// Spacing of the trees in a benchmark scene, in millimetres.
 pub(crate) const BENCHMARK_TREE_SPACING: f64 = 40.0;
 
@@ -601,6 +640,7 @@ mod tests {
             solids: 5,
             shapes: 2,
             trees: 3,
+            meshes: 0,
             offset,
             select: false,
             building: false,
@@ -628,6 +668,13 @@ mod tests {
             large
         );
         assert!(BenchmarkScene::named("huge").is_none());
+    }
+
+    #[test]
+    fn the_meshes_scene_holds_sixteen_mesh_rings() {
+        let meshes = BenchmarkScene::named("meshes").unwrap();
+        assert_eq!(meshes.meshes, 16);
+        assert_eq!(meshes.solids + meshes.curves + meshes.trees, 0);
     }
 
     #[test]
