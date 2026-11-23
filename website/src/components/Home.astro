@@ -13,7 +13,8 @@ const w = WORDS[lang];
 		<p class="intro">{w.intro}</p>
 	</Fragment>
 	<div class="persp" slot="stack"><div class="stack">
-		{SLUGS.map((s, i) => (
+		{/* Drawn bottom to top, so the first specialization sits on top of the stack. */}
+		{SLUGS.map((s, i) => ({ s, i })).reverse().map(({ s, i }) => (
 			<a class="plate glass" href={`#${s}`} data-plate={i}>
 				<span class="tag mono">0{i + 1} · {w.specs[s].status}</span>
 				<span class="name">{w.specs[s].name}</span>
