@@ -198,7 +198,7 @@ impl Curva {
         }
         let text = &self.text;
         let tick = |ui: &mut egui::Ui, value: &mut bool, key: &'static str| {
-            ui.checkbox(value, text.render(&Message::new(key)));
+            ui_kit::toggle(ui, value, text.render(&Message::new(key)));
         };
         let snaps = &mut self.snaps;
         let (ortho, grid_snap) = (&mut self.ortho, &mut self.grid_snap);
@@ -206,7 +206,7 @@ impl Curva {
         let filter_lit = self.pick_filter.in_force() || self.filter_row;
         let filter_word = text.render(&Message::new("ui.filter"));
         let mut filter_item = None;
-        ui.horizontal(|ui| {
+        ui_kit::chip_row(ui, |ui| {
             tick(ui, &mut snaps.end, snap_label(SnapKind::End));
             tick(ui, &mut snaps.mid, snap_label(SnapKind::Mid));
             tick(ui, &mut snaps.center, snap_label(SnapKind::Center));

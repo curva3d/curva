@@ -283,7 +283,8 @@ impl Curva {
     /// Agent access, and whether an agent is talking to Curva.
     pub(crate) fn agent_status(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.checkbox(
+            ui_kit::toggle(
+                ui,
                 &mut self.agent_on,
                 self.text.render(&Message::new("ui.agent")),
             );

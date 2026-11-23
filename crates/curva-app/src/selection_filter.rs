@@ -187,7 +187,7 @@ impl Curva {
                         if index == 11 {
                             ui.separator();
                         }
-                        ui.checkbox(value, word);
+                        ui_kit::toggle(ui, value, word);
                     }
                 });
             });
