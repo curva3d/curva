@@ -119,3 +119,9 @@ pub(crate) fn mix(from: Color32, to: Color32, amount: f32) -> Color32 {
 pub(crate) fn sheet() -> Color32 {
     Color32::from_rgb(250, 250, 247)
 }
+
+/// The soft wash behind something related to what is chosen, such as the layer a selected object
+/// is on: the accent, fainter than [`chosen_fill`].
+pub(crate) fn related_fill() -> Color32 {
+    theme::ACCENT.gamma_multiply(0.10)
+}
