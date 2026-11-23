@@ -18,10 +18,8 @@
   --glass-shadow: inset 0 1px 0 #fff, 0 30px 70px rgba(0,0,0,.16);
   --plate-solid: linear-gradient(160deg, rgba(252,252,252,.94), rgba(244,244,244,.9));
   --hair: rgba(0,0,0,.2); --shot: rgba(255,255,255,.45);
-  /* Curva's orange, for small signals only. --accent fills and rules; --accent-text is the shade
-     that stays readable as small text on this background; --accent-on-ink is for text on a
-     hovered (ink-coloured) plate. */
-  --accent: #E0782F; --accent-text: #A84F12; --accent-on-ink: #E0782F;
+  /* Curva's orange, for small signals only (the owner prefers the brand orange for text too). */
+  --accent: #E0782F; --accent-text: #E0782F; --accent-on-ink: #E0782F;
   color-scheme: light;
 }
 :root[data-theme="dark"] {
@@ -30,7 +28,7 @@
   --glass-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 30px 70px rgba(0,0,0,.6);
   --plate-solid: linear-gradient(160deg, rgba(38,38,38,.95), rgba(26,26,26,.93));
   --hair: rgba(255,255,255,.22); --shot: rgba(255,255,255,.04);
-  --accent: #F08A45; --accent-text: #F08A45; --accent-on-ink: #A84F12;
+  --accent: #F08A45; --accent-text: #F08A45; --accent-on-ink: #F08A45;
   color-scheme: dark;
 }
 /* Without JavaScript, follow the system. */
@@ -41,7 +39,7 @@
     --glass-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 30px 70px rgba(0,0,0,.6);
     --plate-solid: linear-gradient(160deg, rgba(38,38,38,.95), rgba(26,26,26,.93));
     --hair: rgba(255,255,255,.22); --shot: rgba(255,255,255,.04);
-    --accent: #F08A45; --accent-text: #F08A45; --accent-on-ink: #A84F12;
+    --accent: #F08A45; --accent-text: #F08A45; --accent-on-ink: #F08A45;
     color-scheme: dark;
   }
   :root:not([data-theme]) .mark-light { display: none; }
@@ -283,6 +281,8 @@ h1, h2, p { margin: 0; }
   .band { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); column-gap: 48px; align-items: center; padding: 64px 0 72px; }
   .band.others { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); align-items: start; }
   .bands .band:nth-child(even):not(.others) .band-text { order: 2; }
+  /* Text and frame swap sides, but the frame keeps the wider column, so every frame is the same size. */
+  .bands .band:nth-child(even):not(.others) { grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); }
 }
 @media (min-width: 720px) and (hover: hover) {
   .info { display: grid; }
@@ -305,7 +305,7 @@ h1, h2, p { margin: 0; }
 }
 /* Orange as small signals (the owner's pick, option C): status tags, plate numbers, list dashes,
    the short rule above each section title, the panel labels and the hint in the top bar. */
-.status.live { background: var(--accent); border-color: var(--accent); color: #0b0b0b; }
+.status.live { background: var(--accent); border-color: var(--accent); color: #fff; }
 .status:not(.live) { border-color: var(--accent); color: var(--accent-text); }
 li::before { color: var(--accent-text); }
 .band h2::before { content: ""; display: block; width: 32px; height: 4px; border-radius: 2px; background: var(--accent); margin-bottom: 18px; }

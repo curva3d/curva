@@ -16,6 +16,17 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## Features stream — 23 November 2026 (website, second pass)
+
+- **Orange back to the brand shade** for text too (owner's preference over the deeper, more
+  readable shade); status tags have white text, as in the approved mockup.
+- **Every section frame the same size:** when text and frame swap sides, the frame keeps the wider
+  column.
+- **Docs in the website's look** (owner-approved mockup, with the website's orange): Inter and
+  JetBrains Mono, black and white, frosted callouts, cards and previous/next links, the
+  square-marker sidebar, system chips for tabs, orange labels, dashes and section rules, headline
+  full stops. `website/src/styles/curva.css`.
+
 ## Features stream — 23 November 2026 (website)
 
 - **Orange as small signals** (owner's pick, option C): status tags, plate numbers, list dashes, a
