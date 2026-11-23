@@ -148,7 +148,8 @@ pub(super) fn mesh_3(pen: &Pen<'_>, key: &str) -> bool {
             );
         }
         "crease" | "removecrease" | "fill" | "unweldedge" | "weldedge" | "stitch" | "bridge"
-        | "insertedge" | "mergefaces" | "insertpoint" | "offsetsubd" | "bevel" | "subdloft" => {
+        | "insertedge" | "mergefaces" | "insertpoint" | "offsetsubd" | "bevel" | "subdloft"
+        | "multipipe" => {
             subd_edit(pen, key);
         }
         key if key.starts_with("meshboolean") => mesh_boolean(pen, key),
@@ -344,6 +345,12 @@ fn subd_edit(pen: &Pen<'_>, key: &str) {
 /// The later SubD editing commands' icons, drawn as `subd_edit` draws the first; whether `key` is one.
 fn subd_edit_later(pen: &Pen<'_>, key: &str) -> bool {
     match key {
+        "multipipe" => {
+            // A pipe's cage round a bent line.
+            pen.path_in(&[(3.0, 19.0), (3.0, 7.0), (19.0, 7.0)], false, pen.accent());
+            grid(pen, (1.0, 5.0), (21.0, 9.0), 2);
+            grid(pen, (1.0, 9.0), (5.0, 21.0), 2);
+        }
         "subdloft" => {
             // Two curves joined by a cage between them.
             grid(pen, (2.0, 5.0), (20.0, 17.0), 2);

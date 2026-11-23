@@ -11,6 +11,11 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 23 November 2026
 
+**MultiPipe, partly, as Rhino 8 measured:** straight lines and polylines joined end to end become a SubD pipe: 4-point rings
+1.5 × the radius out, creased or capped free ends, Struts rings clear of each corner, a mitred ring at each corner, the
+rings turning with the line, closed runs all round. Rhino's points in nine cases. Curved curves (Rhino puts many rings along
+an arc) and junctions of three or more lines (a shared patch) are still to come. `SubD::pipe`.
+
 **Bevel KeepCreases, as Rhino 8 measured:** on, as Rhino starts it; a crease leaving a bevelled point creases its row and the
 cap edges to the far point, a creased side edge stays creased to the row, and a creased picked edge creases the strip's long
 sides; off, the creases go with the points. Rhino's crease counts in five cases. `SubD::bevelled_run` takes it.
