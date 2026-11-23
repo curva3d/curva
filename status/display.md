@@ -16,6 +16,15 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
   its blur before any paints, and there was one blur for all, so the last won. Each panel now
   keeps its own blur, by place and size (the 32 most lately used kept). New test: two panels
   over black and white each show what is behind them.
+- **Meshes' wires drawn as plain one-pixel lines** (owner, on the *Meshes* picture: "hard to
+  understand what I'm looking at, is the display glitching?"). Not a glitch: each ring has a
+  million triangles and every edge was drawn, piling up over the surface. Rhino 8 does the same
+  (its Shaded mode shows mesh wires, thickness 1; its rings come out solid black), so the wires
+  stay; they are now plain one-pixel lines, two corners a segment instead of six. *Meshes*: 33.7
+  to 16.6 ms between frames (the screen's rate), Curva's lines on the card 27.7 to 10.6 ms; Rhino
+  about 84 ms. New tests: a wire is one pixel tall over its face; wires show on Bevy's faces in
+  perspective as much as with no face; wires are sent apart from other lines. Seen, not fixed:
+  where a ring's outline crosses the grid, bits of grid line poke over its edge.
 - **Large scenes drew no faces at all, fixed** (found taking pictures of the test scenes for the
   owner). Bevy packs meshes into shared buffers it grows to 512 MB, past the 256 MB Curva's device
   allows; once a scene's faces passed 256 MB (the *Meshes* and *Large* scenes, or any model that

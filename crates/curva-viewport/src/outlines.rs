@@ -511,8 +511,15 @@ impl Outlines {
             let on_faces = shape.body().is_some() || shape.subd().is_some();
             let seam = |edge: Option<usize>| edge.is_some_and(|e| seam_edges.contains(&e));
             // Annotations' letters and marks keep only the points their shape needs.
+            // A mesh's wires are a pixel wide whatever its print width, as Rhino 8 draws them
+            // (mesh wire thickness 1), and drawn the cheap way ([`crate::WIRE_MM`]).
             let look = Look {
                 coarse: matches!(shape, Shape::Annotation(_)),
+                width: if matches!(shape, Shape::Mesh(_)) {
+                    Some(crate::WIRE_MM)
+                } else {
+                    look.width
+                },
                 ..look
             };
             outlines.push_pieces(object.id, pieces, look, kind, &seam, on_faces);

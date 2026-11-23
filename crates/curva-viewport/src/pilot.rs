@@ -604,6 +604,7 @@ mod tests {
     use super::*;
 
     mod grid;
+    mod wires;
 
     use crate::{MeshVertex, NO_OBJECT, StandardView};
 

@@ -8,6 +8,7 @@ mod fill;
 mod insert_edge;
 mod insert_point;
 mod merge_faces;
+mod offset_subd;
 mod parts;
 mod stitch;
 mod to_nurbs;
@@ -24,6 +25,7 @@ use fill::Fill;
 use insert_edge::InsertEdge;
 use insert_point::InsertPoint;
 use merge_faces::MergeFaces;
+use offset_subd::OffsetSubD;
 use stitch::Stitch;
 use to_nurbs::ToNurbs;
 use to_subd::ToSubD;
@@ -51,6 +53,7 @@ pub(crate) static COMMANDS: &[crate::commands::CommandDef] = &[
     recipe!("InsertEdge", [], true, InsertEdge),
     recipe!("MergeFaces", [], true, MergeFaces),
     recipe!("InsertPoint", [], true, InsertPoint),
+    recipe!("OffsetSubD", [], true, OffsetSubD),
 ];
 
 /// The buttons of the SubD tab, in order (spec `docs/specs/command-groups.md` §2).
@@ -74,4 +77,5 @@ pub(crate) const TAB: &[&str] = &[
     "InsertEdge",
     "MergeFaces",
     "InsertPoint",
+    "OffsetSubD",
 ];
