@@ -1,0 +1,22 @@
+---
+// The download panel: one big button for the visitor's system, and chips to pick another
+// (site.js fills in the latest release and the system).
+import { WORDS, type Lang } from '../../data/site';
+interface Props { lang: Lang; releases: string }
+const { lang, releases } = Astro.props;
+const w = WORDS[lang];
+---
+<div class="dl glass" id="download">
+	<a class="dl-btn" href={releases} data-dl-primary data-tpl={w.downloadFor}>
+		<span class="dl-text"><strong data-dl-label>{w.download}</strong><span class="mono" data-dl-file>{w.latest}</span></span>
+		<span class="arrow" aria-hidden="true">↓</span>
+	</a>
+	<div class="dl-row">
+		<span class="mono" data-dl-note data-free={w.free} data-note-mac={w.notes.mac} data-note-win={w.notes.win} data-note-linux={w.notes.linux}>{w.free}</span>
+		<span class="oses" role="group" aria-label={w.system}>
+			<a class="os" href={releases} data-os="mac">macOS</a>
+			<a class="os" href={releases} data-os="win">Windows</a>
+			<a class="os" href={releases} data-os="linux">Linux</a>
+		</span>
+	</div>
+</div>
