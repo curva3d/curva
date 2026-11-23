@@ -159,6 +159,35 @@ of any style.
 - Later the owner wants the library tied to a Curva online account; style files are self-contained
   so they can be synced without changing their format.
 
+### 2.5 Engines and object types (owner, 23 November 2026)
+
+After a mock-up of the Style panel beside Rhino 8's Display Modes page (every Rhino setting has a
+place; the table is in the mock-up), the owner added:
+
+- **Three engines, chosen per style:** how surfaces are shaded, "almost like a change of engine".
+  The rest of the style's settings stay the same when the engine changes; settings an engine does
+  not use are kept and simply not shown.
+  - **Vector:** drawn shapes; faces flat or in a few tones, crisp lines, crisp shadow shapes.
+    What is on screen is what the PDF gets: diagrams, plans, sections, elevations.
+  - **Occlusion:** lit faces with ambient occlusion and soft shadows: study models, Massing,
+    Diagram.
+  - **Rendered:** materials, an environment, reflections and exposure: presentation.
+- **Settings per object type**, not one set for everything: NURBS (surfaces, polysurfaces and
+  solids), Meshes, SubD, Curves, Points and point clouds, Text and dimensions, Lights, Clipping
+  planes. Meshes and SubD start as **Same as NURBS** (one switch); turned off, their own faces,
+  edges and outlines apply. Mesh wires and SubD smooth edges, creases and boundaries are always
+  their own.
+- **One style for 3D views, diagrams, renders, and live plans, sections and elevations:** the
+  Drawings settings (cut lines and fills, what lies beyond the cut, above and below) live in the
+  same style. A style says what it is used for (3D views, plans, sections and elevations, sheets).
+- **The settings model comes first; the panel's look follows the features stream's revision of
+  Curva's interface.** The panel shows a few choices per section and keeps the rest under "More".
+
+How this is built: the style is a plain data model in `curva-document` (`style`), saved inside the
+model and as `.curvastyle` files; the viewport reads it. Lines carry what kind of line they are
+(curve, NURBS edge, mesh wire, SubD crease, …), so a style's widths and colours are applied on the
+graphics card and every change shows at once without rebuilding the scene.
+
 ## 3. Making a style: intuitive, live
 
 - **Style panel:** the current view's style at the top (a list with a small picture of each style),

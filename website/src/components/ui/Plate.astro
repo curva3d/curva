@@ -1,0 +1,10 @@
+---
+// One plate of a Stack: a small orange tag, a big name and a faint line drawing between them.
+interface Props { href: string; tag: string; name: string; drawing: string; index: number }
+const { href, tag, name, drawing, index } = Astro.props;
+---
+<a class="plate glass" href={href} data-plate={index}>
+	<span class="tag mono">{tag}</span>
+	<span class="name">{name}</span>
+	<Fragment set:html={drawing} />
+</a>
