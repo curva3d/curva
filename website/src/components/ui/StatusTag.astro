@@ -1,0 +1,6 @@
+---
+// A dashed orange status tag ("02 · Coming next"); filled when the thing is out now.
+interface Props { text: string; live?: boolean }
+const { text, live = false } = Astro.props;
+---
+<p class:list={['status', 'mono', { live }]}>{text}</p>

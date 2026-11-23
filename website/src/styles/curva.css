@@ -1,15 +1,11 @@
-/* The docs in the website's look: black and white, frosted glass, Inter with JetBrains Mono for
-   small labels, and Curva's orange as small signals only (labels, markers, dashes, short rules).
+/* The docs in the website's look. Colours, glass, grain, orange, fonts and the lean effect come from
+   Curva's UI kit (public/assets/kit.css, loaded first); this file maps Starlight onto it.
    Starlight's names are inverted: --sl-color-black is the page, --sl-color-white the ink. */
-@font-face { font-family: "Inter"; font-style: normal; font-weight: 400; font-display: swap; src: url("/assets/fonts/inter-latin-400-normal.woff2") format("woff2"); }
-@font-face { font-family: "Inter"; font-style: normal; font-weight: 600; font-display: swap; src: url("/assets/fonts/inter-latin-600-normal.woff2") format("woff2"); }
-@font-face { font-family: "Inter"; font-style: normal; font-weight: 700; font-display: swap; src: url("/assets/fonts/inter-latin-700-normal.woff2") format("woff2"); }
-@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url("/assets/fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2"); }
 
 /* Dark */
 :root {
-	--sl-font: Inter, system-ui, sans-serif;
-	--sl-font-mono: "JetBrains Mono", ui-monospace, monospace;
+	--sl-font: var(--sans);
+	--sl-font-mono: var(--mono);
 	--sl-color-accent-low: #3a2416;
 	--sl-color-accent: #f08a45;
 	--sl-color-accent-high: #fde3d0;
@@ -27,11 +23,6 @@
 	--sl-color-hairline: #f4f4f2;
 	--sl-color-hairline-light: rgba(255, 255, 255, .16);
 	--sl-content-width: 46rem;
-	--curva-accent: #f08a45;
-	--curva-glass: linear-gradient(140deg, rgba(255, 255, 255, .22) 0%, rgba(255, 255, 255, .06) 55%, rgba(255, 255, 255, .13) 100%);
-	--curva-glass-line: rgba(255, 255, 255, .24);
-	--curva-glass-shadow: inset 0 1.5px 0 rgba(255, 255, 255, .3), inset 0 0 0 1px rgba(255, 255, 255, .07), 0 30px 70px rgba(0, 0, 0, .6);
-	--curva-grain: url("/assets/frost-light-specks.png"); --curva-grain-o: .09; --curva-glare: rgba(255, 255, 255, .14);
 	/* Callouts all share the glass look; their colour shows only in the label. */
 	--sl-color-purple-low: transparent; --sl-color-purple: #f08a45; --sl-color-purple-high: #f4f4f2;
 	--sl-color-blue-low: transparent; --sl-color-blue: #f08a45; --sl-color-blue-high: #f4f4f2;
@@ -58,11 +49,6 @@
 	--sl-color-bg-sidebar: #efefef;
 	--sl-color-hairline: #000;
 	--sl-color-hairline-light: rgba(0, 0, 0, .14);
-	--curva-accent: #e0782f;
-	--curva-glass: linear-gradient(140deg, rgba(255, 255, 255, .32) 0%, rgba(255, 255, 255, .1) 50%, rgba(222, 222, 222, .16) 100%);
-	--curva-glass-line: rgba(255, 255, 255, .95);
-	--curva-glass-shadow: inset 0 1.5px 0 #fff, inset 0 0 0 1px rgba(255, 255, 255, .45), 0 30px 70px rgba(0, 0, 0, .16);
-	--curva-grain: url("/assets/frost-dark-specks.png"); --curva-grain-o: .048; --curva-glare: rgba(0, 0, 0, .07);
 	--sl-color-purple: #e0782f; --sl-color-purple-high: #000;
 	--sl-color-blue: #e0782f; --sl-color-blue-high: #000;
 	--sl-color-orange: #e0782f; --sl-color-orange-high: #000;
@@ -75,8 +61,8 @@
 .site-title { font-weight: 700; font-size: 20px; letter-spacing: -.03em; color: var(--sl-color-white); gap: 8px; }
 .site-title img { height: 30px; width: 30px; }
 site-search button[data-open-modal] {
-	border-radius: 14px; border: 1px solid var(--curva-glass-line); background: var(--curva-glass);
-	box-shadow: var(--curva-glass-shadow); font-family: var(--sl-font-mono); font-size: 12px; text-transform: uppercase;
+	border-radius: 14px; border: 1px solid var(--glass-line); background: var(--glass);
+	box-shadow: var(--glass-shadow); font-family: var(--sl-font-mono); font-size: 12px; text-transform: uppercase;
 }
 site-search kbd { box-shadow: none; }
 
@@ -88,7 +74,7 @@ site-search kbd { box-shadow: none; }
 .sl-markdown-content .sl-heading-wrapper.level-h2 { margin-top: 3rem; padding-top: 1.4rem; border-top: 1.5px solid var(--sl-color-hairline); }
 .sl-markdown-content .sl-heading-wrapper.level-h2::before {
 	content: ""; display: block; width: 32px; height: 4px; border-radius: 2px;
-	background: var(--curva-accent); margin-bottom: 1.1rem;
+	background: var(--accent); margin-bottom: 1.1rem;
 }
 /* Headlines end with a full stop on the page, but not in the sidebar or the window title. */
 .content-panel h1#_top::after, .sl-markdown-content h2::after { content: "."; }
@@ -102,12 +88,12 @@ site-search kbd { box-shadow: none; }
 .sl-markdown-content ul:not(:where(.not-content *)) { list-style: none; padding-inline-start: 0; }
 .sl-markdown-content ul:not(:where(.not-content *)) > li { padding-inline-start: 1.6em; text-indent: -1.6em; }
 .sl-markdown-content ul:not(:where(.not-content *)) > li > * { text-indent: 0; }
-.sl-markdown-content ul:not(:where(.not-content *)) > li::before { content: "— "; color: var(--curva-accent); }
-.sl-markdown-content ol > li::marker { font-family: var(--sl-font-mono); font-size: .8em; color: var(--curva-accent); }
+.sl-markdown-content ul:not(:where(.not-content *)) > li::before { content: "— "; color: var(--accent); }
+.sl-markdown-content ol > li::marker { font-family: var(--sl-font-mono); font-size: .8em; color: var(--accent); }
 
 /* Links: ink, with an orange underline. */
 .sl-markdown-content a:not(:where(.not-content *)) {
-	color: var(--sl-color-white); text-decoration: underline; text-decoration-color: var(--curva-accent);
+	color: var(--sl-color-white); text-decoration: underline; text-decoration-color: var(--accent);
 	text-decoration-thickness: 2px; text-underline-offset: 4px;
 }
 .sl-markdown-content a:not(:where(.not-content *)):hover { text-decoration-thickness: 3px; }
@@ -116,7 +102,7 @@ site-search kbd { box-shadow: none; }
 .sidebar-content { padding-top: 1.5rem; }
 .sidebar-content .large { font-size: 16px; }
 .sidebar-content .group-label .large, .sidebar-content .group-label {
-	font-family: var(--sl-font-mono); font-size: 12px; text-transform: uppercase; font-weight: 400; color: var(--curva-accent);
+	font-family: var(--sl-font-mono); font-size: 12px; text-transform: uppercase; font-weight: 400; color: var(--accent);
 }
 .sidebar-content ul ul { border-inline-start: 0; margin-inline-start: 0; padding: 0; border-bottom: 1.5px solid var(--sl-color-hairline); }
 .sidebar-content ul ul li { border-inline-start: 0; padding: 0; }
@@ -132,20 +118,20 @@ site-search kbd { box-shadow: none; }
 .sidebar-content a[aria-current='page'] span::before { content: "■ "; }
 
 /* "On this page": a small orange label; the current entry gets the dash. */
-.right-sidebar-panel h2 { font-family: var(--sl-font-mono); font-size: 12px; text-transform: uppercase; font-weight: 400; color: var(--curva-accent); }
+.right-sidebar-panel h2 { font-family: var(--sl-font-mono); font-size: 12px; text-transform: uppercase; font-weight: 400; color: var(--accent); }
 starlight-toc a { color: var(--sl-color-gray-2); }
 starlight-toc a[aria-current='true'] { color: var(--sl-color-white); font-weight: 700; }
-starlight-toc a[aria-current='true']::before { content: "— "; color: var(--curva-accent); }
+starlight-toc a[aria-current='true']::before { content: "— "; color: var(--accent); }
 
 /* Callouts: frosted cards with a small dashed label. */
 .starlight-aside {
-	border: 1px solid var(--curva-glass-line); border-radius: 20px; background: var(--curva-glass);
-	box-shadow: var(--curva-glass-shadow); padding: 1.1rem 1.4rem;
+	border: 1px solid var(--glass-line); border-radius: 20px; background: var(--glass);
+	box-shadow: var(--glass-shadow); padding: 1.1rem 1.4rem;
 	-webkit-backdrop-filter: blur(39px) saturate(1.15); backdrop-filter: blur(39px) saturate(1.15);
 }
 .starlight-aside__title {
 	font-family: var(--sl-font-mono); font-size: 12px; text-transform: uppercase; font-weight: 400;
-	color: var(--curva-accent); display: inline-flex; padding: 2px 10px; border: 1.5px dashed var(--curva-accent);
+	color: var(--accent); display: inline-flex; padding: 2px 10px; border: 1.5px dashed var(--accent);
 }
 .starlight-aside__icon { display: none; }
 
@@ -161,7 +147,7 @@ starlight-tabs [role='tabpanel'] { padding-top: 1rem; }
 
 /* Cards and link cards: glass. */
 .card, .sl-link-card {
-	border: 1px solid var(--curva-glass-line); border-radius: 20px; background: var(--curva-glass); box-shadow: var(--curva-glass-shadow);
+	border: 1px solid var(--glass-line); border-radius: 20px; background: var(--glass); box-shadow: var(--glass-shadow);
 	-webkit-backdrop-filter: blur(39px) saturate(1.15); backdrop-filter: blur(39px) saturate(1.15);
 }
 .sl-link-card:hover { border-color: var(--sl-color-white); }
@@ -169,8 +155,8 @@ starlight-tabs [role='tabpanel'] { padding-top: 1rem; }
 
 /* Previous / next: glass cards that turn ink on hover. */
 .pagination-links a {
-	border: 1px solid var(--curva-glass-line); border-radius: 20px; background: var(--curva-glass);
-	box-shadow: var(--curva-glass-shadow); padding: 1rem 1.3rem;
+	border: 1px solid var(--glass-line); border-radius: 20px; background: var(--glass);
+	box-shadow: var(--glass-shadow); padding: 1rem 1.3rem;
 	-webkit-backdrop-filter: blur(39px) saturate(1.15); backdrop-filter: blur(39px) saturate(1.15);
 }
 .pagination-links a:hover { background: var(--sl-color-white); color: var(--sl-color-black); border-color: var(--sl-color-white); }
@@ -187,7 +173,7 @@ starlight-tabs [role='tabpanel'] { padding-top: 1rem; }
 /* Code and keys. */
 .sl-markdown-content code:not(:where(.not-content *, pre *)) {
 	font-family: var(--sl-font-mono); font-size: .86em; padding: 1px 6px; border-radius: 6px;
-	background: var(--curva-glass); border: 1px solid var(--curva-glass-line);
+	background: var(--glass); border: 1px solid var(--glass-line);
 }
 .expressive-code .frame { border-radius: 16px; overflow: hidden; }
 kbd {
@@ -201,21 +187,14 @@ kbd {
 .social-icons a { color: var(--sl-color-gray-3); }
 .social-icons a:hover { color: var(--sl-color-white); }
 
-/* The website's frost: a fine grain over every glass card (dark specks in light mode, light in dark). */
+/* The kit's frost (kit.css): a fine grain over every glass card (dark specks in light mode, light in dark). */
 .starlight-aside, .card, .sl-link-card, .pagination-links a { position: relative; }
 .starlight-aside::after, .card::after, .sl-link-card::after, .pagination-links a::after {
 	content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
-	background: var(--curva-grain); background-size: 192px; opacity: var(--curva-grain-o);
+	background: var(--grain); background-size: 192px; opacity: var(--grain-o);
 }
 .pagination-links a:hover::after { opacity: 0; }
 
-/* Cards and buttons lean toward the cursor with a soft light where it is, as on the website
-   (lean.js adds .wt and sets --px, --py, --pd, --gx and --gy). */
-.wt { transform: perspective(900px) rotateX(calc(var(--py, 0) * -4deg)) rotateY(calc(var(--px, 0) * 4deg)) scale(calc(1 - var(--pd, 0) * .012)); transition: transform .28s cubic-bezier(.2,.7,.2,1), background .2s, color .2s; }
-.wt::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 2; background: radial-gradient(circle at var(--gx, 50%) var(--gy, 50%), var(--curva-glare), transparent 45%); opacity: var(--pd, 0); transition: opacity .3s; }
-.wt.btn { position: relative; transform: perspective(500px) rotateX(calc(var(--py, 0) * -8deg)) rotateY(calc(var(--px, 0) * 8deg)) scale(calc(1 + var(--pd, 0) * .02)); }
-.wt.btn::before { z-index: 0; background: radial-gradient(circle at var(--gx, 50%) var(--gy, 50%), color-mix(in srgb, currentColor 22%, transparent), transparent 60%); }
-.wt.btn > * { position: relative; z-index: 1; }
 
 /* Buttons and link cards are not underlined like links in the text. */
 .sl-markdown-content a.sl-link-button, .sl-markdown-content .sl-link-card a { text-decoration: none; }

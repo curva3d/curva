@@ -1,0 +1,6 @@
+---
+// A list with Curva's orange dashes.
+interface Props { items: string[] }
+const { items } = Astro.props;
+---
+<ul>{items.map((b) => <li>{b}</li>)}</ul>

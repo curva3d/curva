@@ -1,0 +1,21 @@
+---
+// The glass panel beside a Stack that shows the plate under the mouse (site.js switches .on).
+// Each item has a small label, then either a name, a line and a list (home), or a title and a text
+// (specialization pages).
+import List from './List.astro';
+export interface InfoItem { label: string; name?: string; line?: string; bullets?: string[]; title?: string; text?: string }
+interface Props { items: InfoItem[] }
+const { items } = Astro.props;
+---
+<div class="info glass" aria-hidden="true">
+	{items.map((it, i) => (
+		<div class:list={['info-item', { on: i === 0 }]} data-info={i}>
+			<span class="mono">{it.label}</span>
+			{it.name && <span class="info-name">{it.name}</span>}
+			{it.line && <strong class="info-line">{it.line}</strong>}
+			{it.bullets && <List items={it.bullets} />}
+			{it.title && <span class="info-title">{it.title}</span>}
+			{it.text && <span class="info-text">{it.text}</span>}
+		</div>
+	))}
+</div>

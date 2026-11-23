@@ -52,20 +52,6 @@
       var t = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
       root.style.setProperty("--gap", (max - t * (max - min)).toFixed(0) + "px");
     }, { passive: true });
-
-    // Panels and buttons lean toward the cursor, with a soft light where it is (styles: .wt in site.css).
-    if (window.matchMedia("(hover: hover)").matches) {
-      document.querySelectorAll(".info, .dl, .figure").forEach(function (el) { el.classList.add("wt"); });
-      document.querySelectorAll(".dl-btn, .go, .os, .theme").forEach(function (el) { el.classList.add("wt", "btn"); });
-      document.querySelectorAll(".wt").forEach(function (el) {
-        el.addEventListener("pointermove", function (e) {
-          var r = el.getBoundingClientRect(), px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height;
-          el.style.setProperty("--px", (px * 2 - 1).toFixed(3)); el.style.setProperty("--py", (py * 2 - 1).toFixed(3));
-          el.style.setProperty("--pd", "1"); el.style.setProperty("--gx", (px * 100).toFixed(1) + "%"); el.style.setProperty("--gy", (py * 100).toFixed(1) + "%");
-        });
-        el.addEventListener("pointerleave", function () { el.style.setProperty("--pd", "0"); el.style.setProperty("--px", "0"); el.style.setProperty("--py", "0"); });
-      });
-    }
   }
   // Without a mouse (phones, tablets) the plates start spread out so every name can be read.
   var touch = window.matchMedia("(hover: none)").matches;

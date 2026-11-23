@@ -61,8 +61,8 @@ const GRID_COLOUR: [f32; 3] = [0.30, 0.31, 0.34];
 const CURVE_COLOUR: [f32; 3] = [0.92, 0.92, 0.95];
 pub(crate) const SELECTED_COLOUR: [f32; 3] = PREVIEW_COLOUR;
 const LOCKED_COLOUR: [f32; 3] = [0.45, 0.45, 0.48];
-/// Edges of surfaces and solids in shaded views.
-pub(crate) const EDGE_ON_FACES_COLOUR: [f32; 3] = [0.08, 0.08, 0.1];
+/// Edges of surfaces and solids in shaded views, as the style colour `curva_document::style::Colour::EDGE`.
+pub(crate) const EDGE_ON_FACES_COLOUR: [f32; 3] = [20.0 / 255.0, 20.0 / 255.0, 26.0 / 255.0];
 /// The Hidden display mode (#164), as Rhino 8 draws it: surfaces flat in paper white, hiding
 /// what is behind them, and every line and outline in black ink.
 pub const PAPER_COLOUR: [f32; 3] = [1.0, 1.0, 1.0];
