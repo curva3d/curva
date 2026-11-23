@@ -14,6 +14,7 @@ mod insert_point;
 mod join;
 mod measure;
 mod mesh;
+mod mesh_unweld;
 mod nurbs;
 mod pack;
 mod primitives;

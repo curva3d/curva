@@ -11,6 +11,10 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 23 November 2026
 
+**UnweldEdge for meshes, as Rhino 8 measured:** each point on the picked edges gets a vertex for each side, ends included,
+and with ModifyNormals (Yes, as Rhino) each copy the normal of its side; a mesh box gives Rhino's vertex counts and normals.
+SharpCorners is still to come. `Mesh::with_edges_unwelded`.
+
 **Bevel for joined edges:** edges joined end to end bevel as one run, a row at each point and caps only at open ends, as
 Rhino 8 measured (two in a row: 32 faces on 35 points; a loop round the box: 48 quads on 50 points). `SubD::bevelled_run`.
 
