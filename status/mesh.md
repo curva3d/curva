@@ -11,6 +11,14 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 23 November 2026
 
+**SubDLoft, partly, as Rhino 8 measured:** curves become rings of cage points joined by quads, end rings creased; closed
+curves give their own control points (three circles: Rhino's 24 points and 16 faces), polylines their corners and
+thirds, and DivisionsAlong adds rings between. Open smooth curves go through Rhino's SubD friendly fit, which moves the
+points next to the ends by an amount not yet worked out, so they are refused for now. `SubD::lofted`, `loft_ring`.
+
+**InsertPoint on meshes measured, not built:** typed points add nothing and drop three faces in Rhino, so it needs real
+clicks in a view to measure.
+
 **UnweldEdge for meshes, as Rhino 8 measured:** each point on the picked edges gets a vertex for each side, ends included,
 and with ModifyNormals (Yes, as Rhino) each copy the normal of its side; a mesh box gives Rhino's vertex counts and normals.
 SharpCorners is still to come. `Mesh::with_edges_unwelded`.
