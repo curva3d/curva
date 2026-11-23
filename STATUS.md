@@ -13,9 +13,9 @@ status page, so two sessions never edit the same file:
 
 Read all three before starting work; write only yours. Who owns what is in `AGENTS.md`.
 
-**Releases renumbered on 22 November 2026 at the owner's request:** the 0.4 series is now 0.1 and the four before it 0.0.1–0.0.4 (table in [`docs/releases/README.md`](docs/releases/README.md)); the next release is **0.1.6**.
+**Releases renumbered on 22 November 2026 at the owner's request:** the 0.4 series is now 0.1 and the four before it 0.0.1–0.0.4 (table in [`docs/releases/README.md`](docs/releases/README.md)); the next release after them was **0.1.6**.
 
-**0.1.5 was published on 21 November 2026 at the owner's request, with what was on `main`** (notes:
-[`docs/releases/v0.1.5.md`](docs/releases/v0.1.5.md)). 0.1.4 was published the same morning (decision
-0039). Open items from the owner's first impressions stay in the GitHub milestone **0.1.5**, now for
-the next update; work on those first. New work goes into the next update unless the owner adds it.
+**0.1.6 was published on 23 November 2026 at the owner's request, with what was on `main`** (notes:
+[`docs/releases/v0.1.6.md`](docs/releases/v0.1.6.md)): the new interface, SubD and mesh commands measured
+against Rhino 8, and display modes as styles. Open items from the owner's first impressions stay in
+the GitHub milestone **0.1.5**, now for the next update; work on those first. New work goes into the next update unless the owner adds it.
