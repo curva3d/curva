@@ -98,6 +98,7 @@ mod tests {
         assert_eq!(bytes.len() as u64, 2 * CIRCLE_SIZE);
         assert_eq!(&bytes[..4], &1.0f32.to_le_bytes());
         assert_eq!(&bytes[48..52], &(-2.0f32).to_le_bytes());
-        assert_eq!(&bytes[52..56], &9u32.to_le_bytes());
+        // Its object number, with its kind in the top byte.
+        assert_eq!(&bytes[52..56], &((1u32 << 24) | 9).to_le_bytes());
     }
 }

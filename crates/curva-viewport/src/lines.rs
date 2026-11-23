@@ -499,7 +499,12 @@ pub(crate) fn lines_of(
         } else {
             dashed(&mut out, &points, dashes, colour, width);
         }
-        let kind = line_kind(outlines, index);
+        // A line drawn selected here, in the selection colour, keeps that look.
+        let kind = if selected.contains(id) {
+            LineKind::Given
+        } else {
+            line_kind(outlines, index)
+        };
         let number = numbers.and_then(|numbers| numbers.get(id)).copied();
         for vertex in &mut out[start..] {
             vertex.kind = kind;

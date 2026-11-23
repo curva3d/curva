@@ -109,23 +109,4 @@ mod tests {
             crate::sheets::MASSING_SKY
         );
     }
-
-    #[test]
-    fn each_mode_draws_with_the_built_in_style_of_its_name() {
-        for mode in crate::grid::DISPLAY_MODES {
-            let style = mode_view_style(mode);
-            assert_eq!(style.name, format!("{mode:?}"));
-            assert_eq!(Some(style), ViewStyle::built_in(&format!("{mode:?}")));
-        }
-    }
-
-    #[test]
-    fn hidden_and_massing_keep_their_backgrounds() {
-        let white = egui::Color32::WHITE;
-        assert_eq!(style_background(&ViewStyle::hidden()), (white, white));
-        assert_eq!(
-            style_background(&ViewStyle::massing()),
-            crate::sheets::MASSING_SKY
-        );
-    }
 }

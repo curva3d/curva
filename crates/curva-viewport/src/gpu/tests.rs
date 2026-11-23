@@ -502,7 +502,7 @@ fn the_hidden_mode_draws_black_ink_on_white_paper() {
             colour,
             width: -2.0,
             object: NO_OBJECT,
-            kind: crate::LineKind::Given,
+            kind: crate::LineKind::Curve,
         })
     };
     // In front of the face across the middle, and behind it lower down.
@@ -570,7 +570,7 @@ fn the_technical_mode_dots_the_lines_faces_hide() {
         colour: [1.0, 1.0, 1.0],
         width: -2.0,
         object: NO_OBJECT,
-        kind: crate::LineKind::Given,
+        kind: crate::LineKind::Curve,
     });
     let picture = Picture {
         lines: lines.to_vec(),
@@ -615,7 +615,7 @@ fn the_clay_mode_draws_white_faces_and_black_lines() {
         colour: [1.0, 0.0, 0.0],
         width: -2.0,
         object: NO_OBJECT,
-        kind: crate::LineKind::Given,
+        kind: crate::LineKind::Curve,
     });
     let picture = Picture {
         lines: lines.to_vec(),

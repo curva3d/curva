@@ -11,6 +11,21 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 ## 23 November 2026
 
 **Done**
+- **Step 6, part 2b: each kind of line drawn as the style says, on the graphics card.** Every
+  line now carries its kind (curve, NURBS edge, seam, mesh wire, SubD crease or border, SubD cage
+  edge, annotation, or as given for previews, markers, the grid and locked objects), packed into
+  the top byte of the object number it already had, so lines take no more memory. Each view sends
+  a small table, worked out from its style (`LineTable::from_style`): each kind's colour (its own
+  or one), width (its own times a factor, or fixed millimetres, all times the style's line
+  weight) and whether it shows, plus hidden lines' look. The line program looks each line up, so
+  a style change will show at once with nothing rebuilt. Hidden's black ink is now just its
+  table; the separate ink program is gone. Nothing looks different, except that locked objects
+  stay grey in Hidden and Technical (they turned black; Rhino keeps them grey). In the style
+  model, mesh wires and SubD lines can now take their object's colour as well as one colour or
+  the edges', as they draw today. New tests on the graphics card: an edge takes its style's
+  colour while a curve keeps its own; a kind turned off draws nothing while a preview always
+  draws; a fixed width and the line weight set how thick lines draw; Hidden inks model lines
+  and leaves previews their colour; and the tables of the built-in styles.
 - **Step 6, part 2a: the style model and style files** (owner, 23 November 2026, after mock-ups of
   the Style panel: "let's build it… focus on the inherent code and make this well done; UI will
   change after the features stream is done revising the UI look"). The owner's decisions are in
