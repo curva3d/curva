@@ -13,6 +13,8 @@ use curva_kernel::{Curve, Point};
 
 #[cfg(test)]
 mod choice_tests;
+#[cfg(test)]
+mod cursor_tests;
 mod options;
 mod run;
 mod steps;
@@ -184,9 +186,21 @@ pub struct Context<'a> {
     /// How many of `values` are real answers; for the preview, the rest stand in for the step
     /// being asked.
     pub answered: usize,
+    /// Where the pointer is: in the preview, as it moves, also while a number is typed; for the
+    /// result, where it was when the latest answer was given. `None` off the views, or for an
+    /// answer given without it, as in a script.
+    cursor: Option<Point>,
 }
 
 impl Context<'_> {
+    /// Where the pointer is, or was when the latest answer was given, snaps and typed
+    /// constraints applied: so a typed amount can go on the side the pointer is on, as Rhino puts
+    /// it. See the `cursor` field.
+    #[must_use]
+    pub fn cursor(&self) -> Option<Point> {
+        self.cursor
+    }
+
     /// A yes-or-no option's value.
     #[must_use]
     pub fn toggle(&self, name: &str) -> bool {

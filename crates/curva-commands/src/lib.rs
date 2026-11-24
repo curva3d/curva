@@ -458,4 +458,9 @@ pub trait Command {
     fn preview_bodies(&self, _doc: &Document, _live: &Live) -> Vec<curva_kernel::Body> {
         Vec::new()
     }
+
+    /// Where the pointer was when the next answer is given (`None` for one given without it, as
+    /// in a script), so a typed number can go on the side the pointer is on. Called just before
+    /// [`Self::step`] with that answer.
+    fn note_cursor(&mut self, _cursor: Option<Point>) {}
 }
