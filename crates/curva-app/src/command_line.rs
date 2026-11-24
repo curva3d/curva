@@ -205,9 +205,13 @@ impl Curva {
             kind(ui, &mut snaps.center, SnapKind::Center);
             kind(ui, &mut snaps.intersection, SnapKind::Intersection);
             kind(ui, &mut snaps.perpendicular, SnapKind::Perpendicular);
+            kind(ui, &mut snaps.tangent, SnapKind::Tangent);
             kind(ui, &mut snaps.quad, SnapKind::Quad);
             kind(ui, &mut snaps.point, SnapKind::Point);
             kind(ui, &mut snaps.near, SnapKind::Near);
+            ui_kit::divider(ui);
+            let project = text.render(&Message::new("ui.snap.project"));
+            ui_kit::toggle_when(ui, on, &mut snaps.project, project);
         });
     }
 
