@@ -268,6 +268,12 @@ impl Curva {
         clicked
     }
 
+    /// Hands a typed line to the running command, with where the pointer aims, so a typed amount
+    /// can go on the side the pointer is on.
+    fn submit_line(&mut self, line: &str) {
+        self.processor.submit_at(&mut self.doc, line, self.last_aim);
+    }
+
     pub(crate) fn command_line(&mut self, ui: &mut egui::Ui) {
         self.command_history(ui);
         let below_from = ui.cursor().min.y;
@@ -338,7 +344,7 @@ impl Curva {
                 Some(at) if line.is_empty() && self.processor.lock().is_set() => {
                     self.processor.click(&mut self.doc, at);
                 }
-                _ => self.processor.submit(&mut self.doc, &line),
+                _ => self.submit_line(&line),
             }
         }
         if ui.input(|input| input.key_pressed(egui::Key::Escape)) {

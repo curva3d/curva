@@ -36,6 +36,16 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 - Not yet: pictures of each style drawn from the model (the swatch shows only its background),
   Reset to the style it was copied from, marking a model style that differs from My styles' copy.
 
+## Features stream — 24 November 2026 (pointer with a typed number)
+
+- **For the mesh stream's InsertEdge:** a command now knows where the pointer is when a number
+  is typed, so the amount can go on that side, as Rhino does. `Context::cursor()` gives the
+  pointer's point, snaps and typed constraints applied. In the preview it follows the pointer, also
+  while a number is typed (the preview is made afresh as the pointer moves then). In `make` it is
+  where the pointer was when the answer was given: `Processor::submit_at(doc, typed, cursor)`,
+  which the command line uses on Enter; a click gives its own point; `submit` gives `None`.
+  Commands hear it through `Command::note_cursor`, called just before `step`.
+
 ## Features stream — 24 November 2026 (Layers columns)
 
 - **The Layers table fits its panel:** no sideways scrolling. The Name column takes the room the
