@@ -11,6 +11,14 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 ## 24 November 2026
 
 **Done**
+- **Step 6, part 5: lines dashed, dotted and see-through as the style says.**
+  - Hidden lines now take their style's pattern (solid, dashed or dotted) and opacity. Before, they were always dotted and solid.
+  - Curves and edges take the style's pattern too. Objects' own line types still apply as before.
+  - Each kind of line's pattern and opacity travel in the line table the graphics card already reads, so a change shows at once.
+  - Sizes on screen: dashes 8 pixels with 4-pixel gaps; dots 3 pixels with 3-pixel gaps, as Technical's were.
+  - A selected line keeps its pattern but is never see-through.
+  - Nothing looks different in the built-in styles: Technical's hidden lines stay dotted.
+  - New tests on the graphics card: curves solid, dashed or dotted as the style says; a see-through kind of line lets the background through. Also new: the table keeps each kind's pattern and opacity.
 - **Step 6, part 4: lines thin and fade with distance** (spec §2.2 "by distance", §4.1). A style
   whose line rules say "by distance" now draws lines as they are up to its near distance, then
   thinner and fainter toward its far distance, and as thin and faint as it says from there on.
