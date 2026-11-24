@@ -90,7 +90,13 @@ impl Curva {
             ui.label(ui_kit::quiet(self.doc.state().unit.symbol()));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 self.current_layer_choice(ui);
-                ui.label(ui_kit::quiet(self.text.render(&Message::new("ui.layer"))));
+                // The word "Layer" only where long coordinates leave room for it, so they never run
+                // into each other.
+                let word = self.text.render(&Message::new("ui.layer"));
+                let font = egui::TextStyle::Body.resolve(ui.style());
+                if ui.available_width() > ui_kit::text_width(ui, &word, &font) + ui_kit::ITEM_GAP {
+                    ui.label(ui_kit::quiet(word));
+                }
             });
         });
     }

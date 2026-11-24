@@ -36,6 +36,15 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 - Not yet: pictures of each style drawn from the model (the swatch shows only its background),
   Reset to the style it was copied from, marking a model style that differs from My styles' copy.
 
+## Features stream — 24 November 2026 (Layers columns)
+
+- **The Layers table fits its panel:** no sideways scrolling. The Name column takes the room the
+  others leave; where they do not all fit, the others give up what they have above their least
+  widths, each in proportion, before the Name column narrows (`fit_columns` in
+  `panels/layer_table.rs`).
+- **Status panel:** with long coordinates the word "Layer" is left out, so the two never overlap;
+  the layer dropdown stays.
+
 ## Features stream — 24 November 2026 (Tan and Project snaps)
 
 - **Tan** (Rhino's Tan snap, from the last point): where a line from the last point touches a
