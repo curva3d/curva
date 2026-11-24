@@ -36,6 +36,19 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 - Not yet: pictures of each style drawn from the model (the swatch shows only its background),
   Reset to the style it was copied from, marking a model style that differs from My styles' copy.
 
+## Features stream — 24 November 2026 (Tan and Project snaps)
+
+- **Tan** (Rhino's Tan snap, from the last point): where a line from the last point touches a
+  curve, in `crates/curva-viewport/src/snap/tangent.rs`. The curve's drawn segments are searched;
+  where the line from the last point passes from one side to the other between two segments
+  turning less than 20°, the circle through that point and its neighbours gives the exact place,
+  the true tangent point on circles and arcs. Polyline corners give none. Not yet: Tan as the
+  first point (Rhino's tangent-from).
+- **Project** (Rhino's Project): a switch at the end of the Osnap row; a snapped point moves
+  straight onto the construction plane (`aiming::onto`). Built from Rhino's own description of
+  the two snaps, not measured in Rhino, as picks cannot be scripted there.
+- Both off at first; `SnapSet` gains `tangent` and `project`, `SnapKind` gains `Tangent`.
+
 ## Features stream — 23 November 2026 (website UI kit)
 
 - **One UI kit for the web, like the app's `ui_kit.rs`:** `website/public/assets/kit.css` holds every
