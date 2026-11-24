@@ -6,11 +6,15 @@
 
 mod builtin;
 mod file;
+pub(crate) mod kept;
+mod library;
 mod objects;
 mod value;
 
 pub use builtin::BUILT_IN;
 pub use file::{Problem, ReadStyle};
+pub use kept::{StyleError, built_in_name};
+pub use library::{EXTENSION, Library, LibraryError, LibraryStyle};
 pub use objects::*;
 
 /// A colour, red, green and blue from 0 to 255; written `#rrggbb` in style files.
@@ -515,5 +519,7 @@ impl Default for ViewStyle {
     }
 }
 
+#[cfg(test)]
+mod storage_tests;
 #[cfg(test)]
 mod tests;
