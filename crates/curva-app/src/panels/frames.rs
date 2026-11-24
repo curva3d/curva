@@ -125,6 +125,7 @@ fn closes_without_asking(pieces: &[layout::Piece]) -> bool {
                     | Piece::Blocks
                     | Piece::AnnotationStyles
                     | Piece::Notes
+                    | Piece::Styles
             )
         })
 }
@@ -559,6 +560,7 @@ impl Curva {
                 ui_kit::scroll(ui, Scroll::Down, |ui| self.annotation_styles_panel(ui));
             }
             Piece::Notes => ui_kit::scroll(ui, Scroll::Down, |ui| self.notes_panel(ui)),
+            Piece::Styles => self.style_panel(ui),
             Piece::Print => ui_kit::scroll(ui, Scroll::Down, |ui| self.print_panel(ui)),
         }
     }

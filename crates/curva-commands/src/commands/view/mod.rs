@@ -8,6 +8,7 @@ pub(crate) mod named_view;
 pub(crate) mod perspective;
 pub(crate) mod right;
 pub(crate) mod set_display_mode;
+mod styles;
 mod support;
 pub(crate) mod top;
 pub(crate) mod view_history;
@@ -56,4 +57,5 @@ pub(crate) static COMMANDS: &[crate::commands::CommandDef] = &[
         false,
         set_display_mode::SetDisplayMode
     ),
+    listed!("Styles", [], false, false, styles::Styles),
 ];

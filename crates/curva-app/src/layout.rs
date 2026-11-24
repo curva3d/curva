@@ -47,11 +47,13 @@ pub enum Piece {
     Print,
     /// The model's notes (`Notes`).
     Notes,
+    /// The view styles (`Styles`).
+    Styles,
 }
 
 impl Piece {
     /// Every piece, in their standard order.
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 13] = [
         Self::CommandTabs,
         Self::Layers,
         Self::Properties,
@@ -64,6 +66,7 @@ impl Piece {
         Self::AnnotationStyles,
         Self::Print,
         Self::Notes,
+        Self::Styles,
     ];
 
     /// Its name's key in the translation file.
@@ -82,6 +85,7 @@ impl Piece {
             Self::AnnotationStyles => "ui.piece.annotationstyles",
             Self::Print => "ui.piece.print",
             Self::Notes => "ui.piece.notes",
+            Self::Styles => "ui.piece.styles",
         }
     }
 }
@@ -278,6 +282,7 @@ impl Default for Layout {
                 Piece::AnnotationStyles,
                 Piece::Print,
                 Piece::Notes,
+                Piece::Styles,
             ],
             layer_columns: STANDARD_LAYER_COLUMNS,
         }
@@ -286,6 +291,23 @@ impl Default for Layout {
 
 /// The size a panel brought back without a standard place opens at, as Settings does.
 pub const FLOATING_STANDARD: Vec2 = vec2(560.0, 460.0);
+
+/// How wide the Style panel opens.
+pub const STYLES_WIDTH: f32 = 440.0;
+
+/// Where a panel brought back without a standard place opens, from the window's top left, and
+/// its size: the Style panel as a tall column beside the Layers panel, as in its mock-up; the
+/// others in the middle, as Settings opens.
+fn opening_place(piece: Piece, window: Rect) -> (Pos2, Vec2) {
+    if piece == Piece::Styles {
+        let free = window.height() - COMMAND_TABS_HEIGHT - BOTTOM_HEIGHT - 7.0 * GAP;
+        let size = vec2(STYLES_WIDTH, free.max(FLOATING_STANDARD.y));
+        let x = window.width() - SIDE_WIDTH - 2.0 * GAP - STYLES_WIDTH;
+        return (pos2(x.max(GAP), 2.0 * GAP + COMMAND_TABS_HEIGHT), size);
+    }
+    let size = FLOATING_STANDARD;
+    (window.center() - size / 2.0 - window.min.to_vec2(), size)
+}
 
 /// The widest the command bar is in the standard arrangement.
 pub const COMMAND_WIDTH: f32 = 720.0;
@@ -601,9 +623,8 @@ impl Layout {
             .find(|p| p.pieces.contains(&piece))
             .map_or_else(
                 || {
-                    let size = FLOATING_STANDARD;
-                    let centred = window.center() - size / 2.0 - window.min.to_vec2();
-                    let corner = self.beside_floating(centred, size, window);
+                    let (wanted, size) = opening_place(piece, window);
+                    let corner = self.beside_floating(wanted, size, window);
                     Place::new(
                         vec![piece],
                         Dock::Floating {

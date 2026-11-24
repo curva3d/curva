@@ -415,6 +415,7 @@ impl Curva {
             ViewRequest::ShowBlocks => self.open_piece(layout::Piece::Blocks),
             ViewRequest::ShowLayouts => self.open_piece(layout::Piece::Layouts),
             ViewRequest::ShowAnnotationStyles => self.open_piece(layout::Piece::AnnotationStyles),
+            ViewRequest::ShowStyles => self.open_piece(layout::Piece::Styles),
             ViewRequest::Print(job) => self.print(&job),
             ViewRequest::ShowPrint => self.open_piece(layout::Piece::Print),
             ViewRequest::ShowNotes => self.open_piece(layout::Piece::Notes),
