@@ -28,6 +28,11 @@ pub struct SavedView {
     /// view saved before lenses were kept, or with the standard lens.
     #[serde(default)]
     pub lens: Option<f64>,
+    /// The style it draws with, by name: the model's own style or a built-in one
+    /// ([`Document::style_named`]). `None` keeps the viewport's display mode, as views saved
+    /// before styles were kept do.
+    #[serde(default)]
+    pub style: Option<String>,
 }
 
 impl Document {
@@ -141,6 +146,7 @@ mod tests {
             axes: None,
             parallel: false,
             lens: None,
+            style: None,
         }
     }
 
@@ -244,6 +250,7 @@ mod opened_tests {
             axes: None,
             parallel: kind != "Perspective",
             lens: None,
+            style: None,
         }
     }
 

@@ -485,7 +485,7 @@ impl Curva {
         if self.shows_sheet(pane) {
             (PAPER, PAPER)
         } else {
-            mode_background(self.panes[pane].display)
+            crate::styles::style_background(&self.pane_view_style(pane))
         }
     }
 
