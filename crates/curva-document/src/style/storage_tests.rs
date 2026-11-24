@@ -155,3 +155,30 @@ fn styles_whose_file_names_clash_get_files_of_their_own() {
     assert_eq!(library.list().len(), 2);
     let _ = std::fs::remove_dir_all(&folder);
 }
+
+#[test]
+fn saved_views_follow_a_renamed_style() {
+    let mut doc = Document::default();
+    doc.save_style(named("Diagram")).unwrap();
+    let view = |name: &str, style: Option<&str>| crate::SavedView {
+        name: name.to_owned(),
+        kind: "Top".to_owned(),
+        target: [0.0; 3],
+        yaw: 0.0,
+        pitch: 0.0,
+        distance: 10.0,
+        axes: None,
+        parallel: true,
+        lens: None,
+        style: style.map(str::to_owned),
+    };
+    doc.save_view(view("Plan", Some("diagram")));
+    doc.save_view(view("Other", Some("Ghosted")));
+    doc.save_view(view("Old", None));
+    doc.rename_style("Diagram", "Study").unwrap();
+    let styles: Vec<_> = doc.views().iter().map(|v| v.style.clone()).collect();
+    assert_eq!(
+        styles,
+        [Some("Study".to_owned()), Some("Ghosted".to_owned()), None]
+    );
+}

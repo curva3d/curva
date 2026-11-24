@@ -11,6 +11,20 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 ## 23 November 2026
 
 **Done**
+- **Step 6, part 3b: views remember a style by name** (spec §2.1: a view holds its own style).
+  A viewport now holds a style name beside its display mode: a built-in name just sets the
+  display mode, any other names one of the model's styles, looked up as the viewport is drawn,
+  so editing it shows on the next frame with nothing rebuilt; if it is deleted, the viewport falls
+  back to its display mode's built-in style. Choosing a display mode forgets the style; switching
+  a viewport to another standard view keeps it. Saved views now keep the style they were saved
+  with (`SavedView::style`, absent in older files) and bring it back when restored, and renaming
+  a model's style renames it in the saved views and viewports drawing with it. A viewport's
+  background and lines (dark edges for solid faces) now follow its style rather than its display
+  mode. In the app (`styles.rs`): `Pane::set_style`, `set_display`, `style_name`;
+  `Curva::pane_view_style`, `pane_style`, `set_pane_style`, `rename_style`. Nothing looks
+  different with the built-in modes. New tests: a viewport takes a built-in style as its display
+  mode and others by name; a viewport shows its model style's edits at once and falls back when
+  it is deleted; saved views follow a renamed style.
 - **Step 6, part 3a: styles saved in the model and in "My styles"** (spec §2.4, owner's decision
   C), for the Style panel the features stream is building. A model now keeps its own styles in
   its `.curva` file, each as its `.curvastyle` text so settings a later Curva adds survive;
