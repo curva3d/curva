@@ -21,8 +21,9 @@ const TYPES: [&str; 2] = ["Loop", "Ring"];
 const MODE: &str = "Mode";
 const RANGES: [&str; 2] = ["Full", "Range"];
 
-/// The side a typed amount goes on: the one that puts the run on the front of Rhino's box, as
-/// Rhino did (see `curva_mesh::insert_edge`'s tests).
+/// The side a typed amount goes on when the pointer is not known: the one that puts the run on
+/// the front of Rhino's box, as Rhino did (see `curva_mesh::insert_edge`'s tests). With the
+/// pointer known, a typed amount goes on its side, as Rhino puts it on the side the mouse is on.
 const TYPED_SIDE: InsertSide = InsertSide::Along;
 
 /// The recipe.
@@ -108,7 +109,10 @@ fn insert_one(
         return subd.with_ring_cut(edge, share).map(Some).map_err(failed);
     }
     let (size, side) = match answer {
-        Value::Number(n) => (*n, TYPED_SIDE),
+        Value::Number(n) => {
+            let side = cx.cursor().map_or(TYPED_SIDE, |p| side_of(subd, edge, p));
+            (*n, side)
+        }
         other => {
             let Some(p) = other.point() else {
                 return Ok(None);
@@ -245,9 +249,9 @@ mod tests {
     fn a_range_inserts_beside_just_its_edges_as_rhino_did() {
         // Rhino 8 with Mode=Range: the lower and upper middle edges of the measured box's front
         // and 0.5 give a run beside just them at x = 202.5: 26 faces on 29 points. Rhino puts a
-        // typed amount on the side the mouse is on, which Curva does not know yet, so a typed
-        // 0.5 is checked for its counts and a click 0.5 to the right for Rhino's exact result.
-        let ranged = |amount: &str| {
+        // typed amount on the side the mouse is on: a typed 0.5 with the pointer to either side
+        // and a click 0.5 to the right all give that run on their side.
+        let ranged = |amount: &str, pointer: Option<[f64; 3]>| {
             let frame = Frame {
                 origin: [200.0, 0.0, 0.0],
                 ..Frame::world()
@@ -263,13 +267,20 @@ mod tests {
             let id = doc.add_shape(Shape::SubD(subd));
             doc.select_mesh_parts(&[(id, low), (id, high)]);
             let mut processor = crate::Processor::default();
-            for word in ["insertedge", "Mode", "Range", "", amount] {
+            for word in ["insertedge", "Mode", "Range", ""] {
                 processor.submit(&mut doc, word);
             }
+            processor.submit_at(&mut doc, amount, pointer);
             doc.state().objects[0].shape.subd().unwrap().clone()
         };
-        for amount in ["0.5", "202.5,0,1"] {
-            let out = ranged(amount);
+        let cases = [
+            ("0.5", None, None),
+            ("0.5", Some([202.4, 0.0, 1.0]), Some(202.5)),
+            ("0.5", Some([201.6, 0.0, 1.0]), Some(201.5)),
+            ("202.5,0,1", None, Some(202.5)),
+        ];
+        for (amount, pointer, side) in cases {
+            let out = ranged(amount, pointer);
             assert_eq!(
                 (out.cage().face_count(), out.cage().vertex_count()),
                 (26, 29),
@@ -282,8 +293,11 @@ mod tests {
                 (x - 202.0).abs() - 0.5 < 1e-12,
                 "half a metre to one side: {x}"
             );
-            if amount.contains(',') {
-                assert!((x - 202.5).abs() < 1e-12, "the clicked side, as Rhino: {x}");
+            if let Some(side) = side {
+                assert!(
+                    (x - side).abs() < 1e-12,
+                    "the pointer's side, as Rhino: {x}"
+                );
             }
         }
     }

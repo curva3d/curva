@@ -11,6 +11,10 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 24 November 2026
 
+**InsertEdge follows the pointer:** a typed amount now goes on the side of the picked edge the pointer is on, as Rhino 8
+puts it on the side the mouse is on, in the preview and when Enter is pressed (the features stream's `Context::cursor`,
+#661). Without a pointer it keeps the one fixed side.
+
 **MultiPipe on curved curves, as Rhino 8 measured:** Rhino pipes a curved curve as the polyline through points on it,
 with the same rings, struts, mitres and junctions as a drawn polyline. Each part of the curve is halved at the middle of
 its parameter range, always once, then each piece again while its chord is at least 3 × the radius long and either at
