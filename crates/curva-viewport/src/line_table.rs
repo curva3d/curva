@@ -3,7 +3,7 @@
 //! rebuilt.
 
 use crate::{LINE_KINDS, LineKind};
-use curva_document::style::{self, FacedKind, LineWidth, ViewStyle};
+use curva_document::style::{self, FacedKind, LineWidth, Pattern, ViewStyle};
 
 /// Where hidden lines' look is kept, after the kinds of line.
 pub(crate) const HIDDEN_SLOT: usize = LINE_KINDS;
@@ -23,6 +23,10 @@ pub struct KindLook {
     pub factor: f32,
     /// A width in millimetres instead of each line's own.
     pub fixed: Option<f32>,
+    /// Solid, or dashed or dotted along the line on screen.
+    pub pattern: Pattern,
+    /// 0 (invisible) to 1 (solid): how much of what is behind shows through.
+    pub opacity: f32,
 }
 
 impl KindLook {
@@ -32,6 +36,8 @@ impl KindLook {
         colour: None,
         factor: 1.0,
         fixed: None,
+        pattern: Pattern::Solid,
+        opacity: 1.0,
     };
 }
 
@@ -56,17 +62,24 @@ impl LineTable {
     }
 
     /// The table as the graphics card reads it: for each look, its colour and whether to use
-    /// it, then its factor, its fixed width (below zero for none) and whether it shows.
+    /// it, then its factor, its fixed width (below zero for none), whether it shows, and its
+    /// pattern and opacity as one number: 0, 1 or 2 for solid, dashed or dotted, plus a
+    /// tenth of how see-through it is (so 2.05 is dotted and half see-through).
     pub(crate) fn rows(&self) -> [[f32; 4]; LINE_ROWS] {
         let mut rows = [[0.0; 4]; LINE_ROWS];
         for (slot, look) in self.0.iter().enumerate() {
             let [r, g, b] = look.colour.unwrap_or([0.0; 3]);
             rows[2 * slot] = [r, g, b, if look.colour.is_some() { 1.0 } else { 0.0 }];
+            let pattern = match look.pattern {
+                Pattern::Solid => 0.0,
+                Pattern::Dashed => 1.0,
+                Pattern::Dotted => 2.0,
+            };
             rows[2 * slot + 1] = [
                 look.factor,
                 look.fixed.unwrap_or(-1.0),
                 if look.shown { 1.0 } else { 0.0 },
-                0.0,
+                pattern + (1.0 - look.opacity.clamp(0.0, 1.0)) * 0.1,
             ];
         }
         rows
@@ -86,6 +99,7 @@ impl LineTable {
                 colour,
                 factor,
                 fixed,
+                ..KindLook::GIVEN
             }
         };
         let edges = &view.nurbs.edges;
@@ -128,7 +142,16 @@ impl LineTable {
             look(annotation.text, annotation_colour, LineWidth::Object(1.0)),
         );
         let hidden = &view.hidden_lines;
-        table.0[HIDDEN_SLOT] = look(hidden.shown, Some(hidden.colour.to_f32()), hidden.width);
+        table.0[HIDDEN_SLOT] = KindLook {
+            pattern: hidden.pattern,
+            opacity: hidden.opacity,
+            ..look(hidden.shown, Some(hidden.colour.to_f32()), hidden.width)
+        };
+        // Patterns the style gives curves and edges; the objects' own line types still apply.
+        table.0[LineKind::Curve as usize].pattern = view.curves.pattern;
+        for kind in [LineKind::Edge, LineKind::Seam] {
+            table.0[kind as usize].pattern = edges.pattern;
+        }
         table
     }
 }
@@ -204,6 +227,30 @@ mod tests {
         assert_eq!(table.of(LineKind::Curve).fixed, Some(0.7));
         let edge = table.of(LineKind::Edge);
         assert_eq!((edge.factor, edge.fixed, edge.shown), (3.0, None, false));
+    }
+
+    #[test]
+    fn hidden_lines_curves_and_edges_take_the_style_s_pattern_and_opacity() {
+        let mut view = ViewStyle::technical();
+        view.hidden_lines.pattern = Pattern::Dashed;
+        view.hidden_lines.opacity = 0.5;
+        view.curves.pattern = Pattern::Dotted;
+        let table = LineTable::from_style(&view);
+        let hidden = table.hidden();
+        assert_eq!((hidden.pattern, hidden.opacity), (Pattern::Dashed, 0.5));
+        assert_eq!(table.of(LineKind::Curve).pattern, Pattern::Dotted);
+        assert_eq!(table.of(LineKind::Edge).pattern, Pattern::Solid);
+        assert_eq!(
+            LineTable::from_style(&ViewStyle::technical())
+                .hidden()
+                .pattern,
+            Pattern::Dotted,
+            "Technical's hidden lines stay dotted"
+        );
+        let rows = table.rows();
+        let hidden_row = rows[2 * HIDDEN_SLOT + 1][3];
+        assert!((hidden_row - 1.05).abs() < 1e-6, "dashed, half see-through");
+        assert!((rows[2 * LineKind::Curve as usize + 1][3] - 2.0).abs() < 1e-6);
     }
 
     #[test]
