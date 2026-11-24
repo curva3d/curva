@@ -4,30 +4,21 @@
 //!
 //! A run leaving a junction starts at its line's face of the block: its rings start square to
 //! the face (turned to the average of the face's corners), Struts rings sit evenly between the
-//! farthest corner of the face and the next corner or end, and rings turn with the line round
-//! bends as in a lone pipe. A run joining two junctions turns its rings by the least turn that
-//! lines them up with the second junction's face, spread evenly over its last segment's rings
-//! (Rhino: 7.5°, 15°, 22.5° for a 30° twist with Struts=3; none of the turn before a bend). An
-//! H of three lines gives 46 points with Struts=1, a T 29.
+//! farthest corner of the face and the next corner or end, and rings turn round bends as in a lone
+//! pipe: each segment's rings turn evenly by the least turn that lines them up with the next
+//! corner's bend, or with the second junction's face on a run joining two (Rhino: 7.5°, 15°,
+//! 22.5° for a 30° twist with Struts=3; from a junction 30° off the first bend, 20° and 10° with
+//! Struts=2). An H of three lines gives 46 points with Struts=1, a T 29.
 
 use crate::subd_pipe::{
-    PipeOptions, add, cross, dot, mitred, rings, scale, sub, transported, unit,
+    PipeOptions, add, bent, cross, dot, mitred, rings, rotated, scale, sub, transported, twist,
+    unit,
 };
-use crate::subd_pipe_node::{Node, node, quarter_wrapped};
+use crate::subd_pipe_node::{Node, node};
 use crate::{Mesh, SmoothError, SubD};
 use std::collections::BTreeMap;
 
 type Point = [f64; 3];
-
-/// `v` (square to `d`) turned by `angle` round `d`.
-fn rotated(v: Point, d: Point, angle: f64) -> Point {
-    add(scale(v, angle.cos()), scale(cross(d, v), angle.sin()))
-}
-
-/// The angle round `d` from `u` to the nearest of the four ring directions of `f`.
-fn twist(u: Point, f: Point, d: Point) -> f64 {
-    quarter_wrapped(dot(d, cross(u, f)).atan2(dot(u, f)))
-}
 
 /// Where a run starts or ends at a junction.
 #[derive(Clone, Copy)]
@@ -51,12 +42,6 @@ fn joined_rings(
         .map(|w| unit(sub(w[1], w[0])).ok_or_else(bad))
         .collect::<Result<_, _>>()?;
     let last = m - 2;
-    let mut frames = vec![start.frame];
-    for s in 1..=last {
-        let next = transported(frames[s - 1], dirs[s - 1], dirs[s]);
-        frames.push(unit(next).unwrap_or(frames[s - 1]));
-    }
-    let turn = end.map_or(0.0, |e| twist(frames[last], e.frame, dirs[last]));
     let size = 1.5 * options.radius;
     let clear = |s: usize| {
         let c = dot(dirs[s - 1], dirs[s]).clamp(-1.0, 1.0);
@@ -67,6 +52,8 @@ fn joined_rings(
         [u1, u2, scale(u1, -1.0), scale(u2, -1.0)].map(|o| add(centre, scale(o, size)))
     };
     let mut out = Vec::new();
+    let mut u1 = start.frame;
+    let mut end_frame = u1;
     for s in 0..=last {
         let length = dot(sub(points[s + 1], points[s]), dirs[s]);
         let from = if s == 0 { start.reach } else { clear(s) };
@@ -76,30 +63,27 @@ fn joined_rings(
             } else {
                 clear(s + 1)
             };
+        // The rings turn evenly along the segment to the next corner's bend, or the face at the
+        // far junction.
+        let turn = if s < last {
+            twist(u1, bent(u1, dirs[s], dirs[s + 1]), dirs[s])
+        } else {
+            end.map_or(0.0, |e| twist(u1, e.frame, dirs[s]))
+        };
         #[allow(clippy::cast_precision_loss)]
         for k in 1..=options.struts {
             let part = k as f64 / (options.struts + 1) as f64;
-            let u = if s == last {
-                rotated(frames[s], dirs[s], turn * part)
-            } else {
-                frames[s]
-            };
-            out.push(ring_at(
-                add(points[s], scale(dirs[s], from + (to - from) * part)),
-                u,
-                dirs[s],
-            ));
+            let centre = add(points[s], scale(dirs[s], from + (to - from) * part));
+            out.push(ring_at(centre, rotated(u1, dirs[s], turn * part), dirs[s]));
         }
+        let u = rotated(u1, dirs[s], turn);
         if s < last {
-            out.push(mitred(
-                points[s + 1],
-                frames[s],
-                [dirs[s], dirs[s + 1]],
-                size,
-            ));
+            out.push(mitred(points[s + 1], u, [dirs[s], dirs[s + 1]], size));
+            u1 = unit(transported(u, dirs[s], dirs[s + 1])).unwrap_or(u);
+        } else {
+            end_frame = u;
         }
     }
-    let end_frame = rotated(frames[last], dirs[last], turn);
     if end.is_none() {
         out.push(ring_at(points[m - 1], end_frame, dirs[last]));
     }
