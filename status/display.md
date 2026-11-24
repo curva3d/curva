@@ -11,6 +11,15 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 ## 24 November 2026
 
 **Done**
+- **Step 6, part 6: outlines as wide as the style says** (spec §2.1, Outlines: width).
+  Outlines used to come in two widths only: thin (two pixels) or thick (three, for widths over
+  0.5 mm). They now draw at the style's width in millimetres, turned into pixels for the screen
+  (`OutlineLook::pixels`). They are never thinner than the default line's two pixels, and at most
+  eight. Shaded's 0.25 mm still draws two pixels and Massing's 0.75 mm three, so nothing looks
+  different in the built-in styles. The outline pass now looks up to eight pixels away for a step
+  in depth, in a loop that always runs to the end, which DirectX's older compiler needs. New
+  tests: on the graphics card, a sphere's outline drawn 2 or 6 pixels wide as the style says; the
+  widths in pixels, the built-in styles' included.
 - **Step 6, part 4: lines thin and fade with distance** (spec §2.2 "by distance", §4.1). A style
   whose line rules say "by distance" now draws lines as they are up to its near distance, then
   thinner and fainter toward its far distance, and as thin and faint as it says from there on.
