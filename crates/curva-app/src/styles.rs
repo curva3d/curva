@@ -148,7 +148,8 @@ fn drawn_style(doc: &curva_document::Document, pane: &Pane) -> Style {
     if pane.style.is_none() {
         return mode_style(pane.display);
     }
-    Style::of(&style_of(doc, pane))
+    // Distances in the style are in metres; the model may be in another unit.
+    Style::of(&style_of(doc, pane)).in_units(doc.state().unit.millimetres())
 }
 
 impl Curva {

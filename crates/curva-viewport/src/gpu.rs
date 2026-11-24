@@ -444,7 +444,10 @@ impl LineRenderer {
                 drawing.light,
                 pixel,
                 &drawing.clips,
-                &drawing.style,
+                (
+                    &drawing.style,
+                    crate::view_style::distance_plane(&drawing.camera),
+                ),
             ),
         );
         slot.style = drawing.style;

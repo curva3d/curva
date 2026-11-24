@@ -113,6 +113,83 @@ fn a_fixed_width_and_the_line_weight_set_how_thick_lines_draw() {
     );
 }
 
+/// How many rows a white horizontal line across a black picture lights in its left and right
+/// quarters, drawn in `style` and measured from a camera looking along it from the left, one
+/// model unit to a metre. `None` without a graphics adapter.
+fn lit_left_and_right(style: &ViewStyle) -> Option<(usize, usize)> {
+    let end = |x: f32| Vertex {
+        position: [x, 0.0, 0.5],
+        colour: [1.0; 3],
+        width: -6.0,
+        object: NO_OBJECT,
+        kind: LineKind::Curve,
+    };
+    // Looking along +X from (-1, 0, 0): the line's left end is 0.2 away, its right end 1.8;
+    // its left quarter is about 0.5 away, its right quarter 1.5.
+    let camera = crate::Camera {
+        target: [0.0; 3],
+        yaw: std::f64::consts::PI,
+        pitch: 0.0,
+        distance: 1.0,
+        ..crate::Camera::default()
+    };
+    let picture = Picture {
+        lines: vec![end(-0.8), end(0.8)],
+        matrix: [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        light: [0.0, 0.0, 1.0],
+        style: Style::of(style).in_units(1000.0),
+        camera,
+        ..Picture::default()
+    };
+    let pixels = match draw_picture(picture, SIZE, true) {
+        Ok(pixels) => pixels,
+        Err(error) => {
+            eprintln!("no graphics adapter to draw with, so not checked: {error}");
+            return None;
+        }
+    };
+    let (w, h) = (SIZE[0] as usize, SIZE[1] as usize);
+    let at = |row: usize, column: usize| pixels[(row * w + column) * 4];
+    let lit = |column: usize| {
+        (0..h)
+            .filter(|&row| at(row, column) > at(0, column))
+            .count()
+    };
+    Some((lit(w / 4), lit(3 * w / 4)))
+}
+
+#[test]
+fn lines_thin_and_fade_with_distance_where_the_style_says() {
+    let mut style = ViewStyle::wireframe();
+    style.curves.colour = LineColour::One(Colour([255, 255, 255]));
+    let Some((left, right)) = lit_left_and_right(&style) else {
+        return;
+    };
+    assert_eq!(left, right, "no rule: the same everywhere");
+    style.line_rules.by_distance = true;
+    style.line_rules.near = 0.5;
+    style.line_rules.far = 1.3;
+    style.line_rules.far_width = 0.25;
+    style.line_rules.far_fade = 0.0;
+    let Some((near, far)) = lit_left_and_right(&style) else {
+        return;
+    };
+    assert_eq!(near, left, "nearer than `near`: as drawn");
+    assert!(far < near, "thinner far away: {far} against {near}");
+    style.line_rules.far_width = 1.0;
+    style.line_rules.far_fade = 1.0;
+    let Some((near, far)) = lit_left_and_right(&style) else {
+        return;
+    };
+    assert_eq!(near, left);
+    assert_eq!(far, 0, "faded away entirely beyond `far`");
+}
+
 #[test]
 fn hidden_draws_model_lines_in_ink_and_leaves_previews_their_colour() {
     let hidden = ViewStyle::hidden();

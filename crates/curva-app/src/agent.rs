@@ -46,6 +46,7 @@ pub(crate) fn picture_of(
         matrix: camera.matrix(aspect),
         light: camera.forward().map(|value| value as f32),
         style,
+        camera,
     };
     (picture, camera)
 }

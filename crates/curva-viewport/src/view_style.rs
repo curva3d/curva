@@ -29,6 +29,43 @@ pub struct Style {
     pub hidden_lines: bool,
     /// The faces of NURBS, meshes and SubD objects, each as the style sets them apart.
     pub faces: [KindFaces; 3],
+    /// How lines thin and fade with distance (spec §2.2, "by distance"); `None` where they do
+    /// not.
+    pub distance: Option<DistanceFade>,
+    /// How many of the model's units make a metre, for `distance`: 1000 for a model in
+    /// millimetres, as new models are ([`Style::in_units`]).
+    pub units_per_metre: f32,
+}
+
+/// Lines thinning and fading toward the background with distance: as drawn from `near` to
+/// `far`, as thin and faint as `far_width` and `far_fade` say from `far` on.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DistanceFade {
+    /// Where lines start to thin and fade, in metres from the view.
+    pub near: f32,
+    /// Where they are thinnest and faintest, in metres.
+    pub far: f32,
+    /// Their width there, as a part of their own, 0 to 1.
+    pub far_width: f32,
+    /// How far toward what is behind them they fade there, 0 to 1.
+    pub far_fade: f32,
+}
+
+/// Rows of the distance table ([`Style::fade_rows`]).
+pub(crate) const FADE_ROWS: usize = 2;
+
+/// The plane `camera`'s distances are measured from for lines by distance, `[nx, ny, nz, d]`
+/// giving `n·p + d`: through the eye in a perspective; through the point looked at in a
+/// parallel view, whose eye moves as it zooms, so lines keep their look while zooming a plan.
+pub(crate) fn distance_plane(camera: &crate::Camera) -> [f32; 4] {
+    let n = camera.forward();
+    let from = if camera.is_parallel() {
+        camera.target
+    } else {
+        camera.eye()
+    };
+    let d = -(n[0] * from[0] + n[1] * from[1] + n[2] * from[2]);
+    [n[0] as f32, n[1] as f32, n[2] as f32, d as f32]
 }
 
 /// One kind of object's faces.
@@ -137,6 +174,37 @@ impl Style {
             hidden_lines: view.hidden_lines.shown,
             faces: [FacedKind::Nurbs, FacedKind::Mesh, FacedKind::Subd]
                 .map(|kind| KindFaces::of(view, kind)),
+            distance: DistanceFade::of(view),
+            units_per_metre: 1000.0,
+        }
+    }
+
+    /// This style for a model whose unit is `millimetres` long, so distances in metres are
+    /// measured in the model's units.
+    #[must_use]
+    pub fn in_units(self, millimetres: f64) -> Self {
+        Self {
+            units_per_metre: (1000.0 / millimetres.max(1e-9)) as f32,
+            ..self
+        }
+    }
+
+    /// The distance table the line shader reads: the plane distances are measured from
+    /// (`plane`, `[nx, ny, nz, d]` with `n` of length 1, giving `n·p + d` in the model's units),
+    /// then where lines start to thin and fade and where they are thinnest, in the model's units,
+    /// and how thin and faint they are there. Lines keep their look everywhere without a rule.
+    pub(crate) fn fade_rows(&self, plane: [f32; 4]) -> [[f32; 4]; FADE_ROWS] {
+        match self.distance {
+            Some(fade) => [
+                plane,
+                [
+                    fade.near * self.units_per_metre,
+                    fade.far * self.units_per_metre,
+                    fade.far_width,
+                    fade.far_fade,
+                ],
+            ],
+            None => [[0.0; 4], [0.0, 1.0, 1.0, 0.0]],
         }
     }
 
@@ -245,6 +313,20 @@ impl Default for Style {
     }
 }
 
+impl DistanceFade {
+    /// `view`'s rule for lines by distance, if it has one that changes anything.
+    fn of(view: &ViewStyle) -> Option<Self> {
+        let rules = &view.line_rules;
+        let changes = rules.far_width < 1.0 || rules.far_fade > 0.0;
+        (rules.by_distance && changes).then(|| Self {
+            near: rules.near.max(0.0),
+            far: rules.far.max(rules.near.max(0.0) + 1e-3),
+            far_width: rules.far_width.clamp(0.0, 1.0),
+            far_fade: rules.far_fade.clamp(0.0, 1.0),
+        })
+    }
+}
+
 impl OutlineLook {
     /// Outlines as dark and thin as the edges on faces.
     pub const EDGES: Self = Self {
@@ -330,6 +412,57 @@ mod tests {
             assert_eq!(edge(inked), Some(INK_COLOUR));
         }
         assert!(Style::technical().hidden_lines && !Style::massing().hidden_lines);
+    }
+
+    #[test]
+    fn lines_by_distance_are_measured_in_the_model_s_units_from_the_view() {
+        let plane = [0.0, 0.0, -1.0, 10.0];
+        let mut view = ViewStyle::shaded();
+        assert_eq!(
+            Style::of(&view).fade_rows(plane),
+            [[0.0; 4], [0.0, 1.0, 1.0, 0.0]],
+            "no rule: lines as drawn everywhere"
+        );
+        view.line_rules.by_distance = true;
+        let drawn = Style::of(&view);
+        let rules = view.line_rules;
+        assert_eq!(
+            drawn.fade_rows(plane),
+            [
+                plane,
+                [
+                    rules.near * 1000.0,
+                    rules.far * 1000.0,
+                    rules.far_width,
+                    rules.far_fade
+                ]
+            ],
+            "metres in millimetres, as new models are"
+        );
+        let in_metres = drawn.in_units(1000.0).fade_rows(plane);
+        assert_eq!(in_metres[1][..2], [rules.near, rules.far]);
+        // A rule that changes nothing is no rule.
+        view.line_rules.far_width = 1.0;
+        view.line_rules.far_fade = 0.0;
+        assert_eq!(Style::of(&view).distance, None);
+    }
+
+    #[test]
+    fn distances_are_from_the_eye_in_a_perspective_and_from_the_target_in_a_parallel_view() {
+        let mut camera = crate::Camera {
+            target: [0.0, 0.0, 5.0],
+            yaw: 0.0,
+            pitch: std::f64::consts::FRAC_PI_2,
+            distance: 20.0,
+            ..crate::Camera::default()
+        };
+        // Looking straight down from 25 above the ground: the ground is 25 away.
+        let [nx, ny, nz, d] = distance_plane(&camera);
+        let away = nx * 0.0 + ny * 0.0 + nz * 0.0 + d;
+        assert!((away - 25.0).abs() < 1e-3, "{away}");
+        camera.parallel = true;
+        let [.., nz, d] = distance_plane(&camera);
+        assert!((nz * 0.0 + d - 5.0).abs() < 1e-3, "from the target: {d}");
     }
 
     #[test]

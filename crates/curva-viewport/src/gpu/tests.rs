@@ -54,6 +54,7 @@ fn centre_brightness(ghosted: bool) -> Option<u8> {
         faces,
         matrix: identity,
         light: [0.0, 0.0, 1.0],
+        camera: crate::Camera::default(),
         style: if ghosted {
             crate::Style::ghosted()
         } else {
@@ -108,6 +109,7 @@ fn rows_lit(width: f32) -> Option<usize> {
         faces: Vec::new(),
         matrix: identity,
         light: [0.0, 0.0, 1.0],
+        camera: crate::Camera::default(),
         style: crate::Style::shaded(),
     };
     let path = std::env::temp_dir().join(format!(
@@ -182,6 +184,7 @@ fn mixed_picture() -> Picture {
             [0.0, 0.0, 0.0, 1.0],
         ],
         light: [0.0, 0.0, 1.0],
+        camera: crate::Camera::default(),
         style: crate::Style::shaded(),
     }
 }
@@ -270,6 +273,7 @@ fn the_selection_table_draws_what_coloured_vertices_drew() {
             faces: if shaded { faces } else { Vec::new() },
             matrix,
             light,
+            camera: crate::Camera::default(),
             style: crate::Style::shaded(),
         };
         let coloured = picture(
@@ -339,6 +343,7 @@ fn circles_drawn_from_their_axes_look_as_their_segments() {
             },
             matrix,
             light,
+            camera: crate::Camera::default(),
             style: crate::Style::shaded(),
         };
         let scene = |circles: &[crate::PlacedCircle]| Scene {
@@ -408,6 +413,7 @@ fn a_sphere_is_outlined_at_its_rim_and_clean_inside() {
         faces: crate::face_vertices(&outlines, &[]),
         matrix: camera.matrix(1.0),
         light: camera.forward().map(|v| v as f32),
+        camera: crate::Camera::default(),
         style: crate::Style::shaded(),
     };
     let Ok(pixels) = draw_picture(picture, size, true) else {
@@ -464,6 +470,7 @@ fn far_from_the_origin_draws_as_at_the_origin() {
             faces: Vec::new(),
             matrix: camera.matrix(1.0),
             light: camera.forward().map(|v| v as f32),
+            camera: crate::Camera::default(),
             style: crate::Style::shaded(),
         };
         let scene = Scene {
@@ -521,6 +528,7 @@ fn the_hidden_mode_draws_black_ink_on_white_paper() {
             [0.0, 0.0, 0.0, 1.0],
         ],
         light: [0.0, 0.0, 1.0],
+        camera: crate::Camera::default(),
         style: crate::Style::hidden(),
     };
     let pixels = match draw_picture(picture, SIZE, true) {
@@ -586,6 +594,7 @@ fn the_technical_mode_dots_the_lines_faces_hide() {
             [0.0, 0.0, 0.0, 1.0],
         ],
         light: [0.0, 0.0, 1.0],
+        camera: crate::Camera::default(),
         style: crate::Style::technical(),
     };
     let pixels = match draw_picture(picture, SIZE, true) {
@@ -632,6 +641,7 @@ fn the_clay_mode_draws_white_faces_and_black_lines() {
             [0.0, 0.0, 0.0, 1.0],
         ],
         light: [0.0, 0.0, 1.0],
+        camera: crate::Camera::default(),
         style: crate::Style::massing(),
     };
     let pixels = match draw_picture(picture, SIZE, true) {
