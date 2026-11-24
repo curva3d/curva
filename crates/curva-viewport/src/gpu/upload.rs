@@ -19,8 +19,10 @@ pub(crate) const SEGMENT_SIZE: u64 = 2 * LINE_VERTEX_SIZE;
 pub(crate) const SEGMENT_CORNERS: u32 = 6;
 /// A face vertex: position, normal, colour and object number.
 pub(crate) const FACE_VERTEX_SIZE: u64 = 40;
-pub(crate) const UNIFORM_SIZE: u64 =
-    160 + 16 * (crate::line_table::LINE_ROWS + crate::view_style::FACE_ROWS) as u64;
+pub(crate) const UNIFORM_SIZE: u64 = 160
+    + 16 * (crate::line_table::LINE_ROWS
+        + crate::view_style::FADE_ROWS
+        + crate::view_style::FACE_ROWS) as u64;
 
 /// The most clipping planes one view is cut by.
 pub const MOST_CLIPS: usize = 4;
@@ -97,13 +99,14 @@ pub(crate) fn face_bytes(faces: &[MeshVertex]) -> Vec<u8> {
 /// A view's uniforms: its camera `matrix`; the `light` direction, with 1 after it when `style`
 /// lights faces flat; `pixel`, a pixel's width and height in clip space and the screen's pixels
 /// per millimetre; up to [`MOST_CLIPS`] `clips`, each `[nx, ny, nz, d]`, cutting away where
-/// `n·p + d > 0`; then `style`'s line table and face table.
+/// `n·p + d > 0`; then `style`'s line table, its distance table measured from `distance_plane`
+/// ([`crate::Style::fade_rows`]), and its face table.
 pub(crate) fn uniform_bytes(
     matrix: &[[f32; 4]; 4],
     light: [f32; 3],
     pixel: [f32; 3],
     clips: &[[f32; 4]],
-    style: &crate::Style,
+    (style, distance_plane): (&crate::Style, [f32; 4]),
 ) -> Vec<u8> {
     let clips = &clips[..clips.len().min(MOST_CLIPS)];
     #[allow(clippy::cast_precision_loss)]
@@ -124,6 +127,7 @@ pub(crate) fn uniform_bytes(
         .chain(&[count])
         .chain(planes.iter().flatten())
         .chain(style.lines.rows().iter().flatten())
+        .chain(style.fade_rows(distance_plane).iter().flatten())
         .chain(style.face_rows().iter().flatten())
         .flat_map(|value| value.to_le_bytes())
         .collect()

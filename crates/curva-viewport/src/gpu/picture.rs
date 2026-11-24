@@ -21,6 +21,9 @@ pub struct Picture {
     /// How the picture draws the model ([`Drawing::style`]); faces are drawn only when there
     /// are any. Hidden and Technical pictures are on white paper.
     pub style: crate::Style,
+    /// The camera `matrix` was made from, which lines fading with distance measure from
+    /// ([`Drawing::camera`]).
+    pub camera: crate::Camera,
 }
 
 /// Draws a picture into a PNG file without opening a window, so results can be checked by eye.
@@ -204,7 +207,7 @@ fn picture_drawing(picture: Picture, scene: &Scene) -> Drawing {
         frame: 0,
         background: epaint::Color32::BLACK,
         background_low: epaint::Color32::BLACK,
-        camera: crate::Camera::default(),
+        camera: picture.camera,
     }
 }
 

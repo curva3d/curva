@@ -163,7 +163,7 @@ impl Camera {
         self.parallel
     }
 
-    fn eye(&self) -> Point {
+    pub(crate) fn eye(&self) -> Point {
         if let Some([forward, ..]) = self.fixed_axes {
             return [
                 self.target[0] - forward[0] * self.distance,

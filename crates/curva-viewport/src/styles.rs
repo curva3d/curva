@@ -723,6 +723,7 @@ mod tests {
             faces,
             matrix: camera.matrix(1.0),
             light: camera.forward().map(|v| v as f32),
+            camera: crate::Camera::default(),
             style: crate::Style::shaded(),
         };
         let size = [64, 64];

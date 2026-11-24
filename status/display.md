@@ -8,6 +8,21 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## 24 November 2026
+
+**Done**
+- **Step 6, part 4: lines thin and fade with distance** (spec §2.2 "by distance", §4.1). A style
+  whose line rules say "by distance" now draws lines as they are up to its near distance, then
+  thinner and fainter toward its far distance, and as thin and faint as it says from there on.
+  The line program works this out for each line on the graphics card, so a change to the rule
+  shows at once with nothing rebuilt. Distances are in metres, measured in the model's own unit
+  (`Style::in_units`; the app passes the model's unit). A perspective view measures from its eye.
+  A parallel view measures from the point it looks at, so a plan keeps its look while you zoom
+  (its eye moves as it zooms). A selected line never fades. The built-in styles have no such
+  rule, so nothing looks different until the Style panel turns it on. New tests: on the graphics
+  card, lines thin and fade with distance only where the style says; the distance table in the
+  model's units; distances from the eye in a perspective and from the target in a parallel view.
+
 ## 23 November 2026
 
 **Done**

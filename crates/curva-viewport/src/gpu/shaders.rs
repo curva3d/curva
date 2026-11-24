@@ -4,6 +4,7 @@ use crate::NO_OBJECT;
 
 // The line program's table and its places, written out in its text, match the Rust side's.
 const _: () = assert!(crate::line_table::LINE_ROWS == 18);
+const _: () = assert!(crate::view_style::FADE_ROWS == 2);
 const _: () = assert!(crate::line_table::HIDDEN_SLOT == 8);
 const _: () = assert!(crate::view_style::FACE_ROWS == 8);
 const _: () = assert!(super::upload::OBJECT_BITS == 0x00FF_FFFF);
@@ -67,8 +68,19 @@ struct Uniforms {
     // Each kind of line's look from the view's style (`LineTable::rows`): its colour and whether
     // to use it, then its width factor, fixed width (below zero for none) and whether it shows.
     lines: array<vec4<f32>, 18>,
+    // Lines by distance (`Style::fade_rows`): the plane distances are measured from, then where
+    // lines start to thin and fade, where they are thinnest, and how thin and faint there.
+    fade: array<vec4<f32>, 2>,
 };
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
+// How far a point is between where lines start to thin and fade (0) and where they are
+// thinnest and faintest (1).
+fn distance_part(p: vec3<f32>) -> f32 {
+    let plane = uniforms.fade[0];
+    let range = uniforms.fade[1];
+    let away = dot(plane.xyz, p) + plane.w;
+    return clamp((away - range.x) / max(range.y - range.x, 1e-6), 0.0, 1.0);
+}
 // Where hidden lines' look is in `lines`, after the eight kinds of line (`HIDDEN_SLOT`).
 const HIDDEN_SLOT: u32 = 8u;
 // A line's object word: its object's number in the low three bytes (all ones for none), its
@@ -102,6 +114,8 @@ struct Out {
     // half pixel fades out, so its edges are smooth rather than stepped.
     @location(3) @interpolate(linear) across: f32,
     @location(4) @interpolate(linear) half: f32,
+    // How faint the line is where it is furthest (`distance_part`), 0 for none.
+    @location(5) @interpolate(flat) fade: f32,
 };
 fn pixels(width: f32) -> f32 {
     return max(select(-width, width * uniforms.pixel.z, width > 0.0), 1.0);
@@ -123,19 +137,23 @@ fn segment(
     let look = uniforms.lines[slot * 2u];
     let size = uniforms.lines[slot * 2u + 1u];
     if (size.z < 0.5) {
-        return Out(vec4<f32>(2.0, 2.0, 2.0, 1.0), given_ca, a, 0.0, 0.0, 0.0);
+        return Out(vec4<f32>(2.0, 2.0, 2.0, 1.0), given_ca, a, 0.0, 0.0, 0.0, 0.0);
     }
+    // Thinner with distance, as far as the style's rule says (`fade`).
+    let ta = distance_part(a);
+    let tb = distance_part(b);
+    let thin = uniforms.fade[1].z;
     // A selected object draws in the selection colour and a pixel wider (`line_width`).
     let chosen = picked(select(number, NO_OBJECT, number == OBJECT_BITS));
     let ca = select(select(given_ca, look.rgb, look.w > 0.5), SELECTED, chosen);
     let cb = select(select(given_cb, look.rgb, look.w > 0.5), SELECTED, chosen);
-    let wa = widened(styled(given_wa, size), chosen);
-    let wb = widened(styled(given_wb, size), chosen);
+    let wa = widened(styled(given_wa, size) * mix(1.0, thin, ta), chosen);
+    let wb = widened(styled(given_wb, size) * mix(1.0, thin, tb), chosen);
     var pa = uniforms.matrix * vec4<f32>(a, 1.0);
     var pb = uniforms.matrix * vec4<f32>(b, 1.0);
     // Behind the camera: cut the segment where it crosses the near plane.
     if (pa.z < 0.0 && pb.z < 0.0) {
-        return Out(vec4<f32>(2.0, 2.0, 2.0, 1.0), ca, a, 0.0, 0.0, 0.0);
+        return Out(vec4<f32>(2.0, 2.0, 2.0, 1.0), ca, a, 0.0, 0.0, 0.0, 0.0);
     }
     if (pa.z < 0.0) { pa = mix(pa, pb, pa.z / (pa.z - pb.z)); }
     if (pb.z < 0.0) { pb = mix(pb, pa, pb.z / (pb.z - pa.z)); }
@@ -160,18 +178,22 @@ fn segment(
         world = b;
         half = pixels(wb) * 0.5;
     }
+    // How faint the line may get far away, worked out for each pixel from where it is; a
+    // selected line never fades, so it stays easy to see.
+    let fade = select(uniforms.fade[1].w, 0.0, chosen);
     // Half a pixel wider each side than the line, for its edge to fade out in.
     let edge = half + 0.5;
     let offset = across * side * edge + along * (end * 2.0 - 1.0) * half;
     at = vec4<f32>(at.xy + offset * px * at.w, at.zw);
     // Measured along the line from a fixed point on screen, not from the segment's start, so the
     // dots run on across the short segments of a curve instead of each starting with a dot.
-    return Out(at, colour, world, dot(at.xy / at.w / px, along), side * edge, half);
+    return Out(at, colour, world, dot(at.xy / at.w / px, along), side * edge, half, fade);
 }
 @fragment fn fragment_main(input: Out) -> @location(0) vec4<f32> {
     if (clipped(input.world)) { discard; }
     if (DOTTED && fract(input.along / DOT_PERIOD) >= 0.5) { discard; }
-    let cover = clamp(input.half + 0.5 - abs(input.across), 0.0, 1.0);
+    let faint = input.fade * distance_part(input.world);
+    let cover = clamp(input.half + 0.5 - abs(input.across), 0.0, 1.0) * (1.0 - faint);
     if (cover <= 0.0) { discard; }
     return vec4<f32>(input.colour, cover);
 }
@@ -228,6 +250,7 @@ struct Uniforms {
     light: vec4<f32>,
     pixel: vec4<f32>, clips: array<vec4<f32>, 4>,
     lines: array<vec4<f32>, 18>,
+    fade: array<vec4<f32>, 2>,
     // Each kind of face's look (`Style::face_rows`): its colour and whether to use it, then its
     // opacity and whether it shows.
     faces: array<vec4<f32>, 8>,
