@@ -43,7 +43,7 @@ impl Curva {
         self.provider_choice(ui);
         let connect = self.provider_details(ui);
         if let Some(error) = &self.assistant.assistant_error {
-            ui.label(ui_kit::accented(error));
+            ui.label(ui_kit::error(error));
         }
         self.mcp_help(ui);
         if let Some((provider, model)) = connect {
@@ -132,9 +132,13 @@ impl Curva {
     ) -> Option<(assistant::Provider, String)> {
         let say = |key: &'static str| self.text.render(&Message::new(key));
         ui.horizontal(|ui| {
-            let mut choice = provider;
-            ui.radio_value(&mut choice, assistant::Provider::OpenAi, "OpenAI");
-            ui.radio_value(&mut choice, assistant::Provider::Claude, "Claude");
+            let mut claude = provider == assistant::Provider::Claude;
+            ui_kit::either(ui, &mut claude, ["OpenAI".to_owned(), "Claude".to_owned()]);
+            let choice = if claude {
+                assistant::Provider::Claude
+            } else {
+                assistant::Provider::OpenAi
+            };
             self.assistant.assistant_choice = Some(choice);
         });
         ui.add(
@@ -205,7 +209,7 @@ impl Curva {
     /// The model connected, with buttons to change it and to start a new conversation.
     fn chat_heading(&mut self, ui: &mut egui::Ui, connection: &assistant::Connection) {
         ui.horizontal(|ui| {
-            ui.label(ui_kit::accented(format!(
+            ui.label(ui_kit::quiet(format!(
                 "{} · {}",
                 connection.provider.label(),
                 connection.model
@@ -245,7 +249,7 @@ impl Curva {
                     ui.label(ui_kit::quiet(format!("· {name}")));
                 }
                 assistant::Line::Error(text) => {
-                    ui.label(ui_kit::accented(text));
+                    ui.label(ui_kit::error(text));
                 }
             }
         }

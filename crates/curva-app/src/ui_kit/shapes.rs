@@ -1,7 +1,7 @@
 //! The marks the kit's controls are made of, each drawn one way everywhere: chevrons, crosses,
 //! the mark of a chosen thing, glows, the fades at a strip's edges, washes behind chosen rows.
 
-use super::{CONTROL_RADIUS, FADE, MARK, colours};
+use super::{CONTROL_RADIUS, MARK, colours};
 use eframe::egui;
 
 /// A V pointing along `towards` (a unit direction on screen), centred on `centre`, as the hide
@@ -72,23 +72,6 @@ pub(crate) fn glow_outline(painter: &egui::Painter, rect: egui::Rect, strength: 
         egui::Stroke::new(MARK, colours::accent_at(strength)),
         egui::StrokeKind::Outside,
     );
-}
-
-/// The fade over a strip's edge where more of it is scrolled out of sight: from the panel's
-/// colour at `edge` to nothing [`FADE`] inwards, `inwards` saying which way that is (+1 or -1).
-pub(crate) fn edge_fade(painter: &egui::Painter, strip: egui::Rect, edge: f32, inwards: f32) {
-    let mut mesh = egui::Mesh::default();
-    let (top, bottom) = (strip.min.y, strip.max.y);
-    for (x, colour) in [
-        (edge, colours::panel()),
-        (edge + inwards * FADE, egui::Color32::TRANSPARENT),
-    ] {
-        mesh.colored_vertex(egui::pos2(x, top), colour);
-        mesh.colored_vertex(egui::pos2(x, bottom), colour);
-    }
-    mesh.add_triangle(0, 1, 2);
-    mesh.add_triangle(1, 2, 3);
-    painter.add(egui::Shape::mesh(mesh));
 }
 
 /// A small filled triangle pointing along `towards`, as a tree's open and shut arrows.

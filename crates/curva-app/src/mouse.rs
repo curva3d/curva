@@ -160,6 +160,8 @@ pub(crate) struct Aiming<'a> {
     pub(crate) snaps: SnapSet,
     pub(crate) guides: curva_viewport::Guides,
     pub(crate) ortho: bool,
+    /// Rhino's Planar: the pointer stays level with the last point.
+    pub(crate) planar: bool,
     pub(crate) grid_snap: bool,
     /// Shift held on a two-corner step: the corners make a square.
     pub(crate) square: bool,
@@ -211,26 +213,20 @@ pub(crate) fn aim_at(aiming: &Aiming<'_>) -> Option<(Point, Option<SnapHit>)> {
             .line_point(screen, size, origin, direction)
             .map(|at| (at, None));
     }
-    let cursor = camera.plane_point(screen, size, plane)?;
-    let at = constrained(plane, cursor, base, aiming.ortho, aiming.grid_snap);
+    // With Planar on, the pointer moves on a plane level with the last point, as in Rhino.
+    let level = match base.filter(|_| aiming.planar) {
+        Some(base) => aiming::level_with(plane, base),
+        None => *plane,
+    };
+    let cursor = camera.plane_point(screen, size, &level)?;
+    let at = constrained(&level, cursor, base, aiming.ortho, aiming.grid_snap);
     Some((
         match base.filter(|_| aiming.square) {
-            Some(base) => squared(plane, base, at),
+            Some(base) => aiming::squared(plane, base, at),
             None => at,
         },
         None,
     ))
-}
-
-/// The opposite corner from `base` moved to make a square on `plane`: both sides as long as the
-/// longer one, each keeping its direction (#524).
-fn squared(plane: &CPlane, base: Point, at: Point) -> Point {
-    let off: Point = std::array::from_fn(|i| at[i] - base[i]);
-    let along = |axis: Point| (0..3).map(|i| off[i] * axis[i]).sum::<f64>();
-    let (dx, dy) = (along(plane.x), along(plane.y));
-    let side = dx.abs().max(dy.abs());
-    let (sx, sy) = (side.copysign(dx), side.copysign(dy));
-    std::array::from_fn(|i| base[i] + plane.x[i] * sx + plane.y[i] * sy)
 }
 
 /// The window's Copy, Cut and Paste events that are Curva's to act on, taken out of `events`:
@@ -404,6 +400,7 @@ impl Curva {
             // On a rectangle's or box's opposite corner Shift makes it square (#524), where
             // Ortho would only flatten it; elsewhere Shift is Ortho for the moment, as in Rhino.
             ortho: self.ortho != (shift && !request.corner),
+            planar: self.planar,
             square: shift && request.corner,
             grid_snap: self.grid_snap,
             snaps_off: alt,
@@ -800,24 +797,6 @@ mod tests {
     use super::*;
     use eframe::egui::{Event, Modifiers, PointerButton, Pos2, RawInput, Sense, pos2, vec2};
 
-    #[test]
-    fn shift_on_an_opposite_corner_makes_a_square() {
-        let plane = CPlane {
-            origin: [0.0; 3],
-            x: [1.0, 0.0, 0.0],
-            y: [0.0, 1.0, 0.0],
-            normal: [0.0, 0.0, 1.0],
-        };
-        assert_eq!(
-            squared(&plane, [1.0, 1.0, 0.0], [5.0, 3.0, 0.0]),
-            [5.0, 5.0, 0.0]
-        );
-        assert_eq!(
-            squared(&plane, [0.0; 3], [-2.0, 6.0, 0.0]),
-            [-6.0, 6.0, 0.0]
-        );
-    }
-
     fn button(pos: Pos2, pressed: bool) -> Event {
         Event::PointerButton {
             pos,
@@ -1007,6 +986,7 @@ mod tests {
                     snaps: SnapSet::default(),
                     guides: curva_viewport::Guides::default(),
                     ortho: false,
+                    planar: false,
                     grid_snap: false,
                     square: false,
                     snaps_off: false,
@@ -1031,6 +1011,7 @@ mod tests {
                 snaps: SnapSet::default(),
                 guides: curva_viewport::Guides::default(),
                 ortho: false,
+                planar: false,
                 grid_snap: false,
                 square: false,
                 snaps_off: false,

@@ -514,6 +514,8 @@ pub(crate) fn snap_label(kind: SnapKind) -> &'static str {
         SnapKind::Intersection => "ui.snap.intersection",
         SnapKind::Perpendicular => "ui.snap.perpendicular",
         SnapKind::Near => "ui.snap.near",
+        SnapKind::Point => "ui.snap.point",
+        SnapKind::Quad => "ui.snap.quad",
         // Shown by its guideline, with no name, as Rhino's SmartTrack (#547).
         SnapKind::Track => "",
     }

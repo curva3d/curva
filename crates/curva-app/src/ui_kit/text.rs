@@ -48,11 +48,6 @@ pub(crate) fn quiet(text: impl Into<String>) -> egui::RichText {
     egui::RichText::new(text).weak()
 }
 
-/// Text in the accent, for what a click answers with, such as a command's options.
-pub(crate) fn accented(text: impl Into<String>) -> egui::RichText {
-    egui::RichText::new(text).color(colours::accent())
-}
-
 /// Curva's name beside its mark.
 pub(crate) fn brand(text: impl Into<String>) -> egui::RichText {
     egui::RichText::new(text).strong().size(super::BODY_FONT)
@@ -132,8 +127,19 @@ pub(crate) fn name_font() -> egui::FontId {
     egui::FontId::proportional(SMALL_FONT + 0.5)
 }
 
-/// Text that comes in lit in the accent and fades to plain text as `glow` falls from 1 to 0, as a
-/// new notice.
-pub(crate) fn fading_accent(text: &str, glow: f32) -> egui::RichText {
-    egui::RichText::new(text).color(colours::mix(colours::text(), colours::accent(), glow))
+/// Text that comes in quiet and settles to plain text as `glow` falls from 1 to 0, as a new notice:
+/// noticed without the accent, which only marks what is chosen.
+pub(crate) fn fading_in(text: &str, glow: f32) -> egui::RichText {
+    egui::RichText::new(text).color(colours::mix(colours::text(), colours::quiet(), glow))
+}
+
+/// An error's words, in red.
+pub(crate) fn error(text: impl Into<String>) -> egui::RichText {
+    egui::RichText::new(text).color(colours::danger())
+}
+
+/// Numbers that change as they are read, as the pointer's coordinates: in even-width figures,
+/// so they do not shuffle about.
+pub(crate) fn numbers(text: impl Into<String>) -> egui::RichText {
+    egui::RichText::new(text).monospace()
 }

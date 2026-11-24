@@ -55,8 +55,6 @@ pub(crate) const ITEM_GAP: f32 = 8.0;
 pub(crate) const CHIP_GAP: f32 = 4.0;
 /// Between tight things in a row: toolbar buttons, a tree's arrow and its name.
 pub(crate) const TIGHT_GAP: f32 = 2.0;
-/// Between groups in a row, such as the command tab groups.
-pub(crate) const GROUP_GAP: f32 = 16.0;
 /// The corners of buttons, fields and chips.
 pub(crate) const CONTROL_RADIUS: u8 = 6;
 /// The corners of a pill holding controls, such as the specializations.
@@ -71,8 +69,6 @@ pub(crate) const TITLE_ROW: f32 = ROW;
 pub(crate) const TOOL_BUTTON: f32 = 22.0;
 /// The size of a command button with an icon.
 pub(crate) const COMMAND_BUTTON: f32 = 30.0;
-/// How far a fade runs in from the edge of a strip that scrolls.
-pub(crate) const FADE: f32 = 28.0;
 /// The width of a line: edges, outlines.
 pub(crate) const LINE: f32 = 1.0;
 /// The width of drawn marks: chevrons, crosses, glows.
@@ -135,6 +131,37 @@ pub(crate) fn apply_theme(ctx: &egui::Context) {
     ctx.all_styles_mut(apply);
 }
 
+/// Whether things appear and go at once rather than fading or pulsing: Settings' Reduce motion,
+/// as Apple's accessibility setting.
+static REDUCE_MOTION: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Sets Reduce motion for the whole interface.
+pub(crate) fn set_reduce_motion(on: bool) {
+    REDUCE_MOTION.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Whether Reduce motion is on.
+pub(crate) fn reduce_motion() -> bool {
+    REDUCE_MOTION.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// How far something that shows while `on` has faded in, from 0 to 1: at once with Reduce
+/// motion on.
+pub(crate) fn fade(ctx: &egui::Context, id: egui::Id, on: bool) -> f32 {
+    if reduce_motion() {
+        return if on { 1.0 } else { 0.0 };
+    }
+    ctx.animate_bool_with_time(id, on, FADE_TIME)
+}
+
+/// How long a movement of `seconds` takes: no time at all with Reduce motion on.
+pub(crate) fn motion(seconds: f32) -> f32 {
+    if reduce_motion() { 0.0 } else { seconds }
+}
+
+/// How long a fade takes, in seconds.
+const FADE_TIME: f32 = 0.15;
+
 /// Runs `add` with `gap` between things side by side, the kit's gap again after.
 pub(crate) fn with_gap<R>(ui: &mut egui::Ui, gap: f32, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
     let before = ui.spacing().item_spacing.x;
@@ -163,7 +190,8 @@ mod tests {
 
     /// What only the kit may do: paint, pick fonts, colours, corners and frames, set spacing,
     /// or build windows, scroll areas, dropdowns and tabs of its own.
-    const KIT_ONLY: [&str; 26] = [
+    const KIT_ONLY: [&str; 27] = [
+        "radio_value(",
         "selectable_value(",
         "Button::selectable",
         "egui::Window::",

@@ -9,8 +9,8 @@ pub(crate) struct SettingsUi {
     pub(crate) settings_tab: SettingsTab,
     /// A unit chosen in Settings, while asking whether to scale the model to it.
     pub(crate) unit_asked: Option<curva_document::Unit>,
-    /// Whether the light theme was last put in use, once one has been.
-    pub(crate) applied_light: Option<bool>,
+    /// Whether the light theme, and increased contrast, were last put in use, once they have been.
+    pub(crate) applied_light: Option<(bool, bool)>,
 }
 
 /// The Settings panel's tabs.
@@ -23,41 +23,78 @@ pub(crate) enum SettingsTab {
     About,
 }
 
+/// The interface sizes on offer, in percent.
+const INTERFACE_SIZES: [u32; 5] = [100, 125, 150, 175, 200];
+
+/// The zoom for an interface `size` in percent, kept between 100 and 200.
+fn interface_zoom(size: u32) -> f32 {
+    #[allow(clippy::cast_precision_loss)] // A small whole number.
+    let size = size.clamp(100, 200) as f32;
+    size / 100.0
+}
+
 /// The words for a key, in the user's language.
 type Say<'a> = dyn Fn(&'static str) -> String + 'a;
 
-/// The theme, and glass or solid panels.
+/// The theme, glass or solid panels, the interface's size, contrast and motion, each a
+/// segmented control or a switch, as a settings form in Apple's guidelines.
 fn look_settings(ui: &mut egui::Ui, settings: &mut theme::Settings, say: &Say<'_>) {
     ui_kit::section(ui, say("ui.settings.theme"));
-    ui.horizontal(|ui| {
-        for (choice, key) in [
-            (theme::ThemeChoice::System, "ui.settings.system"),
-            (theme::ThemeChoice::Light, "ui.settings.light"),
-            (theme::ThemeChoice::Dark, "ui.settings.dark"),
-        ] {
-            ui.radio_value(&mut settings.theme, choice, say(key));
-        }
-    });
+    let themes = [
+        theme::ThemeChoice::System,
+        theme::ThemeChoice::Light,
+        theme::ThemeChoice::Dark,
+    ];
+    let words = [
+        "ui.settings.system",
+        "ui.settings.light",
+        "ui.settings.dark",
+    ]
+    .map(say);
+    let at = themes
+        .iter()
+        .position(|t| *t == settings.theme)
+        .unwrap_or(0);
+    if let Some(index) = ui_kit::segmented(ui, &words, at) {
+        settings.theme = themes[index];
+    }
     ui_kit::section(ui, say("ui.settings.panels"));
-    ui.horizontal(|ui| {
-        ui.radio_value(&mut settings.glass, true, say("ui.settings.glass"));
-        ui.radio_value(&mut settings.glass, false, say("ui.settings.solid"));
-    });
+    let words = ["ui.settings.glass", "ui.settings.solid"].map(say);
+    if let Some(index) = ui_kit::segmented(ui, &words, usize::from(!settings.glass)) {
+        settings.glass = index == 0;
+    }
+    ui_kit::section(ui, say("ui.settings.size"));
+    let words = INTERFACE_SIZES.map(|size| format!("{size}%"));
+    let at = INTERFACE_SIZES
+        .iter()
+        .position(|s| *s == settings.interface_size)
+        .unwrap_or(0);
+    if let Some(index) = ui_kit::segmented(ui, &words, at) {
+        settings.interface_size = INTERFACE_SIZES[index];
+    }
+    ui_kit::toggle(
+        ui,
+        &mut settings.increased_contrast,
+        say("ui.settings.contrast"),
+    );
+    ui_kit::toggle(ui, &mut settings.reduce_motion, say("ui.settings.motion"));
 }
 
 /// The model's unit.
 fn unit_choice(ui: &mut egui::Ui, unit: &mut curva_document::Unit, say: &Say<'_>) {
     ui_kit::section(ui, say("ui.settings.units"));
-    ui.horizontal_wrapped(|ui| {
-        for (choice, key) in curva_document::Unit::ALL.into_iter().zip([
-            "ui.settings.mm",
-            "ui.settings.m",
-            "ui.settings.ft",
-            "ui.settings.in",
-        ]) {
-            ui.radio_value(unit, choice, say(key));
-        }
-    });
+    let words = [
+        "ui.settings.mm",
+        "ui.settings.m",
+        "ui.settings.ft",
+        "ui.settings.in",
+    ]
+    .map(say);
+    let units = curva_document::Unit::ALL;
+    let at = units.iter().position(|u| u == unit).unwrap_or(0);
+    if let Some(index) = ui_kit::segmented(ui, &words, at) {
+        *unit = units[index];
+    }
 }
 
 /// Feet and inches as fractions to a chosen precision, or as decimals.
@@ -67,7 +104,10 @@ fn length_display_choice(
     say: &Say<'_>,
 ) {
     ui.horizontal(|ui| {
-        ui.radio_value(&mut display.decimals, false, say("ui.settings.fractions"));
+        let words = ["ui.settings.fractions", "ui.settings.decimals"].map(say);
+        if let Some(index) = ui_kit::segmented(ui, &words, usize::from(display.decimals)) {
+            display.decimals = index == 1;
+        }
         ui.add_enabled_ui(!display.decimals, |ui| {
             ui_kit::dropdown_sized(
                 ui,
@@ -81,7 +121,6 @@ fn length_display_choice(
                 },
             );
         });
-        ui.radio_value(&mut display.decimals, true, say("ui.settings.decimals"));
     });
 }
 
@@ -117,12 +156,22 @@ impl Curva {
     /// Puts the chosen theme in use (or the system's), when it changes: the interface's look,
     /// the viewports' grids and the colours objects are drawn in.
     pub(crate) fn apply_theme(&mut self, ctx: &egui::Context) {
+        ui_kit::set_reduce_motion(self.settings.reduce_motion);
+        // Curva sets the size itself, from Settings and its own keys.
+        if ctx.options(|options| options.zoom_with_keyboard) {
+            ctx.options_mut(|options| options.zoom_with_keyboard = false);
+        }
+        let zoom = interface_zoom(self.settings.interface_size);
+        if (ctx.zoom_factor() - zoom).abs() > f32::EPSILON {
+            ctx.set_zoom_factor(zoom);
+        }
         let light = self.settings.light(ctx.system_theme());
-        if self.settings_ui.applied_light == Some(light) {
+        let contrast = self.settings.increased_contrast;
+        if self.settings_ui.applied_light == Some((light, contrast)) {
             return;
         }
-        self.settings_ui.applied_light = Some(light);
-        theme::use_light(light);
+        self.settings_ui.applied_light = Some((light, contrast));
+        theme::use_light(light, contrast);
         ui_kit::apply_theme(ctx);
         for pane in &mut self.panes {
             let plane = pane.plane;

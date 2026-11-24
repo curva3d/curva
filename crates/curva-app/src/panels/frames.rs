@@ -208,8 +208,9 @@ impl Curva {
         if pass.released && self.frames.resize_from.take().is_some() {
             self.save_layout();
         }
-        self.focus_tab(ctx, full_window);
+        self.status_panel(ctx, window);
         self.version_label(ctx, full_window);
+        self.focus_tab(ctx, full_window);
         // In focus mode the viewports take the window, short of the tabs left at its edges.
         if self.frames.focus {
             let shrunk = full_window.shrink(layout::STRIP);
@@ -234,7 +235,7 @@ impl Curva {
             } else {
                 0.0
             },
-            SLIDE_TIME,
+            ui_kit::motion(SLIDE_TIME),
         );
         self.top_bar(ctx, bar.translate(egui::vec2(0.0, -lift)));
         egui::Rect::from_min_max(egui::pos2(window.min.x, bar.max.y), window.max)
@@ -275,8 +276,16 @@ impl Curva {
         };
         let id = egui::Id::NULL.with(("panel slide", panel));
         let offset = egui::vec2(
-            ctx.animate_value_with_time(id.with(0), target.min.x - rect.min.x, SLIDE_TIME),
-            ctx.animate_value_with_time(id.with(1), target.min.y - rect.min.y, SLIDE_TIME),
+            ctx.animate_value_with_time(
+                id.with(0),
+                target.min.x - rect.min.x,
+                ui_kit::motion(SLIDE_TIME),
+            ),
+            ctx.animate_value_with_time(
+                id.with(1),
+                target.min.y - rect.min.y,
+                ui_kit::motion(SLIDE_TIME),
+            ),
         );
         let (drawn, size) = self
             .dragged_panel(ctx, panel, pass)
@@ -554,12 +563,6 @@ impl Curva {
         }
     }
 
-    /// The software's name and version, small and quiet, at the window's bottom right.
-    pub(crate) fn version_label(&self, ctx: &egui::Context, window: egui::Rect) {
-        let text = format!("Curva {}", env!("CARGO_PKG_VERSION"));
-        ui_kit::corner_caption(ctx, window, text);
-    }
-
     /// Hides every panel, or brings them all back.
     pub(crate) fn toggle_focus(&mut self) {
         self.frames.focus = !self.frames.focus;
@@ -606,8 +609,10 @@ impl Curva {
         }
     }
 
-    /// Asks whether to close a panel, saying where to bring it back, before closing it.
-    pub(crate) fn close_question(&mut self, ctx: &egui::Context) {
+    /// Closes a panel at once and says, quietly in the command bar, where to bring it back:
+    /// closing a panel is common and easy to undo, so it no longer asks first (Apple's guidelines;
+    /// owner, 23 November 2026).
+    pub(crate) fn close_question(&mut self, _ctx: &egui::Context) {
         let Some(panel) = self.closing else {
             return;
         };
@@ -621,25 +626,13 @@ impl Curva {
                     .collect()
             })
             .unwrap_or_default();
-        let say = |key: &'static str| self.text.render(&Message::new(key));
-        let question = self
+        self.closing = None;
+        self.layout = self.layout.closing(panel);
+        self.save_layout();
+        let note = self
             .text
-            .render(&Message::with("ui.close.question", vec![names.join(", ")]));
-        let buttons = [
-            ui_kit::main_choice(say("ui.close.close")),
-            ui_kit::other_choice(say("ui.units.cancel")),
-        ];
-        let answer = ui_kit::dialog(ctx, "close question", &question, &buttons, |ui| {
-            ui.label(say("ui.close.where"));
-        })
-        .map(|index| index == 0);
-        if let Some(close) = answer {
-            self.closing = None;
-            if close {
-                self.layout = self.layout.closing(panel);
-                self.save_layout();
-            }
-        }
+            .render(&Message::with("ui.close.done", vec![names.join(", ")]));
+        self.processor.note(note);
     }
 }
 

@@ -17,6 +17,8 @@ impl Curva {
         for pane in &mut self.panes {
             pane.track_view(moving);
         }
+        // What the Edit menu asked for, done by the same code as its keys.
+        let wanted = self.bar.wanted_edit.take();
         if !self.typed.is_empty() || self.naming_layer {
             return;
         }
@@ -35,8 +37,10 @@ impl Curva {
             let undo = input.consume_shortcut(&shortcut(Modifiers::COMMAND, Key::Z));
             (redo, undo, view_ahead, view_back)
         });
+        let redo = redo || wanted == Some(menus::EditAction::Redo);
+        let undo = undo || wanted == Some(menus::EditAction::Undo);
         self.file_keys(ctx);
-        self.clipboard_keys(ctx);
+        self.clipboard_keys(ctx, wanted);
         if view_back || view_ahead {
             self.panes[self.active].step_view(view_ahead);
         }
@@ -67,8 +71,38 @@ impl Curva {
                 None
             }
         });
+        // Ctrl+, opens Settings, the standard key for an app's settings.
+        if ctx.input_mut(|input| input.consume_shortcut(&shortcut(Modifiers::COMMAND, Key::Comma)))
+        {
+            self.open_settings(SettingsTab::General);
+        }
+        self.interface_size_keys(ctx);
         if let Some(name) = file_command {
             self.run_from_button(name);
+        }
+    }
+
+    /// Ctrl+Plus and Ctrl+Minus make the interface larger or smaller a step at a time, and Ctrl+0
+    /// puts it back to 100%, as in a browser; Settings shows the size chosen.
+    fn interface_size_keys(&mut self, ctx: &egui::Context) {
+        use egui::{Key, KeyboardShortcut, Modifiers};
+        let size = &mut self.settings.interface_size;
+        let before = *size;
+        ctx.input_mut(|input| {
+            if input.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::Plus))
+                || input.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::Equals))
+            {
+                *size = (*size + 25).min(200);
+            } else if input.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::Minus))
+            {
+                *size = size.saturating_sub(25).max(100);
+            } else if input.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::Num0))
+            {
+                *size = 100;
+            }
+        });
+        if *size != before {
+            self.save_settings();
         }
     }
 
@@ -76,7 +110,7 @@ impl Curva {
     /// into egui's Copy, Cut and Paste events rather than key presses, so those are taken here,
     /// before the command line could; a paste is the objects' only while the system clipboard
     /// still holds the mark their copy put there.
-    fn clipboard_keys(&mut self, ctx: &egui::Context) {
+    fn clipboard_keys(&mut self, ctx: &egui::Context, wanted: Option<menus::EditAction>) {
         use egui::{Key, KeyboardShortcut, Modifiers};
         let shortcut = |modifiers, key| KeyboardShortcut::new(modifiers, key);
         let anything_selected = !self.doc.selection().is_empty();
@@ -88,6 +122,9 @@ impl Curva {
             );
             let (c, x, v) = clipboard_requests(&mut input.events, anything_selected);
             (copy, cut, paste) = (copy || c, cut || x, paste || v);
+            copy |= wanted == Some(menus::EditAction::Copy);
+            cut |= wanted == Some(menus::EditAction::Cut);
+            paste |= wanted == Some(menus::EditAction::Paste);
             let all = input.consume_shortcut(&shortcut(Modifiers::COMMAND, Key::A));
             (copy, cut, paste, all)
         });

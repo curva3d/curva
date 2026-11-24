@@ -102,7 +102,13 @@ pub(crate) fn resize_glow(
     pointer: egui::Pos2,
     time: f64,
 ) -> egui::Shape {
-    glow_at(rect, radius, pointer, pulse(time))
+    // Steady with Reduce motion on.
+    let power = if super::reduce_motion() {
+        1.0
+    } else {
+        pulse(time)
+    };
+    glow_at(rect, radius, pointer, power)
 }
 
 fn glow_at(rect: egui::Rect, radius: f32, pointer: egui::Pos2, power: f32) -> egui::Shape {
