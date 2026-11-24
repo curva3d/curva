@@ -11,6 +11,8 @@ pub(crate) struct SettingsUi {
     pub(crate) unit_asked: Option<curva_document::Unit>,
     /// Whether the light theme, and increased contrast, were last put in use, once they have been.
     pub(crate) applied_light: Option<(bool, bool)>,
+    /// The Style panel.
+    pub(crate) styles: crate::style_panel::StylePanel,
 }
 
 /// The Settings panel's tabs.

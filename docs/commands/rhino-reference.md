@@ -156,6 +156,7 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | NamedView | A panel in Rhino: save, restore, delete views | `Save` `Restore` `Delete` | `Save` `Restore` `Delete` | partly |
 | NamedCPlane | A panel in Rhino: save, restore, delete construction planes | `Save` `Restore` `Delete` | `Save` `Restore` `Delete` | partly |
 | SetDisplayMode | Not read: Rhino's page redirected; complete from Rhino | to confirm | `Wireframe` `Shaded` `Ghosted` | partly |
+| Styles | Rhino 8's Options > View > Display Modes page, where each mode's settings are edited | none | none (Curva's Style panel: the view's style chosen and edited live; spec `views-and-styles.md` §3) | partly |
 | New | Choose a template | none | none | partly |
 | Open | Choose a file | none | none; `.curva`, `.3dm`, and `.dxf` and `.dwg` (curves, points, text, hatches, blocks, dimensions, leaders, layers and layouts with their viewports) as a new model | partly |
 | Save | File name | `Version` `SaveSmall` `GeometryOnly` `SaveTextures` `SavePlugInData` `Browse` | none | partly |

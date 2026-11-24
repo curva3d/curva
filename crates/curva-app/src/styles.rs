@@ -51,10 +51,6 @@ pub(crate) fn built_in_style(mode: DisplayMode) -> &'static ViewStyle {
 
 /// The user's own styles ("My styles", `views-and-styles.md` §2.4): the `styles` folder in
 /// Curva's own folder in the user's app data. `None` where that folder is unknown.
-#[expect(
-    dead_code,
-    reason = "for the Style panel, which the features stream is building"
-)]
 pub(crate) fn library() -> Option<curva_document::style::Library> {
     crate::recovery::app_folder()
         .map(|folder| curva_document::style::Library::at(folder.join("styles")))
@@ -167,10 +163,6 @@ impl Curva {
 
     /// Makes viewport `pane` draw with the style called `name`: the model's own, or a built-in
     /// one.
-    #[expect(
-        dead_code,
-        reason = "for the Style panel, which the features stream is building"
-    )]
     pub(crate) fn set_pane_style(&mut self, pane: usize, name: &str) -> Result<(), StyleError> {
         if self.doc.style_named(name).is_none() {
             return Err(StyleError::Missing(name.trim().to_owned()));
@@ -181,10 +173,6 @@ impl Curva {
 
     /// Renames the model's style `from` to `to`; the viewports and saved views drawing with it
     /// follow.
-    #[expect(
-        dead_code,
-        reason = "for the Style panel, which the features stream is building"
-    )]
     pub(crate) fn rename_style(&mut self, from: &str, to: &str) -> Result<(), StyleError> {
         self.doc.rename_style(from, to)?;
         for pane in &mut self.panes {

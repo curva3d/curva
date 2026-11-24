@@ -15,13 +15,14 @@ pub(crate) enum EditAction {
 }
 
 /// The pieces the View menu can show, with their names' keys.
-const SHOWN_PIECES: [layout::Piece; 6] = [
+const SHOWN_PIECES: [layout::Piece; 7] = [
     layout::Piece::CommandTabs,
     layout::Piece::Display,
     layout::Piece::Layers,
     layout::Piece::Properties,
     layout::Piece::Command,
     layout::Piece::Agent,
+    layout::Piece::Styles,
 ];
 
 impl Curva {
