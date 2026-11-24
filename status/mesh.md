@@ -15,6 +15,13 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 puts it on the side the mouse is on, in the preview and when Enter is pressed (the features stream's `Context::cursor`,
 #661). Without a pointer it keeps the one fixed side.
 
+**Bridge Straightness, as Rhino 8 measured:** the rows between two border runs lie on a cubic for each pair of joined
+points, at even steps. It leaves each point square to the border in its face (from the face's Newell normal; a point
+between two faces takes their unit average), its inner points (2/3 × the gap) / (2 − |cos θ|) out, θ the angle between
+the two directions: 2/3 of the gap for parallel or facing borders, 1/3 for square ones (13 angles swept). Straightness,
+1 at first, mixes the curve with the straight line. Rhino's points in eight cases, curved, bent, fanned and leaning
+borders, to 4 places, measured with `-Bridge` on edges picked by script, so no screen was needed. `SubD::bridged` takes it.
+
 **MultiPipe on curved curves, as Rhino 8 measured:** Rhino pipes a curved curve as the polyline through points on it,
 with the same rings, struts, mitres and junctions as a drawn polyline. Each part of the curve is halved at the middle of
 its parameter range, always once, then each piece again while its chord is at least 3 × the radius long and either at
@@ -111,8 +118,8 @@ faces beyond its ends taking its end points. The measured box gives Rhino's 26 f
 
 **Bridge, as Rhino 8 measured:** two runs of open SubD border edges joined by rows of quads, with Rhino's Segments (1),
 Join (Yes) and Crease (No). Two strips bridged with Enter become one SubD of 6 quads on their 12 points, the bridge
-smooth and the 10 outer border edges creased, as in Rhino. `SubD::joined` puts two SubDs in one first. Straightness
-and picking faces are not here yet.
+smooth and the 10 outer border edges creased, as in Rhino. `SubD::joined` puts two SubDs in one first. Straightness:
+see 24 November; picking faces is not here yet.
 
 **Measured in Rhino 8 with the screen (owner's permission; settings backed up and restored):**
 - ReduceMesh PlanarOnly is an action at "Choose mesh reduction option ( NewFaceCount=… ReductionPercentage=0 PlanarOnly
