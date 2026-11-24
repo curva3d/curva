@@ -16,6 +16,26 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## Features stream — 24 November 2026 (Style panel)
+
+- **The Style panel** (`Styles` command, View menu; spec `views-and-styles.md` §3, the owner's
+  approved simple-panel mock-up), in `crates/curva-app/src/style_panel/`: the active view's style
+  chosen from the built-in styles, the model's own and My styles, each with a swatch of its
+  background; New, Duplicate, Rename, Delete, Undo (the panel's own: the model's styles are not in
+  its undo, decision C), Save to my styles, Delete from my styles (asks first), Import and Export of
+  `.curvastyle` files. Then how surfaces are drawn (Vector, Occlusion, Rendered) and three tabs:
+  Look, Objects (NURBS, Meshes, SubD, Curves, Points, Text, Other; Meshes and SubD with Same as
+  NURBS) and Plans and sections. Each section shows a few settings and keeps the rest under More;
+  settings an engine does not use are hidden. Every change is kept at once, while a slider is
+  dragged, and shows in each view drawing with the style; editing a built-in style copies it into
+  the model first ("Shaded copy") and says so. A slider's drag is one undo step.
+- **UI kit:** `ui_kit/form.rs`: `form_row`, `section_with_more`, `slider`, `colour_well`,
+  `swatch_item`.
+- The panel opens as a tall column beside the Layers panel (`layout::opening_place`).
+- Pictures `13-styles` and `14-style-objects` in `--ui-pictures`.
+- Not yet: pictures of each style drawn from the model (the swatch shows only its background),
+  Reset to the style it was copied from, marking a model style that differs from My styles' copy.
+
 ## Features stream — 23 November 2026 (website UI kit)
 
 - **One UI kit for the web, like the app's `ui_kit.rs`:** `website/public/assets/kit.css` holds every

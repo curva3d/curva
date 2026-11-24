@@ -123,6 +123,15 @@ pub(super) fn views_2(pen: &Pen<'_>, key: &str) -> bool {
                 theme::ACCENT.gamma_multiply(0.6),
             );
         }
+        // Two styles, one over the other, the front one half lit: the Style panel.
+        "styles" => {
+            pen.rect(3.0, 7.0, 12.0, 12.0);
+            pen.rect(7.0, 3.0, 12.0, 12.0);
+            pen.filled(
+                &[(7.0, 3.0), (19.0, 3.0), (7.0, 15.0)],
+                theme::ACCENT.gamma_multiply(0.6),
+            );
+        }
         "plan" => {
             pen.rect(4.0, 4.0, 14.0, 14.0);
             pen.line_in((4.0, 11.0), (18.0, 11.0), thin(1.0));

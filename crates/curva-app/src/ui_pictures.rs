@@ -1,5 +1,5 @@
 //! `curva --ui-pictures <folder>` saves pictures of Curva's own window in several states (both
-//! themes, Settings, a command running, the Print and Layouts panels, and the dialogs), taken by the window itself
+//! themes, Settings, a command running, the Print, Layouts and Style panels, and the dialogs), taken by the window itself
 //! through egui, so the interface can be looked at without anyone driving the screen. It opens a
 //! small building to show, then closes when the last picture is saved.
 
@@ -11,7 +11,7 @@ const WINDOW: egui::Vec2 = egui::vec2(1600.0, 1000.0);
 const SETTLE: u32 = 40;
 
 /// The states pictured, in order, each with its file name.
-const STATES: [&str; 12] = [
+const STATES: [&str; 14] = [
     "1-main-dark",
     "2-main-light",
     "3-command-running",
@@ -24,6 +24,8 @@ const STATES: [&str; 12] = [
     "10-units-question",
     "11-recovery",
     "12-selected-layer",
+    "13-styles",
+    "14-style-objects",
 ];
 
 /// Where the pictures go and how far along they are.
@@ -143,6 +145,15 @@ impl Curva {
             "10-units-question" => self.settings_ui.unit_asked = Some(curva_document::Unit::Metres),
             "11-recovery" => self.startup.left_behind = Some("recovery.curva".into()),
             "12-selected-layer" => self.picture_selected_layer(),
+            "13-styles" | "14-style-objects" => {
+                self.doc.select(&[]);
+                self.open_piece(layout::Piece::Styles);
+                self.settings_ui.styles.show_tab(if name == "13-styles" {
+                    crate::style_panel::StyleTab::Look
+                } else {
+                    crate::style_panel::StyleTab::Objects
+                });
+            }
             _ => {}
         }
     }

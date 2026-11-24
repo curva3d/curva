@@ -380,6 +380,8 @@ pub enum ViewRequest {
     ShowLayouts,
     /// Open the Annotation Styles panel.
     ShowAnnotationStyles,
+    /// Open the Style panel.
+    ShowStyles,
     /// Open the Print panel.
     ShowPrint,
     /// Open the Notes panel.
