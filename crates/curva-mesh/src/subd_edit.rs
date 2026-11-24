@@ -352,11 +352,18 @@ impl SubD {
 
     /// Two border chains joined by quads, as Rhino's Bridge: `first` and `second` are runs of
     /// points along open borders, of the same length, joined point to point in `segments` rows of
-    /// quads (at least 1).
+    /// quads (at least 1). The rows bow out along the borders as Rhino's do, less as
+    /// `straightness` goes from 0 to 1, where they lie on straight lines (see `subd_bridge`).
     ///
     /// # Errors
     /// When the chains differ in length, or the bridged cage is not a valid mesh.
-    pub fn bridged(&self, first: &[u32], second: &[u32], segments: u32) -> Result<Self, MeshError> {
+    pub fn bridged(
+        &self,
+        first: &[u32],
+        second: &[u32],
+        segments: u32,
+        straightness: f64,
+    ) -> Result<Self, MeshError> {
         if first.len() != second.len() || first.len() < 2 {
             return Err(MeshError::FaceTooSmall { face: 0 });
         }
@@ -367,14 +374,11 @@ impl SubD {
         let rows = segments.max(1);
         // Rows of points from the first chain to the second, the inner ones new.
         let mut lines: Vec<Vec<u32>> = vec![first.to_vec()];
-        for r in 1..rows {
-            let t = f64::from(r) / f64::from(rows);
-            let line = first
-                .iter()
-                .zip(second)
-                .map(|(&p, &q)| {
-                    let (pp, pq) = (points[p as usize], points[q as usize]);
-                    points.push(std::array::from_fn(|i| pp[i] + t * (pq[i] - pp[i])));
+        for row in crate::subd_bridge::bridge_rows(cage, first, second, rows, straightness) {
+            let line = row
+                .into_iter()
+                .map(|p| {
+                    points.push(p);
                     index(points.len() - 1)
                 })
                 .collect();
