@@ -16,27 +16,27 @@
 //!
 //! One straight line of length 10: 12 points, 8 faces, rings at 0, 5 and 10; Struts=2: 16 points;
 //! a square corner: 20 points with the middle ring at 4.25; a closed square: 32 points.
-//! Curved curves and junctions of three or more lines are not here yet.
+//! Networks with junctions are `SubD::pipes` (`subd_pipe_net`). Curved curves are not here yet.
 
 use crate::{Mesh, Point, SmoothError, SubD};
 
-fn sub(a: Point, b: Point) -> Point {
+pub(crate) fn sub(a: Point, b: Point) -> Point {
     std::array::from_fn(|k| a[k] - b[k])
 }
 
-fn add(a: Point, b: Point) -> Point {
+pub(crate) fn add(a: Point, b: Point) -> Point {
     std::array::from_fn(|k| a[k] + b[k])
 }
 
-fn scale(a: Point, s: f64) -> Point {
+pub(crate) fn scale(a: Point, s: f64) -> Point {
     a.map(|c| c * s)
 }
 
-fn dot(a: Point, b: Point) -> f64 {
+pub(crate) fn dot(a: Point, b: Point) -> f64 {
     (0..3).map(|k| a[k] * b[k]).sum()
 }
 
-fn cross(a: Point, b: Point) -> Point {
+pub(crate) fn cross(a: Point, b: Point) -> Point {
     [
         a[1] * b[2] - a[2] * b[1],
         a[2] * b[0] - a[0] * b[2],
@@ -44,13 +44,13 @@ fn cross(a: Point, b: Point) -> Point {
     ]
 }
 
-fn unit(a: Point) -> Option<Point> {
+pub(crate) fn unit(a: Point) -> Option<Point> {
     let l = dot(a, a).sqrt();
     (l > 1e-12).then(|| scale(a, 1.0 / l))
 }
 
 /// Rhino's perpendicular to `v` (openNURBS's `ON_3dVector::PerpendicularTo`), made unit.
-fn perpendicular_to(v: Point) -> Point {
+pub(crate) fn perpendicular_to(v: Point) -> Point {
     let [x, y, z] = v.map(f64::abs);
     let (i, j, k, a, b) = if y > x {
         if z > y {
@@ -75,7 +75,7 @@ fn perpendicular_to(v: Point) -> Point {
 }
 
 /// `v` turned by the least turn that takes the direction `d1` to `d2`.
-fn transported(v: Point, d1: Point, d2: Point) -> Point {
+pub(crate) fn transported(v: Point, d1: Point, d2: Point) -> Point {
     let c = dot(d1, d2);
     if c <= -1.0 + 1e-12 {
         return scale(v, -1.0);
@@ -90,7 +90,7 @@ fn transported(v: Point, d1: Point, d2: Point) -> Point {
 /// The mitred ring at `corner`, where the segment along `d1` turns to `d2`: each point where its
 /// line along the first segment (offset `size` along the ring started by `u1`) meets its line
 /// along the next.
-fn mitred(corner: Point, u1: Point, [d1, d2]: [Point; 2], size: f64) -> [Point; 4] {
+pub(crate) fn mitred(corner: Point, u1: Point, [d1, d2]: [Point; 2], size: f64) -> [Point; 4] {
     let u2 = cross(u1, d1);
     let c = dot(d1, d2);
     [u1, u2, scale(u1, -1.0), scale(u2, -1.0)].map(|o| {
@@ -123,7 +123,7 @@ impl Default for PipeOptions {
 }
 
 /// The rings of a pipe along the polyline `points` (a closed one's first not repeated).
-fn rings(
+pub(crate) fn rings(
     points: &[Point],
     closed: bool,
     options: PipeOptions,

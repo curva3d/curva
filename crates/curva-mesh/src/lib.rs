@@ -35,6 +35,8 @@ mod subd_merge;
 mod subd_offset;
 mod subd_parts;
 mod subd_pipe;
+mod subd_pipe_net;
+mod subd_pipe_node;
 mod subd_primitives;
 mod to_nurbs;
 mod to_subd;
