@@ -74,11 +74,6 @@ impl Node {
     }
 }
 
-/// `a` brought within an eighth of a turn of nothing by whole quarter turns.
-pub(crate) fn quarter_wrapped(a: f64) -> f64 {
-    a - FRAC_PI_2 * (a / FRAC_PI_2).round()
-}
-
 /// The point along `direction` from `centre` that is `size` from the line along `arm`.
 fn out_to(centre: Point, direction: Point, arm: Point, size: f64) -> Point {
     let c = dot(direction, arm);

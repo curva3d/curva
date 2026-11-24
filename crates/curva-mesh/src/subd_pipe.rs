@@ -11,7 +11,9 @@
 //!   corner one mitred ring: each point where its line along the previous segment meets its line
 //!   along the next, which is 1.5 × radius × tan(half the turn) back from the corner on the inside;
 //! - past a corner the ring turns with the line, by the least turn that takes one direction to
-//!   the next (a polyline with corners in two planes lands where Rhino's does);
+//!   the next, and each corner's ring lies along the plane of its bend, the rings between turning
+//!   evenly to it (measured 24 November 2026 on a curve in space: the twist from one corner's plane
+//!   to the next is spread over the struts between, half of it at the strut of Struts=1);
 //! - a closed run gives rings all round, with no ends.
 //!
 //! One straight line of length 10: 12 points, 8 faces, rings at 0, 5 and 10; Struts=2: 16 points;
@@ -87,6 +89,55 @@ pub(crate) fn transported(v: Point, d1: Point, d2: Point) -> Point {
     )
 }
 
+/// `v` (square to `d`) turned by `angle` round `d`.
+pub(crate) fn rotated(v: Point, d: Point, angle: f64) -> Point {
+    add(scale(v, angle.cos()), scale(cross(d, v), angle.sin()))
+}
+
+/// `a` brought within an eighth of a turn of nothing by whole quarter turns.
+pub(crate) fn quarter_wrapped(a: f64) -> f64 {
+    a - std::f64::consts::FRAC_PI_2 * (a / std::f64::consts::FRAC_PI_2).round()
+}
+
+/// The angle round `d` from `u` to the nearest of the four ring directions of `f`.
+pub(crate) fn twist(u: Point, f: Point, d: Point) -> f64 {
+    quarter_wrapped(dot(d, cross(u, f)).atan2(dot(u, f)))
+}
+
+/// The ring direction at a corner where `d1` turns to `d2`, for a ring arriving along `d1` with
+/// direction `carried`: Rhino lays each corner's ring along the plane of its bend, so the quarter
+/// turn of that nearest `carried`; with no bend, `carried`.
+pub(crate) fn bent(carried: Point, d1: Point, d2: Point) -> Point {
+    let Some(along) = unit(cross(d1, d2)).and_then(|n| unit(cross(n, d1))) else {
+        return carried;
+    };
+    let mut best = along;
+    let mut v = along;
+    for _ in 0..3 {
+        v = cross(d1, v);
+        if dot(v, carried) > dot(best, carried) {
+            best = v;
+        }
+    }
+    best
+}
+
+/// `ring`'s points turned round so each lies nearest the point of `next` it joins.
+fn in_step(ring: [Point; 4], next: [Point; 4]) -> [Point; 4] {
+    let cost = |k: usize| -> f64 {
+        (0..4)
+            .map(|i| {
+                let v = sub(ring[(i + k) % 4], next[i]);
+                dot(v, v)
+            })
+            .sum()
+    };
+    let k = (0..4)
+        .min_by(|&a, &b| cost(a).total_cmp(&cost(b)))
+        .unwrap_or(0);
+    std::array::from_fn(|i| ring[(i + k) % 4])
+}
+
 /// The mitred ring at `corner`, where the segment along `d1` turns to `d2`: each point where its
 /// line along the first segment (offset `size` along the ring started by `u1`) meets its line
 /// along the next.
@@ -122,6 +173,28 @@ impl Default for PipeOptions {
     }
 }
 
+/// The first ring direction of a run whose corners (the segment directions in and out at each
+/// point, `None` at open ends) are `corners` and whose first segment runs along `first`: along the
+/// first bend's plane, the segments before the bend running straight on from the first, except
+/// round a closed run whose first point is the bend.
+fn first_ring(corners: &[Option<(Point, Point)>], first: Point, closed: bool) -> Point {
+    let first_bend = corners.iter().enumerate().find_map(|(i, c)| {
+        let (a, b) = (*c)?;
+        unit(cross(a, b)).map(|n| (i, n, a, b))
+    });
+    match first_bend {
+        Some((i, n, d_in, d_out)) => {
+            let along = unit(cross(n, d_in)).unwrap_or_else(|| perpendicular_to(d_in));
+            if closed && i == 0 {
+                transported(along, d_in, d_out)
+            } else {
+                along
+            }
+        }
+        None => perpendicular_to(first),
+    }
+}
+
 /// The rings of a pipe along the polyline `points` (a closed one's first not repeated).
 pub(crate) fn rings(
     points: &[Point],
@@ -145,24 +218,8 @@ pub(crate) fn rings(
         (closed || (i > 0 && i < m - 1))
             .then(|| (dirs[(i + segments - 1) % segments], dirs[i % segments]))
     };
-    let first_bend = (0..m).find_map(|i| {
-        let (a, b) = corner(i)?;
-        unit(cross(a, b)).map(|n| (i, n))
-    });
-    // The first ring lies along the first bend's plane: the segments before the bend run straight
-    // on from the first, except round a closed run whose first point is the bend.
-    let mut u1 = match first_bend {
-        Some((i, n)) => {
-            let (d_in, d_out) = corner(i).unwrap_or((dirs[0], dirs[0]));
-            let along = unit(cross(n, d_in)).unwrap_or_else(|| perpendicular_to(d_in));
-            if closed && i == 0 {
-                transported(along, d_in, d_out)
-            } else {
-                along
-            }
-        }
-        None => perpendicular_to(dirs[0]),
-    };
+    let corners: Vec<Option<(Point, Point)>> = (0..m).map(corner).collect();
+    let mut u1 = first_ring(&corners, dirs[0], closed);
     let size = 1.5 * options.radius;
     let ring_at = |centre: Point, u1: Point, d: Point| -> [Point; 4] {
         let u2 = cross(u1, d);
@@ -180,22 +237,27 @@ pub(crate) fn rings(
         out.push(ring_at(points[0], u1, dirs[0]));
     }
     for s in 0..segments {
-        let d = dirs[s];
-        let (from, to) = (clear(s), lengths[s] - clear((s + 1) % m));
+        let (d, end) = (dirs[s], (s + 1) % m);
+        let (from, to) = (clear(s), lengths[s] - clear(end));
+        // The rings turn evenly along the segment to lie along the next corner's bend.
+        let turn = corner(end).map_or(0.0, |(d1, d2)| twist(u1, bent(u1, d1, d2), d));
         for k in 1..=options.struts {
             #[allow(clippy::cast_precision_loss)]
-            let t = from + (to - from) * k as f64 / (options.struts + 1) as f64;
-            out.push(ring_at(add(points[s], scale(d, t)), u1, d));
+            let part = k as f64 / (options.struts + 1) as f64;
+            let centre = add(points[s], scale(d, from + (to - from) * part));
+            out.push(ring_at(centre, rotated(u1, d, turn * part), d));
         }
-        let end = (s + 1) % m;
         if let Some((d1, d2)) = corner(end) {
-            out.push(mitred(points[end], u1, [d1, d2], size));
-            u1 = unit(transported(u1, d1, d2)).unwrap_or(u1);
+            let u = rotated(u1, d, turn);
+            out.push(mitred(points[end], u, [d1, d2], size));
+            u1 = unit(transported(u, d1, d2)).unwrap_or(u);
         }
     }
     if closed {
-        // The corner at the first point came last; it belongs first.
+        // The corner at the first point came last; it belongs first, its points in step with
+        // the ring after it.
         out.rotate_right(1);
+        out[0] = in_step(out[0], out[1]);
     } else {
         out.push(ring_at(points[m - 1], u1, dirs[segments - 1]));
     }

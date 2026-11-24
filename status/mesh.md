@@ -9,6 +9,20 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## 24 November 2026
+
+**MultiPipe on curved curves, as Rhino 8 measured:** Rhino pipes a curved curve as the polyline through points on it,
+with the same rings, struts, mitres and junctions as a drawn polyline. Each part of the curve is halved at the middle of
+its parameter range, always once, then each piece again while its chord is at least 3 × the radius long and either at
+least 6 × the radius long or the curve strays more than 3/16 of the radius from it (thresholds found to 1% of the radius).
+A quarter circle of radius 10 gives 2, 4, 8 and 16 pieces at radii 4, 2, 1 and 0.25. A curve whose parts are all straight
+keeps only its corners; in a joined curve with a curved part, its straight parts are halved too. `curva_mesh::pipe_corners`.
+Also measured: each corner's ring lies along the plane of its bend and each segment's rings turn
+evenly from one corner's ring to the next (or from a junction's face to the first bend), so polylines and curves in space
+now match Rhino too; before, rings were only carried round each bend. Rhino's points in 15 cases, curves, a polyline in
+space, closed and through junctions. Not matched: a pipe fatter than a short corner (Rhino drops struts there and leaves
+odd point counts).
+
 ## 23 November 2026
 
 **MultiPipe, partly, as Rhino 8 measured:** straight lines and polylines become SubD pipes, one for each connected group:
@@ -19,8 +33,7 @@ directions, or off the faces of their hull), each pipe's rings starting square t
 last segment to meet a second junction. Rhino's points in 21 cases (T, Y, three axes, a skewed three, a cross, six axes,
 a tetrahedron, five, an H, twisted runs). Known differences: Rhino tips the point off a hull face through the junction
 (a cross with a fourth line up) and the poles of five or more lines in a plane by 10–20°, here they sit square; a line
-with more than four hull neighbours (a fan of six round a seventh) is refused. Curved curves (Rhino puts many rings along
-an arc) are still to come. `SubD::pipes`.
+with more than four hull neighbours (a fan of six round a seventh) is refused. Curved curves: see 24 November. `SubD::pipes`.
 
 **Bevel KeepCreases, as Rhino 8 measured:** on, as Rhino starts it; a crease leaving a bevelled point creases its row and the
 cap edges to the far point, a creased side edge stays creased to the row, and a creased picked edge creases the strip's long
