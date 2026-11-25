@@ -19,6 +19,65 @@ pin Rhino-measured results. Newest first.*
 - **Same\*** means Curva's result equals the exact geometric answer for that case (which Rhino gives
   too), but the case has not been run in Rhino itself yet.
 
+## Testing stream — 25 November 2026 (after midnight)
+
+- **More issues:** #715 (UnlockSelected unlocks without asking), #716 (Rebuild fits a different curve:
+  22.007 against Rhino's 21.978; Rhino's control points posted), both features; #718 (mesh booleans
+  make every face a triangle; Rhino keeps the quads away from the cut), mesh.
+- **Turned from same\* into same** by running them in Rhino: ProjectToCPlane, Orient3Pt, VolumeCentroid,
+  Intersect, CurveBoolean, Distribute, Cap, ExtractSrf, DupEdge, Project, TriangulateMesh, MeshToNURB,
+  DimRadius, DimDiameter, SelAll, SelNone, SelCrv, SelPt, SelOpenCrv and the curve extrusions.
+- **Also matching Rhino:** ToSubD, ToNURBS, MakeUniform, SetUserText and GetUserText, LockSwap,
+  SelPolyline, SelLine, SelClosedCrv, DimRotated; `.curva` save and open is exact for every kind of
+  object; the SubD editing commands and several mesh commands are marked same from the mesh stream's
+  own Rhino measurements.
+- **Note:** measuring Rebuild set Rhino's `-Rebuild` to PointCount=10, Degree=3, which this Rhino
+  remembers (the owner's Rhino settings).
+- **Left (114):** mostly views, printing, panels and picks of parts (edges, knots, points), which need
+  the desktop; and the rechecks of #700, #705 and #706 once merged.
+
+## Testing stream — 25 November 2026 (late night)
+
+- **Testing no longer stops on dialogs or a missing screen** (the owner's request). With the remote
+  desktop disconnected:
+  - Rhino's dialogs are answered by `E:\curva-scratch\testing\rhino-dialogs.ps1` through UI Automation
+    (Autosave Recovery: OK, which keeps the autosave; Update Available: No); it runs in the background
+    while Rhino slots start. A stuck Rhino of the stream's own is typed into with `rhino-type.ps1`.
+  - Curva is driven by a test build with egui's accessibility turned on (never committed): its controls
+    are listed and pressed through UI Automation (`curva-ui.ps1`). Pointer-level checks (where a click
+    lands, double-clicks, held keys) still need the desktop.
+- **#701 rechecked** (features): InterpCrv, Lines, Area, Revolve's prompt, SelSrf/SelSolid and the new
+  SelPolysrf/SelClosedSrf/SelOpenSrf, picks let go, Ellipsoid's third axis: all match Rhino now.
+- **#698 narrowed:** New layer works when pressed through accessibility, so the panel's logic is fine and
+  mouse clicks are caught by something above it; the layer rows' controls also have no accessible names.
+- **New issues (features):** #707 (Parabola, Hyperbola, Paraboloid start from the focus in Rhino), #708
+  (SimplifyCrv), #709 (UnrollSrf: polygon outline, caps dropped), #710 (Split takes only curves), #711
+  (BooleanSplit gives one open-sided body), #712 (Silhouette is a polyline; What says little), #713
+  (Taper fails on an edge axis; ratio instead of distances).
+- **For the mesh stream:** Rhino's Explode splits a MeshBox into 6 sides and a MeshCylinder into 3
+  (#690); Rhino's MeshCone is 112 vertices at its defaults.
+- **Matching Rhino, measured in Rhino:** Spiral, Conic, CloseCrv, TweenCurves, ChangeDegree, tapered
+  extrusion (5° default), Pyramid, Section, Contour, DupBorder, SplitSrf, BooleanUnion of touching
+  boxes, SubDPlane, SubDCone, SubDTorus, MeshTorus, Make2D from the top, Twist, Bend.
+
+## Testing stream — 25 November 2026 (night)
+
+- **Blocked on the machine:** the remote desktop session disconnected around 3 pm, so there is no
+  screen for computer use, and Rhino closed. A new Rhino is waiting on its "Autosave Recovery" dialog,
+  which only someone at the screen can answer (Rhino's autosave folder also holds the owner's real
+  project autosaves, so it is left alone). Rhino comparisons resume when the session is back.
+- **Meanwhile, Curva checked against exact geometry (same\*):** tapered, to-point and along-curve
+  extrusions, ExtractSrf, DupBorder, DupEdge, Pyramid, ProjectToCPlane, Orient3Pt, VolumeCentroid,
+  Section, Contour, Intersect, Count, CurveBoolean, Distribute, Align, TriangulateMesh, MeshToNURB,
+  Block and Insert steps, the selection filters, and radius, diameter, arc length, area and volume
+  dimensions.
+- **Tests pinned** (#702): Tube, Ellipsoid, Helix, SrfPt, Rotate3D, Orient and ScaleNU as Rhino 8
+  measured them.
+- **Timing noise confirmed:** Pyramid and Paraboloid once took 6–7 s; rerun twice, 11 ms and 4 ms. Single
+  slow runs on this machine come from other sessions' builds, not Curva.
+- For the features stream (#669): Rhino's InterpCrv data posted (chord-length knots, unit end
+  derivatives).
+
 ## Testing stream — 25 November 2026 (evening)
 
 - **The owner's decision:** "Yes, as in Rhino": the gumball gets Rhino 8's scale squares back
@@ -97,7 +156,7 @@ pin Rhino-measured results. Newest first.*
 ## Commands
 
 State against Rhino 8: **same** (measured in both), **same\*** (matches the exact result; Rhino run
-pending), **differs** (issue filed), **missing**, or **not yet** (not tested). Counts: 23 differs, 222 not yet, 76 same, 2 same*.
+pending), **differs** (issue filed), **missing**, or **not yet** (not tested). Counts: 33 differs, 114 not yet, 155 same, 24 same*.
 
 ### Curves
 
@@ -105,46 +164,46 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 |---|---|---|---|
 | Line | same |  | typed points, BothSides |
 | Polyline | same |  | fixed in #668 (start point closes it); checked in the app |
-| InterpCrv | differs | #669 | length 23.84 against Rhino's 22.09 (knot spacing) |
+| InterpCrv | same |  | fixed in #701: 22.091092 against 22.091093 |
 | Circle | differs | #695 | 3Point with 3D points is flattened |
 | Point | same |  |  |
 | Divide | same |  | circle into 6 |
-| Rebuild | not yet |  |  |
+| Rebuild | differs | #716 | 22.007 against 21.978 |
 | PointsOn | not yet |  |  |
 | PointsOff | not yet |  |  |
 | InsertKnot | not yet |  |  |
 | RemoveKnot | not yet |  |  |
 | RemoveControlPoint | not yet |  |  |
-| CloseCrv | not yet |  |  |
+| CloseCrv | same |  | gap closed by a line, 40 |
 | SetPt | not yet |  |  |
 | Offset | same |  | circle (37.699) and rectangle with sharp corners (48) (Rhino-measured in rhino_measured.rs) |
 | Fillet | same |  | two lines r=2: 8, 8, 3.1416 (RhinoCommon) |
 | FilletCorners | same |  | rectangle r=1, 38.283 (Rhino-measured in rhino_measured.rs) |
-| TweenCurves | not yet |  |  |
+| TweenCurves | same |  | 11.1803 |
 | Chamfer | same* |  |  |
 | Ellipse | same |  |  |
 | Arc | differs | #695 | three typed 3D points are flattened onto the construction plane |
 | Rectangle | differs | #695 | 3Point upright is refused |
-| Polygon | not yet |  |  |
+| Polygon | same* |  | 6 sides circumscribed: 34.641; Rhino's Edge, Star options missing (reference row) |
 | Helix | same |  | length 188.755 against 188.760 |
-| Spiral | not yet |  |  |
+| Spiral | same |  | 220.170 against 220.176 |
 | Points | same |  |  |
-| Lines | differs | #670 | Curva pairs points, Rhino chains them |
+| Lines | same |  | fixed in #701: chains, as Rhino |
 | Slot | same |  | Curva only: Rhino 8 has no Slot command |
-| Parabola | not yet |  |  |
-| ChangeDegree | not yet |  |  |
+| Parabola | differs | #707 | Rhino starts from the focus; Curva's default is Rhino's Vertex option |
+| ChangeDegree | same |  | shape kept |
 | HandleCurve | not yet |  |  |
 | Sketch | not yet |  |  |
-| Conic | not yet |  |  |
-| Hyperbola | not yet |  |  |
+| Conic | same |  | 11.4779 in both |
+| Hyperbola | differs | #707 | Rhino: centre, focus, end; Curva: centre, vertex, focus distance, end |
 | BlendCrv | not yet |  |  |
 | OffsetMultiple | not yet |  |  |
 | Extend | not yet |  |  |
 | Fair | not yet |  |  |
-| CurveBoolean | not yet |  |  |
-| SimplifyCrv | not yet |  |  |
+| CurveBoolean | same |  | lens 18.546 in both |
+| SimplifyCrv | differs | #708 | collinear segments not merged |
 | Reparameterize | not yet |  |  |
-| MakeUniform | not yet |  |  |
+| MakeUniform | same |  | 22.020279 |
 | Weight | not yet |  |  |
 | TextObject | not yet |  |  |
 | Curve | same |  | control points, degree 3 |
@@ -156,36 +215,36 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Plane | same |  |  |
 | SrfPt | same |  | 102.9399 |
 | ExtrudeSrf | same |  | solid by default (Rhino's factory default) |
-| DupEdge | not yet |  |  |
-| DupBorder | not yet |  |  |
-| ExtrudeCrvTapered | not yet |  |  |
-| ExtrudeCrvAlongCrv | not yet |  |  |
-| ExtrudeCrvToPoint | not yet |  |  |
+| DupEdge | same |  | 12 edges, 72 in both |
+| DupBorder | same |  | 30 |
+| ExtrudeCrvTapered | same |  | 5° draft by default in both (top radius 4.1251) |
+| ExtrudeCrvAlongCrv | same |  | side 314.159 in both |
+| ExtrudeCrvToPoint | same |  | side 175.62 in both |
 | RailRevolve | same |  | 314.129 against 314.159 |
-| ExtractSrf | not yet |  |  |
+| ExtractSrf | same |  | 50 in both |
 | DupFaceBorder | not yet |  |  |
 | EdgeSrf | same |  | area 102.9399 |
 | NetworkSrf | same |  | 109.8230 against 109.8216 |
 | Patch | differs | #684 | 4 faces against Rhino's 1 |
 | ExtendSrf | not yet |  |  |
 | Untrim | not yet |  |  |
-| Project | not yet |  |  |
+| Project | same |  | 12.566 in both |
 | RebuildUV | not yet |  |  |
 | ExtractIsocurve | not yet |  |  |
 | ShrinkTrimmedSrf | not yet |  |  |
 | BlendSrf | not yet |  |  |
 | MatchSrf | not yet |  |  |
 | Sweep2 | differs | #667 | one section at the start matches; two sections impossible, section mid-rail fails |
-| Pull | not yet |  |  |
+| Pull | same* |  |  |
 | InterpCrvOnSrf | not yet |  |  |
 | OffsetCrvOnSrf | not yet |  |  |
-| UnrollSrf | not yet |  |  |
+| UnrollSrf | differs | #709 | 194-sided outline; a solid's caps left out |
 | FilletSrf | not yet |  |  |
-| SplitSrf | not yet |  |  |
+| SplitSrf | same |  | 20 and 30, as Rhino's Split |
 | ExtrudeCrv | same |  | circle to a solid, volume 785.398 (Rhino-measured in rhino_measured.rs) |
 | PlanarSrf | same |  |  (Rhino-measured in rhino_measured.rs) |
-| Revolve | differs | #674 | result the same (area 314.159); the angle prompt shows "<{0}>" |
-| Loft | same |  | area 256.3047 in both |
+| Revolve | same |  | fixed in #701: "Revolution angle <360>" |
+| Loft | same |  | area 256.3047; picks let go afterwards (#680, fixed in #701) |
 | Sweep1 | differs | #665 #666 | one section matches (area within 0.001); several sections, a section away from the start, and polyline rails fail |
 | OffsetSrf | same |  | box offset 1: 1728 |
 
@@ -201,24 +260,24 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | TruncatedCone | same |  |  |
 | Torus | same |  | preview curves only (#671) |
 | Tube | same |  | area 345.5752, volume 157.0796 |
-| Ellipsoid | differs | #682 | typed length matches (volume 125.6637); a point for the third axis is refused |
-| BooleanSplit | not yet |  |  |
-| Paraboloid | not yet |  |  |
-| Pyramid | not yet |  |  |
-| MergeAllFaces | not yet |  |  |
+| Ellipsoid | same |  | fixed in #701: a point for the third axis |
+| BooleanSplit | differs | #711 | one 11-face body and a loose face, not two closed solids |
+| Paraboloid | differs | #707 | Rhino starts from the focus |
+| Pyramid | same |  | 198.1368 in both |
+| MergeAllFaces | same* |  |  |
 | Wirecut | not yet |  |  |
 | EditBoolean | not yet |  |  |
 | BreakBoolean | not yet |  |  |
-| MoveFace | not yet |  |  |
+| MoveFace | same* |  | top up 2: 250 |
 | PushPull | not yet |  |  |
-| Cap | not yet |  |  |
-| ExtrudeFace | not yet |  |  |
+| Cap | same |  | 785.398 in both |
+| ExtrudeFace | same* |  | top 2: 250 |
 | ChamferSrf | not yet |  |  |
 | Pipe | same |  | line, radius 1, capped (volume 31.416); Rhino's end radius step not asked (Rhino-measured in rhino_measured.rs) |
 | FilletEdge | same |  | all 12 box edges r=1: volume 975.587, 26 faces; picking edges in the app works |
 | ChamferEdge | differs | #683 | corners: 18 faces, 946 against 26, 945.333 |
 | Shell | same |  | open top t=1: 424, 11 faces |
-| BooleanUnion | same |  | volume 1500 (Rhino-measured in rhino_measured.rs) |
+| BooleanUnion | same |  | touching boxes merge to 6 faces, 2000 (Rhino-measured) |
 | BooleanDifference | same |  | volume 874.3363, area 700.531 |
 | BooleanIntersection | same |  |  |
 
@@ -238,23 +297,23 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Smooth | not yet |  |  |
 | History | not yet |  |  |
 | Flip | not yet |  |  |
-| ProjectToCPlane | not yet |  |  |
+| ProjectToCPlane | same |  |  |
 | Join | same |  |  (Rhino-measured in rhino_measured.rs) |
 | Explode | same |  |  (Rhino-measured in rhino_measured.rs) |
-| Split | same |  |  |
+| Split | differs | #710 | curves only; Rhino's Split takes surfaces too |
 | Trim | same* |  |  |
-| Orient3Pt | not yet |  |  |
+| Orient3Pt | same |  |  |
 | Rotate3D | same |  |  |
 | Scale1D | same |  |  |
 | Scale2D | same |  |  |
 | ScaleNU | same |  |  |
-| ArrayLinear | not yet |  |  |
-| Align | not yet |  |  |
-| Distribute | not yet |  |  |
+| ArrayLinear | same |  | (Rhino-measured in rhino_measured.rs) |
+| Align | same* |  | Rhino's options and steps |
+| Distribute | same |  | middle box to x 5 in both (Rhino: XAxis, Mode=Gap) |
 | Shear | same |  |  |
-| Twist | not yet |  |  |
-| Bend | not yet |  |  |
-| Taper | not yet |  |  |
+| Twist | same |  | 997.15 against 999.997 |
+| Bend | same |  | Rhino's steps |
+| Taper | differs | #713 | fails with the axis on an edge; one ratio where Rhino asks start and end distances |
 | Flow | not yet |  |  |
 | CageEdit | not yet |  |  |
 | Delete | not yet |  |  |
@@ -269,79 +328,79 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | BoundingBox | differs | #688 | "-inf" for solids, meshes and SubDs; no box made |
 | Distance | differs | #694 | value matches; Rhino also reports angles and deltas |
 | Length | same |  | 31.416 |
-| Area | differs | #673 | surfaces and solids give 0 |
+| Area | same |  | fixed in #701: 190, 314.159, 50 |
 | Angle | differs | #694 | Curva takes 3 points (corner and sides), Rhino 4 (two lines) |
 | EvaluatePt | same |  |  |
 | Radius | same |  | click on a circle: 5.000 |
-| What | not yet |  |  |
+| What | differs | #712 | reports little beside Rhino's What |
 | AreaCentroid | not yet |  |  |
-| VolumeCentroid | not yet |  |  |
+| VolumeCentroid | same |  | 5, 2.5, 1.5 in both |
 | ShowEdges | not yet |  |  |
 | Plan | not yet |  |  |
 | Zebra | not yet |  |  |
-| Count | not yet |  |  |
+| Count | same* |  |  |
 | Audit | not yet |  |  |
 | DraftAnalysis | not yet |  |  |
-| Section | not yet |  |  |
-| Contour | not yet |  |  |
-| Intersect | not yet |  |  |
+| Section | same |  | 16 in both |
+| Contour | same |  | four rectangles of 30, ends included, in both |
+| Intersect | same |  | 5,5 in both |
 | CurvatureGraph | not yet |  |  |
-| Silhouette | not yet |  |  |
+| Silhouette | differs | #712 | 64-segment polyline; Rhino's is exact |
 
 ### Mesh
 
 | Command | State | Issue | Notes |
 |---|---|---|---|
 | Mesh | not yet |  |  |
-| MeshBox | differs | #690 | edges welded (602 vertices against 726) |
+| MeshBox | differs | #690 | edges welded (602 against 726); fix in #706 |
 | MeshPlane | same |  |  |
 | MeshSphere | same |  |  |
-| MeshCylinder | differs | #690 | caps welded (112 against 132) |
-| MeshCone | not yet |  |  |
-| MeshTorus | not yet |  |  |
-| Check | not yet |  |  |
-| MeshRepair | not yet |  |  |
+| MeshCylinder | differs | #690 | caps welded (112 against 132); fix in #706 |
+| MeshCone | differs | #690 | 102 vertices against 112 (welding) |
+| MeshTorus | same |  | 100/100/100, 690.983 |
+| Check | same* |  | "good mesh" report |
+| MeshRepair | same |  | measured in Rhino 8 by the mesh stream (status/mesh.md) |
 | UnifyMeshNormals | not yet |  |  |
 | FillMeshHoles | not yet |  |  |
 | CullDegenerateMeshFaces | not yet |  |  |
 | RebuildMeshNormals | not yet |  |  |
-| ReduceMesh | not yet |  |  |
-| TriangulateMesh | not yet |  |  |
-| QuadrangulateMesh | not yet |  |  |
+| ReduceMesh | same |  | measured in Rhino 8 by the mesh stream (status/mesh.md) |
+| TriangulateMesh | same |  | 121/200/0 in both |
+| QuadrangulateMesh | same |  | measured in Rhino 8 by the mesh stream (defaults 5° and 2) |
 | ExtractMeshFaces | not yet |  |  |
-| MeshToNURB | not yet |  |  |
-| MeshBooleanUnion | not yet |  |  |
-| MeshBooleanDifference | not yet |  |  |
-| MeshBooleanIntersection | not yet |  |  |
-| MeshBooleanSplit | not yet |  |  |
-| QuadRemesh | not yet |  |  |
+| MeshToNURB | same |  | one face per mesh face, as Rhino |
+| MeshBooleanUnion | differs | #718 | volume exact; all triangles (as the others) |
+| MeshBooleanDifference | differs | #718 | volume exact; all triangles where Rhino keeps quads |
+| MeshBooleanIntersection | differs | #718 | volume exact; all triangles |
+| MeshBooleanSplit | differs | #718 | volumes exact; all triangles |
+| QuadRemesh | same |  | measured in Rhino 8 by the mesh stream (status/mesh.md) |
 
 ### SubD
 
 | Command | State | Issue | Notes |
 |---|---|---|---|
 | SubDBox | same |  | cage 26/24 |
-| SubDPlane | not yet |  |  |
+| SubDPlane | same |  | cage 9/4 |
 | SubDSphere | differs | #689 | surface matches; extent is the cage's |
 | SubDCylinder | differs | #689 | surface matches; extent is the cage's |
-| SubDCone | not yet |  |  |
-| SubDTorus | not yet |  |  |
-| ToSubD | not yet |  |  |
+| SubDCone | same |  | cage 34/40; surface within 0.1 % |
+| SubDTorus | same |  | cage 60/60; surface within 0.1 % |
+| ToSubD | same |  | MeshBox: 602/600 in both |
 | SubDDisplayToggle | not yet |  |  |
-| ToNURBS | not yet |  |  |
-| Crease | not yet |  |  |
-| RemoveCrease | not yet |  |  |
-| Fill | not yet |  |  |
-| WeldEdge | not yet |  |  |
-| Stitch | not yet |  |  |
-| Bridge | not yet |  |  |
-| InsertEdge | not yet |  |  |
-| MergeFaces | not yet |  |  |
-| InsertPoint | not yet |  |  |
-| OffsetSubD | not yet |  |  |
-| Bevel | not yet |  |  |
-| SubDLoft | not yet |  |  |
-| MultiPipe | not yet |  |  |
+| ToNURBS | same |  | SubDBox: 6 faces, 786.865 against 786.855 |
+| Crease | same |  | measured in Rhino 8 by the mesh stream (status/mesh.md) |
+| RemoveCrease | same |  | measured in Rhino 8 by the mesh stream (status/mesh.md) |
+| Fill | same |  | measured in Rhino 8 by the mesh stream (status/mesh.md) |
+| WeldEdge | same |  | measured in Rhino 8 by the mesh stream (status/mesh.md) |
+| Stitch | same |  | measured in Rhino 8 by the mesh stream (status/mesh.md) |
+| Bridge | same |  | measured in Rhino 8 by the mesh stream (status/mesh.md) |
+| InsertEdge | same |  | measured in Rhino 8 by the mesh stream (status/mesh.md) |
+| MergeFaces | same |  | measured in Rhino 8 by the mesh stream (status/mesh.md) |
+| InsertPoint | same |  | measured in Rhino 8 by the mesh stream (status/mesh.md) |
+| OffsetSubD | same |  | measured in Rhino 8 by the mesh stream (status/mesh.md) |
+| Bevel | same |  | measured in Rhino 8 by the mesh stream (status/mesh.md) |
+| SubDLoft | same |  | measured in Rhino 8 by the mesh stream (status/mesh.md) |
+| MultiPipe | same |  | measured in Rhino 8 by the mesh stream (status/mesh.md) |
 
 ### Annotation
 
@@ -350,15 +409,15 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Text | same |  | text, then where it goes, as Rhino |
 | Dim | same |  | 10.00 |
 | DimAligned | same |  | 10.44 |
-| DimRotated | not yet |  |  |
-| DimRadius | not yet |  |  |
-| DimDiameter | not yet |  |  |
-| DimAngle | not yet |  |  |
-| DimOrdinate | not yet |  |  |
-| DimCurveLength | not yet |  |  |
-| DimArea | not yet |  |  |
-| DimVolume | not yet |  |  |
-| DimArcLength | not yet |  |  |
+| DimRotated | same |  | angle first, then points: 8.660 in both |
+| DimRadius | same |  | 5 in both |
+| DimDiameter | same |  | 10 in both |
+| DimAngle | same* |  | first line, or Points, as Rhino |
+| DimOrdinate | same* |  | Rhino's steps and options |
+| DimCurveLength | same* |  | 31.42 |
+| DimArea | same* |  | 50 |
+| DimVolume | same* |  | 150 |
+| DimArcLength | same* |  | 7.854 |
 | Leader | same |  |  |
 | Dot | same |  |  |
 | Hatch | same |  | area right; default pattern Hatch1 (Rhino's factory default is Solid) |
@@ -380,8 +439,8 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Layouts | not yet |  |  |
 | Detail | same |  | two clicks add a Top detail (rounded scale) |
 | Print | not yet |  |  |
-| ExportPDF | not yet |  |  |
-| Make2D | not yet |  |  |
+| ExportPDF | not yet |  | needs the app (printing draws through the viewport) |
+| Make2D | same |  | box from the top: 4 lines, 30 |
 | TitleBlock | not yet |  |  |
 | ScaleBar | not yet |  |  |
 | SheetIndex | not yet |  |  |
@@ -395,12 +454,12 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 |---|---|---|---|
 | Hide | same |  |  |
 | Show | same |  |  |
-| SelAll | not yet |  |  |
-| SelNone | not yet |  |  |
-| SelCrv | not yet |  |  |
-| SelSrf | differs | #679 | misses a sphere |
-| SelSolid | differs | #679 | takes a sphere |
-| SelPt | not yet |  |  |
+| SelAll | same |  |  |
+| SelNone | same |  |  |
+| SelCrv | same |  | curves only, as Rhino |
+| SelSrf | same |  | fixed in #701 |
+| SelSolid | same |  | fixed in #701 |
+| SelPt | same |  |  |
 | SelName | not yet |  |  |
 | SelLayer | not yet |  |  |
 | SelDup | same |  |  |
@@ -410,12 +469,12 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | SelFilterToggle | not yet |  |  |
 | Isolate | same |  |  |
 | Invert | same |  |  |
-| SelLine | not yet |  |  |
-| SelPolyline | not yet |  |  |
-| SelCircle | not yet |  |  |
-| SelArc | not yet |  |  |
-| SelClosedCrv | not yet |  |  |
-| SelOpenCrv | not yet |  |  |
+| SelLine | same |  |  |
+| SelPolyline | same |  | rectangle and polyline, as Rhino |
+| SelCircle | same |  | Curva only: not a Rhino 8 command |
+| SelArc | same |  | Curva only: not a Rhino 8 command |
+| SelClosedCrv | same |  | rectangle and circle, as Rhino |
+| SelOpenCrv | same |  |  |
 | HideSwap | same |  |  |
 | SelColor | not yet |  |  |
 | SelBlockInstanceNamed | not yet |  |  |
@@ -445,45 +504,48 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 
 | Command | State | Issue | Notes |
 |---|---|---|---|
-| Rename | not yet |  |  |
+| SelPolysrf | same |  | added in #701 |
+| SelClosedSrf | same |  | added in #701 |
+| SelOpenSrf | same |  | added in #701 |
+| Rename | same* |  | names the selected objects (Rhino names objects in Properties) |
 | Match | not yet |  |  |
 | Lock | same |  |  |
 | Unlock | same |  |  |
 | Group | not yet |  |  |
 | Ungroup | not yet |  |  |
-| Block | not yet |  |  |
-| Insert | not yet |  |  |
+| Block | same* |  | objects become an instance; base point, then name |
+| Insert | same* |  | name, point, scale, rotation, as Rhino's -Insert |
 | BlockManager | not yet |  |  |
 | BlockEdit | not yet |  |  |
 | ExplodeBlock | not yet |  |  |
 | ReplaceBlock | not yet |  |  |
-| ChangeLayer | not yet |  |  |
+| ChangeLayer | same* |  | to an existing layer, typed |
 | MatchProperties | not yet |  |  |
 | Linetype | not yet |  |  |
 | ObjectColour | not yet |  |  |
-| SetUserText | not yet |  |  |
-| GetUserText | not yet |  |  |
+| SetUserText | same |  | key, then value |
+| GetUserText | same |  | lists every key |
 | SetDocumentUserText | not yet |  |  |
 | GetDocumentUserText | not yet |  |  |
 | Notes | not yet |  |  |
 | Purge | not yet |  |  |
-| LockSwap | not yet |  |  |
-| UnlockSelected | not yet |  |  |
+| LockSwap | same |  |  |
+| UnlockSelected | differs | #715 | unlocks without asking which |
 | BringToFront | not yet |  |  |
 | SendToBack | not yet |  |  |
 | BringForward | not yet |  |  |
 | SendBackward | not yet |  |  |
-| UnweldEdge | not yet |  |  |
+| UnweldEdge | same |  | measured in Rhino 8 by the mesh stream (status/mesh.md) |
 
 ### Files
 
 | Command | State | Issue | Notes |
 |---|---|---|---|
-| Save | not yet |  |  |
-| SaveAs | not yet |  |  |
-| Open | not yet |  |  |
+| Save | same* |  | round trip exact (solids, curves, mesh, SubD, dimension) |
+| SaveAs | same* |  |  |
+| Open | same* |  | .curva round trip exact; .3dm import exact |
 | Import | same |  | Rhino-made .3dm (11 kinds of object incl. extrusion, trimmed solid, polycurve, mesh, SubD, text, hatch, dimension): every value matches |
 | Export | same |  | .3dm with a box, sphere, circle, polyline, mesh, SubD and a dimension: every value read back in Rhino |
 | ExportSelected | not yet |  |  |
-| New | not yet |  |  |
+| New | same* |  | asks to discard; Rhino asks to save first |
 

@@ -27,6 +27,8 @@ enum Start {
     TwoLines,
     TwoCircles,
     TwoBoxes,
+    /// A 10 × 5 × 3 box at the origin, selected.
+    Box,
 }
 
 /// One object as Rhino measured it: its extent's size and lowest corner, and its length and
@@ -76,7 +78,7 @@ const SQ: Measured = curve([10.0, 10.0, 0.0], [0.0, 0.0, 0.0], 40.0, true);
 /// The cases: a name, what the model starts with, what is typed (the command first), and what
 /// Rhino 8 left, measured 21 and 22 November 2026.
 fn cases() -> Vec<(&'static str, Start, Vec<&'static str>, Vec<Measured>)> {
-    use Start::{Empty, Line, OpenL, Square, TwoBoxes, TwoCircles, TwoLines};
+    use Start::{Box, Empty, Line, OpenL, Square, TwoBoxes, TwoCircles, TwoLines};
     vec![
         (
             "line",
@@ -479,7 +481,7 @@ fn cases() -> Vec<(&'static str, Start, Vec<&'static str>, Vec<Measured>)> {
             vec!["box", "vertical", "0,0,0", "4,0,0", "4,0,2", "3"],
             vec![solid([4.0, 3.0, 2.0], [0.0, -3.0, 0.0], 24.0)],
         ),
-        // Measured by the testing stream, 25 November 2026.
+        // Measured by the testing stream, 25 November 2026 (the rows below, to the end).
         (
             "line bothsides",
             Empty,
@@ -522,6 +524,71 @@ fn cases() -> Vec<(&'static str, Start, Vec<&'static str>, Vec<Measured>)> {
             vec!["plane", "0,0,0", "10,5,0"],
             vec![surface([10.0, 5.0, 0.0], [0.0; 3])],
         ),
+        (
+            "tube",
+            Empty,
+            vec!["tube", "0,0,0", "3", "2", "10"],
+            vec![solid([6.0, 6.0, 10.0], [-3.0, -3.0, 0.0], 157.0796)],
+        ),
+        (
+            "ellipsoid, third axis typed",
+            Empty,
+            vec!["ellipsoid", "0,0,0", "5,0,0", "0,3,0", "2"],
+            vec![solid([10.0, 6.0, 4.0], [-5.0, -3.0, -2.0], 125.6637)],
+        ),
+        (
+            "helix",
+            Empty,
+            vec!["helix", "0,0,0", "0,0,10", "3"],
+            vec![curve([6.0, 6.0, 10.0], [-3.0, -3.0, 0.0], 188.7604, false)],
+        ),
+        (
+            "srfpt",
+            Empty,
+            vec!["srfpt", "0,0,0", "10,0,0", "10,10,3", "0,10,0"],
+            vec![surface([10.0, 10.0, 3.0], [0.0; 3])],
+        ),
+        (
+            "rotate3d about x",
+            Box,
+            vec!["rotate3d", "0,0,0", "10,0,0", "90"],
+            vec![solid([10.0, 3.0, 5.0], [0.0, -3.0, 0.0], 150.0)],
+        ),
+        (
+            "orient two points",
+            Box,
+            vec!["orient", "0,0,0", "10,0,0", "20,0,0", "20,10,0"],
+            vec![solid([5.0, 10.0, 3.0], [15.0, 0.0, 0.0], 150.0)],
+        ),
+        (
+            "scalenu box",
+            Box,
+            vec!["scalenu", "0,0,0", "2", "3", "1"],
+            vec![solid([20.0, 15.0, 3.0], [0.0; 3], 900.0)],
+        ),
+        (
+            "spiral",
+            Empty,
+            vec!["spiral", "0,0,0", "0,0,10", "5", "2"],
+            vec![curve(
+                [9.85, 9.7, 10.0],
+                [-4.85, -4.775, 0.0],
+                220.1759,
+                false,
+            )],
+        ),
+        (
+            "conic, rho typed",
+            Empty,
+            vec!["conic", "0,0,0", "10,0,0", "5,5,0", "0.5"],
+            vec![curve([10.0, 2.5, 0.0], [0.0; 3], 11.4779, false)],
+        ),
+        (
+            "pyramid, five sides",
+            Empty,
+            vec!["pyramid", "0,0,0", "5,0,0", "10"],
+            vec![solid([9.045, 9.51, 10.0], [-4.045, -4.755, 0.0], 198.1368)],
+        ),
     ]
 }
 
@@ -552,6 +619,11 @@ fn start(kind: Start) -> Document {
             );
             return doc;
         }
+        Start::Box => {
+            let body = curva_kernel::Body::cuboid([0.0; 3], [10.0, 5.0, 3.0]).unwrap();
+            add_all(&mut doc, vec![Shape::Body(body)]);
+            return doc;
+        }
         Start::TwoBoxes => {
             add_all(
                 &mut doc,
@@ -565,7 +637,9 @@ fn start(kind: Start) -> Document {
         _ => {}
     }
     let shape = match kind {
-        Start::Empty | Start::TwoLines | Start::TwoCircles | Start::TwoBoxes => return doc,
+        Start::Empty | Start::TwoLines | Start::TwoCircles | Start::TwoBoxes | Start::Box => {
+            return doc;
+        }
         Start::Line => Curve::line([0.0; 3], [10.0, 0.0, 0.0]),
         Start::Square => Curve::polyline(
             vec![

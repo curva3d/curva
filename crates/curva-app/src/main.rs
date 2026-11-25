@@ -37,6 +37,7 @@ mod command_line;
 mod desktop;
 mod dots;
 mod file_dialogs;
+mod gestures;
 mod grid;
 mod grips;
 mod gumball;
@@ -150,6 +151,9 @@ struct Curva {
     gumball_on: bool,
     /// Whether a text field other than the command line has the keyboard, so keys go there.
     naming_layer: bool,
+    /// A right-click without a drag in a viewport, which the command line takes as Enter this
+    /// frame, as in Rhino (#697).
+    enter_requested: bool,
     /// The command line's text field, to tell it from other fields.
     command_field: Option<egui::Id>,
     agent_on: bool,
@@ -245,6 +249,7 @@ impl Curva {
             maximised: STARTING_LAYOUT,
             gumball_on: true,
             naming_layer: false,
+            enter_requested: false,
             command_field: None,
             // A benchmark must not take over the connection of a window that is in use.
             agent_on: benchmark.is_none(),

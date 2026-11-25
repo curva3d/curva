@@ -3,20 +3,36 @@
 use super::support::*;
 use crate::Message;
 use crate::commands::arguments::*;
-use crate::recipe::{Context, Made, Recipe, StepDef};
+use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef};
 use curva_document::Shape;
 use curva_kernel::{Curve, cross, dot, gap, sub, unit};
 
-/// `Hyperbola`: one branch of a hyperbola, exact: its centre, the vertex the branch passes
-/// through, the focus beyond the vertex, then how far the branch reaches.
+/// `Hyperbola`: one branch of a hyperbola, exact. As in Rhino, its centre, a focus and a point the
+/// branch reaches, the vertex following from them (#707); with `FromVertex`, its centre, the vertex,
+/// the focus's distance beyond it, then how far the branch reaches.
+/// Rhino's option to give the vertex before the focus.
+const FROM_VERTEX: &str = "FromVertex";
+
 #[derive(Default)]
 pub struct Hyperbola;
 
 impl Recipe for Hyperbola {
     const NAME: &'static str = "hyperbola";
+    const OPTIONS: &'static [OptionDef] = &[OptionDef::mode(FROM_VERTEX)];
 
     fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
-        let mut steps = vec![StepDef::point("prompt.hyperbola.centre")];
+        let first = StepDef::point("prompt.hyperbola.centre").offering(&[FROM_VERTEX]);
+        if cx.mode != Some(FROM_VERTEX) {
+            let mut steps = vec![first];
+            if let Some(c) = point(cx, 0) {
+                steps.push(StepDef::point("prompt.hyperbola.focus_point").from(c));
+                if point(cx, 1).is_some() {
+                    steps.push(StepDef::point("prompt.hyperbola.end").from(c));
+                }
+            }
+            return steps;
+        }
+        let mut steps = vec![first];
         if let Some(c) = point(cx, 0) {
             steps.push(StepDef::point("prompt.hyperbola.vertex").from(c));
             if let Some(v) = point(cx, 1) {
@@ -30,17 +46,32 @@ impl Recipe for Hyperbola {
     }
 
     fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
-        let (Some(c), Some(v)) = (point(cx, 0), point(cx, 1)) else {
+        let (Some(c), Some(second)) = (point(cx, 0), point(cx, 1)) else {
             return Ok(Made::default());
         };
-        let a = gap(c, v);
-        let axis = unit(sub(v, c)).ok_or_else(|| Message::new("error.reference_point"))?;
-        let Some(focal) = number(cx, 2) else {
-            return Ok(Made {
-                guides: Curve::line(c, v).ok().into_iter().collect(),
-                ..Made::default()
-            });
+        let axis = unit(sub(second, c)).ok_or_else(|| Message::new("error.reference_point"))?;
+        let guide = || Made {
+            guides: Curve::line(c, second).ok().into_iter().collect(),
+            ..Made::default()
         };
+        // From a focus and a point on the branch, as Rhino: the difference of the point's distances
+        // to the two foci is twice the distance to the vertex.
+        let (a, focal, end) = if cx.mode == Some(FROM_VERTEX) {
+            let Some(focal) = number(cx, 2) else {
+                return Ok(guide());
+            };
+            (gap(c, second), focal, point(cx, 3))
+        } else {
+            let Some(end) = point(cx, 2) else {
+                return Ok(guide());
+            };
+            let focal = gap(c, second);
+            let far = plus(c, axis, -focal);
+            ((gap(end, far) - gap(end, second)) / 2.0, focal, Some(end))
+        };
+        if a <= 1e-9 {
+            return Err(Message::new("error.hyperbola_focus"));
+        }
         if focal.abs() <= a {
             return Err(Message::new("error.hyperbola_focus"));
         }
@@ -48,7 +79,7 @@ impl Recipe for Hyperbola {
         let side =
             unit(cross(up(cx), axis)).ok_or_else(|| Message::new("error.reference_point"))?;
         // How far the branch reaches across its axis: at least a little.
-        let reach = point(cx, 3)
+        let reach = end
             .map(|end| dot(sub(end, c), side).abs())
             .unwrap_or(b)
             .max(1e-6 * a);
@@ -84,7 +115,10 @@ mod tests {
     fn a_hyperbola_is_exact() {
         // a = 2, c = 3: b² = 5; every point satisfies x²/4 − y²/5 = 1.
         let mut doc = Document::default();
-        run(&mut doc, &["hyperbola", "0,0", "2,0", "3", "5,4"]);
+        run(
+            &mut doc,
+            &["hyperbola", "fromvertex", "0,0", "2,0", "3", "5,4"],
+        );
         let spline = Spline::of(&only_curve(&doc)).unwrap();
         for i in 0..=20 {
             let p = spline.point(f64::from(i) / 20.0);

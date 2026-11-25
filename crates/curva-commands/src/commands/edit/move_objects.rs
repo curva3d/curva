@@ -112,6 +112,21 @@ mod tests {
     }
 
     #[test]
+    fn objects_picked_inside_the_command_are_let_go_of_but_a_selection_before_stays() {
+        let mut doc = Document::default();
+        let id = doc.add(Curve::line([0.0; 3], [1.0, 0.0, 0.0]).unwrap());
+        let mut processor = run(&mut doc, &["move"]);
+        doc.select(&[id]);
+        for answer in ["", "0,0", "1,0"] {
+            processor.submit(&mut doc, answer);
+        }
+        assert!(doc.selection().is_empty());
+        let mut doc = one_selected_line();
+        run(&mut doc, &["move", "0,0", "1,0"]);
+        assert_eq!(doc.selection().len(), 1);
+    }
+
+    #[test]
     fn picked_control_points_move_instead_of_the_object() {
         let mut doc = Document::default();
         let id = doc

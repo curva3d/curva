@@ -1,6 +1,7 @@
-//! `Area`: measures the area inside closed flat curves.
+//! `Area`, as in Rhino: measures surfaces, polysurfaces and solids, meshes, and the area inside
+//! closed flat curves.
 
-use crate::commands::{ask_objects, curves_of, geometry_failed, objects_or_selection};
+use crate::commands::{ask_objects, bodies_of, curves_of, geometry_failed, objects_or_selection};
 use crate::{Answer, Command, Message, Step};
 use curva_document::Document;
 
@@ -18,6 +19,22 @@ impl Command for Area {
             match curve.area() {
                 Ok(area) => total += area,
                 Err(error) => return geometry_failed(&error),
+            }
+        }
+        for (_, body) in bodies_of(doc, &chosen) {
+            match body.area() {
+                Ok(area) => total += area,
+                Err(error) => return geometry_failed(&error),
+            }
+        }
+        for object in doc
+            .state()
+            .objects
+            .iter()
+            .filter(|o| chosen.contains(&o.id))
+        {
+            if let Some(mesh) = object.shape.mesh() {
+                total += mesh.area();
             }
         }
         Step::Done(Some(Message::with(
@@ -51,6 +68,21 @@ mod tests {
             "{:?}",
             processor.log()
         );
+    }
+
+    #[test]
+    fn it_measures_surfaces_and_solids_as_rhino_does() {
+        for (steps, area) in [
+            (vec!["box", "0,0,0", "10,5,0", "3"], "190"),
+            (vec!["plane", "0,0,0", "10,5,0"], "50"),
+        ] {
+            let mut doc = Document::default();
+            run(&mut doc, &steps);
+            let id = doc.state().objects[0].id;
+            doc.select(&[id]);
+            let processor = run(&mut doc, &["area"]);
+            assert!(processor.log()[0].contains(area), "{:?}", processor.log());
+        }
     }
 
     #[test]

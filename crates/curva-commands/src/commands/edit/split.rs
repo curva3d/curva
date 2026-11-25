@@ -1,9 +1,10 @@
-//! `Split`, as in Rhino: cuts curves where they cross the cutting curves, keeping every piece.
-//! Rhino's `Point`, `Isocurve` and `Shrink`, and splitting surfaces, are still to come
-//! (`docs/commands/rhino-reference.md`).
+//! `Split`, as in Rhino: cuts curves where they cross the cutting curves, and surfaces along the
+//! cutting curves on them (#710), keeping every piece. Rhino's `Point`, `Isocurve` and `Shrink`, and
+//! cutting by surfaces, are still to come (`docs/commands/rhino-reference.md`).
 
 use crate::Message;
-use crate::commands::{curves_of, cut_by};
+use crate::commands::nurbs::surfaces::split_srf::split_pieces;
+use crate::commands::{bodies_of, curves_of, cut_by};
 use crate::recipe::{Context, Derived, Made, Recipe, StepDef, Value};
 use curva_document::Shape;
 
@@ -15,7 +16,7 @@ impl Recipe for Split {
     const NAME: &'static str = "split";
 
     fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
-        let mut steps = vec![StepDef::objects("prompt.split.objects").curves()];
+        let mut steps = vec![StepDef::objects("prompt.split.objects")];
         if !cx.values.is_empty() {
             steps.push(StepDef::objects("prompt.split.cutters").curves());
         }
@@ -46,6 +47,21 @@ impl Recipe for Split {
                 }));
             }
         }
+        // Surfaces and polysurfaces, along the cutting curves on them.
+        let cutters: Vec<_> = curves_of(cx.doc, cutter_ids)
+            .into_iter()
+            .map(|(_, c)| c)
+            .collect();
+        for (id, body) in bodies_of(cx.doc, targets) {
+            if let Some(pieces) = split_pieces(&body, &cutters)? {
+                made.remove.push(id);
+                made.derived.extend(pieces.into_iter().map(|piece| Derived {
+                    shape: Shape::Body(piece),
+                    from: id,
+                    history: None,
+                }));
+            }
+        }
         if made.derived.is_empty() {
             return Err(Message::new("error.nothing_to_cut"));
         }
@@ -62,6 +78,33 @@ mod tests {
     use crate::Processor;
     use curva_document::Document;
     use curva_kernel::Curve;
+
+    #[test]
+    fn a_surface_splits_along_a_curve_as_in_rhino() {
+        let mut doc = Document::default();
+        let mut processor = Processor::default();
+        for step in ["plane", "0,0,0", "10,5,0", "line", "4,-1,0", "4,6,0"] {
+            processor.submit(&mut doc, step);
+        }
+        let (plane, line) = (doc.state().objects[0].id, doc.state().objects[1].id);
+        processor.submit(&mut doc, "split");
+        doc.select(&[plane]);
+        processor.submit(&mut doc, "");
+        doc.select(&[line]);
+        processor.submit(&mut doc, "");
+        let mut areas: Vec<f64> = doc
+            .state()
+            .objects
+            .iter()
+            .filter_map(|o| o.shape.body()?.area().ok())
+            .collect();
+        areas.sort_by(f64::total_cmp);
+        assert_eq!(areas.len(), 2, "{areas:?}");
+        assert!(
+            (areas[0] - 20.0).abs() < 1e-6 && (areas[1] - 30.0).abs() < 1e-6,
+            "{areas:?}"
+        );
+    }
 
     fn crossing_lines() -> (Document, u64, u64) {
         let mut doc = Document::default();
