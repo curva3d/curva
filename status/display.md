@@ -8,6 +8,20 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## 25 November 2026
+
+**Done**
+- **A curve lying on a surface's edge shows over it** (owner's report 18 on 0.1.6, via the
+  features stream).
+  - Before, after DupBorder on a cylinder, the new selected curve sat exactly on the edge it
+    was copied from, and the two drew mixed, as orange and black dashes.
+  - Now, where lines lie in the same place, a selected line wins, then a curve over an edge, as
+    in Rhino. The line shader nudges them a few steps of the depth picture's precision towards
+    the viewer (`CURVE_LIFT`, `SELECTED_LIFT`). That is too little to bring a line in front of
+    anything really nearer.
+  - New test on the graphics card: a curve with an edge drawn after it in the same place shows
+    as the curve, and a selected edge shows in the selection colour whichever is drawn first.
+
 ## 24 November 2026
 
 **Done**
