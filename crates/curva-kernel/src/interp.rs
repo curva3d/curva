@@ -11,7 +11,7 @@ fn bad(why: &str) -> KernelError {
 
 /// The cubic B-spline basis function `i` on `knots` at `t` (Cox–de Boor); at the last knot the
 /// last function is 1.
-fn basis(knots: &[f64], i: usize, degree: usize, t: f64) -> f64 {
+pub(crate) fn basis(knots: &[f64], i: usize, degree: usize, t: f64) -> f64 {
     if degree == 0 {
         let (a, b) = (knots[i], knots[i + 1]);
         let last = knots[knots.len() - 1];
