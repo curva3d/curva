@@ -185,7 +185,7 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | SrfPt | Three or four corner points | none | none | done |
 | ExtrudeSrf | Select surfaces; distance | `Direction` `BothSides` `Solid` `DeleteInput` `ToBoundary` `SetBasePoint` | `BothSides` `DeleteInput` | partly |
 | ArrayLinear | Select objects; number of elements; first and second reference points | none | none | done |
-| Angle | Corner; point on first side; point on second side | `TwoObjects` | none | partly |
+| Angle | Start of first line; end of first line; start of second line; end of second line | `TwoObjects` | none | partly |
 | EvaluatePt | Point to evaluate | none | none | done |
 | Radius | Select a circle, arc or curve | none | none | partly |
 | What | Select objects | none | none | done |
@@ -202,8 +202,8 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | Ellipsoid | Center; end of first axis; end of second; end of third | `Corner` `Diameter` `FromFoci` `AroundCurve` | none | partly |
 | BooleanSplit | Objects to split; cutting objects | `DeleteInput` | `DeleteInput` | done |
 | DupEdge | Select edges | none | none | done |
-| Parabola | Focus or vertex; direction; end | `Vertex` `Marks` `FocusMarks` `HalfParabola` | none | partly |
-| Paraboloid | Focus or vertex; direction; end | `Vertex` `MarkFocus` `Solid` | none | partly |
+| Parabola | Focus (or vertex); direction; end | `Vertex` `Marks` `FocusMarks` `HalfParabola` | `Vertex` | partly |
+| Paraboloid | Focus (or vertex); direction; end | `Vertex` `MarkFocus` `Solid` | `Vertex` | partly |
 | Align | Select objects; alignment option; alignment point (Enter: auto align) | `Bottom` `Concentric` `HorizCenter` `Left` `Right` `Top` `VertCenter` (measured in Rhino 8) | `Bottom` `Concentric` `HorizCenter` `Left` `Right` `Top` `VertCenter` | done |
 | ChangeDegree | Select curves; new degree | `Deformable` | `Degree` `Deformable` | partly |
 | AreaCentroid | Select surfaces or closed curves | none | none | partly |
@@ -216,7 +216,7 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | HandleCurve | Points, each with its handle; Enter | `Close` | none | partly |
 | Sketch | Drag to draw | none | none | done |
 | Conic | Start; end; apex; rho or a point on it | `Perpendicular` `Tangent` | none | partly |
-| Hyperbola | Centre; vertex; focus; end | `FromFocus` `Coefficients` `Vertices` `Marks` | none | partly |
+| Hyperbola | Centre; focus; end | `FromCoefficient` `FromFoci` `FromVertex` `BothBranches` `MarkFoci` `ShowAsymptotes` | `FromVertex` | partly |
 | BlendCrv | Two curves, near the ends to join | `Position` `Tangency` `Curvature` `G3` `G4` `Edges` | `Position` `Tangency` `Curvature` | partly |
 | OffsetMultiple | Curves; distance; side | `Corner` `BothSides` | none | partly |
 | DupBorder | Select surfaces | none | none | done |

@@ -8,6 +8,40 @@ fn plus(p: Point, d: Point, by: f64) -> Point {
     std::array::from_fn(|i| p[i] + d[i] * by)
 }
 
+/// The flat face inside an unrolled outline: each long side, `left` and `right`, exact where it is
+/// straight, as a cylinder's side unrolls to a true rectangle, joined by the first and last
+/// rulings.
+fn flat_outline(left: &[[f64; 2]], right: &[[f64; 2]]) -> Result<Body, KernelError> {
+    let flat =
+        |side: &[[f64; 2]]| -> Vec<Point> { side.iter().map(|p| [p[0], p[1], 0.0]).collect() };
+    let (low, mut high) = (flat(left), flat(right));
+    high.reverse();
+    let ring = Curve::compound(vec![
+        fitted_side(low.clone())?,
+        Curve::line(low[low.len() - 1], high[0])?,
+        fitted_side(high.clone())?,
+        Curve::line(high[high.len() - 1], low[0])?,
+    ])?;
+    Body::planar(&[ring])
+}
+
+/// One side of an unrolled outline through `points`: a line where they lie along one, else the
+/// polyline through them.
+fn fitted_side(points: Vec<Point>) -> Result<Curve, KernelError> {
+    let (first, last) = (points[0], points[points.len() - 1]);
+    let length = gap(first, last);
+    if let Some(along) = unit(sub(last, first)) {
+        let straight = points.iter().all(|p| {
+            let d = sub(*p, first);
+            gap(d, along.map(|v| v * dot(d, along))) <= 1e-6 * length.max(1.0)
+        });
+        if straight {
+            return Curve::line(first, last);
+        }
+    }
+    Curve::polyline(points, false)
+}
+
 impl Body {
     /// A ruled, developable surface laid flat on the world XY plane (Rhino's UnrollSrf): its
     /// rulings unfolded strip by strip, keeping their lengths. Surfaces that are not
@@ -23,7 +57,9 @@ impl Body {
             ));
         }
         let [[u0, u1], [v0, v1]] = surface.domain();
-        let steps = 96;
+        // Fine enough that the lengths along the curved sides come out true within the model's
+        // tolerance (#709: 96 strips left a cylinder 0.02% short).
+        let steps = 1024;
         // The rulings' ends: along the curved direction, each ruling from one side to the other.
         let ruling = |k: usize| -> (Point, Point) {
             let t = k as f64 / steps as f64;
@@ -89,10 +125,7 @@ impl Body {
             right.push(nb);
             previous = (a, b);
         }
-        let mut outline: Vec<Point> = left.iter().map(|p| [p[0], p[1], 0.0]).collect();
-        outline.extend(right.iter().rev().map(|p| [p[0], p[1], 0.0]));
-        let ring = Curve::polyline(outline, true)?;
-        Body::planar(&[ring])
+        flat_outline(&left, &right)
     }
 
     /// The flat face `face` pulled out along its normal by `distance` and joined to the solid

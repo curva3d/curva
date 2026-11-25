@@ -65,6 +65,34 @@ fn simpler(piece: &Curve, tolerance: f64) -> Option<Curve> {
 
 /// `SimplifyCrv`: replaces the parts of curves that are lines or arcs within the tolerance with
 /// exact lines and arcs.
+/// `pieces` with each run of straight pieces in line with each other merged into one line, as
+/// Rhino's SimplifyCrv merges collinear segments (#708). Whether any were merged comes back too.
+fn merged_lines(pieces: Vec<Curve>, tolerance: f64) -> (Vec<Curve>, bool) {
+    let mut out: Vec<Curve> = Vec::new();
+    let mut merged = false;
+    for piece in pieces {
+        if let (Some(Curve::Line { start, end: joint }), Curve::Line { start: next, end }) =
+            (out.last(), &piece)
+            && gap(*joint, *next) <= tolerance
+            && let Some(dir) = unit(sub(*end, *start))
+        {
+            let d = sub(*joint, *start);
+            let off = length(sub(d, scaled(dir, dot(d, dir))));
+            let ahead = dot(sub(*joint, *start), dir) > 0.0 && dot(sub(*end, *joint), dir) > 0.0;
+            if off <= tolerance && ahead {
+                let start = *start;
+                if let Ok(line) = Curve::line(start, *end) {
+                    *out.last_mut().expect("a piece is there") = line;
+                    merged = true;
+                    continue;
+                }
+            }
+        }
+        out.push(piece);
+    }
+    (out, merged)
+}
+
 #[derive(Default)]
 pub struct SimplifyCrv;
 
@@ -93,11 +121,28 @@ impl Recipe for SimplifyCrv {
                     )
                 })
                 .collect();
-            if !changed {
+            let (simplified, merged) = merged_lines(simplified, tolerance);
+            if !(changed || merged) {
                 continue;
             }
+            // Straight pieces only stay a polyline, as Rhino keeps it.
+            let corners: Option<Vec<Point>> = simplified
+                .iter()
+                .map(|piece| match piece {
+                    Curve::Line { start, .. } => Some(*start),
+                    _ => None,
+                })
+                .collect();
+            let closed = curve.is_closed().unwrap_or(false);
             let whole = if simplified.len() == 1 {
                 simplified[0].clone()
+            } else if let (Some(mut corners), Some(Curve::Line { end, .. })) =
+                (corners, simplified.last())
+            {
+                if !closed {
+                    corners.push(*end);
+                }
+                Curve::polyline(corners, closed).map_err(|e| failed(&e))?
             } else {
                 Curve::compound(simplified).map_err(|e| failed(&e))?
             };
@@ -116,6 +161,24 @@ mod tests {
     use crate::commands::run;
     use curva_document::Document;
     use curva_kernel::{Curve, Spline};
+
+    #[test]
+    fn segments_in_line_merge_into_one_as_in_rhino() {
+        let mut doc = Document::default();
+        let points = vec![
+            [0.0; 3],
+            [5.0, 0.0, 0.0],
+            [10.0, 0.0, 0.0],
+            [10.0, 10.0, 0.0],
+        ];
+        let id = doc.add(Curve::polyline(points, false).unwrap());
+        doc.select(&[id]);
+        let processor = run(&mut doc, &["simplifycrv"]);
+        assert!(processor.log()[0].contains('1'), "{:?}", processor.log());
+        let curve = doc.state().objects[0].curve().unwrap();
+        assert_eq!(curve.control_points().unwrap().len(), 3);
+        assert!((curve.length().unwrap() - 20.0).abs() < 1e-9);
+    }
 
     #[test]
     fn simplify_turns_straight_and_round_nurbs_into_lines_and_arcs() {

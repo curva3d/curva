@@ -25,6 +25,29 @@ pub(crate) fn unexpected_step() -> Step {
     unexpected()
 }
 
+/// The axes of the plane through `a`, `b` and `c`, as Rhino's three-point forms draw in it whatever
+/// the construction plane (#695): `plane` itself when the points lie in it or in a line, else X
+/// along `a` to `b`, the normal turned to the construction plane's side.
+pub(crate) fn plane_through(a: Point, b: Point, c: Point, plane: [Point; 2]) -> [Point; 2] {
+    use curva_kernel::{cross, dot, sub, unit};
+    let up = cross(plane[0], plane[1]);
+    let Some(normal) = unit(cross(sub(b, a), sub(c, a))) else {
+        return plane;
+    };
+    if dot(normal, up).abs() > 1.0 - 1e-9 {
+        return plane;
+    }
+    let normal = if dot(normal, up) < 0.0 {
+        normal.map(|v| -v)
+    } else {
+        normal
+    };
+    let Some(x) = unit(sub(b, a)) else {
+        return plane;
+    };
+    [x, cross(normal, x)]
+}
+
 /// The centre and radius of the circle through three points, on the plane with axes `x` and `y`
 /// through the first point. `None` when the points lie in a line.
 pub(crate) fn circle_through(

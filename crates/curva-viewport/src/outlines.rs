@@ -679,7 +679,8 @@ impl Outlines {
             let Ok(points) = outline.sample() else {
                 continue;
             };
-            self.sites.extend(snap::sites_of(&outline, &points));
+            self.sites
+                .extend(snap::piece_sites(look.line, &outline, &points));
             // Snap places come from every sampled point; drawing, picking and boxes need fewer.
             let points = crate::simplify::fewer(
                 points,

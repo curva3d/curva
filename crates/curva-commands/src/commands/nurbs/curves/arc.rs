@@ -100,6 +100,8 @@ impl Recipe for Arc {
                 points.get(2).copied().flatten(),
             ) {
                 (Some(start), Some(end), Some(through)) => {
+                    // In the plane of the three points, as in Rhino (#695).
+                    let plane = crate::commands::plane_through(start, through, end, plane);
                     let Some((centre, a, b)) = three_point(start, through, end, plane) else {
                         return Err(Message::new("error.arc_points_in_line"));
                     };
