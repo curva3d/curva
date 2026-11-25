@@ -297,6 +297,7 @@ fn the_selection_table_draws_what_coloured_vertices_drew() {
             selection: Arc::new(selected.clone()),
             clips: Vec::new(),
             circles: Arc::default(),
+            turns: Arc::default(),
         };
         let size = [96, 96];
         let (Ok(before), Ok(after)) = (
@@ -351,6 +352,7 @@ fn circles_drawn_from_their_axes_look_as_their_segments() {
             selection: Arc::new(selected.clone()),
             clips: Vec::new(),
             circles: Arc::new(circles.to_vec()),
+            turns: Arc::default(),
         };
         let size = [96, 96];
         let chunk = super::CHUNK_BYTES;

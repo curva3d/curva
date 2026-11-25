@@ -79,6 +79,8 @@ pub(crate) struct Scene {
     pub(crate) clips: Vec<[f32; 4]>,
     /// Whole circles drawn from their centre and axes, as for [`Drawing::circles`].
     pub(crate) circles: Arc<Vec<crate::PlacedCircle>>,
+    /// The turns of curved faces, as for [`Drawing::turns`].
+    pub(crate) turns: Arc<Vec<crate::PlacedTurn>>,
 }
 
 /// [`draw_picture`], with uploads split into blocks of at most `chunk_bytes`.
@@ -196,6 +198,7 @@ fn picture_drawing(picture: Picture, scene: &Scene) -> Drawing {
         faces: Arc::new(picture.faces),
         shapes: Arc::default(),
         circles: Arc::clone(&scene.circles),
+        turns: Arc::clone(&scene.turns),
         overlay: Arc::clone(&empty),
         preview_faces: Arc::new(Vec::new()),
         objects: Arc::clone(&scene.objects),

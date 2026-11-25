@@ -23,6 +23,9 @@ pub struct Drawing {
     /// Whole circles drawn from their centre and axes ([`crate::SceneParts::shared`]), out of
     /// `scene`.
     pub circles: Arc<Vec<crate::PlacedCircle>>,
+    /// The turns of curved faces ([`crate::SceneParts::shared`]), drawing their silhouettes where
+    /// the style's faces hide nothing.
+    pub turns: Arc<Vec<crate::PlacedTurn>>,
     /// Which object each number in `scene` and `faces` stands for ([`crate::SceneParts`]);
     /// empty when their vertices carry no numbers.
     pub objects: Arc<Vec<u64>>,
