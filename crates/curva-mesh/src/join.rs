@@ -130,7 +130,8 @@ mod tests {
             origin: [x, 0.0, 0.0],
             ..Frame::world()
         };
-        Mesh::mesh_box(&frame, [1.0; 3], [1, 1, 1])
+        // Welded, so it is one piece (a MeshBox's sides are unwelded and explode apart).
+        Mesh::mesh_box(&frame, [1.0; 3], [1, 1, 1]).welded(0.0).0
     }
 
     #[test]

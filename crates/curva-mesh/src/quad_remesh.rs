@@ -87,6 +87,13 @@ impl Mesh {
     /// # Errors
     /// When the mesh has no faces, or quadrs cannot remesh it.
     pub fn quad_remeshed(&self, options: &QuadRemeshOptions) -> Result<Self, QuadRemeshError> {
+        // Points at one place are joined first, so an unwelded edge (a MeshBox's, #690) is
+        // remeshed across as Rhino does, and the result stays whole.
+        self.welded(0.0).0.quad_remeshed_joined(options)
+    }
+
+    /// [`Mesh::quad_remeshed`] on a mesh whose points are already joined.
+    fn quad_remeshed_joined(&self, options: &QuadRemeshOptions) -> Result<Self, QuadRemeshError> {
         let triangles = self.triangles().triangles;
         if triangles.is_empty() {
             return Err(QuadRemeshError("there are no faces to remesh".to_owned()));

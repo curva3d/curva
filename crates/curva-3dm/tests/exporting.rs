@@ -1819,11 +1819,15 @@ fn meshes_and_subds_come_back_the_same() {
     let meshes: Vec<_> = back.objects.iter().filter_map(|o| o.shape.mesh()).collect();
     let subds: Vec<_> = back.objects.iter().filter_map(|o| o.shape.subd()).collect();
     assert_eq!(meshes.len(), 1);
-    // Rhino keeps one normal per point, so a box's hard edges split its points on the way out,
-    // as Rhino's own box is stored; welded back they are the same twelve points.
+    // A box keeps its hard edges unwelded, as Rhino stores its own (#690), so its points come
+    // back as they went; welded, both are the same twelve places.
     let back_mesh = meshes[0];
     assert_eq!(back_mesh.faces().count(), mesh.faces().count());
-    assert_eq!(back_mesh.welded(0.0).0.vertex_count(), mesh.vertex_count());
+    assert_eq!(back_mesh.vertex_count(), mesh.vertex_count());
+    assert_eq!(
+        back_mesh.welded(0.0).0.vertex_count(),
+        mesh.welded(0.0).0.vertex_count()
+    );
     assert!(back_mesh.is_closed());
     assert!((back_mesh.area() - mesh.area()).abs() < 1e-9);
     assert!((back_mesh.volume().unwrap() - mesh.volume().unwrap()).abs() < 1e-9);

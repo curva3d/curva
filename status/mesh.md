@@ -11,13 +11,17 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 25 November 2026
 
+**A SubD's extent is its smooth surface's (#689):** `SubD::bounds` now gives the extent of the smooth surface, as Rhino 8 does, so BoundingBox, zoom framing, the gumball and Align fit the surface, not the cage. A SubDSphere of radius 5 spans ±5 (it was ±6.177), and a SubD from a 10 mm cube cage spans 0.802 to 9.198, as measured in Rhino. `SubD::cage_bounds` keeps the cage's extent.
+
+**MeshBox, MeshCylinder and MeshCone keep their hard edges unwelded (#690):** as measured in Rhino 8, each side of a box has its own points, and the ends of a cylinder or cone have their own copy of the rim. A 10 × 10 × 10 box has 726 vertices (it was 602), and a 10 × 10 cylinder 132 (it was 112). The faces still join, so the meshes stay closed with the same volumes.
+
 **Mesh wires and outlines, as Rhino 8 draws them (owner's items 4 and 10, passed on):**
 - Measured on a mesh box and on welded and unwelded prisms.
 - Shaded: every wire solid and thin, with a thicker outline.
 - Hidden: only the outline.
 - The outline is the silhouette plus the edges used by one face by vertex number: open borders and unwelded seams. Welded creases are not outlined.
 
-The drawing lives in curva-viewport, so it went to the display stream as #663; `Mesh::naked_edges` already gives the edges. Item 20 (picking cage points after Ctrl+Shift) is in the features stream's picking work.
+The drawing lives in curva-viewport, so it went to the display stream as #663. `Mesh::naked_edges` joins edges by place, so it leaves out unwelded seams; the new `Mesh::outline_edges` counts by vertex number and gives the outline's edges. Item 20 (picking cage points after Ctrl+Shift) is in the features stream's picking work.
 
 ## 24 November 2026
 
