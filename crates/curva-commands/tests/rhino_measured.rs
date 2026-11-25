@@ -589,6 +589,19 @@ fn cases() -> Vec<(&'static str, Start, Vec<&'static str>, Vec<Measured>)> {
             vec!["pyramid", "0,0,0", "5,0,0", "10"],
             vec![solid([9.045, 9.51, 10.0], [-4.045, -4.755, 0.0], 198.1368)],
         ),
+        (
+            // Rhino 8, 25 November 2026: a degree-3 piece with control points (0,0) (2,3) (8,-3)
+            // (10,0); the second handle is mirrored through its point.
+            "handlecurve, two points with handles",
+            Empty,
+            vec!["handlecurve", "0,0,0", "2,3,0", "10,0,0", "12,3,0", ""],
+            vec![curve(
+                [10.0, 1.732, 0.0],
+                [0.0, -0.866, 0.0],
+                10.8485,
+                false,
+            )],
+        ),
     ]
 }
 
