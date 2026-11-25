@@ -15,7 +15,7 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 **MeshBox, MeshCylinder and MeshCone keep their hard edges unwelded (#690):** as measured in Rhino 8, each side of a box has its own points, and the ends of a cylinder or cone have their own copy of the rim. A 10 × 10 × 10 box has 726 vertices (it was 602), and a 10 × 10 cylinder 132 (it was 112). The faces still join, so the meshes stay closed with the same volumes. Explode splits them at those edges, as Rhino 8 does (measured by the testing stream): a box into its 6 sides, a cylinder into two caps and its side.
 
-**Mesh booleans keep their quads (#718):** a quad the cut leaves whole now comes back as a quad instead of two triangles, as Rhino 8 keeps quads away from the cut. Points at one place are joined before the boolean, so an unwelded MeshBox is one solid. Two 10 mm MeshBoxes, the second moved by (5, 5, 5): the difference is 600 quads (Rhino: 540 of 660 faces) and the intersection 150 (Rhino: 96 of 204), with Rhino's volumes. Rhino also triangulates some quads beside the cut; its rule for which is not known yet.
+**Mesh booleans keep their quads (#718):** as Rhino 8 does (measured face by face by the testing stream), each quad with a point on the cut (even one corner) is split into two triangles, and every other quad comes back as a quad. Points at one place are joined before the boolean, so an unwelded MeshBox is one solid. Two 10 mm MeshBoxes, the second moved by (5, 5, 5): the difference has 540 quads of 660 faces and the intersection 96 of 204, with volumes 875 and 125, all exactly Rhino's.
 
 **Mesh wires and outlines, as Rhino 8 draws them (owner's items 4 and 10, passed on):**
 - Measured on a mesh box and on welded and unwelded prisms.

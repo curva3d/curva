@@ -151,10 +151,15 @@ fn centre<'a>(meshes: impl Iterator<Item = &'a Mesh>) -> Point {
     })
 }
 
-/// Each input face's corners when it is a quad (measured from the shift), by the face number its
-/// triangles carry through the library, numbered across every mesh of one boolean.
+/// By the face number its triangles carry through the library, numbered across every mesh of one
+/// boolean: each input face's corners when it is a quad (measured from the shift), and which
+/// input mesh it is in.
 #[derive(Default)]
-struct Sources(Vec<Option<[Point; 4]>>);
+struct Sources {
+    quads: Vec<Option<[Point; 4]>>,
+    mesh: Vec<u32>,
+    meshes: u32,
+}
 
 fn solids(
     meshes: &[Mesh],
@@ -182,8 +187,12 @@ fn solids(
 fn solid(mesh: &Mesh, shift: Point, sources: &mut Sources) -> Manifold {
     let joined = mesh.welded(0.0).0;
     let moved = |p: &Point| [p[0] - shift[0], p[1] - shift[1], p[2] - shift[2]];
-    let first = u32::try_from(sources.0.len()).unwrap_or(u32::MAX);
-    sources.0.extend(joined.faces().map(|f| {
+    let first = u32::try_from(sources.quads.len()).unwrap_or(u32::MAX);
+    sources
+        .mesh
+        .extend(std::iter::repeat_n(sources.meshes, joined.face_count()));
+    sources.meshes += 1;
+    sources.quads.extend(joined.faces().map(|f| {
         <[u32; 4]>::try_from(f)
             .ok()
             .map(|q| q.map(|v| moved(&joined.vertices()[v as usize])))
@@ -260,7 +269,9 @@ fn mesh(solid: &Manifold, shift: Point, sources: &Sources) -> Mesh {
 }
 
 /// The library's triangles as faces, each pair that is the whole of an input quad (the only two
-/// triangles on its face, with its four corners) joined back into it.
+/// triangles on its face, with its four corners) joined back into it, unless a corner is on the
+/// cut: Rhino 8 splits every quad with a point where the meshes meet, even a corner alone, and
+/// keeps every other one (measured by the testing stream on #718).
 fn with_quads(gl: &MeshGLP<f64, u32>, triangles: &[[u32; 3]], sources: &Sources) -> Vec<Vec<u32>> {
     let stride = (gl.num_prop as usize).max(3);
     let at = |v: u32| -> Point {
@@ -280,6 +291,7 @@ fn with_quads(gl: &MeshGLP<f64, u32>, triangles: &[[u32; 3]], sources: &Sources)
     for (t, &id) in ids.iter().enumerate() {
         on_face.entry(id).or_default().push(t);
     }
+    let cut = on_the_cut(gl.vert_properties.len() / stride, triangles, ids, sources);
     let mut done = vec![false; triangles.len()];
     let mut faces = Vec::with_capacity(triangles.len());
     for t in 0..triangles.len() {
@@ -290,11 +302,11 @@ fn with_quads(gl: &MeshGLP<f64, u32>, triangles: &[[u32; 3]], sources: &Sources)
             let &[a, b] = on_face.get(id)?.as_slice() else {
                 return None;
             };
-            let corners = sources.0.get(*id as usize).copied().flatten()?;
+            let corners = sources.quads.get(*id as usize).copied().flatten()?;
             let other = if a == t { b } else { a };
             let quad = joined(triangles[t], triangles[other])?;
             quad.iter()
-                .all(|&v| corners.iter().any(|&c| near(at(v), c)))
+                .all(|&v| !cut[v as usize] && corners.iter().any(|&c| near(at(v), c)))
                 .then_some((quad, other))
         });
         if let Some((quad, other)) = whole {
@@ -305,6 +317,25 @@ fn with_quads(gl: &MeshGLP<f64, u32>, triangles: &[[u32; 3]], sources: &Sources)
         }
     }
     faces
+}
+
+/// For each point of the result, whether it is on the cut: where faces from two input meshes meet.
+fn on_the_cut(points: usize, triangles: &[[u32; 3]], ids: &[u32], sources: &Sources) -> Vec<bool> {
+    let mut first: Vec<Option<u32>> = vec![None; points];
+    let mut cut = vec![false; points];
+    for (triangle, id) in triangles.iter().zip(ids) {
+        let Some(&mesh) = sources.mesh.get(*id as usize) else {
+            continue;
+        };
+        for &v in triangle {
+            match first[v as usize] {
+                None => first[v as usize] = Some(mesh),
+                Some(seen) if seen != mesh => cut[v as usize] = true,
+                Some(_) => {}
+            }
+        }
+    }
+    cut
 }
 
 /// Two triangles sharing an edge, run opposite ways, as one quad: `u, y, v, x` for `u, v, x`
@@ -342,8 +373,9 @@ mod tests {
     }
 
     /// Two 10 mm MeshBoxes of 10 × 10 × 10 faces, the second moved by (5, 5, 5), as the testing
-    /// stream compared with Rhino 8 (#718). Rhino keeps the quads the cut leaves whole (540 of
-    /// 660 faces in the difference, 96 of 204 in the intersection) and gets 875 and 125.
+    /// stream compared with Rhino 8 (#718). Rhino splits each quad with a point on the cut into
+    /// two triangles and keeps the rest: 540 quads of 660 faces in the difference (875), 96 of 204
+    /// in the intersection (125).
     #[test]
     fn quads_the_cut_leaves_whole_stay_quads_as_in_rhino() {
         use crate::Frame;
@@ -356,10 +388,9 @@ mod tests {
         assert!(left.faces().all(|f| f.len() <= 4));
         let both = &intersection(&[a], &[b]).unwrap()[0];
         assert!(close(both.volume().unwrap(), 125.0));
-        // Every face either side of the cut is a whole quad of the boxes' grid here, so all come
-        // back as quads: Rhino also turns some beside the cut into triangles.
-        assert_eq!((quads(left), left.face_count()), (600, 600), "difference");
-        assert_eq!((quads(both), both.face_count()), (150, 150), "intersection");
+        // Rhino's counts exactly: every quad with a point on the cut split in two, the rest kept.
+        assert_eq!((quads(left), left.face_count()), (540, 660), "difference");
+        assert_eq!((quads(both), both.face_count()), (96, 204), "intersection");
     }
 
     #[test]
