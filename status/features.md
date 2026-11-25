@@ -16,6 +16,28 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## Features stream — 25 November 2026 (Rhino parity, from the testing stream)
+
+- The testing stream (`status/testing.md`) compares commands with Rhino 8 and files issues; fixed
+  here in #701, #717, #721 and this PR:
+  - Lines chains (#670); Revolve's angle prompt (#674); Area of surfaces and solids (#673);
+    SelSrf, SelSolid, SelPolysrf, SelClosedSrf, SelOpenSrf by faces (#679); Ellipsoid's third
+    axis by a point (#682); InterpCrv as Rhino's (chord knots, Bessel end tangents of unit
+    speed, `interp.rs`; #669); picks made inside a command let go when it ends (#680).
+  - Gumball double-click relocation (#685); quick Ctrl+Shift clicks (#686); the circle
+    extrudes again, squares coming with the display stream's #704 (owner's decision, #693).
+  - Right-click is Enter (#697); Angle by two lines, Distance with angles and deltas (#694);
+    three-point Circle, Arc, Rectangle and Box in their points' plane (#695); Patch on three
+    or four sides is one surface (#684, part); SimplifyCrv merges segments in line (#708); Split
+    splits surfaces (#710); meshes unwelded at hard edges move together (with the mesh
+    stream's #706).
+  - BooleanSplit by a surface gives capped pieces (#711); exact silhouettes (#712); Parabola,
+    Paraboloid and Hyperbola from the focus (#707); UnrollSrf lays out every face, a cylinder's
+    side as a true rectangle (#709).
+- Not yet: ChamferEdge corners (#683), Sweep1 and Sweep2 (#665 to #667), a fitted Patch for
+  more than four sides, the Layers panel taking no clicks on the testing stream's screen (#698,
+  not reproduced at the standard size), the layouts and views panels (plans in #492).
+
 ## Features stream — 25 November 2026 (owner's 0.1.6 list: picked parts, keys, panels)
 
 - **Parts picked with Ctrl+Shift behave as any selection** (owner's list 1, 2, 11, 12, 19):
