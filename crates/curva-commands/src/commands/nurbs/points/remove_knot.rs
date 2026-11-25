@@ -1,9 +1,10 @@
-//! `RemoveKnot`: takes away the control point nearest where a curve is clicked.
+//! `RemoveKnot`, as in Rhino: takes away the knot nearest where a curve is clicked, the control
+//! points near it moving to keep the shape as close as they can (#736).
 
 use crate::commands::unexpected;
 use crate::{Answer, Command, Kind, Live, Message, Request, Step};
 use curva_document::Document;
-use curva_kernel::{Curve, Point, gap};
+use curva_kernel::{Curve, Point, Spline};
 
 /// How far from a curve a picked point may be, in millimetres, to mean that curve.
 const ON_CURVE: f64 = 1e-3;
@@ -21,20 +22,27 @@ fn ask_place(key: &'static str) -> Step {
     })
 }
 
-/// The curve under `at` without the control point nearest `at`.
+/// The curve under `at` without the inner knot nearest `at`.
 fn removed_at(doc: &Document, at: Point) -> Option<Result<(u64, Curve), String>> {
     let (id, curve) = doc.editable_curve_at(at, ON_CURVE)?;
-    let points = match curve.control_points() {
-        Ok(points) => points,
+    let spline = match Spline::of(&curve).and_then(Spline::clamped) {
+        Ok(spline) => spline,
         Err(error) => return Some(Err(error.to_string())),
     };
-    let nearest =
-        (0..points.len()).min_by(|a, b| gap(points[*a], at).total_cmp(&gap(points[*b], at)))?;
+    let picked = spline.closest(at);
+    let (start, end) = spline.domain();
+    let nearest = spline
+        .knots
+        .iter()
+        .copied()
+        .filter(|k| *k > start && *k < end)
+        .min_by(|a, b| (a - picked).abs().total_cmp(&(b - picked).abs()))?;
+    // Taken out whatever it changes, the rest refitted, as Rhino removes it.
     Some(
         curve
-            .without_control_point(nearest)
+            .without_knot(nearest)
             .map(|made| (id, made))
-            .map_err(|error| error.to_string()),
+            .map_err(|e| e.to_string()),
     )
 }
 
@@ -103,6 +111,32 @@ mod tests {
                 .control_points()
                 .unwrap(),
             [[0.0; 3], [2.0, 0.0, 0.0], [6.0, 0.0, 0.0]]
+        );
+    }
+
+    #[test]
+    fn the_knot_goes_and_the_curve_is_refitted_as_in_rhino() {
+        let mut doc = Document::default();
+        let points = vec![
+            [0.0, 0.0, 0.0],
+            [2.0, 4.0, 0.0],
+            [4.0, 0.0, 0.0],
+            [6.0, 4.0, 0.0],
+            [8.0, 0.0, 0.0],
+            [10.0, 4.0, 0.0],
+        ];
+        doc.add(Curve::control_point(points, 3, false).unwrap());
+        let mut processor = run(&mut doc, &["removeknot"]);
+        processor.click(&mut doc, [23.0 / 6.0, 5.0 / 3.0, 0.0]);
+        processor.submit(&mut doc, "");
+        let curve = doc.state().objects[0].curve().unwrap();
+        let control = curve.control_points().unwrap();
+        // Rhino 8: five control points, length 12.4849.
+        assert_eq!(control.len(), 5, "{control:?}");
+        assert!(
+            (curve.length().unwrap() - 12.4849).abs() < 1e-3,
+            "{} {control:?}",
+            curve.length().unwrap()
         );
     }
 
