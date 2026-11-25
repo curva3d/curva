@@ -62,7 +62,7 @@ mod tests {
         assert_eq!(doc.state().objects.len(), 3);
         let mut doc = Document::default();
         run(&mut doc, &["lines", "0,0", "1,0", "0,1", "1,1", ""]);
-        assert_eq!(doc.state().objects.len(), 2);
+        assert_eq!(doc.state().objects.len(), 3);
         let mut doc = Document::default();
         run(&mut doc, &["slot", "0,0", "10,0", "4"]);
         let length = doc.state().objects[0].curve().unwrap().length().unwrap();

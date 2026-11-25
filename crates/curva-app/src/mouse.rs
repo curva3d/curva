@@ -26,6 +26,9 @@ pub(crate) struct MouseState {
 #[derive(Default)]
 pub(crate) struct LeftGestures {
     pub(crate) pressed_at: Option<egui::Pos2>,
+    /// The keys held when the last press began, which decide what the click picks: they may be
+    /// let go before the frame ends, as in a quick Ctrl+Shift click (#686).
+    pub(crate) pressed_with: egui::Modifiers,
 }
 
 impl LeftGestures {
@@ -42,11 +45,13 @@ impl LeftGestures {
                 pos,
                 button: egui::PointerButton::Primary,
                 pressed,
+                modifiers,
                 ..
             } = event
             {
                 if *pressed {
                     self.pressed_at = inside(*pos).then_some(*pos);
+                    self.pressed_with = *modifiers;
                 } else {
                     gestures.extend(self.pressed_at.take().map(|from| (from, *pos)));
                 }
@@ -493,13 +498,19 @@ impl Curva {
             return;
         }
         let gestures = self.panes[pane].gestures.take(&events, on_viewport);
+        // The keys held when the press began, not when the frame ends (#686).
+        let keys = if gestures.is_empty() {
+            ui.input(|input| input.modifiers)
+        } else {
+            self.panes[pane].gestures.pressed_with
+        };
         let picking = Picking {
             camera: self.panes[pane].camera,
             origin: response.rect.min,
             size,
-            shift: ui.input(|input| input.modifiers.shift),
-            remove: ui.input(|input| input.modifiers.command),
-            parts: self.picks_parts(ui),
+            shift: keys.shift,
+            remove: keys.command,
+            parts: self.picks_parts(keys),
         };
         // Checked once, so the click that ends a command does not also change the selection.
         if self.takes_position() {

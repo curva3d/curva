@@ -47,6 +47,7 @@ impl Curva {
             faces: pane_faces,
             shapes: Arc::clone(&frame.shapes),
             circles: Arc::clone(&self.drawing.circles),
+            turns: Arc::clone(&self.drawing.turns),
             objects: Arc::clone(&self.drawing.objects),
             selection: Arc::clone(&self.drawing.selection),
             overlay: Arc::clone(&frame.overlay),

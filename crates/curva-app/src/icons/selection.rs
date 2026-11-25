@@ -148,3 +148,37 @@ pub(super) fn selection_2(pen: &Pen<'_>, key: &str) -> bool {
     }
     true
 }
+
+/// Surfaces by their faces: two faces joined, a closed one, an open one (#679).
+pub(super) fn selection_3(pen: &Pen<'_>, key: &str) -> bool {
+    if !matches!(key, "selpolysrf" | "selclosedsrf" | "selopensrf") {
+        return false;
+    }
+    pen.pointer();
+    let accent = pen.accent();
+    match key {
+        "selpolysrf" => {
+            pen.path_in(
+                &[(11.0, 19.0), (12.5, 12.0), (16.5, 12.0), (15.0, 19.0)],
+                true,
+                accent,
+            );
+            pen.path_in(
+                &[(16.5, 12.0), (20.0, 14.0), (19.0, 20.0), (15.0, 19.0)],
+                true,
+                accent,
+            );
+        }
+        "selclosedsrf" => pen.path_in(
+            &pen.arc_points((11.0, 11.0, 9.0, 9.0), 0.0, 360.0),
+            true,
+            accent,
+        ),
+        _ => pen.path_in(
+            &[(11.0, 19.0), (13.0, 12.0), (20.0, 12.0), (18.0, 19.0)],
+            false,
+            accent,
+        ),
+    }
+    true
+}

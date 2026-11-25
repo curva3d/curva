@@ -316,6 +316,9 @@ pub struct SceneParts {
     /// Whole circles the graphics card draws from their centre and axes, one entry each, left
     /// out of `lines` and `shaded_lines`; empty with [`SceneParts::of`].
     pub circles: Vec<crate::PlacedCircle>,
+    /// The turns of curved surfaces and solids, which draw their silhouettes in views whose faces
+    /// hide nothing ([`crate::PlacedTurn`]); empty with [`SceneParts::of`].
+    pub turns: Vec<crate::PlacedTurn>,
     /// Which object each number stands for: number `n` is `objects[n]`.
     pub objects: Vec<u64>,
     /// What every position is measured from (#225): a point near the model
@@ -377,6 +380,7 @@ impl SceneParts {
             faces: faces_of(outlines, &[], &[], Some(&numbers), (false, origin)),
             shapes: Vec::new(),
             circles: Vec::new(),
+            turns: Vec::new(),
             objects,
             origin,
         }
@@ -395,6 +399,7 @@ impl SceneParts {
             faces: faces_of(outlines, &[], &[], Some(&numbers), (true, origin)),
             shapes: shapes_of(outlines, &numbers, origin),
             circles: crate::circles::circles_of(outlines, &numbers, origin),
+            turns: crate::turns::turns_of(outlines, &numbers, origin),
             objects,
             origin,
         }

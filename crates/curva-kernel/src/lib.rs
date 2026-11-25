@@ -51,6 +51,7 @@ mod split;
 mod sweep;
 pub use extrude::TaperCorners;
 pub use extrude::nested_groups;
+mod interp;
 mod offset;
 mod parts_moved;
 mod record_io;
