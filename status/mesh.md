@@ -9,6 +9,10 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## 26 November 2026
+
+**Rhino's quad grids for the Mesh command, built (#733, not yet wired in):** Rhino 8 meshes an untrimmed face (a sphere, a plane rectangle, a cylinder's side) as a grid of quads, halving its spans each way until every grid line keeps within the density's distance and angle. Triangles appear only at poles, each with a point of its own there. `Mesh::surface_grid` does the same: a sphere r5 at the middle density is exactly Rhino's 2143 points, 2048 faces and 1920 quads. `Mesh::from_body_with_grids` mixes the grids with the kernel's triangles for trimmed faces. The Mesh command can use it once `curva-kernel` gives each untrimmed face's surface, asked of the features stream in #749. Curva's Box is a polysurface, so it will mesh as 6 quads (24 points), as Rhino's polysurface box does. Rhino's Box command makes an extrusion, whose trimmed caps give 24 points and 8 faces.
+
 ## 25 November 2026
 
 **A SubD's extent is its smooth surface's (#689):** `SubD::bounds` now gives the extent of the smooth surface, as Rhino 8 does, so BoundingBox, zoom framing, the gumball and Align fit the surface, not the cage. A SubDSphere of radius 5 spans ±5 (it was ±6.177), and a SubD from a 10 mm cube cage spans 0.802 to 9.198, as measured in Rhino. `SubD::cage_bounds` keeps the cage's extent.
