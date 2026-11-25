@@ -9,6 +9,16 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## 25 November 2026
+
+**Mesh wires and outlines, as Rhino 8 draws them (owner's items 4 and 10, passed on):**
+- Measured on a mesh box and on welded and unwelded prisms.
+- Shaded: every wire solid and thin, with a thicker outline.
+- Hidden: only the outline.
+- The outline is the silhouette plus the edges used by one face by vertex number: open borders and unwelded seams. Welded creases are not outlined.
+
+The drawing lives in curva-viewport, so it went to the display stream as #663; `Mesh::naked_edges` already gives the edges. Item 20 (picking cage points after Ctrl+Shift) is in the features stream's picking work.
+
 ## 24 November 2026
 
 **InsertEdge follows the pointer:** a typed amount now goes on the side of the picked edge the pointer is on, as Rhino 8
