@@ -11,6 +11,10 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 24 November 2026
 
+**InsertEdge follows the pointer:** a typed amount now goes on the side of the picked edge the pointer is on, as Rhino 8
+puts it on the side the mouse is on, in the preview and when Enter is pressed (the features stream's `Context::cursor`,
+#661). Without a pointer it keeps the one fixed side.
+
 **Bridge Straightness, as Rhino 8 measured:** the rows between two border runs lie on a cubic for each pair of joined
 points, at even steps. It leaves each point square to the border in its face (from the face's Newell normal; a point
 between two faces takes their unit average), its inner points (2/3 × the gap) / (2 − |cos θ|) out, θ the angle between
