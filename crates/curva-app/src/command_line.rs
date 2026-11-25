@@ -209,6 +209,8 @@ impl Curva {
             kind(ui, &mut snaps.quad, SnapKind::Quad);
             kind(ui, &mut snaps.point, SnapKind::Point);
             kind(ui, &mut snaps.near, SnapKind::Near);
+            kind(ui, &mut snaps.knot, SnapKind::Knot);
+            kind(ui, &mut snaps.vertex, SnapKind::Vertex);
             ui_kit::divider(ui);
             let project = text.render(&Message::new("ui.snap.project"));
             ui_kit::toggle_when(ui, on, &mut snaps.project, project);

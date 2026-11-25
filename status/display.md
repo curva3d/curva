@@ -11,6 +11,22 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 ## 25 November 2026
 
 **Done**
+- **Knot and Vertex snaps, as in Rhino 8's Osnap** (#692, from the testing stream).
+  - Knot: where a curve's spans meet. That means every distinct knot of the curve as Rhino writes
+    it as NURBS: a polyline's vertices, a compound curve's joins and its parts' own knots, a
+    fitted curve's knots, a circle's quarters. Surfaces' and solids' edges too.
+    - Measured in Rhino 8: a circle has 5 distinct knots, at its quarters, start and end
+      being one point. An arc of 2.5 radians has two spans.
+  - Vertex: a mesh's vertices, and a SubD's, where its edges meet on the surface.
+  - A mesh's wires now give only Vertex places, not End and Mid as before, as Rhino snaps
+    meshes. Where an end and a knot are one place, End wins.
+  - Both are off at first, as in Rhino. They have chips in the Osnap row, after Near.
+  - Rhino's Disable is already here as the Osnap chip at the start of the row: it turns every
+    snap off without forgetting which are on.
+  - New tests: a fitted curve's inner knot snaps as Knot only with Knot on; End wins at a
+    polyline's corner; a mesh's corner snaps as Vertex, not End; a polyline's, a circle's and a
+    NURBS curve's knots.
+  - Not measured yet: how much longer outlines take to build with knots on every curve.
 - **Silhouettes of curved surfaces in Wireframe and Ghosted** (owner's report 8 on 0.1.6, via
   the features stream).
   - Before, a cylinder in Wireframe showed only its two circles and its seam. It now also shows

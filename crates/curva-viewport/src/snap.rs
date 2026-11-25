@@ -5,6 +5,7 @@ use crate::index::BoxTree;
 use crate::{Camera, Outlines};
 
 mod guides;
+mod knots;
 mod tangent;
 use curva_kernel::{Curve, Point, closest_between};
 pub use guides::Guides;
@@ -44,6 +45,11 @@ pub enum SnapKind {
     Point,
     /// A quarter of the way round a circle or arc along its own axes, as Rhino's Quad snap.
     Quad,
+    /// Where a curve's spans meet, as Rhino's Knot snap (#692): a polyline's vertices, a
+    /// compound curve's joins, a fitted curve's knots.
+    Knot,
+    /// A vertex of a mesh or SubD, as Rhino's Vertex snap (#692).
+    Vertex,
     /// A point along a guideline from a held point, away from any crossing, as Rhino's
     /// SmartTrack runs the pointer along its tracking line (#512, #547). Shown by the guideline
     /// itself, with no name.
@@ -72,6 +78,10 @@ pub struct SnapSet {
     pub point: bool,
     /// Quarter points of circles and arcs.
     pub quad: bool,
+    /// Where curves' spans meet.
+    pub knot: bool,
+    /// Vertices of meshes and SubDs.
+    pub vertex: bool,
     /// All object snaps at once, as Rhino's Osnap switch: off leaves the kinds as they are but
     /// uses none of them.
     pub on: bool,
@@ -98,6 +108,8 @@ impl Default for SnapSet {
             near: false,
             point: true,
             quad: false,
+            knot: false,
+            vertex: false,
             on: true,
             track: true,
             project: false,
@@ -118,6 +130,8 @@ impl SnapSet {
             SnapKind::Near => self.near,
             SnapKind::Point => self.point,
             SnapKind::Quad => self.quad,
+            SnapKind::Knot => self.knot,
+            SnapKind::Vertex => self.vertex,
             // Guidelines have their own switch, apart from the object snaps.
             SnapKind::Track => return self.track,
         };
@@ -195,8 +209,33 @@ fn quarters(centre: Point, radius: f64, x: Point, y: Point, sweep: f64) -> Vec<S
         .collect()
 }
 
-/// The fixed snap places on a curve, given the points it is drawn through.
+/// The fixed snap places on a curve, given the points it is drawn through: its own kind's, then
+/// its knots, so where an end and a knot are one place the end wins.
 pub(crate) fn sites_of(curve: &Curve, points: &[Point]) -> Vec<Site> {
+    let mut sites = kind_sites(curve, points);
+    sites.extend(knots::knot_sites(curve, points));
+    sites
+}
+
+/// The snap places on a piece of a mesh or SubD drawn as `line`, as Rhino 8 gives them: a
+/// mesh's wires only their vertices, every point they run through; a SubD's lines their own
+/// places and their two ends as vertices, where its edges meet on the surface. Anything else
+/// as [`sites_of`].
+pub(crate) fn piece_sites(line: crate::LineKind, curve: &Curve, points: &[Point]) -> Vec<Site> {
+    match line {
+        crate::LineKind::MeshWire => knots::vertex_sites(points),
+        crate::LineKind::SubdEdge | crate::LineKind::SubdWire => {
+            let mut sites = sites_of(curve, points);
+            let ends = points.first().into_iter().chain(points.last());
+            sites.extend(ends.map(|p| site(SnapKind::Vertex, *p)));
+            sites
+        }
+        _ => sites_of(curve, points),
+    }
+}
+
+/// The snap places of a curve's own kind: ends, middles, centres, quarters, points.
+fn kind_sites(curve: &Curve, points: &[Point]) -> Vec<Site> {
     match curve {
         Curve::Point { at } => vec![site(SnapKind::Point, *at)],
         Curve::Line { .. } | Curve::Polyline { .. } => points
@@ -779,6 +818,8 @@ mod tests {
             near: kind == SnapKind::Near,
             point: kind == SnapKind::Point,
             quad: kind == SnapKind::Quad,
+            knot: kind == SnapKind::Knot,
+            vertex: kind == SnapKind::Vertex,
             on: true,
             track: true,
             project: false,
@@ -1453,5 +1494,65 @@ mod tests {
             assert_eq!(hit.kind, SnapKind::Center);
             assert!(close(hit.point, centre), "{centre:?} {:?}", hit.point);
         }
+    }
+
+    /// #692: a fitted curve's knot, where its spans meet inside it, snaps as Rhino's Knot, and
+    /// only with Knot on; a polyline's corner is a knot too, but End wins where both are on.
+    #[test]
+    fn a_curve_s_knot_snaps_as_a_knot_and_an_end_wins_at_a_corner() {
+        let curve = Curve::nurbs(
+            2,
+            vec![0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 1.0],
+            vec![
+                [0.0, 0.0, 0.0],
+                [2.0, 4.0, 0.0],
+                [6.0, 4.0, 0.0],
+                [8.0, 0.0, 0.0],
+            ],
+            Vec::new(),
+        )
+        .unwrap();
+        let corner = [10.0, 0.0, 0.0];
+        let polyline = Curve::polyline(vec![[0.0, -6.0, 0.0], corner, [10.0, 6.0, 0.0]], false);
+        let shapes = outlines(vec![curve, polyline.unwrap()]);
+        let knot = [4.0, 4.0, 0.0];
+        let hit = snap_by(&shapes, knot, only(SnapKind::Knot), None).unwrap();
+        assert_eq!(hit.kind, SnapKind::Knot);
+        assert!(close(hit.point, knot), "{:?}", hit.point);
+        assert!(
+            snap_by(&shapes, knot, SnapSet::default(), None)
+                .is_none_or(|hit| hit.kind != SnapKind::Knot)
+        );
+        let both = SnapSet {
+            knot: true,
+            ..only(SnapKind::End)
+        };
+        assert_eq!(
+            snap_by(&shapes, corner, both, None).unwrap().kind,
+            SnapKind::End
+        );
+    }
+
+    /// #692: a mesh's corners snap as Rhino's Vertex, not as ends, as Rhino 8 snaps meshes.
+    #[test]
+    fn a_mesh_s_corners_snap_as_vertices_not_ends() {
+        let mesh = curva_mesh::Mesh::new(
+            vec![
+                [0.0, 0.0, 0.0],
+                [10.0, 0.0, 0.0],
+                [10.0, 10.0, 0.0],
+                [0.0, 10.0, 0.0],
+            ],
+            &[[0, 1, 2, 3]],
+        )
+        .unwrap();
+        let mut doc = Document::default();
+        doc.add_shape(curva_document::Shape::Mesh(mesh));
+        let shapes = Outlines::of(doc.state());
+        let corner = [10.0, 10.0, 0.0];
+        let hit = snap_by(&shapes, corner, only(SnapKind::Vertex), None).unwrap();
+        assert_eq!(hit.kind, SnapKind::Vertex);
+        assert!(close(hit.point, corner));
+        assert!(snap_by(&shapes, corner, only(SnapKind::End), None).is_none());
     }
 }
