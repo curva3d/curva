@@ -575,10 +575,15 @@ impl Body {
             },
         )
         .map_err(|e| failed(if chamfer { "chamfering" } else { "filleting" }, e))?;
-        Ok(Self {
+        let made = Self {
             placement: self.placement,
             ..Self::made(&unplaced)?
-        })
+        };
+        // Rhino cuts a chamfer's corners flat where all their edges were chamfered (#683).
+        if chamfer {
+            return self.chamfer_corners_cut(made, edges, size);
+        }
+        Ok(made)
     }
 
     /// The solid hollowed to a wall `thickness` thick, inward, with the faces numbered `open`
