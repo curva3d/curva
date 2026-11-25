@@ -86,10 +86,27 @@ const HIDDEN_SLOT: u32 = 8u;
 // A line's object word: its object's number in the low three bytes (all ones for none), its
 // kind in the top byte (`upload::packed`).
 const OBJECT_BITS: u32 = 0x00FFFFFFu;
-// The Technical display mode's hidden lines are dotted: `dotted` turns this on.
+// This pass draws the lines surfaces hide, all in hidden lines' look, as the Technical display
+// mode does: `dotted` turns this on.
 const DOTTED: bool = false;
 // One dot and one gap, in pixels.
 const DOT_PERIOD: f32 = 6.0;
+// One dash and one gap, in pixels, and how much of it is dash.
+const DASH_PERIOD: f32 = 12.0;
+const DASH_PART: f32 = 0.66;
+// Whether a line with its kind's pattern (`LineTable::rows`: 0 solid, 1 dashed, 2 dotted, in the
+// whole part) is a gap `along` pixels along it.
+fn in_gap(pattern: f32, along: f32) -> bool {
+    let kind = floor(pattern + 1e-4);
+    if (kind > 1.5) { return fract(along / DOT_PERIOD) >= 0.5; }
+    if (kind > 0.5) { return fract(along / DASH_PERIOD) >= DASH_PART; }
+    return false;
+}
+// How opaque a line of that pattern number is: a tenth of the number past its pattern is how
+// see-through it is.
+fn opacity_of(pattern: f32) -> f32 {
+    return clamp(1.0 - (pattern - floor(pattern + 1e-4)) * 10.0, 0.0, 1.0);
+}
 // Plain one-pixel lines, two corners a segment drawn as a line list, for meshes' wires:
 // `thin` turns this on.
 const THIN: bool = false;
@@ -108,7 +125,7 @@ struct Out {
     @builtin(position) position: vec4<f32>,
     @location(0) colour: vec3<f32>,
     @location(1) world: vec3<f32>,
-    // Where along the line, in pixels, for dotting hidden lines (`dotted`).
+    // Where along the line, in pixels, for dashes and dots (`in_gap`).
     @location(2) along: f32,
     // How far across the line from its middle, in pixels, and half its solid width: its outer
     // half pixel fades out, so its edges are smooth rather than stepped.
@@ -116,6 +133,8 @@ struct Out {
     @location(4) @interpolate(linear) half: f32,
     // How faint the line is where it is furthest (`distance_part`), 0 for none.
     @location(5) @interpolate(flat) fade: f32,
+    // The kind's pattern and opacity as one number (`in_gap`, `opacity_of`).
+    @location(6) @interpolate(flat) pattern: f32,
 };
 fn pixels(width: f32) -> f32 {
     return max(select(-width, width * uniforms.pixel.z, width > 0.0), 1.0);
@@ -137,7 +156,7 @@ fn segment(
     let look = uniforms.lines[slot * 2u];
     let size = uniforms.lines[slot * 2u + 1u];
     if (size.z < 0.5) {
-        return Out(vec4<f32>(2.0, 2.0, 2.0, 1.0), given_ca, a, 0.0, 0.0, 0.0, 0.0);
+        return Out(vec4<f32>(2.0, 2.0, 2.0, 1.0), given_ca, a, 0.0, 0.0, 0.0, 0.0, 0.0);
     }
     // Thinner with distance, as far as the style's rule says (`fade`).
     let ta = distance_part(a);
@@ -153,7 +172,7 @@ fn segment(
     var pb = uniforms.matrix * vec4<f32>(b, 1.0);
     // Behind the camera: cut the segment where it crosses the near plane.
     if (pa.z < 0.0 && pb.z < 0.0) {
-        return Out(vec4<f32>(2.0, 2.0, 2.0, 1.0), ca, a, 0.0, 0.0, 0.0, 0.0);
+        return Out(vec4<f32>(2.0, 2.0, 2.0, 1.0), ca, a, 0.0, 0.0, 0.0, 0.0, 0.0);
     }
     if (pa.z < 0.0) { pa = mix(pa, pb, pa.z / (pa.z - pb.z)); }
     if (pb.z < 0.0) { pb = mix(pb, pa, pb.z / (pb.z - pa.z)); }
@@ -181,19 +200,23 @@ fn segment(
     // How faint the line may get far away, worked out for each pixel from where it is; a
     // selected line never fades, so it stays easy to see.
     let fade = select(uniforms.fade[1].w, 0.0, chosen);
+    // The kind's pattern; a selected line keeps it but is never see-through.
+    let pattern = select(size.w, floor(size.w + 1e-4), chosen);
     // Half a pixel wider each side than the line, for its edge to fade out in.
     let edge = half + 0.5;
     let offset = across * side * edge + along * (end * 2.0 - 1.0) * half;
     at = vec4<f32>(at.xy + offset * px * at.w, at.zw);
     // Measured along the line from a fixed point on screen, not from the segment's start, so the
     // dots run on across the short segments of a curve instead of each starting with a dot.
-    return Out(at, colour, world, dot(at.xy / at.w / px, along), side * edge, half, fade);
+    let run = dot(at.xy / at.w / px, along);
+    return Out(at, colour, world, run, side * edge, half, fade, pattern);
 }
 @fragment fn fragment_main(input: Out) -> @location(0) vec4<f32> {
     if (clipped(input.world)) { discard; }
-    if (DOTTED && fract(input.along / DOT_PERIOD) >= 0.5) { discard; }
+    if (in_gap(input.pattern, input.along)) { discard; }
     let faint = input.fade * distance_part(input.world);
-    let cover = clamp(input.half + 0.5 - abs(input.across), 0.0, 1.0) * (1.0 - faint);
+    let shown = clamp(input.half + 0.5 - abs(input.across), 0.0, 1.0) * (1.0 - faint);
+    let cover = shown * opacity_of(input.pattern);
     if (cover <= 0.0) { discard; }
     return vec4<f32>(input.colour, cover);
 }
