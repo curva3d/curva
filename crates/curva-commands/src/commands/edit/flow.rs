@@ -155,7 +155,7 @@ mod tests {
             .collect();
         // Rhino 8: the box stays and a copy covers 10 units of the arc, volume 9.4999, up to
         // y = 8.415.
-        assert_eq!(bodies.len(), 2);
+        assert_eq!(bodies.len(), 2, "{:?}", processor.log());
         let flowed = bodies[1];
         // Deformed, not rebuilt as Rhino rebuilds it: 9.489, 0.1% under.
         assert!(
