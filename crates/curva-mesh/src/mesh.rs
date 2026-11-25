@@ -419,8 +419,10 @@ impl Mesh {
     /// For each vertex, the first vertex at exactly the same place (itself when it is the first).
     ///
     /// Rhino's `Check` and repairs see a mesh this way, so two vertices at one place (an unwelded
-    /// edge) still join their faces. Minus zero counts as zero.
-    pub(crate) fn places(&self) -> Vec<u32> {
+    /// edge) still join their faces, and moving a point moves every vertex at its place, as
+    /// Rhino moves an unwelded box's corner whole. Minus zero counts as zero.
+    #[must_use]
+    pub fn places(&self) -> Vec<u32> {
         let mut first: HashMap<[u64; 3], u32> = HashMap::with_capacity(self.vertices.len());
         self.vertices
             .iter()
