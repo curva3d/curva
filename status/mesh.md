@@ -9,6 +9,10 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## 26 November 2026
+
+**Mesh booleans keep their points unwelded, as Rhino 8 (#755):** the result's points are split wherever faces from different input pieces meet: along each input's unwelded edges (a MeshBox's sides) and along the cut, where the two meshes meet. Two 10 mm MeshBoxes, the second moved by (5, 5, 5), give 759 points for the difference, 216 for the intersection and 1302 for the union, exactly Rhino's. The faces, quads and volumes are as before.
+
 ## 25 November 2026
 
 **A SubD's extent is its smooth surface's (#689):** `SubD::bounds` now gives the extent of the smooth surface, as Rhino 8 does, so BoundingBox, zoom framing, the gumball and Align fit the surface, not the cage. A SubDSphere of radius 5 spans ±5 (it was ±6.177), and a SubD from a 10 mm cube cage spans 0.802 to 9.198, as measured in Rhino. `SubD::cage_bounds` keeps the cage's extent.
