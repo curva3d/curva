@@ -167,6 +167,26 @@ mod tests {
         assert_eq!(cube.pieces(), vec![cube]);
     }
 
+    /// Rhino 8's Explode splits a mesh at its unwelded edges (measured by the testing stream, 25
+    /// November 2026): a MeshBox into its 6 sides of 121 points and 100 faces, a MeshCylinder
+    /// into two caps of 11 and 10 and its side of 110 and 100.
+    #[test]
+    fn primitives_explode_at_their_unwelded_edges_as_rhino() {
+        let counts = |mesh: &Mesh| -> Vec<(usize, usize)> {
+            mesh.pieces()
+                .iter()
+                .map(|p| (p.vertex_count(), p.face_count()))
+                .collect()
+        };
+        let world = Frame::world();
+        let box_ = Mesh::mesh_box(&world, [10.0; 3], [10, 10, 10]);
+        assert_eq!(counts(&box_), vec![(121, 100); 6]);
+        let cylinder = Mesh::mesh_cylinder(&world, 3.0, 10.0, (10, 10), true, false);
+        let mut pieces = counts(&cylinder);
+        pieces.sort_unstable();
+        assert_eq!(pieces, vec![(11, 10), (11, 10), (110, 100)]);
+    }
+
     #[test]
     fn data_kept_by_only_some_meshes_is_dropped_and_mixed_data_goes_per_corner() {
         let plain = Mesh::new(

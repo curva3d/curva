@@ -13,7 +13,7 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 **A SubD's extent is its smooth surface's (#689):** `SubD::bounds` now gives the extent of the smooth surface, as Rhino 8 does, so BoundingBox, zoom framing, the gumball and Align fit the surface, not the cage. A SubDSphere of radius 5 spans ±5 (it was ±6.177), and a SubD from a 10 mm cube cage spans 0.802 to 9.198, as measured in Rhino. `SubD::cage_bounds` keeps the cage's extent.
 
-**MeshBox, MeshCylinder and MeshCone keep their hard edges unwelded (#690):** as measured in Rhino 8, each side of a box has its own points, and the ends of a cylinder or cone have their own copy of the rim. A 10 × 10 × 10 box has 726 vertices (it was 602), and a 10 × 10 cylinder 132 (it was 112). The faces still join, so the meshes stay closed with the same volumes.
+**MeshBox, MeshCylinder and MeshCone keep their hard edges unwelded (#690):** as measured in Rhino 8, each side of a box has its own points, and the ends of a cylinder or cone have their own copy of the rim. A 10 × 10 × 10 box has 726 vertices (it was 602), and a 10 × 10 cylinder 132 (it was 112). The faces still join, so the meshes stay closed with the same volumes. Explode splits them at those edges, as Rhino 8 does (measured by the testing stream): a box into its 6 sides, a cylinder into two caps and its side.
 
 **Mesh wires and outlines, as Rhino 8 draws them (owner's items 4 and 10, passed on):**
 - Measured on a mesh box and on welded and unwelded prisms.
