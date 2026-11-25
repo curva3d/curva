@@ -138,7 +138,7 @@ fn neg(v: Point) -> Point {
 }
 
 /// A grid of quads on one flat side, `nu` by `nv`, from `corner` along `u` and `v` (its outside
-/// is `u` × `v`); points on the side's edges are shared with the sides next to it through `at`.
+/// is `u` × `v`); points are shared within the side through `at`.
 fn grid(
     b: &mut Builder,
     at: &mut HashMap<[i64; 3], u32>,
@@ -165,14 +165,12 @@ fn grid(
 
 impl Mesh {
     /// A box from the frame's origin, `size` along its three directions, with `counts` faces
-    /// along each (at least 1), as Rhino's MeshBox. Its sides are flat-shaded: each corner has its
-    /// side's normal.
+    /// along each (at least 1), as Rhino's MeshBox. Its twelve edges are unwelded, as Rhino 8
+    /// makes them: each side has its own points, with its side's normal, so it shades flat.
     #[must_use]
     pub fn mesh_box(frame: &Frame, size: [f64; 3], counts: [u32; 3]) -> Self {
         let n = counts.map(|c| c.max(1));
         let mut b = Builder::new();
-        // Points are keyed by their grid numbers along the three directions, so sides share edges.
-        let mut at: HashMap<[i64; 3], u32> = HashMap::new();
         let point = |g: [u32; 3]| {
             let f = |k: usize| size[k] * f64::from(g[k]) / f64::from(n[k]);
             (g.map(i64::from), frame.at(f(0), f(1), f(2)))
@@ -189,6 +187,8 @@ impl Mesh {
             (0, nx, 1, 2, x),
         ];
         for (fixed, value, u, v, normal) in sides {
+            // Points are keyed by their grid numbers within the side: sides share none.
+            let mut at: HashMap<[i64; 3], u32> = HashMap::new();
             let place = |i: u32, j: u32| {
                 let mut g = [0u32; 3];
                 g[fixed] = value;
@@ -403,8 +403,16 @@ fn side(
     }
 }
 
-/// An end filled from its centre: a fan of triangles, or of quads taking two edges each.
+/// An end filled from its centre: a fan of triangles, or of quads taking two edges each. Its
+/// rim is unwelded from the side, as Rhino 8 makes it: the end has its own copy of the ring.
 fn cap(b: &mut Builder, centre: u32, ring: &[u32], normal: Point, bottom: bool, quads: bool) {
+    let ring: Vec<u32> = ring
+        .iter()
+        .map(|&v| {
+            let p = b.points[v as usize];
+            b.point(p)
+        })
+        .collect();
     let n = ring.len();
     let step = if quads { 2 } else { 1 };
     for k in (0..n).step_by(step) {
@@ -593,8 +601,9 @@ mod tests {
     use super::*;
 
     // Rhino 8's numbers for the same shapes (RhinoCommon's `Mesh.CreateFrom…`, 17 November
-    // 2026). Rhino keeps hard edges as separate points at one place; Curva keeps one point with a
-    // normal per corner, so Curva's point counts are Rhino's topology vertex counts.
+    // 2026, its vertex counts again 25 November 2026, #690). As Rhino, hard edges (a box's edges,
+    // the rims of cylinder and cone ends) are separate points at one place, and the faces still
+    // join there, so the meshes are closed.
 
     fn close(a: f64, b: f64) -> bool {
         (a - b).abs() < 5e-7
@@ -613,18 +622,25 @@ mod tests {
     #[test]
     fn a_box_matches_rhinos() {
         let m = Mesh::mesh_box(&Frame::world(), [2.0, 3.0, 4.0], [2, 3, 4]);
-        assert_eq!((m.vertex_count(), m.face_count(), quads(&m)), (54, 52, 52));
+        assert_eq!((m.vertex_count(), m.face_count(), quads(&m)), (94, 52, 52));
         assert_eq!(m.volume(), Some(24.0));
         assert!(close(m.area(), 52.0));
         assert_good(&m);
-        let Attribute::PerCorner(n) = m.normals() else {
-            panic!("flat sides: a normal per corner")
+        let Attribute::PerVertex(n) = m.normals() else {
+            panic!("flat sides: each side's points carry its normal")
         };
         assert_eq!(n[0], [0.0, 0.0, -1.0]);
+        assert_eq!(m.naked_edges(), Vec::<[u32; 2]>::new());
+        let ten = Mesh::mesh_box(&Frame::world(), [10.0; 3], [10, 10, 10]);
+        assert_eq!((ten.vertex_count(), ten.face_count()), (726, 600));
+        assert_eq!(ten.volume(), Some(1000.0));
+        // Its outline, as Rhino draws it: both sides of each of its twelve edges, 10 segments each.
+        assert_eq!(ten.outline_edges().len(), 2 * 12 * 10);
+        assert!(ten.naked_edges().is_empty());
         let one = Mesh::mesh_box(&Frame::world(), [2.0, 3.0, 4.0], [0, 1, 1]);
         assert_eq!(
             (one.vertex_count(), one.face_count()),
-            (8, 6),
+            (24, 6),
             "counts raised to 1"
         );
     }
@@ -691,7 +707,7 @@ mod tests {
         let tri = Mesh::mesh_cylinder(&Frame::world(), 1.0, 2.0, (3, 8), true, false);
         assert_eq!(
             (tri.vertex_count(), tri.face_count(), quads(&tri)),
-            (34, 40, 24)
+            (50, 40, 24)
         );
         assert!(close(tri.area(), 17.902724));
         // The octagonal prism holds 2√2 × 2. Rhino's own reports 3.771236: one of its caps faces
@@ -699,7 +715,12 @@ mod tests {
         assert!(close(tri.volume().unwrap(), 4.0 * 2f64.sqrt()));
         assert_good(&tri);
         let quad = Mesh::mesh_cylinder(&Frame::world(), 1.0, 2.0, (3, 8), true, true);
-        assert_eq!((quad.face_count(), quads(&quad)), (32, 32));
+        assert_eq!(
+            (quad.vertex_count(), quad.face_count(), quads(&quad)),
+            (50, 32, 32)
+        );
+        let ten = Mesh::mesh_cylinder(&Frame::world(), 3.0, 10.0, (10, 10), true, false);
+        assert_eq!((ten.vertex_count(), ten.face_count()), (132, 120));
         assert_good(&quad);
         let odd = Mesh::mesh_cylinder(&Frame::world(), 1.0, 2.0, (3, 7), true, true);
         assert_eq!(
@@ -718,14 +739,23 @@ mod tests {
         let tri = Mesh::mesh_cone(&Frame::world(), 1.0, 2.0, (3, 8), true, false);
         assert_eq!(
             (tri.vertex_count(), tri.face_count(), quads(&tri)),
-            (26, 32, 16)
+            (34, 32, 16)
         );
         assert!(close(tri.volume().unwrap(), 1.885618));
         assert!(close(tri.area(), 9.573079));
         assert_good(&tri);
         let quad = Mesh::mesh_cone(&Frame::world(), 1.0, 2.0, (3, 8), true, true);
-        assert_eq!((quad.face_count(), quads(&quad)), (28, 20));
+        assert_eq!(
+            (quad.vertex_count(), quad.face_count(), quads(&quad)),
+            (34, 28, 20)
+        );
         assert_good(&quad);
+        let ten = Mesh::mesh_cone(&Frame::world(), 3.0, 10.0, (10, 10), true, false);
+        assert_eq!(
+            (ten.vertex_count(), ten.face_count()),
+            (112, 110),
+            "Rhino's defaults"
+        );
         let open = Mesh::mesh_cone(&Frame::world(), 1.0, 2.0, (3, 8), false, false);
         assert_eq!((open.vertex_count(), open.face_count()), (25, 24));
         assert!(close(open.area(), 6.744652));

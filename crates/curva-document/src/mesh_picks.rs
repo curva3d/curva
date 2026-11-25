@@ -89,11 +89,12 @@ mod tests {
     #[test]
     fn picked_parts_are_kept_only_while_their_object_has_them() {
         let mut doc = Document::default();
-        let mesh = doc.add_shape(Shape::Mesh(Mesh::mesh_box(
-            &Frame::world(),
-            [1.0; 3],
-            [1, 1, 1],
-        )));
+        // A welded cube of 8 points (a MeshBox keeps its edges unwelded, as Rhino's).
+        let mesh = doc.add_shape(Shape::Mesh(
+            Mesh::mesh_box(&Frame::world(), [1.0; 3], [1, 1, 1])
+                .welded(0.0)
+                .0,
+        ));
         let subd = doc.add_shape(Shape::SubD(SubD::subd_box(
             &Frame::world(),
             [1.0; 3],

@@ -344,6 +344,30 @@ impl Mesh {
         naked
     }
 
+    /// The edges used by one face counting by vertex number, not by place: the open borders and
+    /// both sides of every unwelded seam, such as a mesh box's twelve edges. With the view's
+    /// silhouette, these are the outline Rhino 8 draws round a mesh in Shaded and Hidden
+    /// (measured 25 November 2026). Sorted, each edge from its lower vertex.
+    #[must_use]
+    pub fn outline_edges(&self) -> Vec<[u32; 2]> {
+        let mut uses: HashMap<[u32; 2], u32> = HashMap::with_capacity(self.corners.len());
+        for face in self.faces() {
+            for (k, &a) in face.iter().enumerate() {
+                let b = face[(k + 1) % face.len()];
+                if a != b {
+                    *uses.entry([a.min(b), a.max(b)]).or_insert(0) += 1;
+                }
+            }
+        }
+        let mut once: Vec<[u32; 2]> = uses
+            .into_iter()
+            .filter(|&(_, n)| n == 1)
+            .map(|(edge, _)| edge)
+            .collect();
+        once.sort_unstable();
+        once
+    }
+
     /// The edges used by three or more faces, which no real solid has.
     #[must_use]
     pub fn non_manifold_edges(&self) -> Vec<[u32; 2]> {
@@ -395,8 +419,10 @@ impl Mesh {
     /// For each vertex, the first vertex at exactly the same place (itself when it is the first).
     ///
     /// Rhino's `Check` and repairs see a mesh this way, so two vertices at one place (an unwelded
-    /// edge) still join their faces. Minus zero counts as zero.
-    pub(crate) fn places(&self) -> Vec<u32> {
+    /// edge) still join their faces, and moving a point moves every vertex at its place, as
+    /// Rhino moves an unwelded box's corner whole. Minus zero counts as zero.
+    #[must_use]
+    pub fn places(&self) -> Vec<u32> {
         let mut first: HashMap<[u64; 3], u32> = HashMap::with_capacity(self.vertices.len());
         self.vertices
             .iter()
