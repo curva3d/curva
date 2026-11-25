@@ -80,6 +80,33 @@ impl fmt::Display for QuadRemeshError {
 
 impl std::error::Error for QuadRemeshError {}
 
+/// quadrs run for about `n` faces.
+// CUSTOM MESH OPERATION: quad-remesh-count
+// quadrs' count is rough (a fifth over is common), so it runs again with the request scaled by
+// how far off it came, keeping the nearest of three tries.
+fn nearest_count(
+    n: usize,
+    run: impl Fn(quadrs::RemeshTarget) -> Result<quadrs::RemeshResult, QuadRemeshError>,
+) -> Result<quadrs::RemeshResult, QuadRemeshError> {
+    let wanted = n.max(1) as f64;
+    let mut ask = wanted / 4.0;
+    let mut best: Option<(f64, quadrs::RemeshResult)> = None;
+    for _ in 0..3 {
+        let result = run(quadrs::RemeshTarget::FaceCount(ask.round().max(1.0) as usize))?;
+        let got = result.mesh.faces.len().max(1) as f64;
+        let miss = (got / wanted - 1.0).abs();
+        if best.as_ref().is_none_or(|(m, _)| miss < *m) {
+            best = Some((miss, result));
+        }
+        if miss <= 0.03 {
+            break;
+        }
+        ask *= wanted / got;
+    }
+    best.map(|(_, r)| r)
+        .ok_or_else(|| QuadRemeshError("no result".to_owned()))
+}
+
 impl Mesh {
     /// The mesh remeshed into quads, as Rhino's QuadRemesh does with its output set to a mesh.
     /// The input is taken as triangles; normals, texture coordinates and colours are not carried.
@@ -122,30 +149,7 @@ impl Mesh {
         };
         let result = match counted(options.target, self.area()) {
             QuadTarget::EdgeLength(l) => run(quadrs::RemeshTarget::EdgeLength(2.0 * l))?,
-            QuadTarget::Count(n) => {
-                // CUSTOM MESH OPERATION: quad-remesh-count
-                // quadrs' count is rough (a fifth over is common), so it runs again with the
-                // request scaled by how far off it came, keeping the nearest of three tries.
-                let wanted = n.max(1) as f64;
-                let mut ask = wanted / 4.0;
-                let mut best: Option<(f64, quadrs::RemeshResult)> = None;
-                for _ in 0..3 {
-                    let result = run(quadrs::RemeshTarget::FaceCount(
-                        ask.round().max(1.0) as usize
-                    ))?;
-                    let got = result.mesh.faces.len().max(1) as f64;
-                    let miss = (got / wanted - 1.0).abs();
-                    if best.as_ref().is_none_or(|(m, _)| miss < *m) {
-                        best = Some((miss, result));
-                    }
-                    if miss <= 0.03 {
-                        break;
-                    }
-                    ask *= wanted / got;
-                }
-                best.map(|(_, r)| r)
-                    .ok_or_else(|| QuadRemeshError("no result".to_owned()))?
-            }
+            QuadTarget::Count(n) => nearest_count(n, run)?,
         };
         let points: Vec<Point> = result
             .mesh
