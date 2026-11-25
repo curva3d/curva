@@ -380,6 +380,17 @@ impl Processor {
 
     /// Handles a line from the command line, including Enter on an empty line.
     pub fn submit(&mut self, doc: &mut Document, typed: &str) {
+        self.submit_at(doc, typed, None);
+    }
+
+    /// As [`Self::submit`], with where the pointer aims in the model, if over a view: the running
+    /// command can read it with the answer (`Context::cursor`), so a typed amount goes on the
+    /// side the pointer is on, as in Rhino. Typed distances and angles held apply to it.
+    pub fn submit_at(&mut self, doc: &mut Document, typed: &str, cursor: Option<Point>) {
+        let cursor = cursor.map(|at| self.constrained(doc, at));
+        if let Some(active) = self.active.as_mut() {
+            active.command.note_cursor(cursor);
+        }
         if self.working.is_some() {
             // While a command works on its own thread, typing waits; Escape stops the work.
             self.say(&Message::new("note.still_working"));
@@ -540,6 +551,10 @@ impl Processor {
     pub fn click(&mut self, doc: &mut Document, at: Point) {
         if self.working.is_some() {
             return;
+        }
+        let pointer = self.constrained(doc, at);
+        if let Some(active) = self.active.as_mut() {
+            active.command.note_cursor(Some(pointer));
         }
         let Some(request) = self.request().cloned() else {
             return;

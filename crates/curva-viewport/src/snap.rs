@@ -5,6 +5,7 @@ use crate::index::BoxTree;
 use crate::{Camera, Outlines};
 
 mod guides;
+mod tangent;
 use curva_kernel::{Curve, Point, closest_between};
 pub use guides::Guides;
 use std::f64::consts::TAU;
@@ -35,6 +36,8 @@ pub enum SnapKind {
     Intersection,
     /// The foot of a right angle from the last point.
     Perpendicular,
+    /// Where a line from the last point touches a curve, as Rhino's Tan snap.
+    Tangent,
     /// The closest point on a curve.
     Near,
     /// A point object, as Rhino's Point snap.
@@ -61,6 +64,8 @@ pub struct SnapSet {
     pub intersection: bool,
     /// Right angles from the last point.
     pub perpendicular: bool,
+    /// Lines from the last point touching a curve.
+    pub tangent: bool,
     /// The closest point on a curve.
     pub near: bool,
     /// Point objects.
@@ -72,6 +77,9 @@ pub struct SnapSet {
     pub on: bool,
     /// Guidelines from held points, as Rhino's SmartTrack switch.
     pub track: bool,
+    /// Snapped points moved straight onto the construction plane, as Rhino's Project. Applied by
+    /// the app, which knows the plane.
+    pub project: bool,
     /// Only points that can be seen, not hidden behind a face: on in shaded and ghosted views,
     /// off in wireframe ones, where everything can be seen. Set by the view, not a checkbox.
     pub visible_only: bool,
@@ -86,11 +94,13 @@ impl Default for SnapSet {
             center: true,
             intersection: true,
             perpendicular: true,
+            tangent: false,
             near: false,
             point: true,
             quad: false,
             on: true,
             track: true,
+            project: false,
             visible_only: false,
         }
     }
@@ -104,6 +114,7 @@ impl SnapSet {
             SnapKind::Center => self.center,
             SnapKind::Intersection => self.intersection,
             SnapKind::Perpendicular => self.perpendicular,
+            SnapKind::Tangent => self.tangent,
             SnapKind::Near => self.near,
             SnapKind::Point => self.point,
             SnapKind::Quad => self.quad,
@@ -555,7 +566,7 @@ impl Outlines {
         let reach = best
             .as_ref()
             .map_or(SNAP_REACH, |(distance, _)| distance + SEGMENT_MARGIN);
-        let segments = if set.intersection || set.perpendicular || set.near {
+        let segments = if set.intersection || set.perpendicular || set.tangent || set.near {
             self.segments_near(&view, (cursor, reach), drawing)
         } else {
             Vec::new()
@@ -571,6 +582,13 @@ impl Outlines {
         {
             for foot in perpendicular_feet(&segments, from) {
                 offer(&mut more, SnapKind::Perpendicular, foot);
+            }
+        }
+        if set.tangent
+            && let Some(from) = from
+        {
+            for point in tangent::tangent_points(&segments, from) {
+                offer(&mut more, SnapKind::Tangent, point);
             }
         }
         more.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -757,11 +775,13 @@ mod tests {
             center: kind == SnapKind::Center,
             intersection: kind == SnapKind::Intersection,
             perpendicular: kind == SnapKind::Perpendicular,
+            tangent: kind == SnapKind::Tangent,
             near: kind == SnapKind::Near,
             point: kind == SnapKind::Point,
             quad: kind == SnapKind::Quad,
             on: true,
             track: true,
+            project: false,
             visible_only: false,
         }
     }
@@ -818,6 +838,13 @@ mod tests {
         {
             for foot in perpendicular_feet(&segments, from) {
                 offer(SnapKind::Perpendicular, foot);
+            }
+        }
+        if set.tangent
+            && let Some(from) = from
+        {
+            for point in tangent::tangent_points(&segments, from) {
+                offer(SnapKind::Tangent, point);
             }
         }
         offered.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -1035,6 +1062,31 @@ mod tests {
         let hit = snap_by(&shapes, [12.0, 0.0, 0.0], set, Some([12.0, 30.0, 0.0])).unwrap();
         assert_eq!(hit.kind, SnapKind::Perpendicular);
         assert!(close(hit.point, [12.0, 0.0, 0.0]), "{:?}", hit.point);
+    }
+
+    #[test]
+    fn tan_finds_where_a_line_from_the_last_point_touches_a_circle() {
+        let shapes = outlines(vec![Curve::circle([0.0; 3], 10.0).unwrap()]);
+        let set = only(SnapKind::Tangent);
+        let touch = [5.0, 75.0_f64.sqrt(), 0.0];
+        let hit = snap_by(&shapes, touch, set, Some([20.0, 0.0, 0.0])).unwrap();
+        assert_eq!(hit.kind, SnapKind::Tangent);
+        assert!(close(hit.point, touch), "{:?}", hit.point);
+        assert_eq!(snap_by(&shapes, touch, set, None), None);
+    }
+
+    #[test]
+    fn tan_finds_nothing_at_a_polyline_corner() {
+        let corner =
+            Curve::polyline(vec![[0.0; 3], [10.0, 0.0, 0.0], [10.0, 10.0, 0.0]], false).unwrap();
+        let shapes = outlines(vec![corner]);
+        let hit = snap_by(
+            &shapes,
+            [10.0, 0.0, 0.0],
+            only(SnapKind::Tangent),
+            Some([20.0, 5.0, 0.0]),
+        );
+        assert_eq!(hit, None);
     }
 
     #[test]

@@ -36,6 +36,38 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 - Not yet: pictures of each style drawn from the model (the swatch shows only its background),
   Reset to the style it was copied from, marking a model style that differs from My styles' copy.
 
+## Features stream — 24 November 2026 (pointer with a typed number)
+
+- **For the mesh stream's InsertEdge:** a command now knows where the pointer is when a number
+  is typed, so the amount can go on that side, as Rhino does. `Context::cursor()` gives the
+  pointer's point, snaps and typed constraints applied. In the preview it follows the pointer, also
+  while a number is typed (the preview is made afresh as the pointer moves then). In `make` it is
+  where the pointer was when the answer was given: `Processor::submit_at(doc, typed, cursor)`,
+  which the command line uses on Enter; a click gives its own point; `submit` gives `None`.
+  Commands hear it through `Command::note_cursor`, called just before `step`.
+
+## Features stream — 24 November 2026 (Layers columns)
+
+- **The Layers table fits its panel:** no sideways scrolling. The Name column takes the room the
+  others leave; where they do not all fit, the others give up what they have above their least
+  widths, each in proportion, before the Name column narrows (`fit_columns` in
+  `panels/layer_table.rs`).
+- **Status panel:** with long coordinates the word "Layer" is left out, so the two never overlap;
+  the layer dropdown stays.
+
+## Features stream — 24 November 2026 (Tan and Project snaps)
+
+- **Tan** (Rhino's Tan snap, from the last point): where a line from the last point touches a
+  curve, in `crates/curva-viewport/src/snap/tangent.rs`. The curve's drawn segments are searched;
+  where the line from the last point passes from one side to the other between two segments
+  turning less than 20°, the circle through that point and its neighbours gives the exact place,
+  the true tangent point on circles and arcs. Polyline corners give none. Not yet: Tan as the
+  first point (Rhino's tangent-from).
+- **Project** (Rhino's Project): a switch at the end of the Osnap row; a snapped point moves
+  straight onto the construction plane (`aiming::onto`). Built from Rhino's own description of
+  the two snaps, not measured in Rhino, as picks cannot be scripted there.
+- Both off at first; `SnapSet` gains `tangent` and `project`, `SnapKind` gains `Tangent`.
+
 ## Features stream — 23 November 2026 (website UI kit)
 
 - **One UI kit for the web, like the app's `ui_kit.rs`:** `website/public/assets/kit.css` holds every

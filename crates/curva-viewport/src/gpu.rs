@@ -710,4 +710,6 @@ mod kind_tests;
 #[cfg(test)]
 mod outline_tests;
 #[cfg(test)]
+mod pattern_tests;
+#[cfg(test)]
 mod tests;

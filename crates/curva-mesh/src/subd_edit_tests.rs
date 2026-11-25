@@ -157,7 +157,7 @@ fn bridge_joins_two_borders_with_rows_of_quads() {
         [0.0, 1.0, 1.0],
     ];
     let two = SubD::new(Mesh::new(points, &[[0, 3, 2, 1], [4, 5, 6, 7]]).unwrap());
-    let bridged = two.bridged(&[0, 1], &[4, 5], 2).unwrap();
+    let bridged = two.bridged(&[0, 1], &[4, 5], 2, 1.0).unwrap();
     assert_eq!(bridged.cage().face_count(), 4);
     assert_eq!(bridged.cage().vertex_count(), 10);
     // The new faces join the borders, so those edges are no longer creased.

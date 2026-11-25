@@ -84,6 +84,24 @@ impl Listed<'_> {
     }
 }
 
+/// `columns` fitted to `room`: the Name column (the first) takes whatever room the others
+/// leave. Where they do not all fit, the others give up what they have above their least
+/// widths, each in proportion, before the Name column narrows, never below its least.
+fn fit_columns(mut columns: [f32; 6], room: f32) -> [f32; 6] {
+    let least = layout::LEAST_LAYER_COLUMNS;
+    let others = |columns: &[f32; 6]| columns[1..].iter().sum::<f32>();
+    let over = columns[0] + others(&columns) - room;
+    if over > 0.0 {
+        let slack: f32 = (1..6).map(|i| columns[i] - least[i]).sum();
+        let share = (over / slack.max(1e-6)).min(1.0);
+        for i in 1..6 {
+            columns[i] -= (columns[i] - least[i]) * share;
+        }
+    }
+    columns[0] = (room - others(&columns)).max(least[0]);
+    columns
+}
+
 /// Outlines `rect` while a layer is dragged over it.
 fn outline_drop_target(ui: &egui::Ui, response: &egui::Response, rect: egui::Rect) {
     ui_kit::drop_outline::<u64>(ui, response, rect);
@@ -197,9 +215,8 @@ impl Curva {
         } else {
             0.0
         };
-        // The Name column takes whatever room the others leave.
-        let others: f32 = columns[1..].iter().sum::<f32>() + gap * 5.0 + extra;
-        columns[0] = columns[0].max(ui.available_width() - others);
+        // The columns fit the panel: no sideways scrolling, the Name column taking what is left.
+        columns = fit_columns(columns, ui.available_width() - gap * 5.0 - extra);
         let total: f32 = columns.iter().sum::<f32>() + gap * 5.0 + extra;
         Table {
             id,
@@ -486,5 +503,40 @@ impl Curva {
                 });
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn total(columns: [f32; 6]) -> f32 {
+        columns.iter().sum()
+    }
+
+    #[test]
+    fn the_columns_never_run_past_the_panel() {
+        let standard = layout::STANDARD_LAYER_COLUMNS;
+        let fitted = fit_columns(standard, 290.0);
+        assert!((total(fitted) - 290.0).abs() < 1e-3, "{fitted:?}");
+        // The others gave up some of their room before the name narrowed below its own.
+        assert!(fitted[0] >= layout::LEAST_LAYER_COLUMNS[0]);
+        for i in 1..6 {
+            assert!(fitted[i] <= standard[i] && fitted[i] >= layout::LEAST_LAYER_COLUMNS[i]);
+        }
+    }
+
+    #[test]
+    fn a_wide_panel_gives_the_name_the_room_left() {
+        let standard = layout::STANDARD_LAYER_COLUMNS;
+        let fitted = fit_columns(standard, 600.0);
+        assert_eq!(fitted[1..], standard[1..]);
+        assert!((total(fitted) - 600.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn a_very_narrow_panel_keeps_every_column_at_its_least() {
+        let fitted = fit_columns(layout::STANDARD_LAYER_COLUMNS, 50.0);
+        assert_eq!(fitted, layout::LEAST_LAYER_COLUMNS);
     }
 }

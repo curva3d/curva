@@ -4,7 +4,11 @@
 use super::*;
 
 /// A preview made, with the answers and mode it was made from.
-type Shown = std::cell::RefCell<Option<(Vec<Value>, Option<&'static str>, Vec<f64>, Made)>>;
+type Shown = std::cell::RefCell<Option<(Preview, Made)>>;
+
+/// What a preview was made from: the answers with the pointer or typed number standing in for the
+/// step asked, the mode, the options' values, and the pointer while a number is typed.
+type Preview = (Vec<Value>, Option<&'static str>, Vec<f64>, Option<Point>);
 
 /// Runs a [`Recipe`] as a [`Command`].
 #[derive(Default)]
@@ -23,6 +27,8 @@ pub struct RecipeCommand<R: Recipe> {
     placed: Vec<u64>,
     /// Whether a recipe that applies each answer has changed the model yet.
     applied: bool,
+    /// Where the pointer was when the latest answer was given, for [`Context::cursor`].
+    cursor: Option<Point>,
 }
 
 impl<R: Recipe> RecipeCommand<R> {
@@ -37,6 +43,7 @@ impl<R: Recipe> RecipeCommand<R> {
             held: None,
             previewing: false,
             answered: values.len(),
+            cursor: self.cursor,
         }
     }
 
@@ -353,6 +360,10 @@ impl<R: Recipe> RecipeCommand<R> {
 }
 
 impl<R: Recipe> Command for RecipeCommand<R> {
+    fn note_cursor(&mut self, cursor: Option<Point>) {
+        self.cursor = cursor;
+    }
+
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
         if let Some(name) = self.typing_option.take() {
             return match answer {
@@ -549,6 +560,7 @@ impl<R: Recipe> RecipeCommand<R> {
         let mut cx = self.context(doc, &values);
         cx.held = held;
         cx.previewing = true;
+        cx.cursor = live.cursor;
         cx.answered = self.values.len();
         let options: Vec<f64> = R::OPTIONS
             .iter()
@@ -557,10 +569,11 @@ impl<R: Recipe> RecipeCommand<R> {
                 _ => cx.number(o.name),
             })
             .collect();
-        if let Some((was, mode, with, made)) = &*self.shown.borrow()
-            && *was == values
-            && *mode == self.mode
-            && *with == options
+        // While a number is typed the answers stay the same as the pointer moves, so it is kept too.
+        let typed_at = live.number.and(live.cursor);
+        let from = (values.clone(), self.mode, options, typed_at);
+        if let Some((was, made)) = &*self.shown.borrow()
+            && *was == from
         {
             return Some(made.clone());
         }
@@ -571,7 +584,7 @@ impl<R: Recipe> RecipeCommand<R> {
         made.add.drain(..from_add);
         made.derived
             .drain(..(placed - from_add).min(made.derived.len()));
-        *self.shown.borrow_mut() = Some((values.clone(), self.mode, options, made.clone()));
+        *self.shown.borrow_mut() = Some((from, made.clone()));
         Some(made)
     }
 }

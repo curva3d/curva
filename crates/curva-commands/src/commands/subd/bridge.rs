@@ -4,8 +4,9 @@
 //! Straightness=1 )". With those, two open 4 × 2 m strips 4 m apart, top edges bridged, become
 //! one SubD (the second object goes) of 6 quads on their 12 points, the bridge joining smoothly
 //! and the 10 outer border edges creased. `Join` off makes the bridge a SubD of its own; `Crease`
-//! on keeps the joined edges creased. Curva offers the options while the second set is picked;
-//! Rhino's `Straightness` (only straight here) and picking faces are not here yet.
+//! on keeps the joined edges creased. `Straightness` (1, straight, at first; 0 bows most) curves the
+//! rows as Rhino does (measured 24 November 2026, see `curva_mesh`'s bridge rows). Curva offers the
+//! options while the second set is picked; picking faces is not here yet.
 
 use super::parts::{by_object, run};
 use crate::Message;
@@ -16,6 +17,7 @@ use curva_mesh::{Point, SubD};
 const SEGMENTS: &str = "Segments";
 const JOIN: &str = "Join";
 const CREASE: &str = "Crease";
+const STRAIGHTNESS: &str = "Straightness";
 
 /// The recipe.
 #[derive(Default)]
@@ -56,14 +58,18 @@ impl Recipe for Bridge {
         OptionDef::whole(SEGMENTS, 1, 1, 100),
         OptionDef::toggle(JOIN, true),
         OptionDef::toggle(CREASE, false),
+        OptionDef::number(STRAIGHTNESS, 1.0),
     ];
 
     fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
         let mut steps = vec![StepDef::mesh_parts("prompt.bridge.first").offering(&[])];
         if !cx.values.is_empty() {
-            steps.push(
-                StepDef::mesh_parts("prompt.bridge.second").offering(&[SEGMENTS, JOIN, CREASE]),
-            );
+            steps.push(StepDef::mesh_parts("prompt.bridge.second").offering(&[
+                SEGMENTS,
+                JOIN,
+                CREASE,
+                STRAIGHTNESS,
+            ]));
         }
         steps
     }
@@ -96,7 +102,9 @@ impl Recipe for Bridge {
         let chain_b = aligned(&chain_a, &chain_b, base.cage().vertices());
         let before = base.cage().face_count();
         let segments = cx.number(SEGMENTS) as u32;
-        let mut bridged = base.bridged(&chain_a, &chain_b, segments).map_err(failed)?;
+        let mut bridged = base
+            .bridged(&chain_a, &chain_b, segments, cx.number(STRAIGHTNESS))
+            .map_err(failed)?;
         // The joined edges are smooth unless Crease is on, as in Rhino.
         let mut joint = edges_of(&chain_a);
         joint.extend(edges_of(&chain_b));
@@ -190,6 +198,25 @@ mod tests {
             16,
             "the 12 border edges and the 4 joined edges, which stay creased"
         );
+    }
+
+    #[test]
+    fn straightness_bows_the_rows_as_rhino_does() {
+        // Rhino 8 (measured 24 November 2026): two upright strips 4 m apart, Segments=2 and
+        // Straightness=0, put the middle row 2 m above their tops, 2/3 of the gap out along each.
+        let doc = bridge(&["Segments", "2", "Straightness", "0"]);
+        let subd = doc.state().objects[0].shape.subd().unwrap();
+        for x in [300.0, 302.0, 304.0] {
+            assert!(
+                subd.cage()
+                    .vertices()
+                    .iter()
+                    .any(|p| (p[0] - x).abs() < 1e-9
+                        && (p[1] - 2.0).abs() < 1e-9
+                        && (p[2] - 4.0).abs() < 1e-9),
+                "a middle point at x = {x}, y = 2, z = 4"
+            );
+        }
     }
 
     #[test]
