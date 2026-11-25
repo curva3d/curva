@@ -49,6 +49,7 @@ pub mod parallel;
 pub mod rays;
 mod split;
 mod sweep;
+mod sweep_rail;
 pub use extrude::TaperCorners;
 pub use extrude::nested_groups;
 mod interp;

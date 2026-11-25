@@ -37,7 +37,8 @@ impl Recipe for Sweep1 {
             .into_iter()
             .map(|(_, curve)| curve)
             .collect();
-        let body = Body::swept(&sections, &rail, false)
+        // One surface along the whole rail through every section, as Rhino's Sweep1 (#665, #666).
+        let body = Body::swept_along(&sections, &rail)
             .map_err(|e| Message::with("error.geometry", vec![e.to_string()]))?;
         Ok(Made {
             derived: vec![Derived {
