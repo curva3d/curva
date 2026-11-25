@@ -14,6 +14,8 @@ pub(crate) struct ViewportCache {
     pub(crate) shapes: Arc<Vec<curva_viewport::PlacedShape>>,
     /// Whole circles, drawn by the graphics card from their centre and axes, out of the lines.
     pub(crate) circles: Arc<Vec<curva_viewport::PlacedCircle>>,
+    /// The turns of curved faces, drawing their silhouettes where a style's faces hide nothing.
+    pub(crate) turns: Arc<Vec<curva_viewport::PlacedTurn>>,
     /// What the scene's positions are measured from ([`curva_viewport::SceneParts::origin`]).
     pub(crate) origin: Point,
     /// Meshes of solids, kept until they change.
@@ -251,6 +253,7 @@ impl Curva {
             self.drawing.faces = Arc::new(parts.faces);
             self.drawing.shapes = Arc::new(parts.shapes);
             self.drawing.circles = Arc::new(parts.circles);
+            self.drawing.turns = Arc::new(parts.turns);
             if parts.origin != self.drawing.origin {
                 // Previews measured from the old origin are made again.
                 self.ghosted.0.clear();

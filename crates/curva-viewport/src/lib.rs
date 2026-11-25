@@ -23,6 +23,7 @@ mod subd_live;
 mod subd_parts;
 mod subds;
 mod timer;
+mod turns;
 mod view_style;
 mod views;
 
@@ -43,6 +44,7 @@ pub use snap::{Guides, SnapHit, SnapKind, SnapSet, constrained};
 pub use styles::{PictureStyle, save_styled_picture};
 pub use subd_parts::{PartShape, subd_parts};
 pub use timer::{OPTIONAL_FEATURES, baseline_limits, device_descriptor};
+pub use turns::PlacedTurn;
 pub use view_style::{KindFaces, Light, MOST_OUTLINE_PIXELS, OutlineLook, Style, Surfaces};
 pub use views::StandardView;
 

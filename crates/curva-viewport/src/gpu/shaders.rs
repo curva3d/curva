@@ -260,6 +260,40 @@ pub(crate) const CIRCLE_SHADER: &str = concat!(
 }"
 );
 
+/// Silhouettes of curved faces (`turns.rs`): each turn is one instance, the line two triangles
+/// share and each triangle's far corner. It is drawn as an edge where, seen on screen, both far
+/// corners lie on the same side of the line: one triangle faces the viewer and the other away.
+/// Elsewhere, and where a corner is behind the camera, it is left out.
+pub(crate) const TURN_SHADER: &str = concat!(
+    segment_wgsl!(),
+    "
+fn on_screen(p: vec3<f32>) -> vec3<f32> {
+    let at = uniforms.matrix * vec4<f32>(p, 1.0);
+    return vec3<f32>(at.xy / max(at.w, 1e-12), at.w);
+}
+fn turns_away(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, d: vec3<f32>) -> bool {
+    let sa = on_screen(a);
+    let sb = on_screen(b);
+    let sc = on_screen(c);
+    let sd = on_screen(d);
+    if (min(min(sa.z, sb.z), min(sc.z, sd.z)) <= 0.0) { return false; }
+    let line = sb.xy - sa.xy;
+    let to_c = sc.xy - sa.xy;
+    let to_d = sd.xy - sa.xy;
+    return (line.x * to_c.y - line.y * to_c.x) * (line.x * to_d.y - line.y * to_d.x) > 0.0;
+}
+@vertex fn vertex_main(
+    @builtin(vertex_index) corner: u32,
+    @location(0) a: vec3<f32>, @location(1) b: vec3<f32>,
+    @location(2) c: vec3<f32>, @location(3) d: vec3<f32>,
+    @location(4) colour: vec3<f32>, @location(5) width: f32, @location(6) object: u32,
+) -> Out {
+    var out = segment(corner, a, colour, width, b, colour, width, object);
+    if (!turns_away(a, b, c, d)) { out.position = vec4<f32>(2.0, 2.0, 2.0, 1.0); }
+    return out;
+}"
+);
+
 /// Faces, each kind as the view's style gives it (`Style::face_rows`): shown or not, in one
 /// colour or its own (the selection colour when selected), and how opaque. One pass draws the
 /// opaque ones, hiding what is behind them; `see_through` makes a pass drawing the others over
