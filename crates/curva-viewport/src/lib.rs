@@ -45,7 +45,7 @@ pub use styles::{PictureStyle, save_styled_picture};
 pub use subd_parts::{PartShape, subd_parts};
 pub use timer::{OPTIONAL_FEATURES, baseline_limits, device_descriptor};
 pub use turns::PlacedTurn;
-pub use view_style::{KindFaces, Light, OutlineLook, Style, Surfaces};
+pub use view_style::{KindFaces, Light, MOST_OUTLINE_PIXELS, OutlineLook, Style, Surfaces};
 pub use views::StandardView;
 
 pub use lines::*;

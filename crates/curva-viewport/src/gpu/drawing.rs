@@ -315,7 +315,7 @@ fn lines_on_bevy(
             colour,
             depth,
             area,
-            renderer.outline_colour(drawing.slot),
+            renderer.outline_look(drawing.slot, pixel[2]),
         );
     }
     // The benchmark's card timer times Curva's lines; Bevy's own time joins it in step 5.

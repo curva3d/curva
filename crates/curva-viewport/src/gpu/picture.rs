@@ -272,7 +272,7 @@ fn draw_picture_passes(
             view,
             depth_view,
             [0.0, 0.0, width as f32, height as f32],
-            renderer.outline_colour(0),
+            renderer.outline_look(0, PIXELS_PER_MM),
         );
     }
     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
