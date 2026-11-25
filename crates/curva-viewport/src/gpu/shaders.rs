@@ -6,6 +6,7 @@ use crate::NO_OBJECT;
 const _: () = assert!(crate::line_table::LINE_ROWS == 18);
 const _: () = assert!(crate::view_style::FADE_ROWS == 2);
 const _: () = assert!(crate::line_table::HIDDEN_SLOT == 8);
+const _: () = assert!(crate::LineKind::Curve as u32 == 1);
 const _: () = assert!(crate::view_style::FACE_ROWS == 8);
 const _: () = assert!(super::upload::OBJECT_BITS == 0x00FF_FFFF);
 
@@ -94,6 +95,11 @@ const DOT_PERIOD: f32 = 6.0;
 // One dash and one gap, in pixels, and how much of it is dash.
 const DASH_PERIOD: f32 = 12.0;
 const DASH_PART: f32 = 0.66;
+// A curve's kind (`LineKind::Curve`), and how far towards the viewer a curve and a selected line
+// are nudged, as a share of the depth range, to win over lines in the same place.
+const CURVE_KIND: u32 = 1u;
+const CURVE_LIFT: f32 = 3e-7;
+const SELECTED_LIFT: f32 = 6e-7;
 // Whether a line with its kind's pattern (`LineTable::rows`: 0 solid, 1 dashed, 2 dotted, in the
 // whole part) is a gap `along` pixels along it.
 fn in_gap(pattern: f32, along: f32) -> bool {
@@ -205,7 +211,13 @@ fn segment(
     // Half a pixel wider each side than the line, for its edge to fade out in.
     let edge = half + 0.5;
     let offset = across * side * edge + along * (end * 2.0 - 1.0) * half;
-    at = vec4<f32>(at.xy + offset * px * at.w, at.zw);
+    // Where lines lie in the same place, a selected one wins, then a curve over an edge, as in
+    // Rhino: a curve copied from a surface's edge (DupBorder) shows whole, not mixed with it. The
+    // nudge towards the viewer is a few steps of the depth picture's precision, too little to
+    // bring a line in front of anything that is really nearer.
+    let kind = object >> 24u;
+    let lift = select(select(0.0, CURVE_LIFT, kind == CURVE_KIND), SELECTED_LIFT, chosen);
+    at = vec4<f32>(at.xy + offset * px * at.w, at.z - lift * at.w, at.w);
     // Measured along the line from a fixed point on screen, not from the segment's start, so the
     // dots run on across the short segments of a curve instead of each starting with a dot.
     let run = dot(at.xy / at.w / px, along);
