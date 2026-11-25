@@ -523,7 +523,10 @@ impl Body {
                 points: fitted.points.iter().map(|p| [p[0], p[1], p[2]]).collect(),
             };
             e.nurbs = None;
-            e.interval = [t0, t1];
+            // The fitted curve's own range, which rounding can leave a hair inside [t0, t1]: the
+            // engine refuses an edge whose range runs past its curve's (Linux and macOS did).
+            let (a, b) = fitted.domain();
+            e.interval = [a, b];
             e.tolerance = e.tolerance.max(1e-4);
         }
         for v in &mut record.vertices {
