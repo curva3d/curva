@@ -271,7 +271,7 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | Sweep2 | Two rails; cross sections | `MaintainHeight` `Simplify` | none | partly |
 | Twist | Objects; axis; angle | `Infinite` `PreserveStructure` | none | partly |
 | Bend | Objects; spine; bend point | `Symmetric` `Copy` `Straight` | none | partly |
-| Taper | Objects; axis; sizes | `Flat` `Infinite` | none | partly |
+| Taper | Objects; axis start; axis end; start distance; end distance | `Flat` `Infinite` | none | partly |
 | Flow | Objects; base curve; target curve | `Copy` `Rigid` `Stretch` | `Copy` `Stretch` | partly |
 | CageEdit | Objects; cage | `BoundingBox` `Line` `Rectangle` | none | partly |
 | Pull | Curves; surface | `Loose` | none | partly |
