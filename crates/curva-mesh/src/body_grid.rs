@@ -92,8 +92,9 @@ mod tests {
     use super::*;
     use curva_kernel::Body;
 
-    /// A face's surface as the kernel will give it (#749), here built by hand: the box's faces are
-    /// untrimmed planes, so each is one quad.
+    /// A face's surface as the kernel will give it (#749), here built by hand. (Rhino meshes a
+    /// polysurface box's flat faces as 6 triangles each, not as these one-quad grids: this only
+    /// tests that grids replace their faces and face out.)
     fn plane(corner: Point, x: Point, y: Point) -> NurbsSurface {
         let at =
             |a: f64, b: f64| -> Point { std::array::from_fn(|k| corner[k] + a * x[k] + b * y[k]) };
@@ -111,7 +112,7 @@ mod tests {
     }
 
     #[test]
-    fn a_box_of_untrimmed_faces_is_six_quads_facing_out() {
+    fn grids_take_the_place_of_their_faces_triangles_facing_out() {
         let body = Body::cuboid([0.0; 3], [10.0; 3]).unwrap();
         let made = body.mesh().unwrap();
         // Each face's plane, found from the kernel's triangles of that face: its corners.
