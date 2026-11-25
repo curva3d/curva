@@ -523,7 +523,7 @@ impl Body {
                 points: fitted.points.iter().map(|p| [p[0], p[1], p[2]]).collect(),
             };
             e.nurbs = None;
-            e.interval = [t0, t1];
+            e.interval = fitted.domain().into(); // Its own range: rounding broke [t0, t1] on Linux.
             e.tolerance = e.tolerance.max(1e-4);
         }
         for v in &mut record.vertices {

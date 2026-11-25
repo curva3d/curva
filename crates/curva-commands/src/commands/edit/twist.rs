@@ -109,6 +109,7 @@ mod tests {
         let mut processor = crate::Processor::default();
         doc.select(&[id]);
         processor.submit(&mut doc, "flow");
+        processor.submit(&mut doc, "copy");
         doc.select(&[base]);
         processor.submit(&mut doc, "");
         doc.select(&[target]);
