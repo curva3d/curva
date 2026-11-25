@@ -9,6 +9,7 @@ use curva_document::{Document, State, Unit};
 use curva_kernel::{Curve, Point, cross};
 
 mod enter;
+use enter::let_go_of_picks;
 
 struct Active {
     def: &'static CommandDef,
@@ -17,6 +18,8 @@ struct Active {
     before: State,
     /// The selection when the command began, which an undo of it brings back.
     selection_before: Vec<u64>,
+    /// The objects picked as answers while it ran, which it lets go of when it ends.
+    picked: Vec<u64>,
     /// Started with a dash, such as `-Open`: file locations are typed, not picked in a dialog.
     typed: bool,
 }
@@ -435,6 +438,7 @@ impl Processor {
             request: None,
             before: doc.state().clone(),
             selection_before: doc.selection(),
+            picked: Vec::new(),
             typed: false,
         });
         self.advance(doc, None);
@@ -614,6 +618,9 @@ impl Processor {
         let Some(active) = self.active.as_mut() else {
             return;
         };
+        if let Some(Answer::Objects(ids)) = &answer {
+            active.picked.extend(ids.iter().copied());
+        }
         let step = active.command.step(doc, answer);
         self.take_step(doc, step);
     }
@@ -715,7 +722,11 @@ impl Processor {
             Step::Done(message) => {
                 doc.take_back_lent();
                 doc.refresh_history();
-                if let Some(active) = self.active.take()
+                let active = self.active.take();
+                if let Some(active) = &active {
+                    let_go_of_picks(doc, active);
+                }
+                if let Some(active) = active
                     && active.def.records_undo
                     && doc.state() != &active.before
                 {

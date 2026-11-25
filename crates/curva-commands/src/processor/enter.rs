@@ -1,7 +1,21 @@
 //! Enter with nothing typed: what was picked beforehand answers the question, as Rhino takes a
 //! preselection, or Enter takes the default.
 
-use super::{Answer, Document, Kind, Message, Processor, Request};
+use super::{Active, Answer, Document, Kind, Message, Processor, Request};
+
+/// When a command ends, what was picked as its answers while it ran is let go of, as in Rhino,
+/// so Enter to repeat it does not take them again; a selection made before it stays (#680).
+pub(super) fn let_go_of_picks(doc: &mut Document, active: &Active) {
+    if !active.selection_before.is_empty() || active.picked.is_empty() {
+        return;
+    }
+    let kept: Vec<u64> = doc
+        .selection()
+        .into_iter()
+        .filter(|id| !active.picked.contains(id))
+        .collect();
+    doc.select(&kept);
+}
 
 impl Processor {
     /// Answers `request` with what is picked: objects, edges, faces or parts of meshes; edges
