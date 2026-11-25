@@ -11,6 +11,7 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 ## 25 November 2026
 
 **Done**
+- **Picking among locked objects only** (#715, for features' UnlockSelected): `PickFilter.locked_only` makes clicks and boxes take locked objects and no others, as Rhino does while UnlockSelected asks for objects. The app sets it from the command's request (features).
 - **A curve lying on a surface's edge shows over it** (owner's report 18 on 0.1.6, via the
   features stream).
   - Before, after DupBorder on a cylinder, the new selected curve sat exactly on the edge it

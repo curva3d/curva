@@ -264,6 +264,33 @@ mod tests {
     }
 
     #[test]
+    fn while_asked_for_locked_objects_only_locked_ones_can_be_picked() {
+        let mut doc = Document::default();
+        let open = doc.add(Curve::line([-20.0, 0.0, 0.0], [20.0, 0.0, 0.0]).unwrap());
+        let held = doc.add(Curve::line([-20.0, 5.0, 0.0], [20.0, 5.0, 0.0]).unwrap());
+        let solid =
+            doc.add_body(curva_kernel::Body::cuboid([30.0, -1.0, -1.0], [32.0, 1.0, 1.0]).unwrap());
+        doc.lock(&[held, solid]);
+        let mut outlines = Outlines::of(doc.state());
+        let camera = Camera::default();
+        let on_open = camera.project([5.0, 0.0, 0.0], SIZE).unwrap();
+        let on_held = camera.project([5.0, 5.0, 0.0], SIZE).unwrap();
+        assert_eq!(outlines.pick(&camera, on_held, SIZE, 6.0), None);
+        assert_eq!(outlines.pick(&camera, on_open, SIZE, 6.0), Some(open));
+        outlines.set_filter(PickFilter {
+            on: false,
+            locked_only: true,
+            ..PickFilter::default()
+        });
+        assert_eq!(outlines.pick(&camera, on_held, SIZE, 6.0), Some(held));
+        assert_eq!(outlines.pick(&camera, on_open, SIZE, 6.0), None);
+        let mut boxed = outlines.in_box(&camera, [0.0, 0.0], SIZE, SIZE);
+        boxed.sort_unstable();
+        boxed.dedup();
+        assert_eq!(boxed, [held, solid]);
+    }
+
+    #[test]
     fn the_selection_filter_limits_boxing_to_the_kinds_ticked() {
         let mut doc = Document::default();
         let solid = doc.add_body(curva_kernel::Body::cuboid([0.0; 3], [2.0, 2.0, 2.0]).unwrap());
