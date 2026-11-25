@@ -10,7 +10,36 @@ use curva_kernel::{KernelError, Point};
 /// corners (as [`curva_kernel::Body::corner_points`] numbers them).
 pub type CornerPick = (u64, usize);
 
-/// The points of `mesh` that `parts` move: a point itself, an edge's two ends, a face's corners.
+/// `picked` points of `all` with every other point at exactly the same place (minus zero counting
+/// as zero), as Rhino moves a mesh's points by place: a mesh unwelded at its hard edges (Rhino 8's
+/// MeshBox) then moves together rather than tearing open.
+pub(crate) fn with_same_places(all: &[Point], mut picked: Vec<u32>) -> Vec<u32> {
+    let place = |p: &Point| {
+        p.map(|v| {
+            if v == 0.0 {
+                0.0f64.to_bits()
+            } else {
+                v.to_bits()
+            }
+        })
+    };
+    let places: std::collections::HashSet<[u64; 3]> = picked
+        .iter()
+        .filter_map(|p| all.get(*p as usize))
+        .map(place)
+        .collect();
+    picked.extend(
+        (0..all.len())
+            .filter(|k| places.contains(&place(&all[*k])))
+            .filter_map(|k| u32::try_from(k).ok()),
+    );
+    picked.sort_unstable();
+    picked.dedup();
+    picked
+}
+
+/// The points of `mesh` that `parts` move: a point itself, an edge's two ends, a face's corners,
+/// with the points in the same places (`with_same_places`).
 fn mesh_points(mesh: &curva_mesh::Mesh, parts: &[MeshPart]) -> Vec<u32> {
     let faces: Vec<&[u32]> = mesh.faces().collect();
     let mut points = Vec::new();
@@ -23,9 +52,7 @@ fn mesh_points(mesh: &curva_mesh::Mesh, parts: &[MeshPart]) -> Vec<u32> {
             }
         }
     }
-    points.sort_unstable();
-    points.dedup();
-    points
+    with_same_places(mesh.vertices(), points)
 }
 
 impl Document {
@@ -207,6 +234,30 @@ impl Document {
 mod tests {
     use crate::Document;
     use curva_kernel::Body;
+
+    #[test]
+    fn points_in_the_same_place_move_together_so_an_unwelded_mesh_does_not_tear() {
+        // Two triangles sharing an edge by place only, each with its own copy of its points.
+        let points = vec![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+        ];
+        let mesh = curva_mesh::Mesh::new(points, &[[0, 1, 2], [3, 4, 5]]).unwrap();
+        let mut doc = Document::default();
+        let id = doc.add_shape(crate::Shape::Mesh(mesh));
+        doc.select_mesh_parts(&[(id, crate::MeshPart::Point(1))]);
+        let made = doc
+            .picked_parts_reshaped(|p| [p[0], p[1], p[2] + 1.0])
+            .unwrap();
+        let moved = made[0].1.mesh().unwrap().vertices().to_vec();
+        assert_eq!(moved[1][2], 1.0);
+        assert_eq!(moved[3][2], 1.0);
+        assert_eq!(moved[0][2], 0.0);
+    }
 
     #[test]
     fn a_picked_face_moves_and_the_solid_follows() {
