@@ -261,7 +261,7 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | MoveFace | Faces; move | `BothSides` | none | partly |
 | PushPull | Faces; distance | none | none | done |
 | Shear | Objects; origin; reference; angle | `Copy` | none | partly |
-| RebuildUV | Surfaces | `PointCountU` `PointCountV` `DegreeU` `DegreeV` `DeleteInput` | `PointCountU` `PointCountV` `DegreeU` `DegreeV` | partly |
+| RebuildUV | Surfaces; options | `Direction` `PointCount` `Type` `DeleteInput` `CurrentLayer` `ReTrim` | `Direction` `PointCount` `DeleteInput` | partly |
 | CurvatureGraph | Curves | `Scale` `Density` | `Scale` `Density` | done |
 | Cap | Surfaces | none | none | done |
 | ExtractIsocurve | Surface; point | `Direction` `Toggle` | `U` `V` `Both` | partly |
