@@ -92,7 +92,9 @@ fn nearest_count(
     let mut ask = wanted / 4.0;
     let mut best: Option<(f64, quadrs::RemeshResult)> = None;
     for _ in 0..3 {
-        let result = run(quadrs::RemeshTarget::FaceCount(ask.round().max(1.0) as usize))?;
+        let result = run(quadrs::RemeshTarget::FaceCount(
+            ask.round().max(1.0) as usize
+        ))?;
         let got = result.mesh.faces.len().max(1) as f64;
         let miss = (got / wanted - 1.0).abs();
         if best.as_ref().is_none_or(|(m, _)| miss < *m) {

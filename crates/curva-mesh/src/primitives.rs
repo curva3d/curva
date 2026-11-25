@@ -750,6 +750,12 @@ mod tests {
             (34, 28, 20)
         );
         assert_good(&quad);
+        let ten = Mesh::mesh_cone(&Frame::world(), 3.0, 10.0, (10, 10), true, false);
+        assert_eq!(
+            (ten.vertex_count(), ten.face_count()),
+            (112, 110),
+            "Rhino's defaults"
+        );
         let open = Mesh::mesh_cone(&Frame::world(), 1.0, 2.0, (3, 8), false, false);
         assert_eq!((open.vertex_count(), open.face_count()), (25, 24));
         assert!(close(open.area(), 6.744652));
