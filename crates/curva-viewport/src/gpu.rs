@@ -730,6 +730,8 @@ mod outline_tests;
 #[cfg(test)]
 mod pattern_tests;
 #[cfg(test)]
+mod priority_tests;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod turn_tests;
