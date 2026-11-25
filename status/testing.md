@@ -38,6 +38,12 @@ pin Rhino-measured results. Newest first.*
 - **In the app:** #697 (a right-click without dragging is not Enter; Space already is) and #698 (the
   Layers panel takes no clicks at all: New Layer, On, the Properties tab and Search do nothing, in a
   fresh start too; every other panel works). Both for the features stream; #698 flagged as urgent.
+- **#699 (display):** in a freshly started app the first solid preview froze Curva for over 5 s (Windows:
+  "not responding"; keys typed meanwhile were lost), though building it takes 4 ms; probably the first
+  drawing of see-through preview faces. A second box had no pause.
+- **Selection in the app:** window (left to right) and crossing (right to left) match Rhino, with its
+  messages; Ctrl-click removes. Shift-click acted as a plain click twice (added to #686).
+- **Undo and Redo** match Rhino (a Move, and a whole Array in one step).
 - **Files both ways match Rhino:** a .3dm written by Curva (solids, curves, mesh, SubD, dimension) reads
   back in Rhino with every value; a .3dm written by Rhino (extrusion, trimmed solid, polycurve, mesh,
   SubD, text, hatch, dimension, point) imports into Curva with every value, SubD surface included.
