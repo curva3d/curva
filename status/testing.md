@@ -19,6 +19,25 @@ pin Rhino-measured results. Newest first.*
 - **Same\*** means Curva's result equals the exact geometric answer for that case (which Rhino gives
   too), but the case has not been run in Rhino itself yet.
 
+## Testing stream — 25 November 2026 (evening)
+
+- **The owner's decision:** "Yes, as in Rhino": the gumball gets Rhino 8's scale squares back
+  (#693, with Rhino's measured behaviour: squares on the negative side at the selection's extent; a
+  drag scales about the centre by the distance ratio; a click takes a typed factor). Sent to the
+  display and features streams; #528 points to it.
+- **New issues (features):** #694 (Angle takes three points where Rhino takes two lines; Distance
+  reports no deltas), #695 (three-point Circle, Arc, Rectangle and Box flatten typed 3D points onto
+  the construction plane and fail). #692 (Knot and Vertex snaps) went to the display stream.
+- **Matching Rhino:** every transform tried (Scale1D, Scale2D, ScaleNU, Rotate3D, Orient, ArrayPolar,
+  Array, Mirror, Shear), ExtrudeSrf, NetworkSrf, RailRevolve, SrfPt, Divide, Fillet, the measuring
+  commands' values, Hide, Show, Isolate, HideSwap, Invert, SelPrev, SelDup, SelLast, and Text, Dot,
+  Leader, Hatch and dimensions.
+- **Not reported:** first-use delays of 1–8 s (FilletEdge, Sphere, OffsetSrf, Pipe) showed up in
+  fresh processes, but the same run once took 0.5 s and once 23.9 s with 14 compiler processes from
+  other sessions running, so they are the machine, not Curva. To rerun on a quiet machine.
+- Habit difference noted, not filed: Rhino's Array and ArrayPolar wait for an Enter to accept; Curva's
+  finish at once, so a Rhino user's extra Enter repeats the command.
+
 ## Testing stream — 25 November 2026 (afternoon)
 
 - **Rhino and computer use working again.** New Rhino windows had been stuck on Rhino's "Autosave
@@ -66,7 +85,7 @@ pin Rhino-measured results. Newest first.*
 ## Commands
 
 State against Rhino 8: **same** (measured in both), **same\*** (matches the exact result; Rhino run
-pending), **differs** (issue filed), **missing**, or **not yet** (not tested).
+pending), **differs** (issue filed), **missing**, or **not yet** (not tested). Counts: 23 differs, 226 not yet, 72 same, 2 same*.
 
 ### Curves
 
@@ -75,9 +94,9 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested).
 | Line | same |  | typed points, BothSides |
 | Polyline | same |  | fixed in #668 (start point closes it); checked in the app |
 | InterpCrv | differs | #669 | length 23.84 against Rhino's 22.09 (knot spacing) |
-| Circle | same |  | centre and radius, 2Point, 3Point |
+| Circle | differs | #695 | 3Point with 3D points is flattened |
 | Point | same |  |  |
-| Divide | same* |  | circle into 6 points |
+| Divide | same |  | circle into 6 |
 | Rebuild | not yet |  |  |
 | PointsOn | not yet |  |  |
 | PointsOff | not yet |  |  |
@@ -87,13 +106,13 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested).
 | CloseCrv | not yet |  |  |
 | SetPt | not yet |  |  |
 | Offset | same |  | circle (37.699) and rectangle with sharp corners (48) (Rhino-measured in rhino_measured.rs) |
-| Fillet | same* |  | two lines r=2 and two segments of a polyline |
+| Fillet | same |  | two lines r=2: 8, 8, 3.1416 (RhinoCommon) |
 | FilletCorners | same |  | rectangle r=1, 38.283 (Rhino-measured in rhino_measured.rs) |
 | TweenCurves | not yet |  |  |
 | Chamfer | same* |  |  |
 | Ellipse | same |  |  |
-| Arc | same |  | three points; centre, start, angle |
-| Rectangle | same |  | corners, Center, typed length and width |
+| Arc | differs | #695 | three typed 3D points are flattened onto the construction plane |
+| Rectangle | differs | #695 | 3Point upright is refused |
 | Polygon | not yet |  |  |
 | Helix | same |  | length 188.755 against 188.760 |
 | Spiral | not yet |  |  |
@@ -123,18 +142,18 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested).
 | Command | State | Issue | Notes |
 |---|---|---|---|
 | Plane | same |  |  |
-| SrfPt | not yet |  |  |
-| ExtrudeSrf | not yet |  |  |
+| SrfPt | same |  | 102.9399 |
+| ExtrudeSrf | same |  | solid by default (Rhino's factory default) |
 | DupEdge | not yet |  |  |
 | DupBorder | not yet |  |  |
 | ExtrudeCrvTapered | not yet |  |  |
 | ExtrudeCrvAlongCrv | not yet |  |  |
 | ExtrudeCrvToPoint | not yet |  |  |
-| RailRevolve | not yet |  |  |
+| RailRevolve | same |  | 314.129 against 314.159 |
 | ExtractSrf | not yet |  |  |
 | DupFaceBorder | not yet |  |  |
 | EdgeSrf | same |  | area 102.9399 |
-| NetworkSrf | not yet |  |  |
+| NetworkSrf | same |  | 109.8230 against 109.8216 |
 | Patch | differs | #684 | 4 faces against Rhino's 1 |
 | ExtendSrf | not yet |  |  |
 | Untrim | not yet |  |  |
@@ -162,8 +181,8 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested).
 
 | Command | State | Issue | Notes |
 |---|---|---|---|
-| Volume | same* |  | box 150 |
-| Box | same |  | corners, typed sizes, Enter for the width; first preview of a session freezes (#672) |
+| Volume | same |  | 150 |
+| Box | differs | #695 | 3Point upright is refused; other ways match |
 | Sphere | same |  |  |
 | Cylinder | same |  | preview now curves only, as Rhino's (#671, checked by hand in Rhino) |
 | Cone | same |  | preview curves only, as Rhino's (#671) |
@@ -199,11 +218,11 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested).
 | Copy | same |  |  (Rhino-measured in rhino_measured.rs) |
 | Rotate | same |  |  (Rhino-measured in rhino_measured.rs) |
 | Scale | same |  |  (Rhino-measured in rhino_measured.rs) |
-| Mirror | same |  |  (Rhino-measured in rhino_measured.rs) |
-| Array | same* |  | 3×2 with spacing |
-| ArrayPolar | not yet |  |  |
+| Mirror | same |  | copy by default, as Rhino |
+| Array | same |  | Rhino waits for an Enter to accept; Curva does not |
+| ArrayPolar | same |  | Rhino waits for an Enter to accept; Curva does not |
 | ArrayCrv | not yet |  |  |
-| Orient | not yet |  |  |
+| Orient | same |  |  |
 | Smooth | not yet |  |  |
 | History | not yet |  |  |
 | Flip | not yet |  |  |
@@ -213,14 +232,14 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested).
 | Split | same |  |  |
 | Trim | same* |  |  |
 | Orient3Pt | not yet |  |  |
-| Rotate3D | not yet |  |  |
-| Scale1D | not yet |  |  |
-| Scale2D | not yet |  |  |
-| ScaleNU | not yet |  |  |
+| Rotate3D | same |  |  |
+| Scale1D | same |  |  |
+| Scale2D | same |  |  |
+| ScaleNU | same |  |  |
 | ArrayLinear | not yet |  |  |
 | Align | not yet |  |  |
 | Distribute | not yet |  |  |
-| Shear | not yet |  |  |
+| Shear | same |  |  |
 | Twist | not yet |  |  |
 | Bend | not yet |  |  |
 | Taper | not yet |  |  |
@@ -236,12 +255,12 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested).
 |---|---|---|---|
 | Dir | not yet |  |  |
 | BoundingBox | differs | #688 | "-inf" for solids, meshes and SubDs; no box made |
-| Distance | not yet |  |  |
-| Length | same* |  | circle 31.416 |
+| Distance | differs | #694 | value matches; Rhino also reports angles and deltas |
+| Length | same |  | 31.416 |
 | Area | differs | #673 | surfaces and solids give 0 |
-| Angle | not yet |  |  |
-| EvaluatePt | not yet |  |  |
-| Radius | not yet |  |  |
+| Angle | differs | #694 | Curva takes 3 points (corner and sides), Rhino 4 (two lines) |
+| EvaluatePt | same |  |  |
+| Radius | same |  | click on a circle: 5.000 |
 | What | not yet |  |  |
 | AreaCentroid | not yet |  |  |
 | VolumeCentroid | not yet |  |  |
@@ -316,9 +335,9 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested).
 
 | Command | State | Issue | Notes |
 |---|---|---|---|
-| Text | not yet |  |  |
-| Dim | not yet |  |  |
-| DimAligned | not yet |  |  |
+| Text | same |  | text, then where it goes, as Rhino |
+| Dim | same |  | 10.00 |
+| DimAligned | same |  | 10.44 |
 | DimRotated | not yet |  |  |
 | DimRadius | not yet |  |  |
 | DimDiameter | not yet |  |  |
@@ -328,9 +347,9 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested).
 | DimArea | not yet |  |  |
 | DimVolume | not yet |  |  |
 | DimArcLength | not yet |  |  |
-| Leader | not yet |  |  |
-| Dot | not yet |  |  |
-| Hatch | not yet |  |  |
+| Leader | same |  |  |
+| Dot | same |  |  |
+| Hatch | same |  | area right; default pattern Hatch1 (Rhino's factory default is Solid) |
 | SetHatchBasePoint | not yet |  |  |
 | HatchPatterns | not yet |  |  |
 | AnnotationStyle | not yet |  |  |
@@ -362,8 +381,8 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested).
 
 | Command | State | Issue | Notes |
 |---|---|---|---|
-| Hide | not yet |  |  |
-| Show | not yet |  |  |
+| Hide | same |  |  |
+| Show | same |  |  |
 | SelAll | not yet |  |  |
 | SelNone | not yet |  |  |
 | SelCrv | not yet |  |  |
@@ -372,20 +391,20 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested).
 | SelPt | not yet |  |  |
 | SelName | not yet |  |  |
 | SelLayer | not yet |  |  |
-| SelDup | not yet |  |  |
-| SelLast | not yet |  |  |
-| SelPrev | not yet |  |  |
+| SelDup | same |  |  |
+| SelLast | same |  |  |
+| SelPrev | same |  |  |
 | SelFilter | not yet |  |  |
 | SelFilterToggle | not yet |  |  |
-| Isolate | not yet |  |  |
-| Invert | not yet |  |  |
+| Isolate | same |  |  |
+| Invert | same |  |  |
 | SelLine | not yet |  |  |
 | SelPolyline | not yet |  |  |
 | SelCircle | not yet |  |  |
 | SelArc | not yet |  |  |
 | SelClosedCrv | not yet |  |  |
 | SelOpenCrv | not yet |  |  |
-| HideSwap | not yet |  |  |
+| HideSwap | same |  |  |
 | SelColor | not yet |  |  |
 | SelBlockInstanceNamed | not yet |  |  |
 
