@@ -82,7 +82,7 @@ mod tests {
         let mut doc = Document::default();
         let cube = doc.add_body(Body::cuboid([-1.0, -1.0, 0.0], [2.0, 2.0, 4.0]).unwrap());
         doc.select(&[cube]);
-        run(&mut doc, &["taper", "0,0,0", "0,0,4", "0.5"]);
+        run(&mut doc, &["taper", "0,0,0", "0,0,4", "1", "0.5"]);
         let tapered = last_body(&doc);
         assert!(tapered.is_solid());
         // A frustum from 2 × 2 to 1 × 1, 4 high: 4/3 (4 + 1 + 2).
