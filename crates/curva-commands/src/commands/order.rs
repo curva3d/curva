@@ -3,7 +3,7 @@
 //! `docs/specs/command-groups.md`). A new command goes in its folder's list and here.
 
 /// Every command's name, in the list's order.
-pub(super) const ORDER: [&str; 323] = [
+pub(super) const ORDER: [&str; 326] = [
     "Line",
     "Polyline",
     "InterpCrv",
@@ -36,7 +36,10 @@ pub(super) const ORDER: [&str; 323] = [
     "SelNone",
     "SelCrv",
     "SelSrf",
+    "SelPolysrf",
     "SelSolid",
+    "SelClosedSrf",
+    "SelOpenSrf",
     "SelPt",
     "SelName",
     "SelLayer",

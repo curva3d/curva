@@ -11,6 +11,14 @@ pub(crate) fn spline(points: &[Point], closed: bool) -> Result<CoreCurve, Kernel
 }
 
 pub(crate) fn spline_data(points: &[Point], closed: bool) -> Result<BSplineCurve, KernelError> {
+    // An open curve through three or more points is Rhino's (`interp`, #669).
+    // Points it cannot pass through that way (one repeated) go to the engine's own method.
+    if !closed
+        && points.len() >= 3
+        && let Ok((knots, control)) = crate::interp::through(points)
+    {
+        return nurbs_data(3, &knots, &control, &[]);
+    }
     let mut through: Vec<Point3> = points
         .iter()
         .map(|p| Point3::new(p[0], p[1], p[2]))

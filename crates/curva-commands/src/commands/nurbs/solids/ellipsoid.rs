@@ -7,8 +7,8 @@ use curva_document::Shape;
 use curva_kernel::{Body, Curve, cross, dot, gap, sub, unit};
 use std::f64::consts::TAU;
 
-/// `Ellipsoid`: its centre, the end of its first axis, the end of its second, then the third's
-/// length straight out of the plane.
+/// `Ellipsoid`: its centre, the end of its first axis, the end of its second, then the end of the
+/// third (its distance from the centre) or its length, straight out of the plane, as in Rhino.
 #[derive(Default)]
 pub struct Ellipsoid;
 
@@ -23,7 +23,7 @@ impl Recipe for Ellipsoid {
                 steps.push(StepDef::point("prompt.ellipse.second").from(c));
             }
             if cx.values.len() >= 3 {
-                steps.push(StepDef::number("prompt.ellipsoid.third").from(c));
+                steps.push(StepDef::point_or_number("prompt.ellipsoid.third").from(c));
             }
         }
         steps
@@ -38,8 +38,12 @@ impl Recipe for Ellipsoid {
         let a = unit(sub(first, c)).ok_or_else(|| Message::new("error.reference_point"))?;
         let b = cross(up, a);
         let ra = gap(first, c);
-        let (Some(second), Some(rc)) = (point(cx, 2), cx.values.get(3).and_then(Value::number))
-        else {
+        let third = match cx.values.get(3) {
+            Some(Value::Number(length)) => Some(*length),
+            Some(Value::Point(end)) => Some(gap(*end, c)),
+            _ => None,
+        };
+        let (Some(second), Some(rc)) = (point(cx, 2), third) else {
             return Ok(Made {
                 guides: Curve::line(c, first).ok().into_iter().collect(),
                 ..Made::default()
@@ -72,6 +76,19 @@ mod tests {
     use crate::commands::run;
     use curva_document::Document;
     use std::f64::consts::PI;
+
+    #[test]
+    fn the_third_axis_takes_a_point_as_in_rhino() {
+        let mut doc = Document::default();
+        run(&mut doc, &["ellipsoid", "0,0,0", "5,0,0", "0,3,0", "0,0,2"]);
+        let volume = doc.state().objects[0]
+            .shape
+            .body()
+            .unwrap()
+            .volume()
+            .unwrap();
+        assert!((volume - 125.6637).abs() < 1e-3, "{volume}");
+    }
 
     #[test]
     fn ellipsoid_and_boolean_split() {

@@ -116,7 +116,10 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | SelCrv | none | none | none | partly |
 | SelPt | none | none | none | partly |
 | SelSrf | none | none | none | partly |
+| SelPolysrf | none | none | none | partly |
 | SelSolid | none | none | none | partly |
+| SelClosedSrf | none | none | none | partly |
+| SelOpenSrf | none | none | none | partly |
 | SelName | Not read: Rhino's page redirected; complete from Rhino | to confirm | none | partly |
 | SelLayer | Not read: Rhino's page redirected; complete from Rhino | to confirm | none | partly |
 | SelDup | Not read: Rhino's page redirected; complete from Rhino | to confirm | none | partly |
@@ -194,7 +197,7 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | SelOpenCrv | none | none | none | partly |
 | HideSwap | none | none | none | partly |
 | Points | Points until Enter | `MarkPoints` | none | partly |
-| Lines | Pairs of points until Enter | `BothSides` | none | partly |
+| Lines | A chain of points until Enter, a separate line between each and the next | `BothSides` | none | partly |
 | Slot | Center of first end; center of second end; width | `Vertical` | none | partly |
 | Ellipsoid | Center; end of first axis; end of second; end of third | `Corner` `Diameter` `FromFoci` `AroundCurve` | none | partly |
 | BooleanSplit | Objects to split; cutting objects | `DeleteInput` | `DeleteInput` | done |
