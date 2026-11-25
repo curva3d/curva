@@ -67,6 +67,32 @@ fn made(body: Result<Body, KernelError>, done: &'static str) -> Result<Made, Mes
 }
 
 /// A circle's guide while its centre and radius are being picked.
+/// While the pointer gives a round solid's last size, it shows as curves round its sides rather
+/// than being built at every move of the pointer, as Rhino previews it (#671: a cylinder took
+/// 60 ms and a torus 320 ms a move). Each profile is `(out, high)` points spun about `up` through
+/// `centre`: a circle at every point off the axis, and the profile at four quarters round.
+fn sketched(centre: Point, (x, y, up): (Point, Point, Point), profiles: &[&[(f64, f64)]]) -> Made {
+    let mut curves = Vec::new();
+    for profile in profiles {
+        for (out, high) in profile.iter().filter(|(out, _)| *out > 1e-12) {
+            curves.extend(Curve::circle_on(plus(centre, up, *high), *out, x, y));
+        }
+        for quarter in 0..4 {
+            let (s, c) = (f64::from(quarter) * TAU / 4.0).sin_cos();
+            let side: Point = std::array::from_fn(|i| x[i] * c + y[i] * s);
+            let points = profile
+                .iter()
+                .map(|(out, high)| plus(plus(centre, side, *out), up, *high))
+                .collect();
+            curves.extend(Curve::polyline(points, false));
+        }
+    }
+    Made {
+        add: curves.into_iter().map(Shape::Curve).collect(),
+        ..Made::default()
+    }
+}
+
 fn circle_guide(centre: Point, r: f64, x: Point, y: Point) -> Made {
     Made {
         guides: Curve::circle_on(centre, r, x, y).ok().into_iter().collect(),
@@ -214,6 +240,14 @@ impl Recipe for Cylinder {
         } else {
             (base.centre, high)
         };
+        if cx.previewing {
+            let frame = (base.x, base.y, up);
+            return Ok(sketched(
+                start,
+                frame,
+                &[&[(base.r, 0.0), (base.r, length)]],
+            ));
+        }
         let circle = Curve::circle_on(start, base.r, base.x, base.y).map_err(|e| failed(&e))?;
         made(
             Body::extruded(&[circle], up, length, cx.toggle(SOLID)),
@@ -252,6 +286,10 @@ impl Recipe for Cone {
             return Ok(circle_guide(base.centre, base.r, base.x, base.y));
         };
         let profile = [(0.0, 0.0), (base.r, 0.0), (0.0, high)];
+        if cx.previewing {
+            let frame = (base.x, base.y, base.up());
+            return Ok(sketched(base.centre, frame, &[&profile[1..]]));
+        }
         made(spun(base.centre, base.x, base.up(), &profile), "done.cone")
     }
 }
@@ -288,6 +326,9 @@ impl Recipe for TruncatedCone {
         };
         if high.abs() <= 1e-9 {
             return Err(Message::new("error.bad_distance"));
+        }
+        if cx.previewing {
+            return Ok(sketched(c, (x, y, up), &[&[(r, 0.0), (top, high)]]));
         }
         made(
             spun(c, x, up, &[(0.0, 0.0), (r, 0.0), (top, high), (0.0, high)]),
@@ -333,6 +374,25 @@ impl Recipe for Torus {
             return Err(Message::new("error.torus"));
         }
         let (up, ring_at) = (base.up(), plus(base.centre, base.x, base.r));
+        if cx.previewing {
+            // The tube's inside and outside, its top and bottom, and its section at four quarters.
+            let (r, t) = (base.r, tube);
+            let rings: [&[(f64, f64)]; 4] =
+                [&[(r - t, 0.0)], &[(r + t, 0.0)], &[(r, t)], &[(r, -t)]];
+            let mut shown = sketched(base.centre, (base.x, base.y, up), &rings);
+            shown
+                .add
+                .retain(|shape| matches!(shape, Shape::Curve(Curve::Circle { .. })));
+            for quarter in 0..4 {
+                let (s, c) = (f64::from(quarter) * TAU / 4.0).sin_cos();
+                let side: Point = std::array::from_fn(|i| base.x[i] * c + base.y[i] * s);
+                let at = plus(base.centre, side, r);
+                shown
+                    .add
+                    .extend(Curve::circle_on(at, t, side, up).ok().map(Shape::Curve));
+            }
+            return Ok(shown);
+        }
         let ring = Curve::circle_on(ring_at, tube, base.x, up).map_err(|e| failed(&e))?;
         made(
             Body::revolved(&[ring], base.centre, up, TAU, true),
@@ -380,6 +440,13 @@ impl Recipe for Tube {
         } else {
             (c, high)
         };
+        if cx.previewing {
+            let walls: [&[(f64, f64)]; 2] = [
+                &[(outer, 0.0), (outer, length)],
+                &[(inner, 0.0), (inner, length)],
+            ];
+            return Ok(sketched(start, (x, y, up), &walls));
+        }
         let rings = [
             Curve::circle_on(start, outer, x, y).map_err(|e| failed(&e))?,
             Curve::circle_on(start, inner, x, y).map_err(|e| failed(&e))?,
@@ -393,6 +460,29 @@ mod tests {
     use crate::commands::run;
     use curva_document::Document;
     use std::f64::consts::PI;
+
+    #[test]
+    fn round_solids_preview_as_curves_and_are_built_when_the_size_is_given() {
+        for (command, answers) in [
+            ("cylinder", vec!["0,0,0", "3"]),
+            ("cone", vec!["0,0,0", "3"]),
+            ("tube", vec!["0,0,0", "3", "2"]),
+            ("torus", vec!["0,0,0", "5"]),
+        ] {
+            let mut doc = Document::default();
+            let mut steps = vec![command];
+            steps.extend(answers);
+            let mut processor = run(&mut doc, &steps);
+            assert!(
+                processor.preview_bodies(&doc, None, "2").is_empty(),
+                "{command}"
+            );
+            assert!(!processor.preview(&doc, None, "2").is_empty(), "{command}");
+            processor.submit(&mut doc, "2");
+            let body = doc.state().objects[0].shape.body().unwrap();
+            assert!(body.is_solid(), "{command}");
+        }
+    }
 
     fn volume(doc: &Document) -> f64 {
         doc.state().objects[0]
