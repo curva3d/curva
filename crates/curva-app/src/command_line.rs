@@ -270,6 +270,21 @@ impl Curva {
 
     /// Hands a typed line to the running command, with where the pointer aims, so a typed amount
     /// can go on the side the pointer is on.
+    /// Whether Enter came another way than its key: Space, which runs the command as in Rhino
+    /// (except where a file name may contain one), or a right-click in a viewport, which ends a
+    /// step or repeats the last command (#697).
+    fn other_enter(&mut self) -> bool {
+        let wants_path = self
+            .processor
+            .current_request()
+            .is_some_and(|request| request.kind == Kind::Path);
+        let space = !wants_path && self.typed.ends_with(' ');
+        if space {
+            self.typed.pop();
+        }
+        std::mem::take(&mut self.enter_requested) || space
+    }
+
     fn submit_line(&mut self, line: &str) {
         self.processor.submit_at(&mut self.doc, line, self.last_aim);
     }
@@ -319,13 +334,7 @@ impl Curva {
         self.drawing_aids_bar(ui);
         // What sits below the history, for the next frame to leave room for.
         self.frames.command_below = ui.cursor().min.y - below_from;
-        let wants_path = self
-            .processor
-            .current_request()
-            .is_some_and(|request| request.kind == Kind::Path);
-        // Space runs the command as in Rhino, except where a file name may contain one.
-        if !wants_path && self.typed.ends_with(' ') {
-            self.typed.pop();
+        if self.other_enter() {
             submit = true;
         }
         if changed && !submit {

@@ -185,7 +185,7 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | SrfPt | Three or four corner points | none | none | done |
 | ExtrudeSrf | Select surfaces; distance | `Direction` `BothSides` `Solid` `DeleteInput` `ToBoundary` `SetBasePoint` | `BothSides` `DeleteInput` | partly |
 | ArrayLinear | Select objects; number of elements; first and second reference points | none | none | done |
-| Angle | Corner; point on first side; point on second side | `TwoObjects` | none | partly |
+| Angle | Start of first line; end of first line; start of second line; end of second line | `TwoObjects` | none | partly |
 | EvaluatePt | Point to evaluate | none | none | done |
 | Radius | Select a circle, arc or curve | none | none | partly |
 | What | Select objects | none | none | done |

@@ -68,7 +68,7 @@ impl Recipe for Circle {
     }
 
     fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
-        let [x, y] = cx.plane();
+        let [mut x, mut y] = cx.plane();
         let (centre, radius, guides) = match cx.mode {
             Some(TWO_POINT) => match (point(cx, 0), point(cx, 1)) {
                 (Some(a), Some(b)) => (
@@ -80,6 +80,8 @@ impl Recipe for Circle {
             },
             Some(THREE_POINT) => match (point(cx, 0), point(cx, 1), point(cx, 2)) {
                 (Some(a), Some(b), Some(c)) => {
+                    // In the plane of the three points, as in Rhino (#695).
+                    [x, y] = crate::commands::plane_through(a, b, c, [x, y]);
                     let Some((centre, radius)) = crate::commands::circle_through(a, b, c, [x, y])
                     else {
                         return Err(Message::new("error.arc_points_in_line"));

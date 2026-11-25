@@ -74,7 +74,13 @@ fn frame(
     let along = sub(edge_end, first);
     let length = dot(along, along).sqrt();
     let a = unit(along)?;
-    let up = up(cx);
+    // 3Point's base lies in the plane of its three points, as in Rhino (#695).
+    let up = if mode == THREE_POINT {
+        let [x, y] = crate::commands::plane_through(first, edge_end, third, cx.plane());
+        cross(x, y)
+    } else {
+        up(cx)
+    };
     // The second direction: across the edge on the plane for 3Point, up for Vertical.
     let b = if mode == VERTICAL {
         up
