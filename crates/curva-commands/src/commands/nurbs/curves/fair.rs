@@ -30,7 +30,7 @@ impl Recipe for Fair {
     fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
         let mut steps = vec![StepDef::objects("prompt.fair.objects").curves()];
         if !cx.values.is_empty() {
-            steps.push(StepDef::number("prompt.fair.tolerance").remembered("Tolerance", 0.01));
+            steps.push(StepDef::number("prompt.fair.tolerance").remembered("Tolerance", 1.0));
         }
         steps
     }
