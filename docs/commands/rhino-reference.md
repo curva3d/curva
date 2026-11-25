@@ -280,8 +280,8 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | Silhouette | Objects | none | none | done |
 | UnrollSrf | Surfaces | `Explode` `Labels` | none | partly |
 | ExtrudeFace | Face; distance | `Direction` `BothSides` | none | partly |
-| FilletSrf | Two surfaces; radius | `Trim` `Extend` | none | partly |
-| ChamferSrf | Two surfaces; distances | `Trim` `Extend` | none | partly |
+| FilletSrf | Two surfaces; radius | `Trim` `Extend` | `Trim` | partly |
+| ChamferSrf | Two surfaces; distances | `Trim` `Extend` | `Trim` | partly |
 | SplitSrf | Surface; curves | none | none | done |
 | Zebra | Objects | `Stripe direction` `Stripe size` `Stripe colour` | none | partly |
 | EditBoolean | A live boolean | none | none | partly |
