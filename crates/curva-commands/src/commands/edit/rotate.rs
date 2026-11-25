@@ -3,7 +3,8 @@
 //! still to come (`docs/commands/rhino-reference.md`).
 
 use crate::Message;
-use crate::commands::{Change, changed};
+use crate::commands::Change;
+use crate::commands::edit::parts::changed_or_parts;
 use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef, Value};
 use curva_kernel::{Curve, Point, Similarity, cross, dot, flattened, sub, unit};
 
@@ -43,7 +44,11 @@ impl Recipe for Rotate {
     const OPTIONS: &'static [OptionDef] = &[OptionDef::toggle(COPY, false)];
 
     fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
-        let mut steps = vec![StepDef::objects("prompt.rotate.objects").offering(&[])];
+        let mut steps = vec![
+            StepDef::objects("prompt.rotate.objects")
+                .offering(&[])
+                .taking_parts(),
+        ];
         if !cx.values.is_empty() {
             steps.push(StepDef::point("prompt.rotate.centre"));
         }
@@ -82,7 +87,7 @@ impl Recipe for Rotate {
         };
         let [x, y] = cx.plane();
         let change = Change::Map(Similarity::rotation(centre, cross(x, y), angle));
-        let mut made = changed(cx, ids, &[change], cx.toggle(COPY), |_, _| None);
+        let mut made = changed_or_parts(cx, ids, change, cx.toggle(COPY), |_, _| None)?;
         made.guides.append(&mut guides);
         made.message = Some(Message::with("done.rotate", vec![ids.len().to_string()]));
         Ok(made)

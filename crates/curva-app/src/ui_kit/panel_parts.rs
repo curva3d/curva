@@ -50,6 +50,25 @@ pub(crate) fn title_tab(
     );
 }
 
+/// A panel's tab shown as its icon at `tab` (drawn by `draw` in the given rectangle and colour),
+/// marked as chosen when it is the one `showing`, else quiet, where the names do not fit.
+pub(crate) fn title_icon_tab(
+    ui: &egui::Ui,
+    tab: egui::Rect,
+    showing: bool,
+    draw: impl FnOnce(&egui::Painter, egui::Rect, egui::Color32),
+) {
+    if showing {
+        super::chosen_mark(ui.painter(), tab.expand2(egui::vec2(4.0, -1.0)));
+    }
+    let colour = if showing {
+        colours::text()
+    } else {
+        colours::quiet()
+    };
+    draw(ui.painter(), tab.shrink(2.0), colour);
+}
+
 /// The strip a hidden panel leaves along its edge, at `rect`, with its pieces' `names`, running
 /// upwards when `upright`.
 pub(crate) fn edge_strip(

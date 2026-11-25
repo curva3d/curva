@@ -163,6 +163,7 @@ struct Picked {
     parts: Vec<MeshPick>,
     edges: Vec<curva_document::EdgePick>,
     faces: Vec<curva_document::FacePick>,
+    corners: Vec<curva_document::CornerPick>,
 }
 
 impl crate::Curva {
@@ -181,10 +182,75 @@ impl crate::Curva {
         let parts = toggled(self.doc.mesh_part_selection(), picked.parts, click);
         let edges = toggled(self.doc.edge_selection(), picked.edges, click);
         let faces = toggled(self.doc.face_selection(), picked.faces, click);
+        let corners = toggled(self.doc.corner_selection(), picked.corners, click);
         self.doc.select_mesh_parts(&parts);
         self.doc.select_edges(&edges);
         self.doc.select_faces(&faces);
+        self.doc.select_corners(&corners);
         self.remember_parts_picked();
+    }
+
+    /// A plain click at `at` near a point of a SubD whose cage is on show because parts of it
+    /// are picked takes that point instead, as the cage's points are there to be picked (owner,
+    /// 25 November 2026); Shift adds it, Ctrl takes it away. Returns whether a point was taken.
+    pub(crate) fn pick_cage_point(&mut self, p: &crate::mouse::Picking, at: egui::Pos2) -> bool {
+        let edited: Vec<u64> = self
+            .doc
+            .mesh_part_selection()
+            .iter()
+            .map(|(id, _)| *id)
+            .collect();
+        let cages: Vec<Pickable<'_>> = self
+            .doc
+            .state()
+            .objects
+            .iter()
+            .filter(|o| edited.contains(&o.id) && !o.hidden)
+            .filter_map(|o| {
+                let cage = o.shape.subd()?.cage();
+                Some(Pickable {
+                    id: o.id,
+                    points: cage.vertices(),
+                    faces: Vec::new(),
+                })
+            })
+            .collect();
+        if cages.is_empty() {
+            return false;
+        }
+        let (camera, size) = (p.camera, p.size);
+        let project = |q: Point| camera.project(q, size);
+        let Some(hit) = part_at(&cages, &project, &|_| 0.0, p.local(at), crate::PICK_REACH) else {
+            return false;
+        };
+        let mut parts = if p.shift || p.remove {
+            self.doc.mesh_part_selection()
+        } else {
+            Vec::new()
+        };
+        parts.retain(|held| *held != hit);
+        if !p.remove {
+            parts.push(hit);
+        }
+        self.doc.select_mesh_parts(&parts);
+        self.remember_parts_picked();
+        true
+    }
+
+    /// Every corner of the surfaces and solids on show, with where it is.
+    fn body_corners(&self) -> Vec<(curva_document::CornerPick, Point)> {
+        let mut corners = Vec::new();
+        for object in self.doc.state().objects.iter().filter(|o| !o.hidden) {
+            if let Some(points) = object.shape.body().and_then(|b| b.corner_points().ok()) {
+                corners.extend(
+                    points
+                        .into_iter()
+                        .enumerate()
+                        .map(|(k, at)| ((object.id, k), at)),
+                );
+            }
+        }
+        corners
     }
 
     fn parts_under(
@@ -224,10 +290,33 @@ impl crate::Curva {
             picked.parts = parts_in_box(&meshes, &project, (lo, hi), b[0] < a[0]);
             picked.edges = self.outlines.edges_in_box(&camera, a, b, size);
             picked.faces = self.outlines.faces_in_box(&camera, a, b, size);
+            picked.corners = self
+                .body_corners()
+                .into_iter()
+                .filter(|(_, at)| {
+                    project(*at).is_some_and(|s| {
+                        (lo[0]..=hi[0]).contains(&s[0]) && (lo[1]..=hi[1]).contains(&s[1])
+                    })
+                })
+                .map(|(pick, _)| pick)
+                .collect();
             return picked;
         }
+        // A corner of a surface or solid within reach comes first, as Rhino picks a vertex
+        // before the edges meeting at it.
+        let corner = self
+            .body_corners()
+            .into_iter()
+            .filter_map(|(pick, at)| Some((pick, gap(project(at)?, a))))
+            .filter(|(_, d)| *d <= crate::PICK_REACH)
+            .min_by(|x, y| x.1.total_cmp(&y.1));
         let part = part_at(&meshes, &project, &depth, a, crate::PICK_REACH);
         let edge = self.outlines.pick_edge(&camera, a, size, crate::PICK_REACH);
+        let mesh_point = part.is_some_and(|(_, p)| matches!(p, MeshPart::Point(_)));
+        if let Some((pick, _)) = corner.filter(|_| !mesh_point) {
+            picked.corners.push(pick);
+            return picked;
+        }
         match (part, edge) {
             (Some(part), _) if !matches!(part.1, MeshPart::Face(_)) => picked.parts.push(part),
             (_, Some(edge)) => picked.edges.push(edge),

@@ -48,6 +48,13 @@ pub(crate) fn glass_backdrop(ui: &egui::Ui, rect: egui::Rect) {
             curva_viewport::Glass {
                 rect,
                 radius: f32::from(PANEL_RADIUS),
+                // A dark panel lets no more than a dim grey through, so a white page or a light
+                // background behind it does not turn it pale (owner, 25 November 2026).
+                ceiling: if crate::theme::current().dark {
+                    0.3
+                } else {
+                    1.0
+                },
             },
         ),
     ));

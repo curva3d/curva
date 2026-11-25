@@ -28,10 +28,14 @@ pub(crate) enum SettingsTab {
 /// The interface sizes on offer, in percent.
 const INTERFACE_SIZES: [u32; 5] = [100, 125, 150, 175, 200];
 
-/// The zoom for an interface `size` in percent, kept between 100 and 200.
+/// The smallest and largest interface sizes, in percent, that can be typed or dragged to.
+pub(crate) const SMALLEST_SIZE: u32 = 50;
+pub(crate) const LARGEST_SIZE: u32 = 300;
+
+/// The zoom for an interface `size` in percent, kept between the smallest and largest sizes.
 fn interface_zoom(size: u32) -> f32 {
     #[allow(clippy::cast_precision_loss)] // A small whole number.
-    let size = size.clamp(100, 200) as f32;
+    let size = size.clamp(SMALLEST_SIZE, LARGEST_SIZE) as f32;
     size / 100.0
 }
 
@@ -73,6 +77,20 @@ fn look_settings(ui: &mut egui::Ui, settings: &mut theme::Settings, say: &Say<'_
         .unwrap_or(0);
     if let Some(index) = ui_kit::segmented(ui, &words, at) {
         settings.interface_size = INTERFACE_SIZES[index];
+    }
+    // Any size between, typed (a click on the number) or dragged, a percent at a time.
+    #[allow(clippy::cast_precision_loss)] // Small whole numbers.
+    let mut size = settings.interface_size as f32;
+    if ui_kit::slider(
+        ui,
+        &mut size,
+        SMALLEST_SIZE as f32..=LARGEST_SIZE as f32,
+        1.0,
+        "%",
+    ) {
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let typed = size.round() as u32;
+        settings.interface_size = typed.clamp(SMALLEST_SIZE, LARGEST_SIZE);
     }
     ui_kit::toggle(
         ui,

@@ -3,7 +3,6 @@
 use crate::commands::unexpected;
 use crate::{Answer, Command, Message, Request, Step};
 use curva_document::Document;
-use std::path::PathBuf;
 
 /// The running command.
 #[derive(Default)]
@@ -18,7 +17,7 @@ impl Command for SaveAs {
                 crate::commands::files::import_export::model_name(doc),
             )),
             Some(Answer::Path(text)) => {
-                let path = PathBuf::from(text.trim().trim_matches('"'));
+                let path = super::save::curva_path(&text);
                 if let Some(save) = doc.formats().of(&path).and_then(|f| f.save) {
                     return match save(doc, &path, &path.display().to_string()) {
                         Ok(done) => Step::Done(Some(Message::with(done.key, done.args))),
