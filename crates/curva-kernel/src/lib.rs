@@ -51,6 +51,7 @@ mod split;
 mod sweep;
 pub use extrude::TaperCorners;
 pub use extrude::nested_groups;
+mod chamfer_corners;
 mod interp;
 mod offset;
 mod parts_moved;
