@@ -20,12 +20,14 @@ impl Recipe for UnrollSrf {
     fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
         let mut made = Made::default();
         for (id, body) in bodies_of(cx.doc, objects(cx, 0)) {
-            let flat = body.unrolled().map_err(|e| failed(&e))?;
-            made.derived.push(Derived {
-                shape: Shape::Body(flat),
-                from: id,
-                history: None,
-            });
+            // Every face, laid out side by side, as Rhino unrolls a polysurface (#709).
+            for flat in body.unrolled_faces().map_err(|e| failed(&e))? {
+                made.derived.push(Derived {
+                    shape: Shape::Body(flat),
+                    from: id,
+                    history: None,
+                });
+            }
         }
         made.message = Some(Message::with(
             "done.unrollsrf",
