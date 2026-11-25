@@ -35,6 +35,9 @@ pin Rhino-measured results. Newest first.*
 - **Not reported:** first-use delays of 1–8 s (FilletEdge, Sphere, OffsetSrf, Pipe) showed up in
   fresh processes, but the same run once took 0.5 s and once 23.9 s with 14 compiler processes from
   other sessions running, so they are the machine, not Curva. To rerun on a quiet machine.
+- **In the app:** #697 (a right-click without dragging is not Enter; Space already is) and #698 (the
+  Layers panel takes no clicks at all: New Layer, On, the Properties tab and Search do nothing, in a
+  fresh start too; every other panel works). Both for the features stream; #698 flagged as urgent.
 - **Files both ways match Rhino:** a .3dm written by Curva (solids, curves, mesh, SubD, dimension) reads
   back in Rhino with every value; a .3dm written by Rhino (extrusion, trimmed solid, polycurve, mesh,
   SubD, text, hatch, dimension, point) imports into Curva with every value, SubD surface included.
