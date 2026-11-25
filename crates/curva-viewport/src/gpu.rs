@@ -589,14 +589,15 @@ impl LineRenderer {
         }
     }
 
-    /// The colour of the outlines of curved shapes in view `slot` (#182), and whether they are
-    /// thick, as its style's Outlines layer says.
-    fn outline_colour(&self, slot: usize) -> ([f32; 3], bool) {
+    /// The colour of the outlines of curved shapes in view `slot` (#182), and how many pixels
+    /// wide they draw on a screen with `per_mm` pixels to a millimetre, as its style's Outlines
+    /// layer says.
+    fn outline_look(&self, slot: usize, per_mm: f32) -> ([f32; 3], u32) {
         let look = self
             .slots
             .get(slot)
             .map_or(crate::OutlineLook::EDGES, |slot| slot.style.outlines);
-        (look.colour, look.thick)
+        (look.colour, look.pixels(per_mm))
     }
     /// Whether view `slot` has a grid to draw.
     fn grid_wanted(&self, slot: usize) -> bool {
@@ -706,6 +707,8 @@ impl LineRenderer {
 mod face_tests;
 #[cfg(test)]
 mod kind_tests;
+#[cfg(test)]
+mod outline_tests;
 #[cfg(test)]
 mod pattern_tests;
 #[cfg(test)]

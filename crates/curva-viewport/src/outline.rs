@@ -51,44 +51,48 @@ fn jumps(before: f32, a: f32, b: f32) -> bool {
     return past > 4.0 * abs(slope) && past > JUMP * near;
 }
 
-// Whether the outline covers pixel `p`, `thick` or not.
-fn outline_at(p: vec2<i32>, thick: bool) -> bool {
+// Whether the outline, `wide` pixels wide, covers pixel `p`.
+fn outline_at(p: vec2<i32>, wide: i32) -> bool {
     // Only on objects: the background is never outlined, the object beside it is.
     if (depth_at(p) >= 1.0) { return false; }
-    // Written out with no loops, and ending in a return: DirectX 12's older shader compiler
-    // (FXC) refuses to unroll a loop that leaves early, and does not count `discard` as leaving
-    // the function. Curva must run there (Windows CI caught both).
-    return near_step(p, vec2<i32>(1, 0), thick) || near_step(p, vec2<i32>(-1, 0), thick)
-        || near_step(p, vec2<i32>(0, 1), thick) || near_step(p, vec2<i32>(0, -1), thick);
+    // Ending in a return: DirectX 12's older shader compiler (FXC) refuses to unroll a loop that
+    // leaves early, and does not count `discard` as leaving the function. Curva must run there
+    // (Windows CI caught both).
+    return near_step(p, vec2<i32>(1, 0), wide) || near_step(p, vec2<i32>(-1, 0), wide)
+        || near_step(p, vec2<i32>(0, 1), wide) || near_step(p, vec2<i32>(0, -1), wide);
 }
 
 @fragment fn fragment_main(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
     let p = vec2<i32>(at.xy);
-    // An alpha over one asks for thick outlines, three pixels wide: the Massing display mode's
-    // profiles (#551).
-    let thick = look.colour.a > 1.5;
-    if (outline_at(p, thick)) { return vec4<f32>(look.colour.rgb, 1.0); }
+    // How many pixels wide the outlines are, in the look's alpha: two, as wide as the default
+    // line, for Shaded; three for the Massing display mode's profiles (#551).
+    let wide = clamp(i32(look.colour.a + 0.5), 2, MOST_PIXELS);
+    if (outline_at(p, wide)) { return vec4<f32>(look.colour.rgb, 1.0); }
     // Smooth edges (spec `display-pipeline.md` §2.5): a pixel beside the outline takes a little
     // of its ink, and more in the notch of a step, where it touches the outline on two sides, so
     // a slanting or round outline reads as a smooth line rather than a staircase.
-    let touching = u32(outline_at(p + vec2<i32>(1, 0), thick))
-        + u32(outline_at(p - vec2<i32>(1, 0), thick))
-        + u32(outline_at(p + vec2<i32>(0, 1), thick))
-        + u32(outline_at(p - vec2<i32>(0, 1), thick));
+    let touching = u32(outline_at(p + vec2<i32>(1, 0), wide))
+        + u32(outline_at(p - vec2<i32>(1, 0), wide))
+        + u32(outline_at(p + vec2<i32>(0, 1), wide))
+        + u32(outline_at(p - vec2<i32>(0, 1), wide));
     if (touching == 0u) { discard; }
     return vec4<f32>(look.colour.rgb, select(EDGE_SIDE, EDGE_NOTCH, touching > 1u));
 }
 
-// Whether a step back lies within two pixels of `p` in direction `step` (three when `thick`):
-// between `p` and the next
-// pixel, or between the next and the one after.
-fn near_step(p: vec2<i32>, step: vec2<i32>, thick: bool) -> bool {
-    let before = depth_at(p - step);
-    let here = depth_at(p);
-    let next = depth_at(p + step);
-    let after = depth_at(p + step * 2);
-    let further = depth_at(p + step * 3);
-    return jumps(before, here, next) || jumps(here, next, after) || (thick && jumps(next, after, further));
+// Whether a step back lies within `wide` pixels of `p` in direction `step`: between `p` and
+// the next pixel, between the next and the one after, and so on. The loop runs its full length
+// and never leaves early, for FXC (above).
+fn near_step(p: vec2<i32>, step: vec2<i32>, wide: i32) -> bool {
+    var found = false;
+    var before = depth_at(p - step);
+    var here = depth_at(p);
+    for (var k = 0; k < MOST_PIXELS; k = k + 1) {
+        let next = depth_at(p + step * (k + 1));
+        found = found || (k < wide && jumps(before, here, next));
+        before = here;
+        here = next;
+    }
+    return found;
 }";
 
 /// Draws outlines from a view's depth picture onto its colour picture.
@@ -128,7 +132,12 @@ impl Outliner {
         });
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("curva outlines"),
-            source: wgpu::ShaderSource::Wgsl(SHADER.replace("JUMP", &format!("{JUMP:?}")).into()),
+            source: wgpu::ShaderSource::Wgsl(
+                SHADER
+                    .replace("JUMP", &format!("{JUMP:?}"))
+                    .replace("MOST_PIXELS", &crate::MOST_OUTLINE_PIXELS.to_string())
+                    .into(),
+            ),
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("curva outlines"),
@@ -173,9 +182,8 @@ impl Outliner {
         }
     }
 
-    /// Draws the outlines found in `depth` onto `colour`, in `ink`, three pixels wide if `thick`
-    /// (else two), within the view's area
-    /// `[x, y, width, height]` in pixels.
+    /// Draws the outlines found in `depth` onto `colour`, in `ink`, `pixels` wide (two to
+    /// [`crate::MOST_OUTLINE_PIXELS`]), within the view's area `[x, y, width, height]` in pixels.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn draw(
         &self,
@@ -185,11 +193,11 @@ impl Outliner {
         colour: &wgpu::TextureView,
         depth: &wgpu::TextureView,
         area: [f32; 4],
-        (ink, thick): ([f32; 3], bool),
+        (ink, pixels): ([f32; 3], u32),
     ) {
         let bytes: Vec<u8> = ink
             .iter()
-            .chain(&[if thick { 2.0 } else { 1.0 }])
+            .chain(&[pixels as f32])
             .flat_map(|value| value.to_le_bytes())
             .collect();
         queue.write_buffer(&self.look, 0, &bytes);

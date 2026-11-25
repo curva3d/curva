@@ -7,9 +7,6 @@ use curva_document::style::{
     ColourFrom, Engine, FacedKind, OcclusionLight, VectorFaces, ViewStyle,
 };
 
-/// Outlines wider than this, in millimetres, are drawn thick (three pixels), as Massing's are.
-const THICK_OUTLINE_MM: f32 = 0.5;
-
 /// Rows of the face table ([`Style::face_rows`]): two for each [`FaceKind`].
 pub(crate) const FACE_ROWS: usize = 2 * FaceKind::ALL.len();
 
@@ -130,8 +127,9 @@ pub struct OutlineLook {
     pub shown: bool,
     /// The outlines' colour.
     pub colour: [f32; 3],
-    /// Whether they are thick, as in Massing, rather than as thin as edges.
-    pub thick: bool,
+    /// How wide they are, in millimetres on the screen; never thinner than the default line
+    /// ([`OutlineLook::pixels`]).
+    pub width: f32,
 }
 
 impl Style {
@@ -169,7 +167,7 @@ impl Style {
             outlines: OutlineLook {
                 shown: view.outlines.shown,
                 colour: view.outlines.colour.to_f32(),
-                thick: view.outlines.width > THICK_OUTLINE_MM,
+                width: view.outlines.width,
             },
             hidden_lines: view.hidden_lines.shown,
             faces: [FacedKind::Nurbs, FacedKind::Mesh, FacedKind::Subd]
@@ -332,9 +330,26 @@ impl OutlineLook {
     pub const EDGES: Self = Self {
         shown: true,
         colour: EDGE_ON_FACES_COLOUR,
-        thick: false,
+        width: 0.25,
     };
+
+    /// How many pixels wide the outlines draw on a screen with `per_mm` pixels to a millimetre:
+    /// their width, rounded, at least the default line's two pixels and at most
+    /// [`MOST_OUTLINE_PIXELS`]. Shaded's 0.25 mm draws two pixels and Massing's 0.75 mm three, on
+    /// a screen at 100 %.
+    #[must_use]
+    pub fn pixels(&self, per_mm: f32) -> u32 {
+        let wanted = (self.width * per_mm).round();
+        if wanted.is_finite() {
+            (wanted as u32).clamp(2, MOST_OUTLINE_PIXELS)
+        } else {
+            2
+        }
+    }
 }
+
+/// The widest outlines draw, in pixels: the outline pass looks this far for a step in depth.
+pub const MOST_OUTLINE_PIXELS: u32 = 8;
 
 #[cfg(test)]
 mod tests {
@@ -378,12 +393,12 @@ mod tests {
         let ink = OutlineLook {
             shown: true,
             colour: INK_COLOUR,
-            thick: false,
+            width: 0.25,
         };
         assert_eq!(Style::hidden().outlines, ink);
         assert_eq!(
             Style::massing().outlines,
-            OutlineLook { thick: true, ..ink }
+            OutlineLook { width: 0.75, ..ink }
         );
         assert_eq!(Style::shaded().outlines, OutlineLook::EDGES);
         assert!(!Style::wireframe().outlines.shown);
@@ -465,6 +480,23 @@ mod tests {
         assert!((nz * 0.0 + d - 5.0).abs() < 1e-3, "from the target: {d}");
     }
 
+    /// Pixels per millimetre on a 96 dpi screen at 100 %.
+    const PER_MM: f32 = 96.0 / 25.4;
+
+    #[test]
+    fn outlines_draw_as_wide_as_the_style_says_but_never_thinner_than_a_line() {
+        let wide = |width: f32| OutlineLook {
+            width,
+            ..OutlineLook::EDGES
+        };
+        assert_eq!(Style::shaded().outlines.pixels(PER_MM), 2, "as before");
+        assert_eq!(Style::massing().outlines.pixels(PER_MM), 3, "as before");
+        assert_eq!(wide(0.0).pixels(PER_MM), 2, "never thinner than a line");
+        assert_eq!(wide(1.5).pixels(PER_MM), 6);
+        assert_eq!(wide(1.5).pixels(2.0 * PER_MM), MOST_OUTLINE_PIXELS);
+        assert_eq!(wide(f32::NAN).pixels(PER_MM), 2);
+    }
+
     #[test]
     fn a_style_s_own_settings_reach_the_drawing() {
         let mut view = ViewStyle::shaded();
@@ -476,7 +508,7 @@ mod tests {
         let surfaces = drawn.surfaces.expect("faces shown");
         assert_eq!(surfaces.colour, Some([1.0, 0.0, 0.0]));
         assert!(surfaces.see_through);
-        assert!(!drawn.outlines.shown && drawn.outlines.thick);
+        assert!(!drawn.outlines.shown && drawn.outlines.pixels(PER_MM) == 4);
         view.engine = Engine::Vector;
         assert_eq!(Style::of(&view).light(), Some(Light::View), "tones are lit");
         view.lighting.vector = VectorFaces::Flat;
