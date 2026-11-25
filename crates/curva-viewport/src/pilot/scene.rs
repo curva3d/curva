@@ -232,32 +232,7 @@ impl ViewScene {
                 unlit: true,
                 ..default()
             });
-        // Previews are drawn in the preview colour, half see-through, as Curva's ghosted faces.
-        let ghost = world
-            .resource_mut::<Assets<StandardMaterial>>()
-            .add(StandardMaterial {
-                base_color: Color::WHITE.with_alpha(PREVIEW_ALPHA),
-                alpha_mode: AlphaMode::Blend,
-                double_sided: true,
-                cull_mode: None,
-                ..default()
-            });
-        // Until a command shows one, the preview holds one triangle with no area, shown and never
-        // left out as off screen: Bevy readies its see-through pipeline as the view is made, with
-        // the rest, not when the first preview comes, which froze Curva for seconds on Windows
-        // (#699; pipelines are made as they are first needed, and synchronously here).
-        let standby_mesh = world.resource_mut::<Assets<Mesh>>().add(standby_preview());
-        let preview = world
-            .spawn((
-                MeshMaterial3d(ghost),
-                Transform::IDENTITY,
-                Mesh3d(standby_mesh.clone()),
-                Visibility::Visible,
-                NoFrustumCulling,
-                layer.clone(),
-                NotShadowCaster,
-            ))
-            .id();
+        let (preview, standby_mesh) = spawn_preview(world, &layer);
         let backdrop = world
             .spawn((
                 MeshMaterial3d(flat),
@@ -606,6 +581,38 @@ impl ViewScene {
 fn set_shine(material: &mut StandardMaterial, shine: f32) {
     material.perceptual_roughness = 0.9 - 0.8 * shine;
     material.reflectance = 0.2 + 0.6 * shine;
+}
+
+/// The entity a command's preview is drawn by, on `layer`, and the standby mesh it holds while
+/// there is no preview.
+fn spawn_preview(world: &mut World, layer: &RenderLayers) -> (Entity, Handle<Mesh>) {
+    // Previews are drawn in the preview colour, half see-through, as Curva's ghosted faces.
+    let ghost = world
+        .resource_mut::<Assets<StandardMaterial>>()
+        .add(StandardMaterial {
+            base_color: Color::WHITE.with_alpha(PREVIEW_ALPHA),
+            alpha_mode: AlphaMode::Blend,
+            double_sided: true,
+            cull_mode: None,
+            ..default()
+        });
+    // Until a command shows one, the preview holds one triangle with no area, shown and never
+    // left out as off screen: Bevy readies its see-through pipeline as the view is made, with
+    // the rest, not when the first preview comes, which froze Curva for seconds on Windows
+    // (#699; pipelines are made as they are first needed, and synchronously here).
+    let standby_mesh = world.resource_mut::<Assets<Mesh>>().add(standby_preview());
+    let preview = world
+        .spawn((
+            MeshMaterial3d(ghost),
+            Transform::IDENTITY,
+            Mesh3d(standby_mesh.clone()),
+            Visibility::Visible,
+            NoFrustumCulling,
+            layer.clone(),
+            NotShadowCaster,
+        ))
+        .id();
+    (preview, standby_mesh)
 }
 
 /// One triangle with no area, laid out as a command's preview is (positions, normals and
