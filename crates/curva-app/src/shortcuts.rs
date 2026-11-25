@@ -92,10 +92,10 @@ impl Curva {
             if input.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::Plus))
                 || input.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::Equals))
             {
-                *size = (*size + 25).min(200);
+                *size = (*size + 25).min(crate::settings::LARGEST_SIZE);
             } else if input.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::Minus))
             {
-                *size = size.saturating_sub(25).max(100);
+                *size = size.saturating_sub(25).max(crate::settings::SMALLEST_SIZE);
             } else if input.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::Num0))
             {
                 *size = 100;

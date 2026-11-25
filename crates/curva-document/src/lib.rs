@@ -10,6 +10,9 @@ mod edges;
 pub use edges::{EdgePick, FacePick};
 mod mesh_picks;
 pub use mesh_picks::{MeshPart, MeshPick};
+mod borrowed;
+mod part_moves;
+pub use part_moves::CornerPick;
 mod grips;
 mod history;
 pub use grips::Grip;
@@ -201,6 +204,11 @@ pub struct Document {
     face_selection: Vec<FacePick>,
     /// Parts of meshes and SubDs picked for a command (#333). Not saved, and not part of undo.
     mesh_part_selection: Vec<MeshPick>,
+    /// Corners of bodies picked with Ctrl+Shift. Not saved, and not part of undo.
+    corner_selection: Vec<CornerPick>,
+    /// Curves lent to the running command for picked edges (`borrowed`). Not saved, and not part
+    /// of undo.
+    lent: Vec<u64>,
     /// The tie that came with the point being clicked, for a command to keep. Not saved, and not
     /// part of undo.
     pick_tie: Option<tie::Tie>,

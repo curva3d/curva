@@ -9,6 +9,16 @@ use std::path::{Path, PathBuf};
 #[derive(Default)]
 pub struct Save;
 
+/// The path typed or chosen, given `.curva` when it has no extension: the Linux file dialog
+/// does not add one, and a file without it is not known as a Curva model.
+pub(super) fn curva_path(text: &str) -> PathBuf {
+    let mut path = PathBuf::from(text.trim().trim_matches('"'));
+    if path.extension().is_none() {
+        path.set_extension(crate::CURVA_FILES.1[0]);
+    }
+    path
+}
+
 fn write(doc: &mut Document, path: &Path) -> Step {
     match doc.save(path) {
         Ok(()) => Step::Done(Some(Message::with(
@@ -30,7 +40,7 @@ impl Command for Save {
                     crate::commands::files::import_export::model_name(doc),
                 )),
             },
-            Some(Answer::Path(text)) => write(doc, &PathBuf::from(text)),
+            Some(Answer::Path(text)) => write(doc, &curva_path(&text)),
             Some(_) => unexpected(),
         }
     }
@@ -40,6 +50,18 @@ impl Command for Save {
 mod tests {
     use crate::commands::run;
     use curva_document::Document;
+
+    #[test]
+    fn a_name_without_an_extension_is_saved_as_a_curva_file() {
+        assert_eq!(
+            super::curva_path("/home/me/plane glitch"),
+            std::path::PathBuf::from("/home/me/plane glitch.curva")
+        );
+        assert_eq!(
+            super::curva_path("model.3dm"),
+            std::path::PathBuf::from("model.3dm")
+        );
+    }
 
     #[test]
     fn asks_once_then_saves_to_the_same_place() {

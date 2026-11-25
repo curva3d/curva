@@ -49,17 +49,20 @@ pub enum Piece {
     Notes,
     /// The view styles (`Styles`).
     Styles,
+    /// Where the pointer is, the current layer and the modelling aids, as Rhino's status bar.
+    Status,
 }
 
 impl Piece {
     /// Every piece, in their standard order.
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 14] = [
         Self::CommandTabs,
         Self::Layers,
         Self::Properties,
         Self::Command,
         Self::Agent,
         Self::Display,
+        Self::Status,
         Self::Settings,
         Self::Blocks,
         Self::Layouts,
@@ -86,6 +89,7 @@ impl Piece {
             Self::Print => "ui.piece.print",
             Self::Notes => "ui.piece.notes",
             Self::Styles => "ui.piece.styles",
+            Self::Status => "ui.piece.status",
         }
     }
 }
@@ -229,6 +233,11 @@ pub const COMMAND_TABS_HEIGHT: f32 = 92.0;
 /// along the bottom (owner, 22 November 2026).
 pub const BOTTOM_HEIGHT: f32 = 128.0;
 
+/// The status panel's size in the standard arrangement: room for the pointer's place and the
+/// layer on one row and the modelling aids on the next, below its title.
+pub const STATUS_WIDTH: f32 = 385.0;
+pub const STATUS_HEIGHT: f32 = 100.0;
+
 fn standard_layer_columns() -> [f32; 6] {
     STANDARD_LAYER_COLUMNS
 }
@@ -251,6 +260,14 @@ impl Default for Layout {
                     Dock::Bottom,
                     Align::Centre,
                     [COMMAND_WIDTH, BOTTOM_HEIGHT],
+                ),
+                // The status panel at the bottom left, level with the command panel (owner, 23
+                // November 2026), a panel like any other (owner, 25 November 2026).
+                Place::new(
+                    vec![Piece::Status],
+                    Dock::Bottom,
+                    Align::Start,
+                    [STATUS_WIDTH, STATUS_HEIGHT],
                 ),
                 Place::new(
                     vec![Piece::Agent],
@@ -781,6 +798,16 @@ mod tests {
         Rect::from_min_size(Pos2::ZERO, vec2(width, height))
     }
 
+    #[test]
+    fn the_status_panel_sits_left_of_the_command_panel_level_with_its_bottom() {
+        let (placed, _) = Layout::default().arrange(window(1600.0, 1000.0));
+        let rect = |piece: Piece| placed.iter().find(|(p, _)| *p == piece).unwrap().1;
+        let (status, command) = (rect(Piece::Status), rect(Piece::Command));
+        assert_eq!(status.min.x, GAP);
+        assert_eq!(status.max.y, command.max.y);
+        assert!(status.max.x < command.min.x);
+    }
+
     fn rect_of(placed: &[(PanelId, Rect)], panel: PanelId) -> Rect {
         placed.iter().find(|(p, _)| *p == panel).unwrap().1
     }
@@ -928,6 +955,7 @@ mod tests {
             edges,
             [
                 Edge::Top,
+                Edge::Bottom,
                 Edge::Bottom,
                 Edge::Bottom,
                 Edge::Right,

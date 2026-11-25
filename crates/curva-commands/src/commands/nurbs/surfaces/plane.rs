@@ -34,7 +34,14 @@ impl Recipe for Plane {
         // As Rhino's Plane: an untrimmed surface, ruled between two opposite sides.
         let near = Curve::line(a, plus(a, x, w)).map_err(|e| failed(&e))?;
         let far = Curve::line(plus(a, y, h), plus(plus(a, x, w), y, h)).map_err(|e| failed(&e))?;
-        let body = Body::ruled(&near, &far, false).map_err(|e| failed(&e))?;
+        // The surface faces up out of the plane being drawn on whichever way the corner was
+        // dragged, as in Rhino: the edges taken the other way round where it would face down.
+        let (first, second) = if w * h < 0.0 {
+            (&far, &near)
+        } else {
+            (&near, &far)
+        };
+        let body = Body::ruled(first, second, false).map_err(|e| failed(&e))?;
         Ok(Made {
             add: vec![Shape::Body(body)],
             message: Some(Message::new("done.planarsrf_one")),
@@ -47,6 +54,17 @@ impl Recipe for Plane {
 mod tests {
     use crate::commands::run;
     use curva_document::Document;
+
+    #[test]
+    fn a_plane_faces_up_whichever_way_its_corner_is_dragged() {
+        for corner in ["4,5", "-4,5", "4,-5", "-4,-5"] {
+            let mut doc = Document::default();
+            run(&mut doc, &["plane", "0,0", corner]);
+            let body = doc.state().objects[0].shape.body().unwrap();
+            let normal = body.face_normal_near(0, [0.0; 3]).unwrap();
+            assert!(normal[2] > 0.99, "{corner}: {normal:?}");
+        }
+    }
 
     #[test]
     fn plane_srfpt_and_extrudesrf() {

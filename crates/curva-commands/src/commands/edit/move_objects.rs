@@ -14,9 +14,10 @@ const VERTICAL: &str = "Vertical";
 #[derive(Default)]
 pub struct MoveObjects;
 
-/// How many answers come before the point to move from: none when control points are picked.
+/// How many answers come before the point to move from: none when control points or parts
+/// (Ctrl+Shift) are picked, which move instead of whole objects, as in Rhino.
 fn picked_first(cx: &Context<'_>) -> usize {
-    usize::from(cx.doc.grip_selection().is_empty())
+    usize::from(!cx.doc.has_picked_parts())
 }
 
 /// Where the move ends: the point given, or the height given straight out of the plane.
@@ -75,18 +76,15 @@ impl Recipe for MoveObjects {
             .into_iter()
             .collect();
         if first == 0 {
-            let grips = cx.doc.grip_selection();
+            let count = cx.doc.picked_part_points().map_or(0, |points| points.len());
             let moved = cx
                 .doc
-                .grips_reshaped(&grips, |p| std::array::from_fn(|i| p[i] + by[i]))
+                .picked_parts_reshaped(|p| std::array::from_fn(|i| p[i] + by[i]))
                 .map_err(|e| Message::with("error.geometry", vec![e.to_string()]))?;
             return Ok(Made {
                 replace: moved,
                 guides,
-                message: Some(Message::with(
-                    "done.move_points",
-                    vec![grips.len().to_string()],
-                )),
+                message: Some(Message::with("done.move_points", vec![count.to_string()])),
                 ..Made::default()
             });
         }

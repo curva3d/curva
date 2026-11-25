@@ -3,7 +3,8 @@
 //! box centre are still to come (`docs/commands/rhino-reference.md`).
 
 use crate::Message;
-use crate::commands::{Change, changed};
+use crate::commands::Change;
+use crate::commands::edit::parts::changed_or_parts;
 use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef, Value};
 use curva_kernel::{Curve, Similarity, gap};
 
@@ -33,7 +34,11 @@ impl Recipe for Scale {
     const OPTIONS: &'static [OptionDef] = &[OptionDef::toggle(COPY, false)];
 
     fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
-        let mut steps = vec![StepDef::objects("prompt.scale.objects").offering(&[])];
+        let mut steps = vec![
+            StepDef::objects("prompt.scale.objects")
+                .offering(&[])
+                .taking_parts(),
+        ];
         if !cx.values.is_empty() {
             steps.push(StepDef::point("prompt.scale.origin"));
         }
@@ -73,7 +78,7 @@ impl Recipe for Scale {
             });
         };
         let change = Change::Map(Similarity::scaling(origin, factor));
-        let mut made = changed(cx, ids, &[change], cx.toggle(COPY), |_, _| None);
+        let mut made = changed_or_parts(cx, ids, change, cx.toggle(COPY), |_, _| None)?;
         made.guides.append(&mut guides);
         made.message = Some(Message::with("done.scale", vec![ids.len().to_string()]));
         Ok(made)

@@ -75,15 +75,23 @@ impl Curva {
         self.mouse.choosing = Some(choosing);
     }
 
-    /// The menu, while open: its entries at the click, Tab, Enter and Escape.
+    /// The menu, while open: its entries at the click, Tab to go round them, Enter or Space to
+    /// take the one highlighted (Space works as Enter, as everywhere in Rhino), and Escape.
     pub(crate) fn selection_menu(&mut self, ctx: &egui::Context) {
         let Some(mut choosing) = self.mouse.choosing.take() else {
             return;
         };
         let (tab, enter, escape) = ctx.input_mut(|input| {
+            let space = input.consume_key(egui::Modifiers::NONE, egui::Key::Space);
+            if space {
+                // The space typed must not reach the command line either.
+                input
+                    .events
+                    .retain(|event| !matches!(event, egui::Event::Text(text) if text == " "));
+            }
             (
                 input.consume_key(egui::Modifiers::NONE, egui::Key::Tab),
-                input.consume_key(egui::Modifiers::NONE, egui::Key::Enter),
+                input.consume_key(egui::Modifiers::NONE, egui::Key::Enter) || space,
                 input.consume_key(egui::Modifiers::NONE, egui::Key::Escape),
             )
         });

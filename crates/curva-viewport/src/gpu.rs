@@ -9,6 +9,7 @@ mod depth;
 mod drawing;
 mod picture;
 mod shaders;
+mod turns;
 mod upload;
 
 pub use drawing::*;
@@ -62,6 +63,8 @@ pub struct LineRenderer {
     /// Meshes' wires as plain one-pixel lines, in the same [`Ink`] order.
     thin_lines: [wgpu::RenderPipeline; 2],
     circle_lines: [wgpu::RenderPipeline; 2],
+    /// Silhouettes of curved faces drawn from their turns, where faces hide nothing.
+    turn_lines: wgpu::RenderPipeline,
     faces: wgpu::RenderPipeline,
     /// The faces a style makes see-through, drawn over the lines.
     see_through_faces: wgpu::RenderPipeline,
@@ -71,6 +74,8 @@ pub struct LineRenderer {
     surfaces: Option<Uploaded<MeshVertex>>,
     /// The whole circles, shared by every view drawing the model's lines.
     circles: Option<Uploaded<crate::PlacedCircle>>,
+    /// The turns of curved faces, shared the same way.
+    turns: Option<Uploaded<crate::PlacedTurn>>,
     overlay: Option<Uploaded<Vertex>>,
     /// The ghosted faces of a command's preview.
     preview_faces: Option<Uploaded<MeshVertex>>,
@@ -211,6 +216,7 @@ impl LineRenderer {
             lines,
             thin_lines,
             circle_lines: [Ink::Own, Ink::Hidden].map(circle),
+            turn_lines: turns::turn_pipeline(device, format, &pipeline_layout),
             faces,
             see_through_faces,
             ghost_faces,
@@ -223,6 +229,7 @@ impl LineRenderer {
             slots,
             surfaces: None,
             circles: None,
+            turns: None,
             overlay: None,
             preview_faces: None,
             compositor: crate::glass::Compositor::new(device, format),
@@ -523,6 +530,11 @@ impl LineRenderer {
                 chunk,
             ));
         }
+        if stale(self.turns.as_ref(), &drawing.turns) {
+            let bytes = turns::turn_bytes;
+            let size = turns::TURN_SIZE;
+            self.turns = Some(upload(device, queue, &drawing.turns, bytes, size, 1, chunk));
+        }
         if stale(self.overlay.as_ref(), &drawing.overlay) {
             self.overlay = Some(upload(
                 device,
@@ -657,6 +669,12 @@ impl LineRenderer {
                 circles::draw_circles(pass, &self.circle_lines[ink as usize], circles);
             }
         }
+        // Where faces hide nothing, curved ones show their silhouettes as lines, as in Rhino.
+        if !slot.style.solid()
+            && let Some(turns) = self.turns.as_ref()
+        {
+            turns::draw_turns(pass, &self.turn_lines, turns);
+        }
         // Ghosted faces go over the lines, so lines behind a face show through it, dimmed,
         // while lines on its near side stay in front.
         if slot.style.see_through()
@@ -715,3 +733,5 @@ mod pattern_tests;
 mod priority_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod turn_tests;

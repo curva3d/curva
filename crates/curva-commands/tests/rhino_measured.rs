@@ -479,6 +479,49 @@ fn cases() -> Vec<(&'static str, Start, Vec<&'static str>, Vec<Measured>)> {
             vec!["box", "vertical", "0,0,0", "4,0,0", "4,0,2", "3"],
             vec![solid([4.0, 3.0, 2.0], [0.0, -3.0, 0.0], 24.0)],
         ),
+        // Measured by the testing stream, 25 November 2026.
+        (
+            "line bothsides",
+            Empty,
+            vec!["line", "bothsides", "0,0,0", "10,0,0"],
+            vec![curve([20.0, 0.0, 0.0], [-10.0, 0.0, 0.0], 20.0, false)],
+        ),
+        (
+            "curve control points",
+            Empty,
+            vec!["curve", "0,0,0", "5,5,0", "10,0,0", "15,5,0", ""],
+            vec![curve([15.0, 5.0, 0.0], [0.0; 3], 16.3414, false)],
+        ),
+        (
+            "arc angle",
+            Empty,
+            vec!["arc", "0,0,0", "5,0,0", "90"],
+            vec![curve([5.0, 5.0, 0.0], [0.0; 3], 7.854, false)],
+        ),
+        (
+            "box typed lengths",
+            Empty,
+            vec!["box", "0,0,0", "10", "5", "3"],
+            vec![solid([10.0, 5.0, 3.0], [0.0; 3], 150.0)],
+        ),
+        (
+            "box enter uses the width",
+            Empty,
+            vec!["box", "0,0,0", "10,5,0", ""],
+            vec![solid([10.0, 5.0, 5.0], [0.0; 3], 250.0)],
+        ),
+        (
+            "truncatedcone",
+            Empty,
+            vec!["truncatedcone", "0,0,0", "3", "10", "1"],
+            vec![solid([6.0, 6.0, 10.0], [-3.0, -3.0, 0.0], 136.1357)],
+        ),
+        (
+            "plane",
+            Empty,
+            vec!["plane", "0,0,0", "10,5,0"],
+            vec![surface([10.0, 5.0, 0.0], [0.0; 3])],
+        ),
     ]
 }
 

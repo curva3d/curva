@@ -1,72 +1,21 @@
 //! The status panel, as in the approved mockup (owner, 23 November 2026): a compact panel at the
-//! bottom left, level with the command panel and to its left. Its top row says where the pointer
+//! bottom left, level with the command panel and to its left; a panel like the others, which
+//! can be moved, merged and closed (owner, 25 November 2026). Its top row says where the pointer
 //! is, the model's unit and the current layer; its bottom row holds the modelling aids, as
 //! Rhino's status bar.
 
 use crate::*;
-
-/// How wide the status panel is.
-const STATUS_WIDTH: f32 = 385.0;
 
 /// One axis of where the pointer aims: its letter and its value with two decimals.
 pub(crate) fn coordinates(at: Point) -> [(char, String); 3] {
     [('x', 0), ('y', 1), ('z', 2)].map(|(letter, axis)| (letter, format!("{:.2}", at[axis])))
 }
 
-/// Where the status panel goes: left of the command panel `command`, its bottom level with it,
-/// from the window's left edge; above the command panel when there is no room beside it.
-fn status_spot(window: egui::Rect, command: Option<egui::Rect>) -> egui::Pos2 {
-    let left = window.min.x + layout::GAP;
-    match command {
-        Some(rect) if rect.min.x - layout::GAP - left >= STATUS_WIDTH => {
-            egui::pos2(left, rect.max.y)
-        }
-        Some(rect) => egui::pos2(rect.min.x, rect.min.y - layout::GAP),
-        None => egui::pos2(left, window.max.y - layout::GAP),
-    }
-}
-
 impl Curva {
-    /// The status panel, placed by the command panel in `window`, sliding away in focus mode as
-    /// the other panels do.
-    pub(crate) fn status_panel(&mut self, ctx: &egui::Context, window: egui::Rect) {
-        let command = self
-            .layout
-            .panel_of(layout::Piece::Command)
-            .and_then(|panel| {
-                self.frames
-                    .drawn_panels
-                    .iter()
-                    .find(|(drawn, _)| *drawn == panel)
-                    .map(|(_, rect)| *rect)
-            });
-        let spot = status_spot(window, command);
-        let drop = ctx.animate_value_with_time(
-            egui::Id::NULL.with("status panel slide"),
-            if self.frames.focus {
-                window.max.y - spot.y + 200.0
-            } else {
-                0.0
-            },
-            ui_kit::motion(SLIDE_TIME),
-        );
-        let glass = self.settings.glass;
-        egui::Area::new(egui::Id::NULL.with("status panel"))
-            .fixed_pos(spot + egui::vec2(0.0, drop))
-            .pivot(egui::Align2::LEFT_BOTTOM)
-            .order(egui::Order::Middle)
-            .constrain(false)
-            .show(ctx, |ui| {
-                let rect = ui.max_rect();
-                if glass {
-                    ui_kit::glass_backdrop(ui, egui::Rect::from_min_size(rect.min, ui.min_size()));
-                }
-                ui_kit::panel_frame_for(glass).show(ui, |ui| {
-                    ui.set_width(STATUS_WIDTH - 2.0 * PANEL_MARGIN);
-                    self.status_readouts(ui);
-                    self.modelling_aids(ui);
-                });
-            });
+    /// The status panel's contents: where the pointer is, then the modelling aids.
+    pub(crate) fn status_piece(&mut self, ui: &mut egui::Ui) {
+        self.status_readouts(ui);
+        self.modelling_aids(ui);
     }
 
     /// Where the pointer is and the unit, then the current layer at the row's end, which can be
@@ -174,19 +123,5 @@ mod tests {
         assert_eq!(shown[0], ('x', "1.00".to_owned()));
         assert_eq!(shown[1], ('y', "-2.50".to_owned()));
         assert_eq!(shown[2], ('z', "0.13".to_owned()));
-    }
-
-    #[test]
-    fn the_status_panel_sits_left_of_the_command_panel_level_with_its_bottom() {
-        let window = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 1000.0));
-        let command = egui::Rect::from_min_max(egui::pos2(480.0, 800.0), egui::pos2(1200.0, 980.0));
-        let spot = status_spot(window, Some(command));
-        assert_eq!(spot, egui::pos2(layout::GAP, 980.0));
-        // With no room beside it, it goes above.
-        let narrow = command.translate(egui::vec2(-400.0, 0.0));
-        assert_eq!(
-            status_spot(window, Some(narrow)),
-            egui::pos2(80.0, 800.0 - layout::GAP)
-        );
     }
 }

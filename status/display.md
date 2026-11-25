@@ -21,6 +21,26 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
     anything really nearer.
   - New test on the graphics card: a curve with an edge drawn after it in the same place shows
     as the curve, and a selected edge shows in the selection colour whichever is drawn first.
+- **Silhouettes of curved surfaces in Wireframe and Ghosted** (owner's report 8 on 0.1.6, via
+  the features stream).
+  - Before, a cylinder in Wireframe showed only its two circles and its seam. It now also shows
+    its two sides, which move as the view turns, as in Rhino 8.
+  - Measured in Rhino 8: with isocurves off, Wireframe, Ghosted and X-Ray all draw a one-pixel line
+    at a cylinder's side, where it has no edge.
+  - How it works: wherever two triangles of one curved face meet at an angle, Curva keeps that
+    place (a "turn", `turns.rs`). The graphics card draws a turn only while one of its two
+    triangles faces the viewer and the other faces away, so turning the view costs nothing on the
+    processor (`gpu/turns.rs`).
+  - Turns draw as edges, with the style's edge look and the object's colour. They show only where
+    faces hide nothing; views with solid faces keep the outlines they find in the depth picture.
+  - Only NURBS surfaces and solids; meshes went to the mesh stream (report 10).
+  - New tests: on the graphics card, a sphere seen from above shows its rim in Wireframe and
+    nothing inside; a curved face turns between its strips and a flat one never; a seam turns
+    like anywhere else, but where two faces meet does not; a turn's bytes.
+  - Not measured yet: how much memory and time the turns take on the benchmark's big models.
+- **Hidden's background checked against Rhino 8** (report 9). Rhino's own Hidden mode fills the
+  background with plain white (solid fill, 255, 255, 255), so Curva's white Hidden matches it and
+  nothing changed. Unlike Curva, Rhino's Technical keeps the normal viewport background.
 
 ## 24 November 2026
 

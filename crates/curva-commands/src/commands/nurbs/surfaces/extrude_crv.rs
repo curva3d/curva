@@ -172,6 +172,42 @@ mod tests {
         assert_eq!(doc.state().objects.len(), 1);
     }
 
+    /// A unit box and one of its level edges.
+    fn box_and_level_edge(doc: &mut Document) -> (u64, usize) {
+        let body = curva_kernel::Body::cuboid([0.0; 3], [1.0, 1.0, 1.0]).unwrap();
+        let corners = body.corner_points().unwrap();
+        let edge = (0..12)
+            .find(|e| {
+                let ends = body.corners_of_edges(&[*e]).unwrap();
+                (corners[ends[0]][2] - corners[ends[1]][2]).abs() < 1e-9
+            })
+            .unwrap();
+        (doc.add_body(body), edge)
+    }
+
+    #[test]
+    fn an_edge_picked_with_ctrl_shift_stands_in_for_a_curve() {
+        let mut doc = Document::default();
+        let picked = box_and_level_edge(&mut doc);
+        doc.select_edges(&[picked]);
+        run(&mut doc, &["extrudecrv", "2"]);
+        // The box and the surface swept from its edge; the edge lent as a curve is gone again.
+        assert_eq!(doc.state().objects.len(), 2);
+        let surface = doc.state().objects[1].shape.body().unwrap();
+        assert!(close(surface.area().unwrap(), 2.0));
+    }
+
+    #[test]
+    fn an_edge_picked_during_the_command_answers_with_enter() {
+        let mut doc = Document::default();
+        let picked = box_and_level_edge(&mut doc);
+        let mut processor = run(&mut doc, &["extrudecrv"]);
+        doc.select_edges(&[picked]);
+        processor.submit(&mut doc, "");
+        processor.submit(&mut doc, "2");
+        assert_eq!(doc.state().objects.len(), 2);
+    }
+
     #[test]
     fn solid_off_leaves_an_open_surface() {
         let mut doc = Document::default();

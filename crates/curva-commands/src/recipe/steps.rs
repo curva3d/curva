@@ -39,6 +39,9 @@ pub struct StepDef {
     /// For a choice of words: the name option it sets and the words it offers, as Rhino asks
     /// Fill's "Patch style" at a prompt of its own.
     pub choice: Option<(&'static str, &'static [&'static str])>,
+    /// For objects: whether parts picked with Ctrl+Shift (and control points) answer it when no
+    /// object is selected, so the command changes those parts, as Rhino transforms sub-objects.
+    pub parts: bool,
 }
 
 /// Which sort of objects a step takes.
@@ -73,7 +76,16 @@ impl StepDef {
             apart: false,
             panel: None,
             choice: None,
+            parts: false,
         }
+    }
+
+    /// Lets parts picked with Ctrl+Shift, and control points, answer this objects step when no
+    /// object is selected: the command then changes those parts rather than whole objects.
+    #[must_use]
+    pub fn taking_parts(mut self) -> Self {
+        self.parts = true;
+        self
     }
 
     /// Asks for one of `words`, which then becomes the name `option`'s value; Enter keeps the

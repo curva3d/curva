@@ -16,6 +16,7 @@ mod layer_tools;
 mod measuring;
 mod mesh;
 mod organising;
+pub(crate) mod panels;
 mod selection;
 mod solids;
 mod surfaces;

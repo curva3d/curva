@@ -90,6 +90,19 @@ impl<R: Recipe> RecipeCommand<R> {
         };
         if step.kind == Kind::Objects {
             if self.values.is_empty() {
+                // Edges picked with Ctrl+Shift stand in for curves, as Rhino lets a command take
+                // another object's edge where it asks for curves.
+                if step.only == Only::Curves
+                    && doc.selection().is_empty()
+                    && !doc.edge_selection().is_empty()
+                {
+                    let lent = doc.lend_picked_edges();
+                    return self.step(doc, Some(Answer::Objects(lent)));
+                }
+                if step.parts && doc.selection().is_empty() && doc.has_picked_parts() {
+                    let owners = doc.picked_part_owners();
+                    return self.step(doc, Some(Answer::Objects(owners)));
+                }
                 // A selection made beforehand answers the first step asking for objects, as in
                 // Rhino, when it has enough of the right sort.
                 let chosen = self.chosen(doc, &step, doc.selection());
@@ -111,7 +124,15 @@ impl<R: Recipe> RecipeCommand<R> {
             });
         }
         let (options, option_labels) = self.offered(doc, &step);
-        let preview = step.from.into_iter().collect();
+        // The points given so far, ending at the one this step measures from, so the drawing can
+        // snap to its own points (a polyline closing on its start) as in Rhino.
+        let preview = step.from.map_or_else(Vec::new, |from| {
+            let mut points: Vec<Point> = self.values.iter().filter_map(Value::point).collect();
+            if points.last() != Some(&from) {
+                points.push(from);
+            }
+            points
+        });
         // A step whose typed number sets an option takes numbers as well as positions.
         let kind = if step.sets.is_some() && step.kind == Kind::Point {
             Kind::PointOrNumber

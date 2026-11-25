@@ -21,6 +21,7 @@ pub(crate) mod mirror;
 pub(crate) mod move_objects;
 pub(crate) mod orient;
 pub(crate) mod orient3pt;
+pub(crate) mod parts;
 pub(crate) mod project_to_cplane;
 pub(crate) mod redo;
 pub(crate) mod rotate;
