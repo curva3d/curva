@@ -35,6 +35,9 @@ pin Rhino-measured results. Newest first.*
 - **Not reported:** first-use delays of 1–8 s (FilletEdge, Sphere, OffsetSrf, Pipe) showed up in
   fresh processes, but the same run once took 0.5 s and once 23.9 s with 14 compiler processes from
   other sessions running, so they are the machine, not Curva. To rerun on a quiet machine.
+- **Files both ways match Rhino:** a .3dm written by Curva (solids, curves, mesh, SubD, dimension) reads
+  back in Rhino with every value; a .3dm written by Rhino (extrusion, trimmed solid, polycurve, mesh,
+  SubD, text, hatch, dimension, point) imports into Curva with every value, SubD surface included.
 - Habit difference noted, not filed: Rhino's Array and ArrayPolar wait for an Enter to accept; Curva's
   finish at once, so a Rhino user's extra Enter repeats the command.
 
@@ -85,7 +88,7 @@ pin Rhino-measured results. Newest first.*
 ## Commands
 
 State against Rhino 8: **same** (measured in both), **same\*** (matches the exact result; Rhino run
-pending), **differs** (issue filed), **missing**, or **not yet** (not tested). Counts: 23 differs, 226 not yet, 72 same, 2 same*.
+pending), **differs** (issue filed), **missing**, or **not yet** (not tested). Counts: 23 differs, 222 not yet, 76 same, 2 same*.
 
 ### Curves
 
@@ -435,8 +438,8 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 |---|---|---|---|
 | Rename | not yet |  |  |
 | Match | not yet |  |  |
-| Lock | not yet |  |  |
-| Unlock | not yet |  |  |
+| Lock | same |  |  |
+| Unlock | same |  |  |
 | Group | not yet |  |  |
 | Ungroup | not yet |  |  |
 | Block | not yet |  |  |
@@ -470,8 +473,8 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Save | not yet |  |  |
 | SaveAs | not yet |  |  |
 | Open | not yet |  |  |
-| Import | not yet |  |  |
-| Export | not yet |  |  |
+| Import | same |  | Rhino-made .3dm (11 kinds of object incl. extrusion, trimmed solid, polycurve, mesh, SubD, text, hatch, dimension): every value matches |
+| Export | same |  | .3dm with a box, sphere, circle, polyline, mesh, SubD and a dimension: every value read back in Rhino |
 | ExportSelected | not yet |  |  |
 | New | not yet |  |  |
 
