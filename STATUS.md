@@ -10,6 +10,9 @@ status page, so two sessions never edit the same file:
   [`status/display.md`](status/display.md).
 - **Mesh** (mesh and SubD objects, from 16 November 2026):
   [`status/mesh.md`](status/mesh.md).
+- **Testing** (from 25 November 2026: tests every command against real Rhino 8 and files the
+  differences as `rhino-parity` issues for the other streams; changes no code they own):
+  [`status/testing.md`](status/testing.md).
 
 Read all three before starting work; write only yours. Who owns what is in `AGENTS.md`.
 
