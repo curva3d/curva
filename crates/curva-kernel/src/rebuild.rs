@@ -159,7 +159,7 @@ fn plus(p: Point, d: Point, by: f64) -> Point {
 }
 
 /// Solves `a · x = b` by elimination with pivoting.
-fn solve(mut a: Vec<Vec<f64>>, mut b: Vec<f64>) -> Result<Vec<f64>, KernelError> {
+pub(crate) fn solve(mut a: Vec<Vec<f64>>, mut b: Vec<f64>) -> Result<Vec<f64>, KernelError> {
     let n = a.len();
     for column in 0..n {
         let pivot = (column..n)

@@ -441,25 +441,6 @@ impl Body {
             .map_err(|e| failed("moving control points", e))?;
         Self::from_record(&made)
     }
-
-    /// The surface refitted with new degrees and spans each way (Rhino's RebuildUV), and how
-    /// far it strays.
-    pub fn rebuilt_uv(
-        &self,
-        degrees: [usize; 2],
-        spans: [usize; 2],
-    ) -> Result<(Self, f64), KernelError> {
-        let (made, off) = solidcore_ops::surface_cvs::rebuild(
-            &self.record()?,
-            degrees[0],
-            degrees[1],
-            spans[0],
-            spans[1],
-            1e6,
-        )
-        .map_err(|e| failed("rebuilding the surface", e))?;
-        Ok((Self::from_record(&made)?, off))
-    }
 }
 
 impl Curve {
