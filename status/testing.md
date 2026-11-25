@@ -29,6 +29,9 @@ pin Rhino-measured results. Newest first.*
   follows the mouse), #672 (the first solid preview of a session freezes Curva for about 4 s; very
   likely the owner's "lag at the height step"), #673 (Area gives 0 for surfaces and solids), #674
   (Revolve's angle prompt shows `<{0}>`).
+- **Tests pinned** (#676): Sweep1 (three cases) and Sweep2 (one) as Rhino measured them, in
+  `crates/curva-commands/tests/rhino_measured_sweeps.rs`, and seven typed commands added to
+  `rhino_measured.rs`.
 - **What matches:** every typed curve and primitive solid measured (Line, Polyline with Enter and
   Close, Curve, Circle, Arc, Ellipse, Rectangle, Box, Sphere, Cylinder, Cone, TruncatedCone, Torus,
   Plane, Point, Points): the same lengths, areas, volumes and boxes as Rhino. Sweep1 with one section
@@ -41,14 +44,15 @@ pin Rhino-measured results. Newest first.*
   `armadillo` is waiting inside a scripted `_-Sweep1` (an Esc in its window frees it). Reported to
   the session that started this stream. Lesson: Rhino's `_-Polygon 0,0,0 5`, and `_-Sweep1` with
   only two Enters, wait for more input; never send them.
-- **Computer use** on Curva's window was declined, so the gumball, Ctrl+Shift picks, snaps, panels and
+- **Computer use** on Curva's window was declined (asked twice), so the gumball, Ctrl+Shift picks, snaps, panels and
   layouts are not tested yet.
 
 ### Next
 
 1. When Rhino is back: rerun the **Same\*** rows in Rhino; measure Tube, Slot, Ellipsoid and Helix;
    check which objects Rhino leaves selected after Loft, ExtrudeCrv and Pipe (Curva keeps the input
-   selected, so Enter repeats the command on it).
+   selected, so Enter repeats the command on it). Also: whether SelSrf selects a sphere (Curva's
+   does not), and Pipe's end-radius step.
 2. With computer use: the gumball (scale handles, circle, relocating by double-click), Ctrl+Shift
    sub-object picks in FilletEdge, Shell and MoveFace, snaps, layouts and detail views.
 3. The remaining families: surfaces (Network, EdgeSrf, Patch, Blend), solids (FilletEdge, Shell),
