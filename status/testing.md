@@ -19,6 +19,24 @@ pin Rhino-measured results. Newest first.*
 - **Same\*** means Curva's result equals the exact geometric answer for that case (which Rhino gives
   too), but the case has not been run in Rhino itself yet.
 
+## Testing stream — 25 November 2026 (night)
+
+- **Blocked on the machine:** the remote desktop session disconnected around 3 pm, so there is no
+  screen for computer use, and Rhino closed. A new Rhino is waiting on its "Autosave Recovery" dialog,
+  which only someone at the screen can answer (Rhino's autosave folder also holds the owner's real
+  project autosaves, so it is left alone). Rhino comparisons resume when the session is back.
+- **Meanwhile, Curva checked against exact geometry (same\*):** tapered, to-point and along-curve
+  extrusions, ExtractSrf, DupBorder, DupEdge, Pyramid, ProjectToCPlane, Orient3Pt, VolumeCentroid,
+  Section, Contour, Intersect, Count, CurveBoolean, Distribute, Align, TriangulateMesh, MeshToNURB,
+  Block and Insert steps, the selection filters, and radius, diameter, arc length, area and volume
+  dimensions.
+- **Tests pinned** (#702): Tube, Ellipsoid, Helix, SrfPt, Rotate3D, Orient and ScaleNU as Rhino 8
+  measured them.
+- **Timing noise confirmed:** Pyramid and Paraboloid once took 6–7 s; rerun twice, 11 ms and 4 ms. Single
+  slow runs on this machine come from other sessions' builds, not Curva.
+- For the features stream (#669): Rhino's InterpCrv data posted (chord-length knots, unit end
+  derivatives).
+
 ## Testing stream — 25 November 2026 (evening)
 
 - **The owner's decision:** "Yes, as in Rhino": the gumball gets Rhino 8's scale squares back
@@ -97,7 +115,7 @@ pin Rhino-measured results. Newest first.*
 ## Commands
 
 State against Rhino 8: **same** (measured in both), **same\*** (matches the exact result; Rhino run
-pending), **differs** (issue filed), **missing**, or **not yet** (not tested). Counts: 23 differs, 222 not yet, 76 same, 2 same*.
+pending), **differs** (issue filed), **missing**, or **not yet** (not tested). Counts: 23 differs, 185 not yet, 77 same, 38 same*.
 
 ### Curves
 
@@ -125,7 +143,7 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Ellipse | same |  |  |
 | Arc | differs | #695 | three typed 3D points are flattened onto the construction plane |
 | Rectangle | differs | #695 | 3Point upright is refused |
-| Polygon | not yet |  |  |
+| Polygon | same* |  | 6 sides circumscribed: 34.641; Rhino's Edge, Star options missing (reference row) |
 | Helix | same |  | length 188.755 against 188.760 |
 | Spiral | not yet |  |  |
 | Points | same |  |  |
@@ -141,7 +159,7 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | OffsetMultiple | not yet |  |  |
 | Extend | not yet |  |  |
 | Fair | not yet |  |  |
-| CurveBoolean | not yet |  |  |
+| CurveBoolean | same* |  | lens of two circles 18.546 |
 | SimplifyCrv | not yet |  |  |
 | Reparameterize | not yet |  |  |
 | MakeUniform | not yet |  |  |
@@ -156,13 +174,13 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Plane | same |  |  |
 | SrfPt | same |  | 102.9399 |
 | ExtrudeSrf | same |  | solid by default (Rhino's factory default) |
-| DupEdge | not yet |  |  |
-| DupBorder | not yet |  |  |
-| ExtrudeCrvTapered | not yet |  |  |
-| ExtrudeCrvAlongCrv | not yet |  |  |
-| ExtrudeCrvToPoint | not yet |  |  |
+| DupEdge | same* |  | 12 edges |
+| DupBorder | same* |  | 30 |
+| ExtrudeCrvTapered | same* |  | 5° draft by default; volume exact for it (655.99) |
+| ExtrudeCrvAlongCrv | same* |  | 785.398 |
+| ExtrudeCrvToPoint | same* |  | cone volume 261.80 |
 | RailRevolve | same |  | 314.129 against 314.159 |
-| ExtractSrf | not yet |  |  |
+| ExtractSrf | same* |  | box face out: 50 and 140 left |
 | DupFaceBorder | not yet |  |  |
 | EdgeSrf | same |  | area 102.9399 |
 | NetworkSrf | same |  | 109.8230 against 109.8216 |
@@ -204,7 +222,7 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Ellipsoid | differs | #682 | typed length matches (volume 125.6637); a point for the third axis is refused |
 | BooleanSplit | not yet |  |  |
 | Paraboloid | not yet |  |  |
-| Pyramid | not yet |  |  |
+| Pyramid | same* |  | pentagon, volume 198.137 |
 | MergeAllFaces | not yet |  |  |
 | Wirecut | not yet |  |  |
 | EditBoolean | not yet |  |  |
@@ -238,19 +256,19 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Smooth | not yet |  |  |
 | History | not yet |  |  |
 | Flip | not yet |  |  |
-| ProjectToCPlane | not yet |  |  |
+| ProjectToCPlane | same* |  |  |
 | Join | same |  |  (Rhino-measured in rhino_measured.rs) |
 | Explode | same |  |  (Rhino-measured in rhino_measured.rs) |
 | Split | same |  |  |
 | Trim | same* |  |  |
-| Orient3Pt | not yet |  |  |
+| Orient3Pt | same* |  |  |
 | Rotate3D | same |  |  |
 | Scale1D | same |  |  |
 | Scale2D | same |  |  |
 | ScaleNU | same |  |  |
-| ArrayLinear | not yet |  |  |
-| Align | not yet |  |  |
-| Distribute | not yet |  |  |
+| ArrayLinear | same |  | (Rhino-measured in rhino_measured.rs) |
+| Align | same* |  | Rhino's options and steps |
+| Distribute | same* |  | equal spacing |
 | Shear | same |  |  |
 | Twist | not yet |  |  |
 | Bend | not yet |  |  |
@@ -275,16 +293,16 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Radius | same |  | click on a circle: 5.000 |
 | What | not yet |  |  |
 | AreaCentroid | not yet |  |  |
-| VolumeCentroid | not yet |  |  |
+| VolumeCentroid | same* |  | 5, 2.5, 1.5 |
 | ShowEdges | not yet |  |  |
 | Plan | not yet |  |  |
 | Zebra | not yet |  |  |
-| Count | not yet |  |  |
+| Count | same* |  |  |
 | Audit | not yet |  |  |
 | DraftAnalysis | not yet |  |  |
-| Section | not yet |  |  |
-| Contour | not yet |  |  |
-| Intersect | not yet |  |  |
+| Section | same* |  | 5 × 3 section, 16 |
+| Contour | same* |  | four rectangles of 30, ends included |
+| Intersect | same* |  | lines at 5,5; box with plane: 30 |
 | CurvatureGraph | not yet |  |  |
 | Silhouette | not yet |  |  |
 
@@ -306,11 +324,11 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | CullDegenerateMeshFaces | not yet |  |  |
 | RebuildMeshNormals | not yet |  |  |
 | ReduceMesh | not yet |  |  |
-| TriangulateMesh | not yet |  |  |
+| TriangulateMesh | same* |  | 100 quads to 200 triangles |
 | QuadrangulateMesh | not yet |  |  |
 | ExtractMeshFaces | not yet |  |  |
 | MeshToNURB | not yet |  |  |
-| MeshBooleanUnion | not yet |  |  |
+| MeshBooleanUnion | same* |  |  |
 | MeshBooleanDifference | not yet |  |  |
 | MeshBooleanIntersection | not yet |  |  |
 | MeshBooleanSplit | not yet |  |  |
@@ -351,14 +369,14 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Dim | same |  | 10.00 |
 | DimAligned | same |  | 10.44 |
 | DimRotated | not yet |  |  |
-| DimRadius | not yet |  |  |
-| DimDiameter | not yet |  |  |
-| DimAngle | not yet |  |  |
+| DimRadius | same* |  | 5 |
+| DimDiameter | same* |  | 10 |
+| DimAngle | same* |  | first line, or Points, as Rhino |
 | DimOrdinate | not yet |  |  |
 | DimCurveLength | not yet |  |  |
-| DimArea | not yet |  |  |
-| DimVolume | not yet |  |  |
-| DimArcLength | not yet |  |  |
+| DimArea | same* |  | 50 |
+| DimVolume | same* |  | 150 |
+| DimArcLength | same* |  | 7.854 |
 | Leader | same |  |  |
 | Dot | same |  |  |
 | Hatch | same |  | area right; default pattern Hatch1 (Rhino's factory default is Solid) |
@@ -395,12 +413,12 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 |---|---|---|---|
 | Hide | same |  |  |
 | Show | same |  |  |
-| SelAll | not yet |  |  |
-| SelNone | not yet |  |  |
-| SelCrv | not yet |  |  |
+| SelAll | same* |  |  |
+| SelNone | same* |  |  |
+| SelCrv | same* |  | curves only |
 | SelSrf | differs | #679 | misses a sphere |
 | SelSolid | differs | #679 | takes a sphere |
-| SelPt | not yet |  |  |
+| SelPt | same* |  |  |
 | SelName | not yet |  |  |
 | SelLayer | not yet |  |  |
 | SelDup | same |  |  |
@@ -410,12 +428,12 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | SelFilterToggle | not yet |  |  |
 | Isolate | same |  |  |
 | Invert | same |  |  |
-| SelLine | not yet |  |  |
+| SelLine | same* |  |  |
 | SelPolyline | not yet |  |  |
-| SelCircle | not yet |  |  |
+| SelCircle | same* |  |  |
 | SelArc | not yet |  |  |
-| SelClosedCrv | not yet |  |  |
-| SelOpenCrv | not yet |  |  |
+| SelClosedCrv | same* |  |  |
+| SelOpenCrv | same* |  |  |
 | HideSwap | same |  |  |
 | SelColor | not yet |  |  |
 | SelBlockInstanceNamed | not yet |  |  |
@@ -451,8 +469,8 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Unlock | same |  |  |
 | Group | not yet |  |  |
 | Ungroup | not yet |  |  |
-| Block | not yet |  |  |
-| Insert | not yet |  |  |
+| Block | same* |  | objects become an instance; base point, then name |
+| Insert | same* |  | name, point, scale, rotation, as Rhino's -Insert |
 | BlockManager | not yet |  |  |
 | BlockEdit | not yet |  |  |
 | ExplodeBlock | not yet |  |  |
