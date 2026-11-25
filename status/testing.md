@@ -19,6 +19,22 @@ pin Rhino-measured results. Newest first.*
 - **Same\*** means Curva's result equals the exact geometric answer for that case (which Rhino gives
   too), but the case has not been run in Rhino itself yet.
 
+## Testing stream — 25 November 2026 (midday)
+
+- **New issues, features:** #736 RemoveKnot (deletes the nearest control point; Rhino removes the knot
+  and refits: 13.3866 against 12.4849), #737 Smooth (factor 0.5 against Rhino's 0.2), #738 ArrayCrv
+  (copies only moved; Rhino turns them along the curve), #739 Flow (stretches and replaces; Rhino's
+  Stretch=No, Copy=Yes: 14.8797 against 9.4999), #740 RebuildUV (fails on a sphere; acts as Rebuild),
+  #741 Reparameterize (no Automatic, curves only), #743 SelName (wildcards select nothing).
+- **Also matching Rhino:** Weight (13.496487), HandleCurve (10.8485, same control points), InsertKnot,
+  SetPt, ShowEdges.
+- **Defaults** (Smooth 0.2, Fair 1.0, Mesh density 50) were confirmed in a freshly started Rhino, so
+  they are Rhino's own, not settings left over in the owner's Rhino.
+- **Correction to the morning note:** reading Rhino's prompt from a Python thread is not safe. It hung
+  Rhino for good four times, including the owner's own Rhino, which is still not responding. It is
+  not needed either: when the watchdog cancels a waiting command, the prompt already appears in the
+  script's output.
+
 ## Testing stream — 25 November 2026 (morning, second pass)
 
 - **Fixed and rechecked against Rhino:** #683 ChamferEdge (26 faces, 945.3333, area 526.6927, as Rhino),
@@ -32,7 +48,7 @@ pin Rhino-measured results. Newest first.*
   2143 / 2048, mostly quads).
 - **Also matching Rhino:** InterpCrvOnSrf (15.8639), AreaCentroid; OffsetCrvOnSrf matches the exact
   result.
-- **How:** a helper thread now reads Rhino's command prompt while a scripted command waits, so
+- **How:** (see the midday correction) the prompts were read while a scripted command waited, so
   defaults (Fair's `Tolerance <1.00000>`, Mesh's `PolygonDensity=50`) are read without changing any
   setting.
 - **Waiting:** #705 (first-preview freeze; needs the desktop) and #706 (SubD extent, unwelded mesh
@@ -175,7 +191,7 @@ pin Rhino-measured results. Newest first.*
 ## Commands
 
 State against Rhino 8: **same** (measured in both), **same\*** (matches the exact result; Rhino run
-pending), **differs** (issue filed), **missing**, or **not yet** (not tested). Counts: 26 differs, 98 not yet, 174 same, 28 same*.
+pending), **differs** (issue filed), **missing**, or **not yet** (not tested). Counts: 33 differs, 86 not yet, 179 same, 28 same*.
 
 ### Curves
 
@@ -190,11 +206,11 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Rebuild | differs | #716 | 22.007 against 21.978 |
 | PointsOn | not yet |  |  |
 | PointsOff | not yet |  |  |
-| InsertKnot | not yet |  |  |
-| RemoveKnot | not yet |  |  |
+| InsertKnot | same |  | click at 5,2: shape kept (12.188403), 1 point added, as Rhino's 5 control points |
+| RemoveKnot | differs | #736 | removes the nearest control point: 13.3866 against Rhino 12.4849 |
 | RemoveControlPoint | not yet |  |  |
 | CloseCrv | same |  | gap closed by a line, 40 |
-| SetPt | not yet |  |  |
+| SetPt | same |  | all of X, Y, Z set by default: polyline to 0,5,0 as Rhino (no Alignment/Copy options) |
 | Offset | same |  | circle (37.699) and rectangle with sharp corners (48) (Rhino-measured in rhino_measured.rs) |
 | Fillet | same |  | two lines r=2: 8, 8, 3.1416 (RhinoCommon) |
 | FilletCorners | same |  | rectangle r=1, 38.283 (Rhino-measured in rhino_measured.rs) |
@@ -211,7 +227,7 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Slot | same |  | Curva only: Rhino 8 has no Slot command |
 | Parabola | same |  | fixed in #721: from the focus |
 | ChangeDegree | same |  | shape kept |
-| HandleCurve | not yet |  |  |
+| HandleCurve | same |  | two points with handles: 10.8485, control points 0,0 2,3 8,-3 10,0 as Rhino |
 | Sketch | not yet |  |  |
 | Conic | same |  | 11.4779 in both |
 | Hyperbola | same |  | fixed in #721: centre, focus, end, 12.4422 |
@@ -221,9 +237,9 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Fair | differs | #731 | default tol 0.01 changes nothing; Rhino 1.0 → 12.8702 |
 | CurveBoolean | same |  | lens 18.546 in both |
 | SimplifyCrv | same |  | fixed in #717 |
-| Reparameterize | not yet |  |  |
+| Reparameterize | differs | #741 | no Automatic, no surfaces; end defaults to 1 |
 | MakeUniform | same |  | 22.020279 |
-| Weight | not yet |  |  |
+| Weight | same |  | point 1 to weight 5: 13.496487, top 4.6947, as Rhino |
 | TextObject | not yet |  |  |
 | Curve | same |  | control points, degree 3 |
 
@@ -248,7 +264,7 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | ExtendSrf | not yet |  |  |
 | Untrim | differs | #734 | after Split gives 36 (Rhino 100: Split keeps the full surface) |
 | Project | same |  | 12.566 in both |
-| RebuildUV | not yet |  |  |
+| RebuildUV | differs | #740 | fails on a sphere; Rebuild-style options; Rhino one direction, 10 points |
 | ExtractIsocurve | differs | #730 | default copies U and V; Rhino U only (equator 31.4159 matches) |
 | ShrinkTrimmedSrf | differs | #734 | Rhino leaves a 1% margin (37.4544 on untrim); Curva exact 36 |
 | BlendSrf | not yet |  |  |
@@ -311,9 +327,9 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Mirror | same |  | copy by default, as Rhino |
 | Array | same |  | Rhino waits for an Enter to accept; Curva does not |
 | ArrayPolar | same |  | Rhino waits for an Enter to accept; Curva does not |
-| ArrayCrv | not yet |  |  |
+| ArrayCrv | differs | #738 | copies only moved; Rhino turns them with the curve (Freeform) |
 | Orient | same |  |  |
-| Smooth | not yet |  |  |
+| Smooth | differs | #737 | factor 0.5 against Rhino 0.2: 11.2596 against 12.0950 |
 | History | not yet |  |  |
 | Flip | not yet |  |  |
 | ProjectToCPlane | same |  |  |
@@ -333,7 +349,7 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Twist | same |  | 997.15 against 999.997 |
 | Bend | same |  | Rhino's steps |
 | Taper | differs | #713 | fails with the axis on an edge; one ratio where Rhino asks start and end distances |
-| Flow | not yet |  |  |
+| Flow | differs | #739 | stretches and replaces: 14.8797 against Rhino 9.4999 (Stretch=No, Copy=Yes) |
 | CageEdit | not yet |  |  |
 | Delete | not yet |  |  |
 | Undo | not yet |  |  |
@@ -354,7 +370,7 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | What | differs | #712 | reports little beside Rhino's What |
 | AreaCentroid | same |  | point at 5,2,0 for a 10x4 plane |
 | VolumeCentroid | same |  | 5, 2.5, 1.5 in both |
-| ShowEdges | not yet |  |  |
+| ShowEdges | same |  | box 12 edges 0 naked; holed plane 5 edges 5 naked, as Rhino |
 | Plan | not yet |  |  |
 | Zebra | not yet |  |  |
 | Count | same* |  |  |
@@ -479,7 +495,7 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | SelSrf | same |  | fixed in #701 |
 | SelSolid | same |  | fixed in #701 |
 | SelPt | same |  |  |
-| SelName | not yet |  |  |
+| SelName | differs | #743 | exact name works; wildcard al* selects nothing |
 | SelLayer | not yet |  |  |
 | SelDup | same |  |  |
 | SelLast | same |  |  |
