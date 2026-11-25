@@ -56,6 +56,7 @@ mod chamfer_corners;
 mod interp;
 mod offset;
 mod parts_moved;
+mod rebuild;
 mod record_io;
 mod unroll_all;
 pub use record_io::{from_record_curve, to_record_curve, to_record_spline};
