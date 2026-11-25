@@ -566,6 +566,29 @@ fn cases() -> Vec<(&'static str, Start, Vec<&'static str>, Vec<Measured>)> {
             vec!["scalenu", "0,0,0", "2", "3", "1"],
             vec![solid([20.0, 15.0, 3.0], [0.0; 3], 900.0)],
         ),
+        (
+            "spiral",
+            Empty,
+            vec!["spiral", "0,0,0", "0,0,10", "5", "2"],
+            vec![curve(
+                [9.85, 9.7, 10.0],
+                [-4.85, -4.775, 0.0],
+                220.1759,
+                false,
+            )],
+        ),
+        (
+            "conic, rho typed",
+            Empty,
+            vec!["conic", "0,0,0", "10,0,0", "5,5,0", "0.5"],
+            vec![curve([10.0, 2.5, 0.0], [0.0; 3], 11.4779, false)],
+        ),
+        (
+            "pyramid, five sides",
+            Empty,
+            vec!["pyramid", "0,0,0", "5,0,0", "10"],
+            vec![solid([9.045, 9.51, 10.0], [-4.045, -4.755, 0.0], 198.1368)],
+        ),
     ]
 }
 
