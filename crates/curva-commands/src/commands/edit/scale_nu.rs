@@ -263,7 +263,12 @@ mod tests {
         let state = doc.state();
         let (low, high) = state.objects[0].shape.mesh().unwrap().bounds().unwrap();
         assert_eq!((low, high), ([0.0; 3], [2.0, 1.0, 3.0]));
-        let (low, high) = state.objects[1].shape.subd().unwrap().bounds().unwrap();
+        let (low, high) = state.objects[1]
+            .shape
+            .subd()
+            .unwrap()
+            .cage_bounds()
+            .unwrap();
         assert_eq!((low, high), ([0.0; 3], [2.0, 1.0, 3.0]));
     }
 }

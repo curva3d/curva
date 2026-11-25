@@ -138,24 +138,15 @@ impl Shape {
     }
 }
 
-/// A mesh's edges as lines, each once, in the order its faces first reach them.
+/// A mesh's edges as lines, each once even where the mesh is unwelded (a MeshBox's edges,
+/// #690), as Rhino 8 draws its wires ([`curva_mesh::Mesh::wire_edges`]).
 #[must_use]
 pub fn mesh_edges(mesh: &curva_mesh::Mesh) -> Vec<Curve> {
     let points = mesh.vertices();
-    let mut seen = std::collections::HashSet::new();
-    let mut lines = Vec::new();
-    for face in mesh.faces() {
-        for (k, &a) in face.iter().enumerate() {
-            let b = face[(k + 1) % face.len()];
-            if a == b || !seen.insert((a.min(b), a.max(b))) {
-                continue;
-            }
-            if let (Some(&p), Some(&q)) = (points.get(a as usize), points.get(b as usize)) {
-                lines.extend(Curve::line(p, q));
-            }
-        }
-    }
-    lines
+    mesh.wire_edges()
+        .into_iter()
+        .filter_map(|[a, b]| Curve::line(*points.get(a as usize)?, *points.get(b as usize)?).ok())
+        .collect()
 }
 
 /// The outlines of an annotation, for its extent: a text's letters; for a dimension, the lines
