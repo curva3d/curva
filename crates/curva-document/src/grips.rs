@@ -131,10 +131,18 @@ impl Document {
                     .collect()
             };
             match &object.shape {
-                crate::Shape::Mesh(mesh) => made.push((
-                    id,
-                    crate::Shape::Mesh(mesh.with_points_moved(&moved(mesh.vertices()))),
-                )),
+                crate::Shape::Mesh(mesh) => {
+                    // A mesh's grips move its points by place, as Rhino's do, so a mesh unwelded at
+                    // its hard edges moves together rather than tearing open.
+                    let all = mesh.vertices();
+                    let picked = indices.iter().filter_map(|i| u32::try_from(*i).ok());
+                    let moves: Vec<(u32, Point)> =
+                        crate::part_moves::with_same_places(all, picked.collect())
+                            .into_iter()
+                            .filter_map(|i| Some((i, change(*all.get(i as usize)?))))
+                            .collect();
+                    made.push((id, crate::Shape::Mesh(mesh.with_points_moved(&moves))));
+                }
                 crate::Shape::SubD(subd) => made.push((
                     id,
                     crate::Shape::SubD(subd.with_cage_points_moved(&moved(subd.cage().vertices()))),

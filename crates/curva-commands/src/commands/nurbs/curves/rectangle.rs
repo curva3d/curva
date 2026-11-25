@@ -32,8 +32,10 @@ fn corners(first: Point, other: Point, x: Point, y: Point) -> Option<Vec<Point>>
     Some(vec![first, side, plus(side, y, high), plus(first, y, high)])
 }
 
-/// The four corners from one side, `a` to `b`, and a point `c` on the opposite side.
-fn from_side(a: Point, b: Point, c: Point, [x, y]: [Point; 2]) -> Option<Vec<Point>> {
+/// The four corners from one side, `a` to `b`, and a point `c` on the opposite side, in the plane of
+/// the three points whatever the construction plane, as in Rhino (#695).
+fn from_side(a: Point, b: Point, c: Point, plane: [Point; 2]) -> Option<Vec<Point>> {
+    let [x, y] = crate::commands::plane_through(a, b, c, plane);
     let along = unit(sub(b, a))?;
     let across = cross(cross(x, y), along);
     let high = dot(sub(c, a), across);
