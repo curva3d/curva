@@ -9,6 +9,10 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## 26 November 2026
+
+**FillMeshHoles gives the filling its own points (#747):** as Rhino 8 does (measured by the testing stream), the triangles closing a hole use copies of the border's points, joined to the mesh there but not welded. A 10 × 10 MeshPlane filled is closed with 161 points, 138 faces and 100 quads, exactly Rhino's. It had 121 points.
+
 ## 25 November 2026
 
 **A SubD's extent is its smooth surface's (#689):** `SubD::bounds` now gives the extent of the smooth surface, as Rhino 8 does, so BoundingBox, zoom framing, the gumball and Align fit the surface, not the cage. A SubDSphere of radius 5 spans ±5 (it was ±6.177), and a SubD from a 10 mm cube cage spans 0.802 to 9.198, as measured in Rhino. `SubD::cage_bounds` keeps the cage's extent.
