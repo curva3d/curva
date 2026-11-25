@@ -354,7 +354,7 @@ fn ink_shift(rect: egui::Rect, name: &str) -> egui::Vec2 {
 /// Draws the icon for `name`, trying each group in turn; returns whether there was one.
 fn draw(pen: &Pen<'_>, name: &str) -> bool {
     let key = name.to_lowercase();
-    let groups: [fn(&Pen<'_>, &str) -> bool; 35] = [
+    let groups: [fn(&Pen<'_>, &str) -> bool; 36] = [
         layer_tools::layer_tools,
         curves::curves_1,
         curves::curves_2,
@@ -381,6 +381,7 @@ fn draw(pen: &Pen<'_>, name: &str) -> bool {
         transforms::transforms_3,
         selection::selection_1,
         selection::selection_2,
+        selection::selection_3,
         editing::editing,
         organising::organising_1,
         organising::organising_2,

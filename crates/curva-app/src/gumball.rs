@@ -13,6 +13,20 @@ pub(crate) struct GumballState {
     pub(crate) relocating: bool,
     /// Where the gumball was moved to, for what was picked then.
     pub(crate) moved_to: Option<(crate::gumball_relocate::Holding, Point)>,
+    /// The handle last clicked without a drag, and when, to tell a double-click (#685).
+    pub(crate) last_click: Option<(Handle, std::time::Instant)>,
+}
+
+/// How soon a second click on the same handle must come to make a double-click.
+const DOUBLE_CLICK: std::time::Duration = std::time::Duration::from_millis(400);
+
+/// Whether a click on `handle` at `now` is the second of a double-click after `last`.
+fn is_double(
+    last: Option<(Handle, std::time::Instant)>,
+    handle: Handle,
+    now: std::time::Instant,
+) -> bool {
+    last.is_some_and(|(held, at)| held == handle && now.duration_since(at) < DOUBLE_CLICK)
 }
 
 /// Most objects shown moving during a gumball drag.
@@ -203,37 +217,17 @@ impl Curva {
         })
     }
 
-    /// Whether the gumball's circle on axis `index` stretches what it holds from the gumball's
-    /// centre, as `Scale1D` does: always for picked points and parts and for closed solids, and
-    /// for anything else with some size along that axis. Only along an axis where the selection
-    /// is flat (a flat surface's normal, a flat curve's) does the circle extrude it, as a
-    /// stretch would do nothing there. Shift stretches anything, and Shift with Ctrl scales
-    /// evenly.
-    pub(crate) fn circle_stretches(&self, index: usize) -> bool {
-        if self.doc.has_picked_parts() {
-            return true;
-        }
+    /// Whether the gumball's circle stretches what it holds rather than extruding it: for closed
+    /// solids, which cannot be extruded (`docs/specs/gumball-rhino.md`). Scaling along an axis is
+    /// the scale squares' work, as in Rhino 8 (owner, 25 November 2026, #693). Picked parts move
+    /// along the axis. Shift stretches anything, and Shift with Ctrl scales evenly.
+    pub(crate) fn circle_stretches(&self, _index: usize) -> bool {
         let shapes = self.selected_shapes();
-        if shapes.is_empty() {
-            return false;
-        }
-        if shapes
-            .iter()
-            .all(|(_, shape)| shape.body().is_some_and(curva_kernel::Body::is_solid))
-        {
-            return true;
-        }
-        let (low, high) = shapes.iter().filter_map(|(_, shape)| shape.bounds()).fold(
-            ([f64::MAX; 3], [f64::MIN; 3]),
-            |(lo, hi), (l, h)| {
-                (
-                    std::array::from_fn(|i| lo[i].min(l[i])),
-                    std::array::from_fn(|i| hi[i].max(h[i])),
-                )
-            },
-        );
-        let size = (0..3).map(|i| high[i] - low[i]).fold(0.0, f64::max);
-        high[index] - low[index] > 1e-9 * size.max(1.0)
+        !self.doc.has_picked_parts()
+            && !shapes.is_empty()
+            && shapes
+                .iter()
+                .all(|(_, shape)| shape.body().is_some_and(curva_kernel::Body::is_solid))
     }
 
     /// Runs the gumball for one viewport. Returns whether it took the mouse.
@@ -309,16 +303,6 @@ impl Curva {
         handle: Handle,
         (at, size): ([f64; 2], [f64; 2]),
     ) {
-        let double = ui.input(|input| {
-            input
-                .pointer
-                .button_double_clicked(egui::PointerButton::Primary)
-        });
-        if double {
-            self.gumball_state.gumball_typing = None;
-            self.gumball_state.relocating = true;
-            return;
-        }
         // Ctrl-dragging an arrow extrudes along it, as in Rhino.
         let ctrl = ui.input(|input| input.modifiers.command);
         let arrow_extrude = matches!(handle, Handle::Move(_)) && ctrl;
@@ -347,9 +331,20 @@ impl Curva {
             self.finish_relocating(drag);
             return;
         }
-        // A click without a drag asks for an exact value, as in Rhino.
+        // A click without a drag asks for an exact value, as in Rhino; a second one on the same
+        // handle straight after is a double-click, and the next drag moves the gumball itself, as
+        // Rhino 8 relocates it (#685: egui says a double-click only once the second click is let go,
+        // after the press that started this drag).
         if drag.from == drag.now {
-            self.gumball_state.gumball_typing = Some((drag.handle, String::new()));
+            let now = std::time::Instant::now();
+            if is_double(self.gumball_state.last_click, drag.handle, now) {
+                self.gumball_state.gumball_typing = None;
+                self.gumball_state.relocating = true;
+                self.gumball_state.last_click = None;
+            } else {
+                self.gumball_state.gumball_typing = Some((drag.handle, String::new()));
+                self.gumball_state.last_click = Some((drag.handle, now));
+            }
             return;
         }
         let Some(change) = self.gumball_change(drag) else {
@@ -661,6 +656,18 @@ fn paint_handle(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_second_click_on_the_same_handle_soon_after_is_a_double_click() {
+        let start = std::time::Instant::now();
+        let soon = start + std::time::Duration::from_millis(200);
+        let late = start + std::time::Duration::from_millis(900);
+        let first = Some((Handle::Move(0), start));
+        assert!(is_double(first, Handle::Move(0), soon));
+        assert!(!is_double(first, Handle::Move(1), soon));
+        assert!(!is_double(first, Handle::Move(0), late));
+        assert!(!is_double(None, Handle::Move(0), soon));
+    }
 
     #[test]
     fn tapping_alt_during_a_drag_switches_copying() {

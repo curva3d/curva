@@ -47,7 +47,7 @@ impl Recipe for Revolve {
             );
         }
         if cx.values.len() >= 3 {
-            steps.push(StepDef::number("prompt.revolve.angle").optional());
+            steps.push(StepDef::number("prompt.revolve.angle").remembered("Angle", FULL_TURN));
         }
         steps
     }
@@ -171,6 +171,15 @@ mod tests {
         assert!(close(body.volume().unwrap(), PI * 7.0 * 2.0));
         processor.submit(&mut doc, "undo");
         assert_eq!(doc.state().objects.len(), 1);
+    }
+
+    #[test]
+    fn the_angle_prompt_offers_the_last_angle_as_rhino_does() {
+        let mut doc = Document::default();
+        selected_profile(&mut doc);
+        let processor = run(&mut doc, &["revolve", "0,0,0", "0,0,1"]);
+        let prompt = processor.prompt().unwrap();
+        assert!(prompt.contains("<360>"), "{prompt}");
     }
 
     #[test]

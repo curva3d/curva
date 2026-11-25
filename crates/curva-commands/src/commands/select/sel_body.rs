@@ -1,52 +1,81 @@
-//! `SelSrf` and `SelSolid`: add every open surface, or every closed solid, that can be
-//! selected to the selection, as in Rhino.
+//! `SelSrf`, `SelPolysrf`, `SelSolid`, `SelClosedSrf` and `SelOpenSrf`: add every surface or
+//! solid of one kind that can be selected to the selection, as in Rhino, which sorts them by their
+//! faces: a surface is one face, open or closed (a sphere is a surface), a polysurface several
+//! joined, and a solid a closed polysurface (#679, measured in Rhino 8).
 
 use crate::{Answer, Command, Message, Step};
 use curva_document::Document;
+use curva_kernel::Body;
 
-/// Adds the selectable bodies that are (`solid`) or are not closed to the selection.
-fn select_bodies(doc: &mut Document, solid: bool) -> Step {
+/// Which bodies a command picks.
+#[derive(Clone, Copy)]
+enum Kind {
+    /// One face, open or closed.
+    Surface,
+    /// Several faces joined.
+    Polysurface,
+    /// Several faces closing round a space.
+    Solid,
+    /// One face closing round a space, as a sphere.
+    ClosedSurface,
+    /// One face, open.
+    OpenSurface,
+}
+
+impl Kind {
+    fn takes(self, body: &Body) -> bool {
+        let one_face = body.face_count().is_ok_and(|count| count == 1);
+        match self {
+            Self::Surface => one_face,
+            Self::Polysurface => !one_face,
+            Self::Solid => !one_face && body.is_solid(),
+            Self::ClosedSurface => one_face && body.is_solid(),
+            Self::OpenSurface => one_face && !body.is_solid(),
+        }
+    }
+}
+
+/// Adds the selectable bodies of `kind` to the selection.
+fn select_bodies(doc: &mut Document, kind: Kind) -> Step {
     let open = doc.selectable();
     let found: Vec<u64> = doc
         .state()
         .objects
         .iter()
         .filter(|object| open.contains(&object.id))
-        .filter(|object| object.shape.body().is_some_and(|b| b.is_solid() == solid))
+        .filter(|object| object.shape.body().is_some_and(|b| kind.takes(b)))
         .map(|object| object.id)
         .collect();
     let mut selection = doc.selection();
-    let added = found.iter().filter(|id| !selection.contains(id)).count();
-    selection.extend(
-        found
-            .iter()
-            .filter(|id| !selection.contains(id))
-            .copied()
-            .collect::<Vec<_>>(),
-    );
+    let added: Vec<u64> = found
+        .into_iter()
+        .filter(|id| !selection.contains(id))
+        .collect();
+    let count = added.len();
+    selection.extend(added);
     doc.select(&selection);
-    Step::Done(Some(Message::with("done.select", vec![added.to_string()])))
+    Step::Done(Some(Message::with("done.select", vec![count.to_string()])))
 }
 
-/// The running `SelSrf`.
-#[derive(Default)]
-pub struct SelSrf;
+macro_rules! selector {
+    ($name:ident, $kind:expr, $what:literal) => {
+        #[doc = concat!("The running `", $what, "`.")]
+        #[derive(Default)]
+        pub struct $name;
 
-impl Command for SelSrf {
-    fn step(&mut self, doc: &mut Document, _answer: Option<Answer>) -> Step {
-        select_bodies(doc, false)
-    }
+        impl Command for $name {
+            fn step(&mut self, doc: &mut Document, _answer: Option<Answer>) -> Step {
+                select_bodies(doc, $kind)
+            }
+        }
+    };
 }
 
-/// The running `SelSolid`.
-#[derive(Default)]
-pub struct SelSolid;
-
-impl Command for SelSolid {
-    fn step(&mut self, doc: &mut Document, _answer: Option<Answer>) -> Step {
-        select_bodies(doc, true)
-    }
-}
+selector!(SelSrf, Kind::Surface, "SelSrf");
+selector!(SelPolysrf, Kind::Polysurface, "SelPolysrf");
+selector!(SelSolid, Kind::Solid, "SelSolid");
+selector!(SelClosedSrf, Kind::ClosedSurface, "SelClosedSrf");
+selector!(SelOpenSrf, Kind::OpenSurface, "SelOpenSrf");
 
 #[cfg(test)]
 mod tests {
@@ -78,6 +107,24 @@ mod tests {
         doc.select(&[line]);
         run(&mut doc, &["selsolid"]);
         assert_eq!(doc.selection(), [line, solid]);
+    }
+
+    #[test]
+    fn a_sphere_is_a_surface_and_a_box_a_solid_as_in_rhino() {
+        let mut doc = Document::default();
+        let (_, solid, surface) = scene(&mut doc);
+        let sphere = doc.add_body(Body::sphere([10.0, 0.0, 0.0], 1.0).unwrap());
+        for (command, expected) in [
+            ("selsrf", vec![surface, sphere]),
+            ("selsolid", vec![solid]),
+            ("selpolysrf", vec![solid]),
+            ("selclosedsrf", vec![sphere]),
+            ("selopensrf", vec![surface]),
+        ] {
+            doc.select(&[]);
+            run(&mut doc, &[command]);
+            assert_eq!(doc.selection(), expected, "{command}");
+        }
     }
 
     #[test]
