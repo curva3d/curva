@@ -40,6 +40,7 @@ mod file_dialogs;
 mod grid;
 mod grips;
 mod gumball;
+mod gumball_relocate;
 mod icons;
 mod layout;
 mod menus;
@@ -422,6 +423,8 @@ impl Curva {
         self.keys_to_command_line(ui.ctx());
         // Before the panels, so its Enter is not also taken by the command line.
         self.gumball_value_box(ui.ctx());
+        // Before the panels too, so its Tab, Enter and Space are not taken by the command line.
+        self.selection_menu(ui.ctx());
         self.share_work_plane();
         // The panels float over the viewports, which take the area they leave free.
         let (free, reach) = self.panels(ui.ctx(), ui.max_rect());
@@ -433,7 +436,6 @@ impl Curva {
         self.sketchup_import_window(ui);
         self.unit_question(ui.ctx());
         self.close_question(ui.ctx());
-        self.selection_menu(ui.ctx());
         if let Some(autosave) = &mut self.autosave {
             autosave.tick(&self.doc, std::time::Instant::now());
         }

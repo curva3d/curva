@@ -8,6 +8,11 @@ pub(crate) struct GumballState {
     pub(crate) gumball_drag: Option<GumballDrag>,
     /// A gumball handle clicked without a drag, and the value being typed for it.
     pub(crate) gumball_typing: Option<(Handle, String)>,
+    /// A handle was double-clicked: the next drag moves the gumball itself, not what it holds,
+    /// as Rhino 8 relocates it (`gumball_relocate`).
+    pub(crate) relocating: bool,
+    /// Where the gumball was moved to, for what was picked then.
+    pub(crate) moved_to: Option<(crate::gumball_relocate::Holding, Point)>,
 }
 
 /// Most objects shown moving during a gumball drag.
@@ -38,6 +43,11 @@ pub(crate) struct GumballDrag {
     pub(crate) copy: bool,
     /// Whether Alt was down at the last frame, to see it tapped.
     pub(crate) alt_was: bool,
+    /// Whether the drag began on an arrow with Ctrl held, which extrudes along it however the
+    /// circle would act.
+    pub(crate) arrow_extrude: bool,
+    /// Whether the drag moves the gumball itself, after a double-click on a handle.
+    pub(crate) relocate: bool,
 }
 
 /// Whether a drag makes a copy after this frame: Alt going down switches it, as in Rhino, where
@@ -96,16 +106,21 @@ fn stretch_map(origin: Point, axis: Point, factor: f64) -> [[f64; 4]; 4] {
 }
 
 impl Curva {
-    /// The gumball for the current selection, if it should show.
-    pub(crate) fn gumball(&self) -> Option<Gumball> {
+    /// The gumball for the current selection, if it should show, where it sits by itself: the
+    /// middle of what it holds.
+    pub(crate) fn natural_gumball(&self) -> Option<Gumball> {
         if !self.gumball_on || self.processor.is_running() {
             return None;
         }
-        // Picked control points take the gumball, as in Rhino; it sits at their middle.
-        let grips = self.picked_grip_points();
-        if !grips.is_empty() {
-            let count = grips.len() as f64;
-            let sum = grips.iter().fold([0.0; 3], |total, p| {
+        // Picked control points and parts (Ctrl+Shift) take the gumball, as in Rhino; it sits
+        // at their middle.
+        if self.doc.has_picked_parts() {
+            let points = self.doc.picked_part_points().unwrap_or_default();
+            if points.is_empty() {
+                return None;
+            }
+            let count = points.len() as f64;
+            let sum = points.iter().fold([0.0; 3], |total, p| {
                 [total[0] + p[0], total[1] + p[1], total[2] + p[2]]
             });
             return Some(Gumball {
@@ -116,28 +131,14 @@ impl Curva {
         Some(Gumball { centre })
     }
 
-    /// Where the picked control points are.
-    pub(crate) fn picked_grip_points(&self) -> Vec<Point> {
-        let picked = self.doc.grip_selection();
-        if picked.is_empty() {
-            return Vec::new();
-        }
-        self.doc
-            .shown_grips()
-            .into_iter()
-            .filter(|(grip, _)| picked.contains(grip))
-            .map(|(_, at)| at)
-            .collect()
-    }
-
     /// What the drag under way would do.
     pub(crate) fn gumball_change(&self, drag: &GumballDrag) -> Option<GumballChange> {
-        let gumball = self.gumball()?;
+        let gumball = self.gumball_base()?;
         let camera = &self.panes[drag.pane].camera;
-        // The circle extrudes curves and open surfaces and stretches closed solids; Shift
-        // stretches anything, and Shift with Ctrl scales evenly.
         let handle = match drag.handle {
-            Handle::Extrude(index) if drag.even || self.selection_all_solid() => {
+            Handle::Extrude(index)
+                if !drag.arrow_extrude && (drag.even || self.circle_stretches(index)) =>
+            {
                 Handle::Scale(index)
             }
             other => other,
@@ -202,14 +203,37 @@ impl Curva {
         })
     }
 
-    /// Whether everything selected is a closed solid, which the gumball's circle stretches
-    /// rather than extrudes.
-    pub(crate) fn selection_all_solid(&self) -> bool {
+    /// Whether the gumball's circle on axis `index` stretches what it holds from the gumball's
+    /// centre, as `Scale1D` does: always for picked points and parts and for closed solids, and
+    /// for anything else with some size along that axis. Only along an axis where the selection
+    /// is flat (a flat surface's normal, a flat curve's) does the circle extrude it, as a
+    /// stretch would do nothing there. Shift stretches anything, and Shift with Ctrl scales
+    /// evenly.
+    pub(crate) fn circle_stretches(&self, index: usize) -> bool {
+        if self.doc.has_picked_parts() {
+            return true;
+        }
         let shapes = self.selected_shapes();
-        !shapes.is_empty()
-            && shapes
-                .iter()
-                .all(|(_, shape)| shape.body().is_some_and(curva_kernel::Body::is_solid))
+        if shapes.is_empty() {
+            return false;
+        }
+        if shapes
+            .iter()
+            .all(|(_, shape)| shape.body().is_some_and(curva_kernel::Body::is_solid))
+        {
+            return true;
+        }
+        let (low, high) = shapes.iter().filter_map(|(_, shape)| shape.bounds()).fold(
+            ([f64::MAX; 3], [f64::MIN; 3]),
+            |(lo, hi), (l, h)| {
+                (
+                    std::array::from_fn(|i| lo[i].min(l[i])),
+                    std::array::from_fn(|i| hi[i].max(h[i])),
+                )
+            },
+        );
+        let size = (0..3).map(|i| high[i] - low[i]).fold(0.0, f64::max);
+        high[index] - low[index] > 1e-9 * size.max(1.0)
     }
 
     /// Runs the gumball for one viewport. Returns whether it took the mouse.
@@ -269,32 +293,60 @@ impl Curva {
                 && let Some(handle) = gumball.handle_at(&self.panes[pane].camera, local(*pos), size)
             {
                 self.active = pane;
-                // Ctrl-dragging an arrow extrudes along it, as in Rhino.
-                let handle = match handle {
-                    Handle::Move(axis) if ui.input(|input| input.modifiers.command) => {
-                        Handle::Extrude(axis)
-                    }
-                    other => other,
-                };
-                self.gumball_state.gumball_drag = Some(GumballDrag {
-                    pane,
-                    handle,
-                    size,
-                    from: local(*pos),
-                    now: local(*pos),
-                    even: false,
-                    ctrl: false,
-                    copy: false,
-                    alt_was: ui.input(|input| input.modifiers.alt),
-                });
+                self.press_gumball(ui, pane, handle, (local(*pos), size));
                 return true;
             }
         }
         false
     }
 
+    /// A press on the gumball's `handle` at `at` in a viewport of `size`: starts a drag, or after
+    /// a double-click readies the gumball to be moved itself, as in Rhino 8.
+    fn press_gumball(
+        &mut self,
+        ui: &egui::Ui,
+        pane: usize,
+        handle: Handle,
+        (at, size): ([f64; 2], [f64; 2]),
+    ) {
+        let double = ui.input(|input| {
+            input
+                .pointer
+                .button_double_clicked(egui::PointerButton::Primary)
+        });
+        if double {
+            self.gumball_state.gumball_typing = None;
+            self.gumball_state.relocating = true;
+            return;
+        }
+        // Ctrl-dragging an arrow extrudes along it, as in Rhino.
+        let ctrl = ui.input(|input| input.modifiers.command);
+        let arrow_extrude = matches!(handle, Handle::Move(_)) && ctrl;
+        let handle = match handle {
+            Handle::Move(axis) if ctrl => Handle::Extrude(axis),
+            other => other,
+        };
+        self.gumball_state.gumball_drag = Some(GumballDrag {
+            pane,
+            handle,
+            size,
+            from: at,
+            now: at,
+            even: false,
+            ctrl: false,
+            copy: false,
+            alt_was: ui.input(|input| input.modifiers.alt),
+            arrow_extrude,
+            relocate: self.gumball_state.relocating,
+        });
+    }
+
     /// Applies a finished drag as one undo step.
     pub(crate) fn finish_gumball(&mut self, drag: &GumballDrag) {
+        if drag.relocate {
+            self.finish_relocating(drag);
+            return;
+        }
         // A click without a drag asks for an exact value, as in Rhino.
         if drag.from == drag.now {
             self.gumball_state.gumball_typing = Some((drag.handle, String::new()));
@@ -321,9 +373,8 @@ impl Curva {
     /// Applies a gumball change to the selection, or its picked control points, as one undo step.
     pub(crate) fn apply_gumball(&mut self, change: GumballChange) {
         let before = self.doc.state().clone();
-        let grips = self.doc.grip_selection();
-        if !grips.is_empty() {
-            match self.doc.grips_reshaped(&grips, |p| change.moved_point(p)) {
+        if self.doc.has_picked_parts() {
+            match self.doc.picked_parts_reshaped(|p| change.moved_point(p)) {
                 Ok(made) => {
                     for (id, shape) in made {
                         self.doc.replace_shape(id, shape);
@@ -419,7 +470,7 @@ impl Curva {
         };
         // The circle asks for a factor where it stretches, a distance where it extrudes.
         let asked = match handle {
-            Handle::Extrude(index) if self.selection_all_solid() => Handle::Scale(index),
+            Handle::Extrude(index) if self.circle_stretches(index) => Handle::Scale(index),
             other => other,
         };
         let Some(at) = ctx.pointer_latest_pos() else {
@@ -469,15 +520,15 @@ impl Curva {
         let Some(change) = self
             .gumball_state
             .gumball_drag
+            .filter(|drag| !drag.relocate)
             .and_then(|drag| self.gumball_change(&drag))
         else {
             return Vec::new();
         };
-        let grips = self.doc.grip_selection();
-        if !grips.is_empty() {
+        if self.doc.has_picked_parts() {
             return self
                 .doc
-                .grips_reshaped(&grips, |p| change.moved_point(p))
+                .picked_parts_reshaped(|p| change.moved_point(p))
                 .map(|made| {
                     made.iter()
                         .flat_map(|(_, shape)| shape.outlines())

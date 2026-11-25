@@ -8,6 +8,8 @@ use curva_document::units::parse_length;
 use curva_document::{Document, State, Unit};
 use curva_kernel::{Curve, Point, cross};
 
+mod enter;
+
 struct Active {
     def: &'static CommandDef,
     command: Box<dyn Command>,
@@ -443,27 +445,7 @@ impl Processor {
             return;
         };
         if typed.is_empty() {
-            let selection = doc.selection();
-            let edges = doc.edge_selection();
-            if request.kind == Kind::Objects && !selection.is_empty() {
-                self.advance(doc, Some(Answer::Objects(selection)));
-            } else if request.kind == Kind::Edges && !edges.is_empty() {
-                doc.select_edges(&[]);
-                self.advance(doc, Some(Answer::Edges(edges)));
-            } else if request.kind == Kind::Faces && !doc.face_selection().is_empty() {
-                let faces = doc.face_selection();
-                doc.select_faces(&[]);
-                self.advance(doc, Some(Answer::Faces(faces)));
-            } else if request.kind == Kind::MeshParts && !doc.mesh_part_selection().is_empty() {
-                // Parts picked before the command, as Rhino's preselection.
-                let parts = doc.mesh_part_selection();
-                doc.select_mesh_parts(&[]);
-                self.advance(doc, Some(Answer::MeshParts(parts)));
-            } else if request.allow_empty {
-                self.advance(doc, Some(Answer::Empty));
-            } else {
-                self.say(&Message::new("error.needs_input"));
-            }
+            self.answer_enter(doc, &request);
             return;
         }
         if let Some(option) = request
@@ -731,6 +713,7 @@ impl Processor {
                 active.request = Some(request);
             }
             Step::Done(message) => {
+                doc.take_back_lent();
                 doc.refresh_history();
                 if let Some(active) = self.active.take()
                     && active.def.records_undo

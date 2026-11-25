@@ -164,7 +164,8 @@ impl Curva {
         shapes
     }
 
-    /// The edges of a solid picked for a command, drawn thick in the selection colour.
+    /// The edges of a solid picked for a command, drawn thick in the selection colour, and its
+    /// picked corners as dots.
     pub(crate) fn paint_picked_edges(
         &self,
         ui: &egui::Ui,
@@ -173,11 +174,26 @@ impl Curva {
         size: [f64; 2],
     ) {
         let picked = self.doc.edge_selection();
-        if picked.is_empty() {
+        let corners = self.doc.corner_selection();
+        if picked.is_empty() && corners.is_empty() {
             return;
         }
         let painter = ui.painter_at(rect);
         let camera = &self.panes[pane].camera;
+        for (id, corner) in corners {
+            let at = self
+                .doc
+                .state()
+                .objects
+                .iter()
+                .find(|o| o.id == id)
+                .and_then(|o| o.shape.body()?.corner_points().ok()?.get(corner).copied())
+                .and_then(|p| camera.project(p, size));
+            if let Some(p) = at {
+                let at = rect.min + egui::vec2(p[0] as f32, p[1] as f32);
+                painter.circle_filled(at, GRIP_SIZE / 2.0, GRIP_PICKED);
+            }
+        }
         for pick in picked {
             let Some(points) = self.outlines.edge_points(pick) else {
                 continue;

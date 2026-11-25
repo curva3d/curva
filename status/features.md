@@ -16,6 +16,34 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## Features stream — 25 November 2026 (owner's 0.1.6 list: picked parts, keys, panels)
+
+- **Parts picked with Ctrl+Shift behave as any selection** (owner's list 1, 2, 11, 12, 19):
+  corners of surfaces and solids can be picked (`CornerPick`, `part_picking.rs`); the gumball
+  takes picked corners, edges, faces, mesh and SubD parts and control points
+  (`Document::picked_part_points`, `picked_parts_reshaped`), and Move, Rotate, Scale and Scale1D
+  change them (`commands/edit/parts.rs`, `StepDef::taking_parts`). A straight-sided surface or
+  solid follows its moved corners and stays closed (`Body::with_corners_moved`, kernel
+  `parts_moved.rs`): flat faces stay flat, a four-cornered face that bends becomes an edge surface.
+  Curved bodies say their parts cannot move yet. A command asking for curves takes edges picked
+  with Ctrl+Shift, lent as curves and taken back when it ends (`Document::lend_picked_edges`).
+- **The gumball's circle** stretches from the gumball's centre (as Scale1D) for everything with
+  size along its axis; it extrudes only along an axis where the selection is flat; Ctrl+arrow
+  still extrudes.
+- **Keys:** Tab goes round the pick list and Space takes its entry, as Enter (list 16, 17);
+  a polyline snaps to its own points, so it can close on its start (15: recipes passed only their
+  last point to snapping).
+- **Panels:** the status panel is a panel like the others (`Piece::Status`; list 3); tabs that do
+  not fit show bold panel icons, named on hover (`icons/panels.rs`; 23); dark glass no longer
+  turns pale over a white page (`Glass::ceiling`; 24); the interface size can be typed, 50 to 300%
+  (5).
+- **Files:** Save and SaveAs add `.curva` to a name without an extension (14). DupBorder says
+  "Copied 1 curves." (18).
+- Sent to the mesh stream: 4, 10, 20. Sent to the display stream: 8, 9, 13 and the curve over an
+  edge in 18.
+- Not yet: gumball relocation (Ctrl+drag, for scaling from a corner), the layouts and views
+  panels (25 to 30), a sweep review (21), the lag at a solid's height step (7).
+
 ## Features stream — 24 November 2026 (Style panel)
 
 - **The Style panel** (`Styles` command, View menu; spec `views-and-styles.md` §3, the owner's

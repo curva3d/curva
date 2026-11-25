@@ -532,6 +532,8 @@ impl Curva {
         for (from, to) in gestures {
             if wants_parts {
                 self.pick_parts(picking, from, to);
+            } else if !is_box_drag(from, to) && self.pick_cage_point(picking, from) {
+                // A point of a SubD cage on show, taken with a plain click.
             } else if wants_faces {
                 self.pick_faces(picking, from, to);
             } else if wants_edges {

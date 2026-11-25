@@ -209,7 +209,6 @@ impl Curva {
         if pass.released && self.frames.resize_from.take().is_some() {
             self.save_layout();
         }
-        self.status_panel(ctx, window);
         self.version_label(ctx, full_window);
         self.focus_tab(ctx, full_window);
         // In focus mode the viewports take the window, short of the tabs left at its edges.
@@ -561,6 +560,7 @@ impl Curva {
             }
             Piece::Notes => ui_kit::scroll(ui, Scroll::Down, |ui| self.notes_panel(ui)),
             Piece::Styles => self.style_panel(ui),
+            Piece::Status => self.status_piece(ui),
             Piece::Print => ui_kit::scroll(ui, Scroll::Down, |ui| self.print_panel(ui)),
         }
     }

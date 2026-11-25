@@ -31,6 +31,7 @@ fn title_tab(
     tabs: &[egui::Rect],
     index: usize,
     galley: std::sync::Arc<egui::Galley>,
+    iconic: bool,
 ) -> Option<PanelEvent> {
     let (row, rect) = frame;
     let mut event = None;
@@ -44,6 +45,12 @@ fn title_tab(
                 egui::Sense::click_and_drag(),
             )
             .on_hover_cursor(egui::CursorIcon::Grab);
+        // A tab shown as its icon says its name on hover.
+        let response = if iconic {
+            response.on_hover_text(galley.text())
+        } else {
+            response
+        };
         let pointer = ui.input(|input| input.pointer.latest_pos());
         let in_row = pointer.is_some_and(|at| row.expand2(egui::vec2(0.0, 10.0)).contains(at));
         if response.clicked() {
@@ -63,8 +70,57 @@ fn title_tab(
             event = Some(PanelEvent::TabMoved(index, tab_slot(tabs, at.x)));
         }
     }
-    ui_kit::title_tab(ui, row, tab, galley, active);
+    if iconic {
+        let piece = place.pieces[index];
+        ui_kit::title_icon_tab(ui, tab, active, |painter, rect, colour| {
+            crate::icons::panels::panel_icon(painter, rect, piece, colour);
+        });
+    } else {
+        ui_kit::title_tab(ui, row, tab, galley, active);
+    }
     event
+}
+
+/// Room kept at each end of a title row for the hide and close buttons, so the tabs stay centred
+/// and never run under them.
+const BUTTONS_ROOM: f32 = 48.0;
+
+/// Which tabs show as icons rather than names, given each name's `widths`, the `showing` one,
+/// the `icon` width, the `spacing` between tabs and the `room` they have: none when all names
+/// fit; else every tab but the one showing; else all of them (owner, 25 November 2026).
+pub(crate) fn iconic_tabs(
+    widths: &[f32],
+    showing: usize,
+    icon: f32,
+    spacing: f32,
+    room: f32,
+) -> Vec<bool> {
+    let gaps = spacing * widths.len().saturating_sub(1) as f32;
+    if widths.len() < 2 || widths.iter().sum::<f32>() + gaps <= room {
+        return vec![false; widths.len()];
+    }
+    let others = icon * (widths.len() - 1) as f32;
+    let named = widths.get(showing).copied().unwrap_or(icon);
+    let keep_name = named + others + gaps <= room;
+    (0..widths.len())
+        .map(|k| !(keep_name && k == showing))
+        .collect()
+}
+
+/// Tabs of `widths` side by side, `spacing` apart, centred along `row`.
+fn tab_rects(widths: &[f32], row: egui::Rect, spacing: f32) -> Vec<egui::Rect> {
+    let total: f32 = widths.iter().sum::<f32>() + spacing * (widths.len().saturating_sub(1)) as f32;
+    widths
+        .iter()
+        .scan(row.center().x - total / 2.0, |left, width| {
+            let tab = egui::Rect::from_min_size(
+                egui::pos2(*left, row.min.y),
+                egui::vec2(*width, TITLE_ROW),
+            );
+            *left += width + spacing;
+            Some(tab)
+        })
+        .collect()
 }
 
 /// Where along a row of tabs a tab let go at `x` lands, as an index among them.
@@ -126,21 +182,19 @@ impl Curva {
             event = grabbed;
         }
         let spacing = 18.0;
-        let total: f32 = galleys.iter().map(|g| g.size().x).sum::<f32>()
-            + spacing * (galleys.len().saturating_sub(1)) as f32;
-        let tabs: Vec<egui::Rect> = galleys
+        let names: Vec<f32> = galleys.iter().map(|g| g.size().x).collect();
+        let showing = place.active.min(place.pieces.len().saturating_sub(1));
+        let room = row.width() - 2.0 * BUTTONS_ROOM;
+        let iconic = iconic_tabs(&names, showing, TITLE_ROW, spacing, room);
+        let widths: Vec<f32> = names
             .iter()
-            .scan(row.center().x - total / 2.0, |left, galley| {
-                let tab = egui::Rect::from_min_size(
-                    egui::pos2(*left, row.min.y),
-                    egui::vec2(galley.size().x, TITLE_ROW),
-                );
-                *left += galley.size().x + spacing;
-                Some(tab)
-            })
+            .zip(&iconic)
+            .map(|(name, icon)| if *icon { TITLE_ROW } else { *name })
             .collect();
+        let tabs = tab_rects(&widths, row, spacing);
         for (index, galley) in galleys.into_iter().enumerate() {
-            if let Some(tabbed) = title_tab(ui, place, (row, rect), &tabs, index, galley) {
+            let icon = iconic[index];
+            if let Some(tabbed) = title_tab(ui, place, (row, rect), &tabs, index, galley, icon) {
                 event = tabbed;
             }
         }
@@ -216,5 +270,26 @@ impl Curva {
             event = Some(PanelEvent::Close);
         }
         event
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::iconic_tabs;
+
+    #[test]
+    fn names_show_while_they_fit_then_icons_take_their_place() {
+        let names = [60.0, 70.0, 80.0];
+        // All three names and the gaps between them fit.
+        assert_eq!(iconic_tabs(&names, 1, 20.0, 10.0, 300.0), [false; 3]);
+        // They do not: the one showing keeps its name, the others become icons.
+        assert_eq!(
+            iconic_tabs(&names, 1, 20.0, 10.0, 150.0),
+            [true, false, true]
+        );
+        // Even that does not fit: all icons.
+        assert_eq!(iconic_tabs(&names, 2, 20.0, 10.0, 90.0), [true; 3]);
+        // A panel of one piece always shows its name.
+        assert_eq!(iconic_tabs(&[500.0], 0, 20.0, 10.0, 90.0), [false]);
     }
 }

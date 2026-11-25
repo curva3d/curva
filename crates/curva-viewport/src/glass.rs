@@ -84,7 +84,12 @@ struct Panel { rect: vec4<f32>, radius: vec4<f32> };
     // A little more colour, as Apple's frosted glass keeps what shows through it from going grey.
     let grey = dot(colour.rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
     let vivid = clamp(mix(vec3<f32>(grey), colour.rgb, 1.35), vec3<f32>(0.0), vec3<f32>(1.0));
-    return vec4<f32>(vivid, inside);
+    // No brighter than the ceiling, so a dark panel over a white page stays dark and its words
+    // stay readable; a ceiling of 1 lets everything through.
+    let light = dot(vivid, vec3<f32>(0.2126, 0.7152, 0.0722));
+    let ceiling = panel.radius.y;
+    let toned = select(vivid, vivid * (ceiling / max(light, 1e-4)), light > ceiling);
+    return vec4<f32>(toned, inside);
 }";
 
 /// How many times the blur halves the picture before growing it back: four gives the deep frost of
@@ -222,8 +227,8 @@ struct BlurChain {
 }
 
 /// A glass panel as its blur knows it: its rectangle in pixels and its corners' radius (as bits),
-/// and the scene's size.
-type PanelKey = ([u32; 4], u32, [u32; 2]);
+/// the scene's size, and the brightest the glass lets through (as bits).
+type PanelKey = ([u32; 4], u32, [u32; 2], u32);
 
 /// The most panels whose blur is kept: well over the glass panels one window shows (nine with
 /// the standard layout and Settings, Print and Layouts open; with eight kept, one went sharp
@@ -261,6 +266,8 @@ pub(crate) struct Compositor {
     uses: u64,
     /// Whether to blur at all; off on software graphics.
     pub(crate) blur: bool,
+    /// The brightest the scene shows through the glass, set by the panels (`Glass::ceiling`).
+    pub(crate) ceiling: f32,
 }
 
 impl Compositor {
@@ -336,6 +343,7 @@ impl Compositor {
             panels: std::collections::HashMap::new(),
             uses: 0,
             blur: true,
+            ceiling: 1.0,
         }
     }
 
@@ -439,7 +447,12 @@ impl Compositor {
     /// `radius` pixels, over the scene as it is; `None` with no scene yet.
     fn panel_key(&self, rect: [f32; 4], radius: f32) -> Option<PanelKey> {
         let target = self.target.as_ref()?;
-        Some((rect.map(f32::to_bits), radius.to_bits(), target.size))
+        Some((
+            rect.map(f32::to_bits),
+            radius.to_bits(),
+            target.size,
+            self.ceiling.to_bits(),
+        ))
     }
 
     /// Blurs the scene behind a glass panel, `rect` in pixels as `[x, y, width, height]`, ready
@@ -548,7 +561,16 @@ impl Compositor {
         let glass_group = self.step_group(
             device,
             &chain.result,
-            [rect[0], rect[1], rect[2], rect[3], radius, 0.0, 0.0, 0.0],
+            [
+                rect[0],
+                rect[1],
+                rect[2],
+                rect[3],
+                radius,
+                self.ceiling,
+                0.0,
+                0.0,
+            ],
         );
         Some(PanelBlur {
             #[cfg(test)]
@@ -616,6 +638,9 @@ pub struct Glass {
     pub rect: epaint::Rect,
     /// Its corners' radius, in points.
     pub radius: f32,
+    /// The brightest the scene may show through it, 0 to 1: lower for a dark panel, so a white
+    /// page behind it does not turn it pale; 1 for a light one.
+    pub ceiling: f32,
 }
 
 impl Glass {
@@ -643,6 +668,7 @@ impl egui_wgpu::CallbackTrait for Glass {
     ) -> Vec<wgpu::CommandBuffer> {
         if let Some(renderer) = resources.get_mut::<crate::LineRenderer>() {
             let (rect, radius) = self.in_pixels(screen.pixels_per_point);
+            renderer.compositor.ceiling = self.ceiling;
             renderer
                 .compositor
                 .blur_behind(device, encoder, rect, radius);

@@ -18,11 +18,26 @@ pub struct Scale1D {
     origin: Option<Point>,
     first: Option<Point>,
     typed: Option<f64>,
+    /// Whether parts picked with Ctrl+Shift, or control points, are stretched rather than objects.
+    parts: bool,
 }
 
 fn reach(origin: Point, p: Point) -> f64 {
     let offset = sub(p, origin);
     dot(offset, offset).sqrt()
+}
+
+/// Each object with picked parts, those parts stretched along `axis` from `origin` by `factor`.
+fn parts_stretched(
+    doc: &Document,
+    origin: Point,
+    axis: Point,
+    factor: f64,
+) -> Result<Vec<(u64, Shape)>, KernelError> {
+    doc.picked_parts_reshaped(|p| {
+        let along = dot(sub(p, origin), axis) * (factor - 1.0);
+        std::array::from_fn(|i| p[i] + axis[i] * along)
+    })
 }
 
 fn stretched(
@@ -71,6 +86,12 @@ impl Scale1D {
 impl Command for Scale1D {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
         let Some(ids) = self.ids.clone() else {
+            // Parts picked with Ctrl+Shift, and control points, stretch instead of objects, as in Rhino.
+            if answer.is_none() && doc.selection().is_empty() && doc.has_picked_parts() {
+                self.ids = Some(doc.picked_part_owners());
+                self.parts = true;
+                return ask_point("prompt.scale.origin", Vec::new());
+            }
             let Some(chosen) = objects_or_selection(doc, answer) else {
                 return ask_objects("prompt.scale.objects");
             };
@@ -97,7 +118,12 @@ impl Command for Scale1D {
                 let Some((axis, factor)) = self.plan(origin, second) else {
                     return Step::Failed(Message::new("error.bad_factor"));
                 };
-                match stretched(doc, &ids, origin, axis, factor) {
+                let made = if self.parts {
+                    parts_stretched(doc, origin, axis, factor)
+                } else {
+                    stretched(doc, &ids, origin, axis, factor)
+                };
+                match made {
                     Ok(made) => {
                         for (id, shape) in made {
                             doc.replace_shape(id, shape);
@@ -120,7 +146,11 @@ impl Command for Scale1D {
         };
         let mut shown = guide(origin, cursor);
         if let Some((axis, factor)) = self.plan(origin, cursor)
-            && let Ok(made) = stretched(doc, ids, origin, axis, factor)
+            && let Ok(made) = if self.parts {
+                parts_stretched(doc, origin, axis, factor)
+            } else {
+                stretched(doc, ids, origin, axis, factor)
+            }
         {
             let shapes: Vec<Shape> = made.into_iter().map(|(_, shape)| shape).collect();
             shown.extend(opened(doc, &shapes).iter().flat_map(Shape::outlines));
