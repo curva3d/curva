@@ -1,6 +1,7 @@
 //! `CPlane`: sets the last-used viewport's construction plane, as Rhino 8's does: from three
 //! points (the default, or `3Point`), back to `World`, raised by an `Elevation`, turned by
-//! `Rotate` about its Z, or facing the `View` (#776).
+//! `Rotate` about its Z, facing the `View`, or back and forward through the viewport's planes with
+//! `Undo` and `Redo` (#776).
 
 use crate::commands::{ask_point, guide, unexpected};
 use crate::{Answer, Command, Kind, Live, Message, Request, Step, ViewRequest};
@@ -12,6 +13,8 @@ const ELEVATION: &str = "Elevation";
 const ROTATE: &str = "Rotate";
 const VIEW: &str = "View";
 const THREE_POINT: &str = "3Point";
+const UNDO: &str = "Undo";
+const REDO: &str = "Redo";
 
 /// The running command.
 #[derive(Default)]
@@ -37,6 +40,8 @@ impl SetCPlane {
         let (origin, _) = doc.work_frame();
         match option {
             WORLD => Step::View(ViewRequest::ResetCPlane),
+            UNDO => Step::View(ViewRequest::UndoCPlane),
+            REDO => Step::View(ViewRequest::RedoCPlane),
             VIEW => match doc.view() {
                 // Facing the viewer, through the plane's origin, as Rhino's CPlane View.
                 Some(view) => plane(origin, view.right, view.up),
@@ -83,7 +88,7 @@ impl Command for SetCPlane {
         }
         match (self.origin, self.along_x, answer) {
             (None, None, None) => Step::Ask(Request {
-                options: vec![ELEVATION, ROTATE, VIEW, WORLD, THREE_POINT],
+                options: vec![ELEVATION, ROTATE, VIEW, WORLD, THREE_POINT, UNDO, REDO],
                 ..Request::new("prompt.cplane.origin", Kind::Point)
             }),
             (None, None, Some(Answer::Option(option))) => self.chosen(doc, option),
@@ -177,5 +182,14 @@ mod tests {
         };
         let near = |a: [f64; 3], b: [f64; 3]| curva_kernel::gap(a, b) < 1e-12;
         assert!(near(origin, [0.0; 3]) && near(x, [0.0, 1.0, 0.0]) && near(y, [-1.0, 0.0, 0.0]));
+    }
+
+    #[test]
+    fn undo_and_redo_step_through_the_viewports_planes() {
+        let mut doc = Document::default();
+        let mut processor = run(&mut doc, &["cplane", "Undo"]);
+        assert_eq!(processor.take_view_request(), Some(ViewRequest::UndoCPlane));
+        let mut processor = run(&mut doc, &["cplane", "Redo"]);
+        assert_eq!(processor.take_view_request(), Some(ViewRequest::RedoCPlane));
     }
 }
