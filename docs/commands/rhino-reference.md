@@ -301,7 +301,7 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | ObjectColour | Objects; a colour (red, green, blue, `#rrggbb` or `ByLayer`), as Rhino's Properties set an object's display colour | none | none | partly |
 | SetUserText | Objects; key; text | none | none | partly |
 | GetUserText | Object | none | none | partly |
-| Purge | none | `Layers` `BlockDefinitions` `Linetypes` | none | partly |
+| Purge | Options; Enter | `AnnotationStyles` `Bitmaps` `BlockDefinitions` `Environments` `Groups` `HatchPatterns` `Layers` `Linetypes` `Materials` `Textures` | `AnnotationStyles` `BlockDefinitions` `HatchPatterns` `Layers` `Linetypes` | partly |
 | Audit | none | none | none | partly |
 | LockSwap | none | none | none | partly |
 | UnlockSelected | Locked objects | none | none | partly |
