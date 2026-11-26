@@ -21,7 +21,7 @@ impl Command for Flip {
         // A surface turns over; a closed solid can't, and is left as it is.
         for (id, body) in bodies_of(doc, &chosen) {
             if let Ok(turned) = body.turned_over() {
-                doc.replace(id, curva_document::Shape::Body(turned));
+                doc.replace_shape(id, curva_document::Shape::Body(turned));
                 flipped += 1;
             }
         }
