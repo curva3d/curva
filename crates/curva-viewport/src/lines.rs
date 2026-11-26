@@ -46,10 +46,12 @@ pub enum LineKind {
     SubdWire,
     /// Text, dimensions and other annotation.
     Annotation,
+    /// A mesh's open borders and unwelded edges, its outline with the silhouette (#663).
+    MeshEdge,
 }
 
 /// How many kinds of line there are.
-pub const LINE_KINDS: usize = 8;
+pub const LINE_KINDS: usize = 9;
 
 /// The [`Vertex::object`] of lines and faces that belong to no object in the scene's list:
 /// previews, the grid, and pictures, whose selection is drawn into their colours.

@@ -309,6 +309,8 @@ impl ViewStyle {
         style.background.bottom = Colour::WHITE;
         style.nurbs.faces.colour = ColourFrom::One(Colour::WHITE);
         ink(&mut style);
+        // A mesh shows only its outline, no wires, as in Rhino 8 (#663).
+        style.meshes.wires.shown = false;
         style
     }
 

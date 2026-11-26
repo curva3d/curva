@@ -86,8 +86,48 @@ pub(crate) fn mesh_turns(mesh: &BodyMesh) -> Vec<[u32; 4]> {
     turns
 }
 
-/// The turns of every curved surface and solid in `outlines`, placed where each copy sits,
-/// numbered by `numbers` and measured from `origin`. Meshes and SubDs are left out.
+/// The turns of a mesh as its faces are drawn ([`crate::meshes::body_mesh`], which gives
+/// triangle `t` corners `3t` to `3t + 2`): triangles meeting at an angle on an edge they share
+/// by vertex number, so where the mesh is welded, however sharp. Where it is unwelded, its
+/// outline edges are drawn instead ([`crate::meshes::outline`]), as Rhino 8 draws it (#663).
+pub(crate) fn mesh_wire_turns(mesh: &curva_mesh::Mesh) -> Vec<[u32; 4]> {
+    let split = mesh.triangles();
+    let points = mesh.vertices();
+    let corner = |t: usize, k: usize| u32::try_from(3 * t + k % 3).unwrap_or(u32::MAX);
+    let mut sides: HashMap<(u32, u32), Vec<(usize, usize)>> = HashMap::new();
+    for (t, triangle) in split.triangles.iter().enumerate() {
+        if triangle.iter().any(|&v| v as usize >= points.len()) {
+            continue;
+        }
+        for k in 0..3 {
+            let (a, b) = (triangle[k], triangle[(k + 1) % 3]);
+            if a != b {
+                sides.entry((a.min(b), a.max(b))).or_default().push((t, k));
+            }
+        }
+    }
+    let normal = |t: usize| {
+        let [a, b, c] = split.triangles[t].map(|v| points[v as usize]);
+        unit(cross(minus(b, a), minus(c, a)))
+    };
+    let mut turns: Vec<[u32; 4]> = sides
+        .into_values()
+        .filter_map(|triangles| match triangles[..] {
+            [(one, k), (other, j)] if dot(normal(one), normal(other)) < BENT => Some([
+                corner(one, k),
+                corner(one, k + 1),
+                corner(one, k + 2),
+                corner(other, j + 2),
+            ]),
+            _ => None,
+        })
+        .collect();
+    turns.sort_unstable();
+    turns
+}
+
+/// The turns of every curved surface and solid in `outlines`, and of every mesh, placed where
+/// each copy sits, numbered by `numbers` and measured from `origin`. SubDs are left out.
 pub(crate) fn turns_of(
     outlines: &Outlines,
     numbers: &HashMap<u64, u32>,
@@ -95,14 +135,14 @@ pub(crate) fn turns_of(
 ) -> Vec<PlacedTurn> {
     let mut out = Vec::new();
     let mut known: HashMap<*const BodyMesh, std::sync::Arc<Vec<[u32; 4]>>> = HashMap::new();
-    for faces in outlines
-        .faces
-        .iter()
-        .filter(|faces| faces.face_kind == FaceKind::Nurbs)
-    {
-        let turns = known
-            .entry(std::sync::Arc::as_ptr(&faces.mesh))
-            .or_insert_with(|| std::sync::Arc::new(mesh_turns(&faces.mesh)));
+    for faces in outlines.faces.iter() {
+        let turns = match (&faces.turns, faces.face_kind) {
+            (Some(given), _) => given,
+            (None, FaceKind::Nurbs) => known
+                .entry(std::sync::Arc::as_ptr(&faces.mesh))
+                .or_insert_with(|| std::sync::Arc::new(mesh_turns(&faces.mesh))),
+            _ => continue,
+        };
         let object = numbers.get(&faces.id).copied().unwrap_or(crate::NO_OBJECT);
         let at = |corner| faces.corner(corner).map(|p| narrow_from(p, origin));
         for &[a, b, c, d] in turns.iter() {
@@ -196,5 +236,17 @@ mod tests {
         let last = mesh.triangle_faces.len();
         mesh.triangle_faces[last - 2..].fill(1);
         assert_eq!(mesh_turns(&mesh).len(), 3);
+    }
+
+    /// A mesh turns where it is welded and bent: a MeshCylinder up its smooth side, once between
+    /// each two of its 16 columns on each of its 4 rows, and nowhere on its flat ends or where
+    /// they meet the side unwelded; a MeshBox, unwelded at its edges, nowhere (#663).
+    #[test]
+    fn a_mesh_turns_where_welded_and_bent() {
+        let frame = curva_mesh::Frame::world();
+        let cylinder = curva_mesh::Mesh::mesh_cylinder(&frame, 5.0, 10.0, (4, 16), true, true);
+        assert_eq!(mesh_wire_turns(&cylinder).len(), 16 * 4);
+        let box_mesh = curva_mesh::Mesh::mesh_box(&frame, [10.0; 3], [4; 3]);
+        assert!(mesh_wire_turns(&box_mesh).is_empty());
     }
 }
