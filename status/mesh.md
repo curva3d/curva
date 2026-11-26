@@ -11,6 +11,8 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 ## 26 November 2026
 
+**SubDLoft takes evenly spaced open curves, as Rhino 8 measured:** Rhino's SubD friendly fit (`NurbsCurve.CreateSubDFriendly`, measured directly) keeps an open curve's own control points and moves the second and second-last towards the ends to a share f of the way. On evenly spaced knots f is 15/16 (a cubic of 5 or more points, degree 4 or 5), 121/128 (a quadratic of 5 or more points) or 1 (a 4-point cubic, a quadratic of 3 or 4 points), whatever the curve's shape, size or parameter scale. Curva's Curve tool makes such curves, and they now loft. On uneven knots Rhino gives other halving fractions (63/64, 123/128, …) that drift with the end spans' lengths. That is likely an iterative fit with a stopping test, not worked out, so those curves and rational ones are still refused. `loft_ring`.
+
 **Mesh booleans keep their points unwelded, as Rhino 8 (#755):** the result's points are split wherever faces from different input pieces meet: along each input's unwelded edges (a MeshBox's sides) and along the cut, where the two meshes meet. Two 10 mm MeshBoxes, the second moved by (5, 5, 5), give 759 points for the difference, 216 for the intersection and 1302 for the union, exactly Rhino's. The faces, quads and volumes are as before.
 
 **FillMeshHoles gives the filling its own points (#747):** as Rhino 8 does (measured by the testing stream), the triangles closing a hole use copies of the border's points, joined to the mesh there but not welded. A 10 × 10 MeshPlane filled is closed with 161 points, 138 faces and 100 quads, exactly Rhino's. It had 121 points.
