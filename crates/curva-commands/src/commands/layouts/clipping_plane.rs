@@ -4,7 +4,7 @@
 use crate::commands::unexpected;
 use crate::{Answer, Command, Kind, Message, Request, Step, ViewRequest};
 use curva_document::Document;
-use curva_document::clipping::{ClipView, ClippingPlane as Record, SectionFill};
+use curva_document::clipping::{ClippingPlane as Record, SectionFill};
 use curva_kernel::{Curve, Point, cross, dot, gap, sub, unit};
 
 const FLIP: &str = "FlipDirection";
