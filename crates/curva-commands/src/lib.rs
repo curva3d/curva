@@ -103,6 +103,9 @@ pub struct Request {
     /// For an objects step: whether only locked objects can be picked, as while UnlockSelected
     /// asks (#715); the others cannot.
     pub locked_only: bool,
+    /// For a mesh parts step: whether only faces can be picked, as Rhino's "Select mesh faces"
+    /// (#819); points and edges are passed over.
+    pub faces_only: bool,
 }
 
 /// A panel of the interface a step can open.
@@ -181,6 +184,7 @@ impl Request {
             panel: None,
             panel_only: false,
             locked_only: false,
+            faces_only: false,
         }
     }
 

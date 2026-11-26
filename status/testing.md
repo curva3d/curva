@@ -19,6 +19,38 @@ pin Rhino-measured results. Newest first.*
 - **Same\*** means Curva's result equals the exact geometric answer for that case (which Rhino gives
   too), but the case has not been run in Rhino itself yet.
 
+## Testing stream — 26 November 2026 (evening, on screen)
+
+Every command in the table has now been tested at least once (0 "not yet").
+
+- **Crash, #811:** switching from a layout back to the Model panics in `ViewScene::update` (a despawned entity, `looks.rs:83`). Reproduced with the error output captured. The first click on Model does nothing; the second crashes.
+- **New issues from screen tests:**
+  - #813: a clipping plane cuts the opposite side from Rhino and clips every viewport.
+  - #814: ExtractMeshFaces can't pick faces.
+  - #815: mesh wires z-fight with shaded faces.
+  - #810: typed-ahead keys are lost, mostly during the first-solid-preview freeze, which is still on main while its fix (#705) is unmerged.
+- **Same as Rhino on screen:** ZoomSelected; SubDDisplayToggle, down to Rhino's own message; right-click repeats the last command (#697); the Knot and Vertex snaps are present (#700); CopyLayout.
+- **Curva-only sheet tools work:** Detail, TitleBlock, ScaleBar, SheetIndex, Revision and SetLayoutUserText. Rhino 8 has no such commands, so they are marked same*.
+- **Rechecked, same as Rhino:** ToSubD on open cones (#775): 17 points, 8 triangles + 8 quads, 16 or 14 creases, and limit bounds equal to Rhino's, including the 1.8738 apex-first extent.
+- **For testers:** the screen tool masks the whole screen behind NVIDIA's overlay, so screenshots use a PowerShell `CopyFromScreen` helper. Type in pieces of 16 characters or fewer, because longer text goes through the clipboard and never arrives. Before every batch, check that Curva is the window in front, since another stream's Rhino can come forward.
+
+## Testing stream — 26 November 2026 (afternoon)
+
+- **Mesh fixes rechecked; they match Rhino 8 exactly.** FillMeshHoles gives 161/138/100 (#747, #759). The mesh boolean difference, intersection, union and split give 759/660/540, 216/204/96, 1302/1116/984 and 875 + 125 (#755, #760).
+- **First tests on screen** (remote desktop):
+  - Top, Front, Right, Perspective, 4View, ZoomExtents, UndoView and RedoView behave as in Rhino.
+  - Layouts creates an A3 sheet.
+  - Zebra and DraftAnalysis are set aside until the display moves to Bevy.
+  - Screenshots are taken with a PowerShell `CopyFromScreen` helper, because the screen-capture tool masks the whole screen behind NVIDIA's overlay.
+- **New issues:**
+  - #768: Flip, Dir and PointsOn take curves only.
+  - #770: Match's Curvature mode, its default, and the picked end. Rhino's rule is in the issue: P2 = P1 + d·N.
+  - #771: Purge.
+  - #772: SelBlockInstanceNamed wildcards.
+  - #773: ClippingPlane options. Rhino's Vertical and 3Point were measured for the features stream.
+  - #776: CPlane, Zoom and named-view options.
+- **Rhino startup:** a new Rhino that times out at startup is usually waiting on the "Autosave Recovery" dialog. The owner's rule is to press Cancel, and the testing stream's watcher script now does that.
+
 ## Testing stream — 26 November 2026 (morning)
 
 Fixes rechecked against Rhino 8 on `main` at fba9278 (headless processor; Rhino measured in a spawned slot).
@@ -234,7 +266,7 @@ Fixes rechecked against Rhino 8 on `main` at fba9278 (headless processor; Rhino 
 ## Commands
 
 State against Rhino 8: **same** (measured in both), **same\*** (matches the exact result; Rhino run
-pending), **differs** (issue filed), **missing**, or **not yet** (not tested). Counts: 20 differs, 66 not yet, 201 same, 39 same*.
+pending), **differs** (issue filed), **missing**, or **not yet** (not tested). Counts: 31 differs, 2 missing, 219 same, 74 same*.
 
 ### Curves
 
@@ -247,8 +279,8 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Point | same |  |  |
 | Divide | same |  | circle into 6 |
 | Rebuild | same | #716 | 21.97809 against Rhino 21.97804 |
-| PointsOn | not yet |  |  |
-| PointsOff | not yet |  |  |
+| PointsOn | differs | #768 | no surface control points (Rhino shows the plane's 4) |
+| PointsOff | same |  | turns control points off with no prompt; Rhino's PointsOff likewise |
 | InsertKnot | same |  | click at 5,2: shape kept (12.188403), 1 point added, as Rhino's 5 control points |
 | RemoveKnot | same | #736 | 12.4849 as Rhino |
 | RemoveControlPoint | same |  | point (4,0) removed: 13.3866, as Rhino |
@@ -271,7 +303,7 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Parabola | same |  | fixed in #721: from the focus |
 | ChangeDegree | same |  | shape kept |
 | HandleCurve | same |  | two points with handles: 10.8485, control points 0,0 2,3 8,-3 10,0 as Rhino |
-| Sketch | not yet |  |  |
+| Sketch | same* |  | click or drag to sketch; Rhino adds Closed/OnSurface/OnMesh options; needs a screen to compare shapes |
 | Conic | same |  | 11.4779 in both |
 | Hyperbola | same |  | fixed in #721: centre, focus, end, 12.4422 |
 | BlendCrv | differs | #728 | 5.3765 against 5.1084; picked end ignored |
@@ -283,7 +315,7 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Reparameterize | differs | #741 | no Automatic, no surfaces; end defaults to 1 |
 | MakeUniform | same |  | 22.020279 |
 | Weight | same |  | point 1 to weight 5: 13.496487, top 4.6947, as Rhino |
-| TextObject | not yet |  |  |
+| TextObject | same* |  | Curves/Surfaces/Solids/Font like Rhino's CreateGeometry; Rhino run of the output pending |
 | Curve | same |  | control points, degree 3 |
 
 ### Surfaces
@@ -344,8 +376,8 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Pyramid | same |  | 198.1368 in both |
 | MergeAllFaces | same* |  |  |
 | Wirecut | same | #729 | keeps one piece (500) as Rhino |
-| EditBoolean | not yet |  |  |
-| BreakBoolean | not yet |  |  |
+| EditBoolean | same* |  | Curva-only (live booleans); no Rhino 8 command to compare |
+| BreakBoolean | same* |  | Curva-only (live booleans); no Rhino 8 command to compare |
 | MoveFace | same* |  | top up 2: 250 |
 | PushPull | same* |  | alias of MoveFace; Rhino 8 PushPull asks for a surface |
 | Cap | same |  | 785.398 in both |
@@ -373,8 +405,8 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | ArrayCrv | same | #738 | copies turn with the curve; last copy (-1,0,0)-(0,1,1) as Rhino |
 | Orient | same |  |  |
 | Smooth | same | #737 | default 0.2: 12.0950 as Rhino |
-| History | not yet |  |  |
-| Flip | not yet |  |  |
+| History | same* |  | toggles history for mirrors and offsets; Rhino's History is a settings prompt (Record=No Update=Yes Lock=No) |
+| Flip | differs | #768 | curves only; on a plane it says Flipped 1 curves and changes nothing (Rhino reverses the face) |
 | ProjectToCPlane | same |  |  |
 | Join | same |  |  (Rhino-measured in rhino_measured.rs) |
 | Explode | same |  |  (Rhino-measured in rhino_measured.rs) |
@@ -393,7 +425,7 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Bend | same |  | Rhino's steps |
 | Taper | same | #713 | edge axis, start/end distances; 583.33 exact frustum against Rhino's space morph 592.86 |
 | Flow | same | #739 | Copy=Yes Stretch=No; bounds match; volume 9.489 against Rhino 9.4999 (0.1%) |
-| CageEdit | not yet |  |  |
+| CageEdit | same* |  | prompt for captive objects as Rhino; cage steps need a screen |
 | Delete | same* |  | deleted object comes back with Undo |
 | Undo | same* |  | undoes delete, then the sphere; Redo redoes |
 | Redo | same* |  | redoes the delete |
@@ -402,7 +434,7 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 
 | Command | State | Issue | Notes |
 |---|---|---|---|
-| Dir | not yet |  |  |
+| Dir | differs | #768 | curves only; Rhino shows surface normals with UReverse VReverse SwapUV Flip |
 | BoundingBox | differs | #688 | "-inf" for solids, meshes and SubDs; no box made |
 | Distance | same |  | fixed in #717: angles and deltas |
 | Length | same |  | 31.416 |
@@ -414,15 +446,15 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | AreaCentroid | same |  | point at 5,2,0 for a 10x4 plane |
 | VolumeCentroid | same |  | 5, 2.5, 1.5 in both |
 | ShowEdges | same |  | box 12 edges 0 naked; holed plane 5 edges 5 naked, as Rhino |
-| Plan | not yet |  |  |
-| Zebra | not yet |  |  |
+| Plan | same* |  | no prompt, as Rhino |
+| Zebra | missing |  | set aside until the display moves to Bevy (Curva's message) |
 | Count | same* |  |  |
 | Audit | same* |  | "No problems found" on a box |
-| DraftAnalysis | not yet |  |  |
+| DraftAnalysis | missing |  | set aside until the display moves to Bevy (Curva's message) |
 | Section | same |  | 16 in both |
 | Contour | same |  | four rectangles of 30, ends included, in both |
 | Intersect | same |  | 5,5 in both |
-| CurvatureGraph | not yet |  |  |
+| CurvatureGraph | same* |  | Scale 10 / Density 60 options; Rhino shows its graph panel; display needs a screen |
 | Silhouette | same |  | fixed in #721: exact circle 31.4159 |
 
 ### Mesh
@@ -439,18 +471,18 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Check | same* |  | "good mesh" report |
 | MeshRepair | same |  | measured in Rhino 8 by the mesh stream (status/mesh.md) |
 | UnifyMeshNormals | same* |  | sphere mesh: 0 faces turned |
-| FillMeshHoles | differs | #747 | faces 138 match; vertices 121 against Rhino 161 (fill unwelded) |
+| FillMeshHoles | same | #747 | 161/138/100 as Rhino |
 | CullDegenerateMeshFaces | same* |  | sphere mesh: 0 faces taken out |
 | RebuildMeshNormals | same* |  | sphere mesh: normals rebuilt, no change |
 | ReduceMesh | same |  | measured in Rhino 8 by the mesh stream (status/mesh.md) |
 | TriangulateMesh | same |  | 121/200/0 in both |
 | QuadrangulateMesh | same |  | measured in Rhino 8 by the mesh stream (defaults 5° and 2) |
-| ExtractMeshFaces | not yet |  |  |
+| ExtractMeshFaces | differs | #814 | clicks pick edges/points, no face can be picked; no MakeCopy option |
 | MeshToNURB | same |  | one face per mesh face, as Rhino |
-| MeshBooleanUnion | differs | #755 | faces 1116/984 match; vertices 1052 against 1302 |
-| MeshBooleanDifference | differs | #755 | faces 660/540 match; vertices 602 against 759 |
-| MeshBooleanIntersection | differs | #755 | faces 204/96 match; vertices 152 against 216 |
-| MeshBooleanSplit | differs | #755 | pieces match in faces; vertices welded |
+| MeshBooleanUnion | same | #755 | 1302/1116/984, volume 1875, as Rhino |
+| MeshBooleanDifference | same | #755 | 759/660/540, volume 875, as Rhino |
+| MeshBooleanIntersection | same | #755 | 216/204/96, volume 125, as Rhino |
+| MeshBooleanSplit | same | #755 | 875 + 125 pieces with Rhino's points |
 | QuadRemesh | same |  | measured in Rhino 8 by the mesh stream (status/mesh.md) |
 
 ### SubD
@@ -463,8 +495,8 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | SubDCylinder | same | #689 | extent from the smooth surface (-3,-3,0)-(3,3,10) |
 | SubDCone | same |  | cage 34/40; surface within 0.1 % |
 | SubDTorus | same |  | cage 60/60; surface within 0.1 % |
-| ToSubD | same |  | MeshBox: 602/600 in both |
-| SubDDisplayToggle | not yet |  |  |
+| ToSubD | same |  | MeshBox: 602/600 in both; open cones (#775): 17 pts, 8 tri + 8 quad, 16/14 creases, bounds as Rhino |
+| SubDDisplayToggle | same |  | smooth/flat toggle with Rhino's own message (on screen) |
 | ToNURBS | same |  | SubDBox: 6 faces, 786.865 against 786.855 |
 | Crease | same |  | measured in Rhino 8 by the mesh stream (status/mesh.md) |
 | RemoveCrease | same |  | measured in Rhino 8 by the mesh stream (status/mesh.md) |
@@ -499,32 +531,32 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Leader | same |  |  |
 | Dot | same |  |  |
 | Hatch | same |  | area right; default pattern Hatch1 (Rhino's factory default is Solid) |
-| SetHatchBasePoint | not yet |  |  |
-| HatchPatterns | not yet |  |  |
-| AnnotationStyle | not yet |  |  |
-| SetCurrentAnnotationStyle | not yet |  |  |
-| DupAnnotationStyle | not yet |  |  |
-| Styles | not yet |  |  |
+| SetHatchBasePoint | same* |  | no Rhino 8 command of this name (Rhino uses panels/properties) |
+| HatchPatterns | same* |  | no Rhino 8 command of this name (Rhino uses panels/properties) |
+| AnnotationStyle | same* |  | no Rhino 8 command of this name (Rhino uses panels/properties) |
+| SetCurrentAnnotationStyle | same |  | asks the style name, as Rhino's -SetCurrentAnnotationStyle |
+| DupAnnotationStyle | same* |  | asks the style to copy, as Rhino (Rhino offers the current style as default) |
+| Styles | same* |  | display styles panel opens (on screen); Rhino's equivalent is the display-mode options |
 
 ### Layouts
 
 | Command | State | Issue | Notes |
 |---|---|---|---|
-| PrintWidth | not yet |  |  |
-| SetLayoutUserText | not yet |  |  |
+| PrintWidth | same* |  | Curva-only command (Rhino sets print width in properties) |
+| SetLayoutUserText | same* |  | Curva-only: key and text set on the layout (on screen) |
 | Layout | differs | #687 | no detail and no name |
-| CopyLayout | not yet |  |  |
-| Layouts | not yet |  |  |
+| CopyLayout | same |  | copies the active layout, as Rhino's CopyLayout (on screen) |
+| Layouts | differs | #811 | panel and New layout work; switching back to Model from a sheet crashes (first click does nothing) |
 | Detail | same |  | two clicks add a Top detail (rounded scale) |
-| Print | not yet |  |  |
-| ExportPDF | not yet |  | needs the app (printing draws through the viewport) |
+| Print | same* |  | not run, to avoid sending to a real printer; Rhino's -Print offers Go Setup Preview |
+| ExportPDF | same* |  | no Rhino 8 command (Rhino prints to PDF); not run on screen (save dialog) |
 | Make2D | same |  | box from the top: 4 lines, 30 |
-| TitleBlock | not yet |  |  |
-| ScaleBar | not yet |  |  |
-| SheetIndex | not yet |  |  |
-| Revision | not yet |  |  |
-| ClippingPlane | not yet |  |  |
-| SectionStyle | not yet |  |  |
+| TitleBlock | same* |  | Curva-only (no Rhino 8 command): ISO title block placed, fields fill in (on screen) |
+| ScaleBar | same* |  | Curva-only: needs a detail, then placed following its scale (on screen) |
+| SheetIndex | same* |  | Curva-only: index table of layouts placed (on screen) |
+| Revision | same* |  | Curva-only: revision A row added to the title block (on screen) |
+| ClippingPlane | differs | #773 #813 | few options; keeps the side above (Rhino below) and clips every viewport (Rhino only the one drawn in) |
+| SectionStyle | same* |  | no Rhino 8 command of this name (Rhino uses panels/properties) |
 
 ### Selection
 
@@ -543,8 +575,8 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | SelDup | same |  |  |
 | SelLast | same |  |  |
 | SelPrev | same |  |  |
-| SelFilter | not yet |  |  |
-| SelFilterToggle | not yet |  |  |
+| SelFilter | same* |  | Curva-only command name; Rhino uses the Filter bar |
+| SelFilterToggle | same* |  | no Rhino 8 command of this name (Rhino uses panels/properties) |
 | Isolate | same |  |  |
 | Invert | same |  |  |
 | SelLine | same |  |  |
@@ -555,28 +587,28 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | SelOpenCrv | same |  |  |
 | HideSwap | same |  |  |
 | SelColor | differs | #758 | object picked at the prompt ends up unselected |
-| SelBlockInstanceNamed | not yet |  |  |
+| SelBlockInstanceNamed | differs | #772 | exact name selects all 3 instances; wildcard T* selects nothing (Rhino matches) |
 
 ### Views
 
 | Command | State | Issue | Notes |
 |---|---|---|---|
-| ZoomSelected | not yet |  |  |
-| EnableClippingPlane | not yet |  |  |
-| DisableClippingPlane | not yet |  |  |
-| ZoomExtents | not yet |  |  |
-| 4View | not yet |  |  |
-| UndoView | not yet |  |  |
-| RedoView | not yet |  |  |
-| Top | not yet |  |  |
-| Front | not yet |  |  |
-| Right | not yet |  |  |
-| Perspective | not yet |  |  |
-| CPlane | not yet |  |  |
-| Zoom | not yet |  |  |
-| NamedView | not yet |  |  |
-| NamedCPlane | not yet |  |  |
-| SetDisplayMode | not yet |  |  |
+| ZoomSelected | same |  | frames the selection in the active viewport (on screen) |
+| EnableClippingPlane | differs | #813 | Curva clips every viewport already; Rhino enables per viewport (Select Clipping Planes) |
+| DisableClippingPlane | differs | #813 | as EnableClippingPlane |
+| ZoomExtents | same |  | zooms the active viewport, as Rhino (on screen) |
+| 4View | same |  | four viewports Top/Perspective/Front/Right (on screen) |
+| UndoView | same |  | restores the previous view (on screen) |
+| RedoView | same |  | redoes the view change (on screen) |
+| Top | same |  | sets the active viewport's view, as Rhino (checked on screen) |
+| Front | same |  | sets the active viewport's view, as Rhino (checked on screen) |
+| Right | same |  | sets the active viewport's view, as Rhino (checked on screen) |
+| Perspective | same |  | sets the active viewport's view, as Rhino (checked on screen) |
+| CPlane | differs | #776 | works; fewer options than Rhino 8 |
+| Zoom | differs | #776 | works; fewer options than Rhino 8 |
+| NamedView | differs | #776 | works; fewer options than Rhino 8 |
+| NamedCPlane | differs | #776 | works; fewer options than Rhino 8 |
+| SetDisplayMode | differs | #776 | works; fewer options than Rhino 8 |
 
 ### Organising
 
@@ -586,33 +618,33 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | SelClosedSrf | same |  | added in #701 |
 | SelOpenSrf | same |  | added in #701 |
 | Rename | same* |  | names the selected objects (Rhino names objects in Properties) |
-| Match | not yet |  |  |
+| Match | differs | #770 | Position 6.5410 and Tangency 6.7321 match; Curvature 7.3323 against 6.8420; default Tangency (Rhino Curvature); picked end ignored |
 | Lock | same |  |  |
 | Unlock | same |  |  |
 | Group | same | #752 | groups a single object, as Rhino (fba9278) |
 | Ungroup | same* |  | breaks up the group |
 | Block | same* |  | objects become an instance; base point, then name |
 | Insert | same* |  | name, point, scale, rotation, as Rhino's -Insert |
-| BlockManager | not yet |  |  |
-| BlockEdit | not yet |  |  |
+| BlockManager | same* |  | opens the manager panel; Rhino's -BlockManager options list (Properties Export Delete Update ...) |
+| BlockEdit | same* |  | picks an instance; Rhino's -BlockEdit offers Open/SaveAndClose/DiscardAndCancel |
 | ExplodeBlock | same* |  | instance at 10,0 explodes to box 10..11 and circle at 13,0 |
-| ReplaceBlock | not yet |  |  |
+| ReplaceBlock | same* |  | selects instances then the new block, as Rhino |
 | ChangeLayer | same* |  | to an existing layer, typed |
-| MatchProperties | not yet |  |  |
-| Linetype | not yet |  |  |
+| MatchProperties | same* |  | objects to change, then the source, as Rhino's MatchProperties (Select objects to modify) |
+| Linetype | same* |  | Curva prompt picks objects; Rhino 8 has no -Linetype command (Linetypes panel / properties) |
 | ObjectColour | same* |  | 255,0,0 sets the colour; SelColor finds it |
 | SetUserText | same |  | key, then value |
 | GetUserText | same |  | lists every key |
 | SetDocumentUserText | same |  | Client = ACME stored, as Rhino |
 | GetDocumentUserText | same |  | reads ACME back, as Rhino |
-| Notes | not yet |  |  |
-| Purge | not yet |  |  |
+| Notes | same* |  | sets and shows document notes; prompt differs from Rhino's -Notes (Clear Edit Import List Visible) |
+| Purge | differs | #771 | layers and blocks only, no options; Rhino purges 10 kinds of unused data |
 | LockSwap | same |  |  |
 | UnlockSelected | differs | #715 | unlocks without asking which |
-| BringToFront | not yet |  |  |
-| SendToBack | not yet |  |  |
-| BringForward | not yet |  |  |
-| SendBackward | not yet |  |  |
+| BringToFront | same* |  | takes objects as Rhino; draw order only visible on screen |
+| SendToBack | same* |  | takes objects as Rhino; draw order only visible on screen |
+| BringForward | same* |  | takes objects as Rhino; draw order only visible on screen |
+| SendBackward | same* |  | takes objects as Rhino; draw order only visible on screen |
 | UnweldEdge | same |  | measured in Rhino 8 by the mesh stream (status/mesh.md) |
 
 ### Files
@@ -624,6 +656,6 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Open | same* |  | .curva round trip exact; .3dm import exact |
 | Import | same |  | Rhino-made .3dm (11 kinds of object incl. extrusion, trimmed solid, polycurve, mesh, SubD, text, hatch, dimension): every value matches |
 | Export | same |  | .3dm with a box, sphere, circle, polyline, mesh, SubD and a dimension: every value read back in Rhino |
-| ExportSelected | not yet |  |  |
+| ExportSelected | same* |  | no Rhino 8 command of this name (Rhino's Export exports the selection) |
 | New | same* |  | asks to discard; Rhino asks to save first |
 
