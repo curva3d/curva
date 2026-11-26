@@ -36,6 +36,36 @@ pub(super) fn quarters(centre: Point, radius: f64, x: Point, y: Point, sweep: f6
         .collect()
 }
 
+/// The snap places on a surface's or solid's edges, from each edge's exact curve as Rhino 8
+/// snaps it: a circular edge's ends, middle, centre and quarters, not every point it is drawn
+/// through (#792). Each is tied to object `object`'s edge by number, its tie added to `ties`.
+/// Where the body cannot give its exact edges, the edges as drawn, `drawn`, stand in.
+pub(crate) fn body_sites(
+    body: &curva_kernel::Body,
+    object: u64,
+    drawn: &[(Curve, Option<usize>)],
+    ties: &mut Vec<curva_document::tie::Tie>,
+) -> Vec<Site> {
+    let exact: Vec<(Curve, Option<usize>)> = match body.edge_curves() {
+        Ok(curves) => curves
+            .into_iter()
+            .enumerate()
+            .map(|(i, c)| (c, Some(i)))
+            .collect(),
+        Err(_) => drawn.to_vec(),
+    };
+    let mut out = Vec::new();
+    for (curve, part) in &exact {
+        let Ok(points) = curve.sample() else {
+            continue;
+        };
+        let mut sites = sites_of(curve, &points);
+        super::ties::tie_sites(&mut sites, ties, object, *part, curve);
+        out.extend(sites);
+    }
+    out
+}
+
 /// The fixed snap places on a curve, given the points it is drawn through: its own kind's, then
 /// its knots, so where an end and a knot are one place the end wins.
 pub(crate) fn sites_of(curve: &Curve, points: &[Point]) -> Vec<Site> {
@@ -53,6 +83,8 @@ pub(crate) fn piece_sites(line: crate::LineKind, curve: &Curve, points: &[Point]
         crate::LineKind::MeshWire => knots::vertex_sites(points),
         // Its outline runs along its wires, which give its vertices already.
         crate::LineKind::MeshEdge => Vec::new(),
+        // A body's edges snap from their exact curves instead ([`body_sites`]).
+        crate::LineKind::Edge => Vec::new(),
         crate::LineKind::SubdEdge | crate::LineKind::SubdWire => {
             let mut sites = sites_of(curve, points);
             let ends = points.first().into_iter().chain(points.last());
@@ -107,7 +139,10 @@ fn kind_sites(curve: &Curve, points: &[Point]) -> Vec<Site> {
                 .chain(points.last())
                 .filter(|_| open)
                 .map(|p| site(SnapKind::End, *p));
+            // A NURBS circle, arc or ellipse, such as a rounded edge, has its centre, as in Rhino.
+            let centre = curve.as_ellipse().map(|e| site(SnapKind::Center, e.centre));
             ends.chain(half_way(points).map(|p| site(SnapKind::Mid, p)))
+                .chain(centre)
                 .collect()
         }
         Curve::Compound { segments } => segments
