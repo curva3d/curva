@@ -239,7 +239,9 @@ impl Mesh {
     }
 
     /// Each hole closed with triangles, as Rhino's FillMeshHoles, and how many holes. A hole is a
-    /// loop of open edges; one that touches itself at a point is filled as two holes.
+    /// loop of open edges; one that touches itself at a point is filled as two holes. The filling
+    /// has its own copies of the border's points, joined to the mesh there but not welded, as in
+    /// Rhino 8 (#747: a 10 × 10 mesh plane filled has 161 points, 40 of them the filling's).
     // CUSTOM MESH OPERATION: fill-holes
     #[must_use]
     pub fn with_holes_filled(&self) -> (Self, usize) {
@@ -248,8 +250,11 @@ impl Mesh {
         let mut faces: Vec<Vec<NewCorner>> = (0..self.face_count())
             .map(|f| self.corners_of(&self.face_range(f).collect::<Vec<_>>(), false))
             .collect();
+        let mut kept = self.all_vertices();
         let mut filled = 0;
         for ring in loops.iter().filter(|r| r.len() >= 3) {
+            let first = kept.len();
+            kept.extend(ring.iter().map(|c| c.vertex));
             let points: Vec<Point> = ring
                 .iter()
                 .map(|c| self.vertices()[c.vertex as usize])
@@ -259,7 +264,7 @@ impl Mesh {
                     triangle
                         .iter()
                         .map(|&k| NewCorner {
-                            vertex: ring[k].vertex,
+                            vertex: index(first + k),
                             from: ring[k].from,
                             flip: false,
                         })
@@ -271,7 +276,7 @@ impl Mesh {
         if filled == 0 {
             return (self.clone(), 0);
         }
-        (self.rebuilt(&self.all_vertices(), &faces), filled)
+        (self.rebuilt(&kept, &faces), filled)
     }
 
     /// Each hole as a loop of corners running the way a face across it must: a loop of open edges,
@@ -595,7 +600,10 @@ mod tests {
         let faces: Vec<Vec<u32>> = cube.faces().skip(1).map(<[u32]>::to_vec).collect();
         let open = Mesh::new(cube.vertices().to_vec(), &faces).unwrap();
         let (filled, holes) = open.with_holes_filled();
-        assert_eq!((holes, filled.face_count()), (1, 7));
+        assert_eq!(
+            (holes, filled.face_count(), filled.vertex_count()),
+            (1, 7, 12)
+        );
         assert!(close(filled.volume().unwrap(), 1.0));
         assert!(filled.check(1e-4).is_good());
     }
@@ -620,6 +628,31 @@ mod tests {
             .with_texture(Attribute::PerVertex(texture.clone()))
             .unwrap();
         let (filled, _) = open.with_holes_filled();
-        assert_eq!(filled.texture(), &Attribute::PerVertex(texture));
+        let Attribute::PerVertex(got) = filled.texture() else {
+            panic!("texture per point")
+        };
+        // The mesh's own points keep theirs; each of the filling's copies takes the one of the
+        // point it copies.
+        assert_eq!(&got[..8], &texture[..]);
+        assert_eq!(got.len(), 12);
+        for (copy, t) in got.iter().enumerate().skip(8) {
+            let p = filled.vertices()[copy];
+            let source = (0..8).find(|&v| cube.vertices()[v] == p).unwrap();
+            assert_eq!(*t, texture[source]);
+        }
+    }
+
+    #[test]
+    fn the_filling_has_its_own_points_as_in_rhino() {
+        // The testing stream's Rhino 8 FillMeshHoles on a 10 × 10 MeshPlane (#747): closed, 161
+        // points (40 of them the filling's own, along the border), 138 faces, 100 quads.
+        let plane = Mesh::mesh_plane(&crate::Frame::world(), [10.0, 10.0], [10, 10]);
+        let (filled, holes) = plane.with_holes_filled();
+        let quads = filled.faces().filter(|f| f.len() == 4).count();
+        assert_eq!(
+            (holes, filled.vertex_count(), filled.face_count(), quads),
+            (1, 161, 138, 100)
+        );
+        assert!(filled.is_closed());
     }
 }
