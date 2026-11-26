@@ -1,6 +1,6 @@
-//! `Flip`: reverses the direction of curves.
+//! `Flip`: reverses the direction of curves and turns surfaces over, as Rhino 8 does (#768).
 
-use crate::commands::{ask_objects, curves_of, objects_or_selection};
+use crate::commands::{ask_objects, bodies_of, curves_of, objects_or_selection};
 use crate::{Answer, Command, Message, Step};
 use curva_document::Document;
 
@@ -13,13 +13,19 @@ impl Command for Flip {
         let Some(chosen) = objects_or_selection(doc, answer) else {
             return ask_objects("prompt.flip.objects");
         };
+        let mut flipped = 0;
         for (id, curve) in curves_of(doc, &chosen) {
             doc.replace(id, curve.reversed());
+            flipped += 1;
         }
-        Step::Done(Some(Message::with(
-            "done.flip",
-            vec![chosen.len().to_string()],
-        )))
+        // A surface turns over; a closed solid can't, and is left as it is.
+        for (id, body) in bodies_of(doc, &chosen) {
+            if let Ok(turned) = body.turned_over() {
+                doc.replace(id, curva_document::Shape::Body(turned));
+                flipped += 1;
+            }
+        }
+        Step::Done(Some(Message::with("done.flip", vec![flipped.to_string()])))
     }
 }
 
@@ -40,6 +46,25 @@ mod tests {
             doc.state().objects[0].curve().unwrap().sample().unwrap()[0],
             [1.0, 0.0, 0.0]
         );
+    }
+
+    #[test]
+    fn a_surface_is_turned_over_as_in_rhino() {
+        let mut doc = Document::default();
+        let plane = curva_kernel::Body::ruled(
+            &Curve::line([0.0; 3], [10.0, 0.0, 0.0]).unwrap(),
+            &Curve::line([0.0, 10.0, 0.0], [10.0, 10.0, 0.0]).unwrap(),
+            false,
+        )
+        .unwrap();
+        let up = plane.face_normal_near(0, [5.0, 5.0, 0.0]).unwrap()[2];
+        let id = doc.add_body(plane);
+        doc.select(&[id]);
+        run(&mut doc, &["flip"]);
+        // Rhino 8: the face's normal turns the other way.
+        let body = doc.state().objects[0].shape.body().unwrap();
+        let now = body.face_normal_near(0, [5.0, 5.0, 0.0]).unwrap()[2];
+        assert!(up * now < 0.0, "{up} {now}");
     }
 
     #[test]
