@@ -105,15 +105,13 @@ mod tests {
     fn blends_meet_both_curves_smoothly() {
         for (mode, smooth) in [("Position", false), ("Tangency", true), ("Curvature", true)] {
             let mut doc = Document::default();
-            let a = doc.add(Curve::line([0.0; 3], [5.0, 0.0, 0.0]).unwrap());
-            let b = doc.add(Curve::line([10.0, 3.0, 0.0], [15.0, 3.0, 0.0]).unwrap());
+            doc.add(Curve::line([0.0; 3], [5.0, 0.0, 0.0]).unwrap());
+            doc.add(Curve::line([10.0, 3.0, 0.0], [15.0, 3.0, 0.0]).unwrap());
             let mut processor = crate::Processor::default();
             processor.submit(&mut doc, "blendcrv");
             processor.submit(&mut doc, mode);
-            doc.select(&[a]);
-            processor.submit(&mut doc, "");
-            doc.select(&[b]);
-            processor.submit(&mut doc, "");
+            processor.click(&mut doc, [5.0, 0.0, 0.0]);
+            processor.click(&mut doc, [10.0, 3.0, 0.0]);
             let blend = doc.state().objects.last().unwrap().curve().unwrap().clone();
             let (start, end) = ends(&blend);
             assert!(gap(start, [5.0, 0.0, 0.0]) < 1e-6, "{mode}: {start:?}");

@@ -6,7 +6,7 @@ use crate::commands::arguments::*;
 use crate::commands::curve_at;
 use crate::recipe::{Context, Made, ON_CURVE, OptionDef, Recipe, StepDef, Value};
 use curva_document::Shape;
-use curva_kernel::{Point, Spline, dot, gap};
+use curva_kernel::{Point, Spline, dot};
 
 /// `Match`: changes the end of a curve picked near it so it meets the end of another picked near
 /// it, in position, along its tangent or in curvature (the default, as in Rhino 8, #770), moving
@@ -76,13 +76,6 @@ fn matched_end(spline: Spline, end: Point, d1: Point, d2: Point, how: Continuity
     s
 }
 
-/// Whether `at` is nearer the curve's end than its start.
-fn picked_end(curve: &Spline, at: Point) -> bool {
-    let (start, end) = curve.domain();
-    gap(at, curve.point(end)) < gap(at, curve.point(start))
-}
-
-/// The curvature vector of a curve whose first and second derivatives are `d1` and `d2`: the
 /// part of `d2` across `d1`, over the speed squared.
 fn curvature(d1: Point, d2: Point) -> Point {
     let speed2 = dot(d1, d1).max(1e-24);

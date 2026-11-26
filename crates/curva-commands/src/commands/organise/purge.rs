@@ -120,7 +120,10 @@ mod tests {
                 .unwrap()
                 .locked
         );
-        run(&mut doc, &["unlockselected"]);
+        let mut processor = crate::Processor::default();
+        processor.submit(&mut doc, "unlockselected");
+        doc.select(&[b]);
+        processor.submit(&mut doc, "");
         assert!(doc.state().objects.iter().all(|o| !o.locked));
         doc.select(&[a]);
         run(&mut doc, &["bringtofront"]);
