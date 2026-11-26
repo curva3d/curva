@@ -31,6 +31,8 @@ pub mod hatch;
 pub mod layouts;
 pub mod meshing;
 mod organise;
+mod purge;
+pub use purge::{PurgeWhat, Purged};
 pub mod progress;
 mod repairs;
 pub mod section;

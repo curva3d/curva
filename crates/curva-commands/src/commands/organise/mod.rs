@@ -100,7 +100,7 @@ pub(crate) static COMMANDS: &[crate::commands::CommandDef] = &[
         get_document_user_text::GetDocumentUserText
     ),
     listed!("Notes", [], false, true, notes::Notes),
-    listed!("Purge", [], true, true, purge::Purge),
+    recipe!("Purge", [], true, purge::Purge),
     listed!("LockSwap", [], true, true, lock_swap::LockSwap),
     listed!(
         "UnlockSelected",

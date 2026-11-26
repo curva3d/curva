@@ -249,39 +249,6 @@ impl Document {
         }
     }
 
-    /// Removes layers nothing is on (but the current one and the first), and block definitions no
-    /// instance uses; returns how many of each went.
-    pub fn purge(&mut self) -> (usize, usize) {
-        let current = self.state.current_layer;
-        let used: std::collections::BTreeSet<u64> =
-            self.state.objects.iter().map(|o| o.layer).collect();
-        let before = self.state.layers.len();
-        let first = self.state.layers.first().map(|l| l.id);
-        self.state
-            .layers
-            .retain(|l| used.contains(&l.id) || l.id == current || Some(l.id) == first);
-        let layers = before - self.state.layers.len();
-        let mut blocks = 0;
-        loop {
-            let unused: Vec<u64> = self
-                .state
-                .blocks
-                .iter()
-                .map(|d| d.id)
-                .filter(|id| {
-                    !self.state.objects.iter().any(|o| matches!(&o.shape, crate::Shape::Instance(i) if i.definition == *id))
-                        && !self.state.blocks.iter().any(|d| d.objects.iter().any(|o| matches!(&o.shape, crate::Shape::Instance(i) if i.definition == *id)))
-                })
-                .collect();
-            if unused.is_empty() {
-                break;
-            }
-            blocks += unused.len();
-            self.state.blocks.retain(|d| !unused.contains(&d.id));
-        }
-        (layers, blocks)
-    }
-
     /// The objects whose geometry the engine finds broken, with why.
     #[must_use]
     pub fn audit(&self) -> Vec<(u64, String)> {

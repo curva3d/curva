@@ -55,6 +55,9 @@ pub(crate) struct Pane {
     pub(crate) views_back: Vec<Camera>,
     /// Views stepped back from, for `RedoView`, newest last.
     pub(crate) views_ahead: Vec<Camera>,
+    /// Planes to step back to with CPlane Undo, newest last, and those stepped back from.
+    pub(crate) planes_back: Vec<CPlane>,
+    pub(crate) planes_ahead: Vec<CPlane>,
     /// The view as it last stood still, which a camera move leaves behind.
     pub(crate) settled: Camera,
 }
@@ -107,6 +110,8 @@ impl Pane {
             view,
             views_back: Vec::new(),
             views_ahead: Vec::new(),
+            planes_back: Vec::new(),
+            planes_ahead: Vec::new(),
             settled: view.camera(),
             camera: view.camera(),
             plane: view.plane(),
@@ -268,8 +273,14 @@ impl Curva {
         }
         // The filter can change without the model changing, so it is passed on every frame.
         // Rhino's selection filter is applied to what a pick finds (`filtered_picks`).
+        // While UnlockSelected asks, only locked objects can be picked (#715).
+        let locked_only = self
+            .processor
+            .current_request()
+            .is_some_and(|request| request.locked_only);
         self.outlines.set_filter(PickFilter {
             on: false,
+            locked_only,
             ..PickFilter::default()
         });
     }
@@ -396,20 +407,10 @@ impl Curva {
                 self.panes = standard_panes();
                 self.maximised = None;
             }
-            ViewRequest::SetCPlane { origin, x, y } => {
-                let normal = curva_kernel::cross(x, y);
-                let plane = CPlane {
-                    origin,
-                    x,
-                    y,
-                    normal,
-                };
-                self.panes[self.active].set_plane(plane);
-            }
-            ViewRequest::ResetCPlane => {
-                let pane = &mut self.panes[self.active];
-                pane.set_plane(pane.view.plane());
-            }
+            request @ (ViewRequest::SetCPlane { .. }
+            | ViewRequest::ResetCPlane
+            | ViewRequest::UndoCPlane
+            | ViewRequest::RedoCPlane) => self.apply_plane_request(request),
             ViewRequest::Show(name) => {
                 let drawn = self.panes[self.active].drawn();
                 self.panes[self.active] = Pane::new(standard_view(name));

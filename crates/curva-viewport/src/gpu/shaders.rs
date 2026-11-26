@@ -3,9 +3,9 @@
 use crate::NO_OBJECT;
 
 // The line program's table and its places, written out in its text, match the Rust side's.
-const _: () = assert!(crate::line_table::LINE_ROWS == 18);
+const _: () = assert!(crate::line_table::LINE_ROWS == 20);
 const _: () = assert!(crate::view_style::FADE_ROWS == 2);
-const _: () = assert!(crate::line_table::HIDDEN_SLOT == 8);
+const _: () = assert!(crate::line_table::HIDDEN_SLOT == 9);
 const _: () = assert!(crate::LineKind::Curve as u32 == 1);
 const _: () = assert!(crate::view_style::FACE_ROWS == 8);
 const _: () = assert!(super::upload::OBJECT_BITS == 0x00FF_FFFF);
@@ -68,7 +68,7 @@ struct Uniforms {
     matrix: mat4x4<f32>, light: vec4<f32>, pixel: vec4<f32>, clips: array<vec4<f32>, 4>,
     // Each kind of line's look from the view's style (`LineTable::rows`): its colour and whether
     // to use it, then its width factor, fixed width (below zero for none) and whether it shows.
-    lines: array<vec4<f32>, 18>,
+    lines: array<vec4<f32>, 20>,
     // Lines by distance (`Style::fade_rows`): the plane distances are measured from, then where
     // lines start to thin and fade, where they are thinnest, and how thin and faint there.
     fade: array<vec4<f32>, 2>,
@@ -82,8 +82,8 @@ fn distance_part(p: vec3<f32>) -> f32 {
     let away = dot(plane.xyz, p) + plane.w;
     return clamp((away - range.x) / max(range.y - range.x, 1e-6), 0.0, 1.0);
 }
-// Where hidden lines' look is in `lines`, after the eight kinds of line (`HIDDEN_SLOT`).
-const HIDDEN_SLOT: u32 = 8u;
+// Where hidden lines' look is in `lines`, after the nine kinds of line (`HIDDEN_SLOT`).
+const HIDDEN_SLOT: u32 = 9u;
 // A line's object word: its object's number in the low three bytes (all ones for none), its
 // kind in the top byte (`upload::packed`).
 const OBJECT_BITS: u32 = 0x00FFFFFFu;
@@ -161,7 +161,10 @@ fn segment(
     let slot = select(object >> 24u, HIDDEN_SLOT, DOTTED);
     let look = uniforms.lines[slot * 2u];
     let size = uniforms.lines[slot * 2u + 1u];
-    if (size.z < 0.5) {
+    // A kind the style does not show draws no hidden lines either: Technical shows no mesh
+    // wires, behind faces or not (#663).
+    let own_shown = uniforms.lines[(object >> 24u) * 2u + 1u].z;
+    if (size.z < 0.5 || own_shown < 0.5) {
         return Out(vec4<f32>(2.0, 2.0, 2.0, 1.0), given_ca, a, 0.0, 0.0, 0.0, 0.0, 0.0);
     }
     // Thinner with distance, as far as the style's rule says (`fade`).
@@ -318,7 +321,7 @@ struct Uniforms {
     // The direction faces are lit from, and 1 after it where the style lights them flat.
     light: vec4<f32>,
     pixel: vec4<f32>, clips: array<vec4<f32>, 4>,
-    lines: array<vec4<f32>, 18>,
+    lines: array<vec4<f32>, 20>,
     fade: array<vec4<f32>, 2>,
     // Each kind of face's look (`Style::face_rows`): its colour and whether to use it, then its
     // opacity and whether it shows.

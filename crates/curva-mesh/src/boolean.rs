@@ -159,6 +159,10 @@ struct Sources {
     quads: Vec<Option<[Point; 4]>>,
     mesh: Vec<u32>,
     meshes: u32,
+    /// For each input face, which welded piece of its input mesh it is in, numbered across all
+    /// the inputs: a MeshBox's sides are six pieces, its edges unwelded (#690).
+    piece: Vec<u32>,
+    pieces: u32,
 }
 
 fn solids(
@@ -192,6 +196,17 @@ fn solid(mesh: &Mesh, shift: Point, sources: &mut Sources) -> Manifold {
         .mesh
         .extend(std::iter::repeat_n(sources.meshes, joined.face_count()));
     sources.meshes += 1;
+    let first_piece = sources.pieces;
+    let piece = pieces_of(mesh);
+    if piece.len() == joined.face_count() {
+        sources.piece.extend(piece.iter().map(|p| first_piece + p));
+        sources.pieces += piece.iter().max().map_or(0, |m| m + 1);
+    } else {
+        sources
+            .piece
+            .extend(std::iter::repeat_n(first_piece, joined.face_count()));
+        sources.pieces += 1;
+    }
     sources.quads.extend(joined.faces().map(|f| {
         <[u32; 4]>::try_from(f)
             .ok()
@@ -263,7 +278,8 @@ fn mesh(solid: &Manifold, shift: Point, sources: &Sources) -> Mesh {
         .map(|p| [p[0] + shift[0], p[1] + shift[1], p[2] + shift[2]])
         .collect();
     let triangles: &[[u32; 3]] = gl.tri_verts.as_chunks::<3>().0;
-    let faces = with_quads(&gl, triangles, sources);
+    let (faces, ids) = with_quads(&gl, triangles, sources);
+    let (vertices, faces) = unwelded(&vertices, faces, &ids, sources);
     // The library's output is closed, finite and refers only to its own points.
     Mesh::new(vertices, &faces).unwrap_or_default()
 }
@@ -272,7 +288,11 @@ fn mesh(solid: &Manifold, shift: Point, sources: &Sources) -> Mesh {
 /// triangles on its face, with its four corners) joined back into it, unless a corner is on the
 /// cut: Rhino 8 splits every quad with a point where the meshes meet, even a corner alone, and
 /// keeps every other one (measured by the testing stream on #718).
-fn with_quads(gl: &MeshGLP<f64, u32>, triangles: &[[u32; 3]], sources: &Sources) -> Vec<Vec<u32>> {
+fn with_quads(
+    gl: &MeshGLP<f64, u32>,
+    triangles: &[[u32; 3]],
+    sources: &Sources,
+) -> (Vec<Vec<u32>>, Vec<Option<u32>>) {
     let stride = (gl.num_prop as usize).max(3);
     let at = |v: u32| -> Point {
         let i = v as usize * stride;
@@ -294,6 +314,7 @@ fn with_quads(gl: &MeshGLP<f64, u32>, triangles: &[[u32; 3]], sources: &Sources)
     let cut = on_the_cut(gl.vert_properties.len() / stride, triangles, ids, sources);
     let mut done = vec![false; triangles.len()];
     let mut faces = Vec::with_capacity(triangles.len());
+    let mut face_ids = Vec::with_capacity(triangles.len());
     for t in 0..triangles.len() {
         if std::mem::replace(&mut done[t], true) {
             continue;
@@ -315,8 +336,68 @@ fn with_quads(gl: &MeshGLP<f64, u32>, triangles: &[[u32; 3]], sources: &Sources)
         } else {
             faces.push(triangles[t].to_vec());
         }
+        face_ids.push(ids.get(t).copied());
     }
-    faces
+    (faces, face_ids)
+}
+
+/// The result's points split wherever faces from different input pieces meet, as Rhino 8 keeps
+/// them (#755): along the inputs' unwelded edges, and along the cut, where two meshes meet.
+fn unwelded(
+    vertices: &[Point],
+    faces: Vec<Vec<u32>>,
+    ids: &[Option<u32>],
+    sources: &Sources,
+) -> (Vec<Point>, Vec<Vec<u32>>) {
+    let mut copies: HashMap<(u32, u32), u32> = HashMap::new();
+    let mut points = Vec::with_capacity(vertices.len());
+    let faces = faces
+        .into_iter()
+        .zip(ids)
+        .map(|(face, id)| {
+            let piece = id
+                .and_then(|id| sources.piece.get(id as usize).copied())
+                .unwrap_or(u32::MAX);
+            face.into_iter()
+                .map(|v| {
+                    *copies.entry((v, piece)).or_insert_with(|| {
+                        points.push(vertices[v as usize]);
+                        u32::try_from(points.len() - 1).unwrap_or(u32::MAX)
+                    })
+                })
+                .collect()
+        })
+        .collect();
+    (points, faces)
+}
+
+/// For each face of a mesh, the number of its piece: faces sharing a point (by number) are in one.
+fn pieces_of(mesh: &Mesh) -> Vec<u32> {
+    let mut parent: Vec<usize> = (0..mesh.vertex_count()).collect();
+    fn root(parent: &mut [usize], mut v: usize) -> usize {
+        while parent[v] != v {
+            parent[v] = parent[parent[v]];
+            v = parent[v];
+        }
+        v
+    }
+    for face in mesh.faces() {
+        for pair in face.windows(2) {
+            let (a, b) = (
+                root(&mut parent, pair[0] as usize),
+                root(&mut parent, pair[1] as usize),
+            );
+            parent[a] = b;
+        }
+    }
+    let mut number: HashMap<usize, u32> = HashMap::new();
+    mesh.faces()
+        .map(|face| {
+            let r = face.first().map_or(0, |&v| root(&mut parent, v as usize));
+            let next = u32::try_from(number.len()).unwrap_or(u32::MAX);
+            *number.entry(r).or_insert(next)
+        })
+        .collect()
 }
 
 /// For each point of the result, whether it is on the cut: where faces from two input meshes meet.
@@ -394,6 +475,25 @@ mod tests {
     }
 
     #[test]
+    fn the_result_stays_unwelded_along_hard_edges_and_the_cut_as_in_rhino() {
+        // The testing stream's Rhino 8 points for two 10 mm MeshBoxes, the second moved by
+        // (5, 5, 5) (#755): split along the boxes' unwelded sides and along the cut.
+        use crate::Frame;
+        let a = Mesh::mesh_box(&Frame::world(), [10.0; 3], [10; 3]);
+        let b = a.translated([5.0; 3]);
+        let pair = [a.clone(), b.clone()];
+        let left = &difference(std::slice::from_ref(&a), std::slice::from_ref(&b)).unwrap()[0];
+        let both = &intersection(std::slice::from_ref(&a), std::slice::from_ref(&b)).unwrap()[0];
+        let all = union(&pair).unwrap();
+        assert_eq!(
+            (left.vertex_count(), both.vertex_count(), all.vertex_count()),
+            (759, 216, 1302)
+        );
+        assert!(left.is_closed() && both.is_closed() && all.is_closed());
+        assert!(close(left.volume().unwrap(), 875.0));
+    }
+
+    #[test]
     fn two_overlapping_cubes_unite_into_one_and_a_half() {
         let joined = union(&[cube(), shifted()]).unwrap();
         assert!(joined.is_closed());
@@ -439,12 +539,10 @@ mod tests {
         let ring = difference(&[slab], &[bar]).unwrap();
         assert!(ring[0].is_closed());
         assert!(close(ring[0].volume().unwrap(), 8.0));
-        // A ring's surface: Euler characteristic 0, so V - E + F = 0.
-        let (v, e, f) = (
-            ring[0].vertex_count(),
-            ring[0].edge_count(),
-            ring[0].face_count(),
-        );
+        // A ring's surface: Euler characteristic 0, so V - E + F = 0, counted by place, as the
+        // result is unwelded along the cut as in Rhino (#755).
+        let shape = ring[0].welded(0.0).0;
+        let (v, e, f) = (shape.vertex_count(), shape.edge_count(), shape.face_count());
         assert_eq!(v + f, e);
     }
 

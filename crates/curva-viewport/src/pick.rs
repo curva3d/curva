@@ -34,6 +34,10 @@ pub struct PickFilter {
     pub surfaces: bool,
     /// Closed solids.
     pub solids: bool,
+    /// Whether only locked objects can be picked, and no others, as while Rhino's
+    /// UnlockSelected asks for the objects to unlock (#715). It holds whether or not the
+    /// filter is `on`.
+    pub locked_only: bool,
 }
 
 impl Default for PickFilter {
@@ -44,6 +48,7 @@ impl Default for PickFilter {
             curves: true,
             surfaces: true,
             solids: true,
+            locked_only: false,
         }
     }
 }
@@ -147,7 +152,8 @@ impl Outlines {
         self.filter = filter;
     }
 
-    /// The objects that can be picked: those not on a locked layer, and of a kind the
+    /// The objects that can be picked: those not locked (or only locked ones, while
+    /// [`PickFilter::locked_only`] is set), and of a kind the
     /// selection filter lets through.
     pub(crate) fn selectable(&self) -> impl Iterator<Item = &(u64, std::sync::Arc<[Point]>)> {
         self.objects
@@ -160,7 +166,7 @@ impl Outlines {
     /// Whether entry `index` of `objects` can be picked: not on a locked layer, and of a kind
     /// the selection filter lets through.
     fn is_selectable(&self, index: usize) -> bool {
-        !self.locked.get(index).copied().unwrap_or(false)
+        self.lock_passes(self.locked.get(index).copied().unwrap_or(false))
             && self
                 .kinds
                 .get(index)
@@ -317,15 +323,20 @@ impl Outlines {
     pub(crate) fn can_pick(&self, id: u64) -> bool {
         self.objects.iter().enumerate().any(|(index, (other, _))| {
             *other == id
-                && !self.locked.get(index).copied().unwrap_or(false)
+                && self.lock_passes(self.locked.get(index).copied().unwrap_or(false))
                 && self
                     .kinds
                     .get(index)
                     .is_none_or(|kind| self.filter.allows(*kind))
-        }) || self
-            .faces
-            .iter()
-            .any(|faces| faces.id == id && !faces.locked && self.filter.allows(faces.kind))
+        }) || self.faces.iter().any(|faces| {
+            faces.id == id && self.lock_passes(faces.locked) && self.filter.allows(faces.kind)
+        })
+    }
+
+    /// Whether an object, locked or not, can be picked as far as locking goes: unlocked ones
+    /// normally, locked ones alone while [`PickFilter::locked_only`] is set.
+    fn lock_passes(&self, locked: bool) -> bool {
+        locked == self.filter.locked_only
     }
 
     /// The surfaces and solids a crossing box touches through their faces alone: those with a
@@ -340,7 +351,7 @@ impl Outlines {
         let corners = [low, [high[0], low[1]], high, [low[0], high[1]]];
         self.faces
             .iter()
-            .filter(|faces| !faces.locked && self.can_pick(faces.id))
+            .filter(|faces| self.can_pick(faces.id))
             .filter(|faces| {
                 let mesh = &faces.mesh;
                 mesh.triangles.iter().any(|triangle| {
@@ -442,7 +453,8 @@ impl Outlines {
         let mut best: Option<(f64, (u64, usize))> = None;
         // Only meshes whose boxes reach the cursor on screen (#130).
         let near = self.faces.iter().filter(|faces| {
-            !faces.locked && !crate::snap::box_beyond(&view, faces.around, (screen, 0.0))
+            self.lock_passes(faces.locked)
+                && !crate::snap::box_beyond(&view, faces.around, (screen, 0.0))
         });
         for faces in near {
             let mesh = &faces.mesh;

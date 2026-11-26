@@ -100,6 +100,9 @@ pub struct Request {
     /// Whether the step exists only for its panel: without the panel it is answered with Enter
     /// at once, so scripts never see it.
     pub panel_only: bool,
+    /// For an objects step: whether only locked objects can be picked, as while UnlockSelected
+    /// asks (#715); the others cannot.
+    pub locked_only: bool,
 }
 
 /// A panel of the interface a step can open.
@@ -177,6 +180,7 @@ impl Request {
             file: None,
             panel: None,
             panel_only: false,
+            locked_only: false,
         }
     }
 
@@ -368,6 +372,10 @@ pub enum ViewRequest {
     },
     /// Put the last-used viewport back on its standard plane.
     ResetCPlane,
+    /// Put the last-used viewport back on the plane it had before (CPlane Undo, #776).
+    UndoCPlane,
+    /// Go forward again to a plane stepped back from (CPlane Redo).
+    RedoCPlane,
     /// Turn the last-used viewport into this view.
     Show(ViewName),
     /// Draw the last-used viewport this way.

@@ -8,9 +8,32 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## 26 November 2026
+
+**Done**
+- **Meshes draw Rhino 8's outline** (#663, part 2): a mesh's open borders and unwelded edges (`Mesh::outline_edges`, each seam once) draw as a new kind of line, `LineKind::MeshEdge`, in the style's mesh edges look: dark and thicker than the wires in Shaded, the only lines with the silhouette in Hidden, dotted where hidden in Technical. In Wireframe and Ghosted a mesh now has silhouettes too, from turns where it is welded and bent (`turns::mesh_wire_turns`). Hidden (and so Technical) shows no mesh wires, as Rhino; a kind of line a style does not show draws no hidden dots either. Pictures of a mesh box and cylinder in each style in `E:rva-scratchdisplaymesh663`. Not done: Technical's creases by angle on meshes (Rhino's rule is not settled, see the issue).
+- **Mesh wires no longer break into dashes on their own faces** (#663, part 1; owner's report on 0.1.6): the faces' depth handed from Bevy to Curva's lines took one sample of each pixel, off its middle, so on faces slanting away (a mesh box's sides) a one-pixel wire lost to its own face. The handover now keeps the farthest surface among the samples of each pixel and the four beside it, a pixel's worth of the face's slope, as a slope-scaled depth bias. Test: a wire on faces turned from flat to standing shows whole (17 of 69 pixels before).
+
 ## 25 November 2026
 
 **Done**
+- **Picking among locked objects only** (#715, for features' UnlockSelected): `PickFilter.locked_only` makes clicks and boxes take locked objects and no others, as Rhino does while UnlockSelected asks for objects. The app sets it from the command's request (features).
+- **The first solid preview no longer freezes Curva** (#699 from the testing stream; very likely
+  the owner's 0.1.6 "lag at the height step").
+  - The cause: Bevy makes each drawing pipeline the first time it is needed, and synchronously
+    here. A command's preview is the only thing drawn see-through and double-sided, so the
+    first Box preview made Bevy build a new pipeline then. Its shader compiles slowly on
+    Windows, and Curva stopped for over 5 s.
+  - Measured: the kernel is not the cause. In a fresh process, making the box took 19 ms and
+    its first mesh 4.5 ms, the second 2.7 ms.
+  - The fix (`pilot/scene.rs`): while there is no preview, the preview holds one triangle with
+    no area, shown and never culled (`standby_preview`). Bevy builds the preview's pipeline as
+    the view is made, at start-up, with the others. Nothing is drawn for it.
+  - New test: after a view is drawn, the first preview needs no new pipeline. Without the fix it
+    fails, 22 pipelines against 21.
+  - Still to check: other things first drawn later may pause the same way, such as Ghosted's
+    see-through faces, Massing's shadows, a mesh's own colours, clipping. Not timed on a quiet
+    machine.
 - **Gumball scale squares back, as in Rhino 8: the display side** (#693, the owner's decision
   "Yes, as in Rhino").
   - `Gumball` now holds the selection's box (`extent`). Each axis seen side-on gets a square in

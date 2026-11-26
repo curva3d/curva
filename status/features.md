@@ -16,6 +16,31 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## Features stream — 26 November 2026 (later: Rhino parity, from the testing stream)
+
+- **Merged:**
+  - RebuildUV, one direction as in Rhino (#763, #740).
+  - Taper with start and end distances (#764, #713).
+  - MatchSrf moves only the matched edge, offers Curvature and defaults to it (#765, #774; #750, #766).
+  - Split pieces untrim to their whole plane; ShrinkTrimmedSrf leaves Rhino's 1% margin (#769, #734).
+  - The gumball's scale squares on the selection's box (#777, #693).
+  - Match: Rhino's curvature rule, Curvature by default, and the picked ends (#778, #786; #770).
+  - Purge with Rhino's options (#779, #771).
+  - Sweep1: a degree-1 rail sweeps as a polyline, and a part-way section sweeps from the rail's start (#780; #666, #665 part).
+  - SelBlockInstanceNamed wildcards (#782, #772).
+  - ExtendSrf Smooth on non-rational surfaces (#784, #751 part).
+  - PointsOn for surfaces (#785, #768 part).
+  - BlendCrv blends from the picked ends (#788, #728 part).
+- **On CI:** Flip turns surfaces over (#783), UnlockSelected picks locked objects only (#789).
+- **Open, waiting on the owner:** BoundingBox (#725), whose renamed test the weakened-tests check flagged.
+- **Still differing from Rhino** (measurements on each issue):
+  - BlendCrv and BlendSrf handle lengths (#728, #748); the curvature steps are 0.6 × the tangency handle.
+  - ExtendSrf on rational surfaces (#751).
+  - Sweep1 circle to square (#665); RebuildUV's open-direction fit (#740).
+  - Reparameterize for surfaces (#741), Dir on surfaces (#768).
+  - Patch for more sides (#684), Fair's shape (#731), the Layers panel clicks (#698).
+- **Tooling note:** every worktree builds into the same build folder, so a local test run can pick up another worktree's compiled code and report a pass that CI then fails (Flip, #783). Final checks before a push now run in a separate build folder.
+
 ## Features stream — 26 November 2026 (Rhino parity, continued)
 
 - Fixed from the testing stream's issues:

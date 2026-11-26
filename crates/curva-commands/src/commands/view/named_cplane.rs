@@ -8,11 +8,15 @@ use curva_document::Document;
 const SAVE: &str = "Save";
 const RESTORE: &str = "Restore";
 const DELETE: &str = "Delete";
+const LIST: &str = "List";
+const RENAME: &str = "Rename";
 
 /// The running command.
 #[derive(Default)]
 pub struct NamedCPlane {
     action: Option<&'static str>,
+    /// For Rename: the plane being renamed, once named.
+    renaming: Option<String>,
 }
 
 impl Command for NamedCPlane {
@@ -28,9 +32,17 @@ impl Command for NamedCPlane {
                     };
                     Step::Ask(Request {
                         prompt: Message::with(key, vec![names.join(", ")]),
-                        options: vec![SAVE, RESTORE, DELETE],
+                        options: vec![SAVE, RESTORE, DELETE, RENAME, LIST],
                         ..Request::new(key, Kind::Choice)
                     })
+                }
+                // The saved planes' names, as Rhino's List says them (#776).
+                Some(Answer::Option(LIST)) => {
+                    let names: Vec<&str> = doc.cplanes().iter().map(|p| p.name.as_str()).collect();
+                    Step::Done(Some(Message::with(
+                        "done.namedcplane.list",
+                        vec![names.join(", ")],
+                    )))
                 }
                 Some(Answer::Option(word)) => {
                     self.action = Some(word);
@@ -47,6 +59,18 @@ impl Command for NamedCPlane {
             return Step::Failed(Message::new("error.no_view_name"));
         }
         match action {
+            // Rename: the plane to rename, then its new name.
+            RENAME => match self.renaming.take() {
+                None if doc.saved_cplane(&name).is_some() => {
+                    self.renaming = Some(name);
+                    Step::Ask(Request::new("prompt.namedcplane.new_name", Kind::Path))
+                }
+                Some(old) if doc.rename_cplane(&old, &name) => Step::Done(Some(Message::with(
+                    "done.namedcplane.rename",
+                    vec![old, name],
+                ))),
+                _ => Step::Failed(Message::with("error.no_cplane", vec![name])),
+            },
             SAVE => Step::View(ViewRequest::SaveCPlane(name)),
             RESTORE => match doc.saved_cplane(&name) {
                 Some(plane) => Step::View(ViewRequest::SetCPlane {
@@ -112,5 +136,17 @@ mod tests {
         assert!(doc.cplanes().is_empty());
         let mut processor = run(&mut doc, &["namedcplane", "Restore", "Level 2"]);
         assert_eq!(processor.take_view_request(), None);
+    }
+
+    #[test]
+    fn rename_and_list_as_in_rhino() {
+        let mut doc = with_plane("First floor");
+        run(
+            &mut doc,
+            &["namedcplane", "rename", "First floor", "Ground floor"],
+        );
+        assert_eq!(doc.cplanes()[0].name, "Ground floor");
+        let processor = run(&mut doc, &["namedcplane", "list"]);
+        assert!(processor.log().last().unwrap().contains("Ground floor"));
     }
 }

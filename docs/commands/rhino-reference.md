@@ -152,12 +152,12 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | 4View | none | none | none | partly |
 | UndoView | none (Home or Alt+Z in Curva) | none | none | partly |
 | RedoView | none (End or Alt+Shift+Z in Curva) | none | none | partly |
-| CPlane | New origin, or an option | `All` `Curve` `Elevation` `Gumball` `Object` `Rotate` `Surface` `Through` `View` `World` `3Point` `Undo` `Redo` | `World` | partly |
-| Zoom | Drag a window (the default), or an option | `Window` `All` `Extents` `Selected` `1to1` `Dynamic` `Factor` `In` `Out` `Target` | `Extents` `Selected` `In` `Out` `Target` | partly |
+| CPlane | New origin, or an option | `All` `Curve` `Elevation` `Gumball` `Object` `Rotate` `Surface` `Through` `View` `World` `3Point` `Undo` `Redo` | `Elevation` `Rotate` `View` `World` `3Point` `Undo` `Redo` | partly |
+| Zoom | Drag a window (the default), or an option | `Window` `All` `Extents` `Selected` `1to1` `Dynamic` `Factor` `In` `Out` `Target` | `All` `Extents` `Factor` `Selected` `In` `Out` `Target` | partly |
 | ZoomExtents | none | none | none | partly |
 | ZoomSelected | none | none | none | partly |
-| NamedView | A panel in Rhino: save, restore, delete views | `Save` `Restore` `Delete` | `Save` `Restore` `Delete` | partly |
-| NamedCPlane | A panel in Rhino: save, restore, delete construction planes | `Save` `Restore` `Delete` | `Save` `Restore` `Delete` | partly |
+| NamedView | A panel in Rhino: save, restore, delete views | `List` `Save` `Restore` `Delete` `Rename` `Import` `TabVisibility` `WidgetVisibility` | `List` `Save` `Restore` `Delete` `Rename` | partly |
+| NamedCPlane | A panel in Rhino: save, restore, delete construction planes | `List` `Save` `Restore` `Delete` `Rename` `Import` `Select` `Visible` | `List` `Save` `Restore` `Delete` `Rename` | partly |
 | SetDisplayMode | Not read: Rhino's page redirected; complete from Rhino | to confirm | `Wireframe` `Shaded` `Ghosted` | partly |
 | Styles | Rhino 8's Options > View > Display Modes page, where each mode's settings are edited | none | none (Curva's Style panel: the view's style chosen and edited live; spec `views-and-styles.md` §3) | partly |
 | New | Choose a template | none | none | partly |
@@ -225,7 +225,7 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | CurveBoolean | Curves; clicks inside regions | `DeleteInput` `CombineRegions` `AllRegions` | `CombineRegions` `DeleteInput` | partly |
 | Match | Curve to change; curve to match | `Position` `Tangency` `Curvature` `AverageCurves` `PreserveOtherEnd` | `Position` `Tangency` `Curvature` | partly |
 | SimplifyCrv | Select curves | none | none | done |
-| Reparameterize | Curves; start; end | `Automatic` | `Automatic` | partly |
+| Reparameterize | Curves or surfaces; start and end (U and V for surfaces) | `Automatic` | `Automatic` | partly |
 | MakeUniform | Select curves | none | none | done |
 | Weight | Control points picked; weight | none | none | done |
 | ExtrudeCrvTapered | Closed curves; distance | `DraftAngle` `Solid` `Sharp` `Round` `Smooth` `Direction` `DeleteInput` `FlipAngle` | `DraftAngle` `Solid` `Sharp` `Round` `Smooth` | partly |
@@ -251,7 +251,7 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 |---|---|---|---|---|
 | EdgeSrf | Two to four edge curves | none | none | done |
 | NetworkSrf | Curves both ways | `EdgeMatching` `Tolerances` | none | partly |
-| Patch | Curves and points to fit | `PointSpacing` `UVSpans` `Stiffness` `AdjustTangency` `AutomaticTrim` | none | partly |
+| Patch | Curves and points to fit | `PointSpacing` `UVSpans` `Stiffness` `AdjustTangency` `AutomaticTrim` | `UVSpans` `Stiffness` | partly |
 | ExtendSrf | Edge; distance | `Line` `Smooth` | `Smooth` `Line` | done |
 | Untrim | Trim edge | `KeepTrimObjects` `All` | none | partly |
 | Section | Objects; section line | none | none | done |
@@ -301,7 +301,7 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | ObjectColour | Objects; a colour (red, green, blue, `#rrggbb` or `ByLayer`), as Rhino's Properties set an object's display colour | none | none | partly |
 | SetUserText | Objects; key; text | none | none | partly |
 | GetUserText | Object | none | none | partly |
-| Purge | none | `Layers` `BlockDefinitions` `Linetypes` | none | partly |
+| Purge | Options; Enter | `AnnotationStyles` `Bitmaps` `BlockDefinitions` `Environments` `Groups` `HatchPatterns` `Layers` `Linetypes` `Materials` `Textures` | `AnnotationStyles` `BlockDefinitions` `HatchPatterns` `Layers` `Linetypes` | partly |
 | Audit | none | none | none | partly |
 | LockSwap | none | none | none | partly |
 | UnlockSelected | Locked objects | none | none | partly |

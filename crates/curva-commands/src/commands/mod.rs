@@ -121,7 +121,7 @@ impl<'a> IntoIterator for &'a CommandList {
 }
 
 /// Every folder's list of commands.
-const FOLDERS: [&[CommandDef]; 14] = [
+const FOLDERS: &[&[CommandDef]] = &[
     nurbs::curves::COMMANDS,
     nurbs::surfaces::COMMANDS,
     nurbs::solids::COMMANDS,
@@ -298,7 +298,7 @@ mod tests {
 
     /// For each command that changes geometry, the typed steps that reach its live preview.
     /// A new command must be added here, which is how the preview rule in AGENTS.md is enforced.
-    const PREVIEW_STEPS: [(&str, &[&str]); 74] = [
+    const PREVIEW_STEPS: &[(&str, &[&str])] = &[
         ("SubDBox", &["0,0"]),
         ("SubDPlane", &["0,0"]),
         ("SubDSphere", &["0,0"]),
@@ -376,7 +376,7 @@ mod tests {
     ];
 
     /// These finish at once when objects are selected, so there is no moment to show a preview.
-    const NOTHING_TO_PREVIEW: [&str; 106] = [
+    const NOTHING_TO_PREVIEW: &[&str] = &[
         "SubDLoft",
         "ToNURBS",
         "MergeFaces",
@@ -486,7 +486,7 @@ mod tests {
     ];
 
     /// Commands whose preview needs its own setup, tested in their own files.
-    const PREVIEW_TESTED_ELSEWHERE: [&str; 83] = [
+    const PREVIEW_TESTED_ELSEWHERE: &[&str] = &[
         "MultiPipe",
         "Bevel",
         "OffsetSubD",
@@ -742,7 +742,7 @@ mod tests {
     /// The commands that move, copy or reshape objects already in the model, with the steps that
     /// reach the first step at which the objects move with the pointer (or with a typed value, where
     /// the step takes one: Rotate3D's angle).
-    const TRANSFORM_STEPS: [(&str, &[&str]); 13] = [
+    const TRANSFORM_STEPS: &[(&str, &[&str])] = &[
         ("Move", &["0,0"]),
         ("Copy", &["0,0"]),
         ("Rotate", &["0,0", "5,0"]),
@@ -796,7 +796,7 @@ mod tests {
     #[test]
     fn every_transform_previews_every_kind_of_object() {
         for (kind, start, solid) in one_of_each_kind() {
-            for (name, steps) in TRANSFORM_STEPS {
+            for &(name, steps) in TRANSFORM_STEPS {
                 let mut doc = curva_document::Document::default();
                 doc.restore(start.state().clone());
                 doc.select(&start.selection());
@@ -819,7 +819,7 @@ mod tests {
 
     #[test]
     fn every_command_that_changes_geometry_shows_a_preview() {
-        for (name, steps) in PREVIEW_STEPS {
+        for &(name, steps) in PREVIEW_STEPS {
             let mut doc = curva_document::Document::default();
             let id = doc.add(curva_kernel::Curve::line([1.0, 1.0, 0.0], [4.0, 1.0, 0.0]).unwrap());
             doc.select(&[id]);

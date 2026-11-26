@@ -1202,6 +1202,46 @@ mod tests {
         assert_eq!(&gone[..3], &[200, 120, 40], "the preview goes");
     }
 
+    /// How many pipelines Bevy has made so far.
+    fn pipelines_made(pilot: &Pilot) -> usize {
+        let apps = pilot
+            .apps
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        apps.sub_apps
+            .get(&RenderApp.intern())
+            .and_then(|render| {
+                render
+                    .world()
+                    .get_resource::<bevy::render::render_resource::PipelineCache>()
+            })
+            .map_or(0, |cache| cache.pipelines().count())
+    }
+
+    /// #699: the first preview needs no new pipeline: Bevy readied it as the view was made, so a
+    /// command's first preview does not stop Curva while Bevy makes one (seconds on Windows).
+    #[test]
+    fn the_first_preview_needs_no_new_pipeline() {
+        let _turn = one_at_a_time();
+        let Some((mut pilot, device, queue)) = pilot() else {
+            return;
+        };
+        let mut view = drawing(StandardView::Top, Vec::new());
+        for _ in 0..3 {
+            middle(&mut pilot, &device, &queue, &view);
+        }
+        let before = pipelines_made(&pilot);
+        assert!(before > 0, "Bevy made its pipelines");
+        view.preview_faces = Arc::new(square([0.0, 0.0, 1.0], crate::PREVIEW_COLOUR));
+        let shown = middle(&mut pilot, &device, &queue, &view);
+        assert_ne!(&shown[..3], &[200, 120, 40], "the preview shows");
+        assert_eq!(
+            pipelines_made(&pilot),
+            before,
+            "no pipeline made for the first preview"
+        );
+    }
+
     /// In the Studio look a white face is light grey, as in Rhino's Shaded, but not burnt out:
     /// lighter seen from above (lit from the viewer, from above and by the sky) than from the
     /// front, and grey, not tinted.

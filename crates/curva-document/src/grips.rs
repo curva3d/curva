@@ -16,6 +16,11 @@ fn points_of(shape: &crate::Shape) -> Vec<Point> {
         crate::Shape::Curve(curve) => curve.control_points().unwrap_or_default(),
         crate::Shape::Mesh(mesh) => mesh.vertices().to_vec(),
         crate::Shape::SubD(subd) => subd.cage().vertices().to_vec(),
+        // A one-face surface's control net, row by row, as Rhino 8 shows it (#768).
+        crate::Shape::Body(body) => body
+            .control_net()
+            .map(|(_, _, points)| points)
+            .unwrap_or_default(),
         _ => Vec::new(),
     }
 }
@@ -147,6 +152,15 @@ impl Document {
                     id,
                     crate::Shape::SubD(subd.with_cage_points_moved(&moved(subd.cage().vertices()))),
                 )),
+                crate::Shape::Body(body) => {
+                    // Grip i of a surface is row i / columns, column i % columns of its net.
+                    let (_, cols, points) = body.control_net()?;
+                    let moves: Vec<((usize, usize), Point)> = indices
+                        .iter()
+                        .filter_map(|&i| Some(((i / cols, i % cols), change(*points.get(i)?))))
+                        .collect();
+                    made.push((id, crate::Shape::Body(body.with_net_moved(&moves)?)));
+                }
                 _ => {}
             }
         }

@@ -138,6 +138,12 @@ impl Body {
     /// The surface extended past its edge `edge` by `distance` (Rhino's ExtendSrf).
     pub fn extended_at(&self, edge: usize, distance: f64, how: Carry) -> Result<Self, KernelError> {
         use solidcore_ops::extend::Continuation;
+        // Smooth, on a plain one-face surface: Rhino's own continuation (#751).
+        if how == Carry::Natural
+            && let Some(longer) = self.smoothly_extended(edge, distance)?
+        {
+            return Ok(longer);
+        }
         let (body, order) = self.engine_with_order()?;
         let how = match how {
             Carry::Natural => Continuation::Natural,
@@ -170,6 +176,17 @@ impl Body {
             .and_then(|e| e.uses.first().copied())
             .ok_or_else(|| KernelError(format!("the body has no edge {edge}")))?;
         let outer = used.r#loop == 0;
+        // A plane with no holes goes back to its own rectangle, as Rhino's planes (NURBS) do:
+        // a disc split out of a 10 × 10 plane untrims to the whole plane (#734). The engine puts
+        // an analytic surface back on its outer loop's box instead.
+        let face = &record.faces[used.face as usize];
+        if outer
+            && face.nurbs.is_none()
+            && face.loops.len() == 1
+            && matches!(face.surface, solidcore_record::brep::Surface::Plane { .. })
+        {
+            return crate::NurbsSurface::of_face(&record, used.face as usize)?.to_body();
+        }
         let (body, order) = self.engine_with_order()?;
         let along = [edge];
         let holes = if outer {
@@ -404,6 +421,14 @@ impl Body {
             }
         }
         Ok(found)
+    }
+
+    /// The surface turned over, each face's normal the other way (Rhino's Flip on surfaces,
+    /// #768). A closed solid can't be: turned over it would be inside out.
+    pub fn turned_over(&self) -> Result<Self, KernelError> {
+        let (record, _) = solidcore_ops::surface::reverse_sheet(&self.record()?)
+            .map_err(|e| failed("turning the surface over", e))?;
+        Self::from_record(&record)
     }
 
     /// The faces numbered `faces` moved along their normals by `distance`, the solid around
