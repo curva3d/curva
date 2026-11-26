@@ -267,7 +267,7 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | ExtractIsocurve | Surface; point | `Direction` `Toggle` | `U` `V` `Both` | partly |
 | ShrinkTrimmedSrf | Surfaces | none | none | done |
 | BlendSrf | Two edges | `Position` `Tangency` `Curvature` `Bulge` `Planar Sections` | `Position` `Tangency` `Curvature` `Bulge` | partly |
-| MatchSrf | Edge to change; edge to match | `Position` `Tangency` `Curvature` `AverageSurfaces` | `Position` `Tangency` | partly |
+| MatchSrf | Edge to change; edge to match | `Position` `Tangency` `Curvature` `AverageSurfaces` | `Position` `Tangency` `Curvature` | partly |
 | Sweep2 | Two rails; cross sections | `MaintainHeight` `Simplify` | none | partly |
 | Twist | Objects; axis; angle | `Infinite` `PreserveStructure` | none | partly |
 | Bend | Objects; spine; bend point | `Symmetric` `Copy` `Straight` | none | partly |
