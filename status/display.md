@@ -11,6 +11,7 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 ## 25 November 2026
 
 **Done**
+- **Picking among locked objects only** (#715, for features' UnlockSelected): `PickFilter.locked_only` makes clicks and boxes take locked objects and no others, as Rhino does while UnlockSelected asks for objects. The app sets it from the command's request (features).
 - **The first solid preview no longer freezes Curva** (#699 from the testing stream; very likely
   the owner's 0.1.6 "lag at the height step").
   - The cause: Bevy makes each drawing pipeline the first time it is needed, and synchronously
