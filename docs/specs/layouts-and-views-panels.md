@@ -137,6 +137,23 @@ layouts. It gains:
 4. **Panel placement:** Views and Layouts as two panels side by side in the right-hand dock, or one
    panel with two tabs. *Recommended*: two panels, as each is used on its own a lot.
 
+### Owner's answers (26 November 2026)
+
+1. **Details show views:** yes, as recommended.
+2. **A view can sit on several layouts**, as in Archicad. To keep references clear, each section,
+   elevation or detail marker points to **one chosen placement** of its view: the first placement
+   by default, changeable in the marker's properties. The Views panel shows every layout a view is
+   on.
+3. **Still open:** how viewpoints, views and cameras relate. Archicad keeps them apart: a camera is
+   a placed element that becomes one more 3D viewpoint, and a view is a viewpoint plus how it is
+   shown. Two questions remain: are cameras placed objects in the model, or saved positions like
+   Rhino's named views; and are viewpoints and views two tabs, or one tree with views under their
+   viewpoint.
+4. **Two panels**, as recommended. Besides the normal way (a detail on the layout, then choose its
+   view), **drag a view** from the Views panel onto an open layout, or onto a layout's row in the
+   Layouts panel, to place it; dropped on a row, it lands in the layout's first free space at the
+   view's scale.
+
 ## 7. Sources
 
 - [Archicad: Navigator basics](https://community.graphisoft.com/t5/Getting-started/Archicad-Basic-Concepts-The-Navigator/ta-p/303987),

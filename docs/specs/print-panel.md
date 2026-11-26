@@ -89,3 +89,9 @@ It opens wide (a large panel size from #488), because the preview is the point o
 2. **Preview on the left, large**, or on top as today. *Recommended*: left and large.
 3. **Print sets in the first step**, or after the layout change. *Recommended*: after (step 3), so the
    new layout lands first.
+
+### Owner's answers (26 November 2026)
+
+1. **One panel** for one layout and many, as recommended.
+2. **Preview on the left, large**, as recommended.
+3. **Print sets after the layout change** (step 3), as recommended.
