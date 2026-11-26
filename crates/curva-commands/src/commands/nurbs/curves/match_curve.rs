@@ -6,10 +6,11 @@ use crate::commands::arguments::*;
 use crate::commands::curves_of;
 use crate::recipe::{Context, Made, OptionDef, Recipe, StepDef};
 use curva_document::Shape;
-use curva_kernel::{Point, Spline};
+use curva_kernel::{Point, Spline, dot};
 
 /// `Match`: changes the end of a curve nearest another so it meets that curve, in position,
-/// along its tangent (the default) or in curvature, moving only the control points near that end.
+/// along its tangent or in curvature (the default, as in Rhino 8, #770), moving only the control
+/// points near that end.
 #[derive(Default)]
 pub struct Match;
 
@@ -53,11 +54,34 @@ fn matched_end(spline: Spline, end: Point, d1: Point, d2: Point, how: Continuity
     if how == Continuity::Tangency {
         return s;
     }
-    let span2 = u[n + deg - 1] - u[n];
-    let q0: Point = std::array::from_fn(|k| d1[k] - d2[k] * span2 / (p - 1.0));
-    let span3 = u[n + deg - 1] - u[n - 1];
-    put(&mut s, n - 2, plus(p1, q0, -span3 / p));
+    // Curvature as Rhino 8 matches it (#770): the third point only moves sideways from the
+    // second, along the target's normal, as far as the target's curvature needs; on a straight
+    // target it sits on the second.
+    let bend = curvature(d1, d2);
+    let amount = length(bend);
+    put(&mut s, n - 2, p1);
+    if amount < 1e-12 {
+        return s;
+    }
+    let normal = scaled(bend, 1.0 / amount);
+    put(&mut s, n - 2, plus(p1, normal, 1.0));
+    // The curvature one unit sideways gives, along the normal: it grows in step with the offset.
+    let (_, e1, e2) = s.end_derivatives();
+    let per_unit = dot(curvature(e1, e2), normal);
+    if per_unit.abs() < 1e-12 {
+        put(&mut s, n - 2, p1);
+        return s;
+    }
+    put(&mut s, n - 2, plus(p1, normal, amount / per_unit));
     s
+}
+
+/// The curvature vector of a curve whose first and second derivatives are `d1` and `d2`: the
+/// part of `d2` across `d1`, over the speed squared.
+fn curvature(d1: Point, d2: Point) -> Point {
+    let speed2 = dot(d1, d1).max(1e-24);
+    let along = dot(d2, d1) / speed2;
+    std::array::from_fn(|k| (d2[k] - along * d1[k]) / speed2)
 }
 
 impl Recipe for Match {
@@ -94,7 +118,7 @@ impl Recipe for Match {
         let bspeed = length(target_d1).max(1e-12);
         let d1 = scaled(target_d1, speed / bspeed);
         let d2 = scaled(bd2, (speed / bspeed).powi(2));
-        let changed = matched_end(worked, end, d1, d2, continuity(cx, Continuity::Tangency));
+        let changed = matched_end(worked, end, d1, d2, continuity(cx, Continuity::Curvature));
         let changed = if a_end { changed } else { changed.reversed() };
         let curve = changed.to_curve().map_err(|e| failed(&e))?;
         Ok(Made {
@@ -146,5 +170,50 @@ mod tests {
         let (_, d1, d2) = spline.end_derivatives();
         assert!(d1[1].abs() < 1e-9 && d1[0] > 0.0, "{d1:?}");
         assert!(d2[1].abs() < 1e-6, "{d2:?}");
+    }
+
+    /// B's control points after `Match` (its default mode) onto `target`.
+    fn matched_onto(target: Curve) -> Vec<[f64; 3]> {
+        let mut doc = Document::default();
+        let points = vec![
+            [6.0, 1.0, 0.0],
+            [7.0, 3.0, 0.0],
+            [9.0, 2.0, 0.0],
+            [10.0, 4.0, 0.0],
+        ];
+        let b = doc.add(Curve::control_point(points, 3, false).unwrap());
+        let a = doc.add(target);
+        let mut processor = crate::Processor::default();
+        processor.submit(&mut doc, "match");
+        doc.select(&[b]);
+        processor.submit(&mut doc, "");
+        doc.select(&[a]);
+        processor.submit(&mut doc, "");
+        let object = doc.state().objects.iter().find(|o| o.id == b).unwrap();
+        object.curve().unwrap().control_points().unwrap()
+    }
+
+    #[test]
+    fn curvature_is_the_default_and_moves_the_third_point_sideways_as_in_rhino() {
+        // The testing stream's case (#770), measured with Rhino 8's -Match.
+        let close = |p: [f64; 3], q: [f64; 2]| gap(p, [q[0], q[1], 0.0]) < 1e-3;
+        let straight = matched_onto(Curve::line([0.0; 3], [5.0, 0.0, 0.0]).unwrap());
+        let rhino = [[5.0, 0.0], [7.2361, 0.0], [7.2361, 0.0], [10.0, 4.0]];
+        assert!(
+            straight.iter().zip(rhino).all(|(p, q)| close(*p, q)),
+            "{straight:?}"
+        );
+        let curved = Curve::control_point(
+            vec![[0.0; 3], [2.0, 2.0, 0.0], [4.0, -1.0, 0.0], [5.0, 0.0, 0.0]],
+            3,
+            false,
+        )
+        .unwrap();
+        let bent = matched_onto(curved);
+        let rhino = [[5.0, 0.0], [6.5811, 1.5811], [0.3311, 7.8311], [10.0, 4.0]];
+        assert!(
+            bent.iter().zip(rhino).all(|(p, q)| close(*p, q)),
+            "{bent:?}"
+        );
     }
 }
