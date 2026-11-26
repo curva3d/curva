@@ -117,7 +117,15 @@ fn corners(rail: &Curve) -> Option<Vec<Point>> {
             points,
             closed: false,
         } if points.len() >= 3 => Some(points.clone()),
-        _ => None,
+        Curve::Polyline { .. } => None,
+        // A degree-1 curve is a polyline through its control points, as Rhino treats it (an
+        // imported L, or one rebuilt at degree 1, #666).
+        _ => {
+            let spline = Spline::of(rail).ok()?;
+            let points = spline.control_points();
+            let (a, b) = (points.first()?, points.last()?);
+            (spline.degree == 1 && points.len() >= 3 && crate::gap(*a, *b) > 1e-9).then_some(points)
+        }
     }
 }
 
@@ -141,8 +149,16 @@ impl Body {
             .collect::<Result<_, KernelError>>()?;
         placed.sort_by(|a, b| a.0.total_cmp(&b.0));
         if let [(at, section)] = placed[..] {
-            // One section anywhere on the rail: carried to the rail's start along the turning
-            // frames, then swept exactly along the whole rail.
+            let (_, end) = spline.domain();
+            // One section part way along: Rhino sweeps it only from the rail's start to where it
+            // lies (#665), so the rail is cut there and swept from the section back.
+            if at - start > 1e-6 * (end - start) && end - at > 1e-6 * (end - start) {
+                if let Some((before, _)) = spline.split(at) {
+                    return Self::swept(&[section.clone()], &before.reversed().to_curve()?, false);
+                }
+            }
+            // At either end: carried to the rail's start along the turning frames, then swept
+            // exactly along the whole rail.
             let (from, to) = (frame_at(&frames, at), frame_at(&frames, start));
             let moved = moved_between(section, &from, &to)?;
             return Self::swept(&[moved], rail, false);
@@ -492,11 +508,15 @@ mod tests {
         let rail = Curve::line([0.0; 3], [0.0, 0.0, 10.0]).unwrap();
         let circle = Curve::circle([0.0, 0.0, 5.0], 1.0).unwrap();
         let swept = Body::swept_along(&[circle], &rail).unwrap();
+        // Rhino 8 (#665, measured by the testing stream): a section part way along sweeps only
+        // from the rail's start to it, here the first half.
         let (low, high) = swept.bounds().unwrap();
         assert!(
-            low[2].abs() < 1e-6 && (high[2] - 10.0).abs() < 1e-6,
+            low[2].abs() < 1e-6 && (high[2] - 5.0).abs() < 1e-6,
             "{low:?} {high:?}"
         );
+        let area = swept.area().unwrap();
+        assert!((area - std::f64::consts::TAU * 5.0).abs() < 1e-3, "{area}");
     }
 
     #[test]
@@ -523,8 +543,16 @@ mod tests {
 
     #[test]
     fn a_rail_with_a_corner_is_swept_in_mitred_pieces_as_in_rhino() {
-        let rail =
-            Curve::polyline(vec![[0.0; 3], [10.0, 0.0, 0.0], [10.0, 8.0, 0.0]], false).unwrap();
+        let corners = vec![[0.0; 3], [10.0, 0.0, 0.0], [10.0, 8.0, 0.0]];
+        // The same L as a polyline and as a degree-1 NURBS curve, which Rhino sweeps alike (#666).
+        let polyline = Curve::polyline(corners.clone(), false).unwrap();
+        let nurbs = Curve::nurbs(1, vec![0.0, 0.0, 1.0, 2.0, 2.0], corners, Vec::new()).unwrap();
+        for rail in [polyline, nurbs] {
+            swept_round_the_corner(&rail);
+        }
+    }
+
+    fn swept_round_the_corner(rail: &Curve) {
         let section = Curve::polyline(
             vec![
                 [0.0, -0.5, 0.0],
@@ -535,7 +563,7 @@ mod tests {
             true,
         )
         .unwrap();
-        let swept = Body::swept_along(&[section], &rail).unwrap();
+        let swept = Body::swept_along(&[section], rail).unwrap();
         // Rhino: area 108 (perimeter 6 along 18), box (0, -0.5, 0) to (10.5, 8, 2).
         assert!(
             (swept.area().unwrap() - 108.0).abs() < 1e-4,
