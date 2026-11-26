@@ -180,6 +180,8 @@ pub struct Document {
     work_plane: Option<[Point; 2]>,
     /// The origin of that plane. Not saved, and not part of undo.
     work_origin: Point,
+    /// The view being drawn in, which a new clipping plane cuts (#813). Not saved.
+    drawing_in: Option<clipping::ClipView>,
     /// Whether new results remember how they were made. Not saved, and not part of undo.
     recording_history: bool,
     /// Values commands keep between runs, such as the last offset distance. Not saved.

@@ -104,6 +104,18 @@ fn plane_of(points: &[Point]) -> Option<(Point, Point)> {
 }
 
 impl Document {
+    /// The view being drawn in: the active viewport, or the detail entered on a sheet. A new
+    /// clipping plane cuts only this view, as in Rhino (#813). Perspective until the app says.
+    #[must_use]
+    pub fn drawing_in(&self) -> ClipView {
+        self.drawing_in.unwrap_or(ClipView::Viewport(1))
+    }
+
+    /// Sets the view being drawn in; the app sets it each frame.
+    pub fn set_drawing_in(&mut self, view: ClipView) {
+        self.drawing_in = Some(view);
+    }
+
     /// Adds a clipping plane's record for the rectangle `frame`.
     pub fn add_clipping_plane(&mut self, plane: ClippingPlane) {
         self.state.clipping_planes.push(plane);

@@ -119,13 +119,18 @@ impl Curva {
         (planes, Some(made))
     }
 
+    /// The view being worked in: the detail entered on a sheet, else the active viewport.
+    pub(crate) fn clip_view(&self) -> ClipView {
+        match self.sheets.entered {
+            Some(frame) if self.sheets.open.is_some() => ClipView::Detail(frame),
+            _ => ClipView::Viewport(self.active),
+        }
+    }
+
     /// Picked clipping planes cut, or stop cutting, the active viewport, or the detail being
     /// worked in on a sheet.
     pub(crate) fn clip_in(&mut self, frames: &[u64], on: bool) {
-        let view = match self.sheets.entered {
-            Some(frame) if self.sheets.open.is_some() => ClipView::Detail(frame),
-            _ => ClipView::Viewport(self.active),
-        };
+        let view = self.clip_view();
         let frames = frames.to_vec();
         self.undoable(|doc| {
             for frame in frames {
