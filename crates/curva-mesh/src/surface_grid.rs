@@ -117,16 +117,17 @@ impl Mesh {
         let point = |i: usize, j: usize| surface.point(u[i], v[j]);
         let sign = if flip { -1.0 } else { 1.0 };
         let centre = [(u[0] + u[nu - 1]) / 2.0, (v[0] + v[nv - 1]) / 2.0];
-        let positions: Vec<Point> = (0..nu * nv).map(|k| point(k / nv, k % nv)).collect();
-        let mut normals: Vec<Point> = (0..nu * nv)
-            .map(|k| normal_near(surface, [u[k / nv], v[k % nv]], centre).map(|c| c * sign))
-            .collect();
-        let mut vertices = positions.clone();
+        let mut positions: Vec<Point> = (0..nu * nv).map(|k| point(k / nv, k % nv)).collect();
         // Points closer than this are one: a pole's points differ only by rounding.
         let same = 1e-9
             * positions.iter().fold(1.0, |m: f64, p| {
                 m.max(p.iter().fold(0.0, |a: f64, c| a.max(c.abs())))
             });
+        snap(&mut positions, nu, nv, same);
+        let mut normals: Vec<Point> = (0..nu * nv)
+            .map(|k| normal_near(surface, [u[k / nv], v[k % nv]], centre).map(|c| c * sign))
+            .collect();
+        let mut vertices = positions.clone();
         let mut push = |p: Point, uv: [f64; 2], toward: [f64; 2]| -> u32 {
             vertices.push(p);
             normals.push(normal_near(surface, uv, toward).map(|c| c * sign));
@@ -180,6 +181,37 @@ impl Mesh {
             .unwrap_or(mesh)
             .without_unused_vertices()
             .0
+    }
+}
+
+/// Makes the grid points that are one place exactly equal, so the mesh closes by place: each
+/// pole's points take the first one's position, and a closed seam's last row the first's.
+fn snap(positions: &mut [Point], nu: usize, nv: usize, same: f64) {
+    let rows: [Vec<usize>; 4] = [
+        (0..nv).collect(),
+        (0..nv).map(|j| (nu - 1) * nv + j).collect(),
+        (0..nu).map(|i| i * nv).collect(),
+        (0..nu).map(|i| i * nv + nv - 1).collect(),
+    ];
+    for row in rows {
+        let first = positions[row[0]];
+        if row.iter().all(|&k| distance(positions[k], first) <= same) {
+            for k in row {
+                positions[k] = first;
+            }
+        }
+    }
+    for j in 0..nv {
+        let (a, b) = (j, (nu - 1) * nv + j);
+        if distance(positions[a], positions[b]) <= same {
+            positions[b] = positions[a];
+        }
+    }
+    for i in 0..nu {
+        let (a, b) = (i * nv, i * nv + nv - 1);
+        if distance(positions[a], positions[b]) <= same {
+            positions[b] = positions[a];
+        }
     }
 }
 

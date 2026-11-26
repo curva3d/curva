@@ -112,7 +112,11 @@ impl MeshSettings {
 }
 
 impl Mesh {
-    /// A surface or solid meshed with these settings, sized by its box's diagonal.
+    /// A surface or solid meshed with these settings, sized by its box's diagonal. As Rhino 8's
+    /// `Mesh` does, a lone untrimmed surface (a sphere, a torus, a revolved or lofted surface) is a
+    /// grid of quads (#733). Polysurfaces keep the kernel's triangles for now: Rhino splits each
+    /// edge between faces once for both, and a grid next to the kernel's triangles would not
+    /// meet them point for point, leaving the mesh open.
     ///
     /// # Errors
     /// When the kernel cannot measure or mesh the body.
@@ -123,13 +127,59 @@ impl Mesh {
             .sum::<f64>()
             .sqrt();
         let (chord, angle) = settings.tolerances(size);
-        Ok(Self::from_body_mesh(&body.mesh_with(chord, Some(angle))?))
+        let made = body.mesh_with(chord, Some(angle))?;
+        let mut grids = body.untrimmed_face_surfaces()?;
+        if grids.len() > 1 {
+            grids.clear();
+        }
+        Ok(Self::from_body_with_grids(&made, &grids, chord, angle))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_sphere_is_meshed_in_quads_as_rhinos_mesh_does() {
+        // Rhino 8's Mesh at the middle density, sphere r5: 2143 points, 2048 faces, 1920 quads.
+        let body = Body::sphere([0.0; 3], 5.0).unwrap();
+        let mesh = Mesh::from_body_with(&body, &MeshSettings::default()).unwrap();
+        let quads = mesh.faces().filter(|f| f.len() == 4).count();
+        assert_eq!(
+            (mesh.vertex_count(), mesh.face_count(), quads),
+            (2143, 2048, 1920)
+        );
+        assert!((mesh.volume().unwrap() - 521.4958).abs() < 0.05);
+    }
+
+    #[test]
+    fn a_capped_cylinder_stays_closed() {
+        let profile = [
+            [0.0, 0.0, 0.0],
+            [3.0, 0.0, 0.0],
+            [3.0, 0.0, 8.0],
+            [0.0, 0.0, 8.0],
+        ];
+        let outline = curva_kernel::Curve::polyline(profile.to_vec(), true).unwrap();
+        let tau = std::f64::consts::TAU;
+        let body = Body::revolved(&[outline], [0.0; 3], [0.0, 0.0, 1.0], tau, true).unwrap();
+        let mesh = Mesh::from_body_with(&body, &MeshSettings::default()).unwrap();
+        // A gridded side would not meet the caps' triangles point for point (#733).
+        assert!(mesh.faces().all(|f| f.len() == 3));
+        let volume = std::f64::consts::PI * 9.0 * 8.0;
+        assert!((mesh.volume().unwrap() - volume).abs() / volume < 0.02);
+    }
+
+    #[test]
+    fn a_polysurface_keeps_the_kernels_triangles() {
+        // Rhino meshes a polysurface face by face with its edges shared (48 points and 36
+        // triangles for a box); until that is matched, polysurfaces stay the kernel's triangles.
+        let body = Body::cuboid([0.0; 3], [10.0; 3]).unwrap();
+        let mesh = Mesh::from_body_with(&body, &MeshSettings::default()).unwrap();
+        assert!(mesh.faces().all(|f| f.len() == 3));
+        assert!((mesh.welded(1e-9).0.volume().unwrap() - 1000.0).abs() < 1e-6);
+    }
 
     #[test]
     fn the_default_is_the_middle_of_the_slider_and_rhinos_subd_level() {
