@@ -17,7 +17,7 @@ const MODEL_TOLERANCE: f64 = 0.001;
 
 /// Which side of its surface's parameter box an edge runs along.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Side {
+pub(crate) enum Side {
     U0,
     U1,
     V0,
@@ -206,7 +206,7 @@ impl Body {
     }
 
     /// Which side of its face's untrimmed surface the edge runs along, and that face.
-    fn edge_side(&self, edge: usize) -> Result<(usize, Side, bool), KernelError> {
+    pub(crate) fn edge_side(&self, edge: usize) -> Result<(usize, Side, bool), KernelError> {
         let record = self.record()?;
         let e = record
             .edges
