@@ -144,6 +144,14 @@ impl Pilot {
 
     /// Has Bevy draw `drawing`'s view, `size` pixels, and returns its picture and depth; `None`
     /// while Bevy has not made it yet.
+    /// The picture Bevy last drew of view `slot`, without drawing it again: a view not drawn since
+    /// keeps it, as each update draws only the views handed to it.
+    pub(crate) fn last_picture(&self, slot: usize) -> Option<BevyPicture> {
+        let apps = self.apps.lock().ok()?;
+        let (colour, depth) = picture_of(&apps, self.views.get(&slot)?)?;
+        Some(BevyPicture { colour, depth })
+    }
+
     pub(crate) fn picture(&mut self, drawing: &Drawing, size: [u32; 2]) -> Option<BevyPicture> {
         self.draw_all(&[(drawing, size)])
             .pop()
@@ -421,9 +429,22 @@ impl Pictures {
 
     /// Draws `drawing` as the window draws a Bevy view, `size` pixels.
     fn draw(&mut self, drawing: &mut Drawing, size: [u32; 2]) {
-        use egui_wgpu::CallbackTrait;
+        self.draw_frame(std::slice::from_mut(drawing), size);
+    }
+
+    /// Draws `drawings` one after another in one frame of the window, as egui draws a window's
+    /// views and a sheet's details.
+    fn draw_frame(&mut self, drawings: &mut [Drawing], size: [u32; 2]) {
         self.frame += 1;
-        drawing.frame = self.frame;
+        for drawing in drawings {
+            drawing.frame = self.frame;
+            self.prepare(drawing, size);
+        }
+    }
+
+    /// Hands `drawing` to the graphics card as egui does.
+    fn prepare(&mut self, drawing: &Drawing, size: [u32; 2]) {
+        use egui_wgpu::CallbackTrait;
         let screen = egui_wgpu::ScreenDescriptor {
             size_in_pixels: size,
             pixels_per_point: 1.0,
@@ -502,6 +523,7 @@ fn picture_drawing(
         background: background.0,
         background_low: background.1,
         camera,
+        over: Vec::new(),
     }
 }
 
@@ -602,6 +624,7 @@ mod tests {
 
     mod faces;
     mod grid;
+    mod sheets;
     mod wires;
 
     use crate::{MeshVertex, NO_OBJECT, StandardView};
@@ -677,6 +700,7 @@ mod tests {
             background: BACKGROUND,
             background_low: BACKGROUND,
             camera,
+            over: Vec::new(),
         }
     }
 

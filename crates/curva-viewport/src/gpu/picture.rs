@@ -211,6 +211,7 @@ fn picture_drawing(picture: Picture, scene: &Scene) -> Drawing {
         background: epaint::Color32::BLACK,
         background_low: epaint::Color32::BLACK,
         camera: picture.camera,
+        over: Vec::new(),
     }
 }
 

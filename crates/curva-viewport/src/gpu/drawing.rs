@@ -8,6 +8,7 @@ use std::sync::Arc;
 use super::{LineRenderer, PIXELS_PER_MM};
 
 /// One frame of the viewport, handed to the window's drawing.
+#[derive(Clone)]
 pub struct Drawing {
     /// Which view this is, below [`VIEW_SLOTS`].
     pub slot: usize,
@@ -56,9 +57,79 @@ pub struct Drawing {
     pub background_low: epaint::Color32,
     /// The camera `matrix` was made from, for views Bevy draws.
     pub camera: crate::Camera,
+    /// Frames, in points, to draw this view again over what is there, from the picture Bevy
+    /// already made of it this frame: a sheet's objects over its details, as Rhino draws them
+    /// (#826). Empty for a view drawn the ordinary way.
+    pub over: Vec<epaint::Rect>,
 }
 
 impl Drawing {
+    /// This sheet's objects drawn again inside each frame in `over`, its details', from the picture
+    /// Bevy made of it earlier this frame (#826): its filled letters and marks over the details'
+    /// pictures, the paper left out, then its lines. The lines' buffers and table are this
+    /// view's, set when it was drawn.
+    fn sheet_over_details(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        screen: &egui_wgpu::ScreenDescriptor,
+        encoder: &mut wgpu::CommandEncoder,
+        resources: &mut egui_wgpu::CallbackResources,
+    ) {
+        let size = screen.size_in_pixels;
+        let points = screen.pixels_per_point;
+        let Some((low, high)) = self.pixel_area(size, points) else {
+            return;
+        };
+        let frames: Vec<[u32; 4]> = self
+            .over
+            .iter()
+            .filter_map(|frame| {
+                let (a, b) = (
+                    (frame.min * points).max(low),
+                    (frame.max * points).min(high),
+                );
+                let (w, h) = (b.x.floor() - a.x.ceil(), b.y.floor() - a.y.ceil());
+                (w >= 1.0 && h >= 1.0)
+                    .then(|| [a.x.ceil() as u32, a.y.ceil() as u32, w as u32, h as u32])
+            })
+            .collect();
+        let picture = resources
+            .get::<Pilot>()
+            .and_then(|pilot| pilot.last_picture(self.slot));
+        let (Some(picture), false) = (picture, frames.is_empty()) else {
+            return;
+        };
+        let Some(format) = resources.get::<LineRenderer>().map(|r| r.compositor.format) else {
+            return;
+        };
+        let over = resources
+            .remove::<super::over::SheetOver>()
+            .unwrap_or_else(|| super::over::SheetOver::new(device, format));
+        let area = [low.x, low.y, high.x - low.x, high.y - low.y];
+        if let Some(renderer) = resources.get_mut::<LineRenderer>() {
+            let target = renderer.compositor.target(device, size);
+            let (colour, depth) = (target.colour.clone(), target.depth.clone());
+            let paper = held(self.background, format);
+            let targets = [&colour, &depth];
+            over.draw(
+                (device, queue),
+                encoder,
+                &picture.colour,
+                targets,
+                (area, &frames),
+                paper,
+            );
+            let mut pass = lines_pass(encoder, targets, false, None);
+            fit(&mut pass, area);
+            for &[x, y, w, h] in &frames {
+                pass.set_scissor_rect(x, y, w, h);
+                renderer.draw_over(&mut pass, self.slot);
+            }
+        }
+        resources.insert(over);
+    }
+
     /// The view's place on a window texture of `size` pixels, its corners in pixels; `None`
     /// when less than a pixel of it shows.
     fn pixel_area(
@@ -101,6 +172,10 @@ impl egui_wgpu::CallbackTrait for Drawing {
         encoder: &mut wgpu::CommandEncoder,
         resources: &mut egui_wgpu::CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
+        if !self.over.is_empty() {
+            self.sheet_over_details(device, queue, screen, encoder, resources);
+            return Vec::new();
+        }
         // Bevy draws and sends its own work to the card first, so its picture is ready for
         // the copy below.
         let picture = self.bevy_picture(device, queue, screen, resources);
@@ -337,4 +412,24 @@ fn lines_on_bevy(
     if let Some(timer) = &mut renderer.timer {
         timer.finish_pass(encoder);
     }
+}
+
+/// `colour` as a picture in `format` holds it once read: its own bytes, or for an sRGB picture,
+/// light values, as the graphics card turns them when it reads.
+fn held(colour: epaint::Color32, format: wgpu::TextureFormat) -> [f32; 3] {
+    let byte = |b: u8| f32::from(b) / 255.0;
+    let light = |c: f32| {
+        if c <= 0.04045 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    [colour.r(), colour.g(), colour.b()].map(|b| {
+        if format.is_srgb() {
+            light(byte(b))
+        } else {
+            byte(b)
+        }
+    })
 }

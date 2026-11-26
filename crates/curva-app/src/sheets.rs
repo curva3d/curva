@@ -162,6 +162,8 @@ impl Curva {
 
     /// Draws each detail on the open sheet: the model, seen through the detail's own camera, in
     /// the detail's frame (spec `layouts.md` §2). A scaled detail shows exactly as much model as
+    /// its scale and frame allow. Returns the frames drawn, on screen, for the sheet's own objects
+    /// to go over (#826).
     /// its scale and frame allow.
     pub(crate) fn paint_details(
         &mut self,
@@ -169,7 +171,7 @@ impl Curva {
         pane: usize,
         rect: egui::Rect,
         size: [f64; 2],
-    ) {
+    ) -> Vec<egui::Rect> {
         let Some(layout) = self
             .sheets
             .open
@@ -177,16 +179,17 @@ impl Curva {
             .filter(|_| self.shows_sheet(pane))
             .and_then(|open| self.doc.layout(open.layout).cloned())
         else {
-            return;
+            return Vec::new();
         };
         let details = self.doc.details_on(layout.id);
         if details.is_empty() {
-            return;
+            return Vec::new();
         }
         self.refresh_model_for_details();
         let sheet_camera = self.panes[pane].camera;
         let model_mm = self.doc.state().unit.millimetres();
         let paper_mm = layout.unit.millimetres();
+        let mut frames = Vec::new();
         for (slot, (detail, [low, high])) in details
             .iter()
             .take(curva_viewport::DETAIL_SLOTS)
@@ -213,6 +216,7 @@ impl Curva {
             ui.painter()
                 .with_clip_rect(on_screen)
                 .add(egui_wgpu_callback(shown, drawing));
+            frames.push(on_screen);
             if self.sheets.entered == Some(detail.frame) {
                 ui.painter().with_clip_rect(rect).rect_stroke(
                     shown,
@@ -222,6 +226,7 @@ impl Curva {
                 );
             }
         }
+        frames
     }
 
     /// What a detail hands the graphics card, drawn in view `slot` at `shown` on screen: the
@@ -272,6 +277,7 @@ impl Curva {
             background: PAPER,
             background_low: PAPER,
             camera,
+            over: Vec::new(),
         }
     }
 
