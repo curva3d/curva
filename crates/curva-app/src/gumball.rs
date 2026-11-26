@@ -33,6 +33,8 @@ fn is_double(
 pub(crate) const MOST_GUMBALL_PREVIEW: usize = 2000;
 
 pub(crate) const GUMBALL_TIP: f32 = 5.0;
+/// The dash and gap of the dotted line out to each scale square, in points.
+const GUMBALL_DASH: f32 = 3.0;
 
 pub(crate) const GUMBALL_AXES: [egui::Color32; 3] = [
     egui::Color32::from_rgb(230, 80, 80),
@@ -137,15 +139,22 @@ impl Curva {
             let sum = points.iter().fold([0.0; 3], |total, p| {
                 [total[0] + p[0], total[1] + p[1], total[2] + p[2]]
             });
+            // The scale squares sit on the picked points' box, as on an object's (#693).
+            let low = std::array::from_fn(|k| points.iter().map(|p| p[k]).fold(f64::MAX, f64::min));
+            let high =
+                std::array::from_fn(|k| points.iter().map(|p| p[k]).fold(f64::MIN, f64::max));
             return Some(Gumball {
                 centre: sum.map(|value| value / count),
-                extent: None,
+                extent: Some((low, high)),
             });
         }
-        let centre = self.outlines.centre_of(&self.doc.selection())?;
+        let selection = self.doc.selection();
+        let centre = self.outlines.centre_of(&selection)?;
+        // The scale squares sit on the selection's box, on each axis's negative side, as in
+        // Rhino 8 (#693).
         Some(Gumball {
             centre,
-            extent: None,
+            extent: self.outlines.bounds_of(&selection),
         })
     }
 
@@ -577,6 +586,16 @@ impl Curva {
             } else {
                 egui::CursorIcon::Grab
             });
+        }
+        // A dotted line from the centre out to each scale square, in its axis's colour (#693).
+        let at = |p: [f64; 2]| rect.min + egui::vec2(p[0] as f32, p[1] as f32);
+        for (axis, [from, to]) in gumball.square_lines(camera, size) {
+            painter.extend(egui::Shape::dashed_line(
+                &[at(from), at(to)],
+                egui::Stroke::new(1.0, GUMBALL_AXES[axis]),
+                GUMBALL_DASH,
+                GUMBALL_DASH,
+            ));
         }
         for (handle, run) in gumball.outlines(camera, size) {
             let lit = Some(handle) == hovered || Some(handle) == dragged;
