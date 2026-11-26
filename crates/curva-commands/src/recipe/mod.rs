@@ -115,6 +115,8 @@ pub enum Edit {
     SectionStyle(Vec<u64>, Option<curva_document::section::SectionStyle>),
     /// Sets these layers' section style, or clears it.
     LayerSectionStyle(Vec<u64>, Option<curva_document::section::SectionStyle>),
+    /// Takes away what nothing uses, of these kinds (Purge).
+    Purge(curva_document::PurgeWhat),
 }
 
 /// A new object made from an existing one, such as an offset.

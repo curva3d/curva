@@ -294,6 +294,9 @@ impl<R: Recipe> RecipeCommand<R> {
                         doc.set_layer_section_style(layer, style.clone());
                     }
                 }
+                Edit::Purge(what) => {
+                    doc.purge_with(what);
+                }
             }
         }
         added
