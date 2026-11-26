@@ -361,7 +361,6 @@ impl ViewScene {
             self.mirror_shapes(world, &mut meshes.1, &drawing.shapes);
             self.shapes = Some(Arc::clone(&drawing.shapes));
         }
-        self.restyle(world, &drawing.style);
         let clips = Clips::of(&drawing.clips);
         if self.clips != Some(clips) {
             self.clips = Some(clips);
@@ -385,6 +384,9 @@ impl ViewScene {
         if new_selection {
             self.selection = Some(Arc::clone(&drawing.selection));
         }
+        // Only now, once the parts of each object are listed again: parts removed above would
+        // still be listed before, and a new style reaching for them crashed (#811).
+        self.restyle(world, &drawing.style);
     }
 
     /// Puts Curva's background behind everything this view shows: a flat, unlit surface just
