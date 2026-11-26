@@ -77,10 +77,11 @@ fn kinks(knots: &[f64], degree: usize, count: usize) -> Vec<usize> {
             .take_while(|&&s| (s - t).abs() <= span * 1e-12)
             .count();
         let inner = (t - first).abs() > span * 1e-12 && (last - t).abs() > span * 1e-12;
-        if inner && times >= degree {
-            if let Some(i) = g.iter().position(|&s| (s - t).abs() <= span * 1e-9) {
-                found.push(i);
-            }
+        if inner
+            && times >= degree
+            && let Some(i) = g.iter().position(|&s| (s - t).abs() <= span * 1e-9)
+        {
+            found.push(i);
         }
         k += times;
     }
