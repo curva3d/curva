@@ -10,6 +10,8 @@ const SELECTED: &str = "Selected";
 const IN: &str = "In";
 const OUT: &str = "Out";
 const TARGET: &str = "Target";
+const ALL: &str = "All";
+const FACTOR: &str = "Factor";
 
 /// How much one step in or out changes the view, as in Rhino.
 const STEP: f64 = 2.0;
@@ -19,10 +21,21 @@ const STEP: f64 = 2.0;
 pub struct Zoom {
     corner: Option<Point>,
     targeting: bool,
+    /// Asking for a factor to zoom by (Rhino's `Factor`, #776).
+    factoring: bool,
 }
 
 impl Command for Zoom {
     fn step(&mut self, _doc: &mut Document, answer: Option<Answer>) -> Step {
+        if self.factoring {
+            return match answer {
+                Some(Answer::Number(factor)) if factor > 0.0 => {
+                    Step::View(ViewRequest::ZoomBy(factor))
+                }
+                Some(Answer::Number(_)) => Step::Failed(crate::Message::new("error.bad_distance")),
+                _ => unexpected(),
+            };
+        }
         if self.targeting {
             return match answer {
                 Some(Answer::Point(at)) => Step::View(ViewRequest::ZoomTarget(at)),
@@ -37,14 +50,19 @@ impl Command for Zoom {
         }
         match answer {
             None => Step::Ask(Request {
-                options: vec![EXTENTS, SELECTED, IN, OUT, TARGET],
+                options: vec![ALL, EXTENTS, FACTOR, IN, OUT, SELECTED, TARGET],
                 ..Request::new("prompt.zoom.corner", Kind::Point)
             }),
             Some(Answer::Point(corner)) => {
                 self.corner = Some(corner);
                 ask_point("prompt.zoom.other_corner", vec![corner])
             }
-            Some(Answer::Option(EXTENTS)) => Step::View(ViewRequest::ZoomExtents),
+            // Extents fits every viewport already, which is what Rhino's All does.
+            Some(Answer::Option(EXTENTS | ALL)) => Step::View(ViewRequest::ZoomExtents),
+            Some(Answer::Option(FACTOR)) => {
+                self.factoring = true;
+                Step::Ask(Request::new("prompt.zoom.factor", Kind::Number))
+            }
             Some(Answer::Option(SELECTED)) => Step::View(ViewRequest::ZoomSelected),
             Some(Answer::Option(IN)) => Step::View(ViewRequest::ZoomBy(STEP)),
             Some(Answer::Option(OUT)) => Step::View(ViewRequest::ZoomBy(1.0 / STEP)),
@@ -115,5 +133,14 @@ mod tests {
             asked(&["zoom", "selected"]),
             Some(ViewRequest::ZoomSelected)
         );
+    }
+
+    #[test]
+    fn factor_zooms_by_the_value_typed_and_all_fits_every_viewport() {
+        assert_eq!(
+            asked(&["zoom", "Factor", "3"]),
+            Some(ViewRequest::ZoomBy(3.0))
+        );
+        assert_eq!(asked(&["zoom", "All"]), Some(ViewRequest::ZoomExtents));
     }
 }

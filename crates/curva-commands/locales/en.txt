@@ -295,6 +295,7 @@ done.projecttocplane = Flattened {0} objects onto the construction plane.
 prompt.zoom.corner = First corner of the area to zoom to
 prompt.zoom.other_corner = Other corner
 prompt.zoom.target = Point to look at
+prompt.zoom.factor = Zoom factor (more than 1 zooms in)
 prompt.namedview.action = Saved views: {0}
 prompt.namedview.action_none = No saved views yet
 prompt.namedview.name = Name of the view
