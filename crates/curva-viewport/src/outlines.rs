@@ -624,12 +624,15 @@ impl Outlines {
         };
         let (drawn, colours) = crate::meshes::body_mesh(mesh);
         self.push_faces(id, look, std::sync::Arc::new(drawn), Some(IN_PLACE), kind);
+        let (turns, borders) = crate::turns::mesh_turns_and_borders(mesh);
         if let Some(faces) = self.faces.last_mut() {
             faces.colours = colours.map(std::sync::Arc::new);
-            faces.turns = Some(std::sync::Arc::new(crate::turns::mesh_wire_turns(mesh)));
+            faces.turns = Some(std::sync::Arc::new(turns));
         }
         // Its outline edges, drawn as its edges are, thicker than its wires (#663).
-        let edges = crate::meshes::outline(mesh).into_iter().map(|c| (c, None));
+        let edges = crate::meshes::outline(mesh, &borders)
+            .into_iter()
+            .map(|c| (c, None));
         let edge_look = Look {
             line: crate::LineKind::MeshEdge,
             ..look

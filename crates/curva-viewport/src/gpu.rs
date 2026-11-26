@@ -530,7 +530,9 @@ impl LineRenderer {
                 chunk,
             ));
         }
-        if stale(self.turns.as_ref(), &drawing.turns) {
+        // Only views whose faces hide nothing draw turns, so others never hand them over: a
+        // scene of big meshes holds hundreds of megabytes of them.
+        if !drawing.style.solid() && stale(self.turns.as_ref(), &drawing.turns) {
             let bytes = turns::turn_bytes;
             let size = turns::TURN_SIZE;
             self.turns = Some(upload(device, queue, &drawing.turns, bytes, size, 1, chunk));
