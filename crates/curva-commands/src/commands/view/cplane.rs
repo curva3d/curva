@@ -1,7 +1,7 @@
 //! `CPlane`: sets the last-used viewport's construction plane, as Rhino 8's does: from three
 //! points (the default, or `3Point`), back to `World`, raised by an `Elevation`, turned by
 //! `Rotate` about its Z, facing the `View`, or back and forward through the viewport's planes with
-//! `Undo` and `Redo` (#776).
+//! `Undo` and `Redo`, or on a picked `Surface` at a point on it (#776).
 
 use crate::commands::{ask_point, guide, unexpected};
 use crate::{Answer, Command, Kind, Live, Message, Request, Step, ViewRequest};
@@ -15,6 +15,7 @@ const VIEW: &str = "View";
 const THREE_POINT: &str = "3Point";
 const UNDO: &str = "Undo";
 const REDO: &str = "Redo";
+const SURFACE: &str = "Surface";
 
 /// The running command.
 #[derive(Default)]
@@ -23,6 +24,38 @@ pub struct SetCPlane {
     along_x: Option<Point>,
     /// The option chosen at the first prompt, while it asks for its value.
     asking: Option<&'static str>,
+    /// For `Surface`: the face picked, while it asks where on it the plane's origin goes.
+    face: Option<(u64, usize)>,
+}
+
+/// The plane on face `face` of object `id` at the point of it nearest `at`: its normal the
+/// face's, its X the current plane's X laid flat on it (Rhino's CPlane Surface, #776).
+fn on_surface(doc: &Document, (id, face): (u64, usize), at: Point) -> Step {
+    let Some(body) = doc
+        .state()
+        .objects
+        .iter()
+        .find(|o| o.id == id)
+        .and_then(|o| o.shape.body())
+    else {
+        return Step::Failed(Message::new("error.bad_plane"));
+    };
+    let (Ok((_, _, origin)), Ok(normal)) = (body.nearest_face(at), body.face_normal_near(face, at))
+    else {
+        return Step::Failed(Message::new("error.bad_plane"));
+    };
+    let Some(normal) = unit(normal) else {
+        return Step::Failed(Message::new("error.bad_plane"));
+    };
+    let (_, [x, y]) = doc.work_frame();
+    let flat = |d: Point| {
+        let along = curva_kernel::dot(d, normal);
+        unit(std::array::from_fn(|k| d[k] - normal[k] * along))
+    };
+    match flat(x).or_else(|| flat(y)) {
+        Some(x) => plane(origin, x, cross(normal, x)),
+        None => Step::Failed(Message::new("error.bad_plane")),
+    }
 }
 
 /// The plane through `origin` with X along `x` and Y along `y`.
@@ -56,6 +89,10 @@ impl SetCPlane {
                 Step::Ask(Request::new("prompt.cplane.angle", Kind::Number))
             }
             THREE_POINT => Step::Ask(Request::new("prompt.cplane.origin3", Kind::Point)),
+            SURFACE => {
+                self.asking = Some(SURFACE);
+                Step::Ask(Request::new("prompt.cplane.surface", Kind::Faces))
+            }
             _ => unexpected(),
         }
     }
@@ -81,14 +118,34 @@ impl SetCPlane {
 impl Command for SetCPlane {
     fn step(&mut self, doc: &mut Document, answer: Option<Answer>) -> Step {
         if let Some(option) = self.asking {
-            return match answer {
-                Some(Answer::Number(value)) => Self::valued(doc, option, value),
+            return match (option, answer) {
+                (SURFACE, Some(Answer::Faces(picked))) => match picked.first() {
+                    Some(face) => {
+                        self.face = Some(*face);
+                        ask_point("prompt.cplane.surface_origin", Vec::new())
+                    }
+                    None => Step::Failed(Message::new("error.bad_plane")),
+                },
+                (SURFACE, Some(Answer::Point(at))) => match self.face {
+                    Some(face) => on_surface(doc, face, at),
+                    None => unexpected(),
+                },
+                (_, Some(Answer::Number(value))) => Self::valued(doc, option, value),
                 _ => unexpected(),
             };
         }
         match (self.origin, self.along_x, answer) {
             (None, None, None) => Step::Ask(Request {
-                options: vec![ELEVATION, ROTATE, VIEW, WORLD, THREE_POINT, UNDO, REDO],
+                options: vec![
+                    ELEVATION,
+                    ROTATE,
+                    SURFACE,
+                    VIEW,
+                    WORLD,
+                    THREE_POINT,
+                    UNDO,
+                    REDO,
+                ],
                 ..Request::new("prompt.cplane.origin", Kind::Point)
             }),
             (None, None, Some(Answer::Option(option))) => self.chosen(doc, option),
@@ -191,5 +248,32 @@ mod tests {
         assert_eq!(processor.take_view_request(), Some(ViewRequest::UndoCPlane));
         let mut processor = run(&mut doc, &["cplane", "Redo"]);
         assert_eq!(processor.take_view_request(), Some(ViewRequest::RedoCPlane));
+    }
+
+    #[test]
+    fn surface_puts_the_plane_on_a_picked_face_as_in_rhino() {
+        let mut doc = Document::default();
+        let cube = curva_kernel::Body::cuboid([0.0; 3], [10.0, 10.0, 5.0]).unwrap();
+        let top = (0..6)
+            .find(|f| {
+                cube.face_normal_near(*f, [5.0, 5.0, 5.0])
+                    .is_ok_and(|n| n[2] > 0.9)
+            })
+            .unwrap();
+        let id = doc.add_body(cube);
+        let mut processor = crate::Processor::default();
+        processor.submit(&mut doc, "cplane");
+        processor.submit(&mut doc, "Surface");
+        doc.select_faces(&[(id, top)]);
+        processor.submit(&mut doc, "");
+        processor.click(&mut doc, [3.0, 4.0, 5.0]);
+        let Some(ViewRequest::SetCPlane { origin, x, y }) = processor.take_view_request() else {
+            panic!("no plane");
+        };
+        let near = |a: [f64; 3], b: [f64; 3]| curva_kernel::gap(a, b) < 1e-9;
+        assert!(
+            near(origin, [3.0, 4.0, 5.0]) && near(x, [1.0, 0.0, 0.0]) && near(y, [0.0, 1.0, 0.0]),
+            "{origin:?} {x:?} {y:?}"
+        );
     }
 }
