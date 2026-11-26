@@ -11,7 +11,7 @@ mod tangent;
 pub(crate) mod ties;
 use curva_kernel::{Point, closest_between};
 pub use guides::Guides;
-pub(crate) use sites::piece_sites;
+pub(crate) use sites::{body_sites, piece_sites};
 
 /// How close to something the cursor must be to snap to it, in pixels.
 const SNAP_REACH: f64 = 12.0;
@@ -1556,5 +1556,30 @@ mod tests {
             hit.tie.map(|t| (t.object, t.place)),
             Some((line, Place::Corner(1)))
         );
+    }
+
+    /// A rounded edge snaps as Rhino 8 snaps it, from its exact curve: its arc ends are End snaps
+    /// and its centre a Center snap, not every point it is drawn through (#792).
+    #[test]
+    fn a_rounded_edge_snaps_at_its_ends_and_centre_only() {
+        let mut doc = Document::default();
+        let cube = curva_kernel::Body::cuboid([0.0; 3], [10.0; 3]).unwrap();
+        doc.add_body(cube.blended(&[0], 2.0, false).unwrap());
+        let shapes = Outlines::of(doc.state());
+        let count = |kind: SnapKind| shapes.sites.iter().filter(|s| s.kind == kind).count();
+        let edges = shapes.ties.iter().filter_map(|t| t.part).max().unwrap() + 1;
+        assert!(
+            count(SnapKind::End) <= 2 * edges,
+            "{} ends on {edges} edges",
+            count(SnapKind::End)
+        );
+        assert!(
+            count(SnapKind::Center) >= 2,
+            "the round's two arcs have centres"
+        );
+        for site in shapes.sites.iter().filter(|s| s.tie != ties::NO_TIE) {
+            let tie = shapes.ties[site.tie as usize];
+            assert!(close(doc.tie_point(&tie).unwrap(), site.point), "{tie:?}");
+        }
     }
 }
