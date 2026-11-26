@@ -8,7 +8,7 @@ use curva_kernel::{Curve, Point};
 use super::{Site, SnapKind, site};
 
 /// The Knot places on `curve`, drawn through `points`. A compound curve's parts give theirs
-/// apart ([`super::sites_of`] goes through them), and a point has none.
+/// apart ([`super::sites::sites_of`] goes through them), and a point has none.
 pub(super) fn knot_sites(curve: &Curve, points: &[Point]) -> Vec<Site> {
     match curve {
         Curve::Point { .. } | Curve::Compound { .. } => Vec::new(),

@@ -6,10 +6,12 @@ use crate::{Camera, Outlines};
 
 mod guides;
 mod knots;
+mod sites;
 mod tangent;
-use curva_kernel::{Curve, Point, closest_between};
+pub(crate) mod ties;
+use curva_kernel::{Point, closest_between};
 pub use guides::Guides;
-use std::f64::consts::TAU;
+pub(crate) use sites::piece_sites;
 
 /// How close to something the cursor must be to snap to it, in pixels.
 const SNAP_REACH: f64 = 12.0;
@@ -146,6 +148,19 @@ pub struct SnapHit {
     pub kind: SnapKind,
     /// The exact point.
     pub point: Point,
+    /// For an End, Mid, Center or Point snap on a curve or an edge, where it landed (#296).
+    pub tie: Option<curva_document::tie::Tie>,
+}
+
+impl SnapHit {
+    /// A snap of `kind` to `point`, tied to nothing.
+    pub(crate) fn at(kind: SnapKind, point: Point) -> Self {
+        Self {
+            kind,
+            point,
+            tie: None,
+        }
+    }
 }
 
 /// A fixed place on an object that can be snapped to.
@@ -153,6 +168,8 @@ pub struct SnapHit {
 pub(crate) struct Site {
     kind: SnapKind,
     point: Point,
+    /// Its tie's number in `Outlines::ties`, or [`ties::NO_TIE`].
+    tie: u32,
 }
 
 fn along(a: Point, b: Point, t: f64) -> Point {
@@ -176,128 +193,10 @@ fn length(a: Point) -> f64 {
 }
 
 fn site(kind: SnapKind, point: Point) -> Site {
-    Site { kind, point }
-}
-
-/// The point half way along a run of points, by distance.
-fn half_way(points: &[Point]) -> Option<Point> {
-    let total: f64 = points.windows(2).map(|p| length(sub(p[1], p[0]))).sum();
-    let mut left = total / 2.0;
-    for pair in points.windows(2) {
-        let step = length(sub(pair[1], pair[0]));
-        if step >= left && step > 0.0 {
-            return Some(along(pair[0], pair[1], left / step));
-        }
-        left -= step;
-    }
-    None
-}
-
-/// The quarter points of a circle or arc turning `sweep` from `x` towards `y`, short of a full
-/// turn, measured along its own axes.
-fn quarters(centre: Point, radius: f64, x: Point, y: Point, sweep: f64) -> Vec<Site> {
-    (0..4)
-        .map(|quarter| f64::from(quarter) * std::f64::consts::FRAC_PI_2)
-        // An arc's own ends are End snaps already.
-        .filter(|angle| *angle < sweep - 1e-9 && (*angle > 0.0 || sweep >= TAU - 1e-9))
-        .map(|angle| {
-            let (sin, cos) = angle.sin_cos();
-            let at =
-                std::array::from_fn(|axis| centre[axis] + radius * (cos * x[axis] + sin * y[axis]));
-            site(SnapKind::Quad, at)
-        })
-        .collect()
-}
-
-/// The fixed snap places on a curve, given the points it is drawn through: its own kind's, then
-/// its knots, so where an end and a knot are one place the end wins.
-pub(crate) fn sites_of(curve: &Curve, points: &[Point]) -> Vec<Site> {
-    let mut sites = kind_sites(curve, points);
-    sites.extend(knots::knot_sites(curve, points));
-    sites
-}
-
-/// The snap places on a piece of a mesh or SubD drawn as `line`, as Rhino 8 gives them: a
-/// mesh's wires only their vertices, every point they run through; a SubD's lines their own
-/// places and their two ends as vertices, where its edges meet on the surface. Anything else
-/// as [`sites_of`].
-pub(crate) fn piece_sites(line: crate::LineKind, curve: &Curve, points: &[Point]) -> Vec<Site> {
-    match line {
-        crate::LineKind::MeshWire => knots::vertex_sites(points),
-        // Its outline runs along its wires, which give its vertices already.
-        crate::LineKind::MeshEdge => Vec::new(),
-        crate::LineKind::SubdEdge | crate::LineKind::SubdWire => {
-            let mut sites = sites_of(curve, points);
-            let ends = points.first().into_iter().chain(points.last());
-            sites.extend(ends.map(|p| site(SnapKind::Vertex, *p)));
-            sites
-        }
-        _ => sites_of(curve, points),
-    }
-}
-
-/// The snap places of a curve's own kind: ends, middles, centres, quarters, points.
-fn kind_sites(curve: &Curve, points: &[Point]) -> Vec<Site> {
-    match curve {
-        Curve::Point { at } => vec![site(SnapKind::Point, *at)],
-        Curve::Line { .. } | Curve::Polyline { .. } => points
-            .iter()
-            .map(|p| site(SnapKind::End, *p))
-            .chain(
-                points
-                    .windows(2)
-                    .map(|p| site(SnapKind::Mid, along(p[0], p[1], 0.5))),
-            )
-            .collect(),
-        Curve::Circle {
-            centre,
-            radius,
-            x,
-            y,
-        } => std::iter::once(site(SnapKind::Center, *centre))
-            .chain(quarters(*centre, *radius, *x, *y, TAU))
-            .collect(),
-        Curve::Arc {
-            centre,
-            radius,
-            x,
-            y,
-            sweep,
-        } => points
-            .first()
-            .into_iter()
-            .chain(points.last())
-            .map(|p| site(SnapKind::End, *p))
-            .chain(half_way(points).map(|p| site(SnapKind::Mid, p)))
-            .chain(std::iter::once(site(SnapKind::Center, *centre)))
-            .chain(quarters(*centre, *radius, *x, *y, *sweep))
-            .collect(),
-        Curve::Nurbs { .. } => {
-            let open = points.first() != points.last();
-            let ends = points
-                .first()
-                .into_iter()
-                .chain(points.last())
-                .filter(|_| open)
-                .map(|p| site(SnapKind::End, *p));
-            ends.chain(half_way(points).map(|p| site(SnapKind::Mid, p)))
-                .collect()
-        }
-        Curve::Compound { segments } => segments
-            .iter()
-            .filter_map(|part| Some(sites_of(part, &part.sample().ok()?)))
-            .flatten()
-            .collect(),
-        Curve::Interpolated { closed, .. } => {
-            let ends = points
-                .first()
-                .into_iter()
-                .chain(points.last())
-                .filter(|_| !closed)
-                .map(|p| site(SnapKind::End, *p));
-            ends.chain(half_way(points).map(|p| site(SnapKind::Mid, p)))
-                .collect()
-        }
+    Site {
+        kind,
+        point,
+        tie: ties::NO_TIE,
     }
 }
 
@@ -595,7 +494,7 @@ impl Outlines {
             if let Some(distance) = gap(point)
                 && distance <= SNAP_REACH
             {
-                offered.push((distance, SnapHit { kind, point }));
+                offered.push((distance, SnapHit::at(kind, point)));
             }
         };
         // In a shaded view, a point behind a face cannot be seen and is not offered.
@@ -651,9 +550,11 @@ impl Outlines {
         segments
             .iter()
             .min_by(|a, b| a.gap.total_cmp(&b.gap))
-            .map(|segment| SnapHit {
-                kind: SnapKind::Near,
-                point: along(segment.a, segment.b, nearest_along(segment, &gap)),
+            .map(|segment| {
+                SnapHit::at(
+                    SnapKind::Near,
+                    along(segment.a, segment.b, nearest_along(segment, &gap)),
+                )
             })
             .filter(|hit| seen(hit.point))
     }
@@ -688,7 +589,8 @@ impl Outlines {
             .map(|(at, distance)| {
                 let place = &self.sites[at];
                 let (kind, point) = (place.kind, place.point);
-                (distance, SnapHit { kind, point })
+                let tie = self.ties.get(place.tie as usize).copied();
+                (distance, SnapHit { kind, point, tie })
             });
         let ends = drawing[..drawing.len().saturating_sub(1)]
             .iter()
@@ -702,7 +604,7 @@ impl Outlines {
             .chain(middles)
             .filter_map(|(kind, point)| {
                 let distance = point_gap(view, cursor, point).filter(|d| *d <= SNAP_REACH)?;
-                Some((distance, SnapHit { kind, point }))
+                Some((distance, SnapHit::at(kind, point)))
             })
             .collect();
         offered.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -794,6 +696,7 @@ pub fn constrained(
 mod tests {
     use super::*;
     use curva_document::Document;
+    use curva_kernel::Curve;
 
     const SIZE: [f64; 2] = [800.0, 600.0];
 
@@ -860,34 +763,38 @@ mod tests {
                 .map(|at| (at[0] - cursor[0]).hypot(at[1] - cursor[1]))
         };
         let mut offered: Vec<(f64, SnapHit)> = Vec::new();
-        let mut offer = |kind: SnapKind, point: Point| {
+        let mut offer = |kind: SnapKind, point: Point, tie: Option<curva_document::tie::Tie>| {
             if let Some(distance) = gap(point)
                 && distance <= SNAP_REACH
             {
-                offered.push((distance, SnapHit { kind, point }));
+                offered.push((distance, SnapHit { kind, point, tie }));
             }
         };
         for place in shapes.sites.iter().filter(|place| set.has(place.kind)) {
-            offer(place.kind, place.point);
+            offer(
+                place.kind,
+                place.point,
+                shapes.ties.get(place.tie as usize).copied(),
+            );
         }
         let segments = shapes.segments_near(&view, (cursor, SNAP_REACH), &[]);
         if set.intersection {
             for point in meeting_points(&segments) {
-                offer(SnapKind::Intersection, point);
+                offer(SnapKind::Intersection, point, None);
             }
         }
         if set.perpendicular
             && let Some(from) = from
         {
             for foot in perpendicular_feet(&segments, from) {
-                offer(SnapKind::Perpendicular, foot);
+                offer(SnapKind::Perpendicular, foot, None);
             }
         }
         if set.tangent
             && let Some(from) = from
         {
             for point in tangent::tangent_points(&segments, from) {
-                offer(SnapKind::Tangent, point);
+                offer(SnapKind::Tangent, point, None);
             }
         }
         offered.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -1556,5 +1463,98 @@ mod tests {
         assert_eq!(hit.kind, SnapKind::Vertex);
         assert!(close(hit.point, corner));
         assert!(snap_by(&shapes, corner, only(SnapKind::End), None).is_none());
+    }
+
+    /// Every End, Mid, Center and Point place on a curve or an edge is tied to where it landed, and the
+    /// document finds the same point again from its tie (#296): a point, a line, a polyline, a
+    /// circle, an arc, a smooth curve, a joined curve's segments and a box's edges.
+    #[test]
+    fn end_mid_and_centre_snaps_carry_ties_the_document_follows() {
+        use curva_document::tie::Place;
+        let mut doc = Document::default();
+        let point = doc.add(Curve::Point {
+            at: [1.0, 2.0, 0.0],
+        });
+        let line = doc.add(Curve::line([0.0, 10.0, 0.0], [10.0, 10.0, 0.0]).unwrap());
+        let corners = vec![[0.0, 20.0, 0.0], [5.0, 25.0, 0.0], [10.0, 20.0, 0.0]];
+        doc.add(Curve::polyline(corners, false).unwrap());
+        doc.add(Curve::circle([30.0, 0.0, 0.0], 4.0).unwrap());
+        let (x, y) = ([1.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        let arc = Curve::arc(
+            [30.0, 20.0, 0.0],
+            [34.0, 20.0, 0.0],
+            [30.0, 24.0, 0.0],
+            x,
+            y,
+        );
+        doc.add(arc.unwrap());
+        let through = vec![[40.0, 0.0, 0.0], [44.0, 3.0, 0.0], [48.0, 0.0, 0.0]];
+        doc.add(Curve::interpolated(through, false).unwrap());
+        let joined = Curve::compound(vec![
+            Curve::line([50.0, 10.0, 0.0], [55.0, 10.0, 0.0]).unwrap(),
+            Curve::line([55.0, 10.0, 0.0], [55.0, 15.0, 0.0]).unwrap(),
+        ]);
+        let joined = doc.add(joined.unwrap());
+        let solid =
+            doc.add_body(curva_kernel::Body::cuboid([60.0, 0.0, 0.0], [62.0, 2.0, 2.0]).unwrap());
+        let shapes = Outlines::of(doc.state());
+        let mut tied = std::collections::HashMap::new();
+        for site in &shapes.sites {
+            let tie = shapes.ties.get(site.tie as usize);
+            if matches!(
+                site.kind,
+                SnapKind::End | SnapKind::Mid | SnapKind::Center | SnapKind::Point
+            ) {
+                let tie =
+                    tie.unwrap_or_else(|| panic!("{:?} at {:?} has no tie", site.kind, site.point));
+                let found = doc
+                    .tie_point(tie)
+                    .expect("the document finds the tied place");
+                assert!(
+                    close(found, site.point) && close(tie.at, site.point),
+                    "{tie:?}"
+                );
+                *tied.entry(tie.object).or_insert(0) += 1;
+            } else {
+                assert!(tie.is_none(), "{:?} is not tied", site.kind);
+            }
+        }
+        assert_eq!(tied.len(), 8, "every object has tied places: {tied:?}");
+        let place_of = |object: u64, at: Point| {
+            let site = shapes
+                .sites
+                .iter()
+                .find(|s| s.tie != ties::NO_TIE && close(s.point, at))
+                .unwrap_or_else(|| panic!("no tied place at {at:?}"));
+            let tie = shapes.ties[site.tie as usize];
+            assert_eq!(tie.object, object);
+            (tie.part, tie.place)
+        };
+        assert_eq!(place_of(point, [1.0, 2.0, 0.0]), (None, Place::Corner(0)));
+        assert_eq!(place_of(line, [10.0, 10.0, 0.0]), (None, Place::Corner(1)));
+        assert_eq!(
+            place_of(line, [5.0, 10.0, 0.0]),
+            (None, Place::SegmentMid(0))
+        );
+        assert_eq!(
+            place_of(joined, [55.0, 12.5, 0.0]),
+            (Some(1), Place::SegmentMid(0))
+        );
+        // A solid's places are on its edges, each by number, all twelve of a box's.
+        let mut edges: Vec<usize> = shapes
+            .ties
+            .iter()
+            .filter(|tie| tie.object == solid)
+            .map(|tie| tie.part.expect("an edge, by number"))
+            .collect();
+        edges.sort_unstable();
+        edges.dedup();
+        assert_eq!(edges.len(), 12, "{edges:?}");
+        // The snap itself hands the tie on.
+        let hit = snap_by(&shapes, [10.0, 10.0, 0.0], only(SnapKind::End), None).unwrap();
+        assert_eq!(
+            hit.tie.map(|t| (t.object, t.place)),
+            Some((line, Place::Corner(1)))
+        );
     }
 }
