@@ -225,7 +225,7 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | CurveBoolean | Curves; clicks inside regions | `DeleteInput` `CombineRegions` `AllRegions` | `CombineRegions` `DeleteInput` | partly |
 | Match | Curve to change; curve to match | `Position` `Tangency` `Curvature` `AverageCurves` `PreserveOtherEnd` | `Position` `Tangency` `Curvature` | partly |
 | SimplifyCrv | Select curves | none | none | done |
-| Reparameterize | Curves; start; end | `Automatic` | `Automatic` | partly |
+| Reparameterize | Curves or surfaces; start and end (U and V for surfaces) | `Automatic` | `Automatic` | partly |
 | MakeUniform | Select curves | none | none | done |
 | Weight | Control points picked; weight | none | none | done |
 | ExtrudeCrvTapered | Closed curves; distance | `DraftAngle` `Solid` `Sharp` `Round` `Smooth` `Direction` `DeleteInput` `FlipAngle` | `DraftAngle` `Solid` `Sharp` `Round` `Smooth` | partly |

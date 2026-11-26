@@ -70,6 +70,7 @@ mod surface_edit;
 mod surface_extend;
 mod surface_making;
 mod surface_rebuild;
+mod surface_reparam;
 pub use spline::Spline;
 pub use surface::NurbsSurface;
 mod text;
