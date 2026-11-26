@@ -51,6 +51,8 @@ pub(crate) fn sites_of(curve: &Curve, points: &[Point]) -> Vec<Site> {
 pub(crate) fn piece_sites(line: crate::LineKind, curve: &Curve, points: &[Point]) -> Vec<Site> {
     match line {
         crate::LineKind::MeshWire => knots::vertex_sites(points),
+        // Its outline runs along its wires, which give its vertices already.
+        crate::LineKind::MeshEdge => Vec::new(),
         crate::LineKind::SubdEdge | crate::LineKind::SubdWire => {
             let mut sites = sites_of(curve, points);
             let ends = points.first().into_iter().chain(points.last());

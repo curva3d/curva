@@ -128,6 +128,17 @@ impl LineTable {
             LineKind::MeshWire,
             look(wires.shown, wire_colour, LineWidth::Object(1.0)),
         );
+        // A mesh's outline edges take its edges' look, as Rhino 8 draws them thicker than its
+        // wires (#663).
+        let mesh_edges = view.edges(FacedKind::Mesh);
+        set(
+            LineKind::MeshEdge,
+            look(
+                mesh_edges.shown,
+                colour(mesh_edges.colour),
+                mesh_edges.width,
+            ),
+        );
         for (kind, line) in [
             (LineKind::SubdEdge, &view.subd.creases),
             (LineKind::SubdWire, &view.subd.smooth),
@@ -152,6 +163,7 @@ impl LineTable {
         for kind in [LineKind::Edge, LineKind::Seam] {
             table.0[kind as usize].pattern = edges.pattern;
         }
+        table.0[LineKind::MeshEdge as usize].pattern = mesh_edges.pattern;
         table
     }
 }
@@ -204,9 +216,12 @@ mod tests {
             LineKind::SubdEdge,
             LineKind::SubdWire,
             LineKind::Annotation,
+            LineKind::MeshEdge,
         ] {
             assert_eq!(table.of(kind).colour, black, "{kind:?}");
         }
+        // A mesh shows its outline and no wires, as in Rhino 8 (#663).
+        assert!(table.of(LineKind::MeshEdge).shown && !table.of(LineKind::MeshWire).shown);
         assert_eq!(
             table.of(LineKind::Given).colour,
             None,
