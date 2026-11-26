@@ -40,6 +40,8 @@ pub(crate) struct Faces {
     pub(crate) kind: PickKind,
     /// What kind of object the faces belong to, for the look a view's style gives them.
     pub(crate) face_kind: crate::FaceKind,
+    /// For a mesh, its turns ([`crate::turns::mesh_wire_turns`]), worked out from its welds.
+    pub(crate) turns: Option<std::sync::Arc<Vec<[u32; 4]>>>,
 }
 
 impl Faces {
@@ -606,9 +608,17 @@ impl Outlines {
         };
         let (drawn, colours) = crate::meshes::body_mesh(mesh);
         self.push_faces(id, look, std::sync::Arc::new(drawn), Some(IN_PLACE), kind);
-        if let (Some(colours), Some(faces)) = (colours, self.faces.last_mut()) {
-            faces.colours = Some(std::sync::Arc::new(colours));
+        if let Some(faces) = self.faces.last_mut() {
+            faces.colours = colours.map(std::sync::Arc::new);
+            faces.turns = Some(std::sync::Arc::new(crate::turns::mesh_wire_turns(mesh)));
         }
+        // Its outline edges, drawn as its edges are, thicker than its wires (#663).
+        let edges = crate::meshes::outline(mesh).into_iter().map(|c| (c, None));
+        let edge_look = Look {
+            line: crate::LineKind::MeshEdge,
+            ..look
+        };
+        self.push_pieces(id, edges.collect(), edge_look, kind, &|_| false, true);
         let lines = crate::meshes::wires(mesh)
             .into_iter()
             .map(|line| (line, None))
@@ -636,6 +646,7 @@ impl Outlines {
             placement,
             colours: None,
             kind,
+            turns: None,
             face_kind: match look.line {
                 crate::LineKind::Edge => crate::FaceKind::Nurbs,
                 crate::LineKind::MeshWire => crate::FaceKind::Mesh,

@@ -105,8 +105,43 @@ const CHAIN_POINTS: usize = 256;
 /// A mesh's edges, each once, joined end to end into chains of up to [`CHAIN_POINTS`] points:
 /// a scan's millions of edges become thousands of drawn lines rather than millions.
 pub(crate) fn wires(mesh: &curva_mesh::Mesh) -> Vec<curva_kernel::Curve> {
+    chains(mesh.vertices(), unique_edges(mesh, mesh.vertices().len()))
+}
+
+/// A mesh's outline edges, as Rhino 8 draws them round it with its silhouette: its open borders
+/// and unwelded seams ([`curva_mesh::Mesh::outline_edges`]), each seam once though both its
+/// sides are listed, joined into chains as its wires are (#663).
+pub(crate) fn outline(mesh: &curva_mesh::Mesh) -> Vec<curva_kernel::Curve> {
     let points = mesh.vertices();
-    let mut graph = Graph::of(unique_edges(mesh, points.len()), points.len());
+    let place = places(points);
+    let mut seen = std::collections::HashSet::new();
+    let edges = mesh
+        .outline_edges()
+        .into_iter()
+        .map(|[a, b]| (a as usize, b as usize))
+        .filter(|&(a, b)| a < points.len() && b < points.len())
+        .map(|(a, b)| (place[a], place[b]))
+        .filter(|&(a, b)| a != b && seen.insert((a.min(b), a.max(b))))
+        .collect();
+    chains(points, edges)
+}
+
+/// For each of `points`, the first of them in the same place, so points of an unwelded seam
+/// count as one.
+fn places(points: &[curva_kernel::Point]) -> Vec<usize> {
+    let mut first = std::collections::HashMap::with_capacity(points.len());
+    (0..points.len())
+        .map(|v| {
+            *first
+                .entry(points[v].map(|c| (c + 0.0).to_bits()))
+                .or_insert(v)
+        })
+        .collect()
+}
+
+/// `edges` between `points`, joined end to end into chains of up to [`CHAIN_POINTS`] points.
+fn chains(points: &[curva_kernel::Point], edges: Vec<(usize, usize)>) -> Vec<curva_kernel::Curve> {
+    let mut graph = Graph::of(edges, points.len());
     // Chains start where an odd number of edges meet first, so fewer end part way.
     let odd = (0..points.len()).filter(|&v| graph.degree(v) % 2 == 1);
     let starts: Vec<usize> = odd.chain(0..points.len()).collect();
@@ -195,15 +230,7 @@ impl Graph {
 /// [`curva_mesh::Mesh::wire_edges`] (#493), kept in the faces' order so they join into long
 /// chains, and leaving out edges to vertices the mesh does not have.
 fn unique_edges(mesh: &curva_mesh::Mesh, count: usize) -> Vec<(usize, usize)> {
-    let points = mesh.vertices();
-    let mut first = std::collections::HashMap::with_capacity(points.len());
-    let place: Vec<usize> = (0..points.len())
-        .map(|v| {
-            *first
-                .entry(points[v].map(|c| (c + 0.0).to_bits()))
-                .or_insert(v)
-        })
-        .collect();
+    let place = places(mesh.vertices());
     let mut seen = std::collections::HashSet::new();
     let mut edges = Vec::new();
     for face in mesh.faces() {
@@ -455,5 +482,41 @@ mod tests {
             .collect();
         edges.sort_unstable();
         assert_eq!(edges, mesh.wire_edges());
+    }
+
+    /// How many edges `chains` hold.
+    fn segments(chains: &[curva_kernel::Curve]) -> usize {
+        chains
+            .iter()
+            .map(|chain| match chain {
+                curva_kernel::Curve::Polyline { points, .. } => points.len() - 1,
+                _ => panic!("a chain is a polyline"),
+            })
+            .sum()
+    }
+
+    /// Rhino 8's outline of a mesh: a MeshBox's twelve unwelded edges, each once though both
+    /// its sides list it; a welded box none; an open quad its four sides (#663).
+    #[test]
+    fn a_mesh_outline_is_its_open_borders_and_unwelded_edges() {
+        let frame = curva_mesh::Frame::world();
+        let unwelded = Mesh::mesh_box(&frame, [10.0; 3], [4; 3]);
+        assert_eq!(segments(&outline(&unwelded)), 12 * 4);
+        let corner = |i: usize| [(i & 1) as f64, ((i >> 1) & 1) as f64, ((i >> 2) & 1) as f64];
+        let welded = Mesh::new(
+            (0..8).map(corner).collect(),
+            &[
+                [0, 2, 3, 1],
+                [4, 5, 7, 6],
+                [0, 1, 5, 4],
+                [2, 6, 7, 3],
+                [0, 4, 6, 2],
+                [1, 3, 7, 5],
+            ],
+        )
+        .unwrap();
+        assert!(outline(&welded).is_empty());
+        let quad = Mesh::new((0..4).map(corner).collect(), &[[0, 1, 3, 2]]).unwrap();
+        assert_eq!(segments(&outline(&quad)), 4);
     }
 }

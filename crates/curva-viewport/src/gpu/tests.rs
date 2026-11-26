@@ -615,6 +615,54 @@ fn the_technical_mode_dots_the_lines_faces_hide() {
     assert!(along.iter().any(|&d| !d), "not dotted: {along:?}");
 }
 
+/// Technical shows no mesh wires, as Rhino 8: a wire behind a face leaves no dots either, where
+/// a curve there would (#663).
+#[test]
+fn the_technical_mode_dots_no_mesh_wires() {
+    let corner = |x: f32, y: f32| MeshVertex {
+        position: [x, y, 0.5],
+        normal: [0.0, 0.0, 1.0],
+        colour: [0.3, 0.5, 0.7],
+        object: NO_OBJECT,
+        kind: crate::FaceKind::Mesh,
+    };
+    let lines = [-0.6_f32, 0.6].map(|x| Vertex {
+        position: [x, -0.4, 0.8],
+        colour: [1.0, 1.0, 1.0],
+        width: -2.0,
+        object: NO_OBJECT,
+        kind: crate::LineKind::MeshWire,
+    });
+    let picture = Picture {
+        lines: lines.to_vec(),
+        faces: vec![corner(-0.9, -0.9), corner(0.9, -0.9), corner(0.0, 0.9)],
+        matrix: [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        light: [0.0, 0.0, 1.0],
+        camera: crate::Camera::default(),
+        style: crate::Style::technical(),
+    };
+    let pixels = match draw_picture(picture, SIZE, true) {
+        Ok(pixels) => pixels,
+        Err(error) => {
+            eprintln!("no graphics adapter to draw with, so not checked: {error}");
+            return;
+        }
+    };
+    let width = SIZE[0] as usize;
+    let row = SIZE[1] as usize * 7 / 10;
+    let dark = |x: usize| pixels[(row * width + x) * 4] < 80;
+    let along: Vec<bool> = (20..44).map(dark).collect();
+    assert!(
+        along.iter().all(|&d| !d),
+        "dots of a hidden wire: {along:?}"
+    );
+}
+
 /// The Massing display mode (#551, first called Clay): a coloured face comes out white, lit,
 /// and a line given in red comes out in black ink, as in SketchUp's default look.
 #[test]
