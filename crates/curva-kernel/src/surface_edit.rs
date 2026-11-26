@@ -32,7 +32,7 @@ pub(crate) fn plus(p: Point, d: Point, by: f64) -> Point {
 /// the box's size (Rhino 8's, measured).
 const SHRINK_SPARE: f64 = 0.01;
 
-fn curve2_points(c: &Curve2) -> Vec<[f64; 2]> {
+pub(crate) fn curve2_points(c: &Curve2) -> Vec<[f64; 2]> {
     match c {
         Curve2::Spline { points, .. } => points.clone(),
         Curve2::RationalSpline { homogeneous, .. } => homogeneous
