@@ -251,7 +251,7 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 |---|---|---|---|---|
 | EdgeSrf | Two to four edge curves | none | none | done |
 | NetworkSrf | Curves both ways | `EdgeMatching` `Tolerances` | none | partly |
-| Patch | Curves and points to fit | `PointSpacing` `UVSpans` `Stiffness` `AdjustTangency` `AutomaticTrim` | none | partly |
+| Patch | Curves and points to fit | `PointSpacing` `UVSpans` `Stiffness` `AdjustTangency` `AutomaticTrim` | `UVSpans` `Stiffness` | partly |
 | ExtendSrf | Edge; distance | `Line` `Smooth` | `Smooth` `Line` | done |
 | Untrim | Trim edge | `KeepTrimObjects` `All` | none | partly |
 | Section | Objects; section line | none | none | done |
