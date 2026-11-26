@@ -7,11 +7,15 @@ use curva_document::Document;
 const SAVE: &str = "Save";
 const RESTORE: &str = "Restore";
 const DELETE: &str = "Delete";
+const LIST: &str = "List";
+const RENAME: &str = "Rename";
 
 /// The running command.
 #[derive(Default)]
 pub struct NamedView {
     action: Option<&'static str>,
+    /// For Rename: the view being renamed, once named.
+    renaming: Option<String>,
 }
 
 impl Command for NamedView {
@@ -27,9 +31,17 @@ impl Command for NamedView {
                     };
                     Step::Ask(Request {
                         prompt: Message::with(key, vec![names.join(", ")]),
-                        options: vec![SAVE, RESTORE, DELETE],
+                        options: vec![SAVE, RESTORE, DELETE, RENAME, LIST],
                         ..Request::new(key, Kind::Choice)
                     })
+                }
+                // The saved views' names, as Rhino's List says them (#776).
+                Some(Answer::Option(LIST)) => {
+                    let names: Vec<&str> = doc.views().iter().map(|v| v.name.as_str()).collect();
+                    Step::Done(Some(Message::with(
+                        "done.namedview.list",
+                        vec![names.join(", ")],
+                    )))
                 }
                 Some(Answer::Option(word)) => {
                     self.action = Some(word);
@@ -46,6 +58,18 @@ impl Command for NamedView {
             return Step::Failed(Message::new("error.no_view_name"));
         }
         match action {
+            // Rename: the view to rename, then its new name.
+            RENAME => match self.renaming.take() {
+                None if doc.saved_view(&name).is_some() => {
+                    self.renaming = Some(name);
+                    Step::Ask(Request::new("prompt.namedview.new_name", Kind::Path))
+                }
+                Some(old) if doc.rename_view(&old, &name) => Step::Done(Some(Message::with(
+                    "done.namedview.rename",
+                    vec![old, name],
+                ))),
+                _ => Step::Failed(Message::with("error.no_view", vec![name])),
+            },
             SAVE => Step::View(ViewRequest::SaveView(name)),
             RESTORE if doc.saved_view(&name).is_some() => {
                 Step::View(ViewRequest::RestoreView(name))
@@ -111,5 +135,14 @@ mod tests {
         assert!(processor.prompt().unwrap().contains("Plan"));
         run(&mut doc, &["namedview", "delete", "Plan"]);
         assert!(doc.views().is_empty());
+    }
+
+    #[test]
+    fn rename_and_list_as_in_rhino() {
+        let mut doc = with_view("Kitchen");
+        run(&mut doc, &["namedview", "rename", "Kitchen", "Hall"]);
+        assert_eq!(doc.views()[0].name, "Hall");
+        let processor = run(&mut doc, &["namedview", "list"]);
+        assert!(processor.log().last().unwrap().contains("Hall"));
     }
 }

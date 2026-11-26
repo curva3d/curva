@@ -156,8 +156,8 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | Zoom | Drag a window (the default), or an option | `Window` `All` `Extents` `Selected` `1to1` `Dynamic` `Factor` `In` `Out` `Target` | `All` `Extents` `Factor` `Selected` `In` `Out` `Target` | partly |
 | ZoomExtents | none | none | none | partly |
 | ZoomSelected | none | none | none | partly |
-| NamedView | A panel in Rhino: save, restore, delete views | `Save` `Restore` `Delete` | `Save` `Restore` `Delete` | partly |
-| NamedCPlane | A panel in Rhino: save, restore, delete construction planes | `Save` `Restore` `Delete` | `Save` `Restore` `Delete` | partly |
+| NamedView | A panel in Rhino: save, restore, delete views | `List` `Save` `Restore` `Delete` `Rename` `Import` `TabVisibility` `WidgetVisibility` | `List` `Save` `Restore` `Delete` `Rename` | partly |
+| NamedCPlane | A panel in Rhino: save, restore, delete construction planes | `List` `Save` `Restore` `Delete` `Rename` `Import` `Select` `Visible` | `List` `Save` `Restore` `Delete` `Rename` | partly |
 | SetDisplayMode | Not read: Rhino's page redirected; complete from Rhino | to confirm | `Wireframe` `Shaded` `Ghosted` | partly |
 | Styles | Rhino 8's Options > View > Display Modes page, where each mode's settings are edited | none | none (Curva's Style panel: the view's style chosen and edited live; spec `views-and-styles.md` §3) | partly |
 | New | Choose a template | none | none | partly |

@@ -118,6 +118,46 @@ impl Document {
             .retain(|plane| !plane.name.eq_ignore_ascii_case(name));
         self.cplanes.len() != before
     }
+
+    /// Renames a saved construction plane. False if there was none called `old`, or `new` is
+    /// another one's name (#776).
+    pub fn rename_cplane(&mut self, old: &str, new: &str) -> bool {
+        let taken = self
+            .cplanes
+            .iter()
+            .any(|p| p.name.eq_ignore_ascii_case(new) && !p.name.eq_ignore_ascii_case(old));
+        match self
+            .cplanes
+            .iter_mut()
+            .find(|p| p.name.eq_ignore_ascii_case(old))
+        {
+            Some(plane) if !taken => {
+                new.clone_into(&mut plane.name);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Renames a saved view. False if there was none called `old`, or `new` is another one's
+    /// name (#776).
+    pub fn rename_view(&mut self, old: &str, new: &str) -> bool {
+        let taken = self
+            .views
+            .iter()
+            .any(|v| v.name.eq_ignore_ascii_case(new) && !v.name.eq_ignore_ascii_case(old));
+        match self
+            .views
+            .iter_mut()
+            .find(|v| v.name.eq_ignore_ascii_case(old))
+        {
+            Some(view) if !taken => {
+                new.clone_into(&mut view.name);
+                true
+            }
+            _ => false,
+        }
+    }
 }
 
 #[cfg(test)]
