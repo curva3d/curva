@@ -115,6 +115,12 @@ pub(crate) fn run_steps(
     steps
 }
 
+/// Whether `at` is nearer the curve's end than its start: the end a curve was picked near.
+pub(crate) fn picked_end(curve: &Spline, at: Point) -> bool {
+    let (start, end) = curve.domain();
+    gap(at, curve.point(end)) < gap(at, curve.point(start))
+}
+
 /// Which end of `a` and which end of `b` are nearest each other: `(a at its end, b at its end)`.
 pub(crate) fn nearest_ends(a: &Spline, b: &Spline) -> (bool, bool) {
     let (a0, a1) = (a.point(a.domain().0), a.point(a.domain().1));
