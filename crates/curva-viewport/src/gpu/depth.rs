@@ -28,18 +28,34 @@ struct Handover {
     let corner = vec2<f32>(f32((i << 1u) & 2u), f32(i & 2u));
     return vec4<f32>(corner * 2.0 - 1.0, 0.0, 1.0);
 }
+// How far along the view a surface at Bevy's depth `d` lies; past the backdrop's distance where
+// nothing is drawn: Bevy clears to 0, the far end of its reversed depth.
+fn distance_at(d: f32) -> f32 {
+    if (d <= 0.0) { return h.bevy.w; }
+    if (h.bevy.x > 0.5) { return h.bevy.z + d * (h.bevy.y - h.bevy.z); }
+    return h.bevy.y / d;
+}
 @fragment fn fragment_main(@builtin(position) at: vec4<f32>) -> @builtin(frag_depth) f32 {
-    let d = textureLoad(bevy_depth, vec2<i32>(at.xy - h.corner.xy), 0);
-    // Nothing drawn here: Bevy clears to 0, the far end of its reversed depth.
-    if (d <= 0.0) { return 1.0; }
-    var distance: f32;
-    if (h.bevy.x > 0.5) {
-        distance = h.bevy.z + d * (h.bevy.y - h.bevy.z);
-    } else {
-        distance = h.bevy.y / d;
+    let p = vec2<i32>(at.xy - h.corner.xy);
+    // Nothing drawn here, or only Bevy's backdrop, so the grid shows there.
+    if (distance_at(textureLoad(bevy_depth, p, 0)) >= h.bevy.w) { return 1.0; }
+    // The farthest surface among the samples of this pixel and the four beside it, leaving out
+    // the backdrop. A line drawn on a face slanting away takes its depth where it crosses each
+    // pixel, up to half a pixel from the samples there, so one sample alone could lie in front of
+    // the line and break it into dashes (#663). The farthest a pixel away is never in front: as a
+    // graphics card's slope-scaled depth bias, of about a pixel's worth of the face's slope.
+    let last = vec2<i32>(textureDimensions(bevy_depth)) - 1;
+    var steps = array<vec2<i32>, 5>(
+        vec2<i32>(0, 0), vec2<i32>(1, 0), vec2<i32>(-1, 0), vec2<i32>(0, 1), vec2<i32>(0, -1)
+    );
+    var distance = 0.0;
+    for (var k = 0; k < 5; k = k + 1) {
+        let q = clamp(p + steps[k], vec2<i32>(0), last);
+        for (var s = 0; s < i32(textureNumSamples(bevy_depth)); s = s + 1) {
+            let here = distance_at(textureLoad(bevy_depth, q, s));
+            if (here < h.bevy.w) { distance = max(distance, here); }
+        }
     }
-    // Nor at Bevy's backdrop, so the grid shows there.
-    if (distance >= h.bevy.w) { return 1.0; }
     if (h.curva.x > 0.5) {
         return clamp(distance / h.range.x + 0.5 - h.curva.w / h.range.x, 0.0, 1.0);
     }

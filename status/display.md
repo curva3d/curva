@@ -8,6 +8,11 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## 26 November 2026
+
+**Done**
+- **Mesh wires no longer break into dashes on their own faces** (#663, part 1; owner's report on 0.1.6): the faces' depth handed from Bevy to Curva's lines took one sample of each pixel, off its middle, so on faces slanting away (a mesh box's sides) a one-pixel wire lost to its own face. The handover now keeps the farthest surface among the samples of each pixel and the four beside it, a pixel's worth of the face's slope, as a slope-scaled depth bias. Test: a wire on faces turned from flat to standing shows whole (17 of 69 pixels before). **Next:** part 2, meshes' outline (silhouette, open borders, unwelded edges) and no wires in Hidden.
+
 ## 25 November 2026
 
 **Done**
