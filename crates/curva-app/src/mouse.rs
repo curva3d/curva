@@ -483,10 +483,14 @@ impl Curva {
                     break;
                 }
                 // Where it was pressed, as that is where the user aimed.
-                if let Some((at, _)) = self.aim(ui, pane, picking.local(pressed), size) {
+                if let Some((at, hit)) = self.aim(ui, pane, picking.local(pressed), size) {
                     self.active = pane;
                     self.share_work_plane();
+                    // The object and place the click snapped to, for a dimension to keep and
+                    // follow (#294); cleared once the click is handled.
+                    self.doc.set_pick_tie(hit.and_then(|hit| hit.tie));
                     self.processor.click(&mut self.doc, at);
+                    self.doc.set_pick_tie(None);
                 }
             }
             return;
