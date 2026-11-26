@@ -19,6 +19,21 @@ pin Rhino-measured results. Newest first.*
 - **Same\*** means Curva's result equals the exact geometric answer for that case (which Rhino gives
   too), but the case has not been run in Rhino itself yet.
 
+## Testing stream — 26 November 2026 (evening, on screen)
+
+Every command in the table has now been tested at least once (0 "not yet").
+
+- **Crash, #811:** switching from a layout back to the Model panics in `ViewScene::update` (a despawned entity, `looks.rs:83`). Reproduced with the error output captured. The first click on Model does nothing; the second crashes.
+- **New issues from screen tests:**
+  - #813: a clipping plane cuts the opposite side from Rhino and clips every viewport.
+  - #814: ExtractMeshFaces can't pick faces.
+  - #815: mesh wires z-fight with shaded faces.
+  - #810: typed-ahead keys are lost, mostly during the first-solid-preview freeze, which is still on main while its fix (#705) is unmerged.
+- **Same as Rhino on screen:** ZoomSelected; SubDDisplayToggle, down to Rhino's own message; right-click repeats the last command (#697); the Knot and Vertex snaps are present (#700); CopyLayout.
+- **Curva-only sheet tools work:** Detail, TitleBlock, ScaleBar, SheetIndex, Revision and SetLayoutUserText. Rhino 8 has no such commands, so they are marked same*.
+- **Rechecked, same as Rhino:** ToSubD on open cones (#775): 17 points, 8 triangles + 8 quads, 16 or 14 creases, and limit bounds equal to Rhino's, including the 1.8738 apex-first extent.
+- **For testers:** the screen tool masks the whole screen behind NVIDIA's overlay, so screenshots use a PowerShell `CopyFromScreen` helper. Type in pieces of 16 characters or fewer, because longer text goes through the clipboard and never arrives. Before every batch, check that Curva is the window in front, since another stream's Rhino can come forward.
+
 ## Testing stream — 26 November 2026 (afternoon)
 
 - **Mesh fixes rechecked; they match Rhino 8 exactly.** FillMeshHoles gives 161/138/100 (#747, #759). The mesh boolean difference, intersection, union and split give 759/660/540, 216/204/96, 1302/1116/984 and 875 + 125 (#755, #760).
@@ -251,7 +266,7 @@ Fixes rechecked against Rhino 8 on `main` at fba9278 (headless processor; Rhino 
 ## Commands
 
 State against Rhino 8: **same** (measured in both), **same\*** (matches the exact result; Rhino run
-pending), **differs** (issue filed), **missing**, or **not yet** (not tested). Counts: 27 differs, 2 missing, 19 not yet, 217 same, 61 same*.
+pending), **differs** (issue filed), **missing**, or **not yet** (not tested). Counts: 31 differs, 2 missing, 219 same, 74 same*.
 
 ### Curves
 
@@ -462,7 +477,7 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | ReduceMesh | same |  | measured in Rhino 8 by the mesh stream (status/mesh.md) |
 | TriangulateMesh | same |  | 121/200/0 in both |
 | QuadrangulateMesh | same |  | measured in Rhino 8 by the mesh stream (defaults 5° and 2) |
-| ExtractMeshFaces | not yet |  |  |
+| ExtractMeshFaces | differs | #814 | clicks pick edges/points, no face can be picked; no MakeCopy option |
 | MeshToNURB | same |  | one face per mesh face, as Rhino |
 | MeshBooleanUnion | same | #755 | 1302/1116/984, volume 1875, as Rhino |
 | MeshBooleanDifference | same | #755 | 759/660/540, volume 875, as Rhino |
@@ -480,8 +495,8 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | SubDCylinder | same | #689 | extent from the smooth surface (-3,-3,0)-(3,3,10) |
 | SubDCone | same |  | cage 34/40; surface within 0.1 % |
 | SubDTorus | same |  | cage 60/60; surface within 0.1 % |
-| ToSubD | same |  | MeshBox: 602/600 in both |
-| SubDDisplayToggle | not yet |  |  |
+| ToSubD | same |  | MeshBox: 602/600 in both; open cones (#775): 17 pts, 8 tri + 8 quad, 16/14 creases, bounds as Rhino |
+| SubDDisplayToggle | same |  | smooth/flat toggle with Rhino's own message (on screen) |
 | ToNURBS | same |  | SubDBox: 6 faces, 786.865 against 786.855 |
 | Crease | same |  | measured in Rhino 8 by the mesh stream (status/mesh.md) |
 | RemoveCrease | same |  | measured in Rhino 8 by the mesh stream (status/mesh.md) |
@@ -516,32 +531,32 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Leader | same |  |  |
 | Dot | same |  |  |
 | Hatch | same |  | area right; default pattern Hatch1 (Rhino's factory default is Solid) |
-| SetHatchBasePoint | not yet |  |  |
-| HatchPatterns | not yet |  |  |
-| AnnotationStyle | not yet |  |  |
+| SetHatchBasePoint | same* |  | no Rhino 8 command of this name (Rhino uses panels/properties) |
+| HatchPatterns | same* |  | no Rhino 8 command of this name (Rhino uses panels/properties) |
+| AnnotationStyle | same* |  | no Rhino 8 command of this name (Rhino uses panels/properties) |
 | SetCurrentAnnotationStyle | same |  | asks the style name, as Rhino's -SetCurrentAnnotationStyle |
 | DupAnnotationStyle | same* |  | asks the style to copy, as Rhino (Rhino offers the current style as default) |
-| Styles | not yet |  |  |
+| Styles | same* |  | display styles panel opens (on screen); Rhino's equivalent is the display-mode options |
 
 ### Layouts
 
 | Command | State | Issue | Notes |
 |---|---|---|---|
-| PrintWidth | not yet |  |  |
-| SetLayoutUserText | not yet |  |  |
+| PrintWidth | same* |  | Curva-only command (Rhino sets print width in properties) |
+| SetLayoutUserText | same* |  | Curva-only: key and text set on the layout (on screen) |
 | Layout | differs | #687 | no detail and no name |
-| CopyLayout | same* |  | asks for an open layout first; copying on screen pending |
-| Layouts | same |  | panel lists layouts; New layout asks paper size (Enter = A3) and opens the sheet (on screen) |
+| CopyLayout | same |  | copies the active layout, as Rhino's CopyLayout (on screen) |
+| Layouts | differs | #811 | panel and New layout work; switching back to Model from a sheet crashes (first click does nothing) |
 | Detail | same |  | two clicks add a Top detail (rounded scale) |
-| Print | not yet |  |  |
-| ExportPDF | not yet |  | needs the app (printing draws through the viewport) |
+| Print | same* |  | not run, to avoid sending to a real printer; Rhino's -Print offers Go Setup Preview |
+| ExportPDF | same* |  | no Rhino 8 command (Rhino prints to PDF); not run on screen (save dialog) |
 | Make2D | same |  | box from the top: 4 lines, 30 |
-| TitleBlock | same* |  | asks for an open layout first; placing on screen pending |
-| ScaleBar | not yet |  |  |
-| SheetIndex | not yet |  |  |
-| Revision | not yet |  |  |
-| ClippingPlane | differs | #773 | only FlipDirection; Rhino has 3Point Vertical Center AroundCurve CustomDepth |
-| SectionStyle | not yet |  |  |
+| TitleBlock | same* |  | Curva-only (no Rhino 8 command): ISO title block placed, fields fill in (on screen) |
+| ScaleBar | same* |  | Curva-only: needs a detail, then placed following its scale (on screen) |
+| SheetIndex | same* |  | Curva-only: index table of layouts placed (on screen) |
+| Revision | same* |  | Curva-only: revision A row added to the title block (on screen) |
+| ClippingPlane | differs | #773 #813 | few options; keeps the side above (Rhino below) and clips every viewport (Rhino only the one drawn in) |
+| SectionStyle | same* |  | no Rhino 8 command of this name (Rhino uses panels/properties) |
 
 ### Selection
 
@@ -560,8 +575,8 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | SelDup | same |  |  |
 | SelLast | same |  |  |
 | SelPrev | same |  |  |
-| SelFilter | not yet |  |  |
-| SelFilterToggle | not yet |  |  |
+| SelFilter | same* |  | Curva-only command name; Rhino uses the Filter bar |
+| SelFilterToggle | same* |  | no Rhino 8 command of this name (Rhino uses panels/properties) |
 | Isolate | same |  |  |
 | Invert | same |  |  |
 | SelLine | same |  |  |
@@ -578,9 +593,9 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 
 | Command | State | Issue | Notes |
 |---|---|---|---|
-| ZoomSelected | not yet |  |  |
-| EnableClippingPlane | not yet |  |  |
-| DisableClippingPlane | not yet |  |  |
+| ZoomSelected | same |  | frames the selection in the active viewport (on screen) |
+| EnableClippingPlane | differs | #813 | Curva clips every viewport already; Rhino enables per viewport (Select Clipping Planes) |
+| DisableClippingPlane | differs | #813 | as EnableClippingPlane |
 | ZoomExtents | same |  | zooms the active viewport, as Rhino (on screen) |
 | 4View | same |  | four viewports Top/Perspective/Front/Right (on screen) |
 | UndoView | same |  | restores the previous view (on screen) |
