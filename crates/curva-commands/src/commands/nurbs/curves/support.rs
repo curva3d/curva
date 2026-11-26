@@ -121,21 +121,6 @@ pub(crate) fn picked_end(curve: &Spline, at: Point) -> bool {
     gap(at, curve.point(end)) < gap(at, curve.point(start))
 }
 
-/// Which end of `a` and which end of `b` are nearest each other: `(a at its end, b at its end)`.
-pub(crate) fn nearest_ends(a: &Spline, b: &Spline) -> (bool, bool) {
-    let (a0, a1) = (a.point(a.domain().0), a.point(a.domain().1));
-    let (b0, b1) = (b.point(b.domain().0), b.point(b.domain().1));
-    [
-        (gap(a1, b0), (true, false)),
-        (gap(a1, b1), (true, true)),
-        (gap(a0, b0), (false, false)),
-        (gap(a0, b1), (false, true)),
-    ]
-    .into_iter()
-    .min_by(|x, y| x.0.total_cmp(&y.0))
-    .map_or((true, false), |(_, ends)| ends)
-}
-
 /// The point and the first two derivatives at one end of a curve, pointing away from it: going
 /// out of the curve past that end.
 pub(crate) fn leaving(curve: &Spline, at_end: bool) -> (Point, Point, Point) {
