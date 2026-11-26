@@ -34,6 +34,7 @@ mod benchmark;
 mod clipping;
 mod command_jobs;
 mod command_line;
+mod cplane_history;
 mod desktop;
 mod dots;
 mod file_dialogs;

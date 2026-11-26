@@ -372,6 +372,10 @@ pub enum ViewRequest {
     },
     /// Put the last-used viewport back on its standard plane.
     ResetCPlane,
+    /// Put the last-used viewport back on the plane it had before (CPlane Undo, #776).
+    UndoCPlane,
+    /// Go forward again to a plane stepped back from (CPlane Redo).
+    RedoCPlane,
     /// Turn the last-used viewport into this view.
     Show(ViewName),
     /// Draw the last-used viewport this way.
