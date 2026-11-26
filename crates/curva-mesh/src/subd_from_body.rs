@@ -19,6 +19,8 @@ use curva_kernel::record::{Brep, Loop, OrientedEdge, Surface};
 use curva_kernel::{Body, NurbsSurface};
 use std::collections::{HashMap, HashSet};
 
+mod pole_kinks;
+
 fn failed(why: impl Into<String>) -> SmoothError {
     SmoothError(why.into())
 }
@@ -134,6 +136,7 @@ impl SubD {
         let forward = forward_faces(&record);
         let mut faces = Vec::new();
         let mut borders: Vec<Border> = Vec::new();
+        let mut kinked: Vec<[u32; 2]> = Vec::new();
         // A lone face is taken as its whole surface, trims and all, as Rhino takes one.
         let lone = record.faces.len() == 1;
         for (f, face) in record.faces.iter().enumerate() {
@@ -145,6 +148,7 @@ impl SubD {
                     &mut points,
                     &mut faces,
                     &mut borders,
+                    &mut kinked,
                 )?;
             }
         }
@@ -164,7 +168,8 @@ impl SubD {
             settle(face, &points.targets);
         }
         faces.retain(|f| f.points.len() >= 3);
-        let creased = creased_edges(&record, body, &faces, &points.targets);
+        let mut creased = creased_edges(&record, body, &faces, &points.targets);
+        creased.extend(kinked);
         let cage_faces: Vec<Vec<u32>> = faces.iter().map(|c| c.points.clone()).collect();
         let cage =
             Mesh::new(points.targets.clone(), &cage_faces).map_err(|e| failed(e.to_string()))?;
@@ -331,14 +336,21 @@ fn curved_face(
     points: &mut Points,
     faces: &mut Vec<CageFace>,
     borders: &mut Vec<Border>,
+    creases: &mut Vec<[u32; 2]>,
 ) -> Result<(), SmoothError> {
     let surface = NurbsSurface::of_face(record, f).map_err(|e| failed(e.0))?;
     let tolerance = points.step * 10.0;
     let (mut fr, closed) = friendly(&surface, tolerance);
     let [du, dv] = surface.degree;
+    let kinks = pole_kinks::pole_kinks(&surface, &fr, closed, tolerance);
+    if let Some(pk) = &kinks {
+        pole_kinks::cut_at_kinks(&mut fr, pk, closed);
+    }
+    let pole_side = |d: usize| kinks.as_ref().is_some_and(|pk| pk.around != d);
+    let curved = [du >= 2 || pole_side(0), dv >= 2 || pole_side(1)];
     add_poles(
         &mut fr,
-        [du >= 2 && !closed[0], dv >= 2 && !closed[1]],
+        [curved[0] && !closed[0], curved[1] && !closed[1]],
         tolerance,
     );
     let grid: Vec<Vec<u32>> = fr
@@ -347,6 +359,9 @@ fn curved_face(
         .map(|row| row.iter().map(|&p| points.id(p)).collect())
         .collect();
     let (nu, nv) = (grid.len(), grid[0].len());
+    if let Some(pk) = &kinks {
+        creases.extend(pole_kinks::kink_creases(&grid, pk));
+    }
     let on = &fr.on;
     let last = on[0].len() - 1;
     borders.extend([

@@ -1,7 +1,7 @@
 //! `CPlane`: sets the last-used viewport's construction plane, as Rhino 8's does: from three
 //! points (the default, or `3Point`), back to `World`, raised by an `Elevation`, turned by
 //! `Rotate` about its Z, facing the `View`, or back and forward through the viewport's planes with
-//! `Undo` and `Redo`, or on a picked `Surface` at a point on it (#776).
+//! `Undo` and `Redo`, on a picked `Surface`, square to a `Curve`, or moved `Through` a point (#776).
 
 use crate::commands::{ask_point, guide, unexpected};
 use crate::{Answer, Command, Kind, Live, Message, Request, Step, ViewRequest};
@@ -16,6 +16,33 @@ const THREE_POINT: &str = "3Point";
 const UNDO: &str = "Undo";
 const REDO: &str = "Redo";
 const SURFACE: &str = "Surface";
+const THROUGH: &str = "Through";
+const CURVE: &str = "Curve";
+
+/// The plane square to the curve picked at `at`: its origin there, its normal along the curve,
+/// its X the current plane's Z laid flat on it (or its X), so a plane across a level curve
+/// stands upright (Rhino's CPlane Curve, #776).
+fn across_curve(doc: &Document, at: Point) -> Step {
+    let Ok(Some((_, curve))) = crate::commands::curve_at(doc, at, crate::recipe::ON_CURVE) else {
+        return Step::Failed(Message::new("error.bad_plane"));
+    };
+    let Ok(spline) = curva_kernel::Spline::of(&curve) else {
+        return Step::Failed(Message::new("error.bad_plane"));
+    };
+    let t = spline.closest(at);
+    let (origin, Some(normal)) = (spline.point(t), unit(spline.derivative(t))) else {
+        return Step::Failed(Message::new("error.bad_plane"));
+    };
+    let (_, [x, y]) = doc.work_frame();
+    let flat = |d: Point| {
+        let along = curva_kernel::dot(d, normal);
+        unit(std::array::from_fn(|k| d[k] - normal[k] * along))
+    };
+    match flat(cross(x, y)).or_else(|| flat(x)) {
+        Some(up) => plane(origin, cross(up, normal), up),
+        None => Step::Failed(Message::new("error.bad_plane")),
+    }
+}
 
 /// The running command.
 #[derive(Default)]
@@ -93,6 +120,14 @@ impl SetCPlane {
                 self.asking = Some(SURFACE);
                 Step::Ask(Request::new("prompt.cplane.surface", Kind::Faces))
             }
+            THROUGH => {
+                self.asking = Some(THROUGH);
+                Step::Ask(Request::new("prompt.cplane.through", Kind::Point))
+            }
+            CURVE => {
+                self.asking = Some(CURVE);
+                Step::Ask(Request::new("prompt.cplane.curve", Kind::PickPart))
+            }
             _ => unexpected(),
         }
     }
@@ -130,6 +165,12 @@ impl Command for SetCPlane {
                     Some(face) => on_surface(doc, face, at),
                     None => unexpected(),
                 },
+                // Through: the same plane moved to the point.
+                (THROUGH, Some(Answer::Point(at))) => {
+                    let (_, [x, y]) = doc.work_frame();
+                    plane(at, x, y)
+                }
+                (CURVE, Some(Answer::Point(at))) => across_curve(doc, at),
                 (_, Some(Answer::Number(value))) => Self::valued(doc, option, value),
                 _ => unexpected(),
             };
@@ -140,6 +181,8 @@ impl Command for SetCPlane {
                     ELEVATION,
                     ROTATE,
                     SURFACE,
+                    CURVE,
+                    THROUGH,
                     VIEW,
                     WORLD,
                     THREE_POINT,
@@ -273,6 +316,34 @@ mod tests {
         let near = |a: [f64; 3], b: [f64; 3]| curva_kernel::gap(a, b) < 1e-9;
         assert!(
             near(origin, [3.0, 4.0, 5.0]) && near(x, [1.0, 0.0, 0.0]) && near(y, [0.0, 1.0, 0.0]),
+            "{origin:?} {x:?} {y:?}"
+        );
+    }
+
+    #[test]
+    fn through_moves_the_plane_and_curve_stands_it_across_a_curve() {
+        let mut doc = Document::default();
+        let mut processor = run(&mut doc, &["cplane", "Through", "3,4,5"]);
+        assert_eq!(
+            processor.take_view_request(),
+            Some(ViewRequest::SetCPlane {
+                origin: [3.0, 4.0, 5.0],
+                x: [1.0, 0.0, 0.0],
+                y: [0.0, 1.0, 0.0],
+            })
+        );
+        doc.add(curva_kernel::Curve::line([0.0; 3], [10.0, 0.0, 0.0]).unwrap());
+        let mut processor = crate::Processor::default();
+        processor.submit(&mut doc, "cplane");
+        processor.submit(&mut doc, "Curve");
+        processor.click(&mut doc, [5.0, 0.0, 0.0]);
+        let Some(ViewRequest::SetCPlane { origin, x, y }) = processor.take_view_request() else {
+            panic!("no plane");
+        };
+        // Square to the line at its middle, standing upright.
+        let near = |a: [f64; 3], b: [f64; 3]| curva_kernel::gap(a, b) < 1e-9;
+        assert!(
+            near(origin, [5.0, 0.0, 0.0]) && near(x, [0.0, 1.0, 0.0]) && near(y, [0.0, 0.0, 1.0]),
             "{origin:?} {x:?} {y:?}"
         );
     }

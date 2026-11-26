@@ -85,8 +85,20 @@ mod tests {
             .map(|line| line.split('|').nth(1).unwrap().trim().to_owned())
             .collect();
         let mut marks = std::collections::BTreeSet::new();
-        for entry in std::fs::read_dir(root.join("src")).unwrap() {
-            let text = std::fs::read_to_string(entry.unwrap().path()).unwrap();
+        let mut files = Vec::new();
+        let mut folders = vec![root.join("src")];
+        while let Some(folder) = folders.pop() {
+            for entry in std::fs::read_dir(folder).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    folders.push(path);
+                } else {
+                    files.push(path);
+                }
+            }
+        }
+        for path in files {
+            let text = std::fs::read_to_string(path).unwrap();
             for line in text.lines() {
                 if let Some(name) = line.trim().strip_prefix("// CUSTOM MESH OPERATION: ") {
                     marks.insert(name.trim().to_owned());
