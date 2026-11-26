@@ -57,6 +57,77 @@ fn curve2_spline(c: &Curve2) -> Spline {
     }
 }
 
+/// The surface with its degree across (along v when `across_v`) raised by `by`; its shape
+/// stays the same.
+fn elevated_across(mut s: NurbsSurface, across_v: bool, by: usize) -> NurbsSurface {
+    if by == 0 {
+        return s;
+    }
+    if across_v {
+        let rows: Vec<Spline> = s
+            .points
+            .iter()
+            .map(|r| {
+                Spline {
+                    degree: s.degree[1],
+                    knots: s.v_knots.clone(),
+                    points: r.clone(),
+                }
+                .elevated(by)
+            })
+            .collect();
+        s.degree[1] = rows[0].degree;
+        s.v_knots.clone_from(&rows[0].knots);
+        s.points = rows.into_iter().map(|r| r.points).collect();
+    } else {
+        let cols: Vec<Spline> = (0..s.points[0].len())
+            .map(|j| {
+                Spline {
+                    degree: s.degree[0],
+                    knots: s.u_knots.clone(),
+                    points: s.points.iter().map(|r| r[j]).collect(),
+                }
+                .elevated(by)
+            })
+            .collect();
+        s.degree[0] = cols[0].degree;
+        s.u_knots.clone_from(&cols[0].knots);
+        s.points = (0..cols[0].points.len())
+            .map(|i| cols.iter().map(|c| c.points[i]).collect())
+            .collect();
+    }
+    s
+}
+
+/// The rows of a matched surface, from its edge inwards: the edge row on `theirs`' edge, then for
+/// tangency the next row carried on across the edge out of `theirs`, each point as far from the
+/// edge as it was; for curvature the row after that set so the second differences across the
+/// edge match theirs, scaled to the first rows' lengths. The rows further in stay.
+fn matched_rows(mine: &[Spline], theirs: &[Spline], continuity: usize) -> Vec<Spline> {
+    let place = |q: [f64; 4]| [q[0] / q[3], q[1] / q[3], q[2] / q[3]];
+    let at = |p: Point| [p[0], p[1], p[2], 1.0];
+    let mut out: Vec<Spline> = mine.to_vec();
+    out[0].points.clone_from(&theirs[0].points);
+    for j in 0..out[0].points.len() {
+        let t: Vec<Point> = theirs.iter().map(|r| place(r.points[j])).collect();
+        if continuity >= 1 && out.len() >= 3 && t.len() >= 2 {
+            let across = unit(sub(t[0], t[1])).unwrap_or([0.0; 3]);
+            let first = gap(place(mine[0].points[j]), place(mine[1].points[j]));
+            // Carry on across the edge, out of theirs and into this surface.
+            let m1 = plus(t[0], across, first);
+            out[1].points[j] = at(m1);
+            if continuity >= 2 && out.len() >= 4 && t.len() >= 3 {
+                let scale = first / gap(t[0], t[1]).max(1e-12);
+                let bend: Point = std::array::from_fn(|c| t[2][c] - 2.0 * t[1][c] + t[0][c]);
+                let m2: Point =
+                    std::array::from_fn(|c| 2.0 * m1[c] - t[0][c] + scale * scale * bend[c]);
+                out[2].points[j] = at(m2);
+            }
+        }
+    }
+    out
+}
+
 impl Body {
     /// Every face's surface cut down to the box of its trims, the trims kept (Rhino's
     /// ShrinkTrimmedSrf).
@@ -170,11 +241,15 @@ impl Body {
         &self,
         edge: usize,
         count: usize,
+        degree: usize,
     ) -> Result<(NurbsSurface, Side, Vec<Spline>), KernelError> {
         let (face, side, _) = self.edge_side(edge)?;
         let mut s = NurbsSurface::of_face(&self.record()?, face)?;
-        // Enough rows across the edge, by inserting knots there (the shape stays the same).
         let across_v = matches!(side, Side::V0 | Side::V1);
+        // At least `degree` across the edge, raised where it is less (the shape stays the same).
+        let have = s.degree[usize::from(across_v)];
+        s = elevated_across(s, across_v, degree.saturating_sub(have));
+        // Enough rows across the edge, by inserting knots there (the shape stays the same).
         loop {
             let have = if across_v {
                 s.points[0].len()
@@ -236,8 +311,8 @@ impl Body {
     ) -> Result<Body, KernelError> {
         // CUSTOM KERNEL OPERATION: surface-blending
         let need = continuity.min(2) + 1;
-        let (_, _, a) = self.rows_from_edge(edge, need)?;
-        let (_, _, mut b) = other.rows_from_edge(other_edge, need)?;
+        let (_, _, a) = self.rows_from_edge(edge, need, 0)?;
+        let (_, _, mut b) = other.rows_from_edge(other_edge, need, 0)?;
         if a.len() < need || b.len() < need {
             return Err(KernelError(
                 "a surface has too few control points for that continuity".to_owned(),
@@ -312,14 +387,17 @@ impl Body {
         continuity: usize,
     ) -> Result<Body, KernelError> {
         // CUSTOM KERNEL OPERATION: surface-matching
-        let (surface, side, _) = self.rows_from_edge(edge, 1)?;
+        // As Rhino does, the surface gets the degree across the edge that the continuity needs
+        // (2 for tangency, 3 for curvature) and a row more than it moves, so its far edge stays.
+        let least = continuity.min(2) + 1;
+        let (surface, side, _) = self.rows_from_edge(edge, least + 1, least)?;
         let (rows, cols) = (surface.points.len(), surface.points[0].len());
         let count = match side {
             Side::U0 | Side::U1 => rows,
             Side::V0 | Side::V1 => cols,
         };
-        let (_, _, mine) = self.rows_from_edge(edge, count)?;
-        let (_, _, mut theirs) = other.rows_from_edge(other_edge, 2)?;
+        let (_, _, mine) = self.rows_from_edge(edge, count, least)?;
+        let (_, _, mut theirs) = other.rows_from_edge(other_edge, least, 0)?;
         let (m0s, m0e) = (
             mine[0].point(mine[0].domain().0),
             mine[0].point(mine[0].domain().1),
@@ -334,20 +412,7 @@ impl Body {
         let all: Vec<Spline> = mine.iter().chain(theirs.iter()).cloned().collect();
         let all = Spline::compatible(&all)?;
         let (mine, theirs) = all.split_at(count);
-        let mut rows_out: Vec<Spline> = mine.to_vec();
-        rows_out[0].points.clone_from(&theirs[0].points);
-        if continuity >= 1 && rows_out.len() >= 2 && theirs.len() >= 2 {
-            for j in 0..rows_out[0].points.len() {
-                let place = |q: [f64; 4]| [q[0] / q[3], q[1] / q[3], q[2] / q[3]];
-                let edge_point = place(theirs[0].points[j]);
-                let across = unit(sub(place(theirs[0].points[j]), place(theirs[1].points[j])))
-                    .unwrap_or([0.0; 3]);
-                let length = gap(place(mine[0].points[j]), place(mine[1].points[j]));
-                // Carry on across the edge, out of theirs and into this surface.
-                let p = plus(edge_point, across, length);
-                rows_out[1].points[j] = [p[0], p[1], p[2], 1.0];
-            }
-        }
+        let rows_out = matched_rows(mine, theirs, continuity);
         // Back into a net, the edge on its side again.
         let along = rows_out[0].clone();
         let n = rows_out.len();
@@ -621,6 +686,58 @@ mod tests {
                 joined.naked_edges().unwrap().len(),
                 4 + 2 + 2,
                 "G{continuity}: the blend meets both edges"
+            );
+        }
+    }
+
+    #[test]
+    fn a_match_moves_only_the_edge_and_its_far_edge_stays_as_in_rhino() {
+        // The testing stream's case (#750): A at z = 0 up to y = 10, B from y = 15 to 25 at z = 5.
+        let line = |a: crate::Point, b: crate::Point| Curve::line(a, b).unwrap();
+        let a = Body::ruled(
+            &line([0.0, 0.0, 0.0], [10.0, 0.0, 0.0]),
+            &line([0.0, 10.0, 0.0], [10.0, 10.0, 0.0]),
+            false,
+        )
+        .unwrap();
+        let b = Body::ruled(
+            &line([0.0, 15.0, 5.0], [10.0, 15.0, 5.0]),
+            &line([0.0, 25.0, 5.0], [10.0, 25.0, 5.0]),
+            false,
+        )
+        .unwrap();
+        let along_y = |body: &Body, y: f64| {
+            (0..body.record_edge_count())
+                .find(|e| {
+                    let points = body.edge_curve(*e).unwrap().sample().unwrap();
+                    points.iter().all(|p| (p[1] - y).abs() < 1e-9)
+                })
+                .unwrap()
+        };
+        for continuity in 0..=2 {
+            let matched = b
+                .matched_to(along_y(&b, 15.0), &a, along_y(&a, 10.0), continuity)
+                .unwrap();
+            // Rhino 8: the far edge stays at y = 25, z = 5; one row more for each step of
+            // continuity (2, 3, 4 across).
+            let (low, high) = matched.bounds().unwrap();
+            assert!(
+                (low[1] - 10.0).abs() < 1e-9 && (high[1] - 25.0).abs() < 1e-9,
+                "G{continuity}: {low:?} {high:?}"
+            );
+            assert!(low[2].abs() < 1e-9 && (high[2] - 5.0).abs() < 1e-9);
+            let (rows, cols, _) = matched.control_net().unwrap();
+            assert_eq!(rows.max(cols), continuity + 2, "G{continuity}");
+            // Rhino 8's real -MatchSrf, measured by the testing stream: rows (y, z) at (10, 0)
+            // (25, 5); then (15, 0) added; then (13.3333, 0) (16.6667, 0).
+            let area = matched.area().unwrap();
+            let rhino = [158.1139, 159.2704, 160.5650][continuity];
+            assert!((area - rhino).abs() < 1e-3, "G{continuity}: {area}");
+            let joined = Body::assembled(&[matched, a.clone()]).unwrap();
+            assert_eq!(
+                joined.naked_edges().unwrap().len(),
+                6,
+                "G{continuity}: sewn"
             );
         }
     }
