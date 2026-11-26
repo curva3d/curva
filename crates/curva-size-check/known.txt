@@ -14,7 +14,6 @@ fn crates/curva-document/src/sheet.rs table_parts 115
 fn crates/curva-dxf/src/annotation.rs hatch_in 85
 fn crates/curva-dxf/src/dims.rs dimension_in 111
 fn crates/curva-kernel/src/assemble.rs merged 81
-fn crates/curva-kernel/src/body.rs edge_curve 89
 fn crates/curva-kernel/src/conic.rs conic_parts 95
 fn crates/curva-kernel/src/cut.rs cut_at 106
 fn crates/curva-kernel/src/engine_ops.rs new_edges_after 90

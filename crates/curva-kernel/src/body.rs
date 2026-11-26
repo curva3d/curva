@@ -606,12 +606,7 @@ impl Body {
     /// arc, an ellipse's part or the NURBS it lies on, trimmed to the edge. Edges the engine
     /// holds only as a traced intersection come back as the polyline through their mesh points.
     pub fn edge_curve(&self, index: usize) -> Result<Curve, KernelError> {
-        use solidcore_record::brep::Curve as Kind;
         let record = self.record()?;
-        let edge = record
-            .edges
-            .get(index)
-            .ok_or_else(|| KernelError(format!("the body has no edge {index}")))?;
         let mesh = self.mesh()?;
         let traced = mesh
             .edge_ids
@@ -620,6 +615,49 @@ impl Body {
             .and_then(|at| mesh.edges.get(at))
             .cloned()
             .unwrap_or_default();
+        exact_edge(&record, index, traced)
+    }
+
+    /// The edges as their exact curves, one for each of the mesh's edges and in its order (curve
+    /// `i` is edge [`BodyMesh::edge_ids`]`[i]`), for picking, snapping, ties and printing: a
+    /// circular edge is a circle, whose ends, middle and centre snap as Rhino's do (#792). An
+    /// edge that can't be made exact is its meshed run of points. Drawing keeps the meshed runs.
+    pub fn edge_curves(&self) -> Result<Vec<Curve>, KernelError> {
+        let record = self.record()?;
+        let mesh = self.mesh()?;
+        Ok(mesh
+            .edge_ids
+            .iter()
+            .zip(mesh.edges)
+            .map(|(&index, run)| {
+                exact_edge(&record, index, run.clone()).unwrap_or_else(|_| meshed_run(run))
+            })
+            .collect())
+    }
+}
+
+/// An edge's meshed run of points as a curve: a line for two, a polyline for more, a point for
+/// one.
+fn meshed_run(run: Vec<Point>) -> Curve {
+    let fallback = Curve::Point {
+        at: run.first().copied().unwrap_or([0.0; 3]),
+    };
+    match run.len() {
+        0 | 1 => fallback,
+        2 => Curve::line(run[0], run[1]).unwrap_or(fallback),
+        _ => Curve::polyline(run, false).unwrap_or(fallback),
+    }
+}
+
+/// Record edge `index` as an exact curve, trimmed to the edge where its meshed run of points,
+/// `traced`, lies.
+fn exact_edge(record: &Record, index: usize, traced: Vec<Point>) -> Result<Curve, KernelError> {
+    use solidcore_record::brep::Curve as Kind;
+    {
+        let edge = record
+            .edges
+            .get(index)
+            .ok_or_else(|| KernelError(format!("the body has no edge {index}")))?;
         let corner = |at: usize| {
             record
                 .vertices
@@ -655,59 +693,54 @@ impl Body {
             )?,
             Kind::SurfaceIntersection { .. } => return Curve::polyline(traced, false),
         };
-        // The piece of the whole curve between the edge's ends that runs where the edge's mesh
-        // points do.
-        let closed_edge = crate::gap(start, end) < 1e-9;
-        let pieces = if closed_edge {
-            whole.cut_at(&[start])?
-        } else {
-            whole.cut_at(&[start, end])?
-        };
-        let middle = traced.get(traced.len() / 2).copied();
-        let off = |piece: &Curve| -> f64 {
-            let Some(middle) = middle else { return 0.0 };
-            piece
-                .sample()
-                .map(|points| {
-                    points
-                        .iter()
-                        .map(|p| crate::gap(*p, middle))
-                        .fold(f64::INFINITY, f64::min)
-                })
-                .unwrap_or(f64::INFINITY)
-        };
-        let ends_match = |piece: &Curve| {
-            piece.sample().is_ok_and(|points| {
-                let (Some(a), Some(b)) = (points.first(), points.last()) else {
-                    return false;
-                };
-                let near =
-                    |p: Point, q: Point| crate::gap(p, q) < 1e-6 * (1.0 + crate::gap(start, end));
-                closed_edge
-                    || (near(*a, start) && near(*b, end))
-                    || (near(*a, end) && near(*b, start))
-            })
-        };
-        pieces
-            .into_iter()
-            .filter(ends_match)
-            .min_by(|a, b| off(a).total_cmp(&off(b)))
-            .ok_or_else(|| KernelError("could not trim the edge's curve".to_owned()))
+        trimmed_to(&whole, start, end, &traced)
     }
-    /// The edges as curves, for drawing in wireframe, picking and snapping.
-    pub fn edge_curves(&self) -> Result<Vec<Curve>, KernelError> {
-        Ok(self
-            .mesh()?
-            .edges
-            .into_iter()
-            .filter_map(|run| match run.len() {
-                0 | 1 => None,
-                2 => Curve::line(run[0], run[1]).ok(),
-                _ => Curve::polyline(run, false).ok(),
-            })
-            .collect())
-    }
+}
 
+/// The piece of `whole` between an edge's ends, `start` and `end`, that runs where its meshed
+/// points, `traced`, do.
+fn trimmed_to(
+    whole: &Curve,
+    start: Point,
+    end: Point,
+    traced: &[Point],
+) -> Result<Curve, KernelError> {
+    let closed_edge = crate::gap(start, end) < 1e-9;
+    let pieces = if closed_edge {
+        whole.cut_at(&[start])?
+    } else {
+        whole.cut_at(&[start, end])?
+    };
+    let middle = traced.get(traced.len() / 2).copied();
+    let off = |piece: &Curve| -> f64 {
+        let Some(middle) = middle else { return 0.0 };
+        piece
+            .sample()
+            .map(|points| {
+                points
+                    .iter()
+                    .map(|p| crate::gap(*p, middle))
+                    .fold(f64::INFINITY, f64::min)
+            })
+            .unwrap_or(f64::INFINITY)
+    };
+    let ends_match = |piece: &Curve| {
+        piece.sample().is_ok_and(|points| {
+            let (Some(a), Some(b)) = (points.first(), points.last()) else {
+                return false;
+            };
+            let near =
+                |p: Point, q: Point| crate::gap(p, q) < 1e-6 * (1.0 + crate::gap(start, end));
+            closed_edge || (near(*a, start) && near(*b, end)) || (near(*a, end) && near(*b, start))
+        })
+    };
+    pieces
+        .into_iter()
+        .filter(ends_match)
+        .min_by(|a, b| off(a).total_cmp(&off(b)))
+        .ok_or_else(|| KernelError("could not trim the edge's curve".to_owned()))
+}
+impl Body {
     /// The body's edges as their exact curves (lines between their vertices, circles and
     /// splines as the engine holds them), each with the faces that meet at it, by number. For
     /// drawings, which want edges exact rather than as the display draws them.
@@ -797,6 +830,28 @@ mod tests {
 
     fn close(a: f64, b: f64) -> bool {
         (a - b).abs() <= 1e-6 * b.abs().max(1.0)
+    }
+
+    #[test]
+    fn a_cylinders_edges_are_exact_curves_one_for_each_mesh_edge() {
+        // #792: the circular edges snap as circles (End, Mid, Center), not as polylines.
+        let circle = crate::Curve::circle([0.0; 3], 2.0).unwrap();
+        let cylinder = Body::extruded(&[circle], [0.0, 0.0, 1.0], 5.0, true).unwrap();
+        let curves = cylinder.edge_curves().unwrap();
+        assert_eq!(curves.len(), cylinder.mesh().unwrap().edge_ids.len());
+        assert!(
+            curves
+                .iter()
+                .all(|c| !matches!(c, crate::Curve::Polyline { .. })),
+            "{curves:?}"
+        );
+        // Each circular edge lies 2 from the axis all round.
+        for curve in &curves {
+            for p in curve.sample().unwrap() {
+                let r = p[0].hypot(p[1]);
+                assert!(close(r, 2.0) || r < 2.0, "{r}");
+            }
+        }
     }
 
     #[test]
