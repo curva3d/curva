@@ -63,6 +63,7 @@ mod unroll_all;
 pub use record_io::{from_record_curve, to_record_curve, to_record_spline};
 /// The engine's portable B-rep record, for reading and writing other formats.
 pub use solidcore_record::brep as record;
+mod face_surfaces;
 mod spline;
 mod surface;
 mod surface_curves;
