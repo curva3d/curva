@@ -42,6 +42,9 @@ pub struct PlacedTurn {
     pub colour: [f32; 3],
     /// The object's number in [`crate::SceneParts::objects`].
     pub object: u32,
+    /// The kind of line it draws as, its object's edges': a surface's or solid's, a mesh's or a
+    /// SubD's, whose look and outline choice the view's style gives.
+    pub kind: crate::LineKind,
 }
 
 /// The turns of `mesh`, as indices into its positions: the shared line's two ends, then each
@@ -166,12 +169,21 @@ pub(crate) fn turns_of(
     for faces in outlines.faces.iter() {
         let turns = match (&faces.turns, faces.face_kind) {
             (Some(given), _) => given,
-            (None, FaceKind::Nurbs) => known
-                .entry(std::sync::Arc::as_ptr(&faces.mesh))
-                .or_insert_with(|| std::sync::Arc::new(mesh_turns(&faces.mesh))),
+            (None, FaceKind::Nurbs | FaceKind::Subd)
+                if faces.mesh.triangles.len() <= MOST_TURNED_TRIANGLES =>
+            {
+                known
+                    .entry(std::sync::Arc::as_ptr(&faces.mesh))
+                    .or_insert_with(|| std::sync::Arc::new(mesh_turns(&faces.mesh)))
+            }
             _ => continue,
         };
         let object = numbers.get(&faces.id).copied().unwrap_or(crate::NO_OBJECT);
+        let kind = match faces.face_kind {
+            FaceKind::Mesh => crate::LineKind::MeshEdge,
+            FaceKind::Subd => crate::LineKind::SubdEdge,
+            _ => crate::LineKind::Edge,
+        };
         let at = |corner| faces.corner(corner).map(|p| narrow_from(p, origin));
         for &[a, b, c, d] in turns.iter() {
             if let (Some(a), Some(b), Some(c), Some(d)) = (at(a), at(b), at(c), at(d)) {
@@ -182,6 +194,7 @@ pub(crate) fn turns_of(
                     d,
                     colour: faces.colour,
                     object,
+                    kind,
                 });
             }
         }
@@ -290,5 +303,23 @@ mod tests {
         let (turns, borders) = mesh_turns_and_borders(&big);
         assert!(turns.is_empty());
         assert_eq!(borders, big.outline_edges(), "a closed ring has none");
+    }
+
+    /// A SubD turns over its smooth surface as a body does, its silhouettes drawn as its own edges are
+    /// (#663 follow-up): a SubD box, rounded all over, has turns, each of the kind `SubdEdge`.
+    #[test]
+    fn a_subd_turns_and_draws_them_as_its_edges() {
+        let mut doc = curva_document::Document::default();
+        let frame = curva_mesh::Frame::world();
+        let subd = curva_mesh::SubD::subd_box(&frame, [10.0; 3], [1; 3]);
+        doc.add_shape(curva_document::Shape::SubD(subd));
+        let parts = crate::SceneParts::shared(&Outlines::of(doc.state()));
+        assert!(!parts.turns.is_empty());
+        assert!(
+            parts
+                .turns
+                .iter()
+                .all(|t| t.kind == crate::LineKind::SubdEdge)
+        );
     }
 }

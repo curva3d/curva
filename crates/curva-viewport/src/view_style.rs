@@ -4,7 +4,7 @@
 
 use crate::{EDGE_ON_FACES_COLOUR, FaceKind, LineTable};
 use curva_document::style::{
-    ColourFrom, Engine, FacedKind, OcclusionLight, VectorFaces, ViewStyle,
+    ColourFrom, Engine, FacedKind, OcclusionLight, OutlineChoice, VectorFaces, ViewStyle,
 };
 
 /// Rows of the face table ([`Style::face_rows`]): two for each [`FaceKind`].
@@ -130,6 +130,9 @@ pub struct OutlineLook {
     /// How wide they are, in millimetres on the screen; never thinner than the default line
     /// ([`OutlineLook::pixels`]).
     pub width: f32,
+    /// For surfaces and solids, meshes and SubDs, in that order, how their outlines draw as the
+    /// style's choice for each says: 0 not at all, 1 as the style says, 2 twice as thick.
+    pub kinds: [f32; 3],
 }
 
 impl Style {
@@ -168,6 +171,13 @@ impl Style {
                 shown: view.outlines.shown,
                 colour: view.outlines.colour.to_f32(),
                 width: view.outlines.width,
+                kinds: [FacedKind::Nurbs, FacedKind::Mesh, FacedKind::Subd].map(|kind| match view
+                    .outline(kind)
+                {
+                    OutlineChoice::AsStyle => 1.0,
+                    OutlineChoice::Thicker => 2.0,
+                    OutlineChoice::Off => 0.0,
+                }),
             },
             hidden_lines: view.hidden_lines.shown,
             faces: [FacedKind::Nurbs, FacedKind::Mesh, FacedKind::Subd]
@@ -279,10 +289,21 @@ impl Style {
     }
 
     /// The face table the face shader reads: for each [`FaceKind`] in order, its colour and
-    /// whether to use it, then its opacity and whether it shows. No kind shows in a view without
-    /// faces.
+    /// whether to use it, then its opacity, whether it shows and its outline factor
+    /// ([`OutlineLook::kinds`], 0 with outlines off). No kind shows in a view without faces.
     pub(crate) fn face_rows(&self) -> [[f32; 4]; FACE_ROWS] {
         let mut rows = [[0.0; 4]; FACE_ROWS];
+        // Each kind's outline factor, for silhouettes where faces hide nothing (`gpu/turns.rs`):
+        // there, a view shows no faces at all, or see-through ones.
+        for kind in FaceKind::ALL {
+            let part = (kind as usize).saturating_sub(1);
+            let factor = if self.outlines.shown {
+                self.outlines.kinds[part]
+            } else {
+                0.0
+            };
+            rows[kind as usize * 2 + 1][2] = factor;
+        }
         if self.surfaces.is_none() {
             return rows;
         }
@@ -292,7 +313,7 @@ impl Style {
             let [r, g, b] = look.colour.unwrap_or_default();
             let at = kind as usize * 2;
             rows[at] = [r, g, b, flag(look.colour.is_some())];
-            rows[at + 1] = [look.opacity, flag(look.shown), 0.0, 0.0];
+            rows[at + 1] = [look.opacity, flag(look.shown), rows[at + 1][2], 0.0];
         }
         rows
     }
@@ -331,6 +352,7 @@ impl OutlineLook {
         shown: true,
         colour: EDGE_ON_FACES_COLOUR,
         width: 0.25,
+        kinds: [1.0; 3],
     };
 
     /// How many pixels wide the outlines draw on a screen with `per_mm` pixels to a millimetre:
@@ -394,6 +416,7 @@ mod tests {
             shown: true,
             colour: INK_COLOUR,
             width: 0.25,
+            kinds: [1.0; 3],
         };
         assert_eq!(Style::hidden().outlines, ink);
         assert_eq!(
@@ -401,7 +424,10 @@ mod tests {
             OutlineLook { width: 0.75, ..ink }
         );
         assert_eq!(Style::shaded().outlines, OutlineLook::EDGES);
-        assert!(!Style::wireframe().outlines.shown);
+        assert!(
+            Style::wireframe().outlines.shown,
+            "Wireframe draws the silhouettes of curved shapes"
+        );
         let massing = Style::massing().surfaces.expect("faces");
         assert_eq!(
             (massing.colour, massing.light),

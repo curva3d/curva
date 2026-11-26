@@ -7,6 +7,8 @@ const _: () = assert!(crate::line_table::LINE_ROWS == 20);
 const _: () = assert!(crate::view_style::FADE_ROWS == 2);
 const _: () = assert!(crate::line_table::HIDDEN_SLOT == 9);
 const _: () = assert!(crate::LineKind::Curve as u32 == 1);
+const _: () = assert!(crate::LineKind::MeshEdge as u32 == 8);
+const _: () = assert!(crate::LineKind::SubdEdge as u32 == 5);
 const _: () = assert!(crate::view_style::FACE_ROWS == 8);
 const _: () = assert!(super::upload::OBJECT_BITS == 0x00FF_FFFF);
 
@@ -72,6 +74,8 @@ struct Uniforms {
     // Lines by distance (`Style::fade_rows`): the plane distances are measured from, then where
     // lines start to thin and fade, where they are thinnest, and how thin and faint there.
     fade: array<vec4<f32>, 2>,
+    // Each kind of face's look (`Style::face_rows`); silhouettes read its outline factor.
+    faces: array<vec4<f32>, 8>,
 };
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 // How far a point is between where lines start to thin and fade (0) and where they are
@@ -286,6 +290,9 @@ fn on_screen(p: vec3<f32>) -> vec3<f32> {
     let at = uniforms.matrix * vec4<f32>(p, 1.0);
     return vec3<f32>(at.xy / max(at.w, 1e-12), at.w);
 }
+// The kinds of line a mesh's and a SubD's turns draw as (`LineKind::MeshEdge`, `SubdEdge`).
+const MESH_EDGE: u32 = 8u;
+const SUBD_EDGE: u32 = 5u;
 fn turns_away(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, d: vec3<f32>) -> bool {
     let sa = on_screen(a);
     let sb = on_screen(b);
@@ -303,8 +310,13 @@ fn turns_away(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, d: vec3<f32>) -> bool {
     @location(2) c: vec3<f32>, @location(3) d: vec3<f32>,
     @location(4) colour: vec3<f32>, @location(5) width: f32, @location(6) object: u32,
 ) -> Out {
-    var out = segment(corner, a, colour, width, b, colour, width, object);
-    if (!turns_away(a, b, c, d)) { out.position = vec4<f32>(2.0, 2.0, 2.0, 1.0); }
+    // The outline factor of the turn's kind of object, from its kind of line: none hides it,
+    // and thicker doubles it (`OutlineLook::kinds`).
+    let line = object >> 24u;
+    let face = select(select(1u, 2u, line == MESH_EDGE), 3u, line == SUBD_EDGE);
+    let factor = uniforms.faces[face * 2u + 1u].z;
+    var out = segment(corner, a, colour, width * factor, b, colour, width * factor, object);
+    if (factor <= 0.0 || !turns_away(a, b, c, d)) { out.position = vec4<f32>(2.0, 2.0, 2.0, 1.0); }
     return out;
 }"
 );

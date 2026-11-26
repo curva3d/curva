@@ -9,7 +9,7 @@ const SIZE: usize = 128;
 /// A sphere of radius 10 seen straight down in Wireframe, with or without its turns: the
 /// picture's pixels, where its centre and rim are on screen, and its seam's row. `None` without
 /// a graphics adapter.
-fn sphere_from_above(turns: bool) -> Option<(Vec<u8>, [f64; 2], f64)> {
+fn sphere_from_above(turns: bool, style: crate::Style) -> Option<(Vec<u8>, [f64; 2], f64)> {
     let mut doc = curva_document::Document::default();
     doc.add_body(curva_kernel::Body::sphere([0.0; 3], 10.0).unwrap());
     let outlines = crate::Outlines::of(doc.state());
@@ -25,7 +25,7 @@ fn sphere_from_above(turns: bool) -> Option<(Vec<u8>, [f64; 2], f64)> {
         lines: parts.lines,
         matrix: measured.matrix(1.0),
         light: measured.forward().map(|v| v as f32),
-        style: crate::Style::wireframe(),
+        style,
         ..Picture::default()
     };
     let scene = Scene {
@@ -53,9 +53,10 @@ fn inked(pixels: &[u8], x: usize, y: usize) -> bool {
 /// rim, though it has no edge there, and nothing inside it besides its seam.
 #[test]
 fn a_sphere_in_wireframe_shows_its_rim_and_nothing_inside() {
-    let (Some((with, centre, rim)), Some((without, ..))) =
-        (sphere_from_above(true), sphere_from_above(false))
-    else {
+    let (Some((with, centre, rim)), Some((without, ..))) = (
+        sphere_from_above(true, crate::Style::wireframe()),
+        sphere_from_above(false, crate::Style::wireframe()),
+    ) else {
         return;
     };
     let [cx, cy] = centre;
@@ -82,4 +83,41 @@ fn a_sphere_in_wireframe_shows_its_rim_and_nothing_inside() {
             }
         }
     }
+}
+
+/// The style's Outlines switch and its choice for surfaces and solids decide whether their
+/// silhouettes draw where faces hide nothing, as they decide outlines elsewhere; a choice for
+/// meshes leaves a sphere's alone.
+#[test]
+fn silhouettes_follow_the_style_s_outlines() {
+    use curva_document::style::{OutlineChoice, ViewStyle};
+    let rim_shown = |change: fn(&mut ViewStyle)| {
+        let mut view = ViewStyle::wireframe();
+        change(&mut view);
+        let (pixels, [cx, cy], rim) = sphere_from_above(true, crate::Style::of(&view))?;
+        Some((-2..=2).any(|off| inked(&pixels, (cx - rim + f64::from(off)) as usize, cy as usize)))
+    };
+    let Some(as_built) = rim_shown(|_| {}) else {
+        return;
+    };
+    assert!(as_built, "Wireframe shows silhouettes");
+    assert_eq!(
+        rim_shown(|v| v.outlines.shown = false),
+        Some(false),
+        "Outlines off"
+    );
+    assert_eq!(
+        rim_shown(|v| v.nurbs.outline = OutlineChoice::Off),
+        Some(false),
+        "surfaces' outlines off"
+    );
+    let meshes_off = |v: &mut ViewStyle| {
+        v.meshes.same_as_nurbs = false;
+        v.meshes.outline = OutlineChoice::Off;
+    };
+    assert_eq!(
+        rim_shown(meshes_off),
+        Some(true),
+        "meshes' choice is theirs"
+    );
 }

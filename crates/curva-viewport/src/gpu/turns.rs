@@ -4,13 +4,13 @@ use egui_wgpu::wgpu;
 
 use super::shaders::{TURN_SHADER, table_wgsl};
 use super::{LINE_DEPTH_BIAS, PipelineParts, SEGMENT_CORNERS, Uploaded, pipeline};
-use crate::{LineKind, PlacedTurn};
+use crate::PlacedTurn;
 
 /// The bytes of one [`PlacedTurn`] on the graphics card.
 pub(crate) const TURN_SIZE: u64 = 68;
 
 /// `turns` as the graphics card reads them: the shared line's ends, the two far corners, colour,
-/// width (the default line's) and object, each drawn as an edge.
+/// width (the default line's) and object, each drawn as its object's edges.
 pub(crate) fn turn_bytes(turns: &[PlacedTurn]) -> Vec<u8> {
     let width = crate::line_width(None, false);
     let mut bytes = Vec::with_capacity(turns.len() * TURN_SIZE as usize);
@@ -22,7 +22,7 @@ pub(crate) fn turn_bytes(turns: &[PlacedTurn]) -> Vec<u8> {
         {
             bytes.extend_from_slice(&value.to_le_bytes());
         }
-        let packed = super::upload::packed(turn.object, LineKind::Edge as u32);
+        let packed = super::upload::packed(turn.object, turn.kind as u32);
         bytes.extend_from_slice(&packed.to_le_bytes());
     }
     bytes
@@ -75,6 +75,7 @@ pub(crate) fn draw_turns(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::LineKind;
 
     #[test]
     fn a_turn_takes_its_size_in_bytes_and_draws_as_an_edge() {
@@ -85,6 +86,7 @@ mod tests {
             d: [6.0; 3],
             colour: [0.5; 3],
             object: 9,
+            kind: LineKind::Edge,
         };
         let bytes = turn_bytes(&[turn, turn]);
         assert_eq!(bytes.len() as u64, 2 * TURN_SIZE);
@@ -92,5 +94,15 @@ mod tests {
         assert_eq!(&bytes[36..40], &6.0f32.to_le_bytes());
         let edge = LineKind::Edge as u32;
         assert_eq!(&bytes[64..68], &((edge << 24) | 9).to_le_bytes());
+        // A mesh's turn draws as the mesh's edges.
+        let mesh = PlacedTurn {
+            kind: LineKind::MeshEdge,
+            ..turn
+        };
+        let kind = LineKind::MeshEdge as u32;
+        assert_eq!(
+            &turn_bytes(&[mesh])[64..68],
+            &((kind << 24) | 9).to_le_bytes()
+        );
     }
 }
