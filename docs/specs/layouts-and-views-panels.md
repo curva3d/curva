@@ -154,8 +154,8 @@ layouts. It gains:
    - **Group by:** folders (the default), level, or kind, switching how the same views are shown.
    - **Search** at the top, narrowing to matching views and opening their folders.
    - The **Layouts panel** works the same way: the user's folders (drawing sets), sheet numbers and
-     search. A clone folder can offer **Place each on its own layout**, one sheet per level from a
-     chosen title block.
+     search. A clone folder offers **Place each on its own layout**, one sheet per level from a
+     chosen title block, kept in step as levels are added (confirmed by the owner).
 4. **Two panels**, as recommended. Besides the normal way (a detail on the layout, then choose its
    view), **drag a view** from the Views panel onto an open layout, or onto a layout's row in the
    Layouts panel, to place it; dropped on a row, it lands in the layout's first free space at the
