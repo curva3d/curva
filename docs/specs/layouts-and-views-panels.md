@@ -144,11 +144,18 @@ layouts. It gains:
    elevation or detail marker points to **one chosen placement** of its view: the first placement
    by default, changeable in the marker's properties. The Views panel shows every layout a view is
    on.
-3. **Still open:** how viewpoints, views and cameras relate. Archicad keeps them apart: a camera is
-   a placed element that becomes one more 3D viewpoint, and a view is a viewpoint plus how it is
-   shown. Two questions remain: are cameras placed objects in the model, or saved positions like
-   Rhino's named views; and are viewpoints and views two tabs, or one tree with views under their
-   viewpoint.
+3. **Cameras are saved positions**, as Rhino's named views, not placed objects. The Views panel is
+   **one tree grouped by the user's own folders** (as Archicad's View Map), named for what is
+   delivered ("Planning set 1:100", "Working 1:50"), not by storey. It replaces the separate
+   Viewpoints tab:
+   - **Clone folders:** one set-up view (layers, scale, style) and a choice of levels; the folder
+     makes one view per level and adds or removes them as levels change. A 60-storey building
+     then needs one set-up view per set, not 60.
+   - **Group by:** folders (the default), level, or kind, switching how the same views are shown.
+   - **Search** at the top, narrowing to matching views and opening their folders.
+   - The **Layouts panel** works the same way: the user's folders (drawing sets), sheet numbers and
+     search. A clone folder can offer **Place each on its own layout**, one sheet per level from a
+     chosen title block.
 4. **Two panels**, as recommended. Besides the normal way (a detail on the layout, then choose its
    view), **drag a view** from the Views panel onto an open layout, or onto a layout's row in the
    Layouts panel, to place it; dropped on a row, it lands in the layout's first free space at the
