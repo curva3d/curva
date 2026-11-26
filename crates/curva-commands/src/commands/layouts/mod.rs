@@ -16,7 +16,7 @@ pub(crate) mod title_block;
 /// This folder's commands, as the command list holds them; `commands/order.rs` keeps their
 /// place in it.
 pub(crate) static COMMANDS: &[crate::commands::CommandDef] = &[
-    listed!("Layout", [], false, true, layout::Layout),
+    listed!("Layout", [], true, true, layout::Layout),
     listed!("CopyLayout", [], false, true, copy_layout::CopyLayout),
     listed!("Layouts", [], false, false, layouts_panel::Layouts),
     listed!("Detail", [], false, true, detail::Detail),

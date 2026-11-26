@@ -313,7 +313,7 @@ mod tests {
         let mut doc = Document::default();
         let mut processor = run(&mut doc, &["export", "plan.svg"]);
         assert_eq!(processor.take_view_request(), None, "no layouts to draw");
-        run(&mut doc, &["layout", "", "layout", ""]);
+        run(&mut doc, &["layout", "", "0", "layout", "", "0"]);
         let mut processor = run(&mut doc, &["export", "plan.svg"]);
         assert_eq!(
             processor.take_view_request(),

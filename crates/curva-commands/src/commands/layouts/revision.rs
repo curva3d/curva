@@ -149,7 +149,7 @@ mod tests {
     fn a_revision_adds_a_row_and_becomes_the_sheets_revision() {
         let mut doc = Document::default();
         run(&mut doc, &["SetDocumentUserText", "DrawnBy", "LV"]);
-        run(&mut doc, &["Layout", ""]);
+        run(&mut doc, &["Layout", "", "0"]);
         run(&mut doc, &["Revision", "", "Issued for planning", ""]);
         run(&mut doc, &["Revision", "", "Doors moved", "AB"]);
         let sheet = &doc.layouts()[0];
