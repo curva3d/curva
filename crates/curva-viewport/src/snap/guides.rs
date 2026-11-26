@@ -114,7 +114,7 @@ impl Outlines {
                 .filter_map(|(kind, point)| Some((gap(point)?, kind, point)))
                 .filter(|(distance, ..)| *distance <= SNAP_REACH)
                 .min_by(|a, b| a.0.total_cmp(&b.0))
-                .map(|(_, kind, point)| SnapHit { kind, point })
+                .map(|(_, kind, point)| SnapHit::at(kind, point))
         };
         // Where lines cross comes first; otherwise the pointer runs along the nearest guideline,
         // as Rhino's SmartTrack does (#512: it only ever snapped where lines crossed).

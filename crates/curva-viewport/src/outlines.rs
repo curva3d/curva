@@ -116,6 +116,8 @@ pub struct Outlines {
     pub objects: Vec<(u64, std::sync::Arc<[Point]>)>,
     /// The fixed places that can be snapped to.
     pub(crate) sites: Vec<snap::Site>,
+    /// Where those that are tied landed, by the number each site holds (#296).
+    pub(crate) ties: Vec<curva_document::tie::Tie>,
     /// The colour of each object, in the same order.
     pub(crate) colours: Vec<[f32; 3]>,
     /// Whether each object is locked, in the same order.
@@ -440,7 +442,7 @@ impl Outlines {
         self.snap_index = snap::SnapIndex::default();
         self.faces.extend(other.faces.iter().cloned());
         self.objects.extend(other.objects.iter().cloned());
-        self.sites.extend(other.sites.iter().cloned());
+        snap::ties::append(&mut self.sites, &mut self.ties, (&other.sites, &other.ties));
         self.colours.extend_from_slice(&other.colours);
         self.locked.extend_from_slice(&other.locked);
         self.widths.extend_from_slice(&other.widths);
@@ -531,7 +533,16 @@ impl Outlines {
             };
             outlines.push_pieces(object.id, pieces, look, kind, &seam, on_faces);
         }
+        outlines.untie_unless_own(object);
         outlines
+    }
+
+    /// Drops the ties of an object whose pieces are not its own to tie: only an object's own
+    /// curve or edges can be tied, not a block instance's parts (#296).
+    fn untie_unless_own(&mut self, object: &Object) {
+        if matches!(object.shape, Shape::Instance(_)) {
+            snap::ties::forget(&mut self.sites, &mut self.ties);
+        }
     }
 
     /// A SubD's faces as [`crate::subds::drawing`] gives them, placed already, and its lines as
@@ -679,8 +690,11 @@ impl Outlines {
             let Ok(points) = outline.sample() else {
                 continue;
             };
-            self.sites
-                .extend(snap::piece_sites(look.line, &outline, &points));
+            let mut sites = snap::piece_sites(look.line, &outline, &points);
+            if matches!(look.line, crate::LineKind::Curve | crate::LineKind::Edge) {
+                snap::ties::tie_sites(&mut sites, &mut self.ties, id, edge, &outline);
+            }
+            self.sites.extend(sites);
             // Snap places come from every sampled point; drawing, picking and boxes need fewer.
             let points = crate::simplify::fewer(
                 points,
