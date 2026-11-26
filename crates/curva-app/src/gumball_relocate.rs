@@ -33,7 +33,10 @@ impl Curva {
     pub(crate) fn gumball_base(&self) -> Option<Gumball> {
         let natural = self.natural_gumball()?;
         match &self.gumball_state.moved_to {
-            Some((held, centre)) if *held == self.holding() => Some(Gumball { centre: *centre }),
+            Some((held, centre)) if *held == self.holding() => Some(Gumball {
+                centre: *centre,
+                ..natural
+            }),
             _ => Some(natural),
         }
     }
@@ -49,6 +52,7 @@ impl Curva {
         Some(match moving {
             Some(change) => Gumball {
                 centre: change.moved_point(base.centre),
+                ..base
             },
             None => base,
         })

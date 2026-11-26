@@ -12,6 +12,36 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 
 **Done**
 - **Picking among locked objects only** (#715, for features' UnlockSelected): `PickFilter.locked_only` makes clicks and boxes take locked objects and no others, as Rhino does while UnlockSelected asks for objects. The app sets it from the command's request (features).
+- **Gumball scale squares back, as in Rhino 8: the display side** (#693, the owner's decision
+  "Yes, as in Rhino").
+  - `Gumball` now holds the selection's box (`extent`). Each axis seen side-on gets a square in
+    its colour on that box, on the axis's negative side, at the end of a line from the centre
+    (`square_point`, `square_lines`, drawn dotted by the app). The square is at least a few of its
+    own sizes from the centre dot, as for a flat selection.
+  - Dragging a square scales along its axis about the centre, by how much further from the centre
+    the pointer is than the square, as Rhino measured. A 10-wide box's X square dragged from
+    x = 0 to x = −5 scales by exactly 2, the box becoming −5 to 15. Evenly with Shift.
+  - With no extent there are no squares. The app fills the extent, draws the dotted lines and
+    opens the value box on a click: features stream.
+  - New tests: the squares sit on the box's sides, are found under the pointer and drawn only
+    for axes seen side-on; Rhino's drag case scales by 2 about the centre, evenly with Shift; a
+    typed factor is exact.
+- **Knot and Vertex snaps, as in Rhino 8's Osnap** (#692, from the testing stream).
+  - Knot: where a curve's spans meet. That means every distinct knot of the curve as Rhino writes
+    it as NURBS: a polyline's vertices, a compound curve's joins and its parts' own knots, a
+    fitted curve's knots, a circle's quarters. Surfaces' and solids' edges too.
+    - Measured in Rhino 8: a circle has 5 distinct knots, at its quarters, start and end
+      being one point. An arc of 2.5 radians has two spans.
+  - Vertex: a mesh's vertices, and a SubD's, where its edges meet on the surface.
+  - A mesh's wires now give only Vertex places, not End and Mid as before, as Rhino snaps
+    meshes. Where an end and a knot are one place, End wins.
+  - Both are off at first, as in Rhino. They have chips in the Osnap row, after Near.
+  - Rhino's Disable is already here as the Osnap chip at the start of the row: it turns every
+    snap off without forgetting which are on.
+  - New tests: a fitted curve's inner knot snaps as Knot only with Knot on; End wins at a
+    polyline's corner; a mesh's corner snaps as Vertex, not End; a polyline's, a circle's and a
+    NURBS curve's knots.
+  - Not measured yet: how much longer outlines take to build with knots on every curve.
 - **A curve lying on a surface's edge shows over it** (owner's report 18 on 0.1.6, via the
   features stream).
   - Before, after DupBorder on a cylinder, the new selected curve sat exactly on the edge it

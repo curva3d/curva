@@ -22,10 +22,8 @@ fn crates/curva-kernel/src/record_io.rs from_record_curve 92
 fn crates/curva-kernel/src/spline.rs remove 88
 fn crates/curva-kernel/src/surface.rs to_body 98
 fn crates/curva-kernel/src/surface_edit.rs deformed 84
-fn crates/curva-kernel/src/surface_edit.rs matched_to 81
 fn crates/curva-kernel/src/surface_making.rs unrolled 82
 fn crates/curva-mesh/src/quad_remesh.rs onto_hard_edges 95
-fn crates/curva-mesh/src/quad_remesh.rs quad_remeshed 83
 fn crates/curva-mesh/src/subd_edit.rs unwelded 92
 fn crates/curva-mesh/src/subd_edit.rs with_ring_cut 89
 fn crates/curva-mesh/src/to_subd.rs from_mesh 82

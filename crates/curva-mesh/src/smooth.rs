@@ -74,7 +74,7 @@ impl SubD {
 
     /// The cage's centre and its points measured from it.
     fn centred_points(&self) -> (Point, Vec<Point>) {
-        let centre = self.bounds().map_or([0.0; 3], |(lo, hi)| {
+        let centre = self.cage_bounds().map_or([0.0; 3], |(lo, hi)| {
             std::array::from_fn(|i| f64::midpoint(lo[i], hi[i]))
         });
         let points = self

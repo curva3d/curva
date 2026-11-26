@@ -139,10 +139,14 @@ impl Curva {
             });
             return Some(Gumball {
                 centre: sum.map(|value| value / count),
+                extent: None,
             });
         }
         let centre = self.outlines.centre_of(&self.doc.selection())?;
-        Some(Gumball { centre })
+        Some(Gumball {
+            centre,
+            extent: None,
+        })
     }
 
     /// What the drag under way would do.

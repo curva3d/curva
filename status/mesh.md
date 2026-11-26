@@ -9,7 +9,17 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## 26 November 2026
+
+**Rhino's quad grids for the Mesh command, built (#733, not yet wired in):** Rhino 8 meshes an untrimmed face (a sphere, a plane rectangle, a cylinder's side) as a grid of quads, halving its spans each way until every grid line keeps within the density's distance and angle. Triangles appear only at poles, each with a point of its own there. `Mesh::surface_grid` does the same: a sphere r5 at the middle density is exactly Rhino's 2143 points, 2048 faces and 1920 quads. `Mesh::from_body_with_grids` mixes the grids with the kernel's triangles for trimmed faces. The Mesh command can use it once `curva-kernel` gives each untrimmed face's surface, asked of the features stream in #749. Still to match when it is wired in: Rhino meshes each flat face of a polysurface box as 6 triangles over 8 points (48 points and 36 triangles for the box, measured by the testing stream), while a lone flat surface is one quad. So flat faces of a polysurface need Rhino's own rule, not the grid.
+
 ## 25 November 2026
+
+**A SubD's extent is its smooth surface's (#689):** `SubD::bounds` now gives the extent of the smooth surface, as Rhino 8 does, so BoundingBox, zoom framing, the gumball and Align fit the surface, not the cage. A SubDSphere of radius 5 spans ±5 (it was ±6.177), and a SubD from a 10 mm cube cage spans 0.802 to 9.198, as measured in Rhino. `SubD::cage_bounds` keeps the cage's extent.
+
+**MeshBox, MeshCylinder and MeshCone keep their hard edges unwelded (#690):** as measured in Rhino 8, each side of a box has its own points, and the ends of a cylinder or cone have their own copy of the rim. A 10 × 10 × 10 box has 726 vertices (it was 602), and a 10 × 10 cylinder 132 (it was 112). The faces still join, so the meshes stay closed with the same volumes. Explode splits them at those edges, as Rhino 8 does (measured by the testing stream): a box into its 6 sides, a cylinder into two caps and its side.
+
+**Mesh booleans keep their quads (#718):** as Rhino 8 does (measured face by face by the testing stream), each quad with a point on the cut (even one corner) is split into two triangles, and every other quad comes back as a quad. Points at one place are joined before the boolean, so an unwelded MeshBox is one solid. Two 10 mm MeshBoxes, the second moved by (5, 5, 5): the difference has 540 quads of 660 faces and the intersection 96 of 204, with volumes 875 and 125, all exactly Rhino's.
 
 **Mesh wires and outlines, as Rhino 8 draws them (owner's items 4 and 10, passed on):**
 - Measured on a mesh box and on welded and unwelded prisms.
@@ -17,7 +27,7 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 - Hidden: only the outline.
 - The outline is the silhouette plus the edges used by one face by vertex number: open borders and unwelded seams. Welded creases are not outlined.
 
-The drawing lives in curva-viewport, so it went to the display stream as #663; `Mesh::naked_edges` already gives the edges. Item 20 (picking cage points after Ctrl+Shift) is in the features stream's picking work.
+The drawing lives in curva-viewport, so it went to the display stream as #663. `Mesh::naked_edges` joins edges by place, so it leaves out unwelded seams; the new `Mesh::outline_edges` counts by vertex number and gives the outline's edges. Item 20 (picking cage points after Ctrl+Shift) is in the features stream's picking work.
 
 ## 24 November 2026
 

@@ -8,13 +8,14 @@ use curva_document::Shape;
 use curva_kernel::{Body, gap};
 
 /// `Wirecut`: cuts solids with a curve pulled straight through them, out of the plane being drawn
-/// on. `KeepAll` (the default) keeps both parts; off, only the part behind the cut.
+/// on. Only the part on the right of the curve's direction is kept, as Rhino keeps it (#729);
+/// `KeepAll` keeps both.
 #[derive(Default)]
 pub struct Wirecut;
 
 impl Recipe for Wirecut {
     const NAME: &'static str = "wirecut";
-    const OPTIONS: &'static [OptionDef] = &[OptionDef::toggle("KeepAll", true)];
+    const OPTIONS: &'static [OptionDef] = &[OptionDef::toggle("KeepAll", false)];
 
     fn steps(&self, cx: &Context<'_>) -> Vec<StepDef> {
         let mut steps = vec![StepDef::objects("prompt.wirecut.curve").curves().one()];
@@ -45,14 +46,16 @@ impl Recipe for Wirecut {
             let Some((behind, front)) = body.split_by(&sheet).map_err(|e| failed(&e))? else {
                 continue;
             };
-            made.replace.push((id, Shape::Body(behind)));
-            if cx.toggle("KeepAll") {
-                made.derived.push(Derived {
-                    shape: Shape::Body(front),
-                    from: id,
-                    history: None,
-                });
+            if !cx.toggle("KeepAll") {
+                made.replace.push((id, Shape::Body(front)));
+                continue;
             }
+            made.replace.push((id, Shape::Body(behind)));
+            made.derived.push(Derived {
+                shape: Shape::Body(front),
+                from: id,
+                history: None,
+            });
         }
         made.message = Some(Message::with(
             "done.wirecut",
@@ -69,6 +72,29 @@ mod tests {
     use curva_kernel::{Body, Curve};
 
     #[test]
+    fn by_default_only_the_part_right_of_the_curve_is_kept_as_in_rhino() {
+        let mut doc = Document::default();
+        let cube = doc.add_body(Body::cuboid([0.0; 3], [10.0, 10.0, 10.0]).unwrap());
+        let cutter = doc.add(Curve::line([-1.0, 3.0, 5.0], [11.0, 7.0, 5.0]).unwrap());
+        let mut processor = crate::Processor::default();
+        doc.select(&[cutter]);
+        processor.submit(&mut doc, "wirecut");
+        doc.select(&[cube]);
+        processor.submit(&mut doc, "");
+        let kept: Vec<&Body> = doc
+            .state()
+            .objects
+            .iter()
+            .filter_map(|o| o.shape.body())
+            .collect();
+        assert_eq!(kept.len(), 1);
+        // Rhino 8 keeps the low-y half: volume 500, up to y = 6.667.
+        assert!((kept[0].volume().unwrap() - 500.0).abs() < 1e-6);
+        let (_, high) = kept[0].bounds().unwrap();
+        assert!((high[1] - 20.0 / 3.0).abs() < 1e-3, "{high:?}");
+    }
+
+    #[test]
     fn wirecut_cuts_a_box_in_two() {
         let mut doc = Document::default();
         let cube = doc.add_body(Body::cuboid([0.0; 3], [2.0, 2.0, 2.0]).unwrap());
@@ -76,6 +102,7 @@ mod tests {
         let mut processor = crate::Processor::default();
         doc.select(&[cutter]);
         processor.submit(&mut doc, "wirecut");
+        processor.submit(&mut doc, "keepall");
         doc.select(&[cube]);
         processor.submit(&mut doc, "");
         let volumes: Vec<f64> = doc

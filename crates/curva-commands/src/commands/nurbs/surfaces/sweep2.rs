@@ -2,12 +2,14 @@
 
 use crate::Message;
 use crate::commands::arguments::*;
+use crate::commands::curves_of;
 use crate::commands::support::*;
 use crate::recipe::{Context, Derived, Made, Recipe, StepDef};
 use curva_document::Shape;
-use curva_kernel::Body;
+use curva_kernel::{Body, Curve};
 
-/// `Sweep2`: a profile swept along two rails, its ends on them.
+/// `Sweep2`: cross sections swept along two rails, their ends on them; any number of sections,
+/// anywhere along the rails, as in Rhino (#667).
 #[derive(Default)]
 pub struct Sweep2;
 
@@ -20,18 +22,22 @@ impl Recipe for Sweep2 {
             steps.push(StepDef::objects("prompt.sweep2.second").curves().one());
         }
         if cx.values.len() >= 2 {
-            steps.push(StepDef::objects("prompt.sweep2.profile").curves().one());
+            // Any number of cross sections, anywhere along the rails, as in Rhino (#667).
+            steps.push(StepDef::objects("prompt.sweep2.profile").curves());
         }
         steps
     }
 
     fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
-        let (Some((_, a)), Some((_, b)), Some((id, profile))) =
-            (first_curve(cx, 0), first_curve(cx, 1), first_curve(cx, 2))
-        else {
+        let (Some((_, a)), Some((_, b))) = (first_curve(cx, 0), first_curve(cx, 1)) else {
             return Ok(Made::default());
         };
-        let body = Body::swept_two_rails(&a, &b, &profile).map_err(|e| failed(&e))?;
+        let sections: Vec<(u64, Curve)> = curves_of(cx.doc, objects(cx, 2));
+        let Some((id, _)) = sections.first().cloned() else {
+            return Ok(Made::default());
+        };
+        let curves: Vec<Curve> = sections.into_iter().map(|(_, c)| c).collect();
+        let body = Body::swept_along_rails(&a, &b, &curves).map_err(|e| failed(&e))?;
         Ok(Made {
             derived: vec![Derived {
                 shape: Shape::Body(body),

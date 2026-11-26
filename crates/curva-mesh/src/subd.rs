@@ -88,6 +88,10 @@ pub struct SubD {
     display: SubDDisplay,
 }
 
+/// About how many quads a SubD's extent is found from: four levels for a small cage, fewer for a
+/// big one, so the extent stays quick to work out.
+const EXTENT_QUADS: usize = 40_000;
+
 impl SubD {
     /// A SubD with this cage, smooth everywhere except its open borders, which are creases, as
     /// Rhino 8 makes one from a mesh (`SubD.CreateFromMesh` with its smooth options): no corners, so
@@ -216,9 +220,25 @@ impl SubD {
         self.display
     }
 
-    /// The lowest and highest corners around its cage, which contains the smooth surface.
+    /// The lowest and highest corners around its smooth surface, as Rhino 8 gives a SubD's
+    /// extent: the surface's points subdivided as finely as stays quick (see [`EXTENT_QUADS`]),
+    /// each on the limit surface. The cage's extent when the library refuses the cage.
     #[must_use]
     pub fn bounds(&self) -> Option<(Point, Point)> {
+        let faces = self.cage.face_count().max(1);
+        let levels = (1..=4u8)
+            .rev()
+            .find(|&l| faces * 4usize.pow(u32::from(l)) <= EXTENT_QUADS)
+            .unwrap_or(1);
+        self.surface(levels)
+            .ok()
+            .and_then(|surface| surface.bounds())
+            .or_else(|| self.cage_bounds())
+    }
+
+    /// The lowest and highest corners around its cage, which contains the smooth surface.
+    #[must_use]
+    pub fn cage_bounds(&self) -> Option<(Point, Point)> {
         self.cage.bounds()
     }
 
@@ -412,11 +432,41 @@ pub(crate) mod tests {
             [0.0, 0.0, 1.0, 0.0],
             [0.0, 0.0, 0.0, 1.0],
         ]);
-        assert_eq!(long.bounds(), Some(([0.0; 3], [2.0, 1.0, 1.0])));
+        assert_eq!(long.cage_bounds(), Some(([0.0; 3], [2.0, 1.0, 1.0])));
         assert!(long.sharpness(0, 1).is_crease());
         let raised = subd.deformed(|p| [p[0], p[1], p[2] + p[0]]);
-        assert_eq!(raised.bounds(), Some(([0.0; 3], [1.0, 1.0, 2.0])));
+        assert_eq!(raised.cage_bounds(), Some(([0.0; 3], [1.0, 1.0, 2.0])));
         assert!(raised.sharpness(1, 0).is_crease());
+    }
+
+    // Rhino 8 gives a SubD the extent of its smooth surface, not its cage's (#689): SubDSphere
+    // radius 5 reaches ±5, SubDCylinder radius 3 height 10 reaches ±3 across, and a SubD from a
+    // 10 mm cube cage spans 0.802 to 9.198.
+    #[test]
+    fn a_subds_extent_is_its_smooth_surfaces_as_rhinos() {
+        use crate::{Frame, SphereStyle};
+        let near = |a: f64, b: f64| (a - b).abs() < 1e-3;
+        let world = Frame::world();
+        let sphere =
+            SubD::subd_sphere(&world, 5.0, SphereStyle::Quads { subdivisions: 1 }).unwrap();
+        let (lo, hi) = sphere.bounds().unwrap();
+        assert!(
+            (0..3).all(|k| near(lo[k], -5.0) && near(hi[k], 5.0)),
+            "{lo:?} {hi:?}"
+        );
+        assert!(sphere.cage_bounds().unwrap().1[0] > 6.0);
+        let cylinder = SubD::subd_cylinder(&world, 3.0, 10.0, (4, 8), true, false);
+        let (lo, hi) = cylinder.bounds().unwrap();
+        assert!(
+            (0..2).all(|k| near(lo[k], -3.0) && near(hi[k], 3.0)),
+            "{lo:?} {hi:?}"
+        );
+        let cube = SubD::subd_box(&world, [10.0; 3], [1, 1, 1]);
+        let (lo, hi) = cube.bounds().unwrap();
+        assert!(
+            (0..3).all(|k| near(lo[k], 0.802) && near(hi[k], 9.198)),
+            "{lo:?} {hi:?}"
+        );
     }
 
     #[test]
@@ -424,7 +474,7 @@ pub(crate) mod tests {
         let subd = SubD::new(cube())
             .with_creases(&[[0, 1]])
             .translated([0.0, 0.0, 5.0]);
-        assert_eq!(subd.bounds(), Some(([0.0, 0.0, 5.0], [1.0, 1.0, 6.0])));
+        assert_eq!(subd.cage_bounds(), Some(([0.0, 0.0, 5.0], [1.0, 1.0, 6.0])));
         assert_eq!(subd.cage().face_count(), 6);
         assert!(subd.sharpness(1, 0).is_crease());
     }

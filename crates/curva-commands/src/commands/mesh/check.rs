@@ -243,8 +243,11 @@ mod tests {
     use curva_document::{Document, Shape};
     use curva_mesh::{Frame, Mesh};
 
+    /// A welded cube of 8 points (a MeshBox keeps its edges unwelded, as Rhino's).
     fn cube() -> Mesh {
         Mesh::mesh_box(&Frame::world(), [1.0; 3], [1, 1, 1])
+            .welded(0.0)
+            .0
     }
 
     fn doc_with(mesh: Mesh) -> Document {
