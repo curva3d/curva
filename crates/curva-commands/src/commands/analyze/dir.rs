@@ -1,9 +1,12 @@
-//! `Dir`: shows which way curves run with arrows, and flips the ones clicked, as in Rhino.
+//! `Dir`: shows which way curves run and which way surfaces face with arrows, and flips the
+//! curves clicked, as in Rhino; `Flip` flips them all and turns the surfaces over (#768).
 
-use crate::commands::{ask_objects, curves_of, objects_or_selection, plane_normal, unexpected};
+use crate::commands::{
+    ask_objects, bodies_of, curves_of, objects_or_selection, plane_normal, unexpected,
+};
 use crate::{Answer, Command, Kind, Live, Message, Request, Step};
-use curva_document::Document;
-use curva_kernel::{Curve, Point, cross, gap, sub, unit};
+use curva_document::{Document, Shape};
+use curva_kernel::{Body, Curve, Point, cross, gap, sub, unit};
 
 /// How far from a curve a picked point may be, in millimetres, to mean that curve.
 const ON_CURVE: f64 = 1e-3;
@@ -64,6 +67,69 @@ fn arrows(curve: &Curve, normal: Point) -> Vec<Curve> {
     made
 }
 
+/// An arrow out of each face of a surface or solid along its normal, from a point on the face:
+/// which way it faces, as Rhino's Dir shows it.
+fn normal_arrows(body: &Body) -> Vec<Curve> {
+    let (Ok(mesh), Ok((low, high))) = (body.mesh(), body.bounds()) else {
+        return Vec::new();
+    };
+    let size = gap(low, high) * ARROW_SHARE;
+    let faces = mesh
+        .triangle_faces
+        .iter()
+        .copied()
+        .max()
+        .map_or(0, |n| n + 1);
+    let mut made = Vec::new();
+    for face in 0..faces {
+        let on_face: Vec<&[u32; 3]> = mesh
+            .triangles
+            .iter()
+            .zip(&mesh.triangle_faces)
+            .filter(|(_, f)| **f == face)
+            .map(|(t, _)| t)
+            .collect();
+        let Some(triangle) = on_face.get(on_face.len() / 2) else {
+            continue;
+        };
+        let corner = |i: usize| mesh.positions[triangle[i] as usize];
+        let at: Point = std::array::from_fn(|k| (corner(0)[k] + corner(1)[k] + corner(2)[k]) / 3.0);
+        let Ok(normal) = body.face_normal_near(face, at) else {
+            continue;
+        };
+        let Some(normal) = unit(normal) else {
+            continue;
+        };
+        let tip = plus(at, normal, size);
+        let side = unit(cross(normal, [1.0, 0.0, 0.0]))
+            .or_else(|| unit(cross(normal, [0.0, 1.0, 0.0])))
+            .unwrap_or([0.0, 0.0, 1.0]);
+        made.extend(Curve::line(at, tip));
+        for sign in [1.0, -1.0] {
+            let barb = plus(plus(tip, normal, -size * 0.4), side, sign * size * 0.25);
+            made.extend(Curve::line(barb, tip));
+        }
+    }
+    made
+}
+
+/// Reverses every chosen curve and turns every chosen surface over (a closed solid can't be);
+/// returns how many changed.
+fn flip_all(doc: &mut Document, ids: &[u64]) -> usize {
+    let mut flipped = 0;
+    for (id, curve) in curves_of(doc, ids) {
+        doc.replace(id, curve.reversed());
+        flipped += 1;
+    }
+    for (id, body) in bodies_of(doc, ids) {
+        if let Ok(turned) = body.turned_over() {
+            doc.replace_shape(id, Shape::Body(turned));
+            flipped += 1;
+        }
+    }
+    flipped
+}
+
 fn ask_click(flipped: bool) -> Step {
     Step::Ask(Request {
         prompt: Message::new(if flipped {
@@ -92,10 +158,7 @@ impl Command for Dir {
                 vec![self.flipped.to_string()],
             ))),
             Some(Answer::Option(_)) => {
-                for (id, curve) in curves_of(doc, &ids) {
-                    doc.replace(id, curve.reversed());
-                    self.flipped += 1;
-                }
+                self.flipped += flip_all(doc, &ids);
                 ask_click(true)
             }
             Some(Answer::Number(_)) => ask_click(false),
@@ -123,10 +186,14 @@ impl Command for Dir {
             return Vec::new();
         };
         let normal = plane_normal(doc);
-        curves_of(doc, ids)
+        let mut shown: Vec<Curve> = curves_of(doc, ids)
             .iter()
             .flat_map(|(_, curve)| arrows(curve, normal))
-            .collect()
+            .collect();
+        for (_, body) in bodies_of(doc, ids) {
+            shown.extend(normal_arrows(&body));
+        }
+        shown
     }
 }
 
@@ -180,5 +247,30 @@ mod tests {
         run(&mut doc, &["dir", "f", ""]);
         assert_eq!(start_of(&doc, a), [10.0, 0.0, 0.0]);
         assert_eq!(start_of(&doc, b), [10.0, 5.0, 0.0]);
+    }
+
+    #[test]
+    fn a_surface_shows_its_normal_and_flip_turns_it_over_as_in_rhino() {
+        let mut doc = Document::default();
+        let plane = curva_kernel::Body::ruled(
+            &Curve::line([0.0; 3], [10.0, 0.0, 0.0]).unwrap(),
+            &Curve::line([0.0, 10.0, 0.0], [10.0, 10.0, 0.0]).unwrap(),
+            false,
+        )
+        .unwrap();
+        let up = plane.face_normal_near(0, [5.0, 5.0, 0.0]).unwrap()[2];
+        let id = doc.add_body(plane);
+        doc.select(&[id]);
+        let mut processor = run(&mut doc, &["dir"]);
+        // One arrow along the plane's normal: a shaft and two barbs.
+        let shown = processor.preview(&doc, None, "");
+        assert_eq!(shown.len(), 3);
+        let shaft = shown[0].sample().unwrap();
+        assert!((shaft[1][2] - shaft[0][2]) * up > 0.0, "{shaft:?}");
+        processor.submit(&mut doc, "Flip");
+        processor.submit(&mut doc, "");
+        let body = doc.state().objects[0].shape.body().unwrap();
+        let now = body.face_normal_near(0, [5.0, 5.0, 0.0]).unwrap()[2];
+        assert!(up * now < 0.0, "{up} {now}");
     }
 }

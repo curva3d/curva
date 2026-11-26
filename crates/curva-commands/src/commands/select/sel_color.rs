@@ -80,4 +80,23 @@ mod tests {
         doc.undo();
         assert!(doc.selectable().contains(&c));
     }
+
+    #[test]
+    fn the_object_picked_at_the_prompt_stays_selected_as_in_rhino() {
+        // The testing stream's case (#758): nothing selected, SelColor, pick A, Enter.
+        let mut doc = Document::default();
+        let red = doc.add_layer("Red".to_owned());
+        doc.set_layer_colour(red, [1.0, 0.0, 0.0]);
+        let a = doc.add(Curve::line([0.0; 3], [1.0, 0.0, 0.0]).unwrap());
+        doc.add(Curve::line([0.0, 1.0, 0.0], [1.0, 1.0, 0.0]).unwrap());
+        let c = doc.add(Curve::line([0.0, 2.0, 0.0], [1.0, 2.0, 0.0]).unwrap());
+        doc.move_to_layer(&[a, c], red);
+        doc.select(&[]);
+        let mut processor = crate::Processor::default();
+        processor.submit(&mut doc, "selcolor");
+        doc.select(&[a]);
+        processor.submit(&mut doc, "");
+        // Rhino 8: A and the other red object are selected.
+        assert_eq!(doc.selection(), vec![a, c]);
+    }
 }

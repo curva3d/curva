@@ -32,6 +32,7 @@ mod assemble;
 mod measure;
 pub use assemble::SEW_TOLERANCE;
 mod body;
+mod body_edges;
 mod boolean;
 pub use boolean::Combine;
 mod conic;
