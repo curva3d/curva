@@ -153,7 +153,7 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | UndoView | none (Home or Alt+Z in Curva) | none | none | partly |
 | RedoView | none (End or Alt+Shift+Z in Curva) | none | none | partly |
 | CPlane | New origin, or an option | `All` `Curve` `Elevation` `Gumball` `Object` `Rotate` `Surface` `Through` `View` `World` `3Point` `Undo` `Redo` | `Elevation` `Rotate` `View` `World` `3Point` | partly |
-| Zoom | Drag a window (the default), or an option | `Window` `All` `Extents` `Selected` `1to1` `Dynamic` `Factor` `In` `Out` `Target` | `Extents` `Selected` `In` `Out` `Target` | partly |
+| Zoom | Drag a window (the default), or an option | `Window` `All` `Extents` `Selected` `1to1` `Dynamic` `Factor` `In` `Out` `Target` | `All` `Extents` `Factor` `Selected` `In` `Out` `Target` | partly |
 | ZoomExtents | none | none | none | partly |
 | ZoomSelected | none | none | none | partly |
 | NamedView | A panel in Rhino: save, restore, delete views | `Save` `Restore` `Delete` | `Save` `Restore` `Delete` | partly |
