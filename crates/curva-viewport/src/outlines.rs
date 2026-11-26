@@ -5,6 +5,9 @@ use curva_kernel::{Curve, Point};
 
 use crate::{CURVE_COLOUR, PickFilter, PickKind, mesh_box, snap};
 
+mod pieces;
+use pieces::{edge_curves, line_kind_of};
+
 /// Where a copy of a shape sits: a 4 × 4 matrix for points written as rows, `p' = p·A + t`
 /// ([`curva_kernel::Body::placement`]).
 pub(crate) type Placement = [[f64; 4]; 4];
@@ -118,6 +121,8 @@ pub struct Outlines {
     pub objects: Vec<(u64, std::sync::Arc<[Point]>)>,
     /// The fixed places that can be snapped to.
     pub(crate) sites: Vec<snap::Site>,
+    /// Where those that are tied landed, by the number each site holds (#296).
+    pub(crate) ties: Vec<curva_document::tie::Tie>,
     /// The colour of each object, in the same order.
     pub(crate) colours: Vec<[f32; 3]>,
     /// Whether each object is locked, in the same order.
@@ -442,7 +447,7 @@ impl Outlines {
         self.snap_index = snap::SnapIndex::default();
         self.faces.extend(other.faces.iter().cloned());
         self.objects.extend(other.objects.iter().cloned());
-        self.sites.extend(other.sites.iter().cloned());
+        snap::ties::append(&mut self.sites, &mut self.ties, (&other.sites, &other.ties));
         self.colours.extend_from_slice(&other.colours);
         self.locked.extend_from_slice(&other.locked);
         self.widths.extend_from_slice(&other.widths);
@@ -533,7 +538,16 @@ impl Outlines {
             };
             outlines.push_pieces(object.id, pieces, look, kind, &seam, on_faces);
         }
+        outlines.untie_unless_own(object);
         outlines
+    }
+
+    /// Drops the ties of an object whose pieces are not its own to tie: only an object's own
+    /// curve or edges can be tied, not a block instance's parts (#296).
+    fn untie_unless_own(&mut self, object: &Object) {
+        if matches!(object.shape, Shape::Instance(_)) {
+            snap::ties::forget(&mut self.sites, &mut self.ties);
+        }
     }
 
     /// A SubD's faces as [`crate::subds::drawing`] gives them, placed already, and its lines as
@@ -690,8 +704,11 @@ impl Outlines {
             let Ok(points) = outline.sample() else {
                 continue;
             };
-            self.sites
-                .extend(snap::piece_sites(look.line, &outline, &points));
+            let mut sites = snap::piece_sites(look.line, &outline, &points);
+            if matches!(look.line, crate::LineKind::Curve | crate::LineKind::Edge) {
+                snap::ties::tie_sites(&mut sites, &mut self.ties, id, edge, &outline);
+            }
+            self.sites.extend(sites);
             // Snap places come from every sampled point; drawing, picking and boxes need fewer.
             let points = crate::simplify::fewer(
                 points,
@@ -750,43 +767,4 @@ impl Look {
             line: crate::LineKind::Curve,
         }
     }
-}
-
-/// The kind of line `shape`'s pieces draw as ([`crate::LineKind`]).
-fn line_kind_of(shape: &Shape) -> crate::LineKind {
-    match shape {
-        Shape::Body(_) => crate::LineKind::Edge,
-        Shape::Mesh(_) => crate::LineKind::MeshWire,
-        Shape::SubD(_) => crate::LineKind::SubdEdge,
-        Shape::Annotation(_) => crate::LineKind::Annotation,
-        _ => crate::LineKind::Curve,
-    }
-}
-
-/// A mesh's edges as curves where `placement` puts them, each with its number among the body's
-/// edges.
-fn edge_curves(
-    mesh: &curva_kernel::BodyMesh,
-    placement: &Placement,
-) -> Vec<(Curve, Option<usize>)> {
-    let place = |p: &Point| {
-        if *placement == IN_PLACE {
-            *p
-        } else {
-            placed(placement, *p)
-        }
-    };
-    mesh.edges
-        .iter()
-        .zip(&mesh.edge_ids)
-        .filter_map(|(run, id)| match run.len() {
-            0 | 1 => None,
-            2 => Curve::line(place(&run[0]), place(&run[1]))
-                .ok()
-                .map(|c| (c, Some(*id))),
-            _ => Curve::polyline(run.iter().map(place).collect(), false)
-                .ok()
-                .map(|c| (c, Some(*id))),
-        })
-        .collect()
 }
