@@ -4,6 +4,7 @@
 //! only place that calls the outside mesh libraries (manifold-rust, subdiv-kernels, quadrs), so an
 //! upgrade or a swap touches nothing else (decision 0032).
 
+mod body_grid;
 pub mod boolean;
 mod check;
 mod convert;
@@ -40,6 +41,7 @@ mod subd_pipe_curve;
 mod subd_pipe_net;
 mod subd_pipe_node;
 mod subd_primitives;
+mod surface_grid;
 mod to_nurbs;
 mod to_subd;
 mod transform;
