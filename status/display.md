@@ -11,6 +11,22 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
 ## 25 November 2026
 
 **Done**
+- **The first solid preview no longer freezes Curva** (#699 from the testing stream; very likely
+  the owner's 0.1.6 "lag at the height step").
+  - The cause: Bevy makes each drawing pipeline the first time it is needed, and synchronously
+    here. A command's preview is the only thing drawn see-through and double-sided, so the
+    first Box preview made Bevy build a new pipeline then. Its shader compiles slowly on
+    Windows, and Curva stopped for over 5 s.
+  - Measured: the kernel is not the cause. In a fresh process, making the box took 19 ms and
+    its first mesh 4.5 ms, the second 2.7 ms.
+  - The fix (`pilot/scene.rs`): while there is no preview, the preview holds one triangle with
+    no area, shown and never culled (`standby_preview`). Bevy builds the preview's pipeline as
+    the view is made, at start-up, with the others. Nothing is drawn for it.
+  - New test: after a view is drawn, the first preview needs no new pipeline. Without the fix it
+    fails, 22 pipelines against 21.
+  - Still to check: other things first drawn later may pause the same way, such as Ghosted's
+    see-through faces, Massing's shadows, a mesh's own colours, clipping. Not timed on a quiet
+    machine.
 - **Gumball scale squares back, as in Rhino 8: the display side** (#693, the owner's decision
   "Yes, as in Rhino").
   - `Gumball` now holds the selection's box (`extent`). Each axis seen side-on gets a square in
