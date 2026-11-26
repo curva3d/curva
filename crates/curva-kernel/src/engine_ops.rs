@@ -423,6 +423,14 @@ impl Body {
         Ok(found)
     }
 
+    /// The surface turned over, each face's normal the other way (Rhino's Flip on surfaces,
+    /// #768). A closed solid can't be: turned over it would be inside out.
+    pub fn turned_over(&self) -> Result<Self, KernelError> {
+        let (record, _) = solidcore_ops::surface::reverse_sheet(&self.record()?)
+            .map_err(|e| failed("turning the surface over", e))?;
+        Self::from_record(&record)
+    }
+
     /// The faces numbered `faces` moved along their normals by `distance`, the solid around
     /// them following (Rhino's MoveFace and PushPull, for faces pushed straight).
     pub fn faces_offset(&self, faces: &[usize], distance: f64) -> Result<Self, KernelError> {
