@@ -138,6 +138,12 @@ impl Body {
     /// The surface extended past its edge `edge` by `distance` (Rhino's ExtendSrf).
     pub fn extended_at(&self, edge: usize, distance: f64, how: Carry) -> Result<Self, KernelError> {
         use solidcore_ops::extend::Continuation;
+        // Smooth, on a plain one-face surface: Rhino's own continuation (#751).
+        if how == Carry::Natural
+            && let Some(longer) = self.smoothly_extended(edge, distance)?
+        {
+            return Ok(longer);
+        }
         let (body, order) = self.engine_with_order()?;
         let how = match how {
             Carry::Natural => Continuation::Natural,
