@@ -152,10 +152,12 @@ impl Body {
             let (_, end) = spline.domain();
             // One section part way along: Rhino sweeps it only from the rail's start to where it
             // lies (#665), so the rail is cut there and swept from the section back.
-            if at - start > 1e-6 * (end - start) && end - at > 1e-6 * (end - start) {
-                if let Some((before, _)) = spline.split(at) {
-                    return Self::swept(&[section.clone()], &before.reversed().to_curve()?, false);
-                }
+            if at - start > 1e-6 * (end - start)
+                && end - at > 1e-6 * (end - start)
+                && let Some((before, _)) = spline.split(at)
+            {
+                let back = before.reversed().to_curve()?;
+                return Self::swept(std::slice::from_ref(section), &back, false);
             }
             // At either end: carried to the rail's start along the turning frames, then swept
             // exactly along the whole rail.
