@@ -8,7 +8,7 @@ use curva_document::Document;
 /// The running command.
 /// Whether `name` matches `pattern`, whatever their case: `*` stands for any run of characters,
 /// `?` for any one.
-fn matches(pattern: &str, name: &str) -> bool {
+pub(crate) fn matches(pattern: &str, name: &str) -> bool {
     let (p, n): (Vec<char>, Vec<char>) = (
         pattern.to_lowercase().chars().collect(),
         name.to_lowercase().chars().collect(),
