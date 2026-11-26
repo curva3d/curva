@@ -20,6 +20,9 @@ struct Active {
     selection_before: Vec<u64>,
     /// The objects picked as answers while it ran, which it lets go of when it ends.
     picked: Vec<u64>,
+    /// The selection just after the last of them was given: if the command leaves another, it
+    /// chose that selection itself (as SelColor does, #758), and it stays as it is.
+    selection_at_pick: Vec<u64>,
     /// Started with a dash, such as `-Open`: file locations are typed, not picked in a dialog.
     typed: bool,
 }
@@ -439,6 +442,7 @@ impl Processor {
             before: doc.state().clone(),
             selection_before: doc.selection(),
             picked: Vec::new(),
+            selection_at_pick: Vec::new(),
             typed: false,
         });
         self.advance(doc, None);
@@ -620,6 +624,7 @@ impl Processor {
         };
         if let Some(Answer::Objects(ids)) = &answer {
             active.picked.extend(ids.iter().copied());
+            active.selection_at_pick = doc.selection();
         }
         let step = active.command.step(doc, answer);
         self.take_step(doc, step);
