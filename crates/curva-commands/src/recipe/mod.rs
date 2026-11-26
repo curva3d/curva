@@ -15,6 +15,8 @@ use curva_kernel::{Curve, Point};
 mod choice_tests;
 #[cfg(test)]
 mod cursor_tests;
+#[cfg(test)]
+mod mesh_faces_tests;
 mod options;
 mod run;
 mod steps;

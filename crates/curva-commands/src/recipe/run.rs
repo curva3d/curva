@@ -139,7 +139,24 @@ impl<R: Recipe> RecipeCommand<R> {
         } else {
             step.kind
         };
-        let prompt = match step.remembered {
+        Step::Ask(Request {
+            prompt: Self::prompt_of(doc, &step),
+            allow_empty: step.optional,
+            options,
+            option_labels,
+            preview,
+            from: step.from,
+            along: step.along,
+            corner: step.corner,
+            panel: step.panel,
+            faces_only: step.faces_only,
+            ..Request::new(step.prompt, kind)
+        })
+    }
+
+    /// What `step` asks; a remembered number shows its last value (or its starting one).
+    fn prompt_of(doc: &Document, step: &StepDef) -> Message {
+        match step.remembered {
             Some((name, starting)) => Message::with(
                 step.prompt,
                 vec![
@@ -149,19 +166,7 @@ impl<R: Recipe> RecipeCommand<R> {
                 ],
             ),
             None => Message::new(step.prompt),
-        };
-        Step::Ask(Request {
-            prompt,
-            allow_empty: step.optional,
-            options,
-            option_labels,
-            preview,
-            from: step.from,
-            along: step.along,
-            corner: step.corner,
-            panel: step.panel,
-            ..Request::new(step.prompt, kind)
-        })
+        }
     }
 
     /// The objects among `ids` that `step` takes.
