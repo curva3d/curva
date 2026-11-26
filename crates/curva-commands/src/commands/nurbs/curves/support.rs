@@ -115,19 +115,10 @@ pub(crate) fn run_steps(
     steps
 }
 
-/// Which end of `a` and which end of `b` are nearest each other: `(a at its end, b at its end)`.
-pub(crate) fn nearest_ends(a: &Spline, b: &Spline) -> (bool, bool) {
-    let (a0, a1) = (a.point(a.domain().0), a.point(a.domain().1));
-    let (b0, b1) = (b.point(b.domain().0), b.point(b.domain().1));
-    [
-        (gap(a1, b0), (true, false)),
-        (gap(a1, b1), (true, true)),
-        (gap(a0, b0), (false, false)),
-        (gap(a0, b1), (false, true)),
-    ]
-    .into_iter()
-    .min_by(|x, y| x.0.total_cmp(&y.0))
-    .map_or((true, false), |(_, ends)| ends)
+/// Whether `at` is nearer the curve's end than its start: the end a curve was picked near.
+pub(crate) fn picked_end(curve: &Spline, at: Point) -> bool {
+    let (start, end) = curve.domain();
+    gap(at, curve.point(end)) < gap(at, curve.point(start))
 }
 
 /// The point and the first two derivatives at one end of a curve, pointing away from it: going
