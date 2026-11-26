@@ -2,6 +2,8 @@ name: Checks
 
 on:
   pull_request:
+  # Run again in GitHub's merge queue, on top of everything merged before (AGENTS.md).
+  merge_group:
 
 permissions:
   contents: read

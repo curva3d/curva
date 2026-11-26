@@ -67,6 +67,36 @@ Work runs in three streams, each in its own sessions. A session says which strea
 - **Disk space is shared:** remove a worktree and its build folder as soon as its pull request is
   merged or closed.
 
+## Avoiding clashes between streams (owner's rule, 26 November 2026)
+
+Streams stay out of each other's code, but they all add lines to a few shared lists, and that is
+where their pull requests clash. Between 19 and 26 November 2026 the most-clashed files were
+`crates/curva-commands/locales/en.txt`, `docs/commands/rhino-reference.md`,
+`crates/curva-commands/src/commands/order.rs` and `crates/curva-commands/src/commands/mod.rs`.
+
+- **Never write a count into a list that grows.** Write `const ORDER: &[&str] = &[...]`, not
+  `[&str; 326]`. A count means every pull request changes the same line, so any two clash. When
+  you touch a list that still has one, remove the count in the same pull request.
+- **Add to a shared list next to the entry it belongs with, never at the end.** A new command's
+  name goes in `order.rs` beside its nearest relative (Taper next to Twist, a SubD command after
+  the other SubD commands); its wording goes in `en.txt` beside the other keys for the same
+  command or panel; its row goes in its own section of `rhino-reference.md`; its `PREVIEW_STEPS`
+  entry goes beside similar commands. Two pull requests that both append at the end always clash;
+  two that add in different places merge cleanly.
+- **Bring your branch up to date before you ask to merge:** `git fetch origin` then
+  `git rebase origin/main`, rerun the tests, then push. If a shared list clashes, keep both sides'
+  lines: neither stream's entry may be dropped. Never edit `Cargo.lock` by hand; if it clashes,
+  take `main`'s copy and run `cargo build` to regenerate it.
+- **Merge quickly.** Once checks pass, merge in the same session. Don't leave a finished pull
+  request open overnight: the longer it waits, the more it clashes. A claim (draft pull request)
+  with no commits for a day is released: say so in the issue and move the label back to
+  `agent-ready`.
+- **The merge queue.** `main` uses GitHub's merge queue: merging adds the pull request to the
+  queue, and GitHub merges it only after the checks pass again on top of everything merged before
+  it. If the queue removes it, bring the branch up to date (above) and merge again.
+- **The testing stream** (from 25 November 2026, `status/testing.md`) changes no code the other
+  streams own. It files what it finds as `rhino-parity` issues for them.
+
 ## Code rules (architecture section 17)
 
 - **Pure Rust.** No C++ or Python in anything Curva builds or links. The only exception is the

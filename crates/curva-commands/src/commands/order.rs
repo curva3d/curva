@@ -3,7 +3,7 @@
 //! `docs/specs/command-groups.md`). A new command goes in its folder's list and here.
 
 /// Every command's name, in the list's order.
-pub(super) const ORDER: [&str; 326] = [
+pub(super) const ORDER: &[&str] = &[
     "Line",
     "Polyline",
     "InterpCrv",
