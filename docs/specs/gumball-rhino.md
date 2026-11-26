@@ -13,7 +13,7 @@ Drawn on the selection's centre, along the construction plane's axes, in red (X)
 | **Arrow** | the tip of each axis | move along that axis |
 | **Circle** (extrude) | midway along each axis | extrude along that axis: curves become surfaces, flat surfaces and faces become solids, as `ExtrudeCrv` and `ExtrudeSrf` do. Ctrl-drag on an arrow does the same, as in Rhino |
 | **Arc** | a quarter circle between each pair of axes | turn about the third axis |
-| **Small square** | the end of each axis, just inside the arrow | scale along that axis; Shift-drag scales evenly |
+| **Small square** | on the box around the selection, on the negative side of each axis, at the end of a dotted line from the centre (Rhino 8, #693) | scale along that axis; Shift-drag scales evenly |
 | **Plane square** | a small filled square, tinted by its plane (XY blue, YZ red, XZ green), between each pair of axes | move freely in that plane |
 | **Centre** | the dot at the centre | move freely on the construction plane |
 
