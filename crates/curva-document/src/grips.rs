@@ -268,8 +268,16 @@ mod tests {
                 crate::Shape::Mesh(mesh) => mesh.vertices().to_vec(),
                 _ => unreachable!(),
             };
+            let corner = before.iter().filter(|q| **q == before[moved]).count();
+            assert_eq!(
+                corner,
+                if moved == 1 { 3 } else { 1 },
+                "copies of the picked point"
+            );
             for (k, (p, q)) in points.iter().zip(&before).enumerate() {
-                let lift = if k == moved { 5.0 } else { 0.0 };
+                // A mesh box is unwelded as in Rhino 8, so its corner has a vertex per side: all
+                // of them move together, as Rhino moves the corner whole.
+                let lift = if q == &before[moved] { 5.0 } else { 0.0 };
                 assert!((p[2] - q[2] - lift).abs() < 1e-12, "point {k} of {id}");
             }
         }

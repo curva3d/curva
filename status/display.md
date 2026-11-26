@@ -27,6 +27,20 @@ goes straight to features. The open issues are listed in `docs/reviews/code-heal
   - Still to check: other things first drawn later may pause the same way, such as Ghosted's
     see-through faces, Massing's shadows, a mesh's own colours, clipping. Not timed on a quiet
     machine.
+- **Gumball scale squares back, as in Rhino 8: the display side** (#693, the owner's decision
+  "Yes, as in Rhino").
+  - `Gumball` now holds the selection's box (`extent`). Each axis seen side-on gets a square in
+    its colour on that box, on the axis's negative side, at the end of a line from the centre
+    (`square_point`, `square_lines`, drawn dotted by the app). The square is at least a few of its
+    own sizes from the centre dot, as for a flat selection.
+  - Dragging a square scales along its axis about the centre, by how much further from the centre
+    the pointer is than the square, as Rhino measured. A 10-wide box's X square dragged from
+    x = 0 to x = −5 scales by exactly 2, the box becoming −5 to 15. Evenly with Shift.
+  - With no extent there are no squares. The app fills the extent, draws the dotted lines and
+    opens the value box on a click: features stream.
+  - New tests: the squares sit on the box's sides, are found under the pointer and drawn only
+    for axes seen side-on; Rhino's drag case scales by 2 about the centre, evenly with Shift; a
+    typed factor is exact.
 - **Knot and Vertex snaps, as in Rhino 8's Osnap** (#692, from the testing stream).
   - Knot: where a curve's spans meet. That means every distinct knot of the curve as Rhino writes
     it as NURBS: a polyline's vertices, a compound curve's joins and its parts' own knots, a

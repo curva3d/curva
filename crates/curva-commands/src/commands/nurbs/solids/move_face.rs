@@ -102,13 +102,13 @@ mod tests {
         let sheet = doc.add_body(Body::ruled(&a, &b, false).unwrap());
         let mut processor = crate::Processor::default();
         processor.submit(&mut doc, "rebuilduv");
-        for typed in ["PointCountU", "8", "PointCountV", "8"] {
+        for typed in ["PointCount", "8"] {
             processor.submit(&mut doc, typed);
         }
         doc.select(&[sheet]);
         processor.submit(&mut doc, "");
         let (rows, cols, _) = last_body(&doc).control_net().unwrap();
-        assert_eq!((rows, cols), (8, 8));
+        assert_eq!((rows, cols), (8, 2));
         let mut doc = Document::default();
         let square = Curve::polyline(
             vec![[0.0; 3], [2.0, 0.0, 0.0], [2.0, 2.0, 0.0], [0.0, 2.0, 0.0]],

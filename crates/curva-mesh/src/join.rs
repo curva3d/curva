@@ -130,7 +130,8 @@ mod tests {
             origin: [x, 0.0, 0.0],
             ..Frame::world()
         };
-        Mesh::mesh_box(&frame, [1.0; 3], [1, 1, 1])
+        // Welded, so it is one piece (a MeshBox's sides are unwelded and explode apart).
+        Mesh::mesh_box(&frame, [1.0; 3], [1, 1, 1]).welded(0.0).0
     }
 
     #[test]
@@ -164,6 +165,26 @@ mod tests {
     fn a_mesh_of_one_piece_stays_whole() {
         let cube = cube_at(0.0);
         assert_eq!(cube.pieces(), vec![cube]);
+    }
+
+    /// Rhino 8's Explode splits a mesh at its unwelded edges (measured by the testing stream, 25
+    /// November 2026): a MeshBox into its 6 sides of 121 points and 100 faces, a MeshCylinder
+    /// into two caps of 11 and 10 and its side of 110 and 100.
+    #[test]
+    fn primitives_explode_at_their_unwelded_edges_as_rhino() {
+        let counts = |mesh: &Mesh| -> Vec<(usize, usize)> {
+            mesh.pieces()
+                .iter()
+                .map(|p| (p.vertex_count(), p.face_count()))
+                .collect()
+        };
+        let world = Frame::world();
+        let box_ = Mesh::mesh_box(&world, [10.0; 3], [10, 10, 10]);
+        assert_eq!(counts(&box_), vec![(121, 100); 6]);
+        let cylinder = Mesh::mesh_cylinder(&world, 3.0, 10.0, (10, 10), true, false);
+        let mut pieces = counts(&cylinder);
+        pieces.sort_unstable();
+        assert_eq!(pieces, vec![(11, 10), (11, 10), (110, 100)]);
     }
 
     #[test]

@@ -227,18 +227,16 @@ impl Spline {
             let skip = first.saturating_sub(1);
             self.knots.drain(..skip);
             self.points.drain(..skip.min(self.points.len()));
+            // The one knot left before the start shapes nothing once the start is clamped;
+            // listed at the start, the curve is clamped as it reads.
+            self.knots[0] = a;
         }
         let n = self.points.len();
         let at_end = self.knots[n..].iter().all(|k| *k == b);
         if !at_end {
-            let have = self.multiplicity(b);
-            if have < p {
-                self = self.inserted(b, p - have);
-            }
-            let last = self.knots.iter().rposition(|k| *k == b).unwrap_or(0);
-            self.knots.truncate(last + 2);
-            let count = self.knots.len() - p - 1;
-            self.points.truncate(count);
+            // The end clamped as the start is, on the curve run the other way: cutting it off
+            // in place lost the end point and doubled the one before it.
+            self = self.reversed().clamped()?.reversed();
         }
         self.check()?;
         Ok(self)
@@ -728,6 +726,30 @@ impl Spline {
 mod tests {
     use super::Spline;
     use crate::{Curve, gap};
+
+    #[test]
+    fn a_curve_clamped_at_both_ends_keeps_its_shape_to_the_end() {
+        // A uniform periodic cubic round 10 points, its knots running past both ends.
+        let points = (0..13)
+            .map(|i| {
+                let a = std::f64::consts::TAU * f64::from(i % 10) / 10.0;
+                [a.cos(), a.sin(), 0.0, 1.0]
+            })
+            .collect();
+        let knots = (0..=16).map(|k| f64::from(k) - 3.0).collect();
+        let open = Spline {
+            degree: 3,
+            knots,
+            points,
+        };
+        let clamped = open.clone().clamped().unwrap();
+        assert_eq!(clamped.knots[..4], [0.0; 4]);
+        assert_eq!(clamped.knots[13..], [10.0; 4]);
+        for k in 0..=100 {
+            let u = f64::from(k) / 10.0;
+            assert!(gap(open.point(u), clamped.point(u)) < 1e-9, "{u}");
+        }
+    }
 
     fn wavy() -> Spline {
         Spline::of(

@@ -225,7 +225,7 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | CurveBoolean | Curves; clicks inside regions | `DeleteInput` `CombineRegions` `AllRegions` | `CombineRegions` `DeleteInput` | partly |
 | Match | Curve to change; curve to match | `Position` `Tangency` `Curvature` `AverageCurves` `PreserveOtherEnd` | `Position` `Tangency` `Curvature` | partly |
 | SimplifyCrv | Select curves | none | none | done |
-| Reparameterize | Curves; start; end | `Automatic` | none | partly |
+| Reparameterize | Curves; start; end | `Automatic` | `Automatic` | partly |
 | MakeUniform | Select curves | none | none | done |
 | Weight | Control points picked; weight | none | none | done |
 | ExtrudeCrvTapered | Closed curves; distance | `DraftAngle` `Solid` `Sharp` `Round` `Smooth` `Direction` `DeleteInput` `FlipAngle` | `DraftAngle` `Solid` `Sharp` `Round` `Smooth` | partly |
@@ -261,18 +261,18 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | MoveFace | Faces; move | `BothSides` | none | partly |
 | PushPull | Faces; distance | none | none | done |
 | Shear | Objects; origin; reference; angle | `Copy` | none | partly |
-| RebuildUV | Surfaces | `PointCountU` `PointCountV` `DegreeU` `DegreeV` `DeleteInput` | `PointCountU` `PointCountV` `DegreeU` `DegreeV` | partly |
+| RebuildUV | Surfaces; options | `Direction` `PointCount` `Type` `DeleteInput` `CurrentLayer` `ReTrim` | `Direction` `PointCount` `DeleteInput` | partly |
 | CurvatureGraph | Curves | `Scale` `Density` | `Scale` `Density` | done |
 | Cap | Surfaces | none | none | done |
 | ExtractIsocurve | Surface; point | `Direction` `Toggle` | `U` `V` `Both` | partly |
 | ShrinkTrimmedSrf | Surfaces | none | none | done |
 | BlendSrf | Two edges | `Position` `Tangency` `Curvature` `Bulge` `Planar Sections` | `Position` `Tangency` `Curvature` `Bulge` | partly |
-| MatchSrf | Edge to change; edge to match | `Position` `Tangency` `Curvature` `AverageSurfaces` | `Position` `Tangency` | partly |
+| MatchSrf | Edge to change; edge to match | `Position` `Tangency` `Curvature` `AverageSurfaces` | `Position` `Tangency` `Curvature` | partly |
 | Sweep2 | Two rails; cross sections | `MaintainHeight` `Simplify` | none | partly |
 | Twist | Objects; axis; angle | `Infinite` `PreserveStructure` | none | partly |
 | Bend | Objects; spine; bend point | `Symmetric` `Copy` `Straight` | none | partly |
-| Taper | Objects; axis; sizes | `Flat` `Infinite` | none | partly |
-| Flow | Objects; base curve; target curve | `Copy` `Rigid` `Stretch` | none | partly |
+| Taper | Objects; axis start; axis end; start distance; end distance | `Flat` `Infinite` | none | partly |
+| Flow | Objects; base curve; target curve | `Copy` `Rigid` `Stretch` | `Copy` `Stretch` | partly |
 | CageEdit | Objects; cage | `BoundingBox` `Line` `Rectangle` | none | partly |
 | Pull | Curves; surface | `Loose` | none | partly |
 | InterpCrvOnSrf | Surface; points | none | none | done |
@@ -280,8 +280,8 @@ Rhino's steps in order, Rhino's options, which of them Curva has, and its status
 | Silhouette | Objects | none | none | done |
 | UnrollSrf | Surfaces | `Explode` `Labels` | none | partly |
 | ExtrudeFace | Face; distance | `Direction` `BothSides` | none | partly |
-| FilletSrf | Two surfaces; radius | `Trim` `Extend` | none | partly |
-| ChamferSrf | Two surfaces; distances | `Trim` `Extend` | none | partly |
+| FilletSrf | Two surfaces; radius | `Trim` `Extend` | `Trim` | partly |
+| ChamferSrf | Two surfaces; distances | `Trim` `Extend` | `Trim` | partly |
 | SplitSrf | Surface; curves | none | none | done |
 | Zebra | Objects | `Stripe direction` `Stripe size` `Stripe colour` | none | partly |
 | EditBoolean | A live boolean | none | none | partly |

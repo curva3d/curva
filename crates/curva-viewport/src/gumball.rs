@@ -41,7 +41,8 @@ pub enum Handle {
     Extrude(usize),
     /// The quarter arc that turns around an axis.
     Turn(usize),
-    /// The small square near an axis's tip: scales along it, or evenly with Shift.
+    /// The small square on the selection's extent, on the negative side of an axis, at the end of
+    /// a dotted line from the centre: scales along it, or evenly with Shift (#693).
     Scale(usize),
     /// The square between the two axes other than this one: moves in their plane.
     Plane(usize),
@@ -228,6 +229,9 @@ fn mark(at: [f64; 2], round: bool) -> Vec<[f64; 2]> {
 pub struct Gumball {
     /// Where its handles start.
     pub centre: Point,
+    /// The lowest and highest corners of the box around the selection, which the scale squares
+    /// sit on, one per axis on its negative side, as in Rhino 8 (#693); `None` shows no squares.
+    pub extent: Option<(Point, Point)>,
 }
 
 impl Gumball {
@@ -266,6 +270,10 @@ impl Gumball {
             if seen && let Some(middle) = along(EXTRUDE_AT) {
                 found.push((Handle::Extrude(index), mark(middle, true)));
             }
+            let square = self.square_point(camera, size, index);
+            if seen && let Some(square) = square.and_then(|p| camera.project(p, size)) {
+                found.push((Handle::Scale(index), mark(square, false)));
+            }
             let (u, v) = (AXES[(index + 1) % 3], AXES[(index + 2) % 3]);
             // A quarter of a circle, from one of the other axes to the next.
             let radius = ARC_PIXELS * unit;
@@ -298,6 +306,32 @@ impl Gumball {
         }
         found.push((Handle::Centre, mark(at, true)));
         found
+    }
+
+    /// Where axis `index`'s scale square sits in the model (#693): on the selection's extent on
+    /// the negative side of the axis, as Rhino 8 places it, but at least half an arrow from the
+    /// centre, so a flat selection's square stays apart from the centre dot. `None` with no
+    /// extent.
+    #[must_use]
+    pub fn square_point(&self, camera: &Camera, size: [f64; 2], index: usize) -> Option<Point> {
+        let (low, _) = self.extent?;
+        let shortest = 3.0 * MARK_PIXELS * self.units_per_pixel(camera, size)?;
+        let back = (self.centre[index] - low[index]).max(shortest);
+        Some(plus(self.centre, AXES[index], -back))
+    }
+
+    /// The dotted line from the centre to each scale square, on screen, for each axis in order.
+    #[must_use]
+    pub fn square_lines(&self, camera: &Camera, size: [f64; 2]) -> Vec<(usize, [[f64; 2]; 2])> {
+        let Some(at) = camera.project(self.centre, size) else {
+            return Vec::new();
+        };
+        (0..3)
+            .filter_map(|index| {
+                let square = self.square_point(camera, size, index)?;
+                Some((index, [at, camera.project(square, size)?]))
+            })
+            .collect()
     }
 
     /// The handle under a screen position, if any. Inside a filled handle counts as on it.
@@ -420,8 +454,9 @@ impl Gumball {
     }
 
     /// Dragging a scale square from `from` to `to` on screen, the gumball's centre being `at`:
-    /// the factor is how much further from the centre, along the axis, the pointer is than where
-    /// the drag began. With `even`, it scales evenly.
+    /// the factor is how much further from the centre, along the axis, the pointer is than the
+    /// square (where the drag began, with no square), as Rhino 8 scales (#693). With `even`, it
+    /// scales evenly.
     fn scale_change(
         &self,
         camera: &Camera,
@@ -435,7 +470,10 @@ impl Gumball {
         let tip = camera.project(plus(self.centre, axis, 1.0), size)?;
         let per_unit = [tip[0] - at[0], tip[1] - at[1]];
         let reach = |p: [f64; 2]| (p[0] - at[0]) * per_unit[0] + (p[1] - at[1]) * per_unit[1];
-        let start = reach(from);
+        let square = self
+            .square_point(camera, size, index)
+            .and_then(|p| camera.project(p, size));
+        let start = reach(square.unwrap_or(from));
         if start.abs() < SHORTEST_ON_SCREEN {
             return None;
         }
@@ -458,6 +496,11 @@ impl Gumball {
     #[must_use]
     pub fn handle_point(&self, camera: &Camera, size: [f64; 2], handle: Handle) -> Option<Point> {
         let unit = self.units_per_pixel(camera, size)?;
+        if let Handle::Scale(index) = handle
+            && let Some(square) = self.square_point(camera, size, index)
+        {
+            return Some(square);
+        }
         let (index, part) = match handle {
             Handle::Move(index) => (index, 1.0),
             Handle::Extrude(index) | Handle::Scale(index) => (index, EXTRUDE_AT),
@@ -529,7 +572,10 @@ mod tests {
     const SIZE: [f64; 2] = [800.0, 600.0];
 
     fn at_origin() -> Gumball {
-        Gumball { centre: [0.0; 3] }
+        Gumball {
+            centre: [0.0; 3],
+            extent: None,
+        }
     }
 
     fn close(a: Point, b: Point) -> bool {
@@ -608,6 +654,7 @@ mod tests {
         let camera = StandardView::Top.camera();
         let gumball = Gumball {
             centre: [5.0, 0.0, 0.0],
+            extent: None,
         };
         let at = camera.project([5.0, 0.0, 0.0], SIZE).unwrap();
         let change = gumball
@@ -708,5 +755,90 @@ mod tests {
         let start = typed.applied(&line).sample().unwrap()[0];
         assert!(close(start, [-1.0, 1.0, 0.0]), "{start:?}");
         assert_eq!(typed.amount(), (90.0, Amount::Angle));
+    }
+
+    /// Rhino 8's measured case (#693): a 10 × 5 × 3 box at the origin, the gumball at its centre.
+    fn on_a_box() -> (Gumball, Camera) {
+        let gumball = Gumball {
+            centre: [5.0, 2.5, 1.5],
+            extent: Some(([0.0; 3], [10.0, 5.0, 3.0])),
+        };
+        let mut camera = StandardView::Top.camera();
+        camera.frame([-10.0, -10.0, 0.0], [20.0, 15.0, 3.0]);
+        (gumball, camera)
+    }
+
+    /// Each square sits on the box's side on the negative side of its axis, at the end of its
+    /// dotted line, and is found there; none without an extent.
+    #[test]
+    fn scale_squares_sit_on_the_extent_on_the_negative_side() {
+        let (gumball, camera) = on_a_box();
+        let x_square = gumball.square_point(&camera, SIZE, 0).unwrap();
+        assert!(close(x_square, [0.0, 2.5, 1.5]), "{x_square:?}");
+        let y_square = gumball.square_point(&camera, SIZE, 1).unwrap();
+        assert!(close(y_square, [5.0, 0.0, 1.5]), "{y_square:?}");
+        for (index, model) in [(0, x_square), (1, y_square)] {
+            let screen = camera.project(model, SIZE).unwrap();
+            assert_eq!(
+                gumball.handle_at(&camera, screen, SIZE),
+                Some(Handle::Scale(index))
+            );
+        }
+        let lines = gumball.square_lines(&camera, SIZE);
+        let x_line = lines.iter().find(|(index, _)| *index == 0).unwrap().1;
+        let x_screen = camera.project(x_square, SIZE).unwrap();
+        assert!((x_line[1][0] - x_screen[0]).abs() < 1e-9);
+        // Seen from above, Z points at the viewer: no square for it.
+        let handles: Vec<Handle> = gumball
+            .outlines(&camera, SIZE)
+            .into_iter()
+            .map(|h| h.0)
+            .collect();
+        assert!(!handles.contains(&Handle::Scale(2)));
+        let bare = Gumball {
+            extent: None,
+            ..gumball
+        };
+        assert!(bare.square_point(&camera, SIZE, 0).is_none());
+        assert!(
+            !bare
+                .outlines(&camera, SIZE)
+                .iter()
+                .any(|h| matches!(h.0, Handle::Scale(_)))
+        );
+    }
+
+    /// Dragging the X square from x = 0 to x = −5 doubles its distance from the centre: the box
+    /// scales by 2 along X about the centre, to −5 … 15, as Rhino 8 measured; evenly with Shift.
+    #[test]
+    fn dragging_a_scale_square_scales_by_the_distance_ratio_about_the_centre() {
+        let (gumball, camera) = on_a_box();
+        let screen = |p: Point| camera.project(p, SIZE).unwrap();
+        let (from, to) = (screen([0.0, 2.5, 1.5]), screen([-5.0, 2.5, 1.5]));
+        // A pointer a pixel off the square still gives the measured factor.
+        let grabbed = [from[0] + 1.0, from[1] - 1.0];
+        let change = gumball
+            .change(&camera, SIZE, Handle::Scale(0), grabbed, to)
+            .unwrap();
+        assert!(close(change.moved_point([0.0, 0.0, 0.0]), [-5.0, 0.0, 0.0]));
+        assert!(close(
+            change.moved_point([10.0, 5.0, 3.0]),
+            [15.0, 5.0, 3.0]
+        ));
+        assert_eq!(change.amount().1, Amount::Factor);
+        assert!((change.amount().0 - 2.0).abs() < 1e-9);
+        let even = gumball
+            .change_with(&camera, SIZE, Handle::Scale(0), grabbed, to, true, None)
+            .unwrap();
+        assert!(close(even.moved_point([10.0, 5.0, 3.0]), [15.0, 7.5, 4.5]));
+        // A typed factor is exact.
+        let typed = gumball.typed(Handle::Scale(0), 2.0, false).unwrap();
+        assert!(close(typed.moved_point([0.0; 3]), [-5.0, 0.0, 0.0]));
+        assert!(close(
+            gumball
+                .handle_point(&camera, SIZE, Handle::Scale(0))
+                .unwrap(),
+            [0.0, 2.5, 1.5]
+        ));
     }
 }

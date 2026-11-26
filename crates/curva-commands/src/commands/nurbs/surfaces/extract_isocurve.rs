@@ -37,9 +37,10 @@ impl Recipe for ExtractIsocurve {
         };
         let (face, _, _) = body.nearest_face(at).map_err(|e| failed(&e))?;
         let ways: &[bool] = match cx.mode {
-            Some("U") => &[false],
+            // U by default, as in Rhino (#730).
             Some("V") => &[true],
-            _ => &[false, true],
+            Some("Both") => &[false, true],
+            _ => &[false],
         };
         let mut made = Made::default();
         for along_v in ways {

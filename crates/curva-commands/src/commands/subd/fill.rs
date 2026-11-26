@@ -97,8 +97,10 @@ mod tests {
     #[test]
     fn a_mesh_hole_fills_when_all_its_edges_are_picked_as_in_rhino() {
         // Rhino 8: an open 4 m box mesh of 2 × 2 faces a side, all eight top edges picked, gets
-        // four quads on nine new points; one edge alone fills nothing.
-        let whole = Mesh::mesh_box(&Frame::world(), [4.0; 3], [2, 2, 2]);
+        // four quads on nine new points; one edge alone fills nothing. The box was welded there.
+        let whole = Mesh::mesh_box(&Frame::world(), [4.0; 3], [2, 2, 2])
+            .welded(0.0)
+            .0;
         let rest: Vec<Vec<u32>> = whole
             .faces()
             .filter(|f| !f.iter().all(|&v| whole.vertices()[v as usize][2] > 3.99))

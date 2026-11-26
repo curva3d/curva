@@ -1,4 +1,6 @@
-//! `Rebuild`: remakes smooth curves through a chosen number of evenly spaced points.
+//! `Rebuild`, as in Rhino: remakes smooth curves with a chosen number of control points, degree 3
+//! on uniform knots, keeping their ends and end tangents (#716). Closed curves pass through
+//! evenly spaced points.
 
 use crate::commands::{
     ask_objects, curves_of, geometry_failed, ghost_results, objects_or_selection, unexpected,
@@ -26,6 +28,11 @@ fn rebuilt(curve: &Curve, points: usize) -> Result<Option<Curve>, KernelError> {
     }
     let path = curve.sample()?;
     let closed = curva_kernel::gap(path[0], path[path.len() - 1]) < 1e-6;
+    // An open curve is rebuilt as Rhino rebuilds it: uniform knots, the same ends and end
+    // tangents, fitted along its length (#716).
+    if !closed && points >= 4 {
+        return curve.rebuilt(points, 3).map(Some);
+    }
     let through = curve.divided(if closed { points } else { points - 1 })?;
     Curve::interpolated(through, closed).map(Some)
 }
@@ -103,9 +110,12 @@ mod tests {
     fn a_smooth_curve_gets_the_number_of_points_asked_for_and_keeps_its_ends() {
         let mut doc = selected_smooth();
         run(&mut doc, &["rebuild", "12"]);
-        let Curve::Interpolated { points, .. } = &doc.state().objects[0].curve().unwrap() else {
-            panic!("expected a smooth curve");
-        };
+        // Twelve control points, as Rhino's Rebuild gives, on a curve keeping its ends.
+        let points = doc.state().objects[0]
+            .curve()
+            .unwrap()
+            .control_points()
+            .unwrap();
         assert_eq!(points.len(), 12);
         assert!(curva_kernel::gap(points[0], [0.0; 3]) < 1e-6);
         assert!(curva_kernel::gap(points[11], [30.0, 0.0, 0.0]) < 1e-6);

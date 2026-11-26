@@ -9,7 +9,8 @@ use curva_document::{Document, Grip};
 use curva_kernel::{Curve, KernelError};
 
 /// How far each point moves towards the middle of its neighbours unless another is typed.
-const DEFAULT_FACTOR: f64 = 0.5;
+// Rhino 8's SmoothFactor (#737).
+const DEFAULT_FACTOR: f64 = 0.2;
 
 /// The running command.
 #[derive(Default)]
@@ -117,7 +118,7 @@ mod tests {
         let mut doc = Document::default();
         let id = zigzag(&mut doc);
         doc.select(&[id]);
-        run(&mut doc, &["smooth", ""]);
+        run(&mut doc, &["smooth", "0.5"]);
         assert_eq!(
             doc.state().objects[0]
                 .curve()
@@ -126,6 +127,31 @@ mod tests {
                 .unwrap(),
             [[0.0; 3], [1.0, 1.0, 0.0], [2.0, 1.0, 0.0], [3.0, 2.0, 0.0]]
         );
+    }
+
+    #[test]
+    fn enter_smooths_by_rhinos_factor() {
+        let mut doc = Document::default();
+        let points = vec![
+            [0.0, 0.0, 0.0],
+            [2.0, 4.0, 0.0],
+            [4.0, 0.0, 0.0],
+            [6.0, 4.0, 0.0],
+            [8.0, 0.0, 0.0],
+            [10.0, 4.0, 0.0],
+        ];
+        let id = doc.add(Curve::control_point(points, 3, false).unwrap());
+        doc.select(&[id]);
+        run(&mut doc, &["smooth", ""]);
+        let moved = doc.state().objects[0]
+            .curve()
+            .unwrap()
+            .control_points()
+            .unwrap();
+        // Rhino 8 (SmoothFactor 0.2): (2, 3.2), (4, 0.8), (6, 3.2), (8, 0.8), ends kept.
+        for (got, want) in moved[1..5].iter().zip([3.2, 0.8, 3.2, 0.8]) {
+            assert!((got[1] - want).abs() < 1e-9, "{moved:?}");
+        }
     }
 
     #[test]

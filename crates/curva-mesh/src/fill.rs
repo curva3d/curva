@@ -115,7 +115,10 @@ mod tests {
 
     /// A 4 m box mesh of 2 × 2 faces a side, welded, without its four top faces.
     fn open_box() -> Mesh {
-        let whole = Mesh::mesh_box(&Frame::world(), [4.0; 3], [2, 2, 2]);
+        // Welded, as the box Rhino was measured on (a MeshBox keeps its edges unwelded).
+        let whole = Mesh::mesh_box(&Frame::world(), [4.0; 3], [2, 2, 2])
+            .welded(0.0)
+            .0;
         let rest: Vec<Vec<u32>> = whole
             .faces()
             .filter(|f| !f.iter().all(|&v| whole.vertices()[v as usize][2] > 3.99))
