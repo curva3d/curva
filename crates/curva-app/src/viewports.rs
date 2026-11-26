@@ -268,8 +268,14 @@ impl Curva {
         }
         // The filter can change without the model changing, so it is passed on every frame.
         // Rhino's selection filter is applied to what a pick finds (`filtered_picks`).
+        // While UnlockSelected asks, only locked objects can be picked (#715).
+        let locked_only = self
+            .processor
+            .current_request()
+            .is_some_and(|request| request.locked_only);
         self.outlines.set_filter(PickFilter {
             on: false,
+            locked_only,
             ..PickFilter::default()
         });
     }

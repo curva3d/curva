@@ -792,6 +792,7 @@ prompt.selcolor.object = Select an object with the colour to select
 prompt.lock.objects = Select objects to lock, then press Enter
 done.lock = Locked {0} objects.
 done.sectionstyle = Set the section style of {0} objects.
+prompt.unlockselected.objects = Select objects to unlock
 done.unlock = Unlocked {0} objects.
 prompt.group.objects = Select objects to group, then press Enter
 done.group = Grouped {0} objects.
