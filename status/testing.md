@@ -19,6 +19,17 @@ pin Rhino-measured results. Newest first.*
 - **Same\*** means Curva's result equals the exact geometric answer for that case (which Rhino gives
   too), but the case has not been run in Rhino itself yet.
 
+## Testing stream — 26 November 2026 (morning)
+
+Fixes rechecked against Rhino 8 on `main` at fba9278 (headless processor; Rhino measured in a spawned slot).
+
+- **Now as Rhino:** Group on one object (#752), SelName wildcards (#743), RebuildUV (#740), ArrayCrv turning (#738), Smooth 0.2 (#737), RemoveKnot (#736), FilletSrf and ChamferSrf trimming (#732), ExtractIsocurve U only (#730), Wirecut keeping one piece (#729), Rebuild (#716, 21.97809 against 21.97804), SubDCylinder extent (#689). Within 0.1%: Flow (#739) and Sweep2 (#667). Taper about an edge axis works with start and end distances (#713).
+- **MatchSrf (#750):** the Rhino figures first filed came from RhinoCommon's `CreateFromMatch`, which pairs the edges crosswise. They were re-measured with the real `-MatchSrf` (Position 158.1139, Tangency 159.2704, Curvature 160.5650), the issue was corrected, and Curva now matches all three. New **#766**: Curva's default mode is Tangency, and Rhino's is Curvature.
+- **Sweep1 reopened (#665, #666).** On a line rail, circle to square gives 52.632 against Rhino's 67.903 (4 faces). On the S rail, it gives 103.80 against 138.22. A single section mid-rail sweeps the whole rail, where Rhino stops at the section (63.97). The polyline rail matches (108), but the same L as a degree-1 NURBS curve fails.
+- **Fair (#731)** stays open: the default is now 1.0, but the shape differs.
+- **BlendCrv (#728, #748):** six cases measured for the features stream with the real `-BlendCrv`. Rhino carries the previous handle across a continuity change, so each case was run twice.
+- **Picks without a screen:** edges that a command won't take pre-selected (MatchSrf) can be picked by posting mouse clicks to the Perspective view at `WorldToClient` of the edge.
+
 ## Testing stream — 26 November 2026 (early morning)
 
 - **#706 rechecked on main against Rhino 8:** SubDSphere's extent is ±5 (#689). MeshBox has 726 points,
@@ -223,7 +234,7 @@ pin Rhino-measured results. Newest first.*
 ## Commands
 
 State against Rhino 8: **same** (measured in both), **same\*** (matches the exact result; Rhino run
-pending), **differs** (issue filed), **missing**, or **not yet** (not tested). Counts: 35 differs, 66 not yet, 186 same, 39 same*.
+pending), **differs** (issue filed), **missing**, or **not yet** (not tested). Counts: 20 differs, 66 not yet, 201 same, 39 same*.
 
 ### Curves
 
@@ -235,11 +246,11 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Circle | same |  | fixed in #717 |
 | Point | same |  |  |
 | Divide | same |  | circle into 6 |
-| Rebuild | differs | #716 | 22.007 against 21.978 |
+| Rebuild | same | #716 | 21.97809 against Rhino 21.97804 |
 | PointsOn | not yet |  |  |
 | PointsOff | not yet |  |  |
 | InsertKnot | same |  | click at 5,2: shape kept (12.188403), 1 point added, as Rhino's 5 control points |
-| RemoveKnot | differs | #736 | removes the nearest control point: 13.3866 against Rhino 12.4849 |
+| RemoveKnot | same | #736 | 12.4849 as Rhino |
 | RemoveControlPoint | same |  | point (4,0) removed: 13.3866, as Rhino |
 | CloseCrv | same |  | gap closed by a line, 40 |
 | SetPt | same |  | all of X, Y, Z set by default: polyline to 0,5,0 as Rhino (no Alignment/Copy options) |
@@ -296,23 +307,23 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | ExtendSrf | differs | #751 | smooth by 5: 103.5398 against Rhino 99.1362 (exact circle vs NURBS continuation) |
 | Untrim | differs | #734 | after Split gives 36 (Rhino 100: Split keeps the full surface) |
 | Project | same |  | 12.566 in both |
-| RebuildUV | differs | #740 | fails on a sphere; Rebuild-style options; Rhino one direction, 10 points |
-| ExtractIsocurve | differs | #730 | default copies U and V; Rhino U only (equator 31.4159 matches) |
+| RebuildUV | same | #740 | sphere rebuilt in U, area 314.06 as Rhino |
+| ExtractIsocurve | same | #730 | default copies U only (31.4159) as Rhino |
 | ShrinkTrimmedSrf | differs | #734 | Rhino leaves a 1% margin (37.4544 on untrim); Curva exact 36 |
 | BlendSrf | differs | #748 | default G2: 88.4969 against Rhino command 100.0503; position 70.7107 same |
-| MatchSrf | differs | #750 | moves the whole surface (100); Rhino moves only the matched edge (79.06 position) |
-| Sweep2 | differs | #667 | one section at the start matches; two sections impossible, section mid-rail fails |
+| MatchSrf | differs | #766 | all three modes match real -MatchSrf (158.1139/159.2704/160.5650); default Tangency where Rhino's is Curvature |
+| Sweep2 | same | #667 | sections anywhere match (91.0738, 104.9644); two end arcs 125.7622 against Rhino 125.6062 (0.1%) |
 | Pull | same* |  |  |
 | InterpCrvOnSrf | same |  | 15.8639 through 3 points on a plane |
 | OffsetCrvOnSrf | same* |  | line on plane offset 2: y=7, length 8 |
 | UnrollSrf | same |  | fixed in #722: 3 pieces, rectangle 314.159 |
-| FilletSrf | differs | #732 | fillet 15.708 matches; inputs not trimmed (Rhino 90/90) |
+| FilletSrf | same | #732 | fillet 15.708, inputs trimmed to 90/90 as Rhino |
 | SplitSrf | same |  | 20 and 30, as Rhino's Split |
 | ExtrudeCrv | same |  | circle to a solid, volume 785.398 (Rhino-measured in rhino_measured.rs) |
 | PlanarSrf | same |  |  (Rhino-measured in rhino_measured.rs) |
 | Revolve | same |  | fixed in #701: "Revolution angle <360>" |
 | Loft | same |  | area 256.3047; picks let go afterwards (#680, fixed in #701) |
-| Sweep1 | differs | #665 #666 | one section matches (area within 0.001); several sections, a section away from the start, and polyline rails fail |
+| Sweep1 | differs | #665 #666 | polyline rail 108 matches; circle to square 52.632 against Rhino 67.903 (4 faces); mid section sweeps the whole rail; degree-1 NURBS rail fails |
 | OffsetSrf | same |  | box offset 1: 1728 |
 
 ### Solids
@@ -332,14 +343,14 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Paraboloid | same |  | fixed in #721: from the focus |
 | Pyramid | same |  | 198.1368 in both |
 | MergeAllFaces | same* |  |  |
-| Wirecut | differs | #729 | default KeepAll=Yes leaves 2 pieces; Rhino 1 (cut matches, 500) |
+| Wirecut | same | #729 | keeps one piece (500) as Rhino |
 | EditBoolean | not yet |  |  |
 | BreakBoolean | not yet |  |  |
 | MoveFace | same* |  | top up 2: 250 |
 | PushPull | same* |  | alias of MoveFace; Rhino 8 PushPull asks for a surface |
 | Cap | same |  | 785.398 in both |
 | ExtrudeFace | same* |  | top 2: 250 |
-| ChamferSrf | differs | #732 | chamfer 14.1421 matches; inputs not trimmed |
+| ChamferSrf | same | #732 | chamfer 14.1421, inputs trimmed to 90/90 as Rhino |
 | Pipe | same |  | line, radius 1, capped (volume 31.416); Rhino's end radius step not asked (Rhino-measured in rhino_measured.rs) |
 | FilletEdge | same |  | all 12 box edges r=1: volume 975.587, 26 faces; picking edges in the app works |
 | ChamferEdge | same | #683 | fixed in #724: 26 faces, 945.3333, area 526.6927 |
@@ -359,9 +370,9 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Mirror | same |  | copy by default, as Rhino |
 | Array | same |  | Rhino waits for an Enter to accept; Curva does not |
 | ArrayPolar | same |  | Rhino waits for an Enter to accept; Curva does not |
-| ArrayCrv | differs | #738 | copies only moved; Rhino turns them with the curve (Freeform) |
+| ArrayCrv | same | #738 | copies turn with the curve; last copy (-1,0,0)-(0,1,1) as Rhino |
 | Orient | same |  |  |
-| Smooth | differs | #737 | factor 0.5 against Rhino 0.2: 11.2596 against 12.0950 |
+| Smooth | same | #737 | default 0.2: 12.0950 as Rhino |
 | History | not yet |  |  |
 | Flip | not yet |  |  |
 | ProjectToCPlane | same |  |  |
@@ -380,8 +391,8 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Shear | same |  |  |
 | Twist | same |  | 997.15 against 999.997 |
 | Bend | same |  | Rhino's steps |
-| Taper | differs | #713 | fails with the axis on an edge; one ratio where Rhino asks start and end distances |
-| Flow | differs | #739 | stretches and replaces: 14.8797 against Rhino 9.4999 (Stretch=No, Copy=Yes) |
+| Taper | same | #713 | edge axis, start/end distances; 583.33 exact frustum against Rhino's space morph 592.86 |
+| Flow | same | #739 | Copy=Yes Stretch=No; bounds match; volume 9.489 against Rhino 9.4999 (0.1%) |
 | CageEdit | not yet |  |  |
 | Delete | same* |  | deleted object comes back with Undo |
 | Undo | same* |  | undoes delete, then the sphere; Redo redoes |
@@ -449,7 +460,7 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | SubDBox | same |  | cage 26/24 |
 | SubDPlane | same |  | cage 9/4 |
 | SubDSphere | same | #689 | fixed in #706: extent ±5 |
-| SubDCylinder | differs | #689 | surface matches; extent is the cage's |
+| SubDCylinder | same | #689 | extent from the smooth surface (-3,-3,0)-(3,3,10) |
 | SubDCone | same |  | cage 34/40; surface within 0.1 % |
 | SubDTorus | same |  | cage 60/60; surface within 0.1 % |
 | ToSubD | same |  | MeshBox: 602/600 in both |
@@ -527,7 +538,7 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | SelSrf | same |  | fixed in #701 |
 | SelSolid | same |  | fixed in #701 |
 | SelPt | same |  |  |
-| SelName | differs | #743 | exact name works; wildcard al* selects nothing |
+| SelName | same | #743 | exact name and al* wildcard both select as Rhino |
 | SelLayer | same* |  | Default selects both objects on it |
 | SelDup | same |  |  |
 | SelLast | same |  |  |
@@ -578,7 +589,7 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Match | not yet |  |  |
 | Lock | same |  |  |
 | Unlock | same |  |  |
-| Group | differs | #752 | two objects fine; refuses one (Rhino allows) |
+| Group | same | #752 | groups a single object, as Rhino (fba9278) |
 | Ungroup | same* |  | breaks up the group |
 | Block | same* |  | objects become an instance; base point, then name |
 | Insert | same* |  | name, point, scale, rotation, as Rhino's -Insert |
@@ -615,3 +626,4 @@ pending), **differs** (issue filed), **missing**, or **not yet** (not tested). C
 | Export | same |  | .3dm with a box, sphere, circle, polyline, mesh, SubD and a dimension: every value read back in Rhino |
 | ExportSelected | not yet |  |  |
 | New | same* |  | asks to discard; Rhino asks to save first |
+

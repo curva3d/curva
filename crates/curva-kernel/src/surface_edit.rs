@@ -28,6 +28,10 @@ pub(crate) fn plus(p: Point, d: Point, by: f64) -> Point {
     std::array::from_fn(|i| p[i] + d[i] * by)
 }
 
+/// How much of a trimmed face's box ShrinkTrimmedSrf leaves spare on each side, as a share of
+/// the box's size (Rhino 8's, measured).
+const SHRINK_SPARE: f64 = 0.01;
+
 fn curve2_points(c: &Curve2) -> Vec<[f64; 2]> {
     match c {
         Curve2::Spline { points, .. } => points.clone(),
@@ -161,9 +165,12 @@ impl Body {
                     .map(|p| p[k])
                     .fold(f64::NEG_INFINITY, f64::max)
             };
+            // The trims' box with 1% of its size spare on each side, as Rhino 8 leaves it
+            // (a 6 × 6 trim's surface shrinks to 6.12 × 6.12, #734).
+            let spare = |k: usize| (hi(k) - lo(k)) * SHRINK_SPARE;
             let bounds = [
-                [lo(0).max(du0), hi(0).min(du1)],
-                [lo(1).max(dv0), hi(1).min(dv1)],
+                [(lo(0) - spare(0)).max(du0), (hi(0) + spare(0)).min(du1)],
+                [(lo(1) - spare(1)).max(dv0), (hi(1) + spare(1)).min(dv1)],
             ];
             if bounds[0][1] - bounds[0][0] < 1e-9 || bounds[1][1] - bounds[1][0] < 1e-9 {
                 continue;
@@ -631,6 +638,36 @@ mod tests {
     }
 
     #[test]
+    fn a_split_piece_keeps_the_whole_plane_beneath_it_as_in_rhino() {
+        // The testing stream's case (#734): a 10 × 10 plane split by a circle of radius 3.
+        let plane = Body::ruled(
+            &Curve::line([0.0; 3], [10.0, 0.0, 0.0]).unwrap(),
+            &Curve::line([0.0, 10.0, 0.0], [10.0, 10.0, 0.0]).unwrap(),
+            false,
+        )
+        .unwrap();
+        let cut = plane
+            .split_by_curves(0, &[Curve::circle([5.0, 5.0, 0.0], 3.0).unwrap()])
+            .unwrap();
+        let disc = (0..2)
+            .map(|k| cut.faces_only(&[k]).unwrap())
+            .find(|piece| piece.area().unwrap() < 50.0)
+            .unwrap();
+        // Rhino 8: Untrim gives the whole plane back, 100.
+        let whole = disc.untrimmed_at(0).unwrap().area().unwrap();
+        assert!((whole - 100.0).abs() < 1e-6, "{whole}");
+        // ShrinkTrimmedSrf first: the trim's box and 1% spare, 6.12 × 6.12 = 37.4544.
+        let small = disc
+            .shrunk()
+            .unwrap()
+            .untrimmed_at(0)
+            .unwrap()
+            .area()
+            .unwrap();
+        assert!((small - 37.4544).abs() < 1e-3, "{small}");
+    }
+
+    #[test]
     fn a_trimmed_square_shrinks_to_its_trim() {
         let holed = Body::planar(&[Curve::circle([2.0, 2.0, 0.0], 1.0).unwrap()]).unwrap();
         let area = holed.area().unwrap();
@@ -639,7 +676,7 @@ mod tests {
         let surface = NurbsSurface::of_face(&small.record().unwrap(), 0).unwrap();
         let [[u0, u1], [v0, v1]] = surface.domain();
         assert!(
-            (u1 - u0) <= 2.0 + 1e-6 && (v1 - v0) <= 2.0 + 1e-6,
+            (u1 - u0) <= 2.04 + 1e-6 && (v1 - v0) <= 2.04 + 1e-6,
             "{:?}",
             surface.domain()
         );

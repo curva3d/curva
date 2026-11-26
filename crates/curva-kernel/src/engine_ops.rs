@@ -170,6 +170,17 @@ impl Body {
             .and_then(|e| e.uses.first().copied())
             .ok_or_else(|| KernelError(format!("the body has no edge {edge}")))?;
         let outer = used.r#loop == 0;
+        // A plane with no holes goes back to its own rectangle, as Rhino's planes (NURBS) do:
+        // a disc split out of a 10 × 10 plane untrims to the whole plane (#734). The engine puts
+        // an analytic surface back on its outer loop's box instead.
+        let face = &record.faces[used.face as usize];
+        if outer
+            && face.nurbs.is_none()
+            && face.loops.len() == 1
+            && matches!(face.surface, solidcore_record::brep::Surface::Plane { .. })
+        {
+            return crate::NurbsSurface::of_face(&record, used.face as usize)?.to_body();
+        }
         let (body, order) = self.engine_with_order()?;
         let along = [edge];
         let holes = if outer {
