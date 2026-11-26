@@ -142,6 +142,30 @@ pub(crate) fn parts_in_box(
     picked
 }
 
+/// The faces a click or a window from `a` to `b` takes, as Rhino's "Select mesh faces" (#819):
+/// a click takes the face under the pointer, even by a point or an edge, and a window the faces
+/// inside it (or touching it, from right to left); points and edges are passed over.
+fn faces_under(
+    meshes: &[Pickable<'_>],
+    project: &dyn Fn(Point) -> Option<[f64; 2]>,
+    depth: &dyn Fn(Point) -> f64,
+    (a, b): ([f64; 2], [f64; 2]),
+    click: bool,
+) -> Vec<MeshPick> {
+    let mut parts: Vec<MeshPick> = if click {
+        // No reach, so no point or edge is ever near enough to come before the face.
+        part_at(meshes, project, depth, a, -1.0)
+            .into_iter()
+            .collect()
+    } else {
+        let lo = [a[0].min(b[0]), a[1].min(b[1])];
+        let hi = [a[0].max(b[0]), a[1].max(b[1])];
+        parts_in_box(meshes, project, (lo, hi), b[0] < a[0])
+    };
+    parts.retain(|(_, part)| matches!(part, MeshPart::Face(_)));
+    parts
+}
+
 /// `list` with `items` added; a single item clicked that is already there is taken out instead,
 /// so a second Ctrl+Shift click lets a part go.
 fn toggled<T: PartialEq + Clone>(mut list: Vec<T>, items: Vec<T>, click: bool) -> Vec<T> {
@@ -253,6 +277,13 @@ impl crate::Curva {
         corners
     }
 
+    /// Whether the command asks for faces of meshes only (#819).
+    fn faces_only_asked(&self) -> bool {
+        self.processor
+            .current_request()
+            .is_some_and(|r| r.kind == curva_commands::Kind::MeshParts && r.faces_only)
+    }
+
     fn parts_under(
         &self,
         p: &crate::mouse::Picking,
@@ -284,6 +315,10 @@ impl crate::Curva {
         let depth = |q: Point| (0..3).map(|i| q[i] * forward[i]).sum::<f64>();
         let (a, b) = (p.local(from), p.local(to));
         let mut picked = Picked::default();
+        if self.faces_only_asked() {
+            picked.parts = faces_under(&meshes, &project, &depth, (a, b), click);
+            return picked;
+        }
         if !click {
             let lo = [a[0].min(b[0]), a[1].min(b[1])];
             let hi = [a[0].max(b[0]), a[1].max(b[1])];
@@ -388,6 +423,30 @@ mod tests {
         assert_eq!(at(5.0, 0.5), Some((7, MeshPart::Edge(0, 1))));
         assert_eq!(at(5.0, 5.0), Some((7, MeshPart::Face(0))));
         assert_eq!(at(30.0, 30.0), None);
+    }
+
+    #[test]
+    fn a_faces_only_pick_takes_the_face_even_by_an_edge_as_select_mesh_faces_does() {
+        // Rhino's "Select mesh faces" (#819): a click by a point or an edge takes the face.
+        let (points, face) = square();
+        let meshes = [Pickable {
+            id: 7,
+            points: &points,
+            faces: vec![&face],
+        }];
+        let at = |x: f64, y: f64| faces_under(&meshes, &project, &depth, ([x, y], [x, y]), true);
+        assert_eq!(at(0.5, 0.5), vec![(7, MeshPart::Face(0))]);
+        assert_eq!(at(5.0, 0.5), vec![(7, MeshPart::Face(0))]);
+        assert!(at(30.0, 30.0).is_empty());
+        // A window round the whole square takes its face alone, not its points and edges.
+        let window = faces_under(
+            &meshes,
+            &project,
+            &depth,
+            ([-1.0, -1.0], [11.0, 11.0]),
+            false,
+        );
+        assert_eq!(window, vec![(7, MeshPart::Face(0))]);
     }
 
     #[test]

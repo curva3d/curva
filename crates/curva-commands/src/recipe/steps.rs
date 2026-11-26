@@ -42,6 +42,8 @@ pub struct StepDef {
     /// For objects: whether parts picked with Ctrl+Shift (and control points) answer it when no
     /// object is selected, so the command changes those parts, as Rhino transforms sub-objects.
     pub parts: bool,
+    /// For mesh parts: whether only faces are taken, as Rhino's "Select mesh faces" (#819).
+    pub faces_only: bool,
 }
 
 /// Which sort of objects a step takes.
@@ -77,6 +79,7 @@ impl StepDef {
             panel: None,
             choice: None,
             parts: false,
+            faces_only: false,
         }
     }
 
@@ -155,6 +158,16 @@ impl StepDef {
     #[must_use]
     pub fn mesh_parts(prompt: &'static str) -> Self {
         Self::new(prompt, Kind::MeshParts)
+    }
+
+    /// Asks for faces of meshes and SubDs only: a click takes the face under the pointer and a
+    /// window the faces inside it, as Rhino's "Select mesh faces" (#819).
+    #[must_use]
+    pub fn mesh_faces(prompt: &'static str) -> Self {
+        Self {
+            faces_only: true,
+            ..Self::new(prompt, Kind::MeshParts)
+        }
     }
 
     /// Asks for objects; a selection made beforehand answers it.
