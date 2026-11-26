@@ -1,4 +1,5 @@
-//! `PointsOn`: shows the control points of curves so they can be picked and moved.
+//! `PointsOn`: shows the control points of curves, meshes, SubDs and surfaces so they can be
+//! picked and moved.
 
 use crate::commands::{ask_objects, objects_or_selection};
 use crate::{Answer, Command, Message, Step};
@@ -52,5 +53,29 @@ mod tests {
         let processor = run(&mut doc, &["pointson"]);
         assert!(doc.showing_points().is_empty());
         assert_eq!(processor.log().len(), 1);
+    }
+
+    #[test]
+    fn a_planes_four_points_show_and_moving_one_reshapes_it_as_in_rhino() {
+        let mut doc = Document::default();
+        let plane = curva_kernel::Body::ruled(
+            &Curve::line([0.0; 3], [10.0, 0.0, 0.0]).unwrap(),
+            &Curve::line([0.0, 10.0, 0.0], [10.0, 10.0, 0.0]).unwrap(),
+            false,
+        )
+        .unwrap();
+        let id = doc.add_body(plane);
+        doc.select(&[id]);
+        run(&mut doc, &["pointson"]);
+        // Rhino 8: a 10 × 10 plane shows 4 control points (#768).
+        let grips = doc.shown_grips();
+        assert_eq!(grips.len(), 4);
+        let (grip, _) = grips[0];
+        let reshaped = doc
+            .grips_reshaped(&[grip], |p| [p[0], p[1], p[2] + 3.0])
+            .unwrap();
+        let (_, shape) = &reshaped[0];
+        let (_, high) = shape.body().unwrap().bounds().unwrap();
+        assert!((high[2] - 3.0).abs() < 1e-9, "{high:?}");
     }
 }
