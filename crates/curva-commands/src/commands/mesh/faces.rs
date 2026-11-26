@@ -111,12 +111,17 @@ impl Recipe for QuadrangulateMesh {
 }
 
 /// `ExtractMeshFaces`: the picked faces taken out of their mesh into a mesh of their own, on the
-/// same layer. A mesh left with no faces goes.
+/// same layer. A mesh left with no faces goes. With `MakeCopy` (Rhino 8's option, off at first)
+/// the faces are copied and the mesh is left whole.
 #[derive(Default)]
 pub struct ExtractMeshFaces;
 
+/// `ExtractMeshFaces`' option: Yes leaves the original mesh whole.
+const MAKE_COPY: &str = "MakeCopy";
+
 impl Recipe for ExtractMeshFaces {
     const NAME: &'static str = "extractmeshfaces";
+    const OPTIONS: &'static [OptionDef] = &[OptionDef::toggle(MAKE_COPY, false)];
 
     fn steps(&self, _cx: &Context<'_>) -> Vec<StepDef> {
         vec![StepDef::mesh_parts("prompt.extractmeshfaces.faces")]
@@ -133,6 +138,7 @@ impl Recipe for ExtractMeshFaces {
         }
         let mut made = Made::default();
         let mut faces = 0;
+        let copy = cx.toggle(MAKE_COPY);
         for (id, chosen) in picked {
             let Some(mesh) = cx
                 .doc
@@ -154,6 +160,9 @@ impl Recipe for ExtractMeshFaces {
                 from: id,
                 history: None,
             });
+            if copy {
+                continue;
+            }
             if rest.face_count() == 0 {
                 made.remove.push(id);
             } else {
@@ -340,6 +349,18 @@ mod tests {
         run(&mut doc, &["extractmeshfaces", ""]);
         assert_eq!(doc.state().objects.len(), 2);
         assert_eq!(mesh(&doc, 0).face_count(), 4);
+        assert_eq!(mesh(&doc, 1).face_count(), 2);
+    }
+
+    #[test]
+    fn extract_mesh_faces_with_make_copy_leaves_the_mesh_whole() {
+        // Rhino 8's MakeCopy=Yes: the picked faces are copied into a mesh of their own.
+        let mut doc = doc_with(Mesh::mesh_box(&Frame::world(), [1.0; 3], [1, 1, 1]));
+        let id = doc.state().objects[0].id;
+        doc.select_mesh_parts(&[(id, MeshPart::Face(0)), (id, MeshPart::Face(1))]);
+        run(&mut doc, &["extractmeshfaces", "MakeCopy", ""]);
+        assert_eq!(doc.state().objects.len(), 2);
+        assert_eq!(mesh(&doc, 0).face_count(), 6);
         assert_eq!(mesh(&doc, 1).face_count(), 2);
     }
 
