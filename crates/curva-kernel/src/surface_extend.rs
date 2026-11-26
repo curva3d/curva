@@ -40,26 +40,7 @@ impl Body {
         }
         let across_u = matches!(side, Side::U0 | Side::U1);
         let at_end = matches!(side, Side::U1 | Side::V1);
-        // The curves running across the edge: columns for a u side, rows for a v side.
-        let mut curves: Vec<Spline> = if across_u {
-            (0..surface.points[0].len())
-                .map(|j| Spline {
-                    degree: surface.degree[0],
-                    knots: surface.u_knots.clone(),
-                    points: surface.points.iter().map(|row| row[j]).collect(),
-                })
-                .collect()
-        } else {
-            surface
-                .points
-                .iter()
-                .map(|row| Spline {
-                    degree: surface.degree[1],
-                    knots: surface.v_knots.clone(),
-                    points: row.clone(),
-                })
-                .collect()
-        };
+        let mut curves = cross_curves(&surface, across_u);
         if !at_end {
             curves = curves.iter().map(Spline::reversed).collect();
         }
@@ -85,18 +66,48 @@ impl Body {
         if !at_end {
             longer = longer.iter().map(Spline::reversed).collect();
         }
-        let mut out = surface.clone();
-        if across_u {
-            out.u_knots.clone_from(&longer[0].knots);
-            out.points = (0..longer[0].points.len())
-                .map(|i| longer.iter().map(|c| c.points[i]).collect())
-                .collect();
-        } else {
-            out.v_knots.clone_from(&longer[0].knots);
-            out.points = longer.into_iter().map(|c| c.points).collect();
-        }
-        out.to_body().map(Some)
+        with_cross_curves(&surface, across_u, longer)
+            .to_body()
+            .map(Some)
     }
+}
+
+/// The curves running across a side of `surface`: its columns for a u side, its rows for a v side.
+fn cross_curves(surface: &NurbsSurface, across_u: bool) -> Vec<Spline> {
+    if across_u {
+        (0..surface.points[0].len())
+            .map(|j| Spline {
+                degree: surface.degree[0],
+                knots: surface.u_knots.clone(),
+                points: surface.points.iter().map(|row| row[j]).collect(),
+            })
+            .collect()
+    } else {
+        surface
+            .points
+            .iter()
+            .map(|row| Spline {
+                degree: surface.degree[1],
+                knots: surface.v_knots.clone(),
+                points: row.clone(),
+            })
+            .collect()
+    }
+}
+
+/// `surface` with its curves across a side replaced by `curves` (as [`cross_curves`] lists them).
+fn with_cross_curves(surface: &NurbsSurface, across_u: bool, curves: Vec<Spline>) -> NurbsSurface {
+    let mut out = surface.clone();
+    if across_u {
+        out.u_knots.clone_from(&curves[0].knots);
+        out.points = (0..curves[0].points.len())
+            .map(|i| curves.iter().map(|c| c.points[i]).collect())
+            .collect();
+    } else {
+        out.v_knots.clone_from(&curves[0].knots);
+        out.points = curves.into_iter().map(|c| c.points).collect();
+    }
+    out
 }
 
 #[cfg(test)]
