@@ -124,7 +124,7 @@ impl Recipe for ExtractMeshFaces {
     const OPTIONS: &'static [OptionDef] = &[OptionDef::toggle(MAKE_COPY, false)];
 
     fn steps(&self, _cx: &Context<'_>) -> Vec<StepDef> {
-        vec![StepDef::mesh_parts("prompt.extractmeshfaces.faces")]
+        vec![StepDef::mesh_faces("prompt.extractmeshfaces.faces")]
     }
 
     fn make(&self, cx: &Context<'_>) -> Result<Made, Message> {
