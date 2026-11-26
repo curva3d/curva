@@ -95,3 +95,28 @@ fn a_kind_s_opacity_lets_the_background_through_and_locked_faces_keep_their_colo
         "a locked object keeps its own grey, not the style's blue: {given:?}"
     );
 }
+
+/// Going from a sheet back to the model changes a view's faces and its style in the same frame:
+/// the parts gone are removed first, and the new style must not reach for them (#811, which
+/// crashed Curva on the second click on Model).
+#[test]
+fn faces_and_style_changing_together_do_not_reach_removed_parts() {
+    let _turn = one_at_a_time();
+    let Some((mut pilot, device, queue)) = pilot() else {
+        return;
+    };
+    let mut view = drawing(StandardView::Top, Vec::new());
+    view.shapes = Arc::new(vec![slab(FaceKind::Nurbs)]);
+    view.style = Style::of(&ViewStyle::shaded());
+    for _ in 0..2 {
+        middle(&mut pilot, &device, &queue, &view);
+    }
+    // Another object's slab in place of the first, and another look, at once.
+    let mut other = slab(FaceKind::Nurbs);
+    other.object = 1;
+    view.shapes = Arc::new(vec![other]);
+    view.objects = Arc::new(vec![7, 8]);
+    view.style = Style::of(&ViewStyle::ghosted());
+    let pixel = middle(&mut pilot, &device, &queue, &view);
+    assert_ne!(pixel, BACKGROUND, "the new slab shows");
+}

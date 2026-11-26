@@ -54,10 +54,10 @@ This avoids FreeCAD's problem, where workbenches feel like separate programs wit
 | # | Specialization | Inspired by | Content |
 |---|---|---|---|
 | 1 | **Freeform** (the base) | Rhino | Curves, surfaces, solids, transforms, analysis, layouts. Mesh and SubD objects come from their own stream (section 10d). Interface follows Rhino's overall layout and command line |
-| 2 | **Architecture** | Archicad, Vectorworks | Levels, walls, slabs, doors, windows, roofs, stairs, types; plans, sections, elevations; IFC. Interface closer to Archicad / Vectorworks |
+| 2 | **Architecture** | Archicad, Vectorworks; Finch for plan layouts | Levels, walls, slabs, doors, windows, roofs, stairs, types; plans, sections, elevations; IFC. Interface closer to Archicad / Vectorworks |
 | 3 | **Urban** | Parametric massing and street tools | Rule-based generation of urban settings: plots, setbacks, heights, floor-area ratios; responsive massing; streets, blocks and districts generated parametrically, with streets built from a street section; city data import (OpenStreetMap, terrain, GIS); area and density tables that also edit the model |
 | 4 | **Publisher** | Archicad's and Revit's sheet sets | Everything that leaves Curva: sheets and drawing sets, title blocks, revisions and issue sheets, presentation boards and exports, all live from the model and built on the shared views-and-sheets core from M3. A full specialization since November 2026 (owner) |
-| 5 | **Analysis** (much later) | — | Sun and shadow first, then wind, views, carbon from the model's materials and quantities, and others; the model can respond to results parametrically |
+| 5 | **Analysis** (much later) | jifto | Sun and shadow first, then wind, views, carbon from the model's materials and quantities, and others; the model can respond to results parametrically |
 
 ## 4. Design-oriented parametric model
 
@@ -433,6 +433,8 @@ Re-check these libraries at each upgrade: they are young and the landscape moves
 | **Enscape and similar asset libraries** | Reference for light viewport proxies with heavy render models, and for an online object library |
 | **VisualARQ** and **RSTool** (docs only) | How architectural objects behave on a Rhino-style base: parameters stored on the object, plain-solid conversion, openings held by walls |
 | **SketchUp Live Components** ([help page](https://help.sketchup.com/en/sketchup-live-components); docs only) | The same idea as smart objects, made very easy to use (owner's note, 20 November 2026): pick a component from a library, adjust its sliders and fields in a Configure panel, and the model updates live, with every copy following. The logic is built in a separate tool (Trimble Creator). A reference for how section 5b objects are configured when the Architecture stage starts |
+| **Finch** ([finch3d.com](https://finch3d.com); proprietary, docs only) | Reference for parametric plan layouts in Architecture (owner's note, 26 November 2026). Started in 2019 by Wallgren Arkitekter and BOX Bygg as a Rhino/Grasshopper plug-in, now a web tool linked to Rhino, Revit and Archicad. The architect sets rules (unit sizes, adjacency, daylight) and Finch fills a floor plate with plans that follow them, showing area and other figures live, and can draw on the office's own library of past plans. What to take: plans that update when the outline or the rules change, and figures that stay live as you design |
+| **jifto** ([jifto.com](https://jifto.com); proprietary, docs only) | Reference for the Analysis specialization (owner's note, 26 November 2026). A Rhino 8 plug-in from Nflection, a spin-off of Henning Larsen Architects, launched in 2026. It runs sunlight, shadow, wind, microclimate (thermal comfort), stormwater, earthworks and daylight analysis in real time while the massing changes, with site context and climate data brought in automatically, and it publishes how its wind results compare with wind-tunnel tests. What to take: analysis fast enough to use while sketching, early in design, and results shown on the model itself |
 | **BIMCraft**, **Rustit** (Rust) | References only for the BIM model. Judged too early as bases |
 | **openbim-ifc** (Rust) | Candidate IFC library |
 | **Bonsai**, **FreeCAD** | References for open BIM workflows, and for what to avoid (sequential recompute, workbenches as separate worlds) |

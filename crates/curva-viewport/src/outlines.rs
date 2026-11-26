@@ -608,6 +608,8 @@ impl Outlines {
             .collect();
         let placement = body.placement();
         let edges = edge_curves(&mesh, &placement);
+        self.sites
+            .extend(snap::body_sites(body, id, &edges, &mut self.ties));
         self.push_faces(id, look, mesh, Some(placement), kind);
         Some((edges, kind, seams))
     }
@@ -705,7 +707,7 @@ impl Outlines {
                 continue;
             };
             let mut sites = snap::piece_sites(look.line, &outline, &points);
-            if matches!(look.line, crate::LineKind::Curve | crate::LineKind::Edge) {
+            if look.line == crate::LineKind::Curve {
                 snap::ties::tie_sites(&mut sites, &mut self.ties, id, edge, &outline);
             }
             self.sites.extend(sites);
