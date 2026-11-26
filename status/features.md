@@ -16,6 +16,19 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## Features stream — 26 November 2026 (Rhino parity, continued)
+
+- Fixed from the testing stream's issues:
+  - **Merged:** UnrollSrf (#722); Sweep1 and Sweep2 with Rhino's smoothstep blend between sections (#723); ChamferEdge corners (#724); Rebuild fitted at Greville points along the length (#727); Wirecut, ExtractIsocurve, Fair and Smooth defaults (#742); ArrayCrv Freeform rotation and Reparameterize (#746); Group with a single object (#756).
+  - **#745:** RemoveKnot removes the knot and refits; SelName wildcards; Flow with Copy and Stretch; deformed edges keep their fitted range.
+  - **#762:** FilletSrf and ChamferSrf trim both surfaces (#732).
+  - **This PR:** RebuildUV one way as in Rhino, periodic round a sphere, Rhino's area 314.06 (#740). `Spline::clamped` now keeps a curve's end.
+- **Open, waiting on the owner:** BoundingBox (#725), whose renamed test the weakened-tests check flagged.
+- **Coming next:**
+  - Taper with start and end distances (#713, branch `taper-rhino`).
+  - The gumball's scale squares and UnlockSelected, after the display stream's #704 and #726.
+- **Not yet:** Split shrink (#734), BlendSrf (#748), MatchSrf (#750), ExtendSrf (#751), BlendCrv handles (#728), Patch for more sides (#684), Fair's shape (#731), the Layers panel clicks (#698), and the layouts and views panels.
+
 ## Features stream — 25 November 2026 (Rhino parity, from the testing stream)
 
 - The testing stream (`status/testing.md`) compares commands with Rhino 8 and files issues; fixed

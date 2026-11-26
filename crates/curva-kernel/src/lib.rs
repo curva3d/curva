@@ -67,6 +67,7 @@ mod surface;
 mod surface_curves;
 mod surface_edit;
 mod surface_making;
+mod surface_rebuild;
 pub use spline::Spline;
 pub use surface::NurbsSurface;
 mod text;

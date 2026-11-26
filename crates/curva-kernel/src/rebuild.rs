@@ -12,6 +12,57 @@ fn bad(why: &str) -> KernelError {
 const SAMPLES_PER_POINT: usize = 400;
 
 impl Curve {
+    /// The curve with the inner knot `u` taken out, as Rhino's RemoveKnot does it (#736): one control
+    /// point fewer, the ends kept, the others fitted to the old curve by least squares over the
+    /// same parameters.
+    pub fn without_knot(&self, u: f64) -> Result<Curve, KernelError> {
+        let old = Spline::of(self)?.clamped()?;
+        let degree = old.degree;
+        let mut knots = old.knots.clone();
+        let at = knots
+            .iter()
+            .position(|k| (*k - u).abs() < 1e-12)
+            .ok_or_else(|| bad("the curve has no such knot"))?;
+        knots.remove(at);
+        let count = old.points.len() - 1;
+        if count < degree + 1 {
+            return Err(bad("the curve has too few control points to lose a knot"));
+        }
+        let (s0, s1) = old.domain();
+        let (start, end) = (old.point(s0), old.point(s1));
+        let inner = count - 2;
+        let mut normal = vec![vec![0.0; inner]; inner];
+        let mut right = vec![[0.0; 3]; inner];
+        // The old curve hit at each free control point's own place (its Greville abscissa).
+        for i in 1..count - 1 {
+            let t = knots[i + 1..=i + degree].iter().sum::<f64>() / degree as f64;
+            let target = old.point(t);
+            let n: Vec<f64> = (0..count)
+                .map(|i| crate::interp::basis(&knots, i, degree, t))
+                .collect();
+            let want: Point =
+                std::array::from_fn(|c| target[c] - n[0] * start[c] - n[count - 1] * end[c]);
+            for a in 0..inner {
+                if n[a + 1] == 0.0 {
+                    continue;
+                }
+                for c in 0..3 {
+                    right[a][c] += n[a + 1] * want[c];
+                }
+                for b in 0..inner {
+                    normal[a][b] += n[a + 1] * n[b + 1];
+                }
+            }
+        }
+        let mut points = vec![start];
+        let columns: Vec<Vec<f64>> = (0..3)
+            .map(|c| solve(normal.clone(), right.iter().map(|r| r[c]).collect()))
+            .collect::<Result<_, _>>()?;
+        points.extend((0..inner).map(|i| [columns[0][i], columns[1][i], columns[2][i]]));
+        points.push(end);
+        Curve::nurbs(degree, knots, points, Vec::new())
+    }
+
     /// The open curve rebuilt with `count` control points of `degree`, as Rhino rebuilds it:
     /// uniform knots, the same ends, the same end tangents, and in between as near the old curve
     /// as least squares makes it.
@@ -108,7 +159,7 @@ fn plus(p: Point, d: Point, by: f64) -> Point {
 }
 
 /// Solves `a · x = b` by elimination with pivoting.
-fn solve(mut a: Vec<Vec<f64>>, mut b: Vec<f64>) -> Result<Vec<f64>, KernelError> {
+pub(crate) fn solve(mut a: Vec<Vec<f64>>, mut b: Vec<f64>) -> Result<Vec<f64>, KernelError> {
     let n = a.len();
     for column in 0..n {
         let pivot = (column..n)
