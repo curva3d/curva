@@ -414,7 +414,9 @@ mod tests {
         let mut doc = Document::default();
         run(
             &mut doc,
-            &["Layout", "", "Detail", "40,60", "300,250", "Layout", ""],
+            &[
+                "Layout", "", "0", "Detail", "40,60", "300,250", "Layout", "", "0",
+            ],
         );
         let first = doc.layouts()[0].id;
         doc.set_space(Some(first));
@@ -471,7 +473,7 @@ mod tests {
         let mut doc = Document::default();
         doc.set_unit(curva_document::Unit::Feet, false);
         run(&mut doc, &["SetDocumentUserText", "Project", "Pier"]);
-        run(&mut doc, &["Layout", ""]);
+        run(&mut doc, &["Layout", "", "0"]);
         let mut command = super::TitleBlock::default();
         command.step(&mut doc, None);
         let live = Live {
@@ -482,7 +484,8 @@ mod tests {
         run(&mut doc, &["TitleBlock", "", "", ""]);
         assert_eq!(doc.state().document_text["Project"], "Pier");
         let sheet = &doc.layouts()[0];
-        assert_eq!(sheet.user_text["Title"], "Layout 1");
+        // The sheet's own name, Page 1 as Rhino names a new layout (#687).
+        assert_eq!(sheet.user_text["Title"], "Page 1");
         assert!(
             texts(&doc).iter().any(|t| t.contains("M/d/yyyy")),
             "American dates"
@@ -503,7 +506,7 @@ mod tests {
         let mut doc = Document::default();
         run(
             &mut doc,
-            &["Layout", "", "TitleBlock", "Standard", "", "", ""],
+            &["Layout", "", "0", "TitleBlock", "Standard", "", "", ""],
         );
         assert!(texts(&doc).iter().any(|t| t.contains("M/d/yyyy")));
     }

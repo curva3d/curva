@@ -65,13 +65,32 @@ impl Detail {
     /// The new detail: its frame on the sheet, and a view of the model's extents at a standard
     /// scale that fits them.
     fn make(&self, doc: &mut Document, layout: u64, a: Point, b: Point) -> Step {
+        match framed_detail(doc, layout, a, b, PROJECTIONS[self.projection]) {
+            None => Step::Failed(Message::new("error.detail_corners")),
+            Some(Some(scale)) => Step::Done(Some(Message::with(
+                "done.detail",
+                vec![curva_document::layouts::scale_text(scale)],
+            ))),
+            Some(None) => Step::Done(Some(Message::new("done.detail_perspective"))),
+        }
+    }
+}
+
+/// A new detail on `layout` between sheet corners `a` and `b`, looking from `projection` at the
+/// model's extents at a standard scale that fits them (none for a perspective). `None` when the
+/// corners make no rectangle.
+pub(crate) fn framed_detail(
+    doc: &mut Document,
+    layout: u64,
+    a: Point,
+    b: Point,
+    projection: &str,
+) -> Option<Option<f64>> {
+    {
         let low = [a[0].min(b[0]), a[1].min(b[1]), 0.0];
         let high = [a[0].max(b[0]), a[1].max(b[1]), 0.0];
         let corners = vec![low, [high[0], low[1], 0.0], high, [low[0], high[1], 0.0]];
-        let Ok(rectangle) = Curve::polyline(corners, true) else {
-            return Step::Failed(Message::new("error.detail_corners"));
-        };
-        let projection = PROJECTIONS[self.projection];
+        let rectangle = Curve::polyline(corners, true).ok()?;
         let (centre, extent) = model_extent(doc, projection);
         let paper_mm = doc.layout(layout).map_or(1.0, |l| l.unit.millimetres());
         let model_mm = doc.state().unit.millimetres();
@@ -105,13 +124,7 @@ impl Detail {
                 hidden_layers: Vec::new(),
             },
         );
-        Step::Done(Some(match scale {
-            Some(scale) => Message::with(
-                "done.detail",
-                vec![curva_document::layouts::scale_text(scale)],
-            ),
-            None => Message::new("done.detail_perspective"),
-        }))
+        Some(scale)
     }
 }
 
@@ -247,7 +260,7 @@ mod tests {
         let mut doc = Document::default();
         doc.add(Curve::line([0.0; 3], [10_000.0, 0.0, 0.0]).unwrap());
         doc.add(Curve::line([0.0; 3], [0.0, 5_000.0, 0.0]).unwrap());
-        run(&mut doc, &["Layout", ""]);
+        run(&mut doc, &["Layout", "", "0"]);
         doc
     }
 

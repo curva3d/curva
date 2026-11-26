@@ -81,7 +81,7 @@ mod tests {
     #[test]
     fn the_index_lists_every_sheet_and_follows_them() {
         let mut doc = Document::default();
-        run(&mut doc, &["Layout", "", "Layout", ""]);
+        run(&mut doc, &["Layout", "", "0", "Layout", "", "0"]);
         let mut command = super::SheetIndex;
         command.step(&mut doc, None);
         let live = Live {
@@ -102,7 +102,7 @@ mod tests {
         assert_eq!(table.kind, TableKind::SheetIndex);
         assert_eq!(table.headings.len(), 3);
         assert_eq!(table_rows(&table, doc.state()).len(), 2);
-        run(&mut doc, &["Layout", ""]);
+        run(&mut doc, &["Layout", "", "0"]);
         assert_eq!(
             table_rows(&table, doc.state()).len(),
             3,

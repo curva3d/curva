@@ -192,7 +192,7 @@ mod tests {
     fn on_a_sheet_the_height_is_a_paper_size() {
         let mut doc = Document::default();
         doc.set_unit(curva_document::Unit::Metres, false);
-        run(&mut doc, &["Layout", "", "Text", "Title", "20,20"]);
+        run(&mut doc, &["Layout", "", "0", "Text", "Title", "20,20"]);
         let text = only_text(&doc);
         // 3.5 mm on an A3 sheet measured in millimetres, though the model is in metres.
         assert!((text.height - 3.5).abs() < 1e-12);

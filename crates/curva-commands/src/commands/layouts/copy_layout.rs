@@ -50,7 +50,7 @@ mod tests {
     #[test]
     fn the_sheet_being_worked_on_is_copied_and_opened() {
         let mut doc = Document::default();
-        run(&mut doc, &["Layout", ""]);
+        run(&mut doc, &["Layout", "", "0"]);
         let first = doc.layouts()[0].id;
         doc.rename_layout(first, "Plans".to_owned());
         run(&mut doc, &["CopyLayout"]);

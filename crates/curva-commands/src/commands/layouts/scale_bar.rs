@@ -182,7 +182,7 @@ mod tests {
     /// A layout with a scaled detail open, as the Detail command makes it.
     fn sheet_with_detail() -> Document {
         let mut doc = Document::default();
-        run(&mut doc, &["Layout", "", "Detail", "20,20", "220,160"]);
+        run(&mut doc, &["Layout", "", "0", "Detail", "20,20", "220,160"]);
         doc
     }
 
@@ -247,7 +247,7 @@ mod tests {
     fn a_bar_needs_a_sheet_with_a_scaled_detail() {
         let mut doc = Document::default();
         run(&mut doc, &["ScaleBar", "0,0"]);
-        run(&mut doc, &["Layout", "", "ScaleBar", "0,0"]);
+        run(&mut doc, &["Layout", "", "0", "ScaleBar", "0,0"]);
         assert!(
             doc.state()
                 .objects
