@@ -4,7 +4,7 @@
 use crate::commands::unexpected;
 use crate::{Answer, Command, Kind, Message, Request, Step, ViewRequest};
 use curva_document::Document;
-use curva_document::clipping::{ClipView, ClippingPlane as Record, SectionFill};
+use curva_document::clipping::{ClippingPlane as Record, SectionFill};
 use curva_kernel::{Curve, Point, cross, dot, gap, sub, unit};
 
 const FLIP: &str = "FlipDirection";
@@ -22,6 +22,9 @@ pub struct ClippingPlane {
     mode: Option<&'static str>,
     points: Vec<Point>,
     flipped: bool,
+    /// `Vertical`'s height once given (`None` inside for Enter), while Rhino's "Choose
+    /// rectangle" is asked; the point picked there changes nothing, as in Rhino.
+    height: Option<Option<f64>>,
 }
 
 fn plus(p: Point, d: Point, by: f64) -> Point {
@@ -43,6 +46,10 @@ impl ClippingPlane {
         let request = match (self.mode, self.points.len()) {
             (Some(VERTICAL), 0) => Request::new("prompt.clippingplane.edge_start", Kind::Point),
             (Some(VERTICAL), 1) => after("prompt.clippingplane.edge_end", false),
+            (Some(VERTICAL), _) if self.height.is_some() => Request {
+                allow_empty: true,
+                ..after("prompt.clippingplane.choose", false)
+            },
             (Some(VERTICAL), _) => Request {
                 allow_empty: true,
                 ..Request::new("prompt.clippingplane.height", Kind::Number)
@@ -72,8 +79,12 @@ impl ClippingPlane {
         })
     }
 
-    /// The clipping plane on the rectangle through `corners`, in order.
-    fn made(&self, doc: &mut Document, corners: Vec<Point>) -> Step {
+    /// The clipping plane on the rectangle through `corners`, counter-clockwise about the side
+    /// the helpers measure from. They are laid down in reverse, so the plane keeps the other
+    /// side, as Rhino's normal points (#813): below a plane drawn on the construction plane, to
+    /// the left of a `Vertical` edge seen from above. It cuts only the view it was drawn in.
+    fn made(&self, doc: &mut Document, mut corners: Vec<Point>) -> Step {
+        corners.reverse();
         let Ok(rectangle) = Curve::polyline(corners, true) else {
             return Step::Failed(Message::new("error.clippingplane_corners"));
         };
@@ -81,15 +92,15 @@ impl ClippingPlane {
         doc.add_clipping_plane(Record {
             frame,
             flipped: self.flipped,
-            views: (0..4).map(ClipView::Viewport).collect(),
+            views: vec![doc.drawing_in()],
             section: SectionFill::default(),
             hatch: None,
         });
         Step::Done(Some(Message::new("done.clippingplane")))
     }
 
-    /// The default: two opposite corners on the construction plane, counter-clockwise seen from
-    /// its front, so the plane keeps the side the construction plane faces.
+    /// The default: two opposite corners on the construction plane, so the plane keeps what is
+    /// behind the construction plane, as Rhino's faces minus its Z.
     fn by_corners(&self, doc: &mut Document, a: Point, b: Point) -> Step {
         let (origin, [x, y]) = doc.work_frame();
         let along =
@@ -128,13 +139,9 @@ impl ClippingPlane {
             return Step::Failed(Message::new("error.clippingplane_corners"));
         }
         let (c, d) = (plus(b, side, width), plus(a, side, width));
-        // Counter-clockwise seen from the construction plane's front, as the default is.
-        let corners = if width > 0.0 {
-            vec![a, b, c, d]
-        } else {
-            vec![a, d, c, b]
-        };
-        self.made(doc, corners)
+        // `made` reverses them, so the plane faces away from the third point's side: Rhino
+        // keeps what lies below for a third point on the left of the edge, above on its right.
+        self.made(doc, vec![a, b, c, d])
     }
 }
 
@@ -152,10 +159,19 @@ impl Command for ClippingPlane {
                 self.ask()
             }
             (None, [a], Some(Answer::Point(b))) => self.by_corners(doc, *a, b),
-            (Some(VERTICAL), [a, b], Some(Answer::Number(h))) => {
-                self.vertical(doc, *a, *b, Some(h))
+            (Some(VERTICAL), [a, b], Some(Answer::Point(_) | Answer::Empty))
+                if self.height.is_some() =>
+            {
+                self.vertical(doc, *a, *b, self.height.flatten())
             }
-            (Some(VERTICAL), [a, b], Some(Answer::Empty)) => self.vertical(doc, *a, *b, None),
+            (Some(VERTICAL), [_, _], Some(Answer::Number(h))) => {
+                self.height = Some(Some(h));
+                self.ask()
+            }
+            (Some(VERTICAL), [_, _], Some(Answer::Empty)) => {
+                self.height = Some(None);
+                self.ask()
+            }
             (Some(THREE_POINT), [a, b], Some(Answer::Point(c))) => {
                 self.three_point(doc, *a, *b, Some(c))
             }
@@ -230,15 +246,23 @@ mod tests {
 
     #[test]
     fn a_clipping_plane_lies_on_the_construction_plane_and_cuts_the_viewports() {
+        // Rhino 8 (#813): drawn in Top it keeps what is below (normal 0,0,-1), and it cuts only
+        // the viewport it was drawn in.
         let mut doc = Document::default();
         run(&mut doc, &["ClippingPlane", "0,0", "10,5"]);
         let cuts = doc.planes_cutting(ClipView::Viewport(1));
         assert_eq!(cuts.len(), 1);
-        assert!((cuts[0].keep[2] - 1.0).abs() < 1e-9);
+        assert!((cuts[0].keep[2] + 1.0).abs() < 1e-9);
         assert_eq!(cuts[0].origin, [5.0, 2.5, 0.0]);
+        assert!(doc.planes_cutting(ClipView::Viewport(0)).is_empty());
         run(&mut doc, &["ClippingPlane", "FlipDirection", "0,0", "10,5"]);
         let flipped = doc.planes_cutting(ClipView::Viewport(1));
-        assert!((flipped[1].keep[2] + 1.0).abs() < 1e-9);
+        assert!((flipped[1].keep[2] - 1.0).abs() < 1e-9);
+        // Drawn in another viewport, or in a detail on a sheet, it cuts that one alone.
+        doc.set_drawing_in(ClipView::Detail(42));
+        run(&mut doc, &["ClippingPlane", "0,0", "10,5"]);
+        assert_eq!(doc.planes_cutting(ClipView::Detail(42)).len(), 1);
+        assert_eq!(doc.planes_cutting(ClipView::Viewport(1)).len(), 2);
     }
 
     #[test]
@@ -257,42 +281,52 @@ mod tests {
 
     #[test]
     fn vertical_stands_on_a_section_line_and_3point_lays_along_an_edge_as_in_rhino() {
-        // Rhino 8: Vertical from (0,0,0) to (10,0,0), 5 high, stands from z 0 to 5 on the line.
+        // Rhino 8: Vertical from (0,0,0) to (10,0,0), 5 high, then "Choose rectangle" (either
+        // side gives the same plane): from z 0 to 5 on the line, normal (0,1,0), the edge's left.
         let mut doc = Document::default();
-        run(
-            &mut doc,
-            &["ClippingPlane", "Vertical", "0,0,0", "10,0,0", "5"],
-        );
+        let vertical = [
+            "ClippingPlane",
+            "Vertical",
+            "0,0,0",
+            "10,0,0",
+            "5",
+            "5,-5,0",
+        ];
+        run(&mut doc, &vertical);
         let cuts = doc.planes_cutting(ClipView::Viewport(1));
         assert_eq!(cuts[0].origin, [5.0, 0.0, 2.5]);
-        assert!(cuts[0].keep[2].abs() < 1e-9 && cuts[0].keep[1].abs() > 0.99);
-        // Enter: as tall as it is long.
+        assert!(cuts[0].keep[2].abs() < 1e-9 && (cuts[0].keep[1] - 1.0).abs() < 1e-9);
+        // Enter: as tall as it is long; Enter again at "Choose rectangle".
         run(
             &mut doc,
-            &["ClippingPlane", "Vertical", "0,0,0", "10,0,0", ""],
+            &["ClippingPlane", "Vertical", "0,0,0", "10,0,0", "", ""],
         );
         assert_eq!(
             doc.planes_cutting(ClipView::Viewport(1))[1].origin,
             [5.0, 0.0, 5.0]
         );
-        // Rhino 8: 3Point (0,0,0), (10,0,0), width to (0,5,0): corners (0,0) to (10,5).
+        // Rhino 8: 3Point (0,0,0), (10,0,0), width to (0,5,0): corners (0,0) to (10,5), normal
+        // (0,0,-1); with the third point at (0,-5,0) the normal turns to (0,0,1).
         run(
             &mut doc,
             &["ClippingPlane", "3Point", "0,0,0", "10,0,0", "0,5,0"],
         );
+        run(
+            &mut doc,
+            &["ClippingPlane", "3Point", "0,0,0", "10,0,0", "0,-5,0"],
+        );
         let cuts = doc.planes_cutting(ClipView::Viewport(1));
         assert_eq!(cuts[2].origin, [5.0, 2.5, 0.0]);
-        assert!(
-            (cuts[2].keep[2] - 1.0).abs() < 1e-9,
-            "faces as the default does"
-        );
+        assert!((cuts[2].keep[2] + 1.0).abs() < 1e-9);
+        assert_eq!(cuts[3].origin, [5.0, -2.5, 0.0]);
+        assert!((cuts[3].keep[2] - 1.0).abs() < 1e-9);
         // Enter: as wide as it is long.
         run(
             &mut doc,
             &["ClippingPlane", "3Point", "0,0,0", "10,0,0", ""],
         );
         assert_eq!(
-            doc.planes_cutting(ClipView::Viewport(1))[3].origin,
+            doc.planes_cutting(ClipView::Viewport(1))[4].origin,
             [5.0, 5.0, 0.0]
         );
     }
