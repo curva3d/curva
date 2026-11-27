@@ -306,6 +306,9 @@ impl Curva {
         self.doc.set_work_origin(plane.origin);
         let look = self.panes[self.active].camera.look();
         self.doc.set_view(look);
+        // The view a new clipping plane cuts (#813).
+        let view = self.clip_view();
+        self.doc.set_drawing_in(view);
     }
 
     /// Carries out the changes of view commands asked for, oldest first.

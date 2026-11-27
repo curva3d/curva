@@ -108,17 +108,16 @@ pub(crate) fn wires(mesh: &curva_mesh::Mesh) -> Vec<curva_kernel::Curve> {
     chains(mesh.vertices(), unique_edges(mesh, mesh.vertices().len()))
 }
 
-/// A mesh's outline edges, as Rhino 8 draws them round it with its silhouette: its open borders
-/// and unwelded seams ([`curva_mesh::Mesh::outline_edges`]), each seam once though both its
-/// sides are listed, joined into chains as its wires are (#663).
-pub(crate) fn outline(mesh: &curva_mesh::Mesh) -> Vec<curva_kernel::Curve> {
+/// A mesh's outline edges, as Rhino 8 draws them round it with its silhouette: `borders`, its
+/// open borders and unwelded seams by vertex number ([`crate::turns::mesh_turns_and_borders`]),
+/// each seam once though both its sides are listed, joined into chains as its wires are (#663).
+pub(crate) fn outline(mesh: &curva_mesh::Mesh, borders: &[[u32; 2]]) -> Vec<curva_kernel::Curve> {
     let points = mesh.vertices();
     let place = places(points);
     let mut seen = std::collections::HashSet::new();
-    let edges = mesh
-        .outline_edges()
-        .into_iter()
-        .map(|[a, b]| (a as usize, b as usize))
+    let edges = borders
+        .iter()
+        .map(|&[a, b]| (a as usize, b as usize))
         .filter(|&(a, b)| a < points.len() && b < points.len())
         .map(|(a, b)| (place[a], place[b]))
         .filter(|&(a, b)| a != b && seen.insert((a.min(b), a.max(b))))
@@ -484,6 +483,15 @@ mod tests {
         assert_eq!(edges, mesh.wire_edges());
     }
 
+    /// A mesh's outline from its borders as worked out for drawing, which are the mesh stream's
+    /// own outline edges.
+    fn outline_of(mesh: &Mesh) -> Vec<curva_kernel::Curve> {
+        let mut borders = crate::turns::mesh_turns_and_borders(mesh).1;
+        borders.sort_unstable();
+        assert_eq!(borders, mesh.outline_edges());
+        outline(mesh, &borders)
+    }
+
     /// How many edges `chains` hold.
     fn segments(chains: &[curva_kernel::Curve]) -> usize {
         chains
@@ -501,7 +509,7 @@ mod tests {
     fn a_mesh_outline_is_its_open_borders_and_unwelded_edges() {
         let frame = curva_mesh::Frame::world();
         let unwelded = Mesh::mesh_box(&frame, [10.0; 3], [4; 3]);
-        assert_eq!(segments(&outline(&unwelded)), 12 * 4);
+        assert_eq!(segments(&outline_of(&unwelded)), 12 * 4);
         let corner = |i: usize| [(i & 1) as f64, ((i >> 1) & 1) as f64, ((i >> 2) & 1) as f64];
         let welded = Mesh::new(
             (0..8).map(corner).collect(),
@@ -515,8 +523,8 @@ mod tests {
             ],
         )
         .unwrap();
-        assert!(outline(&welded).is_empty());
+        assert!(outline_of(&welded).is_empty());
         let quad = Mesh::new((0..4).map(corner).collect(), &[[0, 1, 3, 2]]).unwrap();
-        assert_eq!(segments(&outline(&quad)), 4);
+        assert_eq!(segments(&outline_of(&quad)), 4);
     }
 }
