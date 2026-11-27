@@ -281,7 +281,8 @@ impl ViewStyle {
         style.lighting.vector = VectorFaces::Flat;
         style.nurbs.faces.shown = false;
         style.nurbs.edges.colour = LineColour::Object;
-        style.outlines.shown = false;
+        // Outlines stay on: where faces hide nothing, they are the silhouettes of curved shapes,
+        // drawn as each object's edges are, as Rhino 8's Wireframe draws them.
         style
     }
 
