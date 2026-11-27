@@ -38,7 +38,9 @@ impl Curva {
         Drawing {
             clips,
             slot: pane,
-            grid: if self.settings.grid {
+            // No grid on a layout's paper, as in Rhino 8, whose page shows none even with its grid
+            // on (#830).
+            grid: if self.settings.grid && !self.shows_sheet(pane) {
                 Arc::clone(&self.panes[pane].grid)
             } else {
                 Arc::default()
@@ -60,6 +62,7 @@ impl Curva {
             background: self.pane_background(pane).0,
             background_low: self.pane_background(pane).1,
             camera,
+            over: Vec::new(),
         }
     }
 
@@ -73,7 +76,7 @@ impl Curva {
         frame: &PaneFrame,
     ) {
         let size = pane_size(rect);
-        self.paint_details(ui, pane, rect, size);
+        self.paint_sheet_over_details(ui, pane, rect, frame);
         self.paint_desk(ui, pane, rect, size);
         self.paint_frame(ui, pane, rect);
         self.paint_points(ui, pane, rect, size, &frame.previewed);

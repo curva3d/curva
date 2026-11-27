@@ -8,6 +8,11 @@ by completing one open `tidy-up` issue in code it owns, before its next feature;
 goes straight to features. The open issues are listed in `docs/reviews/code-health-2026-11-19.md`.
 *(Added to every status page at the owner's request.)*
 
+## 27 November 2026
+
+**Done**
+- **A layout's own objects show over its details, and its paper has no grid** (#826, #830; testing stream, before 0.1.7). Since new sheets start with a detail filling the page (#799), the detail's picture hid the title block and anything drawn on the sheet: details were always painted over the sheet's objects. As in Rhino, the sheet's filled letters and marks and its lines now draw again inside each detail's frame, the bare paper left out (`gpu/over.rs`, `Drawing::over`, from the picture Bevy already made of the sheet that frame). The paper shows no grid, as Rhino's page shows none. Test: on the graphics card, a line on a sheet shows over a detail and the paper does not. Custom Bevy parts checked for the release: Bevy 0.20.1 is still the latest, all four still needed.
+
 ## 26 November 2026
 
 **Done**
