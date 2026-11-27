@@ -160,6 +160,25 @@ impl Curva {
         self.panes[pane].settled = self.panes[pane].camera;
     }
 
+    /// Draws each detail on the open sheet, then the sheet's own objects again over them, as Rhino
+    /// draws a layout's objects on top of its details (#826).
+    pub(crate) fn paint_sheet_over_details(
+        &mut self,
+        ui: &egui::Ui,
+        pane: usize,
+        rect: egui::Rect,
+        frame: &PaneFrame,
+    ) {
+        let frames = self.paint_details(ui, pane, rect, pane_size(rect));
+        if !frames.is_empty() {
+            let mut over = self.pane_drawing(ui, pane, rect, frame);
+            over.over = frames;
+            ui.painter()
+                .with_clip_rect(rect)
+                .add(egui_wgpu_callback(rect, over));
+        }
+    }
+
     /// Draws each detail on the open sheet: the model, seen through the detail's own camera, in
     /// the detail's frame (spec `layouts.md` §2). A scaled detail shows exactly as much model as
     /// its scale and frame allow. Returns the frames drawn, on screen, for the sheet's own objects

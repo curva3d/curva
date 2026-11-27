@@ -76,15 +76,7 @@ impl Curva {
         frame: &PaneFrame,
     ) {
         let size = pane_size(rect);
-        // A layout's own objects show over its details, as in Rhino (#826).
-        let frames = self.paint_details(ui, pane, rect, size);
-        if !frames.is_empty() {
-            let mut over = self.pane_drawing(ui, pane, rect, frame);
-            over.over = frames;
-            ui.painter()
-                .with_clip_rect(rect)
-                .add(crate::egui_wgpu_callback(rect, over));
-        }
+        self.paint_sheet_over_details(ui, pane, rect, frame);
         self.paint_desk(ui, pane, rect, size);
         self.paint_frame(ui, pane, rect);
         self.paint_points(ui, pane, rect, size, &frame.previewed);
