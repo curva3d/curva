@@ -18,6 +18,15 @@ Read all three before starting work; write only yours. Who owns what is in `AGEN
 
 **Releases renumbered on 22 November 2026 at the owner's request:** the 0.4 series is now 0.1 and the four before it 0.0.1–0.0.4 (table in [`docs/releases/README.md`](docs/releases/README.md)); the next release after them was **0.1.6**.
 
+**0.1.7 was published on 27 November 2026 at 17:00 at the owner's request** (tag `v0.1.7` on
+`1b3fd90`; notes: [`docs/releases/v0.1.7.md`](docs/releases/v0.1.7.md)): many more commands as Rhino 8
+measured them, display styles edited live, clipping planes and layouts as Rhino's. The owner had it
+tagged before five hand checks (snapping, typing after a viewport click, previews, gumball,
+clipboard) could run, because the remote desktop was disconnected. The testing stream runs them on
+0.1.7, along with the owner's two (orbiting during Box's preview, closing and restoring a panel).
+The solidcore move to `c6d5d7a`, which drops the patched `solidcore-ops` (decision 0037), comes
+next (`docs/kernel/custom-operations.md`).
+
 **0.1.6 was published on 23 November 2026 at the owner's request, with what was on `main`** (notes:
 [`docs/releases/v0.1.6.md`](docs/releases/v0.1.6.md)): the new interface, SubD and mesh commands measured
 against Rhino 8, and display modes as styles. Open items from the owner's first impressions stay in
